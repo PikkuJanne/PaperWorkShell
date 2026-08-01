@@ -188,7 +188,7 @@ exceptions stay behind the worker adapter boundary.
 
 [`tools/validate_worker_rpc.py`](../../tools/validate_worker_rpc.py) validates strict decoding
 budgets, the self-contained schema/reference policy, exact version pre-dispatch, correlations,
-references, progress/results, the operation registry, error allowlists, and cross-field invariants
+references, progress/results, the operation registry, the closed error registry, and cross-field invariants
 that JSON Schema cannot express.
 Diagnostics contain stable codes, repository-relative fixture labels, and JSON locations; they do
 not echo values, secrets, paths, payload text, or raw exceptions.
@@ -208,9 +208,12 @@ py -3.14 tools/dev.py validate-schemas
 ## Evolution
 
 Protocol and message version 1 meanings are immutable once released. Unknown future versions and
-message types fail before mutation or dispatch. A backward-compatible new operation can use the v1
-envelope only when it has a new explicit capability/operation codec and preserves all envelope,
-error, reference, and limit invariants. A changed envelope, correlation rule, or existing message
-meaning requires a new protocol/message schema, dispatch path, fixtures, compatibility tests, and
-an approved migration/evolution record. No implementation may silently default missing fields or
-treat an unknown field as harmless.
+message types fail before mutation or dispatch. A new operation can use the v1 envelope only when
+both peers install its explicit capability/operation codec, the client requests that exact capability
+in `session.hello`, and the worker reports it only in response to that request. Workers never advertise
+additive capabilities to an older peer. The operation must also use the existing `processing` stage,
+the four public error codes with empty context, and every envelope, reference, limit, and lifecycle
+invariant unchanged. A new progress stage, public error code/context field, unsolicited capability,
+changed envelope, correlation rule, or changed existing-message meaning requires a new protocol/
+message schema, dispatch path, fixtures, compatibility tests, and an approved migration/evolution
+record. No implementation may silently default missing fields or treat an unknown field as harmless.
