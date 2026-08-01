@@ -4,10 +4,12 @@ import json
 import re
 import struct
 import tempfile
+import unicodedata
 import unittest
 import zlib
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
@@ -32,7 +34,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(16, len(self.fixtures))
+        self.assertEqual(17, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -74,7 +76,8 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertEqual("on-demand", by_category["long-path"]["status"])
         self.assertEqual("on-demand", by_category["very-large"]["status"])
         self.assertEqual("PWS-0105", by_category["protected"]["scheduled_task"])
-        self.assertEqual("PWS-0303", by_category["unicode"]["scheduled_task"])
+        self.assertEqual("committed", by_category["unicode"]["status"])
+        self.assertEqual(["pdf-unicode-named"], by_category["unicode"]["fixture_ids"])
         self.assertEqual("PWS-0704", by_category["rtl"]["scheduled_task"])
 
     def test_classic_pdfs_have_correct_xref_offsets_and_stream_lengths(self) -> None:
@@ -149,6 +152,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         duplicate_b = self.by_id["pdf-duplicate-b"]
         script = self.by_id["pdf-script-marker"].content
         signed = self.by_id["pdf-signed-marker"].content
+        unicode_named = self.by_id["pdf-unicode-named"]
 
         self.assertEqual(duplicate_a.content, duplicate_b.content)
         self.assertEqual(
@@ -159,6 +163,8 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertNotIn(b"/AA", script)
         self.assertIn(b"/FT /Sig", signed)
         self.assertNotIn(b"/ByteRange", signed)
+        self.assertEqual("unicode-named-café.pdf", unicode_named.relative_path.name)
+        self.assertTrue(unicodedata.is_normalized("NFC", unicode_named.relative_path.name))
         self.assertFalse(
             cast(bool, self.by_id["png-handwriting-demonstration"].expected["is_signature"])
         )
@@ -180,10 +186,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(16, count)
+        self.assertEqual(17, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(17, len(first))
+        self.assertEqual(18, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 
@@ -216,6 +222,24 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
             self.assertTrue(long_path.read_bytes().startswith(b"%PDF-"))
             with self.assertRaisesRegex(FixtureGenerationError, "outside the repository"):
                 generate_long_path_tree(repository / "unsafe", repository_root=repository)
+
+    def test_regeneration_rejects_a_linked_output_parent_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def mark_pdf_directory_unsafe(path: Path) -> bool:
+                return path.name == "pdf"
+
+            with (
+                patch(
+                    "tools.generate_synthetic_fixtures._is_link_or_reparse",
+                    side_effect=mark_pdf_directory_unsafe,
+                ),
+                self.assertRaisesRegex(FixtureGenerationError, "unsafe directory"),
+            ):
+                write_committed_corpus(root)
+
+            self.assertFalse((root / CORPUS_DIRECTORY / "pdf" / "born-digital.pdf").exists())
 
 
 if __name__ == "__main__":

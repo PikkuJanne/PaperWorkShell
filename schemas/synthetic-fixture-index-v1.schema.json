@@ -67,7 +67,7 @@
     },
     "fixtures": {
       "type": "array",
-      "minItems": 16,
+      "minItems": 17,
       "maxItems": 64,
       "items": {
         "$ref": "#/$defs/fixture"
@@ -200,7 +200,7 @@
           "type": "string",
           "minLength": 5,
           "maxLength": 180,
-          "pattern": "^(pdf/[a-z0-9-]+\\.pdf|image/[a-z0-9-]+\\.png)$"
+          "pattern": "^(pdf/(?:[a-z0-9-]+|unicode-named-café)\\.pdf|image/[a-z0-9-]+\\.png)$"
         },
         "media_type": {
           "enum": ["application/pdf", "image/png"]

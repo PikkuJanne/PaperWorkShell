@@ -2136,9 +2136,27 @@ def inspect_repository_contents(
                 budget,
             )
         )
-    # Commit and tag objects intentionally remain in the bounded snapshot count but are not
-    # passed to a document-data callback: their author/committer identity is Git provenance,
-    # not fixture content. The separate Gitleaks lane still scans those raw objects.
+    for item_number, (object_id, object_type, object_size) in enumerate(
+        historical_message_objects,
+        start=1,
+    ):
+        source_label = f"historical commit/tag object {item_number}"
+        object_content = _read_git_object(
+            git,
+            repository_root,
+            object_id,
+            object_type,
+            object_size,
+            source_label,
+            budget,
+        )
+        _, separator, message_body = object_content.partition(b"\n\n")
+        if not separator:
+            raise SecretScanError("SECRET_SCAN_GIT_FAILED", f"Git could not read {source_label}.")
+        # Author/committer/tagger headers are Git provenance and may contain maintainer identity.
+        # The document-data callback inspects only the free-form message body. Gitleaks separately
+        # scans each complete raw commit/tag object, including those headers.
+        inspector(message_body)
     for item_number, (object_id, object_size) in enumerate(index_blobs, start=1):
         inspector(
             _read_git_blob(

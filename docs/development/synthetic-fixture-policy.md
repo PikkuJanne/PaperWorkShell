@@ -37,8 +37,12 @@ The index covers each roadmap corpus class as `committed`, `on-demand`, or `sche
 
 - protected/encrypted PDF behavior: PWS-0105;
 - CMYK image behavior: PWS-0201;
-- rendered Unicode and multilingual text: PWS-0303;
+- rendered multilingual and complex-script text: PWS-0303;
 - right-to-left layout behavior: PWS-0704.
+
+The Unicode category is committed as an NFC Unicode-named PDF path, which needs no font or feature
+engine. It does not claim rendered Unicode page content; that distinct behavior remains with the
+font strategy task.
 
 The signed-marker fixture contains an unsigned PDF signature field only. It is not a digital
 signature, does not contain a signature image, and carries no validity claim. The script-marker

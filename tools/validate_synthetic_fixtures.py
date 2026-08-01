@@ -31,7 +31,7 @@ from tools.generate_synthetic_fixtures import (
 )
 
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
-    "fbe33a12d61a0dc1de59a78ec60c43251c72baa563d327039c99ca2f7010c0c3"
+    "33229d2fdd6a84377fd10bdc690634037307862257f938f9a6c4c053ef954f2e"
 )
 SUPPORTED_SCHEMA_VERSION: Final = 1
 MAX_INDEX_BYTES: Final = 1 * 1024 * 1024
@@ -56,11 +56,10 @@ _EMAIL_PATTERN: Final = re.compile(
     rb"[A-Z0-9.-]{1,190}\.[A-Z]{2,24}(?![A-Z0-9.-])"
 )
 _SSN_PATTERN: Final = re.compile(rb"(?<![0-9])([0-9]{3})-([0-9]{2})-([0-9]{4})(?![0-9])")
-_CARD_PATTERNS: Final = (
-    re.compile(rb"(?<![0-9])[2-6][0-9]{3}([ -])[0-9]{4}\1[0-9]{4}\1[0-9]{4}(?![0-9])"),
-    re.compile(rb"(?<![0-9])3[47][0-9]{2}([ -])[0-9]{6}\1[0-9]{5}(?![0-9])"),
+_PAN_PATTERN: Final = re.compile(rb"(?<![0-9])(?:[0-9][ -]?){12,18}[0-9](?![0-9])")
+_IBAN_PATTERN: Final = re.compile(
+    rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]){11,30}(?![A-Z0-9])"
 )
-_IBAN_PATTERN: Final = re.compile(rb"(?<![A-Z0-9])[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}(?![A-Z0-9])")
 _MRZ_PATTERN: Final = re.compile(rb"(?m)^P<[A-Z<]{3}[A-Z<]{20,40}$")
 _DOCUMENT_SIGNATURES: Final = (
     b"%PDF-",
@@ -70,6 +69,43 @@ _DOCUMENT_SIGNATURES: Final = (
     b"MM\x00*",
 )
 _RESERVED_EMAIL_SUFFIXES: Final = (b".invalid", b".example", b".test", b".localhost")
+_IBAN_LENGTHS: Final[dict[str, int]] = {
+    "AD": 24,
+    "AT": 20,
+    "BE": 16,
+    "BG": 22,
+    "CH": 21,
+    "CY": 28,
+    "CZ": 24,
+    "DE": 22,
+    "DK": 18,
+    "EE": 20,
+    "ES": 24,
+    "FI": 18,
+    "FR": 27,
+    "GB": 22,
+    "GI": 23,
+    "GR": 27,
+    "HR": 21,
+    "HU": 28,
+    "IE": 22,
+    "IS": 26,
+    "IT": 27,
+    "LI": 21,
+    "LT": 20,
+    "LU": 20,
+    "LV": 21,
+    "MC": 27,
+    "MT": 31,
+    "NL": 18,
+    "NO": 15,
+    "PL": 28,
+    "PT": 25,
+    "RO": 24,
+    "SE": 24,
+    "SI": 19,
+    "SK": 24,
+}
 
 type JsonScalar = str | int | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -292,22 +328,12 @@ def _resource_issue(loaded: Mapping[str, Any], document: str) -> FixtureIssue | 
     return None
 
 
-def _decode_json(
-    path: Path,
-    root: Path,
+def _decode_json_bytes(
+    content: bytes,
     *,
-    maximum_bytes: int,
+    document: str,
     code_prefix: str,
 ) -> tuple[dict[str, Any] | None, list[FixtureIssue]]:
-    document = _document_label(path, root)
-    content, read_issues = _read_regular_bytes(
-        path,
-        maximum_bytes=maximum_bytes,
-        document=document,
-        code_prefix=code_prefix,
-    )
-    if content is None:
-        return None, read_issues
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
@@ -369,6 +395,25 @@ def _decode_json(
     return mapping, []
 
 
+def _decode_json(
+    path: Path,
+    root: Path,
+    *,
+    maximum_bytes: int,
+    code_prefix: str,
+) -> tuple[dict[str, Any] | None, list[FixtureIssue]]:
+    document = _document_label(path, root)
+    content, read_issues = _read_regular_bytes(
+        path,
+        maximum_bytes=maximum_bytes,
+        document=document,
+        code_prefix=code_prefix,
+    )
+    if content is None:
+        return None, read_issues
+    return _decode_json_bytes(content, document=document, code_prefix=code_prefix)
+
+
 def _schema_reference_issue(schema: Mapping[str, Any], document: str) -> FixtureIssue | None:
     stack: list[object] = [schema]
     while stack:
@@ -419,10 +464,9 @@ def load_fixture_schema(
                 "schema bytes do not match the reviewed contract",
             )
         ]
-    schema, decode_issues = _decode_json(
-        path,
-        root,
-        maximum_bytes=MAX_SCHEMA_BYTES,
+    schema, decode_issues = _decode_json_bytes(
+        content,
+        document=document,
         code_prefix="FIXTURE_SCHEMA",
     )
     if schema is None:
@@ -519,10 +563,18 @@ def validate_fixture_index_set(
     if loaded is None:
         return None, positive_issues
     negative_root = root / NEGATIVE_FIXTURE_DIRECTORY
+    too_many_candidates = False
     try:
         if _path_is_link_or_reparse(negative_root) or not negative_root.is_dir():
             raise OSError("negative fixture directory is unsafe")
-        candidates = sorted(negative_root.iterdir(), key=lambda path: path.name)
+        candidates: list[Path] = []
+        with os.scandir(negative_root) as entries:
+            for entry in entries:
+                if len(candidates) >= len(EXPECTED_NEGATIVE_CODES):
+                    too_many_candidates = True
+                    break
+                candidates.append(Path(entry.path))
+        candidates.sort(key=lambda path: path.name)
     except OSError as error:
         return None, [
             _issue(
@@ -532,9 +584,9 @@ def validate_fixture_index_set(
                 type(error).__name__,
             )
         ]
-    if len(candidates) > len(EXPECTED_NEGATIVE_CODES) or {
-        candidate.name for candidate in candidates
-    } != set(EXPECTED_NEGATIVE_CODES):
+    if too_many_candidates or {candidate.name for candidate in candidates} != set(
+        EXPECTED_NEGATIVE_CODES
+    ):
         return None, [
             _issue(
                 "FIXTURE_NEGATIVE_SET_MISMATCH",
@@ -574,36 +626,47 @@ def _enumerate_corpus_files(corpus_root: Path) -> tuple[set[Path] | None, list[F
     try:
         if _path_is_link_or_reparse(corpus_root) or not corpus_root.is_dir():
             raise OSError("corpus directory is unsafe")
-        entries = list(corpus_root.rglob("*"))
-        if len(entries) > MAX_CORPUS_ENTRIES:
-            return None, [
-                _issue(
-                    "FIXTURE_SET_LIMIT",
-                    document,
-                    "$",
-                    "corpus exceeds its entry-count limit",
-                )
-            ]
         files: set[Path] = set()
-        for candidate in entries:
-            relative = candidate.relative_to(corpus_root)
-            if _path_is_link_or_reparse(candidate):
-                raise OSError("corpus path is unsafe")
-            for component in relative.parts:
-                if unicodedata.normalize("NFC", component) != component:
-                    raise OSError("corpus path is not normalized")
-            if candidate.is_dir():
-                continue
-            if not candidate.is_file():
-                raise OSError("corpus path is not regular")
-            files.add(relative)
+        stack = [corpus_root]
+        entry_count = 0
+        while stack:
+            directory = stack.pop()
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    entry_count += 1
+                    if entry_count > MAX_CORPUS_ENTRIES:
+                        return None, [
+                            _issue(
+                                "FIXTURE_SET_LIMIT",
+                                document,
+                                "$",
+                                "corpus exceeds its entry-count limit",
+                            )
+                        ]
+                    candidate = Path(entry.path)
+                    relative = candidate.relative_to(corpus_root)
+                    if _path_is_link_or_reparse(candidate):
+                        raise OSError("corpus path is unsafe")
+                    for component in relative.parts:
+                        if unicodedata.normalize("NFC", component) != component:
+                            raise OSError("corpus path is not normalized")
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(candidate)
+                    elif entry.is_file(follow_symlinks=False):
+                        files.add(relative)
+                    else:
+                        raise OSError("corpus path is not regular")
     except (OSError, RuntimeError, ValueError) as error:
         return None, [_issue("FIXTURE_PATH_UNSAFE", document, "$", type(error).__name__)]
     return files, []
 
 
 def _looks_like_document(content: bytes) -> bool:
-    return any(content.startswith(signature) for signature in _DOCUMENT_SIGNATURES)
+    header = content[:1024]
+    if header.startswith(b"\xef\xbb\xbf"):
+        header = header[3:]
+    normalized = header.lstrip(b" \t\r\n\f\v")
+    return any(normalized.startswith(signature) for signature in _DOCUMENT_SIGNATURES)
 
 
 def _luhn_valid(digits: bytes) -> bool:
@@ -625,8 +688,30 @@ def _luhn_valid(digits: bytes) -> bool:
     return total % 10 == 0
 
 
+def _plausible_pan_issuer(digits: bytes) -> bool:
+    length = len(digits)
+    first = digits[0] - ord("0")
+    first_two = int(digits[:2])
+    first_four = int(digits[:4])
+    first_six = int(digits[:6]) if length >= 6 else 0
+    return any(
+        (
+            first == 4 and length in {13, 16, 19},
+            51 <= first_two <= 55 and length == 16,
+            2221 <= first_four <= 2720 and length == 16,
+            first_two in {34, 37} and length == 15,
+            first_four == 6011 and length in {16, 19},
+            644 <= int(digits[:3]) <= 649 and length in {16, 19},
+            first_two == 65 and length in {16, 19},
+            622126 <= first_six <= 622925 and length in {16, 19},
+        )
+    )
+
+
 def _iban_valid(candidate: bytes) -> bool:
-    compact = candidate.decode("ascii")
+    compact = candidate.replace(b" ", b"").decode("ascii").upper()
+    if _IBAN_LENGTHS.get(compact[:2]) != len(compact):
+        return False
     rearranged = compact[4:] + compact[:4]
     remainder = 0
     for character in rearranged:
@@ -643,11 +728,10 @@ def _contains_prohibited_pattern(content: bytes) -> bool:
             return True
     if _SSN_PATTERN.search(content) is not None or _MRZ_PATTERN.search(content) is not None:
         return True
-    for pattern in _CARD_PATTERNS:
-        for match in pattern.finditer(content):
-            digits = bytes(value for value in match.group(0) if ord("0") <= value <= ord("9"))
-            if _luhn_valid(digits):
-                return True
+    for match in _PAN_PATTERN.finditer(content):
+        digits = bytes(value for value in match.group(0) if ord("0") <= value <= ord("9"))
+        if _plausible_pan_issuer(digits) and _luhn_valid(digits):
+            return True
     return any(_iban_valid(match.group(0)) for match in _IBAN_PATTERN.finditer(content))
 
 

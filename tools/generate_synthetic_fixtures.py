@@ -27,6 +27,7 @@ OVERSIZED_PDF_DEFAULT_BYTES: Final = 52_428_801
 OVERSIZED_PDF_MAX_BYTES: Final = 268_435_456
 LONG_PATH_COMPONENT: Final = "pws-synthetic-long-path-segment"
 LONG_PATH_COMPONENT_COUNT: Final = 8
+MAX_COMMITTED_OUTPUT_ENTRIES: Final = 256
 
 type JsonScalar = str | int | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -509,6 +510,15 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             lambda: _text_pdf(f"{SYNTHETIC_MARKER}: born-digital text"),
         ),
         _fixture(
+            "pdf-unicode-named",
+            "pdf/unicode-named-café.pdf",
+            "application/pdf",
+            ("unicode",),
+            "unicode-named-path-pdf-v1",
+            {"page_count": 1, "path_is_nfc": True, "rendered_unicode_content": False},
+            lambda: _text_pdf(f"{SYNTHETIC_MARKER}: Unicode-named path carrier"),
+        ),
+        _fixture(
             "pdf-image-only",
             "pdf/image-only.pdf",
             "application/pdf",
@@ -656,7 +666,6 @@ def _coverage() -> list[JsonValue]:
         "multilingual": ("PWS-0303", "font-engine-required"),
         "protected": ("PWS-0105", "pdf-encryption-engine-required"),
         "rtl": ("PWS-0704", "rtl-layout-engine-required"),
-        "unicode": ("PWS-0303", "font-engine-required"),
     }
     required_categories = (
         "annotation",
@@ -799,22 +808,121 @@ def _is_link_or_reparse(path: Path) -> bool:
     return stat.S_ISLNK(metadata.st_mode) or bool(attributes & reparse_flag)
 
 
-def _write_exact(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if os.path.lexists(path) and (_is_link_or_reparse(path) or not path.is_file()):
+def _ensure_safe_directory_chain(repository_root: Path, relative_path: Path) -> Path:
+    try:
+        if _is_link_or_reparse(repository_root) or not repository_root.is_dir():
+            raise OSError("repository root is unsafe")
+        resolved_root = repository_root.resolve(strict=True)
+        current = repository_root
+        for component in relative_path.parts:
+            current = current / component
+            if os.path.lexists(current):
+                if _is_link_or_reparse(current) or not current.is_dir():
+                    raise OSError("output directory is unsafe")
+            else:
+                current.mkdir()
+                if _is_link_or_reparse(current) or not current.is_dir():
+                    raise OSError("created output directory is unsafe")
+            resolved_current = current.resolve(strict=True)
+            if not resolved_current.is_relative_to(resolved_root):
+                raise OSError("output directory escapes repository")
+        return current
+    except OSError as error:
         raise FixtureGenerationError(
-            "FIXTURE_OUTPUT_UNSAFE", "fixture output contains a non-regular path"
+            "FIXTURE_OUTPUT_UNSAFE", "fixture output contains an unsafe directory path"
+        ) from error
+
+
+def _bounded_output_files(corpus_root: Path) -> set[Path]:
+    files: set[Path] = set()
+    stack = [corpus_root]
+    entry_count = 0
+    try:
+        while stack:
+            directory = stack.pop()
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    entry_count += 1
+                    if entry_count > MAX_COMMITTED_OUTPUT_ENTRIES:
+                        raise FixtureGenerationError(
+                            "FIXTURE_OUTPUT_INVENTORY_MISMATCH",
+                            "fixture output exceeds its reviewed entry limit",
+                        )
+                    candidate = Path(entry.path)
+                    if _is_link_or_reparse(candidate):
+                        raise OSError("output entry is unsafe")
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(candidate)
+                    elif entry.is_file(follow_symlinks=False):
+                        files.add(candidate.relative_to(corpus_root))
+                    else:
+                        raise OSError("output entry is not regular")
+    except FixtureGenerationError:
+        raise
+    except OSError as error:
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNREADABLE", "fixture output cannot be inspected safely"
+        ) from error
+    return files
+
+
+def _write_exact(path: Path, content: bytes, output_root: Path) -> None:
+    try:
+        resolved_output_root = output_root.resolve(strict=True)
+        resolved_parent = path.parent.resolve(strict=True)
+    except OSError as error:
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNSAFE", "fixture output parent cannot be resolved safely"
+        ) from error
+    if _is_link_or_reparse(path.parent) or not resolved_parent.is_relative_to(resolved_output_root):
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNSAFE", "fixture output parent escapes the reviewed corpus"
         )
+    if os.path.lexists(path):
+        try:
+            metadata = path.lstat()
+        except OSError as error:
+            raise FixtureGenerationError(
+                "FIXTURE_OUTPUT_UNSAFE", "fixture output cannot be inspected safely"
+            ) from error
+        if (
+            _is_link_or_reparse(path)
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+        ):
+            raise FixtureGenerationError(
+                "FIXTURE_OUTPUT_UNSAFE", "fixture output contains a non-regular path"
+            )
     temporary = path.with_name(f".{path.name}.pws-fixture-tmp")
     if os.path.lexists(temporary):
-        if _is_link_or_reparse(temporary) or not temporary.is_file():
+        temporary_metadata = temporary.lstat()
+        if (
+            _is_link_or_reparse(temporary)
+            or not stat.S_ISREG(temporary_metadata.st_mode)
+            or temporary_metadata.st_nlink != 1
+        ):
             raise FixtureGenerationError(
                 "FIXTURE_OUTPUT_UNSAFE", "fixture output contains an unsafe temporary path"
             )
         temporary.unlink()
     try:
-        temporary.write_bytes(content)
+        with temporary.open("xb") as stream:
+            written = stream.write(content)
+        if written != len(content):
+            raise OSError("short fixture output write")
+        if (
+            _is_link_or_reparse(temporary)
+            or temporary.resolve(strict=True).parent != resolved_parent
+            or path.parent.resolve(strict=True) != resolved_parent
+        ):
+            raise OSError("fixture output path changed")
         os.replace(temporary, path)
+        if _is_link_or_reparse(path) or path.resolve(strict=True).parent != resolved_parent:
+            raise OSError("fixture output replacement escaped")
+    except OSError as error:
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNWRITABLE", "fixture output could not be written safely"
+        ) from error
     finally:
         try:
             temporary.unlink(missing_ok=True)
@@ -826,31 +934,33 @@ def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
     """Regenerate the reviewed committed corpus beneath one repository root."""
 
     fixtures = build_committed_fixtures()
-    corpus_root = root.resolve(strict=False) / CORPUS_DIRECTORY
+    try:
+        repository_root = root.resolve(strict=True)
+    except OSError as error:
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNSAFE", "repository root cannot be resolved safely"
+        ) from error
+    if _is_link_or_reparse(root) or not repository_root.is_dir():
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNSAFE", "repository root must be one non-linked directory"
+        )
+    corpus_root = _ensure_safe_directory_chain(repository_root, CORPUS_DIRECTORY)
     expected = {Path(*item.relative_path.parts) for item in fixtures}
     expected.add(Path("index.json"))
-    if corpus_root.exists():
-        try:
-            actual = {
-                candidate.relative_to(corpus_root)
-                for candidate in corpus_root.rglob("*")
-                if candidate.is_file()
-            }
-        except OSError as error:
-            raise FixtureGenerationError(
-                "FIXTURE_OUTPUT_UNREADABLE", "fixture output cannot be inspected"
-            ) from error
-        unexpected = {
-            path for path in actual - expected if not path.parts or path.parts[0] != "invalid"
-        }
-        if unexpected:
-            raise FixtureGenerationError(
-                "FIXTURE_OUTPUT_INVENTORY_MISMATCH",
-                "fixture output has unexpected files; remove them after review",
-            )
+    actual = _bounded_output_files(corpus_root)
+    unexpected = {
+        path for path in actual - expected if not path.parts or path.parts[0] != "invalid"
+    }
+    if unexpected:
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_INVENTORY_MISMATCH",
+            "fixture output has unexpected files; remove them after review",
+        )
     for fixture in fixtures:
-        _write_exact(corpus_root / Path(*fixture.relative_path.parts), fixture.content)
-    _write_exact(corpus_root / "index.json", canonical_index_bytes(fixtures))
+        relative = Path(*fixture.relative_path.parts)
+        _ensure_safe_directory_chain(repository_root, CORPUS_DIRECTORY / relative.parent)
+        _write_exact(corpus_root / relative, fixture.content, corpus_root)
+    _write_exact(corpus_root / "index.json", canonical_index_bytes(fixtures), corpus_root)
     return len(fixtures)
 
 

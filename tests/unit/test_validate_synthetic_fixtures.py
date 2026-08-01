@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
@@ -16,6 +17,7 @@ from tools.generate_synthetic_fixtures import (
 )
 from tools.validate_synthetic_fixtures import (
     EXPECTED_NEGATIVE_CODES,
+    MAX_CORPUS_ENTRIES,
     load_fixture_schema,
     validate_fixture_corpus,
     validate_fixture_index_document,
@@ -35,13 +37,13 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
 
         self.assertEqual([], index_issues)
         self.assertIsNotNone(index_summary)
-        self.assertEqual(16, index_summary.fixture_count if index_summary else 0)
+        self.assertEqual(17, index_summary.fixture_count if index_summary else 0)
         self.assertEqual(24, index_summary.coverage_count if index_summary else 0)
         self.assertEqual(
             len(EXPECTED_NEGATIVE_CODES), index_summary.negative_count if index_summary else 0
         )
         self.assertEqual([], corpus_issues)
-        self.assertEqual(16, corpus_summary.fixture_count if corpus_summary else 0)
+        self.assertEqual(17, corpus_summary.fixture_count if corpus_summary else 0)
 
     def test_mutated_missing_and_extra_artifacts_fail_closed(self) -> None:
         mutations = ("mutated", "missing", "extra")
@@ -98,6 +100,19 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
             {issue.code for issue in issues},
         )
 
+    def test_schema_parser_consumes_the_authenticated_read_only(self) -> None:
+        authenticated = (PROJECT_ROOT / SCHEMA_PATH).read_bytes()
+        unauthenticated = authenticated.replace(b'"minItems": 17', b'"minItems": 18')
+        with patch(
+            "tools.validate_synthetic_fixtures._read_regular_bytes",
+            side_effect=[(authenticated, []), (unauthenticated, [])],
+        ) as read:
+            schema, issues = load_fixture_schema()
+
+        self.assertEqual([], issues)
+        self.assertIsNotNone(schema)
+        self.assertEqual(1, read.call_count)
+
     def test_version_duplicate_key_and_schema_failures_are_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -135,6 +150,31 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
 
         self.assertIsNone(summary)
         self.assertEqual({"FIXTURE_CONTENT_PATH_UNSAFE"}, {issue.code for issue in issues})
+
+    def test_corpus_entry_limit_stops_oversized_nested_inventory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_fixture_root(root)
+            extra_root = root / CORPUS_DIRECTORY / "excess"
+            extra_root.mkdir()
+            for index in range(MAX_CORPUS_ENTRIES + 1):
+                (extra_root / f"item-{index:03d}").write_bytes(b"x")
+
+            summary, issues = validate_fixture_corpus(root, inspect_repository=False)
+
+        self.assertIsNone(summary)
+        self.assertEqual({"FIXTURE_SET_LIMIT"}, {issue.code for issue in issues})
+
+    def test_negative_inventory_limit_fails_before_validating_extra_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_fixture_root(root)
+            (root / CORPUS_DIRECTORY / "invalid" / "extra.json").write_bytes(b"not-json")
+
+            summary, issues = validate_fixture_index_set(root)
+
+        self.assertIsNone(summary)
+        self.assertEqual({"FIXTURE_NEGATIVE_SET_MISMATCH"}, {issue.code for issue in issues})
 
 
 if __name__ == "__main__":

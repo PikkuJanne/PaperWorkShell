@@ -7,7 +7,13 @@ import unittest
 from pathlib import Path
 
 from tools.dev import inspect_repository_contents
-from tools.generate_synthetic_fixtures import PROJECT_ROOT, build_committed_fixtures
+from tools.generate_synthetic_fixtures import (
+    CORPUS_DIRECTORY,
+    PROJECT_ROOT,
+    FixtureGenerationError,
+    build_committed_fixtures,
+    write_committed_corpus,
+)
 from tools.validate_synthetic_fixtures import (
     RepositoryPrivacyFinding,
     _contains_prohibited_pattern,
@@ -39,7 +45,10 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             b"person" + b"@" + b"ordinary-domain" + b".org",
             b"123" + b"-" + b"45" + b"-" + b"6789",
             b"4111" + b" " + b"1111" + b" " + b"1111" + b" " + b"1111",
+            b"4111" + b"1111" + b"1111" + b"1111",
+            b"4000" + b"0000" + b"0000" + b"0000" + b"006",
             b"GB82" + b"WEST" + b"1234" + b"5698" + b"7654" + b"32",
+            b"gb82" + b" west" + b" 1234" + b" 5698" + b" 7654" + b" 32",
             b"P<" + b"UTO" + b"SYNTHETIC<<<<<<<<<<<<<<<<<<<<<<",
         )
 
@@ -57,8 +66,18 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         canary = b"private-" + b"document-" + b"token"
         inspect = _repository_inspector(frozenset())
 
-        with self.assertRaises(RepositoryPrivacyFinding) as raised:
-            inspect(b"%PDF-1.4\n" + canary)
+        variants = (
+            b"%PDF-1.4\n" + canary,
+            b"\xef\xbb\xbf\n%PDF-1.4\n" + canary,
+            b"\r\n  %PDF-1.4\n" + canary,
+        )
+        for variant in variants:
+            with self.subTest(prefix_length=variant.index(b"%PDF")):
+                with self.assertRaises(RepositoryPrivacyFinding) as raised:
+                    inspect(variant)
+
+                self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
+                self.assertNotIn(canary.decode("ascii"), str(raised.exception))
 
         rendered = f"{raised.exception.code} {raised.exception.message}"
         self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
@@ -69,7 +88,7 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             root = Path(temporary)
             self._repository(root)
             path = root / "historical.pdf"
-            path.write_bytes(b"%PDF-1.4\n% unapproved historical test blob\n")
+            path.write_bytes(b"\xef\xbb\xbf\n%PDF-1.4\n% unapproved historical test blob\n")
             self._git(root, "add", "historical.pdf")
             self._git(root, "commit", "-m", "add synthetic policy violation")
             path.unlink()
@@ -86,7 +105,7 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             root = Path(temporary)
             self._repository(root)
             path = root / "staged.pdf"
-            path.write_bytes(b"%PDF-1.4\n% unapproved index test blob\n")
+            path.write_bytes(b"\n%PDF-1.4\n% unapproved index test blob\n")
             self._git(root, "add", "staged.pdf")
             path.write_text("working replacement\n", encoding="utf-8")
 
@@ -99,14 +118,42 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             self._repository(root)
-            (root / "untracked.png").write_bytes(
-                b"\x89PNG\r\n\x1a\n" + b"unapproved untracked test blob"
+            (root / "untracked.pdf").write_bytes(
+                b"\xef\xbb\xbf  \r\n%PDF-1.4\n" + b"unapproved untracked test blob"
             )
 
             with self.assertRaises(RepositoryPrivacyFinding) as raised:
                 inspect_repository_contents(root, _repository_inspector(frozenset()))
 
         self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
+
+    def test_commit_message_body_is_inspected_without_author_header_false_positive(self) -> None:
+        canary = "123" + "-" + "45" + "-" + "6789"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._repository(root)
+            (root / "README.md").write_text("second synthetic revision\n", encoding="utf-8")
+            self._git(root, "add", "README.md")
+            self._git(root, "commit", "-m", f"synthetic message {canary}")
+
+            with self.assertRaises(RepositoryPrivacyFinding) as raised:
+                inspect_repository_contents(root, _repository_inspector(frozenset()))
+
+        self.assertEqual("FIXTURE_PRIVACY_PATTERN", raised.exception.code)
+        self.assertNotIn(canary, str(raised.exception))
+
+    def test_annotated_tag_message_body_is_inspected(self) -> None:
+        canary = "123" + "-" + "45" + "-" + "6789"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._repository(root)
+            self._git(root, "tag", "-a", "synthetic-review", "-m", f"synthetic tag {canary}")
+
+            with self.assertRaises(RepositoryPrivacyFinding) as raised:
+                inspect_repository_contents(root, _repository_inspector(frozenset()))
+
+        self.assertEqual("FIXTURE_PRIVACY_PATTERN", raised.exception.code)
+        self.assertNotIn(canary, str(raised.exception))
 
     def test_generator_has_no_network_process_random_clock_or_external_document_import(
         self,
@@ -122,6 +169,26 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
                 imports.add(node.module.split(".", maxsplit=1)[0])
 
         self.assertEqual(set(), imports & prohibited)
+
+    def test_regeneration_rejects_a_real_linked_directory_without_touching_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            repository = base / "repository"
+            corpus = repository / CORPUS_DIRECTORY
+            corpus.mkdir(parents=True)
+            outside = base / "outside"
+            outside.mkdir()
+            sentinel = outside / "born-digital.pdf"
+            sentinel.write_bytes(b"outside sentinel")
+            try:
+                (corpus / "pdf").symlink_to(outside, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"directory links unavailable: {type(error).__name__}")
+
+            with self.assertRaises(FixtureGenerationError):
+                write_committed_corpus(repository)
+
+            self.assertEqual(b"outside sentinel", sentinel.read_bytes())
 
 
 if __name__ == "__main__":

@@ -163,9 +163,10 @@
     },
     {
       "category": "unicode",
-      "status": "scheduled",
-      "scheduled_task": "PWS-0303",
-      "reason_code": "font-engine-required"
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-unicode-named"
+      ]
     },
     {
       "category": "very-large",
@@ -445,6 +446,28 @@
         "page_count": 1,
         "signature_field_marker": true,
         "cryptographically_signed": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-unicode-named",
+      "path": "pdf/unicode-named-caf\u00e9.pdf",
+      "media_type": "application/pdf",
+      "bytes": 811,
+      "sha256": "8729be3639d9c670920b3fe359fbccf1bdfd11be218fb5723a931e0f92736a9d",
+      "categories": [
+        "unicode"
+      ],
+      "recipe": "unicode-named-path-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "path_is_nfc": true,
+        "rendered_unicode_content": false
       },
       "provenance": {
         "kind": "algorithmic",
