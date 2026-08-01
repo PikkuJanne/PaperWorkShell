@@ -251,7 +251,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -294,10 +294,18 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "b4872e4"
+    commands:
+    - "py -3.14 tools/dev.py check - passed; formatting, lint, 12-layer import boundaries, strict typing, 124 unit tests, 2 integration tests, 36 security tests, 2 accessibility tests, schema/task/document/reference validation, live secret scanning, and 5 negative self-tests"
+    - "py -3.14 tools/dev.py validate-docs - passed; local links/anchors and decision, task, threat, traceability, and security-test-plan references validated offline"
+    - "fresh remote clone at b4872e4: uv sync --locked and the full tools/dev.py check passed"
+    - "GitHub Actions run 30707215325 on windows-2025 - passed the local-equivalent quality suite"
+    notes:
+    - The 28-threat catalogue covers every mandated PWS-0004 category, and every high-impact threat maps to a frozen decision plus a concrete task or gate and planned test evidence.
+    - Import, preview, OCR, export, diagnostics, deletion, template, and future update flows identify the UI, worker, filesystem, executable, destination, and network trust boundaries with accessible text alternatives.
+    - The offline validator fails closed on missing or hidden authority, malformed local references, unknown IDs, incomplete security mappings, and ambiguous unsupported Markdown without fetching network content.
+    - Independent exact-tree security and traceability audits found no remaining actionable P1/P2 issues.
 - id: PWS-0005
   milestone: M0
   title: Establish dependency, license, and redistribution policy
@@ -345,7 +353,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0002
@@ -389,7 +397,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0002
@@ -433,7 +441,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0002
