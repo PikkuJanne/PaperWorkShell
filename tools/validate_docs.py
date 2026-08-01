@@ -52,7 +52,7 @@ TRACEABILITY_HEADER: Final = (
     "Implementation tasks and gates",
     "Planned evidence focus",
 )
-TEST_PLAN_HEADING: Final = (1, "Initial security and privacy test plan")
+TEST_PLAN_HEADING: Final = (2, "Planned suites")
 TEST_PLAN_HEADER: Final = (
     "Test ID",
     "Threats",
@@ -98,6 +98,8 @@ class VisibleLine:
 
     number: int
     text: str
+    authoritative: bool = True
+    ambiguous: bool = False
 
 
 @dataclass(frozen=True)
@@ -148,31 +150,111 @@ def _read_utf8(root: Path, path: Path) -> tuple[str | None, DocumentationIssue |
         )
 
 
+def _without_html_comments(line: str, inside_comment: bool) -> tuple[str, bool, bool]:
+    visible_parts: list[str] = []
+    cursor = 0
+    contains_comment = inside_comment
+    while cursor < len(line):
+        if inside_comment:
+            end = line.find("-->", cursor)
+            if end < 0:
+                return "".join(visible_parts), True, True
+            contains_comment = True
+            inside_comment = False
+            cursor = end + 3
+            continue
+
+        start = line.find("<!--", cursor)
+        if start < 0:
+            visible_parts.append(line[cursor:])
+            break
+        visible_parts.append(line[cursor:start])
+        contains_comment = True
+        inside_comment = True
+        cursor = start + 4
+    return "".join(visible_parts), inside_comment, contains_comment
+
+
+def _is_indented_code(line: str) -> bool:
+    if not line.strip():
+        return False
+    column = 0
+    for character in line:
+        if character == " ":
+            column += 1
+        elif character == "\t":
+            column += 4 - (column % 4)
+        else:
+            return False
+        if column >= 4:
+            return True
+    return False
+
+
+def _comment_delimiter_in_inline_markup(line: str) -> bool:
+    delimiters = tuple(re.finditer(r"<!--|-->", line))
+    if not delimiters:
+        return False
+
+    inline_spans = tuple(re.finditer(r"(?P<ticks>`+).*?(?P=ticks)", line)) + tuple(
+        re.finditer(r"\[[^]\n]*\](?:\([^)]*\)|\[[^]\n]*\])", line)
+    )
+    return any(
+        span.start() <= delimiter.start() < span.end()
+        for delimiter in delimiters
+        for span in inline_spans
+    )
+
+
 def _visible_lines(text: str) -> tuple[VisibleLine, ...]:
     visible: list[VisibleLine] = []
     fence_character: str | None = None
     fence_length = 0
-    for number, line in enumerate(text.splitlines(), start=1):
-        match = FENCE.match(line)
-        if fence_character is None:
-            if match is not None:
-                marker = match.group("marker")
-                fence_character = marker[0]
-                fence_length = len(marker)
+    inside_comment = False
+    for number, raw_line in enumerate(text.splitlines(), start=1):
+        if fence_character is not None:
+            visible.append(VisibleLine(number, "", authoritative=False))
+            match = FENCE.match(raw_line)
+            if match is None:
                 continue
-            visible.append(VisibleLine(number, line))
+            marker = match.group("marker")
+            if (
+                marker[0] == fence_character
+                and len(marker) >= fence_length
+                and not match.group("rest").strip()
+            ):
+                fence_character = None
+                fence_length = 0
             continue
 
-        if match is None:
+        if not inside_comment and _is_indented_code(raw_line):
+            visible.append(VisibleLine(number, "", authoritative=False))
             continue
-        marker = match.group("marker")
-        if (
-            marker[0] == fence_character
-            and len(marker) >= fence_length
-            and not match.group("rest").strip()
-        ):
-            fence_character = None
-            fence_length = 0
+
+        inline_comment_ambiguity = not inside_comment and _comment_delimiter_in_inline_markup(
+            raw_line
+        )
+        line, inside_comment, contains_comment = _without_html_comments(raw_line, inside_comment)
+        if _is_indented_code(line):
+            visible.append(VisibleLine(number, "", authoritative=False))
+            continue
+
+        match = FENCE.match(line)
+        if match is not None and not contains_comment:
+            marker = match.group("marker")
+            fence_character = marker[0]
+            fence_length = len(marker)
+            visible.append(VisibleLine(number, "", authoritative=False))
+            continue
+
+        visible.append(
+            VisibleLine(
+                number,
+                line,
+                authoritative=not contains_comment,
+                ambiguous=inline_comment_ambiguity or contains_comment and match is not None,
+            )
+        )
     return tuple(visible)
 
 
@@ -196,6 +278,8 @@ def _heading_anchors(lines: Iterable[VisibleLine]) -> frozenset[str]:
     anchors: set[str] = set()
     occurrences: Counter[str] = Counter()
     for line in lines:
+        if not line.authoritative:
+            continue
         match = ATX_HEADING.match(line.text)
         if match is None:
             continue
@@ -233,6 +317,8 @@ def _starts_with_table_identifier(text: str, identifier: re.Pattern[str]) -> boo
 
 
 def _heading_identity(line: VisibleLine) -> tuple[int, str] | None:
+    if not line.authoritative:
+        return None
     match = ATX_HEADING.match(line.text)
     if match is None:
         return None
@@ -279,7 +365,7 @@ def _canonical_table_rows(
     header_indexes = [
         index
         for index in range(heading_index + 1, section_end)
-        if _table_cells(lines[index].text) == header
+        if lines[index].authoritative and _table_cells(lines[index].text) == header
     ]
     if len(header_indexes) != 1:
         issues.append(
@@ -295,7 +381,11 @@ def _canonical_table_rows(
 
     header_index = header_indexes[0]
     separator = tuple("---" for _cell in header)
-    if header_index + 1 >= section_end or _table_cells(lines[header_index + 1].text) != separator:
+    if (
+        header_index + 1 >= section_end
+        or not lines[header_index + 1].authoritative
+        or _table_cells(lines[header_index + 1].text) != separator
+    ):
         issues.append(
             _issue(
                 issue_code,
@@ -311,7 +401,12 @@ def _canonical_table_rows(
     index = header_index + 2
     while index < section_end:
         cells = _table_cells(lines[index].text)
-        if cells is None or len(cells) != len(header) or identifier.fullmatch(cells[0]) is None:
+        if (
+            not lines[index].authoritative
+            or cells is None
+            or len(cells) != len(header)
+            or identifier.fullmatch(cells[0]) is None
+        ):
             break
         rows.append((lines[index], cells))
         index += 1
@@ -680,6 +775,17 @@ def validation_issues(root: Path = PROJECT_ROOT) -> list[DocumentationIssue]:
         visible = _visible_lines(text)
         visible_by_path[path] = visible
         anchors_by_path[path] = _heading_anchors(visible)
+        for line in visible:
+            if line.ambiguous:
+                issues.append(
+                    _issue(
+                        "DOC_MARKDOWN_VISIBILITY_INVALID",
+                        root,
+                        path,
+                        line.number,
+                        "HTML comment delimiters are ambiguous inside Markdown syntax",
+                    )
+                )
 
     tasks_text, tasks_issue = _read_utf8(root, root / TASKS_PATH)
     if tasks_issue is not None:
@@ -689,7 +795,7 @@ def validation_issues(root: Path = PROJECT_ROOT) -> list[DocumentationIssue]:
     decision_definitions = [
         match.group(1)
         for line in decision_lines
-        if (match := DECISION_DEFINITION.match(line.text)) is not None
+        if line.authoritative and (match := DECISION_DEFINITION.match(line.text)) is not None
     ]
     task_definitions = TASK_DEFINITION.findall(tasks_text or "")
     decisions = frozenset(decision_definitions)

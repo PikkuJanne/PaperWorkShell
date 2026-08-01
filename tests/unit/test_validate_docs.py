@@ -76,6 +76,7 @@ def _minimal_repository(root: Path) -> None:
     _write_text(
         root / "docs/security/security-test-plan.md",
         "# Initial security and privacy test plan\n\n"
+        "## Planned suites\n\n"
         "| Test ID | Threats | Earliest owning tasks | Layer and synthetic scenario | Required oracle |\n"
         "|---|---|---|---|---|\n"
         f"| ST-001 | {threat_list} | PWS-0001 | Synthetic case | Stable result |\n",
@@ -215,6 +216,106 @@ class DocumentationValidationTests(unittest.TestCase):
 
         self.assertIn("DOC_DECISION_REFERENCE_UNKNOWN", codes)
 
+    def test_html_comments_hide_unknown_references_and_links(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "\nPWS-D001<!-- PWS-D999 PWS-9999 TM-999 "
+                    "[hidden](missing.md) --> and PWS-0001.\n"
+                    "<!--\n"
+                    "PWS-D998 PWS-9998 TM-998 [hidden](also-missing.md)\n"
+                    "-->\n"
+                    "PWS-D0<!-- join -->01 and PWS-0<!-- join -->001 remain visible.\n"
+                )
+
+            issues = validation_issues(root)
+
+        self.assertEqual([], issues)
+
+    def test_comment_delimiters_cannot_split_an_unknown_visible_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write("\nPWS-D9<!-- hidden join -->99 remains visible.\n")
+
+            issues = validation_issues(root)
+
+        self.assertEqual(["DOC_DECISION_REFERENCE_UNKNOWN"], [issue.code for issue in issues])
+        self.assertIn("PWS-D999", issues[0].message)
+
+    def test_indented_code_hides_unknown_references_and_links(self) -> None:
+        for indentation in ("    ", "\t"):
+            with (
+                self.subTest(indentation=repr(indentation)),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _minimal_repository(root)
+                with (root / "README.md").open("a", encoding="utf-8") as stream:
+                    stream.write(f"\n{indentation}PWS-D999 PWS-9999 TM-999 [hidden](missing.md)\n")
+
+                issues = validation_issues(root)
+
+            self.assertEqual([], issues)
+
+    def test_indented_comment_opener_does_not_hide_following_visible_content(self) -> None:
+        for indentation in ("    ", "\t"):
+            with (
+                self.subTest(indentation=repr(indentation)),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _minimal_repository(root)
+                with (root / "README.md").open("a", encoding="utf-8") as stream:
+                    stream.write(
+                        f"\n{indentation}<!-- this delimiter is code\n"
+                        "PWS-D999 and [visible](missing.md) remain visible.\n"
+                    )
+
+                codes = _codes(root)
+
+            self.assertIn("DOC_DECISION_REFERENCE_UNKNOWN", codes)
+            self.assertIn("DOC_LINK_TARGET_MISSING", codes)
+
+    def test_comment_delimiters_in_inline_markup_fail_closed(self) -> None:
+        forms = (
+            "`<!--` PWS-D999 remains visible.\n",
+            "[literal <!--](README.md) PWS-D999 remains visible.\n",
+        )
+        for form in forms:
+            with self.subTest(form=form), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _minimal_repository(root)
+                with (root / "README.md").open("a", encoding="utf-8") as stream:
+                    stream.write(f"\n{form}")
+
+                codes = _codes(root)
+
+            self.assertIn("DOC_MARKDOWN_VISIBILITY_INVALID", codes)
+
+    def test_hidden_or_indented_decision_headings_are_not_authoritative(self) -> None:
+        forms = (
+            "<!-- ## PWS-D999 — Hidden same line -->\n",
+            "<!--\n## PWS-D999 — Hidden block\n-->\n",
+            "    ## PWS-D999 — Four-space code\n",
+            "\t## PWS-D999 — Tab code\n",
+        )
+        for form in forms:
+            with self.subTest(form=form), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _minimal_repository(root)
+                with (root / "DECISIONS.md").open("a", encoding="utf-8") as stream:
+                    stream.write(f"\n{form}")
+                with (root / "README.md").open("a", encoding="utf-8") as stream:
+                    stream.write("\nPWS-D999 is not authoritative.\n")
+
+                codes = _codes(root)
+
+            self.assertIn("DOC_DECISION_REFERENCE_UNKNOWN", codes)
+
     def test_invalid_utf8_diagnostic_is_sorted_relative_and_sanitized(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -321,6 +422,12 @@ class DocumentationValidationTests(unittest.TestCase):
                 "|---|---|---|---|--|",
                 "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
             ),
+            (
+                "docs/security/security-test-plan.md",
+                "## Planned suites",
+                "## Failure report requirements",
+                "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+            ),
         )
         for relative_path, old, new, expected_code in cases:
             with (
@@ -349,6 +456,192 @@ class DocumentationValidationTests(unittest.TestCase):
 
         self.assertIn("THREAT_TRACE_STRUCTURE_INVALID", codes)
         self.assertIn("THREAT_TRACE_MISSING", codes)
+
+    def test_commented_canonical_rows_are_not_authoritative(self) -> None:
+        cases = (
+            (
+                "docs/security/threat-model.md",
+                "| TM-001 | A parser exploit compromises a document engine | High | A bounded synthetic outcome |",
+                "THREAT_CATALOGUE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/threat-traceability.md",
+                "| TM-001 | PWS-D001 | PWS-0001 | Synthetic evidence |",
+                "THREAT_TRACE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/security-test-plan.md",
+                "| ST-001 | "
+                + ", ".join(threat_id for threat_id, _scenario in THREAT_ROWS)
+                + " | PWS-0001 | Synthetic case | Stable result |",
+                "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+            ),
+        )
+        for relative_path, row, expected_code in cases:
+            with (
+                self.subTest(relative_path=relative_path),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _minimal_repository(root)
+                _replace(root / relative_path, row, f"<!-- {row} -->")
+
+                codes = _codes(root)
+
+            self.assertIn(expected_code, codes)
+
+    def test_commented_canonical_headings_are_not_authoritative(self) -> None:
+        documents = (
+            (
+                "docs/security/threat-model.md",
+                "## Threat catalogue",
+                "THREAT_CATALOGUE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/threat-traceability.md",
+                "# Threat-to-decision and task traceability",
+                "THREAT_TRACE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/security-test-plan.md",
+                "## Planned suites",
+                "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+            ),
+        )
+        for relative_path, heading, expected_code in documents:
+            with (
+                self.subTest(relative_path=relative_path),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _minimal_repository(root)
+                _replace(root / relative_path, heading, f"<!-- {heading} -->")
+
+                codes = _codes(root)
+
+            self.assertIn(expected_code, codes)
+
+    def test_multiline_comment_cannot_hide_complete_canonical_catalogue(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            threat_model = root / "docs/security/threat-model.md"
+            text = threat_model.read_text(encoding="utf-8")
+            visible_prefix = "# Threat model\n\n"
+            self.assertTrue(text.startswith(visible_prefix))
+            _write_text(
+                threat_model,
+                f"{visible_prefix}<!--\n{text[len(visible_prefix) :]}-->\n",
+            )
+
+            codes = _codes(root)
+
+        self.assertIn("THREAT_CATALOGUE_STRUCTURE_INVALID", codes)
+
+    def test_indented_canonical_table_lines_are_not_authoritative(self) -> None:
+        security_test_row = (
+            "| ST-001 | "
+            + ", ".join(threat_id for threat_id, _scenario in THREAT_ROWS)
+            + " | PWS-0001 | Synthetic case | Stable result |"
+        )
+        documents = (
+            (
+                "docs/security/threat-model.md",
+                "THREAT_CATALOGUE_STRUCTURE_INVALID",
+                (
+                    (
+                        "header",
+                        "| ID | Threat scenario | Impact | Required security outcome |",
+                    ),
+                    ("separator", "|---|---|---|---|"),
+                    (
+                        "data row",
+                        "| TM-001 | A parser exploit compromises a document engine | High | A bounded synthetic outcome |",
+                    ),
+                ),
+            ),
+            (
+                "docs/security/threat-traceability.md",
+                "THREAT_TRACE_STRUCTURE_INVALID",
+                (
+                    (
+                        "header",
+                        "| Threat | Frozen decisions | Implementation tasks and gates | Planned evidence focus |",
+                    ),
+                    ("separator", "|---|---|---|---|"),
+                    (
+                        "data row",
+                        "| TM-001 | PWS-D001 | PWS-0001 | Synthetic evidence |",
+                    ),
+                ),
+            ),
+            (
+                "docs/security/security-test-plan.md",
+                "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+                (
+                    (
+                        "header",
+                        "| Test ID | Threats | Earliest owning tasks | Layer and synthetic scenario | Required oracle |",
+                    ),
+                    ("separator", "|---|---|---|---|---|"),
+                    ("data row", security_test_row),
+                ),
+            ),
+        )
+        for relative_path, expected_code, table_lines in documents:
+            for line_kind, table_line in table_lines:
+                for indentation in ("    ", "\t"):
+                    with (
+                        self.subTest(
+                            relative_path=relative_path,
+                            line_kind=line_kind,
+                            indentation=repr(indentation),
+                        ),
+                        tempfile.TemporaryDirectory() as temporary,
+                    ):
+                        root = Path(temporary)
+                        _minimal_repository(root)
+                        _replace(
+                            root / relative_path,
+                            table_line,
+                            f"{indentation}{table_line}",
+                        )
+
+                        codes = _codes(root)
+
+                    self.assertIn(expected_code, codes)
+
+    def test_indented_canonical_headings_are_not_authoritative(self) -> None:
+        documents = (
+            (
+                "docs/security/threat-model.md",
+                "## Threat catalogue",
+                "THREAT_CATALOGUE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/threat-traceability.md",
+                "# Threat-to-decision and task traceability",
+                "THREAT_TRACE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/security-test-plan.md",
+                "## Planned suites",
+                "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+            ),
+        )
+        for relative_path, heading, expected_code in documents:
+            for indentation in ("    ", "\t"):
+                with (
+                    self.subTest(relative_path=relative_path, indentation=repr(indentation)),
+                    tempfile.TemporaryDirectory() as temporary,
+                ):
+                    root = Path(temporary)
+                    _minimal_repository(root)
+                    _replace(root / relative_path, heading, f"{indentation}{heading}")
+
+                    codes = _codes(root)
+
+                self.assertIn(expected_code, codes)
 
 
 if __name__ == "__main__":
