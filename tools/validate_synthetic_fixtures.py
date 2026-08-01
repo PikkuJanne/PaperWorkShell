@@ -56,10 +56,14 @@ _EMAIL_PATTERN: Final = re.compile(
     rb"[A-Z0-9.-]{1,190}\.[A-Z]{2,24}(?![A-Z0-9.-])"
 )
 _SSN_PATTERN: Final = re.compile(rb"(?<![0-9])([0-9]{3})-([0-9]{2})-([0-9]{4})(?![0-9])")
-_PAN_PATTERN: Final = re.compile(rb"(?<![A-Za-z0-9])(?:[0-9][ -]?){12,18}[0-9](?![A-Za-z0-9])")
-_IBAN_PATTERN: Final = re.compile(
-    rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]){11,30}(?![A-Z0-9])"
+_PAN_PATTERN: Final = re.compile(
+    rb"(?<![A-Za-z0-9])(?:[0-9](?:[ \t]|\xc2\xa0|\xe2\x80\xaf)?){12,18}"
+    rb"[0-9](?![A-Za-z0-9])"
 )
+_PAN_HYPHEN_PATTERN: Final = re.compile(
+    rb"(?<![A-Za-z0-9-])(?:[0-9]{3,6}-){2,4}[0-9]{1,6}(?![A-Za-z0-9-])"
+)
+_IBAN_START_PATTERN: Final = re.compile(rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}")
 _MRZ_PATTERN: Final = re.compile(rb"(?m)^P<[A-Z<]{3}[A-Z<]{20,40}$")
 _DOCUMENT_SIGNATURES: Final = (
     b"%PDF-",
@@ -177,13 +181,44 @@ def _path_is_link_or_reparse(path: Path) -> bool:
     return stat.S_ISLNK(metadata.st_mode) or bool(attributes & reparse_flag)
 
 
+def _path_chain_is_safe(path: Path, trusted_root: Path) -> bool:
+    try:
+        root = Path(os.path.abspath(trusted_root))
+        candidate = Path(os.path.abspath(path))
+        relative = candidate.relative_to(root)
+        if not relative.parts or any(component in {".", ".."} for component in relative.parts):
+            return False
+        if _path_is_link_or_reparse(root) or not root.is_dir():
+            return False
+        current = root
+        for component in relative.parts[:-1]:
+            current = current / component
+            if _path_is_link_or_reparse(current) or not current.is_dir():
+                return False
+        resolved_root = root.resolve(strict=True)
+        resolved_parent = candidate.parent.resolve(strict=True)
+        return resolved_parent == resolved_root or resolved_parent.is_relative_to(resolved_root)
+    except OSError, RuntimeError, ValueError:
+        return False
+
+
 def _read_regular_bytes(
     path: Path,
     *,
+    trusted_root: Path,
     maximum_bytes: int,
     document: str,
     code_prefix: str,
 ) -> tuple[bytes | None, list[FixtureIssue]]:
+    if not _path_chain_is_safe(path, trusted_root):
+        return None, [
+            _issue(
+                f"{code_prefix}_PATH_UNSAFE",
+                document,
+                "$",
+                "input path must remain beneath non-linked directories",
+            )
+        ]
     try:
         metadata = path.lstat()
         if (
@@ -228,6 +263,8 @@ def _read_regular_bytes(
             final.st_mtime_ns,
         ):
             raise OSError("input changed")
+        if not _path_chain_is_safe(path, trusted_root):
+            raise OSError("input path changed")
     except OSError as error:
         return None, [_issue(f"{code_prefix}_UNREADABLE", document, "$", type(error).__name__)]
     if len(content) > maximum_bytes:
@@ -368,6 +405,7 @@ def _decode_json(
     document = _document_label(path, root)
     content, read_issues = _read_regular_bytes(
         path,
+        trusted_root=root,
         maximum_bytes=maximum_bytes,
         document=document,
         code_prefix=code_prefix,
@@ -412,6 +450,7 @@ def load_fixture_schema(
     document = SCHEMA_PATH.as_posix()
     content, read_issues = _read_regular_bytes(
         path,
+        trusted_root=root,
         maximum_bytes=MAX_SCHEMA_BYTES,
         document=document,
         code_prefix="FIXTURE_SCHEMA",
@@ -625,25 +664,14 @@ def _enumerate_corpus_files(corpus_root: Path) -> tuple[set[Path] | None, list[F
 
 
 def _looks_like_document(content: bytes) -> bool:
-    header = content[:1024]
-    if b"%PDF-" in header:
-        return True
-    if header.startswith(b"\xef\xbb\xbf"):
-        header = header[3:]
-    normalized = header.lstrip(b" \t\r\n\f\v")
-    return any(
-        normalized.startswith(signature)
-        for signature in _DOCUMENT_SIGNATURES
-        if signature != b"%PDF-"
-    )
+    maximum_signature_bytes = max(len(signature) for signature in _DOCUMENT_SIGNATURES)
+    header = content[: 1024 + maximum_signature_bytes - 1]
+    return any(0 <= header.find(signature) < 1024 for signature in _DOCUMENT_SIGNATURES)
 
 
 def _luhn_valid(digits: bytes) -> bool:
-    if (
-        len(digits) not in {13, 14, 15, 16, 19}
-        or digits[0] not in b"23456"
-        or len(set(digits)) == 1
-    ):
+    # A leading zero is not a public industry identifier and commonly occurs in PDF xref padding.
+    if not 13 <= len(digits) <= 19 or digits[0] == ord("0") or len(set(digits)) == 1:
         return False
     total = 0
     parity = len(digits) % 2
@@ -670,6 +698,50 @@ def _iban_valid(candidate: bytes) -> bool:
     return remainder == 1
 
 
+def _ascii_alphanumeric(value: int) -> bool:
+    return (
+        ord("0") <= value <= ord("9")
+        or ord("A") <= value <= ord("Z")
+        or ord("a") <= value <= ord("z")
+    )
+
+
+def _financial_separator_width(content: bytes, position: int) -> int:
+    if content[position] in b" \t":
+        return 1
+    if content.startswith(b"\xc2\xa0", position):
+        return 2
+    if content.startswith(b"\xe2\x80\xaf", position):
+        return 3
+    return 0
+
+
+def _contains_valid_iban(content: bytes) -> bool:
+    for match in _IBAN_START_PATTERN.finditer(content):
+        compact = bytearray(match.group(0))
+        position = match.end()
+        while True:
+            if len(compact) >= 15 and _iban_valid(bytes(compact)):
+                if position == len(content) or not _ascii_alphanumeric(content[position]):
+                    return True
+            if len(compact) >= 34 or position == len(content):
+                break
+            if _ascii_alphanumeric(content[position]):
+                compact.append(content[position])
+                position += 1
+                continue
+            separator_width = _financial_separator_width(content, position)
+            next_position = position + separator_width
+            if (
+                separator_width == 0
+                or next_position == len(content)
+                or not _ascii_alphanumeric(content[next_position])
+            ):
+                break
+            position = next_position
+    return False
+
+
 def _contains_prohibited_pattern(content: bytes) -> bool:
     for match in _EMAIL_PATTERN.finditer(content):
         domain = match.group(0).split(b"@", maxsplit=1)[1].lower()
@@ -677,11 +749,12 @@ def _contains_prohibited_pattern(content: bytes) -> bool:
             return True
     if _SSN_PATTERN.search(content) is not None or _MRZ_PATTERN.search(content) is not None:
         return True
-    for match in _PAN_PATTERN.finditer(content):
-        digits = bytes(value for value in match.group(0) if ord("0") <= value <= ord("9"))
-        if _luhn_valid(digits):
-            return True
-    return any(_iban_valid(match.group(0)) for match in _IBAN_PATTERN.finditer(content))
+    for pattern in (_PAN_PATTERN, _PAN_HYPHEN_PATTERN):
+        for match in pattern.finditer(content):
+            digits = bytes(value for value in match.group(0) if ord("0") <= value <= ord("9"))
+            if _luhn_valid(digits):
+                return True
+    return _contains_valid_iban(content)
 
 
 def _repository_inspector(
@@ -730,6 +803,7 @@ def validate_fixture_corpus(
         ]
     index_content, index_read_issues = _read_regular_bytes(
         root / INDEX_PATH,
+        trusted_root=root,
         maximum_bytes=MAX_INDEX_BYTES,
         document=INDEX_PATH.as_posix(),
         code_prefix="FIXTURE_INDEX",
@@ -772,6 +846,7 @@ def validate_fixture_corpus(
         relative = Path(*fixture.relative_path.parts)
         content, read_issues = _read_regular_bytes(
             corpus_root / relative,
+            trusted_root=root,
             maximum_bytes=MAX_FIXTURE_BYTES,
             document=(CORPUS_DIRECTORY / relative).as_posix(),
             code_prefix="FIXTURE_CONTENT",

@@ -965,6 +965,10 @@ def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
 
 
 def _ensure_external_output(output_directory: Path, repository_root: Path) -> Path:
+    if os.path.lexists(output_directory) and _is_link_or_reparse(output_directory):
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNSAFE", "on-demand output must be one non-linked directory"
+        )
     try:
         repository = repository_root.resolve(strict=True)
         destination = output_directory.resolve(strict=False)
@@ -980,6 +984,48 @@ def _ensure_external_output(output_directory: Path, repository_root: Path) -> Pa
     return destination
 
 
+def _ensure_external_directory(output_directory: Path, repository_root: Path) -> Path:
+    destination = _ensure_external_output(output_directory, repository_root)
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+        if _is_link_or_reparse(destination) or not destination.is_dir():
+            raise OSError("on-demand destination is unsafe")
+        resolved_destination = destination.resolve(strict=True)
+        repository = repository_root.resolve(strict=True)
+    except OSError as error:
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_UNSAFE", "on-demand output contains an unsafe directory path"
+        ) from error
+    if resolved_destination == repository or resolved_destination.is_relative_to(repository):
+        raise FixtureGenerationError(
+            "FIXTURE_OUTPUT_INSIDE_REPOSITORY",
+            "on-demand hostile fixtures must remain outside the repository",
+        )
+    return resolved_destination
+
+
+def _remove_created_external_file(
+    path: Path,
+    expected_parent: Path,
+    expected_identity: tuple[int, int] | None,
+) -> None:
+    if expected_identity is None:
+        return
+    try:
+        metadata = path.lstat()
+        if (
+            path.parent.resolve(strict=True) != expected_parent
+            or _is_link_or_reparse(path)
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or (metadata.st_dev, metadata.st_ino) != expected_identity
+        ):
+            return
+        path.unlink()
+    except OSError:
+        pass
+
+
 def generate_oversized_pdf(
     output_directory: Path,
     *,
@@ -993,10 +1039,9 @@ def generate_oversized_pdf(
             "FIXTURE_ON_DEMAND_SIZE_INVALID",
             "requested byte count is outside the safe recipe range",
         )
-    destination = _ensure_external_output(output_directory, repository_root)
-    destination.mkdir(parents=True, exist_ok=True)
+    destination = _ensure_external_directory(output_directory, repository_root)
     path = destination / "pws-synthetic-oversized.pdf"
-    if path.exists():
+    if os.path.lexists(path):
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_EXISTS", "on-demand generation does not overwrite existing output"
         )
@@ -1007,8 +1052,11 @@ def generate_oversized_pdf(
         raise FixtureGenerationError(
             "FIXTURE_ON_DEMAND_SIZE_INVALID", "requested byte count is too small for the recipe"
         )
+    created_identity: tuple[int, int] | None = None
     try:
         with path.open("xb") as stream:
+            opened = os.fstat(stream.fileno())
+            created_identity = (opened.st_dev, opened.st_ino)
             stream.write(prefix)
             block = b"0" * min(1_048_576, fill_bytes)
             remaining = fill_bytes
@@ -1017,7 +1065,19 @@ def generate_oversized_pdf(
                 stream.write(chunk)
                 remaining -= len(chunk)
             stream.write(suffix)
+        final = path.lstat()
+        if (
+            _is_link_or_reparse(path)
+            or not stat.S_ISREG(final.st_mode)
+            or final.st_nlink != 1
+            or (final.st_dev, final.st_ino) != created_identity
+            or final.st_size != byte_count
+            or path.parent.resolve(strict=True) != destination
+            or path.resolve(strict=True).parent != destination
+        ):
+            raise OSError("on-demand fixture path changed")
     except OSError as error:
+        _remove_created_external_file(path, destination, created_identity)
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_UNWRITABLE", "on-demand fixture could not be written"
         ) from error
@@ -1036,17 +1096,47 @@ def generate_long_path_tree(
         raise FixtureGenerationError(
             "FIXTURE_ON_DEMAND_SIZE_INVALID", "component count is outside the safe recipe range"
         )
-    destination = _ensure_external_output(output_directory, repository_root)
-    nested = destination.joinpath(*(LONG_PATH_COMPONENT for _ in range(component_count)))
+    destination = _ensure_external_directory(output_directory, repository_root)
+    nested = _ensure_safe_directory_chain(
+        destination,
+        Path(*(LONG_PATH_COMPONENT for _ in range(component_count))),
+    )
     path = nested / "pws-synthetic-long-path.pdf"
-    if path.exists():
+    if os.path.lexists(path):
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_EXISTS", "on-demand generation does not overwrite existing output"
         )
+    content = _text_pdf(f"{SYNTHETIC_MARKER}: long-path carrier")
+    created_identity: tuple[int, int] | None = None
+    resolved_nested: Path | None = None
     try:
-        nested.mkdir(parents=True, exist_ok=False)
-        path.write_bytes(_text_pdf(f"{SYNTHETIC_MARKER}: long-path carrier"))
+        resolved_nested = nested.resolve(strict=True)
+        repository = repository_root.resolve(strict=True)
+        if (
+            not resolved_nested.is_relative_to(destination)
+            or resolved_nested == repository
+            or resolved_nested.is_relative_to(repository)
+        ):
+            raise OSError("on-demand output escaped its reviewed destination")
+        with path.open("xb") as stream:
+            opened = os.fstat(stream.fileno())
+            created_identity = (opened.st_dev, opened.st_ino)
+            written = stream.write(content)
+        if written != len(content):
+            raise OSError("short on-demand fixture write")
+        final = path.lstat()
+        if (
+            _is_link_or_reparse(path)
+            or not stat.S_ISREG(final.st_mode)
+            or final.st_nlink != 1
+            or (final.st_dev, final.st_ino) != created_identity
+            or path.parent.resolve(strict=True) != resolved_nested
+            or path.resolve(strict=True).parent != resolved_nested
+        ):
+            raise OSError("on-demand fixture path changed")
     except OSError as error:
+        if resolved_nested is not None:
+            _remove_created_external_file(path, resolved_nested, created_identity)
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_UNWRITABLE", "on-demand fixture could not be written"
         ) from error

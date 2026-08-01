@@ -2028,6 +2028,63 @@ def _scan_working_paths(
     return scanned
 
 
+def _git_header_entries(header: bytes, source_label: str) -> list[list[bytes]]:
+    entries: list[list[bytes]] = []
+    for line in header.split(b"\n"):
+        if line.startswith(b" "):
+            if not entries:
+                raise SecretScanError(
+                    "SECRET_SCAN_GIT_FAILED", f"Git returned a malformed {source_label}."
+                )
+            entries[-1].append(line)
+        else:
+            entries.append([line])
+    return entries
+
+
+def _inspect_git_message_content(
+    object_content: bytes,
+    object_type: str,
+    source_label: str,
+    inspector: Callable[[bytes], None],
+) -> None:
+    header, separator, message_body = object_content.partition(b"\n\n")
+    if not separator:
+        raise SecretScanError("SECRET_SCAN_GIT_FAILED", f"Git could not read {source_label}.")
+    identity_prefixes = (b"author ", b"committer ") if object_type == "commit" else (b"tagger ",)
+    entries = _git_header_entries(header, f"{object_type} header")
+    if any(
+        sum(entry[0].startswith(prefix) for entry in entries) > 1 for prefix in identity_prefixes
+    ):
+        # A malformed duplicate identity header must not turn the provenance exception into a
+        # hiding place. Inspect every header byte first so the policy callback can report any
+        # prohibited content, then reject even a duplicate that otherwise looks harmless.
+        inspector(header)
+        raise SecretScanError(
+            "SECRET_SCAN_GIT_FAILED", f"Git returned a malformed {object_type} header."
+        )
+
+    inspectable_entries: list[bytes] = []
+    for entry in entries:
+        first_line = entry[0]
+        if first_line.startswith(identity_prefixes):
+            inspectable_entries.extend(entry[1:])
+        elif object_type == "commit" and first_line.startswith(b"mergetag "):
+            embedded_tag = b"\n".join(
+                (first_line.removeprefix(b"mergetag "), *(line[1:] for line in entry[1:]))
+            )
+            _inspect_git_message_content(
+                embedded_tag,
+                "tag",
+                f"{source_label} mergetag",
+                inspector,
+            )
+        else:
+            inspectable_entries.extend(entry)
+    inspector(b"\n".join(inspectable_entries))
+    inspector(message_body)
+
+
 def inspect_repository_contents(
     root: Path,
     inspector: Callable[[bytes], None],
@@ -2150,20 +2207,10 @@ def inspect_repository_contents(
             source_label,
             budget,
         )
-        header, separator, message_body = object_content.partition(b"\n\n")
-        if not separator:
-            raise SecretScanError("SECRET_SCAN_GIT_FAILED", f"Git could not read {source_label}.")
-        identity_prefixes = (
-            (b"author ", b"committer ") if object_type == "commit" else (b"tagger ",)
-        )
-        inspectable_header = b"\n".join(
-            line for line in header.splitlines() if not line.startswith(identity_prefixes)
-        )
-        # Only the standard author/committer/tagger identity lines are Git provenance. Custom and
-        # continuation headers remain untrusted content and are inspected with the free-form body.
-        # Gitleaks separately scans each complete raw commit/tag object, including identity lines.
-        inspector(inspectable_header)
-        inspector(message_body)
+        # Standard identity lines, including a folded merge-tag identity, are Git provenance.
+        # Custom headers, continuations, and message bodies remain untrusted. Gitleaks separately
+        # scans every complete raw object, including the provenance lines omitted by this callback.
+        _inspect_git_message_content(object_content, object_type, source_label, inspector)
     for item_number, (object_id, object_size) in enumerate(index_blobs, start=1):
         inspector(
             _read_git_blob(

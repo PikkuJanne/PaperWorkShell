@@ -113,6 +113,20 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
         self.assertIsNotNone(schema)
         self.assertEqual(1, read.call_count)
 
+    def test_schema_read_rejects_a_linked_ancestor_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_fixture_root(root)
+            schema_directory = (root / SCHEMA_PATH).parent
+            with patch(
+                "tools.validate_synthetic_fixtures._path_is_link_or_reparse",
+                side_effect=lambda path: path == schema_directory,
+            ):
+                schema, issues = load_fixture_schema(root)
+
+        self.assertIsNone(schema)
+        self.assertEqual({"FIXTURE_SCHEMA_PATH_UNSAFE"}, {issue.code for issue in issues})
+
     def test_version_duplicate_key_and_schema_failures_are_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

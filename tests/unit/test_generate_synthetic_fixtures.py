@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
+    LONG_PATH_COMPONENT,
     SYNTHETIC_MARKER,
     FixtureGenerationError,
     build_committed_fixtures,
@@ -240,6 +241,55 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 write_committed_corpus(root)
 
             self.assertFalse((root / CORPUS_DIRECTORY / "pdf" / "born-digital.pdf").exists())
+
+    def test_long_path_recipe_rejects_a_linked_nested_component_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            repository = base / "repository"
+            repository.mkdir()
+            output = base / "long-path"
+            linked_component = output / LONG_PATH_COMPONENT
+            linked_component.mkdir(parents=True)
+
+            with (
+                patch(
+                    "tools.generate_synthetic_fixtures._is_link_or_reparse",
+                    side_effect=lambda path: path == linked_component,
+                ),
+                self.assertRaisesRegex(FixtureGenerationError, "unsafe directory"),
+            ):
+                generate_long_path_tree(
+                    output,
+                    repository_root=repository,
+                    component_count=2,
+                )
+
+            self.assertFalse(
+                (linked_component / LONG_PATH_COMPONENT / "pws-synthetic-long-path.pdf").exists()
+            )
+
+    def test_on_demand_recipe_rejects_a_linked_destination_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            repository = base / "repository"
+            repository.mkdir()
+            output = base / "linked-output"
+            output.mkdir()
+
+            with (
+                patch(
+                    "tools.generate_synthetic_fixtures._is_link_or_reparse",
+                    side_effect=lambda path: path == output,
+                ),
+                self.assertRaisesRegex(FixtureGenerationError, "non-linked directory"),
+            ):
+                generate_long_path_tree(
+                    output,
+                    repository_root=repository,
+                    component_count=2,
+                )
+
+            self.assertEqual([], list(output.iterdir()))
 
 
 if __name__ == "__main__":
