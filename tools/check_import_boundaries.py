@@ -31,10 +31,13 @@ REQUIRED_PACKAGES: Final = (
     "diagnostics",
 )
 KNOWN_LAYERS: Final = frozenset((*REQUIRED_PACKAGES, "ui"))
-UI_FACING_LAYERS: Final = frozenset(("app", "ui"))
+DESKTOP_ENTRYPOINT: Final = f"{PROJECT_PACKAGE}.__main__"
+ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
+UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
 FORBIDDEN_UI_TOOLKIT_ROOTS: Final = frozenset(("_tkinter", "tkinter", "turtle"))
 WORKER_PACKAGE: Final = f"{PROJECT_PACKAGE}.worker"
+EXPORT_PACKAGE: Final = f"{PROJECT_PACKAGE}.export"
 GUI_SAFE_WORKER_PREFIXES: Final = (
     f"{WORKER_PACKAGE}.client",
     f"{WORKER_PACKAGE}.protocol",
@@ -76,8 +79,8 @@ def _module_context(path: Path, package_root: Path) -> tuple[str, str]:
 
 
 def _layer(module: str) -> str | None:
-    if module == f"{PROJECT_PACKAGE}.__main__":
-        return "ui"
+    if module == DESKTOP_ENTRYPOINT:
+        return "desktop"
     parts = module.split(".")
     if len(parts) >= 2 and parts[0] == PROJECT_PACKAGE:
         return parts[1]
@@ -108,7 +111,7 @@ def _from_import_targets(node: ast.ImportFrom, package: str) -> tuple[str, ...]:
         targets.extend(
             f"{base}.{alias.name}"
             for alias in node.names
-            if alias.name != "*" and alias.name in KNOWN_LAYERS
+            if alias.name != "*" and alias.name in ROOT_IMPORT_LAYERS
         )
     elif base == WORKER_PACKAGE:
         targets.extend(f"{base}.{alias.name}" for alias in node.names if alias.name != "*")
@@ -138,7 +141,11 @@ def _target_violation(
     if _is_within(target, PROJECT_PACKAGE):
         target_layer = _layer(target)
 
-        if target_layer is not None and target_layer not in KNOWN_LAYERS:
+        if (
+            target_layer is not None
+            and target_layer not in KNOWN_LAYERS
+            and target != DESKTOP_ENTRYPOINT
+        ):
             return BoundaryViolation(
                 path,
                 line,
@@ -162,6 +169,38 @@ def _target_violation(
                 f"domain code must not import {target!r}",
             )
 
+        if owner == "app" and target_layer in ("ui", "desktop"):
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_UI_DIRECTION",
+                f"application layer must not import higher UI tier {target!r}",
+            )
+
+        if owner == "ui" and target_layer == "desktop":
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_UI_DIRECTION",
+                f"UI layer must not import desktop composition entrypoint {target!r}",
+            )
+
+        is_gui_safe_worker_module = any(
+            _is_within(importer, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES
+        )
+
+        if (
+            (owner in UI_FACING_LAYERS or is_gui_safe_worker_module)
+            and _is_within(target, EXPORT_PACKAGE)
+            and target != EXPORT_PACKAGE
+        ):
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_GUI_EXPORT_IMPLEMENTATION",
+                f"GUI-safe module {importer!r} must not import export implementation {target!r}",
+            )
+
         if owner in UI_FACING_LAYERS and target_layer in DOCUMENT_ADAPTER_LAYERS:
             return BoundaryViolation(
                 path,
@@ -183,9 +222,6 @@ def _target_violation(
                 f"UI-facing layer {owner!r} must not import worker-host module {target!r}",
             )
 
-        is_gui_safe_worker_module = any(
-            _is_within(importer, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES
-        )
         targets_worker_implementation = (
             _is_within(target, WORKER_PACKAGE)
             and target != WORKER_PACKAGE
@@ -286,7 +322,7 @@ def inspect_source(
 
     owner = _layer(module)
     violations: list[BoundaryViolation] = []
-    if module != PROJECT_PACKAGE and owner not in KNOWN_LAYERS:
+    if module not in (PROJECT_PACKAGE, DESKTOP_ENTRYPOINT) and owner not in KNOWN_LAYERS:
         violations.append(
             BoundaryViolation(
                 path,

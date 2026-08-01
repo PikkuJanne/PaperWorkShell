@@ -156,6 +156,36 @@ def test_repository_respects_import_boundaries() -> None:
             "ARCH_WORKER_CLIENT_BOUNDARY",
         ),
         (
+            "paperworkshell.worker.client",
+            "paperworkshell.worker",
+            "import paperworkshell.export.writer\n",
+            "ARCH_GUI_EXPORT_IMPLEMENTATION",
+        ),
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "import paperworkshell.export.writer\n",
+            "ARCH_GUI_EXPORT_IMPLEMENTATION",
+        ),
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "import paperworkshell.ui\n",
+            "ARCH_UI_DIRECTION",
+        ),
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "from paperworkshell import __main__\n",
+            "ARCH_UI_DIRECTION",
+        ),
+        (
+            "paperworkshell.ui.example",
+            "paperworkshell.ui",
+            "import paperworkshell.__main__\n",
+            "ARCH_UI_DIRECTION",
+        ),
+        (
             "paperworkshell.pdf.example",
             "paperworkshell.pdf",
             "from paperworkshell.app import Service\n",
@@ -297,10 +327,22 @@ def test_import_scanner_ignores_non_import_text_and_local_relative_name() -> Non
 def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
     assert (
         inspect_source(
-            "from paperworkshell import app\nimport paperworkshell.worker.client\n",
+            "from paperworkshell import app\n"
+            "import paperworkshell.worker.client\n"
+            "import paperworkshell.export\n",
             module="paperworkshell.__main__",
             package="paperworkshell",
             path="__main__.py",
+        )
+        == ()
+    )
+
+    assert (
+        inspect_source(
+            "import paperworkshell.domain\nimport paperworkshell.export\n",
+            module="paperworkshell.worker.client",
+            package="paperworkshell.worker",
+            path="client.py",
         )
         == ()
     )
