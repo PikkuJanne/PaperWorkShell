@@ -52,13 +52,15 @@ messages are exchanged. Negotiation then proceeds exactly as follows:
 3. A compatible worker responds to the same request with `session.ready` as its sender sequence
    zero. It selects protocol version `1`, reports a unique capability list, advertises at most
    65,536 message bytes, and advertises exactly one in-flight operation.
-4. Every required capability must appear with the exact required version. No ready response means
-   no operation may start. An incompatible or malformed negotiation produces only a sanitized
-   protocol failure and the session is not usable.
+4. Every reported capability must exist in the client's explicit local operation registry, and
+   every required capability must appear with the exact required version. Unknown worker-advertised
+   names are rejected before UI or logging. No ready response means no operation may start. An
+   incompatible or malformed negotiation produces only a sanitized protocol failure and the session
+   is not usable.
 
 The initial registry contains one capability and operation: `protocol.noop` version 1. Its canonical
-start has empty `inputs` and `parameters`. It proves version negotiation, typed round trips, state,
-and cancellation without parsing a document.
+start has empty `inputs` and `parameters`; its only progress stage is `processing`. It proves version
+negotiation, typed round trips, state, and cancellation without parsing a document.
 
 ## Messages and lifecycle
 
@@ -68,7 +70,7 @@ and cancellation without parsing a document.
 | `session.ready` | worker to client | `selected_protocol_version`, `capabilities`, `max_message_bytes`, `max_in_flight_operations` |
 | `operation.start` | client to worker | `operation_kind`, `operation_version`, `inputs`, `parameters`, `requested_limits` |
 | `operation.accepted` | worker to client | matching operation kind/version and `effective_limits` |
-| `operation.progress` | worker to client | `stage_code`, integer `completed_units`, integer-or-null `total_units`, and a unit |
+| `operation.progress` | worker to client | registered stage `processing`, integer `completed_units`, integer-or-null `total_units`, and a unit |
 | `operation.cancel` | client to worker | reason `user_requested`, `shutdown`, or `superseded` |
 | `operation.cancel_ack` | worker to client | `requested`, `already_requested`, or `already_terminal` |
 | `operation.result` | worker to client | terminal outcome, bounded outputs, and outcome-dependent error |
@@ -99,6 +101,8 @@ not a terminal result. Shutdown stops accepting new work and proceeds to `sessio
 correlated reason `shutdown_complete`; unsolicited close messages are protocol violations. A
 protocol error or severe worker fault terminates the session and requires a new worker. Session
 state, sequences, and capabilities are never resumed or replayed across worker restart.
+A failed or timed-out operation result whose error requests `restart_worker` also faults the
+session immediately; a non-restart result leaves the negotiated session ready for later work.
 
 ## Two-stage operation validation
 
@@ -149,7 +153,8 @@ Before schema or model construction, strict decoding enforces these protocol-wid
 | JSON nodes (every value plus every object member name) | 4,096 |
 | Code points in one string | 4,096 |
 | Members in one collection | 256 |
-| Operation/error parameters | 64 |
+| Operation parameters | 64 |
+| Public error context values | 0 |
 | Remembered message IDs in one session | 4,096 |
 | Remembered terminal operation IDs in one session | 1,024 |
 
@@ -161,25 +166,23 @@ owned by `PWS-0107`.
 ## Sanitized errors
 
 An error is a closed version-1 object containing a registered stable code, a closed category, a
-closed retry action, an exactly corresponding restart flag, and zero or more allowlisted tagged
-parameters. `restart_required` is true if and only if `retry_action` is `restart_worker`.
+closed retry action, an exactly corresponding restart flag, and an empty `parameters` array.
+`restart_required` is true if and only if `retry_action` is `restart_worker`.
 `protocol.error` requires category `protocol` and a restart-worker action because it terminates the
 session; `worker.fault` also requires a restart-worker action. The public v1 code registry is
 closed to `RPC_MESSAGE_INVALID`, `WORKER_OPERATION_FAILED`, `WORKER_OPERATION_TIMED_OUT`, and
 `WORKER_INTERNAL_FAULT`. Detailed parser or adapter failures are mapped to one of those public
 codes before crossing the RPC boundary; an unknown code is never forwarded to UI or logging.
+Message context narrows that registry further: failed results use `WORKER_OPERATION_FAILED`,
+timed-out results use `WORKER_OPERATION_TIMED_OUT`, `protocol.error` uses
+`RPC_MESSAGE_INVALID` with category `protocol`, and `worker.fault` uses
+`WORKER_INTERNAL_FAULT` with category `internal`.
 
-Error parameters are not an arbitrary context map. The allowlist is:
-
-- integer: `attempted_version`, `supported_version`, `minimum`, `maximum`, `observed`, `limit`,
-  `count`, `capability_version`, `operation_version`, `protocol_version`, `sequence`,
-  `expected_sequence`, `observed_sequence`;
-- UUIDv4: `request_id`, `operation_id`, `message_id`.
-
-Parameter names are unique within one error. Boolean and token error parameters and free-form message,
-detail, exception, traceback, path, filename, metadata, OCR/document text, form values, or library
-error fields are forbidden. UI/application code maps stable codes and safe parameters to localized
-plain-language recovery text. Raw third-party exceptions stay behind the worker adapter boundary.
+Public protocol-v1 errors intentionally carry no worker-controlled context values. Boolean, integer,
+token, and UUID parameters and free-form message, detail, exception, traceback, path, filename,
+metadata, OCR/document text, form values, or library error fields are forbidden. UI/application code
+maps stable codes and trusted local state to localized plain-language recovery text. Raw third-party
+exceptions stay behind the worker adapter boundary.
 
 ## Validation and examples
 

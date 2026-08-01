@@ -21,13 +21,7 @@
       "category": "operation",
       "retry_action": "retry",
       "restart_required": false,
-      "parameters": [
-        {
-          "name": "operation_id",
-          "value_type": "uuid",
-          "value": "30000000-0000-4000-8000-000000000001"
-        }
-      ]
+      "parameters": []
     }
   }
 }

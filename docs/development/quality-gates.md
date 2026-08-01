@@ -59,7 +59,7 @@ string code points at 4,096, and collection members at 256 before offline schema
 checks the self-contained schema/reference policy, exact version and capability negotiation,
 directions and correlations,
 the exact operation registry, logical case-object reference scope, terminal results, progress,
-restart semantics, and allowlisted sanitized error parameters. All canonical message examples must
+restart semantics, and closed sanitized error codes without public context values. All canonical message examples must
 pass and every malformed/incompatible/path-bearing negative fixture must fail. See
 [`docs/schemas/worker-rpc-v1.md`](../schemas/worker-rpc-v1.md) for the protocol contract.
 

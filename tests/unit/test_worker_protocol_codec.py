@@ -15,12 +15,12 @@ from paperworkshell.worker.protocol.models import (
     PROTOCOL_VERSION,
     CancelDisposition,
     CancelReason,
+    CapabilityDescriptor,
     CaseObjectReference,
     ClosedReason,
     Direction,
     ErrorCategory,
     ErrorCode,
-    ErrorParameter,
     ErrorPayload,
     MessagePayload,
     MessageType,
@@ -31,13 +31,13 @@ from paperworkshell.worker.protocol.models import (
     OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
+    ProgressStage,
     ProgressUnit,
     ProtocolEnvelope,
     ProtocolErrorPayload,
     ReferenceArea,
     ResourceLimits,
     RetryAction,
-    ScalarValueType,
     SessionCapability,
     SessionClosedPayload,
     SessionHelloPayload,
@@ -83,13 +83,7 @@ def _error(
         category=category,
         retry_action=retry_action,
         restart_required=retry_action is RetryAction.RESTART_WORKER,
-        parameters=(
-            ErrorParameter(
-                name="operation_id",
-                value_type=ScalarValueType.UUID,
-                value=OPERATION_ID,
-            ),
-        ),
+        parameters=(),
     )
 
 
@@ -168,7 +162,7 @@ def _messages() -> tuple[ProtocolEnvelope, ...]:
         _envelope(
             MessageType.OPERATION_PROGRESS,
             Direction.WORKER_TO_CLIENT,
-            OperationProgressPayload("processing", 1, 2, ProgressUnit.STEPS),
+            OperationProgressPayload(ProgressStage.PROCESSING, 1, 2, ProgressUnit.STEPS),
             message_number=4,
             operation_id=OPERATION_ID,
         ),
@@ -300,7 +294,7 @@ class WorkerProtocolCodecTests(unittest.TestCase):
         self.assertEqual(set(MessageType), observed_types)
         self.assertEqual(set(OperationOutcome), observed_outcomes)
 
-    def test_unknown_start_and_accepted_descriptors_fail_before_return(self) -> None:
+    def test_unknown_operation_descriptors_fail_before_return(self) -> None:
         for message_type, payload, direction in (
             (
                 MessageType.OPERATION_START,
@@ -312,6 +306,15 @@ class WorkerProtocolCodecTests(unittest.TestCase):
                 OperationAcceptedPayload("unknown.operation", 1, _limits()),
                 Direction.WORKER_TO_CLIENT,
             ),
+            (
+                MessageType.SESSION_READY,
+                SessionReadyPayload(
+                    1,
+                    (CapabilityDescriptor("unknown.operation", 1),),
+                    MAX_MESSAGE_BYTES,
+                ),
+                Direction.WORKER_TO_CLIENT,
+            ),
         ):
             with self.subTest(message_type=message_type):
                 message = _envelope(
@@ -319,7 +322,9 @@ class WorkerProtocolCodecTests(unittest.TestCase):
                     direction,
                     payload,
                     message_number=20,
-                    operation_id=OPERATION_ID,
+                    operation_id=(
+                        None if message_type is MessageType.SESSION_READY else OPERATION_ID
+                    ),
                 )
                 with self.assertRaises(ProtocolError) as raised:
                     encode_message(message)

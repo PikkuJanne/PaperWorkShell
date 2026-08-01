@@ -29,7 +29,6 @@ from paperworkshell.worker.protocol.models import (
     Direction,
     ErrorCategory,
     ErrorCode,
-    ErrorParameter,
     ErrorPayload,
     MessagePayload,
     MessageType,
@@ -40,6 +39,7 @@ from paperworkshell.worker.protocol.models import (
     OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
+    ProgressStage,
     ProgressUnit,
     ProtocolEnvelope,
     ProtocolErrorPayload,
@@ -300,33 +300,6 @@ def _decode_tagged_scalar(value: object, location: str) -> TaggedScalar:
     )
 
 
-def _decode_error_parameter(value: object, location: str) -> ErrorParameter:
-    obj = _object(value, location, frozenset({"name", "value_type", "value"}))
-    value_type = _enum(obj["value_type"], ScalarValueType, f"{location}.value_type")
-    scalar: int | str | UUID
-    if value_type is ScalarValueType.INTEGER:
-        scalar = _integer(
-            obj["value"],
-            f"{location}.value",
-            minimum=-MAX_SAFE_INTEGER,
-        )
-    elif value_type is ScalarValueType.TOKEN:
-        scalar = _string(obj["value"], f"{location}.value")
-    elif value_type is ScalarValueType.UUID:
-        scalar = _uuid4(obj["value"], f"{location}.value")
-    else:
-        reject(
-            "RPC_INVALID_ERROR_PARAMETER",
-            f"{location}.value_type",
-            "boolean error parameters are not supported",
-        )
-    return ErrorParameter(
-        name=_string(obj["name"], f"{location}.name"),
-        value_type=value_type,
-        value=scalar,
-    )
-
-
 _LIMIT_FIELDS: Final = frozenset(
     {
         "limits_version",
@@ -412,16 +385,19 @@ _ERROR_FIELDS: Final = frozenset(
 def _decode_error(value: object, location: str) -> ErrorPayload:
     obj = _object(value, location, _ERROR_FIELDS)
     parameters = _array(obj["parameters"], f"{location}.parameters")
+    if parameters:
+        reject(
+            "RPC_INVALID_ERROR_PARAMETER",
+            f"{location}.parameters",
+            "public protocol-v1 errors cannot carry context values",
+        )
     return ErrorPayload(
         error_version=_integer(obj["error_version"], f"{location}.error_version"),
         code=_enum(obj["code"], ErrorCode, f"{location}.code", code="RPC_INVALID_ERROR"),
         category=_enum(obj["category"], ErrorCategory, f"{location}.category"),
         retry_action=_enum(obj["retry_action"], RetryAction, f"{location}.retry_action"),
         restart_required=_boolean(obj["restart_required"], f"{location}.restart_required"),
-        parameters=tuple(
-            _decode_error_parameter(parameter, f"{location}.parameters[{index}]")
-            for index, parameter in enumerate(parameters)
-        ),
+        parameters=(),
     )
 
 
@@ -532,7 +508,7 @@ def _decode_payload(message_type: MessageType, value: object) -> MessagePayload:
         total_value = obj["total_units"]
         total = None if total_value is None else _integer(total_value, "payload.total_units")
         return OperationProgressPayload(
-            stage_code=_string(obj["stage_code"], "payload.stage_code"),
+            stage_code=_enum(obj["stage_code"], ProgressStage, "payload.stage_code"),
             completed_units=_integer(obj["completed_units"], "payload.completed_units"),
             total_units=total,
             unit=_enum(obj["unit"], ProgressUnit, "payload.unit"),
@@ -609,6 +585,15 @@ class OperationRegistry:
                 "protocol.noop version 1 accepts no inputs or parameters",
             )
 
+    def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
+        """Reject worker-advertised capabilities absent from the local registry."""
+
+        for capability in capabilities:
+            self.validate_descriptor(
+                capability.capability_id,
+                capability.capability_version,
+            )
+
 
 DEFAULT_OPERATION_REGISTRY: Final = OperationRegistry()
 
@@ -647,6 +632,8 @@ def decode_message(
     payload = _decode_payload(message_type, root["payload"])
     if type(payload) is OperationStartPayload:
         operation_registry.validate_start(payload)
+    elif type(payload) is SessionReadyPayload:
+        operation_registry.validate_capabilities(payload.capabilities)
     elif type(payload) is OperationAcceptedPayload:
         operation_registry.validate_descriptor(payload.operation_kind, payload.operation_version)
     return ProtocolEnvelope(
@@ -674,7 +661,7 @@ def _encode_capability_descriptor(value: CapabilityDescriptor) -> dict[str, obje
     }
 
 
-def _encode_scalar(value: TaggedScalar | ErrorParameter) -> dict[str, object]:
+def _encode_scalar(value: TaggedScalar) -> dict[str, object]:
     scalar_value: object = value.value
     if type(scalar_value) is UUID:
         scalar_value = str(scalar_value)
@@ -713,7 +700,7 @@ def _encode_error(value: ErrorPayload) -> dict[str, object]:
         "category": value.category.value,
         "retry_action": value.retry_action.value,
         "restart_required": value.restart_required,
-        "parameters": [_encode_scalar(parameter) for parameter in value.parameters],
+        "parameters": [],
     }
 
 
@@ -751,7 +738,7 @@ def _encode_payload(payload: object) -> dict[str, object]:
         }
     if isinstance(payload, OperationProgressPayload):
         return {
-            "stage_code": payload.stage_code,
+            "stage_code": payload.stage_code.value,
             "completed_units": payload.completed_units,
             "total_units": payload.total_units,
             "unit": payload.unit.value,
@@ -793,6 +780,8 @@ def encode_message(
         reject("RPC_INVALID_TYPE", "$", "a protocol envelope is required")
     if type(message.payload) is OperationStartPayload:
         operation_registry.validate_start(message.payload)
+    elif type(message.payload) is SessionReadyPayload:
+        operation_registry.validate_capabilities(message.payload.capabilities)
     elif type(message.payload) is OperationAcceptedPayload:
         operation_registry.validate_descriptor(
             message.payload.operation_kind,

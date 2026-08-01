@@ -13,7 +13,7 @@
   "request_id": "21000000-0000-4000-8000-000000000002",
   "operation_id": "22000000-0000-4000-8000-000000000001",
   "payload": {
-    "stage_code": "noop.running",
+    "stage_code": "processing",
     "completed_units": 2,
     "total_units": 1,
     "unit": "steps"

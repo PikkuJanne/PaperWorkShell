@@ -277,62 +277,6 @@
         }
       ]
     },
-    "integerErrorParameter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "value_type", "value"],
-      "properties": {
-        "name": {
-          "enum": [
-            "attempted_version",
-            "supported_version",
-            "minimum",
-            "maximum",
-            "observed",
-            "limit",
-            "count",
-            "capability_version",
-            "operation_version",
-            "protocol_version",
-            "sequence",
-            "expected_sequence",
-            "observed_sequence"
-          ]
-        },
-        "value_type": {
-          "const": "integer"
-        },
-        "value": {
-          "$ref": "#/$defs/signedSafeInteger"
-        }
-      }
-    },
-    "uuidErrorParameter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "value_type", "value"],
-      "properties": {
-        "name": {
-          "enum": ["request_id", "operation_id", "message_id"]
-        },
-        "value_type": {
-          "const": "uuid"
-        },
-        "value": {
-          "$ref": "#/$defs/uuidV4"
-        }
-      }
-    },
-    "errorParameter": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/integerErrorParameter"
-        },
-        {
-          "$ref": "#/$defs/uuidErrorParameter"
-        }
-      ]
-    },
     "errorPayload": {
       "type": "object",
       "additionalProperties": false,
@@ -370,11 +314,7 @@
         },
         "parameters": {
           "type": "array",
-          "maxItems": 64,
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/errorParameter"
-          }
+          "maxItems": 0
         }
       },
       "allOf": [
@@ -732,7 +672,7 @@
       "required": ["stage_code", "completed_units", "total_units", "unit"],
       "properties": {
         "stage_code": {
-          "$ref": "#/$defs/token"
+          "const": "processing"
         },
         "completed_units": {
           "$ref": "#/$defs/safeInteger"

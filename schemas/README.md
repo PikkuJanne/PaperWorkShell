@@ -29,5 +29,5 @@ boxes, storage names, confirmations, and export-history references.
 The RPC schema is self-contained Draft 2020-12 and closes the common envelope and every message
 payload. Repository validation adds strict bounded JSON decoding and semantic checks for negotiation,
 correlation, operation registration, logical case-object references, progress,
-results, and sanitized error parameters. Messages never carry filesystem paths or raw exception
+results, and closed sanitized error codes without public context values. Messages never carry filesystem paths or raw exception
 text.

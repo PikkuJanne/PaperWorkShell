@@ -259,6 +259,14 @@ class ConversationState:
                 "payload.capabilities",
                 "a required capability is unavailable",
             )
+        if any(
+            capability not in self.registered_capabilities for capability in payload.capabilities
+        ):
+            reject(
+                "RPC_CAPABILITY_UNAVAILABLE",
+                "payload.capabilities",
+                "the worker advertised an unregistered capability",
+            )
         return replace(
             self,
             phase=ConversationPhase.READY,

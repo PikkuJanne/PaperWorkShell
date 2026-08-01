@@ -21,13 +21,7 @@
       "category": "resource_limit",
       "retry_action": "retry",
       "restart_required": false,
-      "parameters": [
-        {
-          "name": "limit",
-          "value_type": "integer",
-          "value": 30000
-        }
-      ]
+      "parameters": []
     }
   }
 }

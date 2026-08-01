@@ -14,11 +14,13 @@ from paperworkshell.worker.protocol.models import (
     Direction,
     ErrorCategory,
     ErrorCode,
-    ErrorParameter,
     ErrorPayload,
     MessageType,
     OperationOutcome,
+    OperationProgressPayload,
     OperationResultPayload,
+    ProgressStage,
+    ProgressUnit,
     ProtocolEnvelope,
     ProtocolErrorPayload,
     ReferenceArea,
@@ -95,11 +97,7 @@ class WorkerProtocolModelTests(unittest.TestCase):
 
         self.assertEqual("RPC_UNSUPPORTED_VERSION", raised.exception.code)
 
-    def test_error_parameters_are_allowlisted_and_restart_flag_is_derived(self) -> None:
-        with self.assertRaises(ProtocolError) as unknown:
-            ErrorParameter("raw_message", ScalarValueType.TOKEN, "synthetic")
-        with self.assertRaises(ProtocolError) as wrong_type:
-            ErrorParameter("operation_id", ScalarValueType.TOKEN, "synthetic")
+    def test_error_context_is_empty_and_restart_flag_is_derived(self) -> None:
         with self.assertRaises(ProtocolError) as restart_mismatch:
             ErrorPayload(
                 code=ErrorCode.WORKER_INTERNAL_FAULT,
@@ -109,13 +107,26 @@ class WorkerProtocolModelTests(unittest.TestCase):
                 parameters=(),
             )
 
-        self.assertEqual("RPC_INVALID_ERROR_PARAMETER", unknown.exception.code)
-        self.assertEqual("RPC_INVALID_ERROR_PARAMETER", wrong_type.exception.code)
         self.assertEqual("RPC_INVALID_ERROR", restart_mismatch.exception.code)
 
-        with self.assertRaises(ProtocolError) as token_parameter:
-            ErrorParameter("operation_kind", ScalarValueType.TOKEN, "encoded.private.value")
-        self.assertEqual("RPC_INVALID_ERROR_PARAMETER", token_parameter.exception.code)
+        with self.assertRaises(ProtocolError) as context_value:
+            ErrorPayload(
+                code=ErrorCode.WORKER_OPERATION_FAILED,
+                category=ErrorCategory.OPERATION,
+                retry_action=RetryAction.NEVER,
+                restart_required=False,
+                parameters=(object(),),  # type: ignore[arg-type]
+            )
+        self.assertEqual("RPC_INVALID_ERROR_PARAMETER", context_value.exception.code)
+
+    def test_progress_stage_is_closed_and_hidden_from_repr(self) -> None:
+        payload = OperationProgressPayload(
+            ProgressStage.PROCESSING,
+            1,
+            1,
+            ProgressUnit.STEPS,
+        )
+        self.assertNotIn("processing", repr(payload))
 
     def test_public_error_codes_and_message_context_are_closed(self) -> None:
         with self.assertRaises(ProtocolError) as unknown_code:

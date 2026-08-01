@@ -29,6 +29,7 @@ from paperworkshell.worker.protocol.models import (
     OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
+    ProgressStage,
     ProgressUnit,
     ProtocolEnvelope,
     ResourceLimits,
@@ -110,8 +111,9 @@ def _new_state() -> ConversationState:
 def _negotiate(
     *,
     capabilities: tuple[CapabilityDescriptor, ...] = (NOOP_CAPABILITY,),
+    initial_state: ConversationState | None = None,
 ) -> ConversationState:
-    state = _new_state()
+    state = _new_state() if initial_state is None else initial_state
     state = state.accept(
         _message(
             MessageType.SESSION_HELLO,
@@ -206,7 +208,7 @@ class WorkerProtocolStateTests(unittest.TestCase):
             _message(
                 MessageType.OPERATION_PROGRESS,
                 Direction.WORKER_TO_CLIENT,
-                OperationProgressPayload("processing", 1, 2, ProgressUnit.STEPS),
+                OperationProgressPayload(ProgressStage.PROCESSING, 1, 2, ProgressUnit.STEPS),
                 sender_sequence=2,
                 message_number=5,
                 request_id=START_REQUEST,
@@ -388,30 +390,25 @@ class WorkerProtocolStateTests(unittest.TestCase):
                 )
                 self.assertEqual(expected, raised.exception.code)
 
-    def test_additive_capability_discovery_is_allowed_but_dispatch_is_fail_closed(self) -> None:
+    def test_worker_capabilities_must_be_explicitly_registered(self) -> None:
         future = CapabilityDescriptor("future.operation", 1)
-        state = _negotiate(capabilities=(NOOP_CAPABILITY, future))
+        with self.assertRaises(ProtocolError) as unregistered:
+            _negotiate(capabilities=(NOOP_CAPABILITY, future))
+        self.assertEqual("RPC_CAPABILITY_UNAVAILABLE", unregistered.exception.code)
+
+        registered_state = ConversationState(
+            SESSION_ID,
+            WORKER_ID,
+            CAPABILITY,
+            CASE_ID,
+            registered_capabilities=(NOOP_CAPABILITY, future),
+        )
+        state = _negotiate(
+            capabilities=(NOOP_CAPABILITY, future),
+            initial_state=registered_state,
+        )
         self.assertEqual((NOOP_CAPABILITY, future), state.negotiated_capabilities)
         self.assertEqual(OPERATION_ID, _start(state).active_operation_id)
-
-        unadvertised = _negotiate(capabilities=(future,))
-        with self.assertRaises(ProtocolError) as unavailable:
-            _start(unadvertised, message_number=20)
-        self.assertEqual("RPC_CAPABILITY_UNAVAILABLE", unavailable.exception.code)
-
-        with self.assertRaises(ProtocolError) as unregistered:
-            state.accept(
-                _message(
-                    MessageType.OPERATION_START,
-                    Direction.CLIENT_TO_WORKER,
-                    OperationStartPayload("future.operation", 1, (), (), _limits()),
-                    sender_sequence=1,
-                    message_number=21,
-                    request_id=START_REQUEST,
-                    operation_id=OPERATION_ID,
-                )
-            )
-        self.assertEqual("RPC_UNSUPPORTED_OPERATION", unregistered.exception.code)
 
     def test_progress_regression_and_limit_escalation_are_rejected(self) -> None:
         started = _start(_negotiate())
@@ -433,7 +430,7 @@ class WorkerProtocolStateTests(unittest.TestCase):
             _message(
                 MessageType.OPERATION_PROGRESS,
                 Direction.WORKER_TO_CLIENT,
-                OperationProgressPayload("processing", 5, 10, ProgressUnit.ITEMS),
+                OperationProgressPayload(ProgressStage.PROCESSING, 5, 10, ProgressUnit.ITEMS),
                 sender_sequence=2,
                 message_number=5,
                 request_id=START_REQUEST,
@@ -445,7 +442,7 @@ class WorkerProtocolStateTests(unittest.TestCase):
                 _message(
                     MessageType.OPERATION_PROGRESS,
                     Direction.WORKER_TO_CLIENT,
-                    OperationProgressPayload("processing", 4, 10, ProgressUnit.ITEMS),
+                    OperationProgressPayload(ProgressStage.PROCESSING, 4, 10, ProgressUnit.ITEMS),
                     sender_sequence=3,
                     message_number=6,
                     request_id=START_REQUEST,
@@ -554,7 +551,7 @@ class WorkerProtocolStateTests(unittest.TestCase):
             _message(
                 MessageType.OPERATION_PROGRESS,
                 Direction.WORKER_TO_CLIENT,
-                OperationProgressPayload("late", 1, 1, ProgressUnit.STEPS),
+                OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.STEPS),
                 sender_sequence=3,
                 message_number=42,
                 request_id=START_REQUEST,

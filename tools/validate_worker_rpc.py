@@ -95,24 +95,6 @@ _UUID_MEMBER_NAMES: Final = frozenset(
     }
 )
 _SESSION_CAPABILITY: Final = re.compile(r"^[0-9a-f]{64}$")
-_ERROR_PARAMETER_TYPES: Final[dict[str, str]] = {
-    "attempted_version": "integer",
-    "supported_version": "integer",
-    "minimum": "integer",
-    "maximum": "integer",
-    "observed": "integer",
-    "limit": "integer",
-    "count": "integer",
-    "capability_version": "integer",
-    "operation_version": "integer",
-    "protocol_version": "integer",
-    "sequence": "integer",
-    "expected_sequence": "integer",
-    "observed_sequence": "integer",
-    "request_id": "uuid",
-    "operation_id": "uuid",
-    "message_id": "uuid",
-}
 
 _SAFE_PATH_TOKEN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INVALID_JSON_POINTER_ESCAPE: Final = re.compile(r"~(?:[^01]|$)")
@@ -1036,6 +1018,16 @@ def _capability_issues(data: Mapping[str, Any], document: str) -> list[RpcIssue]
                         ),
                     )
                 seen_capabilities.add(descriptor)
+                if message_type == "session.ready" and descriptor != ("protocol.noop", 1):
+                    _add_issue(
+                        issues,
+                        _issue(
+                            "RPC_OPERATION_UNSUPPORTED",
+                            document,
+                            f"{capability_path}[{index}].capability_id",
+                            "the worker advertised a capability absent from the local registry",
+                        ),
+                    )
     return _sorted_issues(issues)
 
 
@@ -1195,6 +1187,16 @@ def _result_and_progress_issues(data: Mapping[str, Any], document: str) -> list[
                 ),
             )
     elif message_type == "operation.progress":
+        if payload.get("stage_code") != "processing":
+            _add_issue(
+                issues,
+                _issue(
+                    "RPC_PROGRESS_INVALID",
+                    document,
+                    "$.payload.stage_code",
+                    "the progress stage is not registered for protocol.noop version 1",
+                ),
+            )
         completed = payload.get("completed_units")
         total = payload.get("total_units")
         if type(completed) is int and type(total) is int and completed > total:
@@ -1318,23 +1320,16 @@ def _error_issues(data: Mapping[str, Any], document: str) -> list[RpcIssue]:
         )
 
     parameters = error.get("parameters")
-    if isinstance(parameters, list):
-        for index, parameter in enumerate(parameters):
-            if not isinstance(parameter, Mapping):
-                continue
-            name = parameter.get("name")
-            value_type = parameter.get("value_type")
-            expected_type = _ERROR_PARAMETER_TYPES.get(name) if isinstance(name, str) else None
-            if expected_type is None or value_type != expected_type:
-                _add_issue(
-                    issues,
-                    _issue(
-                        "RPC_ERROR_PARAMETER_INVALID",
-                        document,
-                        f"$.payload.error.parameters[{index}]",
-                        "error parameter name and value type are not allowlisted",
-                    ),
-                )
+    if isinstance(parameters, list) and parameters:
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_ERROR_PARAMETER_INVALID",
+                document,
+                "$.payload.error.parameters",
+                "public protocol-v1 errors cannot carry context values",
+            ),
+        )
     return _sorted_issues(issues)
 
 

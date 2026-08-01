@@ -80,6 +80,12 @@ class ProgressUnit(StrEnum):
     STEPS = "steps"
 
 
+class ProgressStage(StrEnum):
+    """Closed progress-stage registry for the protocol.noop v1 operation."""
+
+    PROCESSING = "processing"
+
+
 class CancelReason(StrEnum):
     """Why an operation cancellation was requested."""
 
@@ -271,58 +277,6 @@ class TaggedScalar:
             _require_uuid4(self.value, "payload.parameters.value")
 
 
-_ERROR_PARAMETER_TYPES: Final = MappingProxyType(
-    {
-        "attempted_version": ScalarValueType.INTEGER,
-        "supported_version": ScalarValueType.INTEGER,
-        "minimum": ScalarValueType.INTEGER,
-        "maximum": ScalarValueType.INTEGER,
-        "observed": ScalarValueType.INTEGER,
-        "limit": ScalarValueType.INTEGER,
-        "count": ScalarValueType.INTEGER,
-        "capability_version": ScalarValueType.INTEGER,
-        "operation_version": ScalarValueType.INTEGER,
-        "protocol_version": ScalarValueType.INTEGER,
-        "sequence": ScalarValueType.INTEGER,
-        "expected_sequence": ScalarValueType.INTEGER,
-        "observed_sequence": ScalarValueType.INTEGER,
-        "request_id": ScalarValueType.UUID,
-        "operation_id": ScalarValueType.UUID,
-        "message_id": ScalarValueType.UUID,
-    }
-)
-
-
-@dataclass(frozen=True, slots=True)
-class ErrorParameter:
-    """Allowlisted tagged scalar suitable for crossing the public error boundary."""
-
-    name: str
-    value_type: ScalarValueType
-    value: int | str | UUID = field(repr=False)
-
-    def __post_init__(self) -> None:
-        expected_type = _ERROR_PARAMETER_TYPES.get(self.name)
-        if expected_type is None or self.value_type is not expected_type:
-            reject(
-                "RPC_INVALID_ERROR_PARAMETER",
-                "payload.error.parameters",
-                "the error parameter name and type pair is not allowlisted",
-            )
-        if self.value_type is ScalarValueType.INTEGER:
-            _require_int(self.value, "payload.error.parameters.value", minimum=-MAX_SAFE_INTEGER)
-        elif self.value_type is ScalarValueType.TOKEN:
-            _require_token(self.value, "payload.error.parameters.value")
-        elif self.value_type is ScalarValueType.UUID:
-            _require_uuid4(self.value, "payload.error.parameters.value")
-        else:
-            reject(
-                "RPC_INVALID_ERROR_PARAMETER",
-                "payload.error.parameters.value_type",
-                "boolean error parameters are not supported",
-            )
-
-
 @dataclass(frozen=True, slots=True)
 class ResourceLimits:
     """Integer limits applied to one worker operation."""
@@ -402,13 +356,13 @@ class CaseObjectReference:
 
 @dataclass(frozen=True, slots=True)
 class ErrorPayload:
-    """Sanitized public error data with allowlisted scalar parameters only."""
+    """Sanitized public error data with no worker-controlled context values."""
 
     code: ErrorCode
     category: ErrorCategory
     retry_action: RetryAction
     restart_required: bool
-    parameters: tuple[ErrorParameter, ...]
+    parameters: tuple[()]
     error_version: int = 1
 
     def __post_init__(self) -> None:
@@ -436,15 +390,12 @@ class ErrorPayload:
                 "restart requirement must match the retry action",
             )
         parameters = _require_tuple(self.parameters, "payload.parameters", maximum=MAX_PARAMETERS)
-        if any(type(parameter) is not ErrorParameter for parameter in parameters):
+        if parameters:
             reject(
-                "RPC_INVALID_COLLECTION",
+                "RPC_INVALID_ERROR_PARAMETER",
                 "payload.parameters",
-                "only allowlisted error parameters are permitted",
+                "public protocol-v1 errors cannot carry context values",
             )
-        _require_unique(
-            tuple(parameter.name for parameter in self.parameters), "payload.parameters"
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,13 +526,18 @@ class OperationAcceptedPayload:
 
 @dataclass(frozen=True, slots=True)
 class OperationProgressPayload:
-    stage_code: str
+    stage_code: ProgressStage = field(repr=False)
     completed_units: int
     total_units: int | None
     unit: ProgressUnit
 
     def __post_init__(self) -> None:
-        _require_token(self.stage_code, "payload.stage_code")
+        if type(self.stage_code) is not ProgressStage:
+            reject(
+                "RPC_INVALID_ENUM",
+                "payload.stage_code",
+                "a registered progress stage is required",
+            )
         completed = _require_int(self.completed_units, "payload.completed_units")
         if self.total_units is not None:
             total = _require_int(self.total_units, "payload.total_units")

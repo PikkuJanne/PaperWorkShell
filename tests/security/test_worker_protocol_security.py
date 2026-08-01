@@ -230,6 +230,28 @@ class WorkerProtocolSecurityTests(unittest.TestCase):
         )
         self.assertNotIn(canary.lower(), str(error))
 
+    def test_unregistered_progress_stage_fails_without_value_leakage(self) -> None:
+        path = Path("schemas/examples/worker-rpc/v1/operation-progress.json")
+        document = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+        canary = "encoded.private.progress"
+        cast(dict[str, Any], document["payload"])["stage_code"] = canary
+
+        error = self.assert_protocol_error(_raw(document), "RPC_INVALID_ENUM")
+
+        self.assertNotIn(canary, str(error))
+
+    def test_unregistered_worker_capability_fails_without_value_leakage(self) -> None:
+        path = Path("schemas/examples/worker-rpc/v1/session-ready.json")
+        document = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+        canary = "encoded.private.capability"
+        payload = cast(dict[str, Any], document["payload"])
+        capabilities = cast(list[dict[str, Any]], payload["capabilities"])
+        capabilities[0]["capability_id"] = canary
+
+        error = self.assert_protocol_error(_raw(document), "RPC_UNSUPPORTED_OPERATION")
+
+        self.assertNotIn(canary, str(error))
+
     def test_default_noop_registry_rejects_inputs_before_encoding(self) -> None:
         reference = CaseObjectReference(
             area=ReferenceArea.SOURCE_READ,

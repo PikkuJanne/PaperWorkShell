@@ -59,7 +59,7 @@ class WorkerRpcValidationTests(unittest.TestCase):
         self.assertIsNotNone(summary)
         assert summary is not None
         self.assertEqual(15, summary.positive_count)
-        self.assertEqual(26, summary.negative_count)
+        self.assertEqual(27, summary.negative_count)
 
     def test_every_message_type_has_a_valid_canonical_example(self) -> None:
         expected_types = {
@@ -104,6 +104,7 @@ class WorkerRpcValidationTests(unittest.TestCase):
             "missing-negotiated-version.json": "RPC_NEGOTIATION_INVALID",
             "noop-input.json": "RPC_OPERATION_INPUT_INVALID",
             "progress-overrun.json": "RPC_PROGRESS_INVALID",
+            "progress-stage-unregistered.json": "RPC_PROGRESS_INVALID",
             "prohibited-path-field.json": "RPC_PROHIBITED_MEMBER",
             "protocol-error-no-restart.json": "RPC_ERROR_INVALID",
             "result-error-mismatch.json": "RPC_RESULT_INVALID",
@@ -364,6 +365,13 @@ class WorkerRpcValidationTests(unittest.TestCase):
         accepted = _load_example("operation-accepted.json")
         cast(dict[str, Any], accepted["payload"])["operation_version"] = 2
         cases.append(("accepted-registry", accepted, "RPC_OPERATION_UNSUPPORTED"))
+
+        ready = _load_example("session-ready.json")
+        capabilities = cast(
+            list[dict[str, Any]], cast(dict[str, Any], ready["payload"])["capabilities"]
+        )
+        capabilities[0]["capability_id"] = "unregistered.operation"
+        cases.append(("ready-registry", ready, "RPC_OPERATION_UNSUPPORTED"))
 
         output = _load_example("operation-result-succeeded.json")
         outputs = cast(list[dict[str, Any]], cast(dict[str, Any], output["payload"])["outputs"])
