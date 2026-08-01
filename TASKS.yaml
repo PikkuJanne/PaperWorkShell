@@ -413,7 +413,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: review
+  status: done
   critical_path: false
   depends_on:
   - PWS-0002
@@ -447,10 +447,17 @@ tasks:
   - product-scope
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "87baff8"
+    commands:
+    - "fresh SSH clone at 87baff8: uv sync --locked and uv run --locked --no-sync python tools/dev.py check passed; formatting, lint, 12-layer import boundaries, strict typing, 232 unit tests, 2 integration tests, 86 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync pytest tests/unit/test_validate_templates.py tests/unit/test_validate_schemas.py tests/security/test_template_schema_security.py -q - passed; 31 focused tests and 253 generated subtests covered strict decoding, schema identity, semantic references, lifecycle/output boundaries, prohibited capabilities, sanitized diagnostics, and inert side-effect checks"
+    - "uv run --locked --no-sync python -m tools.validate_templates - passed; 1 canonical synthetic template and 7 exact intended-negative fixtures validated offline"
+    - "GitHub Actions runs 30720860594 (push) and 30720862671 (pull_request) on windows-2025 passed the local-equivalent quality suite at 87baff8"
+    notes:
+    - The closed, fingerprint-bound Draft 2020-12 v1 schema models declarative packaging requirements, ordering, safe static filenames, output modes and limits, warnings, user review confirmations, untrusted provenance claims, and deterministic lifecycle dates without executable or eligibility-decision fields.
+    - Bounded strict JSON loading, exact version dispatch, self-contained non-recursive references, Unicode and decoded-value checks, stable sanitized diagnostics, exact fixture inventories, and explicit semantic cross-reference/output/date validation fail closed without network, file, import, or process side effects.
+    - Three independent exact-commit audits found no remaining actionable schema, validator, security, privacy, integration, or evidence issue; all fixtures are synthetic. PWS-0401 retains trusted snapshot/provenance/freshness behavior, and PWS-0406/PWS-0407 retain runtime constraint feasibility and output containment.
 - id: PWS-0008
   milestone: M0
   title: Define worker RPC protocol v1
