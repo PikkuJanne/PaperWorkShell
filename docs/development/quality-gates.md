@@ -32,12 +32,32 @@ py -3.14 tools/dev.py check
 `check` runs every non-mutating command marked `[check]` by `list`, in registry order. It covers
 formatting, linting, architecture boundaries, strict typing, unit/integration/security/
 accessibility lanes, repository schemas, the task graph, the reference profile, secret scanning,
-and deliberate negative self-tests. Use the individual registered command when narrowing a
-failure. `format` is intentionally mutating and is not part of `check`.
+offline documentation links/anchors/security references, and deliberate negative self-tests. Use
+the individual registered command when narrowing a failure. `format` is intentionally mutating
+and is not part of `check`.
 
 The accessibility lane currently contains a foundation sentinel: it proves that no PySide6 UI
 surface exists without widget-level tests. The first UI task must replace that sentinel with real
 keyboard, focus, label, scaling, and announcement coverage.
+
+## Documentation validation
+
+```powershell
+py -3.14 tools/dev.py validate-docs
+```
+
+The offline validator scans root Markdown plus the `docs`, `benchmarks`, `packaging`, and `schemas`
+documentation trees. It supports the repository's inline links/images and ATX headings, ignores
+fenced examples, and never fetches external HTTP(S) or mail links. Local targets must remain under
+the repository root, use exact Git-visible casing and forward slashes, and resolve to an existing
+file/heading. Inputs must be UTF-8 and diagnostics contain only sorted relative paths and stable
+codes.
+
+It also resolves every `PWS-D###` and `PWS-####` reference against the frozen decisions and task
+graph. The PWS-0004 security catalogue is structural: threat IDs are unique, every high/critical
+threat has a known decision and task/gate mapping, every threat has planned test coverage, and the
+eleven threat categories named by the task remain explicit. This is reference/plan evidence; it
+does not claim that future controls have been implemented.
 
 ## Negative self-test
 

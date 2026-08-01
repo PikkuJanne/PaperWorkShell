@@ -152,6 +152,10 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "tools/validate_tasks.py"),
         "Validate task references, gates, and the dependency DAG.",
     ),
+    "validate-docs": CommandSpec(
+        ("python", "-m", "tools.validate_docs"),
+        "Validate local documentation links and security references offline.",
+    ),
     "validate-reference-profile": CommandSpec(
         ("python", "-m", "tools.reference_profile", "validate"),
         "Validate the reference Windows environment and workload profile.",

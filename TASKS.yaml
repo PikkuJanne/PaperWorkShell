@@ -261,10 +261,16 @@ tasks:
   - PWS-D009
   - PWS-D012
   - PWS-D013
+  - PWS-D020
+  - PWS-D021
   - PWS-D022
+  - PWS-D023
+  - PWS-D025
   - PWS-D027
   - PWS-D028
   - PWS-D029
+  - PWS-D034
+  - PWS-D035
   - PWS-D038
   - PWS-D039
   objective: Define assets, trust boundaries, attacker capabilities, misuse cases, and required mitigations before
@@ -1427,6 +1433,7 @@ tasks:
   - PWS-0204
   decision_refs:
   - PWS-D026
+  - PWS-D032
   - PWS-D037
   objective: Generate typed, explainable review signals for likely low resolution, blur, clipping, blank pages,
     orientation, duplicates, and OCR failure/low confidence.

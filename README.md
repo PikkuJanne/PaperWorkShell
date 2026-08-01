@@ -56,6 +56,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py test-accessibility` | Run accessibility-focused tests |
 | `py -3.14 tools/dev.py validate-schemas` | Validate every registered schema and checked-in instance |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
+| `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
 | `py -3.14 tools/dev.py validate-reference-profile` | Validate the low-spec Windows environment/workload profile |
 | `py -3.14 tools/dev.py scan-secrets` | Scan reachable Git/index blobs and nonignored local source bytes with Gitleaks |
 | `py -3.14 tools/dev.py quality-self-test` | Prove deliberate format/type/schema/cycle/secret violations are rejected |
@@ -77,6 +78,9 @@ record in [`docs/adr/0002-local-quality-gates.md`](docs/adr/0002-local-quality-g
 The source tree separates pure domain rules, toolkit-free application orchestration, worker lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized diagnostics. Product modules currently use only the Python standard library; optional UI and document engines are not installed or imported by package initializers.
 
 `tools/check_import_boundaries.py` statically validates the required package layout, rejects unapproved third-party imports, prevents domain and reverse-UI dependencies, and stops application code from reaching PDF, imaging, or OCR adapters directly. The binding policy and its evolution procedure are documented in [`docs/architecture/dependency-boundaries.md`](docs/architecture/dependency-boundaries.md).
+
+The binding foundation threat model, trust boundaries, lifecycle data flows, control ownership, and
+planned security evidence are indexed in [`docs/security/README.md`](docs/security/README.md).
 
 ## Bundle contents
 
@@ -173,14 +177,18 @@ Use these terms consistently:
 
 ## Validating the bundle
 
-After bootstrapping, run both validation layers:
+After bootstrapping, run all validation layers:
 
 ```powershell
 py -3.14 tools/dev.py validate-schemas
 py -3.14 tools/dev.py validate-task-graph
+py -3.14 tools/dev.py validate-docs
 ```
 
-The validator uses safe YAML loading with duplicate-key rejection and Draft 2020-12 JSON Schema validation with date-format checking. It does not retrieve schemas or other content from the network.
+Schema validation uses safe YAML loading with duplicate-key rejection and Draft 2020-12 JSON
+Schema validation with date-format checking. Documentation validation checks supported local
+Markdown links/anchors and decision, task, and security references without retrieving network
+content.
 
 Graph validation must additionally confirm:
 

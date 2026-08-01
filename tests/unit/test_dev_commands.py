@@ -37,6 +37,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "test-accessibility",
             "validate-schemas",
             "validate-task-graph",
+            "validate-docs",
             "validate-reference-profile",
             "scan-secrets",
             "quality-self-test",

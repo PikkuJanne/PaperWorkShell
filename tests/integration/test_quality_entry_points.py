@@ -24,6 +24,7 @@ class QualityEntryPointIntegrationTests(unittest.TestCase):
 
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn("test-integration", completed.stdout)
+        self.assertIn("validate-docs", completed.stdout)
         self.assertIn("scan-secrets", completed.stdout)
         self.assertIn("benchmark-reference", completed.stdout)
 

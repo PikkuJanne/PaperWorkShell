@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.6",
+  "bundle_version": "0.1.7",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 115618,
-      "sha256": "a28f1685edd9c00514241287b82c7bde9b74a193ec336b33a66d3f57c20b62d3"
+      "bytes": 115709,
+      "sha256": "0fca11071cd7a4847f56d259bf8e85fa9e308abde6cfe2e4443da99f2857533b"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 11848,
-      "sha256": "399a85fd7916246e1fb1340575851f4b9957f077e0f0b9a3b9989c32a1d1b597"
+      "bytes": 12286,
+      "sha256": "eeb7d4ff5164739a37e195a8df38fa91e867c21dfa2ffc0fa672f8bc6c3f1d64"
     }
   ],
   "validation": {
