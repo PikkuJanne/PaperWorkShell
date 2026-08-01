@@ -1,0 +1,66 @@
+{
+  "bundle_name": "PaperWorkShell roadmap bundle",
+  "bundle_version": "0.1.0",
+  "product": "PaperWorkShell",
+  "created_at": "2026-07-14",
+  "source_inputs": [
+    {
+      "name": "Liitetty markdown.md",
+      "sha256": "07f0a21be2baed503aad61847da345c8d01bebfb98a379081dd63147e4b64dc6",
+      "bytes": 50029,
+      "role": "User-supplied product concept used to derive the roadmap bundle"
+    }
+  ],
+  "files": [
+    {
+      "path": "ROADMAP.md",
+      "bytes": 30519,
+      "sha256": "bd5b6967606032a32e8c639cc5371d9e48695b7d3df34fe78cfacda39a868b63"
+    },
+    {
+      "path": "DECISIONS.md",
+      "bytes": 22411,
+      "sha256": "9145af1f28a0d48c383b469e4a800d1b32e04f0293b6a331bef186f22c38056b"
+    },
+    {
+      "path": "TASKS.yaml",
+      "bytes": 112852,
+      "sha256": "036518d7a5183a45489c7e2baef683b263627c8baad4e31cce1713c87c737cd6"
+    },
+    {
+      "path": "TASKS.schema.json",
+      "bytes": 7328,
+      "sha256": "38401b35efb804c263fd8dc0062ffba5a08ed01230a23cb9848679536aceb9a0"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 15017,
+      "sha256": "efeac16c36a80f5fc2a3664883b2cc6d2892f97faf19de7d1e73d9e6b70bad1c"
+    },
+    {
+      "path": "CODEX_START_PROMPT.md",
+      "bytes": 11592,
+      "sha256": "cd1ed70cb3495c7b2e21d20e7f7d15c63a447cf19775f26d8d4f124a86d8627c"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7415,
+      "sha256": "c10b75bb29bfd35880a3e2e3104afbd9c71c4d3ba40b8599b9ee6efaa651593f"
+    }
+  ],
+  "validation": {
+    "json_schema": "passed",
+    "dag": "passed",
+    "task_count": 80,
+    "dependency_edge_count": 238,
+    "milestone_count": 9,
+    "gate_task_count": 9,
+    "initial_ready_tasks": [
+      "PWS-0001"
+    ],
+    "all_tasks_reachable_from": "PWS-0001"
+  },
+  "notes": [
+    "This manifest intentionally omits a hash of itself."
+  ]
+}

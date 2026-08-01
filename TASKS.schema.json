@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperworkshell.invalid/schemas/tasks-v1.json",
+  "title": "PaperWorkShell task graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project",
+    "task_graph_version",
+    "frozen_at",
+    "roadmap_file",
+    "decision_file",
+    "agent_contract_file",
+    "schema_file",
+    "release_targets",
+    "status_values",
+    "priority_order",
+    "effort_values",
+    "graph_rules",
+    "definition_of_done_ref",
+    "milestones",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project": { "const": "PaperWorkShell" },
+    "task_graph_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "frozen_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "roadmap_file": { "const": "ROADMAP.md" },
+    "decision_file": { "const": "DECISIONS.md" },
+    "agent_contract_file": { "const": "AGENTS.md" },
+    "schema_file": { "const": "TASKS.schema.json" },
+    "release_targets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["through_milestone", "gate_task", "permanent_redaction_included"],
+        "properties": {
+          "through_milestone": { "$ref": "#/$defs/milestoneId" },
+          "gate_task": { "$ref": "#/$defs/taskId" },
+          "permanent_redaction_included": { "type": "boolean" }
+        }
+      }
+    },
+    "status_values": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/status" }
+    },
+    "priority_order": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/priority" }
+    },
+    "effort_values": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/effort" }
+    },
+    "graph_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependency_semantics",
+        "default_selection",
+        "one_task_per_change",
+        "gate_requires_all_dependencies_done",
+        "decision_refs_must_exist",
+        "cycles_forbidden"
+      ],
+      "properties": {
+        "dependency_semantics": { "type": "string", "minLength": 1 },
+        "default_selection": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "one_task_per_change": { "type": "boolean" },
+        "gate_requires_all_dependencies_done": { "type": "boolean" },
+        "decision_refs_must_exist": { "type": "boolean" },
+        "cycles_forbidden": { "type": "boolean" }
+      }
+    },
+    "definition_of_done_ref": { "type": "string", "minLength": 1 },
+    "milestones": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/milestone" }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^PWS-[0-9]{4}$"
+    },
+    "decisionId": {
+      "type": "string",
+      "pattern": "^PWS-D[0-9]{3}$"
+    },
+    "milestoneId": {
+      "type": "string",
+      "pattern": "^M[0-9]+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "ready", "in_progress", "review", "done", "blocked", "deferred"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2"]
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["S", "M", "L", "XL"]
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "milestone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "release_target", "objective", "gate_task"],
+      "properties": {
+        "id": { "$ref": "#/$defs/milestoneId" },
+        "name": { "type": "string", "minLength": 1 },
+        "release_target": { "type": "string", "minLength": 1 },
+        "objective": { "type": "string", "minLength": 1 },
+        "gate_task": { "$ref": "#/$defs/taskId" }
+      }
+    },
+    "blocker": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "evidence", "requested_action"],
+          "properties": {
+            "reason": { "type": "string", "minLength": 1 },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "requested_action": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completed_at", "revision", "commands", "notes"],
+      "properties": {
+        "completed_at": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "format": "date" }
+          ]
+        },
+        "revision": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "commands": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "milestone",
+        "title",
+        "kind",
+        "priority",
+        "effort",
+        "status",
+        "critical_path",
+        "depends_on",
+        "decision_refs",
+        "objective",
+        "deliverables",
+        "acceptance_criteria",
+        "verification",
+        "risk_tags",
+        "blocker",
+        "evidence"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/taskId" },
+        "milestone": { "$ref": "#/$defs/milestoneId" },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["implementation", "gate"]
+        },
+        "priority": { "$ref": "#/$defs/priority" },
+        "effort": { "$ref": "#/$defs/effort" },
+        "status": { "$ref": "#/$defs/status" },
+        "critical_path": { "type": "boolean" },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/taskId" }
+        },
+        "decision_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/decisionId" }
+        },
+        "objective": { "type": "string", "minLength": 1 },
+        "deliverables": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "acceptance_criteria": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "verification": { "$ref": "#/$defs/nonEmptyStringArray" },
+        "risk_tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        },
+        "blocker": { "$ref": "#/$defs/blocker" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    }
+  }
+}

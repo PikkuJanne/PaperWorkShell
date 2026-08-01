@@ -1,0 +1,3529 @@
+schema_version: 1
+project: PaperWorkShell
+task_graph_version: 0.1.0
+frozen_at: '2026-07-14'
+roadmap_file: ROADMAP.md
+decision_file: DECISIONS.md
+agent_contract_file: AGENTS.md
+schema_file: TASKS.schema.json
+release_targets:
+  v0.1:
+    through_milestone: M4
+    gate_task: PWS-0409
+    permanent_redaction_included: false
+  v1.0:
+    through_milestone: M8
+    gate_task: PWS-0808
+    permanent_redaction_included: true
+status_values:
+- planned
+- ready
+- in_progress
+- review
+- done
+- blocked
+- deferred
+priority_order:
+- P0
+- P1
+- P2
+effort_values:
+- S
+- M
+- L
+- XL
+graph_rules:
+  dependency_semantics: A task may start only when every task in depends_on has status done.
+  default_selection:
+  - lowest incomplete milestone
+  - highest priority using P0, P1, P2
+  - critical_path true before false
+  - ascending task id
+  one_task_per_change: true
+  gate_requires_all_dependencies_done: true
+  decision_refs_must_exist: true
+  cycles_forbidden: true
+definition_of_done_ref: AGENTS.md#16-definition-of-done-checklist
+milestones:
+- id: M0
+  name: Product contract and foundation
+  release_target: development baseline
+  objective: Establish a reproducible repository, architecture boundaries, schemas, threat model, dependency policy,
+    and synthetic corpus before feature work.
+  gate_task: PWS-0010
+- id: M1
+  name: Reliable end-to-end vertical slice
+  release_target: architecture proof
+  objective: Create, import, organize, export, verify, autosave, and recover a local PDF case without changing originals.
+  gate_task: PWS-0114
+- id: M2
+  name: Image intake and OCR
+  release_target: mixed-document workflow
+  objective: Add JPEG/PNG intake, reviewable scan cleanup, local OCR, quality warnings, cancellation, and bounded
+    processing.
+  gate_task: PWS-0209
+- id: M3
+  name: Filling and overlays
+  release_target: basic form completion
+  objective: Add reliable visual overlays, keyboard placement, undo/redo, and flattened viewer-compatible export.
+  gate_task: PWS-0308
+- id: M4
+  name: Templates and preflight
+  release_target: v0.1 pilot
+  objective: Deliver the guided generic portal packet, checklist, constraints, multi-output export, and concrete
+    package summary.
+  gate_task: PWS-0409
+- id: M5
+  name: Compression and compatibility
+  release_target: portal robustness
+  objective: Meet common size and compatibility constraints without silent loss of legibility.
+  gate_task: PWS-0507
+- id: M6
+  name: Permanent redaction
+  release_target: security-gated capability
+  objective: Implement full-page redaction reconstruction and adversarial verification that blocks unsafe export.
+  gate_task: PWS-0608
+- id: M7
+  name: Accessibility, localization, and assisted mode
+  release_target: inclusive pilot readiness
+  objective: Complete keyboard and NVDA workflow, scalable UI, localization framework, consent, retention, and deletion
+    controls.
+  gate_task: PWS-0707
+- id: M8
+  name: Release hardening
+  release_target: v1.0 candidate
+  objective: Ship a signed, updateable, documented, migratable Windows release with pinned dependencies and an SBOM.
+  gate_task: PWS-0808
+tasks:
+- id: PWS-0001
+  milestone: M0
+  title: Bootstrap repository and pin the development toolchain
+  kind: implementation
+  priority: P0
+  effort: M
+  status: ready
+  critical_path: true
+  depends_on: []
+  decision_refs:
+  - PWS-D001
+  - PWS-D003
+  - PWS-D004
+  - PWS-D014
+  - PWS-D034
+  objective: Create a reproducible Python project baseline suitable for a Windows-first PySide6 application without
+    adding feature dependencies.
+  deliverables:
+  - Project metadata and internal package name `paperworkshell`
+  - Pinned supported CPython minor and dependency workflow
+  - Environment bootstrap and lock/reproducibility mechanism
+  - Baseline ignore rules and developer command entry points
+  - ADR documenting toolchain choice and Windows implications
+  acceptance_criteria:
+  - A clean environment can install/bootstrap the development project using documented commands.
+  - The `paperworkshell` package imports successfully.
+  - The user-facing name remains PaperWorkShell.
+  - No PDF, OCR, renderer, cloud, signing, or real-document dependency/fixture is added.
+  - TASKS.yaml can be parsed and graph-validated with a documented bootstrap command or script.
+  verification:
+  - Run clean bootstrap on the available development environment.
+  - Import `paperworkshell` in a fresh interpreter.
+  - Run task schema and DAG validation.
+  risk_tags:
+  - toolchain
+  - packaging
+  - licensing
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0002
+  milestone: M0
+  title: Establish source layout and enforce architecture boundaries
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0001
+  decision_refs:
+  - PWS-D002
+  - PWS-D010
+  - PWS-D012
+  - PWS-D014
+  - PWS-D015
+  - PWS-D016
+  - PWS-D017
+  objective: Create the layered package structure and executable import-boundary tests before external document
+    libraries are integrated.
+  deliverables:
+  - Packages for app, domain, worker, pdf, imaging, ocr, overlays, preflight, export, templates, storage, and diagnostics
+  - Dependency-boundary documentation
+  - Automated tests that reject prohibited imports
+  - Initial docs/adr, docs/gates, schemas, tools, and packaging directories
+  acceptance_criteria:
+  - Domain modules do not import UI or document-processing libraries.
+  - UI-facing modules cannot directly import low-level PDF adapters under the documented boundary policy.
+  - All packages import without optional document engines installed.
+  - Boundary tests fail on a deliberate prohibited-import fixture or test case.
+  verification:
+  - Run import-boundary tests.
+  - Import every top-level package.
+  - Run unit tests and type checking available at this stage.
+  risk_tags:
+  - architecture
+  - maintainability
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0003
+  milestone: M0
+  title: Implement local quality gates and CI-equivalent commands
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0001
+  - PWS-0002
+  decision_refs:
+  - PWS-D003
+  - PWS-D034
+  - PWS-D035
+  objective: Make formatting, linting, typing, tests, schema/graph checks, secret scanning, and the reference Windows
+    test profile reproducible locally.
+  deliverables:
+  - Stable commands for format, lint, typecheck, unit tests, schema validation, task graph validation, and secret
+    scanning
+  - Continuous-integration configuration when a CI host is available
+  - Developer documentation for running the same checks locally
+  - Reference hardware/workload profile covering two CPU cores, 4 GB RAM, integrated graphics, limited storage,
+    and an HDD scenario
+  acceptance_criteria:
+  - All quality commands have a single documented source of truth.
+  - A deliberate formatting, typing, schema, graph-cycle, and secret-test violation is detected.
+  - Quality checks do not upload repository or fixture content.
+  - The baseline repository passes all enabled checks.
+  - The reference environment and baseline workload are machine-readable or otherwise consistently reproducible;
+    numeric product targets are measured later rather than guessed.
+  verification:
+  - Run the full local quality suite from a clean checkout.
+  - Run negative self-tests for schema and graph validation.
+  - Validate the reference environment/workload definition and benchmark entry point.
+  risk_tags:
+  - quality
+  - supply-chain
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0004
+  milestone: M0
+  title: Document threat model and data flows
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0001
+  - PWS-0002
+  decision_refs:
+  - PWS-D005
+  - PWS-D009
+  - PWS-D012
+  - PWS-D013
+  - PWS-D022
+  - PWS-D027
+  - PWS-D028
+  - PWS-D029
+  - PWS-D038
+  - PWS-D039
+  objective: Define assets, trust boundaries, attacker capabilities, misuse cases, and required mitigations before
+    parsing untrusted content.
+  deliverables:
+  - Threat model document
+  - Data-flow diagram for import, preview, OCR, export, diagnostics, and deletion
+  - Threat-to-task traceability table
+  - Initial security test plan
+  acceptance_criteria:
+  - Threats include parser exploits, resource exhaustion, source mutation, log leakage, temp retention, template
+    abuse, command injection, export corruption, signature invalidation, redaction failure, and dependency compromise.
+  - Every high-impact threat maps to at least one frozen decision and one task or explicit future gate.
+  - Trust boundaries distinguish UI, worker, filesystem, external executables, update channel, and export destination.
+  - No mitigation relies on users understanding PDF internals.
+  verification:
+  - Review threat-to-task references for missing IDs.
+  - Run a documentation link/reference check.
+  risk_tags:
+  - security
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0005
+  milestone: M0
+  title: Establish dependency, license, and redistribution policy
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0001
+  decision_refs:
+  - PWS-D014
+  - PWS-D015
+  - PWS-D016
+  - PWS-D017
+  - PWS-D034
+  objective: Prevent late security, license, installer, or redistribution surprises by defining dependency admission
+    criteria and an inventory format.
+  deliverables:
+  - Dependency inventory template with license, source, version, hash, binary, maintenance, and packaging fields
+  - Policy for adding/upgrading dependencies
+  - Documented treatment of PySide6, pikepdf/qpdf, OCRmyPDF/Tesseract, candidate renderers, and OCR language data
+  - Explicit prohibition on distribution-altering dependencies without decision approval
+  acceptance_criteria:
+  - Every approved initial dependency family has a recorded license and distribution note.
+  - The policy requires pinning/locking and source/hash verification for releases.
+  - Renderer selection criteria include security, license, fidelity, performance, and Windows packaging.
+  - The inventory can feed later SBOM generation.
+  verification:
+  - Validate the inventory format with one complete example and one rejected example.
+  - Run documentation/reference checks.
+  risk_tags:
+  - licensing
+  - supply-chain
+  - packaging
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0006
+  milestone: M0
+  title: Define case manifest JSON Schema v1
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0002
+  - PWS-0004
+  decision_refs:
+  - PWS-D009
+  - PWS-D010
+  - PWS-D011
+  - PWS-D028
+  - PWS-D036
+  objective: Create the versioned, non-destructive case data contract that later UI and worker components share.
+  deliverables:
+  - JSON Schema for case identity, source records, page references, operations, overlays, assignments, constraints,
+    confirmations, and export-history references
+  - Canonical minimal and representative example manifests
+  - Invalid and unknown-version fixtures
+  - Schema evolution notes
+  acceptance_criteria:
+  - Source records include random ID, display name in manifest only, media type, byte size, SHA-256, signature/encryption
+    flags, and import state.
+  - Page operations use normalized/versioned data and never embed executable content.
+  - The schema rejects unknown required versions, invalid hashes, invalid page references, malformed normalized
+    boxes, and unsafe paths.
+  - Examples contain synthetic data only.
+  verification:
+  - Validate all positive and negative manifest fixtures.
+  - Run property tests for normalized boxes and source/page references.
+  risk_tags:
+  - data-model
+  - migration
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0007
+  milestone: M0
+  title: Define declarative template schema v1
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0002
+  - PWS-0004
+  decision_refs:
+  - PWS-D006
+  - PWS-D025
+  - PWS-D026
+  - PWS-D033
+  - PWS-D036
+  - PWS-D037
+  objective: Define a non-executable template contract for checklist, ordering, filenames, size, output, guidance,
+    provenance, and expiry.
+  deliverables:
+  - Template JSON Schema or YAML-compatible JSON Schema
+  - Minimal generic-template fixture
+  - Invalid, expired, future-version, and script-injection fixtures
+  - Template trust/provenance fields
+  acceptance_criteria:
+  - The schema supports title, locale, version, source, verification date, review/expiry date, requirements, counts,
+    order, filenames, file limits, output types, warnings, and confirmations.
+  - No field can execute code, shell commands, expressions, or arbitrary imports.
+  - Template rules describe packaging conditions and cannot encode eligibility decisions.
+  - Invalid and unknown future versions fail safely.
+  verification:
+  - Validate positive and negative template fixtures.
+  - Run injection-string tests and unknown-version tests.
+  risk_tags:
+  - templates
+  - security
+  - product-scope
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0008
+  milestone: M0
+  title: Define worker RPC protocol v1
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0002
+  - PWS-0004
+  decision_refs:
+  - PWS-D012
+  - PWS-D013
+  - PWS-D036
+  - PWS-D038
+  objective: Create a versioned, validated, structured protocol for worker lifecycle, operations, progress, cancellation,
+    errors, and capability discovery.
+  deliverables:
+  - RPC message schema and typed models
+  - Request IDs, operation IDs, progress, cancellation, result, and error envelopes
+  - Capability/version negotiation
+  - Malformed-message and incompatible-version fixtures
+  acceptance_criteria:
+  - Messages contain internal IDs and case-relative references, not arbitrary shell strings.
+  - The protocol supports start, progress, cancel, completion, timeout, worker-fault, and capability reporting.
+  - Unknown message types and versions fail closed with a sanitized protocol error.
+  - Raw third-party exception text is not part of the public RPC contract.
+  verification:
+  - Round-trip serialize every message type.
+  - Reject malformed, oversized, unknown-version, and path-escape messages.
+  - Fuzz or property-test message decoding at a basic level.
+  risk_tags:
+  - ipc
+  - security
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0009
+  milestone: M0
+  title: Create synthetic document corpus harness
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0001
+  - PWS-0002
+  decision_refs:
+  - PWS-D035
+  objective: Provide safe, reproducible fixtures for PDF/image edge cases before engines and UI depend on them.
+  deliverables:
+  - Fixture-generation scripts
+  - Synthetic PDFs/images covering the roadmap corpus classes feasible without feature engines
+  - Fixture metadata index with expected properties and provenance
+  - Policy for sensitive bug samples outside the repository
+  acceptance_criteria:
+  - No fixture contains real identity, financial, medical, employment, address, or signature data.
+  - The index covers born-digital, image-only, mixed, rotated, page-size, crop, transparency, low-resolution, blank,
+    duplicate, protected, signed-marker, attachment, annotation, script-marker, malformed, incremental, Unicode,
+    long-path, RTL, multilingual, and handwriting-demonstration categories, with unavailable classes explicitly
+    scheduled.
+  - Fixtures are deterministic or their generated properties are deterministically checked.
+  - Large hostile fixtures are generated on demand rather than committed when size is excessive.
+  verification:
+  - Regenerate fixtures and compare expected metadata.
+  - Scan fixtures and repository for prohibited real-data tokens/patterns.
+  risk_tags:
+  - testing
+  - privacy
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0010
+  milestone: M0
+  title: Run Milestone 0 foundation gate
+  kind: gate
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0001
+  - PWS-0002
+  - PWS-0003
+  - PWS-0004
+  - PWS-0005
+  - PWS-0006
+  - PWS-0007
+  - PWS-0008
+  - PWS-0009
+  decision_refs:
+  - PWS-D003
+  - PWS-D034
+  - PWS-D035
+  - PWS-D036
+  objective: Prove the repository is ready for document-processing implementation without unresolved contract, schema,
+    license, or test-corpus gaps.
+  deliverables:
+  - Milestone 0 gate report under docs/gates
+  - Clean quality-suite evidence
+  - Schema/RPC/task-graph validation evidence
+  - Open-risk list with owners and linked future tasks
+  acceptance_criteria:
+  - Every M0 prerequisite task is done.
+  - All local quality checks pass from a clean environment.
+  - Threats map to planned mitigations.
+  - Dependency families have documented license treatment.
+  - Schemas and task graph pass positive and negative validation.
+  - The corpus is confirmed synthetic/anonymized.
+  verification:
+  - Run the full M0 quality suite.
+  - Perform the documented gate review and record pass/fail.
+  risk_tags:
+  - gate
+  - foundation
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0101
+  milestone: M1
+  title: Implement secure case workspace conventions
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0010
+  decision_refs:
+  - PWS-D009
+  - PWS-D010
+  - PWS-D028
+  - PWS-D029
+  objective: Create case directories with random internal names, restrictive permissions, scoped temp/cache areas,
+    quotas, and safe cleanup primitives.
+  deliverables:
+  - Case path resolver and workspace layout
+  - Random ID/name generation
+  - Permission-setting and permission-verification adapter
+  - Case-relative path validation
+  - Safe temp/cache cleanup primitives
+  acceptance_criteria:
+  - Case paths remain under the configured user-profile root.
+  - Path traversal, absolute paths, device paths, and unsafe names are rejected.
+  - Original, cache, temp, journal, and export-history areas are separated.
+  - Restrictive permissions are applied or a stable platform limitation is reported.
+  - Cleanup cannot delete outside the case root.
+  verification:
+  - Run path traversal and symlink/reparse-point tests supported by the platform.
+  - Run permission and cleanup tests in temporary user-profile roots.
+  risk_tags:
+  - filesystem
+  - security
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0102
+  milestone: M1
+  title: Implement case lifecycle service
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0101
+  - PWS-0006
+  decision_refs:
+  - PWS-D005
+  - PWS-D010
+  - PWS-D028
+  objective: Support create, list, open, close, and delete of local cases without parsing documents.
+  deliverables:
+  - Application service and domain types for case lifecycle
+  - Atomic initial manifest creation
+  - Case index/listing using internal IDs
+  - Explicit deletion workflow and result reporting
+  acceptance_criteria:
+  - A case can be created, closed, reopened, and deleted using only local storage.
+  - Unknown or future manifest versions fail before mutation.
+  - Interrupted creation does not leave a case reported as valid.
+  - Deletion is case-scoped and does not claim forensic erasure.
+  verification:
+  - Run lifecycle round-trip tests.
+  - Simulate interrupted creation and deletion failure.
+  risk_tags:
+  - case-management
+  - storage
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0103
+  milestone: M1
+  title: Implement import sniffing and resource-limit prechecks
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0101
+  - PWS-0004
+  decision_refs:
+  - PWS-D007
+  - PWS-D013
+  - PWS-D038
+  objective: Identify supported input by content and reject unsupported or excessive files before expensive processing.
+  deliverables:
+  - Media-type sniffing adapter for PDF/JPEG/PNG
+  - Configurable byte/page/dimension/decompression precheck model
+  - Stable sanitized import errors
+  - Unsupported/encrypted/malformed preliminary states
+  acceptance_criteria:
+  - File extensions cannot override detected content type.
+  - Unsupported formats and mismatched extensions fail without copying partial case state as a valid document.
+  - Oversized files and excessive image dimensions are rejected with actionable messages.
+  - No user-controlled text is interpolated into a shell command.
+  verification:
+  - Test valid and mismatched PDF/JPEG/PNG signatures.
+  - Test oversized, truncated, malformed, and decompression-warning fixtures.
+  - Run command-injection string tests.
+  risk_tags:
+  - input-validation
+  - dos
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0104
+  milestone: M1
+  title: Implement immutable ingest and SHA-256 source records
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0102
+  - PWS-0103
+  decision_refs:
+  - PWS-D009
+  - PWS-D010
+  - PWS-D028
+  objective: Copy accepted sources into the case exactly once using random internal names and persist verified source
+    metadata.
+  deliverables:
+  - Streaming copy-and-hash service
+  - Atomic source-record commit
+  - Duplicate-content detection signal
+  - Source-integrity verification command/service
+  acceptance_criteria:
+  - The case copy hash matches the source bytes at import completion.
+  - A failed or interrupted copy leaves no valid source record.
+  - The original external file is never opened for writing.
+  - The internal filename does not expose the display name.
+  - Later integrity verification detects mutation of the case copy.
+  verification:
+  - Import files of varied sizes and compare hashes.
+  - Simulate source change during copy, disk full, and cancellation.
+  - Assert external source modification time/content remain unchanged.
+  risk_tags:
+  - integrity
+  - privacy
+  - storage
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0105
+  milestone: M1
+  title: Implement pikepdf/qpdf adapter and PDF structural inspection
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0005
+  - PWS-0008
+  - PWS-0103
+  decision_refs:
+  - PWS-D012
+  - PWS-D015
+  - PWS-D019
+  - PWS-D021
+  - PWS-D029
+  objective: Provide worker-side PDF open, page-count, encryption, signature-marker, interactive-content, attachment,
+    and structural-check capabilities behind a stable adapter.
+  deliverables:
+  - PDF adapter interface and pikepdf/qpdf implementation
+  - Typed inspection result
+  - Stable error mapping
+  - Contract tests across synthetic corpus
+  acceptance_criteria:
+  - GUI/application code receives typed results, not pikepdf objects or raw exceptions.
+  - Malformed, encrypted, signed-marker, attachment, action/script, and ordinary PDFs produce distinct sanitized
+    outcomes.
+  - Resource limits and timeouts are applied by the worker boundary.
+  - The adapter can invoke qpdf structural checking without shell interpolation.
+  verification:
+  - Run adapter contract tests on all applicable PDF fixtures.
+  - Run malformed input, timeout, and command-injection tests.
+  risk_tags:
+  - pdf
+  - parser
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0106
+  milestone: M1
+  title: Select and implement replaceable PDF renderer adapter
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0005
+  - PWS-0008
+  - PWS-0103
+  decision_refs:
+  - PWS-D012
+  - PWS-D017
+  - PWS-D034
+  objective: Select a renderer using evidence and expose bounded page rendering through an internal worker adapter.
+  deliverables:
+  - Renderer comparison ADR covering security, license, fidelity, performance, and Windows packaging
+  - Renderer interface and selected implementation
+  - Page render request/result models
+  - Golden and malformed-input tests
+  acceptance_criteria:
+  - Renderer-specific types do not leak outside the adapter.
+  - Rendering enforces page, pixel, timeout, memory, and destination limits.
+  - Rotation, crop/media boxes, transparency, CMYK, and malformed fixtures have documented behavior.
+  - The selected dependency is added to the license inventory and lock data.
+  verification:
+  - Run renderer comparison benchmark on reference fixtures.
+  - Run golden-image, malformed, timeout, and high-dimension tests.
+  risk_tags:
+  - renderer
+  - licensing
+  - security
+  - performance
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0107
+  milestone: M1
+  title: Implement worker host, client, and cancellation lifecycle
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0008
+  - PWS-0101
+  decision_refs:
+  - PWS-D012
+  - PWS-D013
+  - PWS-D036
+  - PWS-D038
+  objective: Create the separate document worker process and versioned client with progress, cancellation, timeout,
+    restart, and protocol validation.
+  deliverables:
+  - Worker executable/entry point
+  - UI-side worker client/broker
+  - RPC transport implementation
+  - Operation registry, progress, cancellation, timeout, and restart behavior
+  - Initial filesystem and network restriction hooks
+  acceptance_criteria:
+  - The GUI process can start, query, cancel, terminate, and restart the worker.
+  - Malformed or version-incompatible messages fail closed.
+  - The worker receives only active-case paths and minimal environment data.
+  - No processing request is constructed as a shell string.
+  - A worker crash produces a stable error and does not terminate the GUI process.
+  - A network-egress test is present and passes to the degree supported by the current isolation stage.
+  verification:
+  - Run RPC round-trip, cancellation, timeout, crash, restart, malformed-message, and egress tests.
+  - Inspect process environment and filesystem access in an integration test.
+  risk_tags:
+  - worker
+  - ipc
+  - sandbox
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0108
+  milestone: M1
+  title: Implement bounded PDF thumbnail service
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0104
+  - PWS-0105
+  - PWS-0106
+  - PWS-0107
+  decision_refs:
+  - PWS-D012
+  - PWS-D013
+  - PWS-D027
+  - PWS-D028
+  objective: Render page thumbnails in the worker, store them in case-scoped cache, and expose progress without
+    leaking document content to logs.
+  deliverables:
+  - Thumbnail worker operation
+  - Cache key/version strategy
+  - Incremental progress and cancellation
+  - Cache invalidation and cleanup
+  acceptance_criteria:
+  - Thumbnails are generated page-by-page and remain within configured pixel/storage limits.
+  - Cache filenames use internal IDs and do not expose original names.
+  - Cancellation leaves no manifest corruption and partial cache entries are ignored or safely reusable.
+  - Routine logs contain no paths, filenames, text, or image content.
+  verification:
+  - Render multi-page, rotated, malformed, large-page, and cancellation fixtures.
+  - Run cache corruption/rebuild and prohibited-log-token tests.
+  risk_tags:
+  - rendering
+  - cache
+  - privacy
+  - performance
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0109
+  milestone: M1
+  title: Implement atomic manifest repository and autosave journal
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0102
+  - PWS-0006
+  decision_refs:
+  - PWS-D010
+  - PWS-D011
+  - PWS-D036
+  objective: Persist validated case state atomically and recover the last known-good revision after interrupted
+    writes.
+  deliverables:
+  - Manifest repository interface and filesystem implementation
+  - Atomic write/replace strategy
+  - Revision or journal model
+  - Validation before commit and on open
+  - Recovery diagnostics using sanitized IDs
+  acceptance_criteria:
+  - A partial write never replaces the last valid manifest.
+  - Every saved manifest validates against the current schema.
+  - Unknown future versions fail before mutation.
+  - Rapid edits coalesce safely without losing the final state.
+  - Recovery can identify and restore the last valid revision after simulated termination.
+  verification:
+  - Run interrupted-write, disk-full, rapid-autosave, corrupted-current, and unknown-version tests.
+  - Property-test save/load equivalence for representative manifests.
+  risk_tags:
+  - persistence
+  - recovery
+  - migration
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0110
+  milestone: M1
+  title: Implement page sequence, operations, undo, and redo domain model
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0006
+  - PWS-0109
+  decision_refs:
+  - PWS-D010
+  - PWS-D011
+  objective: Represent page ordering, rotation, removal, split/group intent, and reversible history as pure validated
+    domain operations.
+  deliverables:
+  - Page reference and operation types
+  - Command/reducer model
+  - Undo/redo history behavior
+  - Manifest serialization integration
+  - Property-based tests
+  acceptance_criteria:
+  - Reorder, rotate, remove/restore, and group/split intent can be replayed deterministically.
+  - Operations reject missing/duplicate page IDs and invalid rotations.
+  - Undo followed by redo restores equivalent state.
+  - The model has no UI, renderer, or PDF-library dependency.
+  verification:
+  - Run unit and property-based operation-sequence tests.
+  - Serialize/reload/replay representative histories.
+  risk_tags:
+  - domain
+  - data-integrity
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0111
+  milestone: M1
+  title: Build accessible page organizer vertical-slice UI
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0108
+  - PWS-0109
+  - PWS-0110
+  decision_refs:
+  - PWS-D002
+  - PWS-D030
+  - PWS-D037
+  objective: Provide case creation/opening, import status, thumbnail organization, rotation, removal, undo/redo,
+    and keyboard alternatives in the desktop UI.
+  deliverables:
+  - Initial PySide6 application shell
+  - Case and page organizer screens
+  - Thumbnail list/grid backed by domain state
+  - Keyboard commands and non-drag ordering dialog/actions
+  - Accessible names, focus, status, progress, and errors
+  acceptance_criteria:
+  - A user can complete core organizer actions without drag-and-drop or a mouse.
+  - Focus order is logical and visible.
+  - Import/render progress and failures are announced and cancelable.
+  - Status is not communicated by color alone.
+  - The UI does not import low-level PDF/renderer implementations.
+  - UI restart reloads the autosaved organizer state.
+  verification:
+  - Run UI unit/integration tests for keyboard paths and state synchronization.
+  - Perform a manual keyboard-only organizer scenario.
+  - Run an initial NVDA smoke test and record limitations.
+  risk_tags:
+  - ui
+  - accessibility
+  - state-management
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0112
+  milestone: M1
+  title: Implement deterministic PDF assembly, export, reopen, and verification
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0105
+  - PWS-0107
+  - PWS-0109
+  - PWS-0110
+  decision_refs:
+  - PWS-D009
+  - PWS-D011
+  - PWS-D015
+  - PWS-D029
+  - PWS-D037
+  objective: Produce a new combined PDF from manifest page intent and verify it before atomically committing it
+    to the destination.
+  deliverables:
+  - Export plan model
+  - Worker-side PDF assembly operation
+  - Temporary output and atomic destination commit
+  - Reopen, qpdf structural check, page-count check, encryption check, and render verification
+  - Typed export report
+  acceptance_criteria:
+  - The output page sequence and rotations match the manifest.
+  - No imported original or previous verified export is overwritten.
+  - A parse, structure, page-count, encryption-policy, or render failure prevents success/commit.
+  - Export results state concrete checks and do not claim universal validity.
+  - Repeated export from the same inputs and manifest is semantically equivalent.
+  verification:
+  - Run export round-trip tests across representative PDF fixtures.
+  - Simulate destination denial, disk full, worker crash, corrupted temporary output, and failed render verification.
+  - Compare source hashes before and after export.
+  risk_tags:
+  - export
+  - pdf
+  - integrity
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0113
+  milestone: M1
+  title: Implement crash recovery and sanitized diagnostic baseline
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0107
+  - PWS-0108
+  - PWS-0109
+  - PWS-0112
+  decision_refs:
+  - PWS-D027
+  - PWS-D028
+  - PWS-D039
+  objective: Recover a usable case after UI/worker interruption and provide support diagnostics that contain no
+    document content.
+  deliverables:
+  - Startup recovery scan and user-facing recovery result
+  - Worker/orphan-temp cleanup policy
+  - Sanitized structured logging configuration
+  - Diagnostic summary of engine/schema versions, operation IDs, counts, codes, and resource data
+  - Prohibited-token log tests
+  acceptance_criteria:
+  - Killing the worker during render/export does not corrupt originals or the last valid manifest.
+  - Restart identifies recoverable cases and ignores/isolates invalid partial artifacts.
+  - Routine logs exclude all fields prohibited by AGENTS.md.
+  - Diagnostic baseline contains only documented safe fields.
+  - Cleanup stays inside the active case root.
+  verification:
+  - Run UI/worker kill and restart scenarios.
+  - Run disk-full and corrupted-cache recovery tests.
+  - Scan logs/diagnostics for unique prohibited fixture tokens.
+  risk_tags:
+  - recovery
+  - logging
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0114
+  milestone: M1
+  title: Run Milestone 1 vertical-slice gate
+  kind: gate
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0101
+  - PWS-0102
+  - PWS-0103
+  - PWS-0104
+  - PWS-0105
+  - PWS-0106
+  - PWS-0107
+  - PWS-0108
+  - PWS-0109
+  - PWS-0110
+  - PWS-0111
+  - PWS-0112
+  - PWS-0113
+  decision_refs:
+  - PWS-D003
+  - PWS-D009
+  - PWS-D012
+  - PWS-D013
+  - PWS-D027
+  - PWS-D029
+  - PWS-D030
+  objective: Demonstrate the architecture proof from case creation through verified export and recovery on the reference
+    low-spec profile.
+  deliverables:
+  - Milestone 1 gate report
+  - End-to-end vertical-slice automated test
+  - Keyboard-only manual scenario
+  - Worker crash/recovery and log-audit evidence
+  - Reference-machine performance measurements
+  acceptance_criteria:
+  - Every M1 prerequisite task is done.
+  - Originals remain byte-for-byte unchanged.
+  - The same manifest produces the same semantic page result.
+  - Malformed inputs and worker termination fail cleanly.
+  - Export passes parse, structural, page-count, encryption, and render checks.
+  - No prohibited document content appears in logs.
+  - The primary organizer path works without a mouse.
+  verification:
+  - Run full unit, integration, security, accessibility-smoke, and vertical-slice suites.
+  - Perform and record the M1 manual demonstration.
+  risk_tags:
+  - gate
+  - vertical-slice
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0201
+  milestone: M2
+  title: Implement JPEG/PNG intake and page normalization
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0114
+  decision_refs:
+  - PWS-D007
+  - PWS-D009
+  - PWS-D011
+  - PWS-D013
+  objective: Accept bounded JPEG/PNG sources, inspect orientation/color metadata safely, and represent them as non-destructive
+    pages.
+  deliverables:
+  - Worker image decoder/inspection adapter
+  - Normalized image-page metadata model
+  - EXIF orientation handling policy
+  - Image-to-preview/page cache operation
+  acceptance_criteria:
+  - JPEG/PNG are detected by content and copied immutably before decode.
+  - Decode enforces byte, pixel, dimension, timeout, memory, and temp limits.
+  - EXIF orientation is represented as intent without mutating the original.
+  - Malformed, truncated, oversized, CMYK, alpha, and metadata-heavy images fail or normalize predictably.
+  verification:
+  - Run decoder contract tests on image corpus.
+  - Run decompression, pixel-limit, timeout, and malformed-image tests.
+  risk_tags:
+  - images
+  - decoder
+  - dos
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0202
+  milestone: M2
+  title: Implement non-destructive crop, rotate, deskew, and cleanup pipeline
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0201
+  - PWS-0107
+  decision_refs:
+  - PWS-D011
+  - PWS-D012
+  - PWS-D016
+  objective: Add reviewable scan transformations as manifest operations executed in the worker.
+  deliverables:
+  - Crop, rotate, deskew, contrast, and background-cleanup operation models
+  - Worker image-transformation pipeline
+  - Operation ordering and cache-key rules
+  - Golden-output tests
+  acceptance_criteria:
+  - Operations are recorded in normalized manifest data and never rewrite originals.
+  - Transformation order is deterministic and documented.
+  - Extreme/invalid crop and deskew values are rejected.
+  - Processing is bounded and cancelable.
+  - Golden outputs cover rotation, crop, deskew, contrast, transparency, and mixed page sizes.
+  verification:
+  - Run unit, property, golden-image, cancellation, and resource-limit tests.
+  - Compare source hashes before and after processing.
+  risk_tags:
+  - imaging
+  - coordinates
+  - performance
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0203
+  milestone: M2
+  title: Add before-and-after scan review UI
+  kind: implementation
+  priority: P1
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0202
+  - PWS-0111
+  decision_refs:
+  - PWS-D026
+  - PWS-D030
+  - PWS-D037
+  objective: Let users compare and confirm automatic/manual scan improvements instead of applying aggressive cleanup
+    silently.
+  deliverables:
+  - Before/after preview component
+  - Keyboard-adjustable crop/rotation/cleanup controls
+  - Apply, reset, cancel, and compare interactions
+  - Accessible progress and error states
+  acceptance_criteria:
+  - The original preview remains available for comparison.
+  - Every pointer operation has a keyboard-accessible alternative.
+  - Automatic suggestions require user confirmation before becoming manifest intent.
+  - At 200% scaling, critical controls remain reachable.
+  verification:
+  - Run UI tests for apply/reset/cancel and keyboard adjustment.
+  - Perform manual 200% scaling and keyboard review.
+  risk_tags:
+  - ui
+  - accessibility
+  - imaging
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0204
+  milestone: M2
+  title: Integrate OCRmyPDF/Tesseract worker adapter with progress and cancellation
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0005
+  - PWS-0107
+  - PWS-0202
+  decision_refs:
+  - PWS-D012
+  - PWS-D013
+  - PWS-D016
+  - PWS-D038
+  objective: Run local OCR and supported cleanup through a bounded worker adapter without blocking the UI or exposing
+    shell injection.
+  deliverables:
+  - OCR adapter interface and implementation
+  - Capability/version discovery
+  - Page/job progress mapping
+  - Cancellation and timeout behavior
+  - Sanitized error mapping
+  acceptance_criteria:
+  - OCR executes only in the worker with network denied.
+  - External commands use explicit executable paths and argument arrays.
+  - OCR progress reaches the application as structured events.
+  - Cancellation/timeout leaves originals and manifest intact and cleans partial outputs.
+  - OCR text and filenames do not appear in routine logs.
+  verification:
+  - Run OCR success, cancellation, timeout, worker-crash, missing-engine, malformed-input, injection-string, and
+    log-token tests.
+  risk_tags:
+  - ocr
+  - subprocess
+  - security
+  - performance
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0205
+  milestone: M2
+  title: Implement offline OCR language-pack management
+  kind: implementation
+  priority: P1
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0204
+  decision_refs:
+  - PWS-D005
+  - PWS-D016
+  - PWS-D034
+  objective: Detect installed OCR languages and support separately installable offline packs without bloating or
+    networking the core processing workflow.
+  deliverables:
+  - Installed-language discovery
+  - Language selection model and UI
+  - Offline pack verification/install documentation or local installer hook
+  - Missing-language remediation messages
+  acceptance_criteria:
+  - Core processing works offline with installed languages.
+  - A missing language produces a clear message and does not corrupt the case.
+  - Language packs are version/checksum tracked according to dependency policy.
+  - The base application does not silently download language data while processing a case.
+  verification:
+  - Test installed, missing, unsupported, and multiple-language selections.
+  - Verify no network request occurs during OCR capability checks and processing.
+  risk_tags:
+  - ocr
+  - localization
+  - packaging
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0206
+  milestone: M2
+  title: Produce searchable mixed-document output
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0204
+  - PWS-0105
+  - PWS-0112
+  decision_refs:
+  - PWS-D016
+  - PWS-D021
+  - PWS-D029
+  - PWS-D037
+  objective: Combine born-digital and scanned pages while preserving existing text where appropriate and adding
+    local OCR text to eligible pages.
+  deliverables:
+  - Page OCR eligibility policy
+  - Mixed PDF/image OCR export path
+  - Searchability verification
+  - Signed-source modification handling
+  acceptance_criteria:
+  - Born-digital text is not unnecessarily rasterized in the normal OCR profile.
+  - Image-only pages gain searchable text when OCR succeeds.
+  - OCR failure is reported per page without falsely claiming searchability.
+  - Signed inputs are detected and any modified output is labeled an unsigned derivative.
+  - Every output is reopened and structurally/render verified.
+  verification:
+  - Run text-presence/extraction tests on born-digital, image-only, and mixed fixtures.
+  - Run signed-source warning and output-policy tests.
+  - Run export round-trip and viewer smoke tests.
+  risk_tags:
+  - ocr
+  - pdf
+  - signatures
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0207
+  milestone: M2
+  title: Implement scan-quality and OCR review findings
+  kind: implementation
+  priority: P1
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0202
+  - PWS-0204
+  decision_refs:
+  - PWS-D026
+  - PWS-D037
+  objective: Generate typed, explainable review signals for likely low resolution, blur, clipping, blank pages,
+    orientation, duplicates, and OCR failure/low confidence.
+  deliverables:
+  - Quality-analysis interface and finding types
+  - Initial deterministic heuristics with thresholds in configuration
+  - UI messages and page-level navigation
+  - False-positive/false-negative evaluation fixtures
+  acceptance_criteria:
+  - Findings are labeled as likely/suspected/needs review rather than facts.
+  - Thresholds and limitations are documented.
+  - The system never marks a requirement complete based solely on a heuristic.
+  - Messages are actionable and do not expose OCR text in logs.
+  verification:
+  - Run labeled-corpus evaluation and record baseline metrics.
+  - Run UI navigation and accessibility tests for findings.
+  risk_tags:
+  - quality-analysis
+  - ux
+  - ocr
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0208
+  milestone: M2
+  title: Harden signed-PDF handling and incremental resource controls
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0105
+  - PWS-0204
+  - PWS-0206
+  decision_refs:
+  - PWS-D013
+  - PWS-D020
+  - PWS-D021
+  - PWS-D037
+  objective: Prevent silent signature invalidation and prove page-by-page OCR/image processing stays within resource
+    budgets.
+  deliverables:
+  - Signed-input policy service and confirmation state
+  - Unsigned-derivative labeling in UI/export reports
+  - Incremental page-processing scheduler
+  - Reference-hardware memory and cancellation tests
+  acceptance_criteria:
+  - A signed source cannot enter a modifying operation without an explicit derivative warning/confirmation.
+  - The original signed file remains unchanged and directly available.
+  - Large mixed jobs do not retain all full-resolution pages in memory.
+  - Resource-limit failures are recoverable and identify affected operations without content leakage.
+  verification:
+  - Run signed-input modify/cancel scenarios.
+  - Measure peak memory and temp storage on the reference workload.
+  - Run limit-exceeded and resume/retry tests.
+  risk_tags:
+  - signatures
+  - resource-limits
+  - performance
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0209
+  milestone: M2
+  title: Run Milestone 2 image and OCR gate
+  kind: gate
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0201
+  - PWS-0202
+  - PWS-0203
+  - PWS-0204
+  - PWS-0205
+  - PWS-0206
+  - PWS-0207
+  - PWS-0208
+  decision_refs:
+  - PWS-D007
+  - PWS-D013
+  - PWS-D016
+  - PWS-D021
+  - PWS-D026
+  - PWS-D030
+  objective: Demonstrate a bounded, cancelable, reviewable mixed-document workflow with local OCR and honest quality
+    messaging.
+  deliverables:
+  - Milestone 2 gate report
+  - Mixed PDF/JPEG/PNG end-to-end scenario
+  - OCR cancellation and missing-language evidence
+  - Signed-source and reference-memory evidence
+  - Keyboard/scale review evidence
+  acceptance_criteria:
+  - Every M2 prerequisite task is done.
+  - OCR does not block the UI and can be cancelled safely.
+  - Mixed born-digital/scanned output is verified and searchable where reported.
+  - Signed inputs are protected and edited derivatives are clearly unsigned.
+  - Quality findings remain review signals.
+  - Reference workloads meet documented resource budgets or have approved bounded limits.
+  verification:
+  - Run the full M2 unit, integration, security, OCR, accessibility, and performance suites.
+  - Perform and record the M2 manual demonstration.
+  risk_tags:
+  - gate
+  - ocr
+  - images
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0301
+  milestone: M3
+  title: Implement normalized page coordinate model
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0209
+  - PWS-0006
+  decision_refs:
+  - PWS-D011
+  - PWS-D018
+  objective: Abstract screen, normalized page, rendered image, and PDF point coordinates across rotation, crop,
+    media/crop boxes, and scaling.
+  deliverables:
+  - Pure coordinate types and transforms
+  - Rotation/crop/media-box rules
+  - Serialization in manifest operations/overlays
+  - Property-based and example tests
+  acceptance_criteria:
+  - Round-trip coordinate conversion stays within documented tolerance.
+  - All 0/90/180/270 rotations, non-zero box origins, crop boxes, mixed page sizes, and display scaling are covered.
+  - Normalized boxes reject inversion and out-of-range values unless an explicitly documented clipping policy applies.
+  - The model is independent of UI and renderer implementations.
+  verification:
+  - Run property tests across randomized boxes, rotations, scales, and page geometries.
+  - Compare known PDF-point placements against rendered golden references.
+  risk_tags:
+  - coordinates
+  - correctness
+  - forms
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0302
+  milestone: M3
+  title: Define overlay domain model and manifest schema extension
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0301
+  decision_refs:
+  - PWS-D010
+  - PWS-D018
+  - PWS-D020
+  - PWS-D036
+  objective: Represent visual text, date, checkmark, cross, initials, signature-image, highlight, and simple-shape
+    intent without implying unsupported signature/redaction semantics.
+  deliverables:
+  - Versioned overlay types and validation
+  - Manifest schema update and migration fixture
+  - Overlay ordering and visibility rules
+  - Terminology metadata for signature images and ordinary shapes
+  acceptance_criteria:
+  - Overlay records use normalized coordinates and reference case-internal assets by ID.
+  - Invalid fonts/sizes/boxes, missing assets, and unsupported overlay types are rejected.
+  - Signature-image overlays cannot claim cryptographic status.
+  - Ordinary shapes cannot be marked as permanent redaction.
+  - Old manifests migrate or load with no overlays unchanged.
+  verification:
+  - Validate positive/negative overlay fixtures and migration round trips.
+  - Run prohibited-terminology/state tests.
+  risk_tags:
+  - data-model
+  - migration
+  - terminology
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0303
+  milestone: M3
+  title: Implement vector overlay renderer and font strategy
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0301
+  - PWS-0302
+  - PWS-0105
+  - PWS-0106
+  decision_refs:
+  - PWS-D015
+  - PWS-D018
+  - PWS-D034
+  objective: Render deterministic overlay pages/assets with Unicode-capable font handling behind an internal export
+    adapter.
+  deliverables:
+  - Overlay rendering interface and implementation
+  - Approved font selection/embedding/subsetting strategy ADR
+  - Text metrics and alignment behavior
+  - Golden outputs for overlay primitives
+  acceptance_criteria:
+  - Text, dates, marks, initials, shapes, and image placements align with coordinate tests.
+  - Unicode sample text renders without silent substitution or missing-glyph success.
+  - Font licensing and redistribution are documented.
+  - Renderer/library-specific objects remain inside the adapter.
+  - Generated overlays contain no unexpected actions, attachments, or scripts.
+  verification:
+  - Run golden rendering and text-extraction/visual checks for representative scripts.
+  - Inspect generated PDF objects for prohibited interactive content.
+  risk_tags:
+  - overlays
+  - fonts
+  - licensing
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0304
+  milestone: M3
+  title: Implement text, date, checkmark, cross, and initials tools
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0302
+  - PWS-0303
+  - PWS-0110
+  decision_refs:
+  - PWS-D011
+  - PWS-D018
+  - PWS-D030
+  objective: Add core form-marking commands with keyboard placement, editing, deletion, undo, and redo.
+  deliverables:
+  - Application/domain commands for core overlay types
+  - Default formatting and accessible labels
+  - Keyboard move/resize/edit behavior
+  - Undo/redo integration
+  acceptance_criteria:
+  - Every tool can be created, selected, moved, resized where applicable, edited, and removed without a mouse.
+  - Undo/redo restores equivalent overlay state.
+  - Dates are stored as user-entered display values unless a template explicitly supplies formatting guidance.
+  - No field value enters routine logs.
+  verification:
+  - Run unit/property tests for command histories.
+  - Run keyboard UI tests and prohibited-log-token tests.
+  risk_tags:
+  - forms
+  - ui
+  - accessibility
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0305
+  milestone: M3
+  title: Implement signature-image asset import and placement
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0302
+  - PWS-0303
+  - PWS-0104
+  decision_refs:
+  - PWS-D009
+  - PWS-D020
+  - PWS-D021
+  - PWS-D027
+  - PWS-D028
+  objective: Allow a local image to be placed as a clearly labeled visual signature mark while preserving privacy
+    and avoiding cryptographic claims.
+  deliverables:
+  - Signature-image asset ingest using immutable/randomized case storage
+  - Crop/background preview and placement intent
+  - Explicit visual-signature terminology and confirmation
+  - Asset cleanup/deletion behavior
+  acceptance_criteria:
+  - The UI calls the action “Place signature image” or equivalent approved wording.
+  - The asset is copied and hashed; its original path/name/image never appears in routine logs.
+  - Placement works on rotated/cropped pages and follows normalized coordinates.
+  - Deleting the overlay can remove the unused case asset according to explicit policy.
+  - No output is reported as digitally or qualified signed.
+  verification:
+  - Run asset import, placement, delete, coordinate, and log-token tests.
+  - Inspect user-facing wording and exported metadata.
+  risk_tags:
+  - signature-image
+  - privacy
+  - terminology
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0306
+  milestone: M3
+  title: Build accessible overlay editor UI
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0304
+  - PWS-0305
+  - PWS-0111
+  decision_refs:
+  - PWS-D018
+  - PWS-D020
+  - PWS-D030
+  objective: Provide full-page editing, selection, guides, zoom, keyboard manipulation, and accessible property
+    controls for overlays.
+  deliverables:
+  - Full-page editor view
+  - Overlay selection and property panel
+  - Keyboard placement/movement/resize and snap controls
+  - Zoom/pan behavior with accessible alternatives
+  - Focus and announcement behavior
+  acceptance_criteria:
+  - The primary overlay workflow is complete without a mouse.
+  - Selection, coordinates, size, and type are exposed to assistive technology in meaningful terms.
+  - Zoom and scaling do not alter saved placement intent.
+  - Guides and snap feedback are not color-only.
+  - No canvas-only interaction makes controls invisible to keyboard/screen reader users.
+  verification:
+  - Run UI tests for each overlay type and keyboard manipulation.
+  - Perform manual NVDA and 200% scaling scenarios.
+  risk_tags:
+  - ui
+  - accessibility
+  - forms
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0307
+  milestone: M3
+  title: Flatten overlays during export and validate reader compatibility
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0112
+  - PWS-0303
+  - PWS-0306
+  decision_refs:
+  - PWS-D018
+  - PWS-D020
+  - PWS-D029
+  - PWS-D037
+  objective: Merge and flatten overlays into verified derivatives that render consistently across the supported
+    reader matrix.
+  deliverables:
+  - Overlay-aware export plan
+  - Flatten/merge worker operation
+  - Overlay-presence verification
+  - Reader compatibility test corpus and report
+  acceptance_criteria:
+  - Expected overlays appear at correct positions on rotated/cropped/mixed-size pages.
+  - Output does not depend on unsupported interactive appearance behavior.
+  - Fonts are embedded or converted according to the approved strategy.
+  - Reopen/render verification detects missing or grossly displaced overlays.
+  - Viewer testing covers the defined desktop/browser matrix.
+  verification:
+  - Run coordinate/golden/export round-trip tests.
+  - Open representative outputs in the documented reader matrix and record results.
+  risk_tags:
+  - export
+  - overlays
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0308
+  milestone: M3
+  title: Run Milestone 3 overlay gate
+  kind: gate
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0301
+  - PWS-0302
+  - PWS-0303
+  - PWS-0304
+  - PWS-0305
+  - PWS-0306
+  - PWS-0307
+  decision_refs:
+  - PWS-D018
+  - PWS-D020
+  - PWS-D021
+  - PWS-D029
+  - PWS-D030
+  objective: Demonstrate reliable, accessible, correctly termed visual form completion and flattened export.
+  deliverables:
+  - Milestone 3 gate report
+  - Rotated/cropped/mixed-page overlay scenario
+  - Keyboard and NVDA evidence
+  - Reader compatibility report
+  - Signature terminology audit
+  acceptance_criteria:
+  - Every M3 prerequisite task is done.
+  - Coordinate and placement tests pass across required geometries.
+  - Unicode/font behavior is documented and verified.
+  - Overlay workflow is usable without a mouse.
+  - Signature images are never represented as cryptographic signatures.
+  - Flattened outputs pass reopen/render and reader checks.
+  verification:
+  - Run full M3 unit, property, integration, accessibility, and compatibility suites.
+  - Perform and record the M3 manual demonstration.
+  risk_tags:
+  - gate
+  - overlays
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0401
+  milestone: M4
+  title: Implement safe template loader and validator
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0007
+  - PWS-0308
+  decision_refs:
+  - PWS-D025
+  - PWS-D033
+  - PWS-D036
+  objective: Load local templates as data only, validate versions/provenance/expiry, and reject executable or unsafe
+    content.
+  deliverables:
+  - Template repository/loader interface
+  - Schema validation and version dispatch
+  - Provenance, checksum/signature metadata model
+  - Expiry/review warning behavior
+  - Safe user-facing errors
+  acceptance_criteria:
+  - Invalid, future-version, expired, tampered, path-escape, and script-like templates cannot crash or execute code.
+  - Templates cannot import modules, call commands, read arbitrary files, or access the network.
+  - Provenance and verification dates are visible to the user.
+  - Template failures do not corrupt a case.
+  verification:
+  - Run positive/negative template corpus and injection tests.
+  - Verify no subprocess, arbitrary file, or network access occurs during load.
+  risk_tags:
+  - templates
+  - security
+  - supply-chain
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0402
+  milestone: M4
+  title: Create generic portal application template v1
+  kind: implementation
+  priority: P0
+  effort: M
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0401
+  decision_refs:
+  - PWS-D006
+  - PWS-D025
+  - PWS-D033
+  - PWS-D037
+  objective: Provide the first complete workflow template for form, identity, address, support documents, ordering,
+    filenames, file limits, and confirmations.
+  deliverables:
+  - Versioned generic template
+  - Plain-language instructions and review confirmations
+  - Synthetic demonstration packet mapped to the template
+  - Template documentation
+  acceptance_criteria:
+  - The template includes required categories, counts, order, output mode, maximum files, total bytes, encryption
+    policy, flatten policy, filename pattern, and review confirmations.
+  - Rules concern packaging and do not make eligibility or legal decisions.
+  - Guidance explains both sides of identity documents when applicable without assuming jurisdiction-specific law.
+  - The template validates and has a review/expiry policy.
+  verification:
+  - Validate the template and run it against complete, missing, and excessive synthetic packets.
+  - Perform a plain-language review.
+  risk_tags:
+  - templates
+  - content-design
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0403
+  milestone: M4
+  title: Implement checklist categories and user-confirmed document assignment
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0401
+  - PWS-0402
+  - PWS-0111
+  decision_refs:
+  - PWS-D002
+  - PWS-D026
+  - PWS-D030
+  objective: Let users assign documents/pages to template requirements through drag-and-drop or fully accessible
+    alternatives while retaining user confirmation.
+  deliverables:
+  - Checklist domain model and status types
+  - Assignment commands and manifest integration
+  - Checklist UI with assign/move/reorder actions
+  - Suggestion hook that cannot auto-complete requirements
+  acceptance_criteria:
+  - Statuses distinguish missing, added, needs review, and ready without color-only meaning.
+  - Assignment is available via keyboard menus/dialogs as well as drag-and-drop.
+  - Automated suggestions remain unconfirmed until the user accepts them.
+  - Unassigned pages remain visible and detectable.
+  - Assignments survive save/reopen and support undo/redo where appropriate.
+  verification:
+  - Run domain and UI tests for assignment, unassignment, reordering, save/reopen, and suggestions.
+  - Perform keyboard-only checklist scenario.
+  risk_tags:
+  - checklist
+  - ui
+  - accessibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0404
+  milestone: M4
+  title: Implement typed preflight rule engine
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0401
+  - PWS-0403
+  - PWS-0105
+  - PWS-0207
+  decision_refs:
+  - PWS-D025
+  - PWS-D026
+  - PWS-D037
+  objective: Evaluate case, template, source inspections, quality findings, and output plans into deterministic
+    errors, warnings, and confirmations.
+  deliverables:
+  - Rule interface and engine
+  - Typed finding severity, scope, code, message, and remediation
+  - Dependency-aware incremental evaluation
+  - Rule test harness and fixtures
+  acceptance_criteria:
+  - Preflight cleanly distinguishes blocking errors, warnings, and required user confirmations.
+  - Findings have stable codes and point to the relevant case/document/page/output item.
+  - Rules are deterministic and contain no executable template logic.
+  - User-facing messages do not overclaim certainty or acceptance.
+  - Rule evaluation does not expose sensitive values to logs.
+  verification:
+  - Run rule unit tests, ordering/deduplication tests, and prohibited-log-token tests.
+  - Property-test that identical inputs yield equivalent finding sets.
+  risk_tags:
+  - preflight
+  - rules
+  - product-safety
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0405
+  milestone: M4
+  title: Add completeness, legibility, privacy, and compatibility preflight rules
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0404
+  - PWS-0206
+  - PWS-0307
+  decision_refs:
+  - PWS-D019
+  - PWS-D021
+  - PWS-D023
+  - PWS-D026
+  - PWS-D037
+  objective: Implement the core non-portal-specific checks that differentiate PaperWorkShell from a simple PDF toolbox.
+  deliverables:
+  - Completeness rules for required categories/counts, unassigned pages, empty documents, and confirmations
+  - Legibility rules from quality/OCR findings
+  - Compatibility rules for encryption, signatures, unsupported interactive content, attachments, actions/scripts,
+    structure, and extreme page sizes
+  - Privacy rules for unapplied sensitive marks, unflattened overlays, metadata/attachment warnings, and ordinary-shape/redaction
+    distinction
+  acceptance_criteria:
+  - Complete and incomplete synthetic packets produce expected severity and remediation.
+  - Signed modified sources are reported as unsigned derivatives.
+  - Unsupported XFA/scripts/actions/attachments are detected or explicitly reported as unverified where inspection
+    cannot prove absence.
+  - Ordinary black shapes never satisfy a redaction check.
+  - OCR/blur/duplicate findings remain review warnings.
+  verification:
+  - Run the preflight matrix across complete, incomplete, malformed, signed, encrypted, attached, scripted, and
+    low-quality fixtures.
+  risk_tags:
+  - preflight
+  - compatibility
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0406
+  milestone: M4
+  title: Implement portal constraints and safe filename rules
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0404
+  - PWS-0402
+  decision_refs:
+  - PWS-D008
+  - PWS-D025
+  - PWS-D029
+  - PWS-D037
+  objective: Evaluate total/per-file size, file count, page count, extensions, encryption policy, output organization,
+    and normalized filenames.
+  deliverables:
+  - Constraint models and rules
+  - Safe filename templating and collision handling
+  - Windows reserved-name and path-length handling
+  - Constraint editing UI for generic/manual cases
+  acceptance_criteria:
+  - Filename values cannot escape the destination, create device names, or inject archive paths.
+  - Collisions resolve deterministically and remain understandable.
+  - Total size, per-file size, number of files, page count, extension, encryption, and required organization are
+    checked.
+  - Manual constraints validate before becoming active.
+  verification:
+  - Run filename property tests including Unicode, reserved names, long names, separators, and collisions.
+  - Run constraint boundary tests.
+  risk_tags:
+  - filenames
+  - portal-rules
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0407
+  milestone: M4
+  title: Implement export planner for combined PDF, multiple PDFs, and ZIP
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0403
+  - PWS-0405
+  - PWS-0406
+  - PWS-0112
+  - PWS-0307
+  decision_refs:
+  - PWS-D008
+  - PWS-D029
+  - PWS-D037
+  objective: Translate assignments, page order, template rules, and constraints into verified one-file, multi-file,
+    or ZIP output plans.
+  deliverables:
+  - Output grouping and naming planner
+  - Multiple-PDF export orchestration
+  - Safe ZIP writer
+  - Per-output and aggregate verification report
+  - Atomic destination behavior for multi-artifact exports
+  acceptance_criteria:
+  - Combined and separated outputs contain the intended pages in deterministic order.
+  - ZIP entries use safe relative names and cannot traverse directories.
+  - Every produced PDF is reopened, structurally checked, page-count checked, encryption checked, and rendered.
+  - A partial multi-file failure is reported without replacing a previous verified package as successful.
+  - The final artifact set satisfies or explicitly reports each active constraint.
+  verification:
+  - Run combined, multiple, ZIP, collision, partial-failure, disk-full, and destination-permission tests.
+  - Inspect ZIP entry names and every PDF round trip.
+  risk_tags:
+  - export
+  - zip
+  - integrity
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0408
+  milestone: M4
+  title: Generate package summary and complete the generic end-to-end pilot
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0402
+  - PWS-0403
+  - PWS-0405
+  - PWS-0407
+  decision_refs:
+  - PWS-D002
+  - PWS-D030
+  - PWS-D033
+  - PWS-D037
+  objective: Present a concrete human-readable summary and prove a first-time user can finish the generic packet
+    without another PDF application.
+  deliverables:
+  - Accessible human-readable package summary
+  - Optional technical manifest without sensitive content
+  - Final-screen status and review messaging
+  - End-to-end pilot scenario and usability script
+  acceptance_criteria:
+  - The summary states file count, names, sizes, page counts, assigned categories, checks performed, warnings, and
+    required human review.
+  - The summary does not guarantee portal acceptance, legal sufficiency, signature validity, OCR correctness, or
+    redaction unless separately proven.
+  - The primary scenario can be completed without another PDF application and without a mouse-only action.
+  - Summary output is accessible and contains no hidden diagnostic content.
+  verification:
+  - Run complete/missing/warning-heavy pilot scenarios.
+  - Perform first-time-user and keyboard-only walkthroughs.
+  - Inspect summary text for prohibited claims and sensitive diagnostics.
+  risk_tags:
+  - ux
+  - summary
+  - accessibility
+  - product-scope
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0409
+  milestone: M4
+  title: Run Milestone 4 v0.1 pilot gate
+  kind: gate
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0401
+  - PWS-0402
+  - PWS-0403
+  - PWS-0404
+  - PWS-0405
+  - PWS-0406
+  - PWS-0407
+  - PWS-0408
+  decision_refs:
+  - PWS-D003
+  - PWS-D006
+  - PWS-D022
+  - PWS-D023
+  - PWS-D030
+  - PWS-D033
+  - PWS-D040
+  objective: Approve the complete guided packet workflow as a v0.1 pilot while confirming redaction and other deferred
+    boundaries remain disabled and clearly communicated.
+  deliverables:
+  - Milestone 4/v0.1 gate report
+  - End-to-end generic packet evidence on reference hardware
+  - Keyboard and accessibility evidence
+  - Security/log/worker/export evidence
+  - Known-limitation and deferred-feature release notes
+  acceptance_criteria:
+  - Every M4 prerequisite task and every earlier gate is done.
+  - A first-time user can complete the generic packet without another PDF application.
+  - All outputs are verified and constraints are reported concretely.
+  - Permanent redaction is absent/disabled and ordinary shapes cannot be confused with it.
+  - No cloud, account, eligibility, legal advice, qualified-signature, or direct-submission claim is present.
+  - Core actions have keyboard alternatives and no prohibited content appears in logs.
+  verification:
+  - Run the full v0.1 automated suite and reference-hardware scenario.
+  - Perform manual first-time-user, keyboard-only, signed-input, malformed-input, cancellation, and recovery scenarios.
+  risk_tags:
+  - gate
+  - v0-1
+  - product
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0501
+  milestone: M5
+  title: Implement metadata, attachment, annotation, action, script, and encryption inspection
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0409
+  - PWS-0105
+  decision_refs:
+  - PWS-D015
+  - PWS-D019
+  - PWS-D021
+  - PWS-D027
+  - PWS-D037
+  objective: Produce a typed, conservative inventory of PDF features relevant to portal compatibility and privacy.
+  deliverables:
+  - Expanded PDF inspection model and adapter behavior
+  - Preflight integration
+  - Feature-removal policy placeholders for safe profiles
+  - Inspection corpus and report
+  acceptance_criteria:
+  - Metadata presence, attachments, annotations/comments, actions, JavaScript markers, form/interactivity, encryption,
+    and signature state are reported with stable codes.
+  - Unknown/uninspectable states are reported as unknown rather than absent.
+  - Inspection values do not enter routine logs.
+  - Raw PDF objects remain inside the adapter.
+  verification:
+  - Run feature-matrix contract tests and malformed/unknown-state tests.
+  - Run prohibited-log-token tests.
+  risk_tags:
+  - pdf
+  - inspection
+  - privacy
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0502
+  milestone: M5
+  title: Implement safe object/stream optimization baseline
+  kind: implementation
+  priority: P1
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0501
+  - PWS-0112
+  decision_refs:
+  - PWS-D015
+  - PWS-D024
+  - PWS-D029
+  objective: Reduce safe overhead before destructive image changes while preserving visual and semantic output.
+  deliverables:
+  - Optimization profile and adapter operation
+  - Unused-object/stream handling policy
+  - Before/after size and verification report
+  - Regression corpus
+  acceptance_criteria:
+  - Optimization does not change page count, intended rendering, text presence, overlay appearance, or encryption
+    policy.
+  - Outputs are reopened, structurally checked, and rendered.
+  - A larger or invalid optimized result falls back or fails without replacing a good output.
+  verification:
+  - Run semantic/visual round-trip and size-comparison tests.
+  - Test fallback on ineffective and invalid optimization.
+  risk_tags:
+  - optimization
+  - pdf
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0503
+  milestone: M5
+  title: Implement image-heavy page analysis and staged re-encoding
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0502
+  - PWS-0202
+  decision_refs:
+  - PWS-D024
+  objective: Identify image-heavy pages and apply bounded, incremental image re-encoding/downsampling policies with
+    per-page estimates.
+  deliverables:
+  - Image asset/page analysis model
+  - Staged quality/resolution profiles
+  - Per-page estimated and actual impact reporting
+  - Incremental worker pipeline
+  acceptance_criteria:
+  - Born-digital vector/text pages are not rasterized merely for size reduction.
+  - Image changes are limited to pages/assets selected by policy.
+  - Each stage reports resolution, color mode, quality policy, and size effect.
+  - Processing is cancelable and resource-bounded.
+  verification:
+  - Run image-heavy, mixed, vector-heavy, cancellation, and memory tests.
+  - Compare text/visual output and per-page size effects.
+  risk_tags:
+  - compression
+  - images
+  - performance
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0504
+  milestone: M5
+  title: Implement target-size search and constraint-aware export policy
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0407
+  - PWS-0503
+  decision_refs:
+  - PWS-D024
+  - PWS-D029
+  - PWS-D037
+  objective: Find the least-destructive verified export policy that meets total/per-file limits or clearly report
+    that the target is unsafe/unattainable.
+  deliverables:
+  - Target-size policy/search algorithm
+  - Combined and multi-file constraint integration
+  - Policy decision report
+  - Fallback suggestions such as splitting or increasing allowed size
+  acceptance_criteria:
+  - The algorithm starts with safe optimization and escalates image changes incrementally.
+  - Every candidate is measured and final output is fully verified.
+  - The search terminates within configured work/time limits.
+  - An unattainable target does not produce a misleading success or unreadable forced result.
+  - The chosen policy is reproducible from recorded inputs and configuration.
+  verification:
+  - Run boundary targets, impossible targets, combined/multi-file, cancellation, and timeout tests.
+  - Verify selected policies against expected minimal-change fixtures.
+  risk_tags:
+  - compression
+  - algorithms
+  - portal-rules
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0505
+  milestone: M5
+  title: Add compression preview, grayscale option, and legibility floor
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0503
+  - PWS-0504
+  - PWS-0203
+  decision_refs:
+  - PWS-D024
+  - PWS-D026
+  - PWS-D030
+  - PWS-D037
+  objective: Show realistic before/after impact and prevent automatic reduction beyond a documented legibility threshold.
+  deliverables:
+  - Affected-page preview UI
+  - Current/required/proposed size display
+  - Resolution/color/quality change summary
+  - Optional grayscale selection
+  - Legibility-floor policy and override boundaries
+  acceptance_criteria:
+  - The user can identify which pages and properties will change before export.
+  - Color removal requires an explicit policy/user choice when color may matter.
+  - Automatic policy stops at the documented floor.
+  - Unsafe targets produce actionable alternatives.
+  - Preview controls work by keyboard and at 200% scaling.
+  verification:
+  - Run UI and policy tests for achievable, borderline, and unsafe targets.
+  - Perform keyboard/scaling and visual legibility review.
+  risk_tags:
+  - compression
+  - ux
+  - accessibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0506
+  milestone: M5
+  title: Define conservative portal profile and compatibility matrix
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0501
+  - PWS-0504
+  - PWS-0505
+  decision_refs:
+  - PWS-D008
+  - PWS-D019
+  - PWS-D024
+  - PWS-D029
+  - PWS-D037
+  objective: Create a conservative export profile and prove its outputs across supported PDF readers and representative
+    upload constraints.
+  deliverables:
+  - Portal export profile with feature policy
+  - Reader/browser/Android compatibility corpus
+  - Representative upload-portal test procedure
+  - Compatibility report and known limitations
+  acceptance_criteria:
+  - The profile defines encryption, interactive content, attachments, metadata, fonts, overlays, compression, and
+    PDF compatibility choices.
+  - Outputs open and render as intended in the defined reader matrix.
+  - Unsupported features are flattened, removed, or explicitly blocked according to policy.
+  - The profile does not claim universal portal acceptance.
+  verification:
+  - Run full output matrix and manual reader checks.
+  - Run representative upload tests using synthetic documents where permitted.
+  risk_tags:
+  - compatibility
+  - portals
+  - pdf
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0507
+  milestone: M5
+  title: Run Milestone 5 compression and compatibility gate
+  kind: gate
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0501
+  - PWS-0502
+  - PWS-0503
+  - PWS-0504
+  - PWS-0505
+  - PWS-0506
+  decision_refs:
+  - PWS-D019
+  - PWS-D024
+  - PWS-D029
+  - PWS-D037
+  objective: Prove target-size export is honest, previewable, bounded, and compatible across the defined matrix.
+  deliverables:
+  - Milestone 5 gate report
+  - Achievable and unattainable target evidence
+  - Legibility review results
+  - Compatibility matrix report
+  - Inspection and profile evidence
+  acceptance_criteria:
+  - Every M5 prerequisite task is done.
+  - Compression never silently crosses the legibility floor.
+  - Unattainable targets report alternatives rather than false success.
+  - Every final output is reopened, structurally checked, and rendered.
+  - Conservative profile outputs pass the defined reader matrix.
+  verification:
+  - Run full M5 compression, security, accessibility, performance, and compatibility suites.
+  - Perform and record manual preview/legibility and reader-matrix scenarios.
+  risk_tags:
+  - gate
+  - compression
+  - compatibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0601
+  milestone: M6
+  title: Create redaction-specific threat model and adversarial corpus
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0507
+  - PWS-0004
+  - PWS-0009
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D035
+  objective: Define supported redaction claims and build adversarial fixtures before implementing the feature.
+  deliverables:
+  - Redaction threat-model extension
+  - Adversarial corpus with unique canary values
+  - Verification-method matrix
+  - Release-blocking failure taxonomy
+  acceptance_criteria:
+  - Corpus covers born-digital text, scanned text, embedded images, annotations, form values, metadata, attachments,
+    hidden layers, incremental revisions, rotated/cropped pages, OCR, and malformed files.
+  - Canary values are synthetic and searchable across extraction methods.
+  - Every roadmap redaction gate criterion maps to an automated or explicitly manual test.
+  - No visual-only test is accepted as proof of removal.
+  verification:
+  - Generate/validate all redaction fixtures and canary inventory.
+  - Review verification coverage against ROADMAP.md M6 criteria.
+  risk_tags:
+  - redaction
+  - security
+  - testing
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0602
+  milestone: M6
+  title: Implement redaction-mark intent and distinct review UI
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0601
+  - PWS-0306
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D030
+  objective: Let users mark regions for permanent removal while clearly distinguishing unapplied intent from ordinary
+    shapes and applied verified derivatives.
+  deliverables:
+  - Redaction-mark domain/schema extension
+  - Region selection and list UI
+  - Unapplied/applied/verified/failed states
+  - Warnings about derivatives, signatures, interactivity, and accessibility structure
+  acceptance_criteria:
+  - The action is named “Permanently remove information” or approved equivalent.
+  - Unapplied marks are visibly and programmatically distinct from verified redaction.
+  - Ordinary shapes cannot change into verified redaction without the redaction pipeline.
+  - Region selection has keyboard-accessible numeric/list alternatives.
+  - The UI explains that affected pages may be rasterized and signatures/accessibility structure may be lost.
+  verification:
+  - Run state-transition, terminology, keyboard, and schema tests.
+  - Perform screen-reader review of redaction status.
+  risk_tags:
+  - redaction
+  - ui
+  - accessibility
+  - terminology
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0603
+  milestone: M6
+  title: Implement full-page sanitized raster reconstruction
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0601
+  - PWS-0602
+  - PWS-0106
+  - PWS-0501
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D029
+  objective: Reconstruct each affected page from a rendered image with redaction regions burned in, without copying
+    original affected-page objects into the derivative.
+  deliverables:
+  - Redaction reconstruction worker operation
+  - Full-page render and burn-in policy
+  - New-page assembly without original affected-page object reuse
+  - Derivative and page-reconstruction report
+  acceptance_criteria:
+  - Affected output pages are built from sanitized rendered pixels, not copied original content streams or images.
+  - Redaction rectangles are applied before the sanitized page image is encoded into the derivative.
+  - Page geometry and visible non-redacted content remain within documented fidelity tolerance.
+  - Originals remain unchanged and signed sources are explicitly unsigned derivatives.
+  - Processing is bounded, cancelable, and fails closed.
+  verification:
+  - Run pixel/canary, object-reference, incremental-revision, geometry, cancellation, and resource-limit tests.
+  - Compare source and derivative object inventories.
+  risk_tags:
+  - redaction
+  - pdf-reconstruction
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0604
+  milestone: M6
+  title: Implement OCR regeneration with redaction-region exclusion
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0603
+  - PWS-0204
+  decision_refs:
+  - PWS-D016
+  - PWS-D022
+  objective: Create searchable text for reconstructed pages only from non-redacted regions and prove OCR cannot
+    recreate covered canaries.
+  deliverables:
+  - Region exclusion/masking before OCR
+  - Redacted-page OCR profile
+  - Searchability and canary-absence tests
+  - Failure handling that leaves the export unverified
+  acceptance_criteria:
+  - Redacted pixels are excluded from OCR input or recognition output by a proven mask strategy.
+  - Canary text under redaction is absent from OCR extraction and search.
+  - Non-redacted text remains searchable within expected OCR limits.
+  - OCR failure cannot result in a verified redaction export without explicit supported policy and verification.
+  verification:
+  - Run OCR canary tests across languages, rotations, scans, and low-quality pages.
+  - Run cancellation, timeout, and missing-language scenarios.
+  risk_tags:
+  - redaction
+  - ocr
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0605
+  milestone: M6
+  title: Implement redaction derivative sanitization
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0603
+  - PWS-0501
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D027
+  - PWS-D029
+  objective: Remove attachments, annotations, comments, actions, scripts, form values, and metadata from redaction
+    derivatives according to the hardened profile.
+  deliverables:
+  - Redaction sanitization profile
+  - Worker sanitizer operation
+  - Before/after feature inventory
+  - Sanitized audit report using IDs/codes only
+  acceptance_criteria:
+  - The derivative contains no attachments, annotations/comments, actions/scripts, or retained form values unless
+    an explicitly approved safe field is documented.
+  - Metadata values are removed or replaced by approved non-sensitive values.
+  - Incremental revisions from the original are not preserved in the derivative.
+  - The sanitizer does not log removed values.
+  verification:
+  - Run attachment, annotation, action, form, metadata, incremental-revision, and log-token tests.
+  risk_tags:
+  - redaction
+  - sanitization
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0606
+  milestone: M6
+  title: Implement multi-method redaction verification suite
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0601
+  - PWS-0604
+  - PWS-0605
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D029
+  objective: Verify redaction using text/search extraction, image extraction, object/content/revision inspection,
+    metadata/attachment/form checks, rendering, and resave tests.
+  deliverables:
+  - Verification orchestrator and typed result model
+  - Canary search/extraction checks
+  - Embedded-image and object/content/revision checks
+  - Metadata/attachment/annotation/form/action checks
+  - Multi-renderer/viewer and resave test procedure
+  acceptance_criteria:
+  - A canary recovered by any supported method causes verification failure.
+  - Verification checks text selection/search/extraction, image extraction, original affected-page object absence,
+    incremental revisions, attachments, metadata, comments, form values, OCR, and rendering.
+  - Unknown or failed verification methods fail closed for release builds.
+  - Results identify methods and codes without exposing canary/document values in routine logs.
+  verification:
+  - Run the complete adversarial redaction corpus and intentional-failure fixtures.
+  - Run multiple-viewer and save/resave scenarios according to the matrix.
+  risk_tags:
+  - redaction
+  - verification
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0607
+  milestone: M6
+  title: Block unsafe redaction export and generate user/audit reports
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0602
+  - PWS-0606
+  - PWS-0408
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D037
+  - PWS-D039
+  objective: Integrate redaction verification with export so failure cannot be bypassed and the user receives a
+    concrete, sanitized report.
+  deliverables:
+  - Export gate integration
+  - User-facing redaction result/report
+  - Technical verification report with methods/codes only
+  - Retry/review workflow
+  acceptance_criteria:
+  - Any failed or unknown required verification blocks final commit of the redacted export.
+  - The UI never labels an unapplied or failed result as redacted.
+  - Reports state affected page IDs, methods run, pass/fail, and derivative status without source text or sensitive
+    values.
+  - A previously verified output is not overwritten by a failed retry.
+  verification:
+  - Run bypass-attempt, partial-failure, retry, previous-output, and diagnostic-content tests.
+  risk_tags:
+  - redaction
+  - export-gate
+  - ux
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0608
+  milestone: M6
+  title: Run independent permanent-redaction release gate
+  kind: gate
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0601
+  - PWS-0602
+  - PWS-0603
+  - PWS-0604
+  - PWS-0605
+  - PWS-0606
+  - PWS-0607
+  decision_refs:
+  - PWS-D022
+  - PWS-D023
+  - PWS-D029
+  - PWS-D040
+  objective: Approve permanent redaction only after the complete adversarial suite and an independent security review
+    find no release-blocking recovery path.
+  deliverables:
+  - Milestone 6 gate report
+  - Full adversarial test results
+  - Independent review report and resolved findings
+  - Viewer/resave matrix
+  - Documented supported claims and limitations
+  acceptance_criteria:
+  - Every M6 prerequisite task is done.
+  - No canary is recoverable through supported text, image, object, revision, metadata, attachment, annotation,
+    form, OCR, viewer, or resave methods.
+  - Every intentional unsafe fixture is blocked.
+  - Signed-source derivative behavior and accessibility-structure warnings are correct.
+  - Independent review approves release or the gate remains failed.
+  verification:
+  - Run the entire redaction security suite from a clean environment.
+  - Perform multi-viewer/resave tests and independent review.
+  risk_tags:
+  - gate
+  - redaction
+  - security
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0701
+  milestone: M7
+  title: Complete keyboard navigation and focus audit
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0608
+  decision_refs:
+  - PWS-D030
+  objective: Ensure every primary workflow action has a complete keyboard path, logical focus order, visible focus,
+    and no drag-only dependency.
+  deliverables:
+  - Keyboard interaction inventory
+  - Automated focus/order and shortcut tests where practical
+  - Resolved gaps across Add/Organize/Improve/Fill/Protect/Check/Export
+  - Manual keyboard test script
+  acceptance_criteria:
+  - A user can complete the full primary workflow without a mouse.
+  - Focus never becomes trapped or lost during dialogs, progress, errors, or canvas/editor transitions.
+  - Drag-and-drop has assign/move/reorder alternatives.
+  - Keyboard shortcuts are discoverable and do not conflict with text entry.
+  verification:
+  - Run accessibility test suite and full manual keyboard script.
+  risk_tags:
+  - accessibility
+  - keyboard
+  - ui
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0702
+  milestone: M7
+  title: Complete screen-reader names, state, and announcements
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0701
+  decision_refs:
+  - PWS-D030
+  - PWS-D037
+  objective: Make the full workflow meaningful in NVDA through names, roles, states, descriptions, reading order,
+    and progress/error announcements.
+  deliverables:
+  - Accessible-name/state audit
+  - Progress, cancellation, completion, warning, and error announcement layer
+  - Document/page/checklist/overlay semantic descriptions
+  - NVDA scenario script and findings log
+  acceptance_criteria:
+  - NVDA identifies the selected case, document/page, checklist status, overlay type/state, preflight finding, and
+    export result.
+  - Long-running progress and cancellation are announced without excessive repetition.
+  - Errors place focus on or link to actionable recovery.
+  - No essential information is available only visually.
+  verification:
+  - Run automated accessibility checks available to Qt.
+  - Perform and record the full NVDA scenario.
+  risk_tags:
+  - accessibility
+  - screen-reader
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0703
+  milestone: M7
+  title: Harden scaling, contrast, target size, and reduced motion
+  kind: implementation
+  priority: P1
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0701
+  decision_refs:
+  - PWS-D030
+  objective: Make the application usable at 200% scaling, high contrast, enlarged text, and reduced motion without
+    hiding required controls.
+  deliverables:
+  - Scaling/layout audit and fixes
+  - High-contrast behavior
+  - Reduced-motion option/OS preference handling
+  - Interactive target-size review
+  acceptance_criteria:
+  - Critical controls and messages remain visible/reachable at 200% display scaling.
+  - Status and focus remain perceivable in high-contrast mode.
+  - Animation is nonessential and respects reduced-motion preference.
+  - Interactive targets meet the documented application accessibility target where layout permits.
+  verification:
+  - Run scaling layout tests and manual 100/150/200% review.
+  - Run high-contrast and reduced-motion scenarios.
+  risk_tags:
+  - accessibility
+  - scaling
+  - visual-design
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0704
+  milestone: M7
+  title: Implement localization framework and right-to-left preparation
+  kind: implementation
+  priority: P1
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0408
+  - PWS-0703
+  decision_refs:
+  - PWS-D025
+  - PWS-D030
+  - PWS-D036
+  objective: Externalize user-facing strings and template content so translations do not require application-code
+    changes and RTL layouts are feasible.
+  deliverables:
+  - Localization resource framework
+  - Locale-aware number/date/file-size display policy
+  - Pseudo-localization and RTL test locale
+  - Translator/developer documentation
+  acceptance_criteria:
+  - No primary workflow string is hard-coded outside the approved localization mechanism.
+  - Pseudo-localized text does not hide critical controls at supported scaling.
+  - RTL mode preserves logical reading/focus order and editor coordinate correctness.
+  - Template locale/version behavior remains schema-validated.
+  verification:
+  - Run missing-string, pseudo-localization, RTL, and scaling tests.
+  risk_tags:
+  - localization
+  - rtl
+  - accessibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0705
+  milestone: M7
+  title: Implement assisted-use consent, lock, and retention policy
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0102
+  - PWS-0702
+  decision_refs:
+  - PWS-D028
+  - PWS-D031
+  - PWS-D037
+  objective: Support shared-computer assistance through explicit consent, clear retention, automatic lock, and isolated
+    case access without adding multi-user administration.
+  deliverables:
+  - Assisted-mode consent screen and recorded confirmation
+  - Retention/expiry model and scheduler
+  - Automatic application/case lock behavior
+  - Handover summary and reopen behavior
+  acceptance_criteria:
+  - Retention behavior is explained before import and recorded without sensitive free text.
+  - Automatic lock hides case content and requires the approved local-unlock workflow.
+  - Expired cases are clearly identified and handled according to policy without deleting outside case scope.
+  - Unrelated cases are not exposed while working in an active assisted case.
+  - No organization account or server role system is introduced.
+  verification:
+  - Run consent, lock/unlock, expiry, clock-change, crash/restart, and case-isolation tests.
+  - Perform NVDA and shared-computer walkthroughs.
+  risk_tags:
+  - assisted-mode
+  - privacy
+  - retention
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0706
+  milestone: M7
+  title: Implement delete-after-export and accessible companion outputs
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0705
+  - PWS-0408
+  - PWS-0607
+  decision_refs:
+  - PWS-D028
+  - PWS-D030
+  - PWS-D031
+  - PWS-D037
+  objective: Provide an explicit post-export deletion workflow plus accessible package summary and optional plain-text
+    OCR companion without forensic-erasure claims.
+  deliverables:
+  - Delete-after-successful-export workflow
+  - Pre-deletion inventory and confirmation
+  - Accessible summary refinements
+  - Optional plain-text OCR companion with privacy warning and policy
+  acceptance_criteria:
+  - Deletion runs only after verified export and explicit confirmation.
+  - The UI explains what will be deleted, what export remains, and that forensic erasure is not guaranteed.
+  - Failure leaves the case state understandable and recoverable where possible.
+  - Summary and text companion are keyboard/screen-reader accessible and contain only intended user content.
+  verification:
+  - Run successful, canceled, partial-failure, locked-case, and restart deletion tests.
+  - Inspect companion outputs and perform screen-reader review.
+  risk_tags:
+  - deletion
+  - privacy
+  - accessibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0707
+  milestone: M7
+  title: Run Milestone 7 accessibility and assisted-mode gate
+  kind: gate
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0701
+  - PWS-0702
+  - PWS-0703
+  - PWS-0704
+  - PWS-0705
+  - PWS-0706
+  decision_refs:
+  - PWS-D030
+  - PWS-D031
+  - PWS-D037
+  objective: Approve the full workflow for keyboard/NVDA use, scalable/contrast modes, localization readiness, and
+    shared-computer retention/deletion behavior.
+  deliverables:
+  - Milestone 7 gate report
+  - Full keyboard and NVDA scenario evidence
+  - Scaling/high-contrast/reduced-motion report
+  - Pseudo-localization/RTL report
+  - Assisted consent/lock/retention/deletion report
+  acceptance_criteria:
+  - Every M7 prerequisite task is done.
+  - The full primary workflow completes without a mouse and is usable with NVDA.
+  - No action depends only on color or drag-and-drop.
+  - 200% scaling and high contrast preserve critical controls and focus.
+  - Retention is understandable before import and deletion behavior is explicit.
+  - Localization updates do not require application-code changes for text.
+  verification:
+  - Run full accessibility/localization/assisted-mode automated suites.
+  - Perform and record keyboard, NVDA, scaling, RTL, and shared-computer manual scenarios.
+  risk_tags:
+  - gate
+  - accessibility
+  - assisted-mode
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0801
+  milestone: M8
+  title: Finalize dependency lock, license inventory, hashes, and SBOM
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0707
+  - PWS-0005
+  decision_refs:
+  - PWS-D034
+  objective: Produce a release-grade inventory of runtime/build dependencies, licenses, versions, sources, hashes,
+    and transitive components.
+  deliverables:
+  - Final lock data
+  - Machine-readable SBOM
+  - Human-readable license/notice bundle
+  - Dependency hash/source verification report
+  - Policy for emergency security updates
+  acceptance_criteria:
+  - Every shipped runtime/build component appears in the SBOM and license inventory.
+  - Pinned versions and source hashes match release inputs.
+  - Distribution obligations are included in packaging documentation.
+  - No unapproved distribution-altering dependency is present.
+  verification:
+  - Generate SBOM from a clean release environment and compare with packaged contents.
+  - Run license-policy and hash verification checks.
+  risk_tags:
+  - supply-chain
+  - licensing
+  - release
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0802
+  milestone: M8
+  title: Build Windows installer and signed release artifacts
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0801
+  decision_refs:
+  - PWS-D004
+  - PWS-D034
+  objective: Package PaperWorkShell and required engines/resources for Windows without development tools and sign
+    artifacts through the approved release process.
+  deliverables:
+  - Installer technology ADR and configuration
+  - Application/installer build pipeline
+  - Code-signing procedure using maintainer-controlled material
+  - Install/repair/uninstall test automation where practical
+  acceptance_criteria:
+  - A clean Windows machine installs and runs PaperWorkShell without a development environment.
+  - Artifacts are signed by the approved process; private signing material is never committed or exposed to Codex
+    logs.
+  - Install locations and permissions follow least privilege.
+  - Required notices and component versions are available to the user.
+  verification:
+  - Install, launch, repair/update as supported, and uninstall on clean Windows test environments.
+  - Verify signatures and packaged file inventory.
+  risk_tags:
+  - installer
+  - signing
+  - windows
+  - release
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0803
+  milestone: M8
+  title: Implement authenticated update mechanism and component trust policy
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0801
+  - PWS-0802
+  decision_refs:
+  - PWS-D005
+  - PWS-D013
+  - PWS-D034
+  objective: Provide optional authenticated application updates that are separate from document processing and cannot
+    silently replace components from an untrusted source.
+  deliverables:
+  - Update-channel ADR and threat model
+  - Signed update metadata/package verification
+  - User control and offline behavior
+  - Rollback/failure handling
+  - Component/version audit trail
+  acceptance_criteria:
+  - Document processing remains fully usable offline.
+  - Unsigned, tampered, rollback-forbidden, or wrong-channel updates are rejected before installation.
+  - Update checks transmit no document/case content.
+  - A failed update leaves the previous working version intact or recoverable.
+  - Worker network denial remains in effect during document processing.
+  verification:
+  - Run valid, tampered, expired, rollback, offline, interrupted, and privacy-capture update tests.
+  risk_tags:
+  - updates
+  - supply-chain
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0804
+  milestone: M8
+  title: Implement case migration and release-to-release recovery tests
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0801
+  - PWS-0109
+  decision_refs:
+  - PWS-D009
+  - PWS-D010
+  - PWS-D036
+  objective: Safely open and migrate supported older cases while preserving source identity and user intent, and
+    fail before mutation on unsupported future versions.
+  deliverables:
+  - Migration registry and transactional runner
+  - Versioned case fixtures from supported releases
+  - Backup/rollback and failure behavior
+  - Migration compatibility report
+  acceptance_criteria:
+  - Migrations preserve source hashes, page references/order, transforms, overlays, assignments, constraints, confirmations,
+    and export history references.
+  - A failure leaves the original case unchanged and recoverable.
+  - Unknown future versions fail before mutation.
+  - Migration logs contain IDs/codes only and no document content.
+  verification:
+  - Run forward migration, repeated/open-idempotence, interrupted, disk-full, corrupted, and future-version tests.
+  risk_tags:
+  - migration
+  - recovery
+  - data-integrity
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0805
+  milestone: M8
+  title: Implement previewable sanitized diagnostic bundle
+  kind: implementation
+  priority: P1
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0113
+  - PWS-0801
+  decision_refs:
+  - PWS-D027
+  - PWS-D039
+  objective: Create an opt-in support bundle whose exact safe contents are shown before local export.
+  deliverables:
+  - Diagnostic data collector using approved fields only
+  - Human-readable pre-export inventory
+  - Local bundle writer with safe filenames
+  - Redaction/prohibited-token tests for diagnostics
+  acceptance_criteria:
+  - The user sees the exact categories/files to be included before creation.
+  - No OCR text, form values, names, addresses, filenames, full paths, metadata values, thumbnails, signatures,
+    or document bytes are included.
+  - Bundle creation is opt-in and local.
+  - Collection failure does not alter cases or logs with sensitive values.
+  verification:
+  - Run prohibited-token scans across generated bundles.
+  - Test cancel, permission failure, and partial write behavior.
+  risk_tags:
+  - diagnostics
+  - privacy
+  - support
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0806
+  milestone: M8
+  title: Publish user, support, security, and vulnerability-handling documentation
+  kind: implementation
+  priority: P0
+  effort: L
+  status: planned
+  critical_path: false
+  depends_on:
+  - PWS-0803
+  - PWS-0805
+  decision_refs:
+  - PWS-D020
+  - PWS-D022
+  - PWS-D033
+  - PWS-D037
+  - PWS-D039
+  objective: Provide accurate documentation for users, volunteers, administrators, and security reporters without
+    overstating product guarantees.
+  deliverables:
+  - User guide for the complete workflow
+  - Assisted-use and privacy guide
+  - Recovery, retention, deletion, diagnostics, and uninstall guide
+  - Signature/redaction terminology guide
+  - Security policy, contact, supported versions, and vulnerability process
+  acceptance_criteria:
+  - Documentation distinguishes visual, digital, and qualified signatures.
+  - Redaction documentation states supported method, verification, and limitations.
+  - No guide promises portal acceptance, legal advice, forensic erasure, OCR certainty, or PDF/UA conformance.
+  - Support instructions do not ask users to send sensitive documents or ordinary logs containing content.
+  - Accessibility and keyboard instructions are complete.
+  verification:
+  - Run documentation link/terminology/prohibited-claim checks.
+  - Perform novice and support-person walkthroughs.
+  risk_tags:
+  - documentation
+  - security-process
+  - support
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0807
+  milestone: M8
+  title: Run release-candidate matrix, performance, uninstall, and recovery validation
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0802
+  - PWS-0803
+  - PWS-0804
+  - PWS-0805
+  - PWS-0806
+  decision_refs:
+  - PWS-D004
+  - PWS-D029
+  - PWS-D030
+  - PWS-D034
+  - PWS-D040
+  objective: Execute the complete release matrix on packaged builds and confirm installation, workflow, updates,
+    migrations, recovery, accessibility, compatibility, and cleanup behavior.
+  deliverables:
+  - Release-candidate test plan and environment inventory
+  - Packaged-build automated and manual results
+  - Reference/low-disk/HDD performance report
+  - Install/update/migration/uninstall/residual-case report
+  - Release-blocker list
+  acceptance_criteria:
+  - All prior milestone gates remain valid against the packaged candidate.
+  - Install requires no development tools and uninstall clearly handles remaining cases.
+  - Supported older cases migrate safely.
+  - Reference hardware meets documented responsiveness/resource targets or the release gate fails.
+  - Full keyboard/NVDA, redaction, compression, reader, recovery, diagnostics, and update scenarios pass.
+  - No release-blocking defect remains open.
+  verification:
+  - Run the full packaged-build test matrix on clean environments.
+  - Perform manual accessibility, compatibility, redaction, update, migration, and uninstall scenarios.
+  risk_tags:
+  - release-candidate
+  - performance
+  - compatibility
+  - accessibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0808
+  milestone: M8
+  title: Run Milestone 8 v1.0 release gate
+  kind: gate
+  priority: P0
+  effort: XL
+  status: planned
+  critical_path: true
+  depends_on:
+  - PWS-0801
+  - PWS-0802
+  - PWS-0803
+  - PWS-0804
+  - PWS-0805
+  - PWS-0806
+  - PWS-0807
+  decision_refs:
+  - PWS-D003
+  - PWS-D022
+  - PWS-D030
+  - PWS-D034
+  - PWS-D040
+  objective: Approve a v1.0 candidate only when every milestone gate and release-hardening criterion has current
+    evidence on the packaged build.
+  deliverables:
+  - Milestone 8/v1.0 gate report
+  - Signed artifact inventory and checksums
+  - SBOM/license bundle
+  - Release notes and known limitations
+  - Security/accessibility/compatibility sign-off records
+  acceptance_criteria:
+  - Every M8 prerequisite and every earlier milestone gate is done.
+  - Packaged artifacts are signed and match the verified inventory/SBOM.
+  - Authenticated updates, migrations, diagnostics, install/uninstall, and recovery pass.
+  - Permanent redaction retains independent approval and passes against the candidate.
+  - Full keyboard/NVDA and compatibility matrices pass.
+  - No unresolved release/security/privacy/accessibility blocker remains.
+  verification:
+  - Run the final packaged-build matrix and independently verify artifact signatures/checksums.
+  - Perform the formal release review and record pass/fail.
+  risk_tags:
+  - gate
+  - v1-0
+  - release
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
