@@ -49,10 +49,10 @@ py -3.14 tools/dev.py validate-docs
 The offline validator scans root Markdown plus the `docs`, `benchmarks`, `packaging`, and `schemas`
 documentation trees. It supports the repository's inline links/images and ATX headings, excludes
 fenced/indented code and HTML-comment content from authority, and never fetches external HTTP(S)
-or mail links. Ambiguous comment delimiters inside inline Markdown fail closed. Local targets must
-remain under the repository root, use exact Git-visible casing and forward slashes, and resolve to
-an existing file/heading. Inputs must be UTF-8 and diagnostics contain only sorted relative paths
-and stable codes.
+or mail links. Unsupported raw HTML blocks, malformed fence openers, and ambiguous comment
+delimiters inside inline Markdown fail closed. Local targets must remain under the repository
+root, use exact Git-visible casing and forward slashes, and resolve to an existing file/heading.
+Inputs must be UTF-8 and diagnostics contain only sorted relative paths and stable codes.
 
 It also resolves every `PWS-D###` and `PWS-####` reference against the frozen decisions and task
 graph. The PWS-0004 security catalogue is structural: threat IDs are unique, every high/critical

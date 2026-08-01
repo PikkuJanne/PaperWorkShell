@@ -29,6 +29,14 @@ THREAT_REFERENCE: Final = re.compile(r"(?<![A-Za-z0-9-])TM-[0-9]{3}(?![A-Za-z0-9
 TEST_REFERENCE: Final = re.compile(r"(?<![A-Za-z0-9-])ST-[0-9]{3}(?![A-Za-z0-9-])")
 ATX_HEADING: Final = re.compile(r"^[ \t]{0,3}(?P<marks>#{1,6})[ \t]+(?P<title>.*?)[ \t]*$")
 FENCE: Final = re.compile(r"^[ \t]{0,3}(?P<marker>`{3,}|~{3,})(?P<rest>.*)$")
+RAW_HTML_BLOCK_OPENER: Final = re.compile(
+    r"^[ \t]{0,3}(?:"
+    r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t]|/?>|$)"
+    r"|<\?"
+    r"|<!\[CDATA\["
+    r"|<![A-Za-z]"
+    r")"
+)
 INLINE_LINK: Final = re.compile(
     r"!?\[[^\]\n]*\]\(\s*(?P<target><[^>\n]*>|[^)\s]+)"
     r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^)]*\)))?\s*\)"
@@ -239,9 +247,13 @@ def _visible_lines(text: str) -> tuple[VisibleLine, ...]:
             visible.append(VisibleLine(number, "", authoritative=False))
             continue
 
+        raw_html_ambiguity = RAW_HTML_BLOCK_OPENER.match(line) is not None
         match = FENCE.match(line)
         if match is not None and not contains_comment:
             marker = match.group("marker")
+            if marker[0] == "`" and "`" in match.group("rest"):
+                visible.append(VisibleLine(number, line, authoritative=False, ambiguous=True))
+                continue
             fence_character = marker[0]
             fence_length = len(marker)
             visible.append(VisibleLine(number, "", authoritative=False))
@@ -252,7 +264,12 @@ def _visible_lines(text: str) -> tuple[VisibleLine, ...]:
                 number,
                 line,
                 authoritative=not contains_comment,
-                ambiguous=inline_comment_ambiguity or contains_comment and match is not None,
+                ambiguous=(
+                    raw_html_ambiguity
+                    or inline_comment_ambiguity
+                    or contains_comment
+                    and match is not None
+                ),
             )
         )
     return tuple(visible)
@@ -783,7 +800,7 @@ def validation_issues(root: Path = PROJECT_ROOT) -> list[DocumentationIssue]:
                         root,
                         path,
                         line.number,
-                        "HTML comment delimiters are ambiguous inside Markdown syntax",
+                        "unsupported raw HTML or ambiguous Markdown visibility syntax",
                     )
                 )
 

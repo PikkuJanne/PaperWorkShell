@@ -150,6 +150,34 @@ class DocumentationValidationTests(unittest.TestCase):
         self.assertNotIn("PWS-D998", rendered)
         self.assertNotIn("nowhere.md", rendered)
 
+    def test_invalid_backtick_fence_info_fails_closed_and_keeps_scanning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "\n```markdown`invalid\nPWS-D999 and [visible](missing.md) remain visible.\n"
+                )
+
+            codes = _codes(root)
+
+        self.assertIn("DOC_MARKDOWN_VISIBILITY_INVALID", codes)
+        self.assertIn("DOC_DECISION_REFERENCE_UNKNOWN", codes)
+        self.assertIn("DOC_LINK_TARGET_MISSING", codes)
+
+    def test_tilde_fence_info_may_contain_backticks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "\n~~~markdown`allowed\nPWS-D999 and [hidden](missing.md) remain hidden.\n~~~\n"
+                )
+
+            issues = validation_issues(root)
+
+        self.assertEqual([], issues)
+
     def test_invalid_local_link_classes_are_rejected(self) -> None:
         cases = (
             ("[missing](missing.md)", "DOC_LINK_TARGET_MISSING"),
@@ -295,6 +323,74 @@ class DocumentationValidationTests(unittest.TestCase):
                 codes = _codes(root)
 
             self.assertIn("DOC_MARKDOWN_VISIBILITY_INVALID", codes)
+
+    def test_raw_html_block_openers_fail_closed(self) -> None:
+        forms = (
+            "<style>",
+            "<textarea>",
+            '<div class="fixture">',
+            "</div>",
+            "<!DOCTYPE fixture>",
+            "<?fixture?>",
+            "<![CDATA[fixture]]>",
+        )
+        for form in forms:
+            with self.subTest(form=form), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _minimal_repository(root)
+                with (root / "README.md").open("a", encoding="utf-8") as stream:
+                    stream.write(f"\n{form}\n")
+
+                codes = _codes(root)
+
+            self.assertIn("DOC_MARKDOWN_VISIBILITY_INVALID", codes)
+
+    def test_raw_html_inside_hidden_markdown_content_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write("\n<!--\n<script>\n-->\n    <pre>\n```html\n<textarea>\n```\n")
+
+            issues = validation_issues(root)
+
+        self.assertEqual([], issues)
+
+    def test_raw_html_cannot_wrap_authoritative_security_content(self) -> None:
+        documents = (
+            (
+                "DECISIONS.md",
+                "## PWS-D001 — Synthetic decision",
+            ),
+            (
+                "docs/security/threat-model.md",
+                "| ID | Threat scenario | Impact | Required security outcome |",
+            ),
+            (
+                "docs/security/threat-traceability.md",
+                "| Threat | Frozen decisions | Implementation tasks and gates | Planned evidence focus |",
+            ),
+            (
+                "docs/security/security-test-plan.md",
+                "| Test ID | Threats | Earliest owning tasks | Layer and synthetic scenario | Required oracle |",
+            ),
+        )
+        for tag in ("pre", "script"):
+            for relative_path, wrapped_start in documents:
+                with (
+                    self.subTest(tag=tag, relative_path=relative_path),
+                    tempfile.TemporaryDirectory() as temporary,
+                ):
+                    root = Path(temporary)
+                    _minimal_repository(root)
+                    path = root / relative_path
+                    _replace(path, wrapped_start, f"<{tag}>\n{wrapped_start}")
+                    with path.open("a", encoding="utf-8") as stream:
+                        stream.write(f"</{tag}>\n")
+
+                    codes = _codes(root)
+
+                self.assertIn("DOC_MARKDOWN_VISIBILITY_INVALID", codes)
 
     def test_hidden_or_indented_decision_headings_are_not_authoritative(self) -> None:
         forms = (
