@@ -4,6 +4,40 @@ This bundle turns the initial PaperWorkShell product concept into a repository-r
 
 PaperWorkShell is a local-first desktop application that converts mixed PDFs and images into a complete, organized, legible, privacy-safe, portal-ready document package. The first release is deliberately narrower than a general PDF editor.
 
+## Development bootstrap
+
+The repository is currently at the foundation stage. It does not yet contain the PySide6 UI or any PDF, image, OCR, renderer, installer, cloud, or signing dependency.
+
+Prerequisites:
+
+- Git
+- Standard CPython 3.14 (not the experimental free-threaded build)
+- `uv` 0.11.32
+
+Create the locked development environment from a clean checkout:
+
+```powershell
+uv sync --locked
+```
+
+`pyproject.toml` restricts development to CPython 3.14 and requires the exact supported `uv` release. `uv.lock` is committed and must change only as part of an intentional dependency update.
+
+Stable developer commands use a standard-library dispatcher and structured subprocess arguments:
+
+| Command | Purpose |
+|---|---|
+| `py -3.14 tools/dev.py bootstrap` | Synchronize the locked development environment |
+| `py -3.14 tools/dev.py format` | Apply repository formatting |
+| `py -3.14 tools/dev.py format-check` | Check formatting without changes |
+| `py -3.14 tools/dev.py lint` | Run static lint checks |
+| `py -3.14 tools/dev.py typecheck` | Run strict type checking |
+| `py -3.14 tools/dev.py test-unit` | Run unit tests |
+| `py -3.14 tools/dev.py validate-schemas` | Validate `TASKS.yaml` against its JSON Schema |
+| `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
+| `py -3.14 tools/dev.py check` | Run every non-mutating PWS-0001 quality check |
+
+On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).
+
 ## Bundle contents
 
 | File | Purpose |
@@ -99,19 +133,14 @@ Use these terms consistently:
 
 ## Validating the bundle
 
-After the repository bootstrap creates stable commands, the project should expose task and schema validation. Before that, a maintainer can validate with Python and PyYAML/jsonschema using logic equivalent to:
+After bootstrapping, run both validation layers:
 
-```python
-from pathlib import Path
-import json
-import yaml
-from jsonschema import validate
-
-root = Path(".")
-data = yaml.safe_load((root / "TASKS.yaml").read_text(encoding="utf-8"))
-schema = json.loads((root / "TASKS.schema.json").read_text(encoding="utf-8"))
-validate(data, schema)
+```powershell
+py -3.14 tools/dev.py validate-schemas
+py -3.14 tools/dev.py validate-task-graph
 ```
+
+The validator uses safe YAML loading with duplicate-key rejection and Draft 2020-12 JSON Schema validation with date-format checking. It does not retrieve schemas or other content from the network.
 
 Graph validation must additionally confirm:
 
