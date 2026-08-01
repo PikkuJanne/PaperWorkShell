@@ -160,7 +160,7 @@ def _document_label(path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
-        return path.name or "manifest.json"
+        return "external-manifest.json"
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -498,21 +498,44 @@ def _register_namespace(
             namespace[record_id] = kind
 
 
-def _timestamp(value: str) -> datetime:
-    return datetime.fromisoformat(f"{value[:-1]}+00:00")
+def _timestamp(
+    value: str,
+    *,
+    document: str,
+    path: str,
+    issues: list[ManifestIssue],
+) -> datetime | None:
+    try:
+        return datetime.fromisoformat(f"{value[:-1]}+00:00")
+    except OverflowError, ValueError:
+        _add_issue(
+            issues,
+            _issue(
+                "MANIFEST_TIMESTAMP_INVALID",
+                document,
+                path,
+                "timestamp is not supported by the canonical UTC parser",
+            ),
+        )
+        return None
 
 
 def _check_time_within_case(
     value: str,
     *,
-    created_at: datetime,
-    updated_at: datetime,
+    created_at: datetime | None,
+    updated_at: datetime | None,
     document: str,
     path: str,
     issues: list[ManifestIssue],
-) -> datetime:
-    parsed = _timestamp(value)
-    if parsed < created_at or parsed > updated_at:
+) -> datetime | None:
+    parsed = _timestamp(value, document=document, path=path, issues=issues)
+    if (
+        parsed is not None
+        and created_at is not None
+        and updated_at is not None
+        and (parsed < created_at or parsed > updated_at)
+    ):
         _add_issue(
             issues,
             _issue(
@@ -573,6 +596,10 @@ def _normalized_output_name(name: str) -> str:
     return unicodedata.normalize("NFC", name).casefold()
 
 
+def _contains_format_control(value: str) -> bool:
+    return any(unicodedata.category(character) == "Cf" for character in value)
+
+
 def _check_output_names(
     constraints: Mapping[str, Any],
     *,
@@ -584,6 +611,16 @@ def _check_output_names(
     for index, name in enumerate(names):
         path = f"$.constraints.requested_output_names[{index}]"
         normalized = _normalized_output_name(name)
+        if _contains_format_control(name):
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_OUTPUT_NAME_FORMAT_CONTROL",
+                    document,
+                    path,
+                    "output name contains unsafe Unicode formatting controls",
+                ),
+            )
         if name != unicodedata.normalize("NFC", name):
             _add_issue(
                 issues,
@@ -617,6 +654,31 @@ def _check_output_names(
             )
         else:
             normalized_names.add(normalized)
+    maximum_file_count = cast(int | None, constraints.get("maximum_file_count"))
+    if maximum_file_count is not None and len(names) > maximum_file_count:
+        _add_issue(
+            issues,
+            _issue(
+                "MANIFEST_OUTPUT_NAME_COUNT_INVALID",
+                document,
+                "$.constraints.requested_output_names",
+                "requested output names exceed the configured file-count limit",
+            ),
+        )
+
+
+def _sequence_reason_matches(reason: str, before: Sequence[str], after: Sequence[str]) -> bool:
+    before_set = set(before)
+    after_set = set(after)
+    if reason == "remove":
+        return after_set < before_set and list(after) == [
+            page_id for page_id in before if page_id in after_set
+        ]
+    if reason in {"import", "restore"}:
+        return before_set < after_set and list(before) == [
+            page_id for page_id in after if page_id in before_set
+        ]
+    return before_set == after_set
 
 
 def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIssue]:
@@ -717,9 +779,19 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
             issues=issues,
         )
 
-    created_at = _timestamp(cast(str, data["created_at"]))
-    updated_at = _timestamp(cast(str, data["updated_at"]))
-    if updated_at < created_at:
+    created_at = _timestamp(
+        cast(str, data["created_at"]),
+        document=document,
+        path="$.created_at",
+        issues=issues,
+    )
+    updated_at = _timestamp(
+        cast(str, data["updated_at"]),
+        document=document,
+        path="$.updated_at",
+        issues=issues,
+    )
+    if created_at is not None and updated_at is not None and updated_at < created_at:
         _add_issue(
             issues,
             _issue(
@@ -734,6 +806,27 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
     for index, source in enumerate(sources):
         source_id = cast(str, source["source_id"])
         storage_name = cast(str, source["storage_name"])
+        display_name = cast(str, source["display_name"])
+        if _contains_format_control(display_name):
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_DISPLAY_NAME_FORMAT_CONTROL",
+                    document,
+                    f"$.sources[{index}].display_name",
+                    "display name contains unsafe Unicode formatting controls",
+                ),
+            )
+        if display_name != unicodedata.normalize("NFC", display_name):
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_DISPLAY_NAME_NONCANONICAL",
+                    document,
+                    f"$.sources[{index}].display_name",
+                    "display name must use canonical Unicode normalization",
+                ),
+            )
         if storage_name != f"{source_id}.bin":
             _add_issue(
                 issues,
@@ -927,6 +1020,7 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
         elif kind == "change_sequence":
             before = cast(list[str], payload["before_page_ids"])
             after = cast(list[str], payload["after_page_ids"])
+            reason = cast(str, payload["reason"])
             _check_known_page_list(
                 before,
                 page_index,
@@ -949,6 +1043,16 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                         document,
                         f"$.page_operations[{index}].payload.before_page_ids",
                         "operation baseline does not match replayed sequence",
+                    ),
+                )
+            if not _sequence_reason_matches(reason, before, after):
+                _add_issue(
+                    issues,
+                    _issue(
+                        "MANIFEST_SEQUENCE_REASON_INVALID",
+                        document,
+                        f"$.page_operations[{index}].payload.reason",
+                        "sequence transition does not match its declared reason",
                     ),
                 )
             replay_sequence = list(after)
@@ -1042,7 +1146,7 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                     ),
                 )
 
-    assignment_times: dict[str, datetime] = {}
+    assignment_times: dict[str, datetime | None] = {}
     for index, assignment in enumerate(assignments):
         _check_known_page_list(
             cast(list[str], assignment["page_ids"]),
@@ -1061,7 +1165,7 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
             issues=issues,
         )
 
-    confirmation_times: dict[str, datetime] = {}
+    confirmation_times: dict[str, datetime | None] = {}
     for index, confirmation in enumerate(confirmations):
         confirmation_id = cast(str, confirmation["confirmation_id"])
         confirmation_times[confirmation_id] = _check_time_within_case(
@@ -1127,19 +1231,23 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                     "confirmation does not affirm this assignment",
                 ),
             )
-        elif (
-            confirmation_times[confirmation_id]
-            < assignment_times[cast(str, assignment["assignment_id"])]
-        ):
-            _add_issue(
-                issues,
-                _issue(
-                    "MANIFEST_TIMESTAMP_ORDER_INVALID",
-                    document,
-                    f"$.assignments[{index}].confirmation_id",
-                    "assignment confirmation predates the assignment",
-                ),
-            )
+        else:
+            confirmation_time = confirmation_times[confirmation_id]
+            assignment_time = assignment_times[cast(str, assignment["assignment_id"])]
+            if (
+                confirmation_time is not None
+                and assignment_time is not None
+                and confirmation_time < assignment_time
+            ):
+                _add_issue(
+                    issues,
+                    _issue(
+                        "MANIFEST_TIMESTAMP_ORDER_INVALID",
+                        document,
+                        f"$.assignments[{index}].confirmation_id",
+                        "assignment confirmation predates the assignment",
+                    ),
+                )
 
     _check_output_names(
         cast(Mapping[str, Any], data["constraints"]),

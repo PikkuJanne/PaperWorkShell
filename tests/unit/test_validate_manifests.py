@@ -28,6 +28,50 @@ def _load_example(name: str) -> dict[str, Any]:
     return cast(dict[str, Any], loaded)
 
 
+def _uuid(namespace: int, value: int) -> str:
+    return f"{namespace:08x}-0000-4000-8000-{value:012x}"
+
+
+def _generated_reference_graph(source_count: int, pages_per_source: int) -> dict[str, Any]:
+    data = _load_example("case-manifest-v1-minimal.json")
+    sources = cast(list[dict[str, Any]], data["sources"])
+    pages = cast(list[dict[str, Any]], data["pages"])
+    sequence: list[str] = []
+    for source_offset in range(source_count):
+        source_id = _uuid(0x20000000, source_offset + 100)
+        sources.append(
+            {
+                "source_id": source_id,
+                "display_name": f"Synthetic source {source_offset + 1}.pdf",
+                "storage_name": f"{source_id}.bin",
+                "detected_media_type": "application/pdf",
+                "byte_size": 64 + source_offset,
+                "page_count": pages_per_source,
+                "sha256": f"{source_offset + 1:064x}",
+                "signature_state": "unknown",
+                "encryption_state": "unknown",
+                "import_state": "complete",
+                "imported_at": "2026-08-01T10:00:00Z",
+            }
+        )
+        for source_page_index in range(pages_per_source):
+            page_id = _uuid(
+                0x30000000,
+                (source_offset * pages_per_source) + source_page_index + 100,
+            )
+            pages.append(
+                {
+                    "page_id": page_id,
+                    "source_id": source_id,
+                    "source_page_index": source_page_index,
+                }
+            )
+            sequence.append(page_id)
+    data["page_sequence_base"] = list(sequence)
+    data["page_sequence"] = list(sequence)
+    return data
+
+
 class CaseManifestValidationTests(unittest.TestCase):
     schema: ClassVar[dict[str, Any]]
 
@@ -117,10 +161,24 @@ class CaseManifestValidationTests(unittest.TestCase):
                     _, issues = validate_manifest_document(path, schema=self.schema)
                     self.assertIn(expected_code, {issue.code for issue in issues})
 
+    def test_schema_accepted_but_unsupported_timestamps_fail_without_traceback(self) -> None:
+        for timestamp in ("0000-01-01T00:00:00Z", "2016-12-31T23:59:60Z"):
+            with self.subTest(timestamp=timestamp):
+                data = _load_example("case-manifest-v1-minimal.json")
+                data["created_at"] = timestamp
+                data["updated_at"] = timestamp
+
+                self.assertIn("MANIFEST_TIMESTAMP_INVALID", self._codes(data))
+
+        trailing_newline = _load_example("case-manifest-v1-minimal.json")
+        trailing_newline["created_at"] = "2026-08-01T10:00:00Z\n"
+        self.assertEqual({"MANIFEST_SCHEMA_VALIDATION"}, self._codes(trailing_newline))
+
     def test_loader_limits_and_diagnostics_do_not_disclose_absolute_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_root = Path(temporary)
-            invalid_utf8 = temporary_root / "private-case.json"
+            filename_canary = "CANARY-SENSITIVE-CASE-NAME.json"
+            invalid_utf8 = temporary_root / filename_canary
             invalid_utf8.write_bytes(b'{"schema_version":1,"value":"\xff"}')
             _, encoding_issues = validate_manifest_document(invalid_utf8, schema=self.schema)
             oversized = temporary_root / "oversized.json"
@@ -131,6 +189,7 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertIn("MANIFEST_TEXT_ENCODING_INVALID", rendered)
         self.assertIn("MANIFEST_INPUT_TOO_LARGE", rendered)
         self.assertNotIn(str(temporary_root), rendered)
+        self.assertNotIn(filename_canary, rendered)
 
     def test_schema_rejects_external_or_unresolved_references(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -161,15 +220,20 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertEqual(before, data)
 
     def test_generated_normalized_box_boundaries_are_exact(self) -> None:
-        cases = (
-            ((0, 0, 1, 1), True),
-            ((0, 0, 1_000_000, 1_000_000), True),
-            ((750_000, 0, 250_000, 1_000_000), True),
-            ((750_001, 0, 250_000, 1_000_000), False),
-            ((0, 900_000, 1_000_000, 100_001), False),
-        )
-        for (x, y, width, height), valid in cases:
-            with self.subTest(box=(x, y, width, height)):
+        coordinates = (0, 1, 125_000, 500_000, 875_000, 999_999)
+        cases: list[tuple[int, int, int, int, bool]] = []
+        for x in coordinates:
+            for y in coordinates:
+                maximum_width = 1_000_000 - x
+                maximum_height = 1_000_000 - y
+                cases.append((x, y, maximum_width, maximum_height, True))
+                if x > 0:
+                    cases.append((x, y, maximum_width + 1, maximum_height, False))
+                if y > 0:
+                    cases.append((x, y, maximum_width, maximum_height + 1, False))
+
+        for x, y, width, height, valid in cases:
+            with self.subTest(box=(x, y, width, height), valid=valid):
                 data = _load_example("case-manifest-v1-representative.json")
                 operations = cast(list[dict[str, Any]], data["page_operations"])
                 payload = cast(dict[str, Any], operations[1]["payload"])
@@ -179,13 +243,60 @@ class CaseManifestValidationTests(unittest.TestCase):
                 self.assertEqual(valid, "MANIFEST_NORMALIZED_BOX_INVALID" not in codes)
 
     def test_generated_source_page_reference_boundaries_are_exact(self) -> None:
-        for source_page_index, valid in ((0, True), (1, False), (2, False)):
-            with self.subTest(source_page_index=source_page_index):
-                data = _load_example("case-manifest-v1-representative.json")
-                pages = cast(list[dict[str, Any]], data["pages"])
-                pages[2]["source_page_index"] = source_page_index
-                codes = self._codes(data)
-                self.assertEqual(valid, "MANIFEST_SOURCE_PAGE_OUT_OF_RANGE" not in codes)
+        for source_count in (1, 2, 4, 8):
+            for pages_per_source in (1, 2, 5):
+                with self.subTest(
+                    source_count=source_count,
+                    pages_per_source=pages_per_source,
+                    mutation="valid",
+                ):
+                    data = _generated_reference_graph(source_count, pages_per_source)
+                    self.assertEqual([], self._issues(data))
+
+                out_of_range = _generated_reference_graph(source_count, pages_per_source)
+                out_of_range_pages = cast(list[dict[str, Any]], out_of_range["pages"])
+                out_of_range_pages[-1]["source_page_index"] = pages_per_source
+                with self.subTest(
+                    source_count=source_count,
+                    pages_per_source=pages_per_source,
+                    mutation="out-of-range",
+                ):
+                    self.assertIn(
+                        "MANIFEST_SOURCE_PAGE_OUT_OF_RANGE",
+                        self._codes(out_of_range),
+                    )
+
+                dangling = _generated_reference_graph(source_count, pages_per_source)
+                dangling_pages = cast(list[dict[str, Any]], dangling["pages"])
+                dangling_pages[-1]["source_id"] = _uuid(0x20000000, 99_999)
+                with self.subTest(
+                    source_count=source_count,
+                    pages_per_source=pages_per_source,
+                    mutation="dangling-source",
+                ):
+                    self.assertIn(
+                        "MANIFEST_SOURCE_REFERENCE_UNKNOWN",
+                        self._codes(dangling),
+                    )
+
+                incomplete = _generated_reference_graph(source_count, pages_per_source)
+                cast(list[dict[str, Any]], incomplete["pages"]).pop()
+                with self.subTest(
+                    source_count=source_count,
+                    pages_per_source=pages_per_source,
+                    mutation="missing-page",
+                ):
+                    self.assertIn("MANIFEST_SOURCE_PAGE_MISSING", self._codes(incomplete))
+
+        duplicate_pair = _generated_reference_graph(2, 2)
+        duplicate_pair_pages = cast(list[dict[str, Any]], duplicate_pair["pages"])
+        duplicate_pair_pages[1]["source_page_index"] = 0
+        duplicate_id = _generated_reference_graph(2, 2)
+        duplicate_id_pages = cast(list[dict[str, Any]], duplicate_id["pages"])
+        duplicate_id_pages[1]["page_id"] = duplicate_id_pages[0]["page_id"]
+
+        self.assertIn("MANIFEST_SOURCE_PAGE_DUPLICATE", self._codes(duplicate_pair))
+        self.assertIn("MANIFEST_PAGE_ID_DUPLICATE", self._codes(duplicate_id))
 
     def test_source_page_pairs_must_be_unique_and_complete(self) -> None:
         duplicate = _load_example("case-manifest-v1-representative.json")
@@ -225,6 +336,36 @@ class CaseManifestValidationTests(unittest.TestCase):
 
         self.assertIn("MANIFEST_OPERATION_SEQUENCE_INVALID", self._codes(wrong_order))
         self.assertIn("MANIFEST_SEQUENCE_REPLAY_MISMATCH", self._codes(wrong_final))
+
+    def test_sequence_change_reason_must_match_membership_transition(self) -> None:
+        reorder_removal = _load_example("case-manifest-v1-representative.json")
+        reorder_removal_operations = cast(list[dict[str, Any]], reorder_removal["page_operations"])
+        cast(dict[str, Any], reorder_removal_operations[2]["payload"])["reason"] = "reorder"
+        remove_reorder = _load_example("case-manifest-v1-representative.json")
+        remove_reorder_operations = cast(list[dict[str, Any]], remove_reorder["page_operations"])
+        cast(dict[str, Any], remove_reorder_operations[3]["payload"])["reason"] = "remove"
+
+        self.assertIn("MANIFEST_SEQUENCE_REASON_INVALID", self._codes(reorder_removal))
+        self.assertIn("MANIFEST_SEQUENCE_REASON_INVALID", self._codes(remove_reorder))
+
+        for reason in ("import", "restore"):
+            with self.subTest(reason=reason):
+                restoration = _load_example("case-manifest-v1-representative.json")
+                restoration_operations = cast(list[dict[str, Any]], restoration["page_operations"])
+                payload = cast(dict[str, Any], restoration_operations[3]["payload"])
+                payload["reason"] = reason
+                payload["after_page_ids"] = list(restoration["page_sequence_base"])
+                restoration["page_sequence"] = list(restoration["page_sequence_base"])
+                self.assertEqual([], self._issues(restoration))
+
+        for reason in ("reorder", "split", "combine"):
+            with self.subTest(reason=reason):
+                same_membership = _load_example("case-manifest-v1-representative.json")
+                same_membership_operations = cast(
+                    list[dict[str, Any]], same_membership["page_operations"]
+                )
+                cast(dict[str, Any], same_membership_operations[3]["payload"])["reason"] = reason
+                self.assertEqual([], self._issues(same_membership))
 
     def test_duplicate_and_cross_namespace_ids_are_rejected(self) -> None:
         duplicate = _load_example("case-manifest-v1-representative.json")
@@ -286,6 +427,42 @@ class CaseManifestValidationTests(unittest.TestCase):
         collision_codes = self._codes(colliding)
         self.assertIn("MANIFEST_OUTPUT_NAME_NONCANONICAL", collision_codes)
         self.assertIn("MANIFEST_OUTPUT_NAME_COLLISION", collision_codes)
+
+    def test_output_names_reject_format_controls_and_count_amplification(self) -> None:
+        disguised = _load_example("case-manifest-v1-representative.json")
+        cast(dict[str, Any], disguised["constraints"])["requested_output_names"] = [
+            "application\u202efdp.exe"
+        ]
+        too_many_for_constraint = _load_example("case-manifest-v1-representative.json")
+        cast(dict[str, Any], too_many_for_constraint["constraints"])["requested_output_names"] = [
+            "one.pdf",
+            "two.pdf",
+            "three.pdf",
+            "four.pdf",
+            "five.pdf",
+        ]
+        too_many_for_schema = _load_example("case-manifest-v1-minimal.json")
+        cast(dict[str, Any], too_many_for_schema["constraints"])["requested_output_names"] = [
+            f"output-{index}.pdf" for index in range(4_097)
+        ]
+
+        self.assertIn("MANIFEST_OUTPUT_NAME_FORMAT_CONTROL", self._codes(disguised))
+        self.assertIn(
+            "MANIFEST_OUTPUT_NAME_COUNT_INVALID",
+            self._codes(too_many_for_constraint),
+        )
+        self.assertEqual({"MANIFEST_SCHEMA_VALIDATION"}, self._codes(too_many_for_schema))
+
+    def test_source_display_names_reject_ambiguous_unicode_formatting(self) -> None:
+        format_control = _load_example("case-manifest-v1-representative.json")
+        format_control_source = cast(list[dict[str, Any]], format_control["sources"])[0]
+        format_control_source["display_name"] = "Synthetic application\u202efdp.exe"
+        noncanonical = _load_example("case-manifest-v1-representative.json")
+        noncanonical_source = cast(list[dict[str, Any]], noncanonical["sources"])[0]
+        noncanonical_source["display_name"] = "Synthetic re\u0301sume\u0301.pdf"
+
+        self.assertIn("MANIFEST_DISPLAY_NAME_FORMAT_CONTROL", self._codes(format_control))
+        self.assertIn("MANIFEST_DISPLAY_NAME_NONCANONICAL", self._codes(noncanonical))
 
     def test_display_names_and_overlay_text_remain_inert_data(self) -> None:
         data = _load_example("case-manifest-v1-representative.json")

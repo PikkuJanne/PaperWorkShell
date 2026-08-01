@@ -59,6 +59,10 @@ current replay state; its `after_page_ids` becomes the next state. All reference
 does not independently replace the page sequence. This prevents a stored snapshot and its history
 from both validating while contradicting one another.
 
+The sequence-change reason is also checked against membership: `remove` strictly removes IDs while
+preserving survivor order; `import` and `restore` strictly add IDs while preserving the prior order;
+and `reorder`, `split`, and `combine` retain exactly the same page-ID membership.
+
 ## Normalized geometry
 
 `normalized_page_millionths_v1` is an integer coordinate space over the full logical page before
@@ -104,6 +108,13 @@ cannot express:
 
 Diagnostics contain stable codes, repository-relative fixture labels, and JSON locations. They do
 not echo display names, overlay text, invalid values, absolute paths, or raw library exceptions.
+
+The v1 parsing envelope is capped at 8 MiB, 64 nesting levels, 100,000 JSON nodes, and 4,096
+members in each manifest collection. These are defensive contract limits that prevent a small
+manifest from amplifying schema/semantic work; they are not portal, case-size, or document-engine
+performance claims. Later measured document-processing limits remain owned by their roadmap
+tasks. Requested output names must also fit the active file-count constraint and cannot contain
+Unicode formatting controls that could disguise their visible order.
 
 Canonical examples are
 [`case-manifest-v1-minimal.json`](../../schemas/examples/case-manifest-v1-minimal.json) and
