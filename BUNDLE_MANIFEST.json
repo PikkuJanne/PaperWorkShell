@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.8",
+  "bundle_version": "0.1.9",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 117062,
-      "sha256": "d9cd5f1f5c0285f521c3d754364a02e7fa29dfcf5a03d85636318a2f1fff4d47"
+      "bytes": 117068,
+      "sha256": "74c766123c2970c6ab664966e0ccbd0df6745add5b26f515927b624e14eb41d4"
     },
     {
       "path": "TASKS.schema.json",
@@ -57,7 +57,6 @@
     "gate_task_count": 9,
     "initial_ready_tasks": [
       "PWS-0005",
-      "PWS-0006",
       "PWS-0007",
       "PWS-0008",
       "PWS-0009"
@@ -65,7 +64,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated after PWS-0004 completion; initial_ready_tasks records dependency-ready tasks at this bundle revision.",
+    "Regenerated after PWS-0006 entered in_progress; initial_ready_tasks records ready tasks at this bundle revision.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
