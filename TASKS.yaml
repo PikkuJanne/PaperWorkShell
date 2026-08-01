@@ -150,7 +150,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0001
@@ -183,17 +183,23 @@ tasks:
   - maintainability
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "3dd5f66"
+    commands:
+    - "py -3.14 tools/dev.py check - passed; format, lint, import boundaries, strict typing, 63 unit tests, schema, and DAG"
+    - "uv run --locked --no-sync pytest tests/unit/test_import_boundaries.py -q - passed; 45 focused tests including deliberate prohibited imports"
+    - "fresh remote clone: uv sync --locked; imported all 12 package roots; full tools/dev.py check passed"
+    notes:
+    - Created the required layered package roots and tracked architecture, gate, schema, tool, and packaging locations.
+    - Added a standard-library AST checker with stable diagnostics for domain, UI/worker, adapter, initializer, unknown-layer, third-party, and dynamic-import violations.
+    - Added no runtime dependency, document engine, UI implementation, document parsing, network behavior, or document fixture.
 - id: PWS-0003
   milestone: M0
   title: Implement local quality gates and CI-equivalent commands
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0001
@@ -237,7 +243,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0001
@@ -455,7 +461,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0001
