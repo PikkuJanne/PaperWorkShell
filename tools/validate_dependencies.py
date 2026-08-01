@@ -967,6 +967,7 @@ _NORMALIZE_PACKAGE: Final = re.compile(r"[-_.]+")
 _LICENSE_TOKEN: Final = re.compile(r"LicenseRef-[A-Za-z0-9.-]+|[A-Za-z0-9.+-]+|[()]")
 MAX_LICENSE_CLAUSES: Final = 64
 _WINDOWS_ABSOLUTE_PATH: Final = re.compile(r"(?:^|[^A-Za-z])[A-Za-z]:[\\/]")
+_POSIX_ABSOLUTE_PATH: Final = re.compile(r"(?:^|[\s\"'(])/(?!/)(?:[^/\s?#]+/)*[^/\s?#]+")
 _PROHIBITED_TEXT: Final = re.compile(
     r"(?:gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|file://|\\\\[^\\])",
     re.IGNORECASE,
@@ -1532,7 +1533,11 @@ def _text_safety_issues(value: object, document: str) -> list[DependencyIssue]:
     while queue:
         member, path = queue.popleft()
         if isinstance(member, str):
-            if _WINDOWS_ABSOLUTE_PATH.search(member) or _PROHIBITED_TEXT.search(member):
+            if (
+                _WINDOWS_ABSOLUTE_PATH.search(member)
+                or _POSIX_ABSOLUTE_PATH.search(member)
+                or _PROHIBITED_TEXT.search(member)
+            ):
                 _add_issue(
                     issues,
                     _issue(

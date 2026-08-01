@@ -228,12 +228,21 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 ),
                 ("synthetic-private-host", "document.pdf"),
             ),
+            (
+                "POSIX path",
+                "DEPENDENCY_SENSITIVE_TEXT_PROHIBITED",
+                lambda component, value: cast(dict[str, Any], component["maintenance"]).__setitem__(
+                    "note", value
+                ),
+                ("synthetic-user", "client.txt"),
+            ),
         )
         values = {
             "credential URL": "https://synthetic-user:synthetic-password@example.invalid/project",
             "query credential": ("https://example.invalid/release?token=synthetic-query-secret"),
             "Windows path": r"C:\Applicants\synthetic-private-document.pdf",
             "UNC path": r"\\synthetic-private-host\share\document.pdf",
+            "POSIX path": "/home/synthetic-user/private/client.txt",
         }
         for name, expected_code, mutate, canaries in cases:
             with self.subTest(name=name):
