@@ -413,7 +413,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: ready
+  status: in_progress
   critical_path: false
   depends_on:
   - PWS-0002
