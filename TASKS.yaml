@@ -312,7 +312,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: review
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -343,10 +343,18 @@ tasks:
   - packaging
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "cb29771"
+    commands:
+    - "uv run --locked --no-sync python tools/dev.py check at 454bc9a - passed; Ruff formatting and linting, 12-layer import boundaries, strict typing, 216 unit tests, 2 integration tests, 76 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync python -m tools.validate_dependencies - passed; the canonical dependency inventory, 1 complete example, and 4 rejected examples validated offline"
+    - "fresh remote clone at 454bc9a: uv sync --locked and the full tools/dev.py check passed; all 7 repository file records in BUNDLE_MANIFEST.json independently matched byte counts and SHA-256 hashes"
+    - "GitHub Actions runs 30718318232 (push) and 30718319778 (pull_request) on windows-2025 - passed the local-equivalent quality suite at 454bc9a"
+    notes:
+    - The v1 inventory records 41 reviewed components and 29 relationships with closed license, source, maintenance, security-boundary, artifact, lock, packaging, governance, and SBOM profiles.
+    - Release admission fails closed on unpinned or unhashed artifacts, incompatible Windows wheel coverage, lock or project drift, unsafe source identities, distribution-altering license routes without an approved decision, and unreviewed hostile-document capabilities.
+    - PySide6/Qt, pikepdf/qpdf, OCRmyPDF/Tesseract/language data, Ghostscript, and candidate renderers remain gated by their named implementation and decision tasks; this task added no runtime processor or document parsing.
+    - Independent exact-tree semantic, schema, workflow, provenance, privacy, and supply-chain audits found no remaining concrete PWS-0005 bypass; the final POSIX-path canary is rejected without disclosure.
 - id: PWS-0006
   milestone: M0
   title: Define case manifest JSON Schema v1
