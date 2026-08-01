@@ -88,6 +88,11 @@ migration policy are documented in
 stores only completed immutable-source records and opaque case-internal references; external source
 paths are never persisted in it.
 
+The version-1 worker RPC envelope, lifecycle, capability negotiation, logical case-object
+references, bounded decoding rules, and sanitized error contract are documented in
+[`docs/schemas/worker-rpc-v1.md`](docs/schemas/worker-rpc-v1.md). The schema and semantic validator
+reject unknown versions, unregistered operations, path-bearing messages, and raw exception fields.
+
 ## Bundle contents
 
 | File | Purpose |
@@ -191,10 +196,11 @@ py -3.14 tools/dev.py validate-task-graph
 py -3.14 tools/dev.py validate-docs
 ```
 
-Schema validation uses safe YAML loading with duplicate-key rejection and Draft 2020-12 JSON
-Schema validation with date-format checking. Documentation validation checks supported local
-Markdown links/anchors and decision, task, and security references without retrieving network
-content.
+Schema validation uses safe YAML loading with duplicate-key rejection and offline Draft 2020-12
+JSON Schema validation with date-format checking. Case manifests and worker-RPC messages also use
+their bounded strict parsers and deterministic semantic validators. Documentation validation checks
+supported local Markdown links/anchors and decision, task, and security references without retrieving
+network content.
 
 Graph validation must additionally confirm:
 

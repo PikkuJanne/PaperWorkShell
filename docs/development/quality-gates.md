@@ -46,12 +46,22 @@ keyboard, focus, label, scaling, and announcement coverage.
 py -3.14 tools/dev.py validate-schemas
 ```
 
-The registry validates the task graph, reference profile, and case-manifest v1 contracts. Case
-manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a self-contained Draft
+The registry validates the task graph, reference profile, case-manifest v1, and worker-RPC v1
+contracts. Case manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a
+self-contained Draft
 2020-12 schema, and semantic checks for IDs, references, source-page bounds, operation replay,
 normalized boxes, confirmation coupling, storage names, and output-name collisions. Both canonical
 synthetic examples must pass and every checked-in negative fixture must fail. Diagnostics use
 stable codes and JSON locations without echoing document values or absolute paths.
+
+Worker-RPC validation separately caps each message at 65,536 bytes, depth at 32, nodes at 4,096,
+string code points at 4,096, and collection members at 256 before offline schema evaluation. It
+checks the self-contained schema/reference policy, exact version and capability negotiation,
+directions and correlations,
+the exact operation registry, logical case-object reference scope, terminal results, progress,
+restart semantics, and allowlisted sanitized error parameters. All canonical message examples must
+pass and every malformed/incompatible/path-bearing negative fixture must fail. See
+[`docs/schemas/worker-rpc-v1.md`](../schemas/worker-rpc-v1.md) for the protocol contract.
 
 ## Documentation validation
 
