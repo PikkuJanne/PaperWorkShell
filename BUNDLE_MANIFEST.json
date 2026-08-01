@@ -1,8 +1,8 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.0",
+  "bundle_version": "0.1.1",
   "product": "PaperWorkShell",
-  "created_at": "2026-07-14",
+  "created_at": "2026-08-01",
   "source_inputs": [
     {
       "name": "Liitetty markdown.md",
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 112852,
-      "sha256": "036518d7a5183a45489c7e2baef683b263627c8baad4e31cce1713c87c737cd6"
+      "bytes": 113515,
+      "sha256": "09878eae927db286981d4943a835ec94c56f3a589ed8992b772bd0d0db2f1672"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 7415,
-      "sha256": "c10b75bb29bfd35880a3e2e3104afbd9c71c4d3ba40b8599b9ee6efaa651593f"
+      "bytes": 8913,
+      "sha256": "e65bee45de24de708b1440779df7f7d26f8f7f70d276fc491f47c5b9aab01ddf"
     }
   ],
   "validation": {
@@ -56,11 +56,13 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0001"
+      "PWS-0002",
+      "PWS-0005"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
+    "Regenerated after completing PWS-0001; initial_ready_tasks records tasks ready at this bundle revision.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

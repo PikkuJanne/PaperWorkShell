@@ -101,7 +101,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: ready
+  status: done
   critical_path: true
   depends_on: []
   decision_refs:
@@ -134,17 +134,23 @@ tasks:
   - licensing
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "f6bf518"
+    commands:
+    - "uv sync --locked (fresh remote clone) - passed; 22 locked packages installed"
+    - "uv run --locked --no-sync python -c import-paperworkshell (fresh environment) - passed; version 0.0.0"
+    - "py -3.14 tools/dev.py check (fresh remote clone) - passed; format, lint, strict typing, 18 unit tests, schema, and DAG"
+    notes:
+    - Pinned standard CPython 3.14 and uv/uv_build 0.11.32 with an empty runtime dependency set.
+    - Added deterministic task validation for duplicate keys, schema/date errors, references, gates, task state, and dependency cycles.
+    - Added no PDF, OCR, renderer, UI, cloud, signing, installer, or real-document dependency or fixture.
 - id: PWS-0002
   milestone: M0
   title: Establish source layout and enforce architecture boundaries
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0001
@@ -278,7 +284,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0001

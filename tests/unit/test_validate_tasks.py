@@ -98,6 +98,7 @@ class TaskValidationTests(unittest.TestCase):
 
     def test_active_task_requires_completed_dependencies(self) -> None:
         data = copy.deepcopy(self.data)
+        _task(data, "PWS-0001")["status"] = "planned"
         _task(data, "PWS-0002")["status"] = "ready"
 
         self.assertIn("TASK_DEPENDENCY_INCOMPLETE", self.issue_codes(data))
@@ -110,7 +111,14 @@ class TaskValidationTests(unittest.TestCase):
 
     def test_done_task_requires_completion_evidence(self) -> None:
         data = copy.deepcopy(self.data)
-        _task(data, "PWS-0001")["status"] = "done"
+        task = _task(data, "PWS-0002")
+        task["status"] = "done"
+        task["evidence"] = {
+            "completed_at": None,
+            "revision": None,
+            "commands": [],
+            "notes": [],
+        }
 
         self.assertIn("TASK_DONE_EVIDENCE_MISSING", self.issue_codes(data))
 
