@@ -43,14 +43,18 @@ levels must not be confused.
 - components prohibited without a frozen-decision change.
 
 In this profile, a supported minor line, a minimum external-tool version, or an environment
-version check can describe contributor prerequisites. A source-distribution hash may document a
-locked Python release while `uv.lock` remains the complete artifact-hash authority. Those records
-are not evidence of the exact files in a Windows release.
+version check can describe contributor prerequisites. For each locked Python release, the baseline
+duplicates the source-distribution digest and every universal or compatible Windows x64 wheel
+digest from `uv.lock`; validation requires those reviewed records to agree exactly. `uv.lock`
+remains the complete cross-platform resolution authority. These development records are not proof
+of the files eventually staged in a Windows release.
 
 `approved` means only "admitted for every listed active scope." It does not approve another
 scope, select an unmeasured renderer, or prove that a component is shipped. `candidate` names an
 unselected alternative. `evaluated` identifies one concrete, pinned, hash-verified artifact under
-measurement, with no active scope or admission. `planned` reserves a frozen or required family for
+measurement, with no active scope or admission. Its evidence names the exact artifact URL,
+filename, Windows/platform-independent target, byte size, and SHA-256; Python evidence must also
+match one exact `uv.lock` record. `planned` reserves a frozen or required family for
 its named dependency-ready task without selecting an artifact. `deferred` records a reviewed family
 that is intentionally outside the current implementation path. `requires-decision-change` means
 the component must remain inactive and prohibited under current authority. A disabled relationship
@@ -179,6 +183,13 @@ A release must not use `minimum`, `minor-line`, or `environment-version` as proo
 artifact. Computing a hash after an unreviewed download proves only consistency with that same
 download. The expected digest or signed source metadata must be reviewed independently and
 committed before the artifact is trusted.
+
+Schema v1 deliberately treats component IDs, upstream project/license identity, admission scope,
+ship state, binary capability, security boundary, and SBOM name/type/supplier/closure source as a
+closed reviewed set. Adding a component, moving one into a new scope, or changing one of those
+identities requires updating the inventory and validator policy together. This prevents a record
+from self-relabeling its source, license, runtime risk, or generated SBOM identity while retaining
+an already trusted component ID.
 
 License links for release evidence should resolve to a tag, commit, release artifact, or locally
 hashed license text. Floating `main` or `master` pages are background references, not immutable

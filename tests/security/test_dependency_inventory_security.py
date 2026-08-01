@@ -457,6 +457,69 @@ class DependencyInventorySecurityTests(unittest.TestCase):
 
         self.assertIn("DEPENDENCY_LICENSE_OBLIGATION_ASSET_MISSING", _codes(issues))
 
+    def test_reviewed_source_and_license_identities_cannot_be_relabelled(self) -> None:
+        cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str], ...] = (
+            (
+                "project origin",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "ruff")["source"]
+                ).update({"project_url": "https://attacker.example/ruff"}),
+                "DEPENDENCY_SOURCE_IDENTITY_INVALID",
+            ),
+            (
+                "release origin",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "ruff")["source"]
+                ).update({"release_url": "https://attacker.example/releases/0.15.22/"}),
+                "DEPENDENCY_RELEASE_PIN_INVALID",
+            ),
+            (
+                "license origin",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "cpython")["source"]
+                ).update({"license_url": "https://example.com/fake-license"}),
+                "DEPENDENCY_SOURCE_IDENTITY_INVALID",
+            ),
+            (
+                "license expression",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "git")["license"]
+                ).update({"expression": "MIT"}),
+                "DEPENDENCY_LICENSE_IDENTITY_INVALID",
+            ),
+            (
+                "license path traversal",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "gitleaks")["source"]
+                ).update(
+                    {
+                        "license_url": (
+                            "https://github.com/gitleaks/gitleaks/../../evil/repo/blob/main/LICENSE"
+                        )
+                    }
+                ),
+                "DEPENDENCY_SOURCE_URL_UNSAFE",
+            ),
+        )
+        for label, mutate, expected_code in cases:
+            with self.subTest(case=label):
+                document = copy.deepcopy(self.baseline)
+                mutate(document)
+
+                issues = self._document_issues(document)
+
+                self.assertIn(expected_code, _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        license_refs = cast(dict[str, dict[str, Any]], document["license_refs"])
+        license_refs["LicenseRef-PDFium-Third-Party"]["terms_url"] = (
+            "https://example.com/fake-terms"
+        )
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_LICENSE_REF_UNREVIEWED", _codes(issues))
+
     def test_hostile_document_parser_cannot_be_admitted_in_the_gui_process(self) -> None:
         document = copy.deepcopy(self.baseline)
         component = _component(document, "ruff")
@@ -471,6 +534,111 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         issues = self._document_issues(document)
 
         self.assertIn("DEPENDENCY_SECURITY_BOUNDARY_INVALID", _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        component = copy.deepcopy(_component(document, "tesseract-language-data"))
+        component["component_id"] = "tessdata-eng-fast"
+        component["admission_status"] = "approved"
+        component["active_scopes"] = ["data"]
+        component["version"] = {
+            "constraint": "==1.0.0",
+            "selected": "1.0.0",
+            "pin_kind": "exact",
+            "pin_source": "synthetic security test",
+        }
+        component["source"] = {
+            "project_url": "https://github.com/tesseract-ocr/tessdata",
+            "release_url": "https://github.com/tesseract-ocr/tessdata/releases/tag/v1.0.0",
+            "license_url": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
+        }
+        component["integrity"] = {
+            "verification": "sha256",
+            "revision": None,
+            "hashes": [
+                {
+                    "algorithm": "SHA-256",
+                    "value": "1" * 64,
+                    "artifact": "tessdata-eng-fast-1.0.0.traineddata",
+                }
+            ],
+        }
+        component["security"] = {
+            "boundary": "gui-process",
+            "network_needed_at_runtime": False,
+            "adapter_required": False,
+            "contract_tests_required": False,
+        }
+        cast(dict[str, Any], component["binary"])["processes_untrusted_documents"] = False
+        cast(dict[str, Any], component["maintenance"])["status"] = "active"
+        cast(dict[str, Any], component["packaging"])["ship_state"] = "bundled"
+        cast(dict[str, Any], component["sbom"])["purl"] = "pkg:generic/tessdata-eng-fast@1.0.0"
+        cast(list[dict[str, Any]], document["components"]).append(component)
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_SECURITY_BOUNDARY_INVALID", _codes(issues))
+
+    def test_reviewed_admission_profile_cannot_move_tools_into_runtime(self) -> None:
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "mypy")
+        component["active_scopes"] = ["development", "runtime"]
+        cast(dict[str, Any], component["packaging"])["ship_state"] = "bundled"
+        component["security"] = {
+            "boundary": "gui-process",
+            "network_needed_at_runtime": False,
+            "adapter_required": False,
+            "contract_tests_required": False,
+        }
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_ADMISSION_PROFILE_INVALID", _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "qpdf")
+        component["admission_status"] = "approved"
+        component["active_scopes"] = ["worker"]
+        component["version"] = {
+            "constraint": "==12.2.0",
+            "selected": "12.2.0",
+            "pin_kind": "exact",
+            "pin_source": "synthetic security test",
+        }
+        cast(dict[str, Any], component["source"])["release_url"] = (
+            "https://github.com/qpdf/qpdf/releases/tag/v12.2.0"
+        )
+        component["integrity"] = {
+            "verification": "sha256",
+            "revision": None,
+            "hashes": [
+                {
+                    "algorithm": "SHA-256",
+                    "value": "12" * 32,
+                    "artifact": "qpdf-12.2.0.zip",
+                }
+            ],
+        }
+        component["artifact_evidence"] = {
+            "artifact": "qpdf-12.2.0.zip",
+            "url": "https://github.com/qpdf/qpdf/releases/download/v12.2.0/qpdf-12.2.0.zip",
+            "target_platform": "windows-x64",
+            "size_bytes": 1,
+            "sha256": "12" * 32,
+        }
+        cast(dict[str, Any], component["maintenance"])["status"] = "active"
+        cast(dict[str, Any], component["packaging"])["ship_state"] = "bundled"
+        cast(dict[str, Any], component["sbom"])["purl"] = "pkg:generic/qpdf@12.2.0"
+
+        validated, issues = validate_dependency_data(
+            document,
+            self.schema,
+            document="synthetic-dependency-inventory.json",
+            root=PROJECT_ROOT,
+            repository_checks=True,
+        )
+
+        self.assertIn("DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID", _codes(issues))
+        self.assertIsNone(validated)
 
         document = copy.deepcopy(self.baseline)
         component = _component(document, "pikepdf")
@@ -637,6 +805,18 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         self.assertIn("DEPENDENCY_SBOM_INPUT_INVALID", _codes(issues))
         self.assertIsNone(validated)
 
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "ruff")
+        component["name"] = "Synthetic unrelated product"
+        sbom = cast(dict[str, Any], component["sbom"])
+        sbom["component_type"] = "data"
+        sbom["supplier"] = "Synthetic unrelated supplier"
+        sbom["transitive_components_from"] = "upstream-release-inventory"
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_SBOM_INPUT_INVALID", _codes(issues))
+
     def test_concrete_version_integrity_and_release_identity_are_bound(self) -> None:
         cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str], ...] = (
             (
@@ -702,6 +882,64 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         issues = self._document_issues(document)
 
         self.assertIn("DEPENDENCY_SCHEMA_VALIDATION", _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "pypdfium2")
+        component["admission_status"] = "evaluated"
+        component["version"] = {
+            "constraint": "==1.0.0",
+            "selected": "1.0.0",
+            "pin_kind": "exact",
+            "pin_source": "synthetic security test",
+        }
+        cast(dict[str, Any], component["source"])["release_url"] = (
+            "https://pypi.org/project/pypdfium2/1.0.0/"
+        )
+        component["integrity"] = {
+            "verification": "sha256",
+            "revision": None,
+            "hashes": [
+                {
+                    "algorithm": "SHA-256",
+                    "value": "0" * 64,
+                    "artifact": "pypdfium2-1.0.0-win_amd64.whl",
+                }
+            ],
+        }
+        component["artifact_evidence"] = {
+            "artifact": "pypdfium2-1.0.0-win_amd64.whl",
+            "url": (
+                "https://files.pythonhosted.org/packages/synthetic/pypdfium2-1.0.0-win_amd64.whl"
+            ),
+            "target_platform": "windows-x64",
+            "size_bytes": 1,
+            "sha256": "0" * 64,
+        }
+        cast(dict[str, Any], component["sbom"])["purl"] = "pkg:pypi/pypdfium2@1.0.0"
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_RELEASE_PIN_INVALID", _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "gitleaks")
+        integrity_hash = cast(
+            list[dict[str, Any]], cast(dict[str, Any], component["integrity"])["hashes"]
+        )[0]
+        component["artifact_evidence"] = {
+            "artifact": integrity_hash["artifact"],
+            "url": (
+                "https://github.com/gitleaks/gitleaks/releases/download/v0.0.1/"
+                f"{integrity_hash['artifact']}"
+            ),
+            "target_platform": "windows-x64",
+            "size_bytes": 1,
+            "sha256": integrity_hash["value"],
+        }
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_RELEASE_PIN_INVALID", _codes(issues))
 
     def test_repository_rejects_spoofed_workflow_security_controls(self) -> None:
         cases = (
@@ -769,10 +1007,29 @@ class DependencyInventorySecurityTests(unittest.TestCase):
             project += '\n[project.optional-dependencies]\nfeature = ["attrs==26.1.0"]\n'
             path.write_text(project, encoding="utf-8")
 
+        def replace_windows_wheel_hash(root: Path) -> None:
+            path = root / "uv.lock"
+            lock = path.read_text(encoding="utf-8")
+            original = "9be63ba1eb936acd2d1342fb8337c356353706fce233b2a15a09a97037e6acde"
+            self.assertIn(original, lock)
+            path.write_text(lock.replace(original, "0" * 64), encoding="utf-8")
+
+        def replace_root_version(root: Path) -> None:
+            path = root / "uv.lock"
+            lock = path.read_text(encoding="utf-8")
+            original = 'name = "paperworkshell"\nversion = "0.0.0"'
+            self.assertIn(original, lock)
+            path.write_text(
+                lock.replace(original, 'name = "paperworkshell"\nversion = "999.0.0"'),
+                encoding="utf-8",
+            )
+
         cases = (
             (duplicate_attrs, "DEPENDENCY_LOCK_COMPONENT_MISMATCH"),
             (replace_wheel_origin, "DEPENDENCY_LOCK_SOURCE_MISMATCH"),
             (add_optional_dependency, "DEPENDENCY_DECLARATION_MISMATCH"),
+            (replace_windows_wheel_hash, "DEPENDENCY_LOCK_HASH_MISMATCH"),
+            (replace_root_version, "DEPENDENCY_LOCK_METADATA_MISMATCH"),
         )
         for mutate, expected_code in cases:
             with (
@@ -793,6 +1050,24 @@ class DependencyInventorySecurityTests(unittest.TestCase):
 
                 self.assertIn(expected_code, _codes(issues))
                 self.assertIsNone(validated)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _copy_repository_policy_inputs(root)
+            add_optional_dependency(root)
+            document = copy.deepcopy(self.baseline)
+            _component(document, "attrs")["relationship"] = "direct"
+
+            validated, issues = validate_dependency_data(
+                document,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+
+            self.assertIn("DEPENDENCY_LOCK_METADATA_MISMATCH", _codes(issues))
+            self.assertIsNone(validated)
 
     def test_repository_rejects_yaml_and_job_control_bypasses(self) -> None:
         cases = (

@@ -31,7 +31,7 @@ SUPPORTED_SCHEMA_VERSION: Final = 1
 DRAFT_2020_12_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
 SCHEMA_IDENTIFIER: Final = "https://paperworkshell.invalid/schemas/dependency-inventory-v1.json"
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
-    "8f4b692906b3fc953f45ea43ab2a4ad0bc48d5a6ad75ce4867e720882660c54a"
+    "c74a7ae9a072c79a3f9a72d5c08ca5d5ae3ab1c4f17971d338cde09258dbd81d"
 )
 
 MAX_INVENTORY_BYTES: Final = 2 * 1024 * 1024
@@ -60,6 +60,19 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
         "tesseract",
     }
 )
+EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
+    "ghostscript": "native-tool",
+    "mupdf": "native-library",
+    "ocrmypdf": "python-package",
+    "pdfium": "native-library",
+    "pikepdf": "python-package",
+    "poppler": "native-library",
+    "pypdfium2": "python-package",
+    "qpdf": "native-library",
+    "qt-pdf": "framework",
+    "tesseract": "native-tool",
+    "tesseract-language-data": "data",
+}
 REQUIRED_COMPONENT_IDS: Final = frozenset(
     {
         "actions-checkout",
@@ -85,6 +98,14 @@ REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
     "PWS-D015": frozenset({"pikepdf", "qpdf"}),
     "PWS-D016": frozenset({"ocrmypdf", "tesseract", "tesseract-language-data"}),
     "PWS-D017": RENDERER_COMPONENT_IDS,
+}
+ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
+    "ocrmypdf": frozenset({"PWS-0204"}),
+    "pikepdf": frozenset({"PWS-0105"}),
+    "pyside6": frozenset({"PWS-0111"}),
+    "qpdf": frozenset({"PWS-0105"}),
+    "tesseract": frozenset({"PWS-0204"}),
+    "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
 }
 EXPECTED_NEGATIVE_CODES: Final[dict[str, str]] = {
     "distribution-decision-bypass.json": "DEPENDENCY_DISTRIBUTION_DECISION_REQUIRED",
@@ -112,6 +133,23 @@ EXPECTED_LICENSE_REF_REVIEW_STATUS: Final[dict[str, str]] = {
     "LicenseRef-PDFium-Third-Party": "notice-closure-required",
     "LicenseRef-Qt-Commercial": "candidate-only",
 }
+EXPECTED_LICENSE_REF_IDENTITIES: Final[dict[str, tuple[str, str, str]]] = {
+    "LicenseRef-Artifex-Commercial": (
+        "Artifex commercial license",
+        "https://artifex.com/licensing/commercial/",
+        "decision-required",
+    ),
+    "LicenseRef-PDFium-Third-Party": (
+        "PDFium revision-specific third-party license closure",
+        "https://pdfium.googlesource.com/pdfium/+/refs/heads/main/third_party/",
+        "notice-closure-required",
+    ),
+    "LicenseRef-Qt-Commercial": (
+        "Qt commercial license",
+        "https://www.qt.io/licensing/",
+        "candidate-only",
+    ),
+}
 EXPECTED_TOOL_ARTIFACTS: Final[dict[str, str]] = {
     "gitleaks": "gitleaks_8.30.1_windows_x64.zip",
     "uv": "uv-x86_64-pc-windows-msvc.zip",
@@ -133,9 +171,794 @@ EXPECTED_PURL_BASES: Final[dict[str, str]] = {
     "gitleaks": "pkg:github/gitleaks/gitleaks",
     "uv": "pkg:github/astral-sh/uv",
 }
+EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
+    "actions-checkout": "https://github.com/actions/checkout",
+    "actions-setup-python": "https://github.com/actions/setup-python",
+    "ast-serialize": "https://github.com/mypyc/ast_serialize",
+    "astral-setup-uv": "https://github.com/astral-sh/setup-uv",
+    "attrs": "https://github.com/python-attrs/attrs",
+    "colorama": "https://github.com/tartley/colorama",
+    "cpython": "https://www.python.org/",
+    "ghostscript": "https://ghostscript.com/",
+    "git": "https://git-scm.com/",
+    "gitleaks": "https://github.com/gitleaks/gitleaks",
+    "iniconfig": "https://github.com/pytest-dev/iniconfig",
+    "jsonschema": "https://github.com/python-jsonschema/jsonschema",
+    "jsonschema-specifications": ("https://github.com/python-jsonschema/jsonschema-specifications"),
+    "librt": "https://github.com/mypyc/librt",
+    "mupdf": "https://mupdf.com/",
+    "mypy": "https://github.com/python/mypy",
+    "mypy-extensions": "https://github.com/python/mypy_extensions",
+    "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF",
+    "packaging": "https://github.com/pypa/packaging",
+    "pathspec": "https://github.com/cpburnz/python-pathspec",
+    "pdfium": "https://pdfium.googlesource.com/pdfium/",
+    "pikepdf": "https://github.com/pikepdf/pikepdf",
+    "pluggy": "https://github.com/pytest-dev/pluggy",
+    "poppler": "https://poppler.freedesktop.org/",
+    "pygments": "https://github.com/pygments/pygments",
+    "pypdfium2": "https://github.com/pypdfium2-team/pypdfium2",
+    "pyside6": "https://doc.qt.io/qtforpython-6/",
+    "pytest": "https://github.com/pytest-dev/pytest",
+    "pyyaml": "https://github.com/yaml/pyyaml",
+    "qpdf": "https://github.com/qpdf/qpdf",
+    "qt-pdf": "https://doc.qt.io/qt-6/qtpdf-index.html",
+    "referencing": "https://github.com/python-jsonschema/referencing",
+    "rpds-py": "https://github.com/crate-py/rpds",
+    "ruff": "https://github.com/astral-sh/ruff",
+    "tesseract": "https://github.com/tesseract-ocr/tesseract",
+    "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata",
+    "types-jsonschema": "https://github.com/python/typeshed",
+    "types-pyyaml": "https://github.com/python/typeshed",
+    "typing-extensions": "https://github.com/python/typing_extensions",
+    "uv": "https://github.com/astral-sh/uv",
+    "uv-build": "https://github.com/astral-sh/uv",
+}
+EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
+    "actions-checkout": "https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/LICENSE",
+    "actions-setup-python": "https://github.com/actions/setup-python/blob/5fda3b95a4ea91299a34e894583c3862153e4b97/LICENSE",
+    "ast-serialize": "https://github.com/mypyc/ast_serialize/blob/main/LICENSE",
+    "astral-setup-uv": "https://github.com/astral-sh/setup-uv/blob/c771a70e6277c0a99b617c7a806ffedaca235ff9/LICENSE",
+    "attrs": "https://github.com/python-attrs/attrs/blob/26.1.0/LICENSE",
+    "colorama": "https://github.com/tartley/colorama/blob/0.4.6/LICENSE.txt",
+    "cpython": "https://docs.python.org/3/license.html",
+    "ghostscript": "https://ghostscript.com/faq/index.html",
+    "git": "https://github.com/git/git/blob/master/COPYING",
+    "gitleaks": "https://github.com/gitleaks/gitleaks/blob/v8.30.1/LICENSE",
+    "iniconfig": "https://github.com/pytest-dev/iniconfig/blob/2.3.0/LICENSE",
+    "jsonschema": "https://github.com/python-jsonschema/jsonschema/blob/v4.26.0/COPYING",
+    "jsonschema-specifications": "https://github.com/python-jsonschema/jsonschema-specifications/blob/v2025.9.1/COPYING",
+    "librt": "https://github.com/mypyc/librt/blob/main/LICENSE",
+    "mupdf": "https://mupdf.com/releases",
+    "mypy": "https://github.com/python/mypy/blob/v2.3.0/LICENSE",
+    "mypy-extensions": "https://github.com/python/mypy_extensions/blob/1.1.0/LICENSE",
+    "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF/blob/main/LICENSE",
+    "packaging": "https://github.com/pypa/packaging/blob/26.2/LICENSE",
+    "pathspec": "https://github.com/cpburnz/python-pathspec/blob/v1.1.1/LICENSE",
+    "pdfium": "https://pdfium.googlesource.com/pdfium/+/refs/heads/main/LICENSE",
+    "pikepdf": "https://github.com/pikepdf/pikepdf/blob/main/LICENSE.txt",
+    "pluggy": "https://github.com/pytest-dev/pluggy/blob/1.6.0/LICENSE",
+    "poppler": "https://cgit.freedesktop.org/poppler/poppler/tree/README-XPDF",
+    "pygments": "https://github.com/pygments/pygments/blob/2.20.0/LICENSE",
+    "pypdfium2": "https://github.com/pypdfium2-team/pypdfium2#licensing",
+    "pyside6": "https://doc.qt.io/qtforpython-6/licenses.html",
+    "pytest": "https://github.com/pytest-dev/pytest/blob/9.1.1/LICENSE",
+    "pyyaml": "https://github.com/yaml/pyyaml/blob/6.0.3/LICENSE",
+    "qpdf": "https://github.com/qpdf/qpdf/blob/main/LICENSE.txt",
+    "qt-pdf": "https://doc.qt.io/qt-6/qtpdf-licensing.html",
+    "referencing": "https://github.com/python-jsonschema/referencing/blob/v0.37.0/COPYING",
+    "rpds-py": "https://github.com/crate-py/rpds/blob/v2026.6.3/LICENSE",
+    "ruff": "https://github.com/astral-sh/ruff/blob/0.15.22/LICENSE",
+    "tesseract": "https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE",
+    "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
+    "types-jsonschema": "https://github.com/python/typeshed/blob/main/LICENSE",
+    "types-pyyaml": "https://github.com/python/typeshed/blob/main/LICENSE",
+    "typing-extensions": "https://github.com/python/typing_extensions/blob/4.16.0/LICENSE",
+    "uv": "https://github.com/astral-sh/uv/blob/0.11.32/LICENSE-MIT",
+    "uv-build": "https://github.com/astral-sh/uv/blob/0.11.32/LICENSE-MIT",
+}
+EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bool, bool]]] = {
+    "actions-checkout": ("MIT", None, True, False, False, False),
+    "actions-setup-python": ("MIT", None, True, False, False, False),
+    "ast-serialize": ("MIT", None, True, False, False, False),
+    "astral-setup-uv": ("MIT", None, True, False, False, False),
+    "attrs": ("MIT", None, True, False, False, False),
+    "colorama": ("BSD-3-Clause", None, True, False, False, False),
+    "cpython": ("PSF-2.0", None, True, False, False, False),
+    "ghostscript": (
+        "AGPL-3.0-or-later OR LicenseRef-Artifex-Commercial",
+        None,
+        True,
+        True,
+        False,
+        True,
+    ),
+    "git": ("GPL-2.0-only", None, True, True, False, False),
+    "gitleaks": ("MIT", None, True, False, False, False),
+    "iniconfig": ("MIT", None, True, False, False, False),
+    "jsonschema": ("MIT", None, True, False, False, False),
+    "jsonschema-specifications": ("MIT", None, True, False, False, False),
+    "librt": ("MIT", None, True, False, False, False),
+    "mupdf": ("AGPL-3.0-or-later OR LicenseRef-Artifex-Commercial", None, True, True, False, True),
+    "mypy": ("MIT", None, True, False, False, False),
+    "mypy-extensions": ("MIT", None, True, False, False, False),
+    "ocrmypdf": ("MPL-2.0", None, True, True, False, False),
+    "packaging": ("Apache-2.0 OR BSD-2-Clause", "Apache-2.0", True, False, False, False),
+    "pathspec": ("MPL-2.0", None, True, True, False, False),
+    "pdfium": ("BSD-3-Clause AND LicenseRef-PDFium-Third-Party", None, True, False, False, False),
+    "pikepdf": ("MPL-2.0", None, True, True, False, False),
+    "pluggy": ("MIT", None, True, False, False, False),
+    "poppler": ("GPL-2.0-only OR GPL-3.0-only", None, True, True, False, True),
+    "pygments": ("BSD-2-Clause", None, True, False, False, False),
+    "pypdfium2": (
+        "(Apache-2.0 OR BSD-3-Clause) AND LicenseRef-PDFium-Third-Party",
+        None,
+        True,
+        False,
+        False,
+        False,
+    ),
+    "pyside6": (
+        "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-3.0-only",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
+    "pytest": ("MIT", None, True, False, False, False),
+    "pyyaml": ("MIT", None, True, False, False, False),
+    "qpdf": ("Apache-2.0 OR Artistic-2.0", None, True, False, False, False),
+    "qt-pdf": (
+        "(LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only) AND LicenseRef-PDFium-Third-Party",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
+    "referencing": ("MIT", None, True, False, False, False),
+    "rpds-py": ("MIT", None, True, False, False, False),
+    "ruff": ("MIT", None, True, False, False, False),
+    "tesseract": ("Apache-2.0", None, True, False, False, False),
+    "tesseract-language-data": ("Apache-2.0", None, True, False, False, False),
+    "types-jsonschema": ("Apache-2.0", None, True, False, False, False),
+    "types-pyyaml": ("Apache-2.0", None, True, False, False, False),
+    "typing-extensions": ("PSF-2.0", None, True, False, False, False),
+    "uv": ("MIT OR Apache-2.0", "MIT", True, False, False, False),
+    "uv-build": ("MIT OR Apache-2.0", "MIT", True, False, False, False),
+}
 
 _SAFE_PATH_TOKEN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+EXPECTED_ADMISSION_PROFILES: Final[
+    dict[
+        str,
+        tuple[str, str, str, tuple[str, ...], str, bool, bool, bool, str, bool, bool],
+    ]
+] = {
+    "actions-checkout": (
+        "github-action",
+        "external",
+        "approved",
+        ("ci",),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "ci-runner",
+        False,
+        False,
+    ),
+    "actions-setup-python": (
+        "github-action",
+        "external",
+        "approved",
+        ("ci",),
+        "not-shipped",
+        False,
+        True,
+        False,
+        "ci-runner",
+        False,
+        False,
+    ),
+    "ast-serialize": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        True,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "astral-setup-uv": (
+        "github-action",
+        "external",
+        "approved",
+        ("ci",),
+        "not-shipped",
+        False,
+        True,
+        False,
+        "ci-runner",
+        False,
+        False,
+    ),
+    "attrs": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "colorama": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "test"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "cpython": (
+        "interpreter",
+        "external",
+        "approved",
+        ("build", "ci", "development"),
+        "not-shipped",
+        True,
+        True,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "ghostscript": (
+        "native-tool",
+        "candidate",
+        "requires-decision-change",
+        (),
+        "prohibited-without-decision-change",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "git": (
+        "native-tool",
+        "external",
+        "approved",
+        ("ci", "development", "validation"),
+        "not-shipped",
+        True,
+        True,
+        False,
+        "developer-host",
+        False,
+        True,
+    ),
+    "gitleaks": (
+        "native-tool",
+        "external",
+        "approved",
+        ("ci", "development", "validation"),
+        "not-shipped",
+        True,
+        True,
+        False,
+        "developer-host",
+        False,
+        True,
+    ),
+    "iniconfig": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "test"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "jsonschema": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        True,
+        False,
+        "developer-host",
+        False,
+        True,
+    ),
+    "jsonschema-specifications": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "librt": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        True,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "mupdf": (
+        "native-library",
+        "candidate",
+        "requires-decision-change",
+        (),
+        "prohibited-without-decision-change",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "mypy": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        True,
+        True,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "mypy-extensions": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "ocrmypdf": (
+        "python-package",
+        "direct",
+        "planned",
+        (),
+        "planned",
+        False,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "packaging": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "test"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "pathspec": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "pdfium": (
+        "native-library",
+        "candidate",
+        "candidate",
+        (),
+        "candidate",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "pikepdf": (
+        "python-package",
+        "direct",
+        "planned",
+        (),
+        "planned",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "pluggy": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "test"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "poppler": (
+        "native-library",
+        "candidate",
+        "requires-decision-change",
+        (),
+        "prohibited-without-decision-change",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "pygments": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "test"),
+        "not-shipped",
+        False,
+        True,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "pypdfium2": (
+        "python-package",
+        "candidate",
+        "candidate",
+        (),
+        "candidate",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "pyside6": (
+        "framework",
+        "direct",
+        "planned",
+        (),
+        "planned",
+        True,
+        True,
+        False,
+        "gui-process",
+        True,
+        True,
+    ),
+    "pytest": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "test"),
+        "not-shipped",
+        False,
+        True,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "pyyaml": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        True,
+        False,
+        False,
+        "developer-host",
+        False,
+        True,
+    ),
+    "qpdf": (
+        "native-library",
+        "direct",
+        "planned",
+        (),
+        "planned",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "qt-pdf": (
+        "framework",
+        "candidate",
+        "candidate",
+        (),
+        "candidate",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "referencing": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "rpds-py": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        True,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "ruff": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        True,
+        True,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "tesseract": (
+        "native-tool",
+        "direct",
+        "planned",
+        (),
+        "planned",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "tesseract-language-data": (
+        "data",
+        "direct",
+        "planned",
+        (),
+        "planned",
+        False,
+        False,
+        True,
+        "data-only",
+        True,
+        True,
+    ),
+    "types-jsonschema": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "types-pyyaml": (
+        "python-package",
+        "direct",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "typing-extensions": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("development", "validation"),
+        "not-shipped",
+        False,
+        False,
+        False,
+        "developer-host",
+        False,
+        False,
+    ),
+    "uv": (
+        "native-tool",
+        "external",
+        "approved",
+        ("build", "ci", "development"),
+        "not-shipped",
+        True,
+        True,
+        False,
+        "developer-host",
+        False,
+        True,
+    ),
+    "uv-build": (
+        "python-package",
+        "direct",
+        "approved",
+        ("build",),
+        "not-shipped",
+        True,
+        False,
+        False,
+        "developer-host",
+        False,
+        True,
+    ),
+}
 _REFERENCE_KEYWORDS: Final = frozenset({"$ref", "$dynamicRef", "$recursiveRef"})
+EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
+    "actions-checkout": ("actions/checkout", "application", "GitHub", "upstream-release-inventory"),
+    "actions-setup-python": (
+        "actions/setup-python",
+        "application",
+        "GitHub",
+        "upstream-release-inventory",
+    ),
+    "ast-serialize": ("ast-serialize", "library", "mypyc contributors", "uv.lock"),
+    "astral-setup-uv": (
+        "astral-sh/setup-uv",
+        "application",
+        "Astral Software Inc.",
+        "upstream-release-inventory",
+    ),
+    "attrs": ("attrs", "library", "attrs contributors", "uv.lock"),
+    "colorama": ("colorama", "library", "Colorama contributors", "uv.lock"),
+    "cpython": (
+        "CPython",
+        "application",
+        "Python Software Foundation",
+        "upstream-release-inventory",
+    ),
+    "ghostscript": (
+        "Ghostscript",
+        "application",
+        "Artifex Software Inc.",
+        "upstream-release-inventory",
+    ),
+    "git": ("Git", "application", "Git project", "upstream-release-inventory"),
+    "gitleaks": ("Gitleaks", "application", "Gitleaks contributors", "upstream-release-inventory"),
+    "iniconfig": ("iniconfig", "library", "pytest contributors", "uv.lock"),
+    "jsonschema": ("jsonschema", "library", "jsonschema contributors", "uv.lock"),
+    "jsonschema-specifications": (
+        "jsonschema-specifications",
+        "library",
+        "jsonschema contributors",
+        "uv.lock",
+    ),
+    "librt": ("librt", "library", "mypyc contributors", "uv.lock"),
+    "mupdf": ("MuPDF", "library", "Artifex Software Inc.", "upstream-release-inventory"),
+    "mypy": ("mypy", "application", "mypy contributors", "uv.lock"),
+    "mypy-extensions": ("mypy-extensions", "library", "mypy contributors", "uv.lock"),
+    "ocrmypdf": ("OCRmyPDF", "application", "OCRmyPDF contributors", "upstream-release-inventory"),
+    "packaging": ("packaging", "library", "Python Packaging Authority", "uv.lock"),
+    "pathspec": ("pathspec", "library", "pathspec contributors", "uv.lock"),
+    "pdfium": ("PDFium", "library", "PDFium Authors", "upstream-release-inventory"),
+    "pikepdf": ("pikepdf", "library", "pikepdf contributors", "upstream-release-inventory"),
+    "pluggy": ("pluggy", "library", "pytest contributors", "uv.lock"),
+    "poppler": ("Poppler", "library", "Poppler contributors", "upstream-release-inventory"),
+    "pygments": ("Pygments", "library", "Pygments contributors", "uv.lock"),
+    "pypdfium2": ("pypdfium2", "library", "pypdfium2 contributors", "upstream-release-inventory"),
+    "pyside6": (
+        "PySide6 family baseline; meta-package not admitted",
+        "framework",
+        "The Qt Company and Qt Project contributors",
+        "upstream-release-inventory",
+    ),
+    "pytest": ("pytest", "application", "pytest contributors", "uv.lock"),
+    "pyyaml": ("PyYAML", "library", "PyYAML contributors", "uv.lock"),
+    "qpdf": ("qpdf", "library", "qpdf contributors", "upstream-release-inventory"),
+    "qt-pdf": (
+        "Qt PDF",
+        "framework",
+        "The Qt Company and Qt Project contributors",
+        "upstream-release-inventory",
+    ),
+    "referencing": ("referencing", "library", "jsonschema contributors", "uv.lock"),
+    "rpds-py": ("rpds-py", "library", "rpds-py contributors", "uv.lock"),
+    "ruff": ("Ruff", "application", "Astral Software Inc.", "uv.lock"),
+    "tesseract": (
+        "Tesseract OCR",
+        "application",
+        "Tesseract OCR contributors",
+        "upstream-release-inventory",
+    ),
+    "tesseract-language-data": (
+        "Tesseract language data",
+        "data",
+        "Tesseract OCR contributors",
+        "upstream-release-inventory",
+    ),
+    "types-jsonschema": ("types-jsonschema", "library", "typeshed contributors", "uv.lock"),
+    "types-pyyaml": ("types-PyYAML", "library", "typeshed contributors", "uv.lock"),
+    "typing-extensions": ("typing-extensions", "library", "Python Software Foundation", "uv.lock"),
+    "uv": ("uv", "application", "Astral Software Inc.", "upstream-release-inventory"),
+    "uv-build": ("uv-build", "library", "Astral Software Inc.", "upstream-release-inventory"),
+}
 _UNSUPPORTED_SCHEMA_REFERENCE_KEYWORDS: Final = frozenset(
     {"$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveAnchor", "$recursiveRef"}
 )
@@ -670,6 +1493,13 @@ def _safe_url(value: str, *, release_url: bool) -> bool:
         return False
     if "@" in parsed.netloc or parsed.query or (release_url and parsed.fragment):
         return False
+    decoded_path = unquote(parsed.path)
+    if (
+        "\\" in decoded_path
+        or any(part in {".", ".."} for part in decoded_path.split("/"))
+        or any(token in parsed.path.casefold() for token in ("%2e", "%2f", "%5c"))
+    ):
+        return False
     hostname = parsed.hostname.casefold().rstrip(".")
     if (
         not hostname
@@ -816,7 +1646,17 @@ def _component_semantic_issues(
     for reference_id, reference_value in license_refs.items():
         reference = cast(Mapping[str, Any], reference_value)
         expected_status = EXPECTED_LICENSE_REF_REVIEW_STATUS.get(reference_id)
-        if expected_status is None or reference["review_status"] != expected_status:
+        expected_identity = EXPECTED_LICENSE_REF_IDENTITIES.get(reference_id)
+        actual_identity = (
+            reference["name"],
+            reference["terms_url"],
+            reference["review_status"],
+        )
+        if (
+            expected_status is None
+            or reference["review_status"] != expected_status
+            or actual_identity != expected_identity
+        ):
             _add_issue(
                 issues,
                 _issue(
@@ -841,6 +1681,32 @@ def _component_semantic_issues(
         component_id = cast(str, component["component_id"])
         status = cast(str, component["admission_status"])
         version = cast(Mapping[str, Any], component["version"])
+        profile_binary = cast(Mapping[str, Any], component["binary"])
+        profile_security = cast(Mapping[str, Any], component["security"])
+        profile_packaging = cast(Mapping[str, Any], component["packaging"])
+        actual_admission_profile = (
+            cast(str, component["ecosystem"]),
+            cast(str, component["relationship"]),
+            status,
+            tuple(sorted(cast(list[str], component["active_scopes"]))),
+            cast(str, profile_packaging["ship_state"]),
+            cast(bool, profile_binary["contains_native_code"]),
+            cast(bool, profile_binary["installs_executable"]),
+            cast(bool, profile_binary["processes_untrusted_documents"]),
+            cast(str, profile_security["boundary"]),
+            cast(bool, profile_security["adapter_required"]),
+            cast(bool, profile_security["contract_tests_required"]),
+        )
+        if EXPECTED_ADMISSION_PROFILES.get(component_id) != actual_admission_profile:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_ADMISSION_PROFILE_INVALID",
+                    document,
+                    path,
+                    "component scope, packaging, binary, and boundary profile must remain reviewed",
+                ),
+            )
         if component_id in indexed:
             _add_issue(
                 issues,
@@ -856,6 +1722,22 @@ def _component_semantic_issues(
 
         sbom = cast(Mapping[str, Any], component["sbom"])
         purl = cast(str | None, sbom["purl"])
+        actual_sbom_profile = (
+            cast(str, component["name"]),
+            cast(str, sbom["component_type"]),
+            cast(str, sbom["supplier"]),
+            cast(str | None, sbom["transitive_components_from"]),
+        )
+        if EXPECTED_SBOM_PROFILES.get(component_id) != actual_sbom_profile:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_SBOM_INPUT_INVALID",
+                    document,
+                    f"{path}.sbom",
+                    "component name, type, supplier, and closure source must remain reviewed",
+                ),
+            )
         expected_purl = _expected_purl(component)
         if purl is not None:
             if purl in purls:
@@ -927,6 +1809,24 @@ def _component_semantic_issues(
 
         license_data = cast(Mapping[str, Any], component["license"])
         expression = cast(str, license_data["expression"])
+        actual_license_policy = (
+            expression,
+            cast(str | None, license_data.get("selected_route")),
+            cast(bool, license_data["notice_required"]),
+            cast(bool, license_data["source_offer_required"]),
+            cast(bool, license_data["relinking_required"]),
+            cast(bool, license_data["distribution_altering"]),
+        )
+        if EXPECTED_LICENSE_POLICIES.get(component_id) != actual_license_policy:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_LICENSE_IDENTITY_INVALID",
+                    document,
+                    f"{path}.license",
+                    "component license policy must match the reviewed upstream identity",
+                ),
+            )
         license_clauses = _license_clauses(expression, license_refs)
         if license_clauses is None:
             _add_issue(
@@ -1109,8 +2009,28 @@ def _component_semantic_issues(
 
         binary = cast(Mapping[str, Any], component["binary"])
         security = cast(Mapping[str, Any], component["security"])
+        decision_refs = set(cast(list[str], component["decision_refs"]))
+        task_refs = set(cast(list[str], component["task_refs"]))
         known_document_processor = component_id in KNOWN_DOCUMENT_PROCESSOR_IDS
-        known_document_data = component_id == "tesseract-language-data"
+        expected_document_ecosystem = EXPECTED_DOCUMENT_ECOSYSTEMS.get(component_id)
+        if (
+            expected_document_ecosystem is not None
+            and component["ecosystem"] != expected_document_ecosystem
+        ):
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_SECURITY_CAPABILITY_UNREVIEWED",
+                    document,
+                    f"{path}.ecosystem",
+                    "known document capabilities must retain their reviewed ecosystem profile",
+                ),
+            )
+        known_document_data = component["ecosystem"] == "data" and (
+            component_id == "tesseract-language-data"
+            or "PWS-D016" in decision_refs
+            or bool(task_refs.intersection({"PWS-0204", "PWS-0205"}))
+        )
         processes_untrusted_documents = bool(binary["processes_untrusted_documents"])
         if (known_document_processor or known_document_data) and not processes_untrusted_documents:
             _add_issue(
@@ -1124,9 +2044,7 @@ def _component_semantic_issues(
             )
         if processes_untrusted_documents or known_document_processor or known_document_data:
             expected_boundaries = (
-                {"data-only", "worker-process"}
-                if known_document_data or component["ecosystem"] == "data"
-                else {"worker-process"}
+                {"data-only", "worker-process"} if known_document_data else {"worker-process"}
             )
             if (
                 security["boundary"] not in expected_boundaries
@@ -1184,14 +2102,28 @@ def _component_semantic_issues(
             )
 
         source = cast(Mapping[str, Any], component["source"])
+        project_url = cast(str, source["project_url"])
+        if EXPECTED_PROJECT_URLS.get(component_id) != project_url:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_SOURCE_IDENTITY_INVALID",
+                    document,
+                    f"{path}.source.project_url",
+                    "component project URL must match its reviewed upstream identity",
+                ),
+            )
         urls: list[tuple[str, str, bool]] = [
-            ("project_url", cast(str, source["project_url"]), False),
+            ("project_url", project_url, False),
             ("license_url", cast(str, source["license_url"]), False),
         ]
         release_url = cast(str | None, source["release_url"])
         if release_url is not None:
             urls.append(("release_url", release_url, True))
         urls.append(("evidence_url", cast(str, maintenance["evidence_url"]), False))
+        artifact_evidence = cast(Mapping[str, Any] | None, component.get("artifact_evidence"))
+        if artifact_evidence is not None:
+            urls.append(("artifact_evidence.url", cast(str, artifact_evidence["url"]), True))
         renderer = cast(Mapping[str, Any] | None, component.get("renderer_assessment"))
         if renderer is not None:
             for criterion_name, criterion in renderer.items():
@@ -1209,9 +2141,77 @@ def _component_semantic_issues(
                         "source and evidence URLs must be credential-free public HTTPS URLs",
                     ),
                 )
+        project_parts = [part for part in urlsplit(project_url).path.split("/") if part]
+        license_url = cast(str, source["license_url"])
+        license_parts = [part for part in urlsplit(license_url).path.split("/") if part]
+        if EXPECTED_LICENSE_URLS.get(component_id) != license_url:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_SOURCE_IDENTITY_INVALID",
+                    document,
+                    f"{path}.source.license_url",
+                    "license URL must match the reviewed component evidence",
+                ),
+            )
+        if urlsplit(project_url).hostname == "github.com" and (
+            urlsplit(license_url).hostname != "github.com"
+            or len(project_parts) < 2
+            or license_parts[:2] != project_parts[:2]
+        ):
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_SOURCE_IDENTITY_INVALID",
+                    document,
+                    f"{path}.source.license_url",
+                    "GitHub license evidence must remain in the reviewed upstream repository",
+                ),
+            )
+        if artifact_evidence is not None:
+            evidence_artifact = cast(str, artifact_evidence["artifact"])
+            evidence_url = cast(str, artifact_evidence["url"])
+            evidence_sha256 = cast(str, artifact_evidence["sha256"])
+            evidence_host = urlsplit(evidence_url).hostname
+            evidence_parts = [
+                part for part in unquote(urlsplit(evidence_url).path).split("/") if part
+            ]
+            if component["ecosystem"] == "python-package":
+                evidence_origin_valid = evidence_host == "files.pythonhosted.org"
+            elif urlsplit(project_url).hostname == "github.com":
+                evidence_origin_valid = (
+                    evidence_host == "github.com"
+                    and len(evidence_parts) == 6
+                    and evidence_parts[:4] == [*project_parts[:2], "releases", "download"]
+                    and selected is not None
+                    and evidence_parts[4].casefold()
+                    in {selected.casefold(), f"v{selected.casefold()}"}
+                    and evidence_parts[5] == cast(str, artifact_evidence["artifact"])
+                )
+            else:
+                evidence_origin_valid = evidence_host == urlsplit(project_url).hostname
+            evidence_hash_pair = (evidence_sha256, evidence_artifact)
+            integrity_hash_pairs = {
+                (cast(str, record["value"]), cast(str, record["artifact"]))
+                for record in cast(list[Mapping[str, Any]], integrity["hashes"])
+            }
+            evidence_valid = (
+                Path(unquote(urlsplit(evidence_url).path)).name == evidence_artifact
+                and evidence_origin_valid
+                and len(set(evidence_sha256)) > 1
+                and (verification == "git-commit" or evidence_hash_pair in integrity_hash_pairs)
+            )
+            if not evidence_valid:
+                _add_issue(
+                    issues,
+                    _issue(
+                        "DEPENDENCY_RELEASE_PIN_INVALID",
+                        document,
+                        f"{path}.artifact_evidence",
+                        "artifact evidence must bind a reviewed source, filename, size, target, and hash",
+                    ),
+                )
 
-        decision_refs = set(cast(list[str], component["decision_refs"]))
-        task_refs = set(cast(list[str], component["task_refs"]))
         is_renderer = (
             component_id in RENDERER_COMPONENT_IDS
             or "PWS-D017" in decision_refs
@@ -1260,6 +2260,10 @@ def _component_semantic_issues(
             not strong_pin
             or ship_state != "candidate"
             or "sbom" not in packaging["redistribution_assets"]
+            or (
+                component["ecosystem"] == "python-package"
+                and (pin_kind != "lockfile" or verification != "uv-lock")
+            )
         ):
             _add_issue(
                 issues,
@@ -1275,6 +2279,7 @@ def _component_semantic_issues(
             or not strong_pin
             or release_url is None
             or purl is None
+            or artifact_evidence is None
             or "sbom" not in packaging["redistribution_assets"]
         ):
             _add_issue(
@@ -1287,13 +2292,35 @@ def _component_semantic_issues(
                 ),
             )
         if concrete_record and strong_pin and release_url is not None and selected is not None:
-            release_segments = {
-                segment.casefold()
-                for segment in unquote(urlsplit(release_url).path).split("/")
-                if segment
-            }
+            parsed_release = urlsplit(release_url)
+            release_parts = [
+                segment for segment in unquote(parsed_release.path).split("/") if segment
+            ]
             selected_release_segments = {selected.casefold(), f"v{selected.casefold()}"}
-            if release_segments.isdisjoint(selected_release_segments):
+            release_identity_valid = False
+            if component["ecosystem"] == "python-package":
+                release_identity_valid = (
+                    parsed_release.hostname == "pypi.org"
+                    and len(release_parts) == 3
+                    and release_parts[0] == "project"
+                    and _normalize_package_name(release_parts[1]) == component_id
+                    and release_parts[2].casefold() == selected.casefold()
+                )
+            elif urlsplit(project_url).hostname == "github.com":
+                release_identity_valid = (
+                    parsed_release.hostname == "github.com"
+                    and len(project_parts) >= 2
+                    and release_parts[:4] == [*project_parts[:2], "releases", "tag"]
+                    and len(release_parts) == 5
+                    and release_parts[4].casefold() in selected_release_segments
+                )
+            else:
+                release_identity_valid = parsed_release.hostname == urlsplit(
+                    project_url
+                ).hostname and any(
+                    segment.casefold() in selected_release_segments for segment in release_parts
+                )
+            if not release_identity_valid:
                 _add_issue(
                     issues,
                     _issue(
@@ -1477,6 +2504,16 @@ def _authority_reference_issues(
                 )
         component_decisions = set(cast(list[str], component["decision_refs"]))
         component_tasks = set(cast(list[str], component["task_refs"]))
+        if "PWS-D034" not in component_decisions or "PWS-0005" not in component_tasks:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+                    document,
+                    "$.components[*].decision_refs",
+                    "every dependency record must retain baseline governance references",
+                ),
+            )
         is_renderer = (
             component_id in RENDERER_COMPONENT_IDS
             or "PWS-D017" in component_decisions
@@ -1507,6 +2544,31 @@ def _authority_reference_issues(
                     document,
                     "$.components[*].admission_status",
                     "renderer admission requires completed selection-task evidence",
+                ),
+            )
+        admission_gates = set(ADMISSION_TASK_GATES.get(component_id, frozenset()))
+        if "PWS-D016" in component_decisions and component["ecosystem"] == "data":
+            admission_gates.update({"PWS-0204", "PWS-0205"})
+        if not admission_gates.issubset(component_tasks):
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+                    document,
+                    "$.components[*].task_refs",
+                    "dependency family must reference every admission-gate task",
+                ),
+            )
+        if component["admission_status"] == "approved" and any(
+            task_by_id.get(task_id, {}).get("status") != "done" for task_id in admission_gates
+        ):
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+                    document,
+                    "$.components[*].admission_status",
+                    "dependency admission requires completed implementation-task evidence",
                 ),
             )
     missing = REQUIRED_COMPONENT_IDS.difference(components)
@@ -1550,6 +2612,7 @@ def _lock_reconciliation_issues(
     try:
         lock = _load_toml(root / "uv.lock")
         packages = cast(list[Mapping[str, Any]], lock["package"])
+        python_minor = (root / ".python-version").read_text(encoding="utf-8").strip()
     except OSError, UnicodeError, KeyError, TypeError, tomllib.TOMLDecodeError:
         return [
             _issue(
@@ -1559,7 +2622,18 @@ def _lock_reconciliation_issues(
                 "lockfile could not be read safely",
             )
         ]
+    if lock.get("version") != 1 or lock.get("requires-python") != f"=={python_minor}.*":
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_LOCK_METADATA_MISMATCH",
+                document,
+                "$.components",
+                "lock format and Python target must match reviewed repository policy",
+            ),
+        )
     locked: dict[str, Mapping[str, Any]] = {}
+    root_package: Mapping[str, Any] | None = None
     seen_lock_names: set[str] = set()
     for package in packages:
         package_name = package.get("name")
@@ -1585,13 +2659,15 @@ def _lock_reconciliation_issues(
             )
             continue
         seen_lock_names.add(normalized_name)
-        if normalized_name != "paperworkshell":
+        if normalized_name == "paperworkshell":
+            root_package = package
+        else:
             locked[normalized_name] = package
     inventoried = {
         component_id
         for component_id, component in components.items()
         if component["ecosystem"] == "python-package"
-        and component["admission_status"] == "approved"
+        and component["admission_status"] in {"approved", "evaluated"}
         and component_id != "uv-build"
     }
     if set(locked) != inventoried:
@@ -1688,18 +2764,50 @@ def _lock_reconciliation_issues(
                     "locked artifacts must match the reviewed PyPI origin, name, version, and hash shape",
                 ),
             )
+        artifact_evidence = cast(Mapping[str, Any] | None, component.get("artifact_evidence"))
+        if artifact_evidence is not None and not any(
+            artifact_record.get("url") == artifact_evidence["url"]
+            and artifact_record.get("size") == artifact_evidence["size_bytes"]
+            and artifact_record.get("hash") == f"sha256:{artifact_evidence['sha256']}"
+            and Path(urlsplit(cast(str, artifact_record.get("url", ""))).path).name
+            == artifact_evidence["artifact"]
+            for artifact_record in artifact_records
+        ):
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_LOCK_HASH_MISMATCH",
+                    document,
+                    "$.components[*].artifact_evidence",
+                    "Python artifact evidence must exactly match the resolved lock record",
+                ),
+            )
         inventory_hashes = cast(
             list[Mapping[str, Any]], cast(Mapping[str, Any], component["integrity"])["hashes"]
         )
         actual_hashes = {
             (cast(str, item["value"]), cast(str, item["artifact"])) for item in inventory_hashes
         }
-        if sdist is None:
-            expected_hashes: set[tuple[str, str]] = set()
-        else:
-            hash_value = cast(str, sdist["hash"]).removeprefix("sha256:")
-            artifact = Path(urlsplit(cast(str, sdist["url"])).path).name
-            expected_hashes = {(hash_value, artifact)}
+        compatible_windows_wheels = [
+            wheel
+            for wheel in wheels
+            if isinstance(wheel.get("url"), str)
+            and (
+                cast(str, wheel["url"]).casefold().endswith("-none-any.whl")
+                or (
+                    cast(str, wheel["url"]).casefold().endswith("-win_amd64.whl")
+                    and "-cp314t-" not in cast(str, wheel["url"]).casefold()
+                )
+            )
+        ]
+        reviewed_artifacts = [sdist, *compatible_windows_wheels] if sdist is not None else []
+        expected_hashes = {
+            (
+                cast(str, artifact_record["hash"]).removeprefix("sha256:"),
+                Path(urlsplit(cast(str, artifact_record["url"])).path).name,
+            )
+            for artifact_record in reviewed_artifacts
+        }
         if not expected_hashes or actual_hashes != expected_hashes:
             _add_issue(
                 issues,
@@ -1707,7 +2815,7 @@ def _lock_reconciliation_issues(
                     "DEPENDENCY_LOCK_HASH_MISMATCH",
                     document,
                     "$.components[*].integrity.hashes",
-                    "recorded release source must match the locked source artifact",
+                    "recorded release evidence must match locked source and Windows artifacts",
                 ),
             )
 
@@ -1735,6 +2843,19 @@ def _lock_reconciliation_issues(
                 "enabled Python dependency edges must match the resolved lock",
             ),
         )
+    if root_package is None:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_LOCK_METADATA_MISMATCH",
+                document,
+                "$.components",
+                "lockfile must contain one root project record",
+            ),
+        )
+    else:
+        for issue in _root_lock_metadata_issues(root, root_package, document):
+            _add_issue(issues, issue)
     return _sorted_issues(issues)
 
 
@@ -1762,6 +2883,194 @@ def _yaml_mapping_keys_unique(node: Node) -> bool:
     elif isinstance(node, SequenceNode):
         return all(_yaml_mapping_keys_unique(value) for value in node.value)
     return True
+
+
+def _root_lock_metadata_issues(
+    root: Path, root_package: Mapping[str, Any], document: str
+) -> list[DependencyIssue]:
+    """Reconcile project declarations with uv's root-package lock metadata."""
+
+    try:
+        configuration = _load_toml(root / "pyproject.toml")
+        project = cast(Mapping[str, Any], configuration["project"])
+        groups = cast(Mapping[str, Any], configuration["dependency-groups"])
+        python_parts = tuple(
+            int(part)
+            for part in (root / ".python-version").read_text(encoding="utf-8").strip().split(".")
+        )
+        if len(python_parts) != 2:
+            raise ValueError
+        expected_requires_python = (
+            f">={python_parts[0]}.{python_parts[1]},<{python_parts[0]}.{python_parts[1] + 1}"
+        )
+    except OSError, UnicodeError, KeyError, TypeError, ValueError, tomllib.TOMLDecodeError:
+        return [
+            _issue(
+                "DEPENDENCY_REPOSITORY_INPUT_INVALID",
+                document,
+                "$",
+                "root project declarations could not be read safely",
+            )
+        ]
+
+    def parse_exact_members(value: object) -> set[tuple[str, str]] | None:
+        if not isinstance(value, list):
+            return None
+        parsed_members: set[tuple[str, str]] = set()
+        for member in value:
+            if not isinstance(member, str):
+                return None
+            parsed = _exact_requirement(member)
+            if parsed is None:
+                return None
+            parsed_members.add(parsed)
+        return parsed_members
+
+    def expand_group(
+        group_name: str, stack: frozenset[str] = frozenset()
+    ) -> set[tuple[str, str]] | None:
+        if group_name in stack:
+            return None
+        members = groups.get(group_name)
+        if not isinstance(members, list):
+            return None
+        expanded: set[tuple[str, str]] = set()
+        for member in members:
+            if isinstance(member, str):
+                parsed = _exact_requirement(member)
+                if parsed is None:
+                    return None
+                expanded.add(parsed)
+            elif (
+                isinstance(member, Mapping)
+                and set(member) == {"include-group"}
+                and isinstance(member.get("include-group"), str)
+            ):
+                included = expand_group(cast(str, member["include-group"]), stack | {group_name})
+                if included is None:
+                    return None
+                expanded.update(included)
+            else:
+                return None
+        return expanded
+
+    def lock_names(value: object) -> set[str] | None:
+        if not isinstance(value, list):
+            return None
+        names: set[str] = set()
+        for record in value:
+            if not isinstance(record, Mapping) or not isinstance(record.get("name"), str):
+                return None
+            names.add(_normalize_package_name(cast(str, record["name"])))
+        return names
+
+    def lock_requirements(value: object) -> set[tuple[str, str]] | None:
+        if not isinstance(value, list):
+            return None
+        requirements: set[tuple[str, str]] = set()
+        for record in value:
+            if (
+                not isinstance(record, Mapping)
+                or not isinstance(record.get("name"), str)
+                or not isinstance(record.get("specifier"), str)
+            ):
+                return None
+            parsed = _exact_requirement(
+                f"{cast(str, record['name'])}{cast(str, record['specifier'])}"
+            )
+            if parsed is None:
+                return None
+            requirements.add(parsed)
+        return requirements
+
+    project_requirements = parse_exact_members(project.get("dependencies", []))
+    optional_value = project.get("optional-dependencies", {})
+    optional_requirements: dict[str, set[tuple[str, str]]] = {}
+    if isinstance(optional_value, Mapping):
+        for extra, members in optional_value.items():
+            parsed = parse_exact_members(members)
+            if not isinstance(extra, str) or parsed is None:
+                optional_requirements = {}
+                project_requirements = None
+                break
+            optional_requirements[extra] = parsed
+    else:
+        project_requirements = None
+
+    expanded_groups: dict[str, set[tuple[str, str]]] = {}
+    for group_name in groups:
+        expanded = expand_group(group_name)
+        if expanded is None:
+            project_requirements = None
+            break
+        expanded_groups[group_name] = expanded
+
+    root_metadata_value = root_package.get("metadata", {})
+    root_metadata = (
+        cast(Mapping[str, Any], root_metadata_value)
+        if isinstance(root_metadata_value, Mapping)
+        else {}
+    )
+    root_optional_value = root_package.get("optional-dependencies", {})
+    root_optional = (
+        cast(Mapping[str, Any], root_optional_value)
+        if isinstance(root_optional_value, Mapping)
+        else {}
+    )
+    root_dev_value = root_package.get("dev-dependencies", {})
+    root_dev = (
+        cast(Mapping[str, Any], root_dev_value) if isinstance(root_dev_value, Mapping) else {}
+    )
+    root_requires_dev_value = root_metadata.get("requires-dev", {})
+    root_requires_dev = (
+        cast(Mapping[str, Any], root_requires_dev_value)
+        if isinstance(root_requires_dev_value, Mapping)
+        else {}
+    )
+    root_extras_value = root_metadata.get("provides-extras", [])
+    root_extras = (
+        set(cast(list[str], root_extras_value))
+        if isinstance(root_extras_value, list)
+        and all(isinstance(extra, str) for extra in root_extras_value)
+        else None
+    )
+
+    metadata_valid = (
+        project_requirements is not None
+        and root_package.get("name") == project.get("name")
+        and root_package.get("version") == project.get("version")
+        and project.get("requires-python") == expected_requires_python
+        and root_package.get("source") == {"editable": "."}
+        and lock_names(root_package.get("dependencies", []))
+        == {name for name, _ in project_requirements}
+        and set(root_optional) == set(optional_requirements)
+        and all(
+            lock_names(root_optional.get(extra)) == {name for name, _ in requirements}
+            for extra, requirements in optional_requirements.items()
+        )
+        and lock_requirements(root_metadata.get("requires-dist", []))
+        == project_requirements.union(
+            *(requirements for requirements in optional_requirements.values())
+        )
+        and root_extras == set(optional_requirements)
+        and set(root_dev) == set(expanded_groups)
+        and set(root_requires_dev) == set(expanded_groups)
+        and all(
+            lock_names(root_dev.get(group_name)) == {name for name, _ in requirements}
+            and lock_requirements(root_requires_dev.get(group_name)) == requirements
+            for group_name, requirements in expanded_groups.items()
+        )
+    )
+    if metadata_valid:
+        return []
+    return [
+        _issue(
+            "DEPENDENCY_LOCK_METADATA_MISMATCH",
+            document,
+            "$.components",
+            "root lock metadata must exactly match project dependency declarations",
+        )
+    ]
 
 
 def _declaration_reconciliation_issues(

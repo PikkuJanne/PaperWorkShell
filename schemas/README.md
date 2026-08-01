@@ -42,6 +42,7 @@ text.
 
 The schema describes a non-release policy baseline. Its offline validator adds strict bounded JSON
 decoding, schema fingerprinting, dependency-graph closure, frozen-decision and task references,
-lock/declaration/workflow reconciliation, worker-boundary checks, renderer evidence, selected
-license routes, and the distribution-changing decision gate. A resolved Windows build and final
-SBOM require a later versioned release-evidence contract and packaged-file inventory.
+root-lock/declaration/workflow reconciliation, compatible Windows wheel hashes, closed upstream and
+admission profiles, worker-boundary checks, exact evaluated-artifact evidence, renderer evidence,
+selected license routes, and the distribution-changing decision gate. A resolved Windows build and
+final SBOM require a later versioned release-evidence contract and packaged-file inventory.

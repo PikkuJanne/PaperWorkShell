@@ -17,7 +17,10 @@ their Milestone 8 tasks.
 
 The baseline records currently admitted development/build/CI dependencies as well as planned,
 deferred, candidate, evaluated, and decision-gated application families. `evaluated` is reserved
-for a concrete pinned artifact under measurement; it does not activate or approve that artifact.
+for a concrete pinned artifact under measurement, with exact URL, filename, target, size, and
+SHA-256 evidence; it does not activate or approve that artifact. Locked Python records duplicate
+the reviewed source and compatible Windows x64/universal wheel hashes from `uv.lock` so source,
+artifact, and root-project metadata drift fails closed.
 The baseline is not a snapshot of an installed machine and is not a release SBOM. In particular, a
 minor-line interpreter, a minimum external-tool version, an environment probe, or a representative
 source hash must not be presented as the exact identity of a packaged Windows artifact.
@@ -30,6 +33,8 @@ For every admitted addition or upgrade:
 2. Update the direct declaration and `uv.lock` where applicable.
 3. Review every transitive, platform-marker, source, license, executable, and native-binary change.
 4. Update components and relationships, then increment `inventory_revision` and `reviewed_on`.
+   New component IDs or upstream/license identity changes also require an explicit update to the
+   validator's closed reviewed identity policy.
 5. Keep non-approved components inactive. A disabled candidate edge documents risk; it does not
    permit production installation, bundling, discovery, or invocation. A concrete benchmark
    artifact remains `evaluated` with candidate packaging state until explicitly approved.

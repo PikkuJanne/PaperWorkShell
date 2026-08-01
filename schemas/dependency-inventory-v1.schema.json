@@ -277,6 +277,9 @@
         "integrity": {
           "$ref": "#/$defs/integrity"
         },
+        "artifact_evidence": {
+          "$ref": "#/$defs/artifact_evidence"
+        },
         "license": {
           "$ref": "#/$defs/license"
         },
@@ -426,6 +429,7 @@
             "required": ["admission_status"]
           },
           "then": {
+            "required": ["artifact_evidence"],
             "properties": {
               "version": {
                 "properties": {
@@ -610,6 +614,35 @@
           "minLength": 1,
           "maxLength": 180,
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+        }
+      }
+    },
+    "artifact_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "url", "target_platform", "size_bytes", "sha256"],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+        },
+        "url": {
+          "$ref": "#/$defs/https_uri"
+        },
+        "target_platform": {
+          "type": "string",
+          "enum": ["platform-independent", "windows-x64"]
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },

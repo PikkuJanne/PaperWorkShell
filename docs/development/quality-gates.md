@@ -54,10 +54,11 @@ py -3.14 tools/dev.py validate-dependencies
 ```
 
 It validates the complete policy baseline, proves every rejected example fails for its reviewed
-reason, and reconciles admitted Python components with `pyproject.toml` and `uv.lock`, CI/tool
-pins, task and decision authorities, dependency relationships, renderer evidence, worker
+reason, and reconciles admitted Python components and Windows artifact hashes with
+`pyproject.toml` and `uv.lock`, CI/tool pins, task and decision authorities, closed source/license
+and admission identities, dependency relationships, evaluated and renderer evidence, worker
 boundaries, license routes, and redistribution gates. It is offline, bounded, rejects duplicate
-JSON keys, and never executes or fetches a listed component. The baseline is deliberately not
+JSON/YAML keys, and never executes or fetches a listed component. The baseline is deliberately not
 release/SBOM proof; see
 [`dependency-policy.md`](dependency-policy.md) for the resolved-build requirements.
 
