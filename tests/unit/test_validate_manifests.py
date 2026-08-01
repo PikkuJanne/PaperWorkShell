@@ -287,7 +287,7 @@ class CaseManifestValidationTests(unittest.TestCase):
             document="synthetic-manifest.json",
         )
         self.assertEqual(
-            {"MANIFEST_SCHEMA_EXECUTION_INVALID"},
+            {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
             {issue.code for issue in direct_issues},
         )
 
@@ -308,19 +308,52 @@ class CaseManifestValidationTests(unittest.TestCase):
             document="synthetic-manifest.json",
         )
         self.assertEqual(
-            {"MANIFEST_SEMANTIC_EXECUTION_INVALID"},
+            {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
             {issue.code for issue in issues},
+        )
+
+        structurally_complete = _load_example("case-manifest-v1-representative.json")
+        structurally_complete["script"] = "do-not-run"
+        complete_sources = cast(list[dict[str, Any]], structurally_complete["sources"])
+        complete_sources[0]["external_path"] = "C:/private/source.pdf"
+        complete_operations = cast(list[dict[str, Any]], structurally_complete["page_operations"])
+        cast(dict[str, Any], complete_operations[0]["payload"])["script"] = "do-not-run"
+        complete_issues = validate_manifest_data(
+            structurally_complete,
+            {},
+            document="synthetic-manifest.json",
+        )
+        self.assertEqual(
+            {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
+            {issue.code for issue in complete_issues},
         )
 
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "manifest.json"
-            path.write_text(json.dumps(incomplete), encoding="utf-8")
+            path.write_text(json.dumps(structurally_complete), encoding="utf-8")
             loaded, document_issues = validate_manifest_document(path, schema={})
 
         self.assertIsNone(loaded)
         self.assertEqual(
-            {"MANIFEST_SEMANTIC_EXECUTION_INVALID"},
+            {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
             {issue.code for issue in document_issues},
+        )
+
+    def test_loaded_schema_identity_is_bound_to_the_reviewed_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            (temporary_root / "schemas").mkdir()
+            schema_path = temporary_root / MANIFEST_SCHEMA_PATH
+            modified_schema = copy.deepcopy(self.schema)
+            modified_schema["description"] = "Synthetic weakened substitute"
+            schema_path.write_text(json.dumps(modified_schema), encoding="utf-8")
+
+            loaded, issues = load_manifest_schema(temporary_root)
+
+        self.assertIsNone(loaded)
+        self.assertEqual(
+            {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
+            {issue.code for issue in issues},
         )
 
     def test_generated_normalized_box_boundaries_are_exact(self) -> None:

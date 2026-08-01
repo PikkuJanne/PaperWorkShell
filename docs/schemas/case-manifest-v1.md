@@ -102,6 +102,7 @@ cannot express:
 - strict bounded UTF-8 JSON with duplicate-key and non-finite-number rejection;
 - exact version dispatch before schema validation or mutation;
 - offline Draft 2020-12 validation with format checking and a single, non-recursive schema resource;
+- canonical-schema fingerprint binding so a permissive substitute cannot bypass structural rules;
 - unique and case-wide non-colliding internal IDs;
 - source/page index bounds and unique `(source_id, source_page_index)` pairs;
 - storage-name/ID coupling and media-appropriate inspection states;

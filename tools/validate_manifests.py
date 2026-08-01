@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -24,6 +25,9 @@ MANIFEST_EXAMPLE_DIRECTORY: Final = Path("schemas/examples")
 MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v1/invalid")
 MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v1-*.json"
 SUPPORTED_SCHEMA_VERSION: Final = 1
+CANONICAL_SCHEMA_FINGERPRINT: Final = (
+    "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
+)
 
 MAX_MANIFEST_BYTES: Final = 8 * 1024 * 1024
 MAX_SCHEMA_BYTES: Final = 2 * 1024 * 1024
@@ -359,6 +363,20 @@ def _schema_references(schema: Mapping[str, Any]) -> list[tuple[str, str]]:
     return found
 
 
+def _schema_fingerprint(schema: Mapping[str, Any]) -> str | None:
+    try:
+        encoded = json.dumps(
+            schema,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except TypeError, UnicodeEncodeError, ValueError:
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _local_reference_target_path(
     schema: Mapping[str, Any], reference: str
 ) -> tuple[object, ...] | None:
@@ -522,6 +540,15 @@ def load_manifest_schema(
                 document,
                 _json_path(error.absolute_schema_path),
                 "schema definition is invalid",
+            )
+        ]
+    if _schema_fingerprint(schema) != CANONICAL_SCHEMA_FINGERPRINT:
+        return None, [
+            _issue(
+                "MANIFEST_SCHEMA_IDENTITY_MISMATCH",
+                document,
+                "$",
+                "schema does not match the reviewed canonical contract",
             )
         ]
     return schema, []
@@ -1473,6 +1500,15 @@ def validate_manifest_data(
                 document,
                 "$.schema_version",
                 "schema version is not supported",
+            )
+        ]
+    if _schema_fingerprint(schema) != CANONICAL_SCHEMA_FINGERPRINT:
+        return [
+            _issue(
+                "MANIFEST_SCHEMA_IDENTITY_MISMATCH",
+                document,
+                "$",
+                "schema does not match the reviewed canonical contract",
             )
         ]
     schema_issues = _schema_validation_issues(data, schema, document)
