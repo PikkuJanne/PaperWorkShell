@@ -16,11 +16,13 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         (root / "benchmarks").mkdir()
         (root / "schemas" / "examples").mkdir(parents=True)
         (root / "tests" / "fixtures" / "manifests" / "v1").mkdir(parents=True)
+        (root / "tests" / "fixtures" / "worker-rpc" / "v1").mkdir(parents=True)
         for name in ("TASKS.yaml", "TASKS.schema.json"):
             shutil.copy2(PROJECT_ROOT / name, root / name)
         for relative_path in (
             Path("schemas/reference-profile.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
+            Path("schemas/worker-rpc-v1.schema.json"),
             Path("benchmarks/reference-windows-v1.json"),
         ):
             shutil.copy2(PROJECT_ROOT / relative_path, root / relative_path)
@@ -32,6 +34,10 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / "tests" / "fixtures" / "manifests" / "v1" / "invalid",
             root / "tests" / "fixtures" / "manifests" / "v1" / "invalid",
+        )
+        shutil.copytree(
+            PROJECT_ROOT / "tests" / "fixtures" / "worker-rpc" / "v1" / "invalid",
+            root / "tests" / "fixtures" / "worker-rpc" / "v1" / "invalid",
         )
 
     def test_checked_in_schema_registry_passes(self) -> None:
@@ -68,6 +74,20 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             messages = validation_messages(root)
 
         self.assertTrue(any("MANIFEST_POSITIVE_FIXTURE_INVALID" in message for message in messages))
+
+    def test_invalid_worker_rpc_example_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_registry_root(root)
+            rpc_path = next((root / "schemas" / "examples" / "worker-rpc" / "v1").glob("*.json"))
+            loaded = json.loads(rpc_path.read_text(encoding="utf-8"))
+            rpc_message = cast(dict[str, Any], loaded)
+            rpc_message["protocol_version"] = 2
+            rpc_path.write_text(json.dumps(rpc_message), encoding="utf-8")
+
+            messages = validation_messages(root)
+
+        self.assertTrue(any("RPC_POSITIVE_FIXTURE_INVALID" in message for message in messages))
 
 
 if __name__ == "__main__":
