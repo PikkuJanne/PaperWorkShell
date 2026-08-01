@@ -16,6 +16,7 @@ COMMANDS: Final[dict[str, tuple[str, ...]]] = {
     "format": ("ruff", "format", "."),
     "format-check": ("ruff", "format", "--check", "."),
     "lint": ("ruff", "check", "."),
+    "check-import-boundaries": ("python", "tools/check_import_boundaries.py"),
     "typecheck": ("mypy", "src", "tools", "tests"),
     "test-unit": ("pytest", "tests/unit"),
     "validate-schemas": ("python", "tools/validate_tasks.py", "--schema-only"),
@@ -25,6 +26,7 @@ COMMANDS: Final[dict[str, tuple[str, ...]]] = {
 CHECK_COMMANDS: Final = (
     "format-check",
     "lint",
+    "check-import-boundaries",
     "typecheck",
     "test-unit",
     "validate-schemas",

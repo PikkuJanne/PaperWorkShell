@@ -38,13 +38,20 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py format` | Apply repository formatting |
 | `py -3.14 tools/dev.py format-check` | Check formatting without changes |
 | `py -3.14 tools/dev.py lint` | Run static lint checks |
+| `py -3.14 tools/dev.py check-import-boundaries` | Validate package layout and architecture imports |
 | `py -3.14 tools/dev.py typecheck` | Run strict type checking |
 | `py -3.14 tools/dev.py test-unit` | Run unit tests |
 | `py -3.14 tools/dev.py validate-schemas` | Validate `TASKS.yaml` against its JSON Schema |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
-| `py -3.14 tools/dev.py check` | Run every non-mutating PWS-0001 quality check |
+| `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
 On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).
+
+## Architecture baseline
+
+The source tree separates pure domain rules, toolkit-free application orchestration, worker lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized diagnostics. Product modules currently use only the Python standard library; optional UI and document engines are not installed or imported by package initializers.
+
+`tools/check_import_boundaries.py` statically validates the required package layout, rejects unapproved third-party imports, prevents domain and reverse-UI dependencies, and stops application code from reaching PDF, imaging, or OCR adapters directly. The binding policy and its evolution procedure are documented in [`docs/architecture/dependency-boundaries.md`](docs/architecture/dependency-boundaries.md).
 
 ## Bundle contents
 
