@@ -170,6 +170,24 @@ def test_repository_respects_import_boundaries() -> None:
         (
             "paperworkshell.app.example",
             "paperworkshell.app",
+            "from paperworkshell.export import writer\n",
+            "ARCH_GUI_EXPORT_IMPLEMENTATION",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "from .export import writer\n",
+            "ARCH_GUI_EXPORT_IMPLEMENTATION",
+        ),
+        (
+            "paperworkshell.worker.client",
+            "paperworkshell.worker",
+            "from paperworkshell.export import *\n",
+            "ARCH_GUI_EXPORT_IMPLEMENTATION",
+        ),
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
             "import paperworkshell.ui\n",
             "ARCH_UI_DIRECTION",
         ),

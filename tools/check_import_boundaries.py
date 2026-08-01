@@ -115,6 +115,8 @@ def _from_import_targets(node: ast.ImportFrom, package: str) -> tuple[str, ...]:
         )
     elif base == WORKER_PACKAGE:
         targets.extend(f"{base}.{alias.name}" for alias in node.names if alias.name != "*")
+    elif base == EXPORT_PACKAGE:
+        targets.extend(f"{base}.{alias.name}" for alias in node.names)
     return tuple(targets)
 
 
