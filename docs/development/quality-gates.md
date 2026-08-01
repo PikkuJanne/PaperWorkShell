@@ -46,8 +46,9 @@ keyboard, focus, label, scaling, and announcement coverage.
 py -3.14 tools/dev.py validate-schemas
 ```
 
-The registry validates the task graph, reference profile, case-manifest v1, worker-RPC v1, and
-dependency-inventory v1 contracts. The dependency validator is also available directly:
+The registry validates the task graph, reference profile, case-manifest v1, declarative-template
+v1, worker-RPC v1, and dependency-inventory v1 contracts. The dependency validator is also
+available directly:
 
 ```powershell
 py -3.14 tools/dev.py validate-dependencies
@@ -68,6 +69,18 @@ self-contained Draft
 normalized boxes, confirmation coupling, storage names, and output-name collisions. Both canonical
 synthetic examples must pass and every checked-in negative fixture must fail. Diagnostics use
 stable codes and JSON locations without echoing document values or absolute paths.
+
+Template validation uses bounded strict UTF-8 JSON, integer-only numbers, exact version dispatch,
+and a fingerprint-bound, self-contained Draft 2020-12 schema. Semantic checks cover lifecycle
+date ordering and explicitly supplied expiry dates, unique requirement/warning/confirmation IDs,
+cross-references and ordering, counts, output modes, byte/file limits, filename stems, and inert
+HTTPS provenance. Separate-PDF templates must reserve at least one allowed output file per
+requirement. The fixture suite supplies a fixed evaluation date rather than reading the wall clock.
+Script, command, expression, import, arbitrary trust assertion, and eligibility-decision
+members are rejected structurally; shell-looking narrative and provenance URLs remain data and
+are never executed or dereferenced. The checked-in positive and negative fixture inventories and
+their expected failure codes are exact. See
+[`docs/schemas/template-v1.md`](../schemas/template-v1.md) for the data contract.
 
 Worker-RPC validation separately caps each message at 65,536 bytes, depth at 32, nodes at 4,096,
 string code points at 4,096, and collection members at 256 before offline schema evaluation. It

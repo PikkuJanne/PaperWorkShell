@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "template_id": "expired-synthetic-template",
+  "template_version": "1.0.0",
+  "scope": "document_packaging_only",
+  "title": "Expired synthetic template",
+  "locale": "en",
+  "provenance": {
+    "source_kind": "local",
+    "publisher": "Synthetic fixture publisher",
+    "source_reference": "synthetic.expired.fixture",
+    "source_url": null,
+    "source_document_sha256": null,
+    "assertion_status": "untrusted_embedded_claims",
+    "trust_policy": "external_verification_required"
+  },
+  "lifecycle": {
+    "verified_on": "2026-01-01",
+    "review_due_on": "2026-07-01",
+    "expires_on": "2026-07-31"
+  },
+  "instructions": [
+    {
+      "instruction_id": "review-documents",
+      "text": "Review the synthetic documents."
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "synthetic-document",
+      "title": "Synthetic document",
+      "guidance": "Add one synthetic document.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 1
+      }
+    }
+  ],
+  "requirement_order": ["synthetic-document"],
+  "output": {
+    "output_version": 1,
+    "allowed_modes": ["combined_pdf"],
+    "default_mode": "combined_pdf",
+    "encryption_policy": "must_be_unencrypted",
+    "flatten_policy": "required",
+    "limits": {
+      "maximum_file_count": 1,
+      "maximum_total_bytes": 1024,
+      "maximum_file_bytes": 1024,
+      "maximum_pages_per_file": 1
+    },
+    "filename_policy": {
+      "policy_version": 1,
+      "pattern": "safe_static_stem_with_counter_v1",
+      "package_stem": "synthetic-package",
+      "requirement_stems": [],
+      "collision_policy": "append_counter",
+      "extension_policy": "derive_from_output_mode"
+    }
+  },
+  "warnings": [],
+  "confirmations": []
+}

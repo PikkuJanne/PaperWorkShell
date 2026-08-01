@@ -14,6 +14,10 @@ from tools.validate_dependencies import (
     INVENTORY_SCHEMA_PATH,
 )
 from tools.validate_schemas import validation_messages
+from tools.validate_templates import (
+    TEMPLATE_INVALID_FIXTURE_DIRECTORY,
+    TEMPLATE_SCHEMA_PATH,
+)
 
 
 class RepositorySchemaRegistryTests(unittest.TestCase):
@@ -30,6 +34,7 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("pyproject.toml"),
             Path("schemas/reference-profile.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
+            TEMPLATE_SCHEMA_PATH,
             INVENTORY_SCHEMA_PATH,
             Path("schemas/worker-rpc-v1.schema.json"),
             Path("tools/dev.py"),
@@ -54,6 +59,10 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / INVALID_FIXTURE_DIRECTORY,
             root / INVALID_FIXTURE_DIRECTORY,
+        )
+        shutil.copytree(
+            PROJECT_ROOT / TEMPLATE_INVALID_FIXTURE_DIRECTORY,
+            root / TEMPLATE_INVALID_FIXTURE_DIRECTORY,
         )
 
     def test_checked_in_schema_registry_passes(self) -> None:
@@ -104,6 +113,20 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             messages = validation_messages(root)
 
         self.assertTrue(any("RPC_POSITIVE_FIXTURE_INVALID" in message for message in messages))
+
+    def test_invalid_template_example_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_registry_root(root)
+            template_path = root / "schemas" / "examples" / "template-v1-minimal.json"
+            loaded = json.loads(template_path.read_text(encoding="utf-8"))
+            template = cast(dict[str, Any], loaded)
+            template["schema_version"] = 2
+            template_path.write_text(json.dumps(template), encoding="utf-8")
+
+            messages = validation_messages(root)
+
+        self.assertTrue(any("TEMPLATE_POSITIVE_FIXTURE_INVALID" in message for message in messages))
 
     def test_invalid_dependency_inventory_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

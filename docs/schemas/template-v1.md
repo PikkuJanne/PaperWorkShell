@@ -85,7 +85,9 @@ one allowed mode as the default. It also records whether output must be unencryp
 overlays must be flattened, and positive limits for file count, aggregate bytes, per-file bytes,
 and pages per PDF. These are packaging constraints, not promises about portal acceptance. Semantic
 validation requires the default mode to be allowed and the per-file byte limit not to exceed the
-aggregate byte limit.
+aggregate byte limit. When `separate_pdfs` is allowed, `maximum_file_count` must be large enough to
+represent one output for every declared requirement; runtime assignment and byte-size feasibility
+remain owned by `PWS-0406` and `PWS-0407`.
 
 Filename generation deliberately has no format string, regular expression, variable expansion, or
 expression language. The only v1 pattern is `safe_static_stem_with_counter_v1`:

@@ -94,6 +94,12 @@ migration policy are documented in
 stores only completed immutable-source records and opaque case-internal references; external source
 paths are never persisted in it.
 
+The declarative template v1 contract, synthetic example, provenance/lifecycle fields, packaging
+rules, and non-executable boundary are documented in
+[`docs/schemas/template-v1.md`](docs/schemas/template-v1.md). Repository validation is strict,
+bounded, offline, and clock-independent; runtime loading, trust display, and freshness warnings
+remain owned by `PWS-0401`.
+
 The version-1 worker RPC envelope, lifecycle, capability negotiation, logical case-object
 references, bounded decoding rules, and sanitized error contract are documented in
 [`docs/schemas/worker-rpc-v1.md`](docs/schemas/worker-rpc-v1.md). The schema and semantic validator
@@ -204,8 +210,11 @@ py -3.14 tools/dev.py validate-docs
 ```
 
 Schema validation uses safe YAML loading with duplicate-key rejection and offline Draft 2020-12
-JSON Schema validation with date-format checking. Dependency inventories, case manifests, and
-worker-RPC messages also use bounded strict parsers and deterministic semantic validators.
+JSON Schema validation with date-format checking. Dependency inventories, case manifests,
+declarative templates, and worker-RPC messages also use bounded strict parsers and deterministic
+semantic validators. Template examples are canonical JSON; the schema can describe an equivalent
+YAML-decoded data model, but this foundation validator does not load YAML tags, aliases, or merge
+keys.
 Documentation validation checks
 supported local Markdown links/anchors and decision, task, and security references without retrieving
 network content.
