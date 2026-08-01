@@ -1,0 +1,18 @@
+{
+  "protocol": "paperworkshell.worker-rpc",
+  "protocol_version": 1,
+  "message_version": 1,
+  "message_type": "session.closed",
+  "direction": "worker_to_client",
+  "session_id": "10000000-0000-4000-8000-000000000001",
+  "worker_instance_id": "10000000-0000-4000-8000-000000000002",
+  "session_capability": "0000000000000000000000000000000000000000000000000000000000000000",
+  "case_id": "10000000-0000-4000-8000-000000000003",
+  "message_id": "20000000-0000-4000-8000-000000000019",
+  "sender_sequence": 5,
+  "request_id": "21000000-0000-4000-8000-000000000004",
+  "operation_id": null,
+  "payload": {
+    "reason": "idle_timeout"
+  }
+}

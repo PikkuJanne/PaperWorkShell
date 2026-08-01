@@ -23,9 +23,9 @@
       "restart_required": false,
       "parameters": [
         {
-          "name": "limit_name",
-          "value_type": "token",
-          "value": "wall_time_ms"
+          "name": "limit",
+          "value_type": "integer",
+          "value": 30000
         }
       ]
     }

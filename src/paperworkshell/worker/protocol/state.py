@@ -516,6 +516,11 @@ class ConversationState:
         )
         return replace(
             self,
+            phase=(
+                ConversationPhase.FAULTED
+                if payload.error is not None and payload.error.restart_required
+                else self.phase
+            ),
             active_operation=None,
             terminal_operations=(*self.terminal_operations, terminal),
         )

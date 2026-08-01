@@ -4,6 +4,7 @@ import json
 import random
 import unittest
 from dataclasses import fields
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -204,6 +205,30 @@ class WorkerProtocolSecurityTests(unittest.TestCase):
         for model_type in (ProtocolEnvelope, CaseObjectReference, OperationStartPayload):
             with self.subTest(model_type=model_type.__name__):
                 self.assertTrue(prohibited.isdisjoint(field.name for field in fields(model_type)))
+
+    def test_unregistered_error_codes_and_token_context_fail_without_value_leakage(self) -> None:
+        path = Path("schemas/examples/worker-rpc/v1/protocol-error.json")
+        original = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+        canary = "ENCODED_PRIVATE_VALUE"
+
+        unknown_code = json.loads(json.dumps(original))
+        cast(dict[str, Any], unknown_code["payload"])["error"]["code"] = canary
+        error = self.assert_protocol_error(_raw(unknown_code), "RPC_INVALID_ERROR")
+        self.assertNotIn(canary, str(error))
+
+        token_context = json.loads(json.dumps(original))
+        cast(dict[str, Any], token_context["payload"])["error"]["parameters"] = [
+            {
+                "name": "operation_kind",
+                "value_type": "token",
+                "value": canary.lower(),
+            }
+        ]
+        error = self.assert_protocol_error(
+            _raw(token_context),
+            "RPC_INVALID_ERROR_PARAMETER",
+        )
+        self.assertNotIn(canary.lower(), str(error))
 
     def test_default_noop_registry_rejects_inputs_before_encoding(self) -> None:
         reference = CaseObjectReference(

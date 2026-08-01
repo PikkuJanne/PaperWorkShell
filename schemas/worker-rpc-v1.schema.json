@@ -189,9 +189,12 @@
     },
     "errorCode": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 96,
-      "pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$"
+      "enum": [
+        "RPC_MESSAGE_INVALID",
+        "WORKER_OPERATION_FAILED",
+        "WORKER_OPERATION_TIMED_OUT",
+        "WORKER_INTERNAL_FAULT"
+      ]
     },
     "capabilityDescriptor": {
       "type": "object",
@@ -304,31 +307,6 @@
         }
       }
     },
-    "tokenErrorParameter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "value_type", "value"],
-      "properties": {
-        "name": {
-          "enum": [
-            "capability_id",
-            "operation_kind",
-            "resource_kind",
-            "state",
-            "limit_name",
-            "dependency_id",
-            "unit",
-            "area"
-          ]
-        },
-        "value_type": {
-          "const": "token"
-        },
-        "value": {
-          "$ref": "#/$defs/token"
-        }
-      }
-    },
     "uuidErrorParameter": {
       "type": "object",
       "additionalProperties": false,
@@ -349,9 +327,6 @@
       "oneOf": [
         {
           "$ref": "#/$defs/integerErrorParameter"
-        },
-        {
-          "$ref": "#/$defs/tokenErrorParameter"
         },
         {
           "$ref": "#/$defs/uuidErrorParameter"
@@ -439,6 +414,15 @@
           "properties": {
             "category": {
               "const": "protocol"
+            },
+            "code": {
+              "const": "RPC_MESSAGE_INVALID"
+            },
+            "retry_action": {
+              "const": "restart_worker"
+            },
+            "restart_required": {
+              "const": true
             }
           }
         }
@@ -452,6 +436,12 @@
         {
           "type": "object",
           "properties": {
+            "code": {
+              "const": "WORKER_INTERNAL_FAULT"
+            },
+            "category": {
+              "const": "internal"
+            },
             "retry_action": {
               "const": "restart_worker"
             },
@@ -771,7 +761,7 @@
       "required": ["disposition"],
       "properties": {
         "disposition": {
-          "enum": ["requested", "already_requested", "already_terminal", "unknown_operation"]
+          "enum": ["requested", "already_requested", "already_terminal"]
         }
       }
     },
@@ -827,7 +817,41 @@
         "error": {
           "$ref": "#/$defs/errorPayload"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "failed"
+              }
+            },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "code": {
+                    "const": "WORKER_OPERATION_FAILED"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "code": {
+                    "const": "WORKER_OPERATION_TIMED_OUT"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "operationResultPayload": {
       "oneOf": [
@@ -858,7 +882,7 @@
       "required": ["reason"],
       "properties": {
         "reason": {
-          "enum": ["shutdown_complete", "idle_timeout", "protocol_fault"]
+          "const": "shutdown_complete"
         }
       }
     },

@@ -24,7 +24,6 @@ MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
 MAX_PARAMETERS: Final = 64
 
 _TOKEN_RE: Final = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
-_ERROR_CODE_RE: Final = re.compile(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*\Z")
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}\Z")
 _CAPABILITY_RE: Final = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -95,7 +94,6 @@ class CancelDisposition(StrEnum):
     REQUESTED = "requested"
     ALREADY_REQUESTED = "already_requested"
     ALREADY_TERMINAL = "already_terminal"
-    UNKNOWN_OPERATION = "unknown_operation"
 
 
 class OperationOutcome(StrEnum):
@@ -119,8 +117,6 @@ class ClosedReason(StrEnum):
     """Why the worker reports the session closed."""
 
     SHUTDOWN_COMPLETE = "shutdown_complete"
-    IDLE_TIMEOUT = "idle_timeout"
-    PROTOCOL_FAULT = "protocol_fault"
 
 
 class ErrorCategory(StrEnum):
@@ -133,6 +129,15 @@ class ErrorCategory(StrEnum):
     DEPENDENCY = "dependency"
     OPERATION = "operation"
     INTERNAL = "internal"
+
+
+class ErrorCode(StrEnum):
+    """Closed public error-code registry for protocol version 1."""
+
+    RPC_MESSAGE_INVALID = "RPC_MESSAGE_INVALID"
+    WORKER_OPERATION_FAILED = "WORKER_OPERATION_FAILED"
+    WORKER_OPERATION_TIMED_OUT = "WORKER_OPERATION_TIMED_OUT"
+    WORKER_INTERNAL_FAULT = "WORKER_INTERNAL_FAULT"
 
 
 class RetryAction(StrEnum):
@@ -281,14 +286,6 @@ _ERROR_PARAMETER_TYPES: Final = MappingProxyType(
         "sequence": ScalarValueType.INTEGER,
         "expected_sequence": ScalarValueType.INTEGER,
         "observed_sequence": ScalarValueType.INTEGER,
-        "capability_id": ScalarValueType.TOKEN,
-        "operation_kind": ScalarValueType.TOKEN,
-        "resource_kind": ScalarValueType.TOKEN,
-        "state": ScalarValueType.TOKEN,
-        "limit_name": ScalarValueType.TOKEN,
-        "dependency_id": ScalarValueType.TOKEN,
-        "unit": ScalarValueType.TOKEN,
-        "area": ScalarValueType.TOKEN,
         "request_id": ScalarValueType.UUID,
         "operation_id": ScalarValueType.UUID,
         "message_id": ScalarValueType.UUID,
@@ -407,7 +404,7 @@ class CaseObjectReference:
 class ErrorPayload:
     """Sanitized public error data with allowlisted scalar parameters only."""
 
-    code: str
+    code: ErrorCode
     category: ErrorCategory
     retry_action: RetryAction
     restart_required: bool
@@ -421,12 +418,10 @@ class ErrorPayload:
                 "payload.error_version",
                 "error payload version is unsupported",
             )
-        if (
-            type(self.code) is not str
-            or len(self.code) > 96
-            or _ERROR_CODE_RE.fullmatch(self.code) is None
-        ):
-            reject("RPC_INVALID_ERROR", "payload.code", "a stable uppercase error code is required")
+        if type(self.code) is not ErrorCode:
+            reject(
+                "RPC_INVALID_ERROR", "payload.code", "a registered public error code is required"
+            )
         if type(self.category) is not ErrorCategory:
             reject("RPC_INVALID_ENUM", "payload.category", "an allowed error category is required")
         if type(self.retry_action) is not RetryAction:
@@ -660,6 +655,19 @@ class OperationResultPayload:
                 "payload",
                 "failed and timed-out results require one error and no outputs",
             )
+        elif self.outcome is OperationOutcome.FAILED:
+            if self.error.code is not ErrorCode.WORKER_OPERATION_FAILED:
+                reject(
+                    "RPC_INVALID_ERROR",
+                    "payload.error.code",
+                    "failed results require the registered failure code",
+                )
+        elif self.error.code is not ErrorCode.WORKER_OPERATION_TIMED_OUT:
+            reject(
+                "RPC_INVALID_ERROR",
+                "payload.error.code",
+                "timed-out results require the registered timeout code",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -687,9 +695,15 @@ class ProtocolErrorPayload:
     def __post_init__(self) -> None:
         if (
             type(self.error) is not ErrorPayload
+            or self.error.code is not ErrorCode.RPC_MESSAGE_INVALID
             or self.error.category is not ErrorCategory.PROTOCOL
+            or not self.error.restart_required
         ):
-            reject("RPC_INVALID_ERROR", "payload.error", "a protocol-category error is required")
+            reject(
+                "RPC_INVALID_ERROR",
+                "payload.error",
+                "a restart-required protocol-category error is required",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -698,7 +712,12 @@ class WorkerFaultPayload:
     invalidated_operation_ids: tuple[UUID, ...]
 
     def __post_init__(self) -> None:
-        if type(self.error) is not ErrorPayload or not self.error.restart_required:
+        if (
+            type(self.error) is not ErrorPayload
+            or self.error.code is not ErrorCode.WORKER_INTERNAL_FAULT
+            or self.error.category is not ErrorCategory.INTERNAL
+            or not self.error.restart_required
+        ):
             reject(
                 "RPC_INVALID_ERROR", "payload.error", "a restart-required worker error is required"
             )

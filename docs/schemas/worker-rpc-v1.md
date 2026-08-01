@@ -70,7 +70,7 @@ and cancellation without parsing a document.
 | `operation.accepted` | worker to client | matching operation kind/version and `effective_limits` |
 | `operation.progress` | worker to client | `stage_code`, integer `completed_units`, integer-or-null `total_units`, and a unit |
 | `operation.cancel` | client to worker | reason `user_requested`, `shutdown`, or `superseded` |
-| `operation.cancel_ack` | worker to client | `requested`, `already_requested`, `already_terminal`, or `unknown_operation` |
+| `operation.cancel_ack` | worker to client | `requested`, `already_requested`, or `already_terminal` |
 | `operation.result` | worker to client | terminal outcome, bounded outputs, and outcome-dependent error |
 | `session.shutdown` | client to worker | shutdown reason |
 | `session.closed` | worker to client | close reason |
@@ -93,11 +93,12 @@ requested to accepted; progress is optional and never terminal. When `total_unit
 
 Cancellation is cooperative and race-safe. `requested` or `already_requested` acknowledges intent,
 not completion; the eventual terminal result is authoritative and may still be `succeeded` if work
-won the race. `already_terminal` reports that the result won the race, and `unknown_operation`
-does not create state. A cancel acknowledgement is not a terminal result. Shutdown stops accepting
-new work and proceeds to `session.closed`; a severe fault invalidates the listed active IDs and
-requires a new worker. Session state, sequences, and capabilities are never resumed or replayed
-across worker restart.
+won the race. `already_terminal` reports that the result won the race. Unknown operation IDs are
+protocol violations rather than acknowledgements that create state. A cancel acknowledgement is
+not a terminal result. Shutdown stops accepting new work and proceeds to `session.closed` with the
+correlated reason `shutdown_complete`; unsolicited close messages are protocol violations. A
+protocol error or severe worker fault terminates the session and requires a new worker. Session
+state, sequences, and capabilities are never resumed or replayed across worker restart.
 
 ## Two-stage operation validation
 
@@ -108,7 +109,8 @@ Validation is intentionally split:
    its input, parameter, output, limit, and state rules before dispatch.
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The only
-registered pair in this foundation task is `protocol.noop` version 1, with no inputs or parameters.
+registered pair in this foundation task is `protocol.noop` version 1, with no inputs, parameters,
+or outputs.
 Adding an operation does not loosen generic dictionaries: it requires a named capability, a
 versioned typed codec, semantic validation, positive and negative fixtures, and bounded adapter
 tests. A changed operation meaning receives a new operation version.
@@ -148,6 +150,8 @@ Before schema or model construction, strict decoding enforces these protocol-wid
 | Code points in one string | 4,096 |
 | Members in one collection | 256 |
 | Operation/error parameters | 64 |
+| Remembered message IDs in one session | 4,096 |
+| Remembered terminal operation IDs in one session | 1,024 |
 
 Only strict UTF-8 JSON is accepted. Duplicate keys, byte-order marks, non-finite numbers, trailing
 data, nonstandard constants, oversized integers, and inputs exceeding any structural budget fail
@@ -156,21 +160,23 @@ owned by `PWS-0107`.
 
 ## Sanitized errors
 
-An error is a closed version-1 object containing an uppercase stable code, a closed category, a
+An error is a closed version-1 object containing a registered stable code, a closed category, a
 closed retry action, an exactly corresponding restart flag, and zero or more allowlisted tagged
 parameters. `restart_required` is true if and only if `retry_action` is `restart_worker`.
-`protocol.error` requires category `protocol`; `worker.fault` requires a restart-worker action.
+`protocol.error` requires category `protocol` and a restart-worker action because it terminates the
+session; `worker.fault` also requires a restart-worker action. The public v1 code registry is
+closed to `RPC_MESSAGE_INVALID`, `WORKER_OPERATION_FAILED`, `WORKER_OPERATION_TIMED_OUT`, and
+`WORKER_INTERNAL_FAULT`. Detailed parser or adapter failures are mapped to one of those public
+codes before crossing the RPC boundary; an unknown code is never forwarded to UI or logging.
 
 Error parameters are not an arbitrary context map. The allowlist is:
 
 - integer: `attempted_version`, `supported_version`, `minimum`, `maximum`, `observed`, `limit`,
   `count`, `capability_version`, `operation_version`, `protocol_version`, `sequence`,
   `expected_sequence`, `observed_sequence`;
-- token: `capability_id`, `operation_kind`, `resource_kind`, `state`, `limit_name`,
-  `dependency_id`, `unit`, `area`; and
 - UUIDv4: `request_id`, `operation_id`, `message_id`.
 
-Parameter names are unique within one error. Boolean error parameters and free-form message,
+Parameter names are unique within one error. Boolean and token error parameters and free-form message,
 detail, exception, traceback, path, filename, metadata, OCR/document text, form values, or library
 error fields are forbidden. UI/application code maps stable codes and safe parameters to localized
 plain-language recovery text. Raw third-party exceptions stay behind the worker adapter boundary.

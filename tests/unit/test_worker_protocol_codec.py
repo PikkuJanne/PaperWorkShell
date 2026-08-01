@@ -19,6 +19,7 @@ from paperworkshell.worker.protocol.models import (
     ClosedReason,
     Direction,
     ErrorCategory,
+    ErrorCode,
     ErrorParameter,
     ErrorPayload,
     MessagePayload,
@@ -75,9 +76,10 @@ def _error(
     *,
     category: ErrorCategory = ErrorCategory.OPERATION,
     retry_action: RetryAction = RetryAction.NEVER,
+    code: ErrorCode = ErrorCode.WORKER_OPERATION_FAILED,
 ) -> ErrorPayload:
     return ErrorPayload(
-        code="SYNTHETIC_FAILURE",
+        code=code,
         category=category,
         retry_action=retry_action,
         restart_required=retry_action is RetryAction.RESTART_WORKER,
@@ -131,6 +133,11 @@ def _envelope(
 
 def _messages() -> tuple[ProtocolEnvelope, ...]:
     failed = _error()
+    timed_out = _error(
+        category=ErrorCategory.RESOURCE_LIMIT,
+        retry_action=RetryAction.RETRY,
+        code=ErrorCode.WORKER_OPERATION_TIMED_OUT,
+    )
     return (
         _envelope(
             MessageType.SESSION_HELLO,
@@ -203,7 +210,7 @@ def _messages() -> tuple[ProtocolEnvelope, ...]:
         _envelope(
             MessageType.OPERATION_RESULT,
             Direction.WORKER_TO_CLIENT,
-            OperationResultPayload(OperationOutcome.TIMED_OUT, (), failed),
+            OperationResultPayload(OperationOutcome.TIMED_OUT, (), timed_out),
             message_number=10,
             operation_id=OPERATION_ID,
         ),
@@ -222,7 +229,13 @@ def _messages() -> tuple[ProtocolEnvelope, ...]:
         _envelope(
             MessageType.PROTOCOL_ERROR,
             Direction.CLIENT_TO_WORKER,
-            ProtocolErrorPayload(_error(category=ErrorCategory.PROTOCOL)),
+            ProtocolErrorPayload(
+                _error(
+                    category=ErrorCategory.PROTOCOL,
+                    retry_action=RetryAction.RESTART_WORKER,
+                    code=ErrorCode.RPC_MESSAGE_INVALID,
+                )
+            ),
             message_number=13,
             operation_id=OPERATION_ID,
         ),
@@ -233,6 +246,7 @@ def _messages() -> tuple[ProtocolEnvelope, ...]:
                 _error(
                     category=ErrorCategory.INTERNAL,
                     retry_action=RetryAction.RESTART_WORKER,
+                    code=ErrorCode.WORKER_INTERNAL_FAULT,
                 ),
                 (OPERATION_ID,),
             ),

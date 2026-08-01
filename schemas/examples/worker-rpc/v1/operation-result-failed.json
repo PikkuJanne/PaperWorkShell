@@ -23,9 +23,9 @@
       "restart_required": false,
       "parameters": [
         {
-          "name": "operation_kind",
-          "value_type": "token",
-          "value": "protocol.noop"
+          "name": "operation_id",
+          "value_type": "uuid",
+          "value": "30000000-0000-4000-8000-000000000001"
         }
       ]
     }

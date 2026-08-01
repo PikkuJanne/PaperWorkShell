@@ -13,12 +13,14 @@ from paperworkshell.worker.protocol.models import (
     CaseObjectReference,
     Direction,
     ErrorCategory,
+    ErrorCode,
     ErrorParameter,
     ErrorPayload,
     MessageType,
     OperationOutcome,
     OperationResultPayload,
     ProtocolEnvelope,
+    ProtocolErrorPayload,
     ReferenceArea,
     ResourceLimits,
     RetryAction,
@@ -100,7 +102,7 @@ class WorkerProtocolModelTests(unittest.TestCase):
             ErrorParameter("operation_id", ScalarValueType.TOKEN, "synthetic")
         with self.assertRaises(ProtocolError) as restart_mismatch:
             ErrorPayload(
-                code="SYNTHETIC_FAILURE",
+                code=ErrorCode.WORKER_INTERNAL_FAULT,
                 category=ErrorCategory.INTERNAL,
                 retry_action=RetryAction.RESTART_WORKER,
                 restart_required=False,
@@ -111,9 +113,35 @@ class WorkerProtocolModelTests(unittest.TestCase):
         self.assertEqual("RPC_INVALID_ERROR_PARAMETER", wrong_type.exception.code)
         self.assertEqual("RPC_INVALID_ERROR", restart_mismatch.exception.code)
 
+        with self.assertRaises(ProtocolError) as token_parameter:
+            ErrorParameter("operation_kind", ScalarValueType.TOKEN, "encoded.private.value")
+        self.assertEqual("RPC_INVALID_ERROR_PARAMETER", token_parameter.exception.code)
+
+    def test_public_error_codes_and_message_context_are_closed(self) -> None:
+        with self.assertRaises(ProtocolError) as unknown_code:
+            ErrorPayload(
+                code="UNREGISTERED_ERROR_CODE",  # type: ignore[arg-type]
+                category=ErrorCategory.INTERNAL,
+                retry_action=RetryAction.NEVER,
+                restart_required=False,
+                parameters=(),
+            )
+        self.assertEqual("RPC_INVALID_ERROR", unknown_code.exception.code)
+
+        operation_error = ErrorPayload(
+            code=ErrorCode.WORKER_OPERATION_FAILED,
+            category=ErrorCategory.OPERATION,
+            retry_action=RetryAction.NEVER,
+            restart_required=False,
+            parameters=(),
+        )
+        with self.assertRaises(ProtocolError) as protocol_context:
+            ProtocolErrorPayload(operation_error)
+        self.assertEqual("RPC_INVALID_ERROR", protocol_context.exception.code)
+
     def test_result_outcomes_enforce_output_and_error_contracts(self) -> None:
         error = ErrorPayload(
-            code="SYNTHETIC_FAILURE",
+            code=ErrorCode.WORKER_OPERATION_FAILED,
             category=ErrorCategory.OPERATION,
             retry_action=RetryAction.NEVER,
             restart_required=False,

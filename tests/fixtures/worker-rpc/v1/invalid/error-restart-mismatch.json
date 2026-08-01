@@ -15,7 +15,7 @@
   "payload": {
     "error": {
       "error_version": 1,
-      "code": "MALFORMED_MESSAGE",
+      "code": "RPC_MESSAGE_INVALID",
       "category": "protocol",
       "retry_action": "never",
       "restart_required": true,

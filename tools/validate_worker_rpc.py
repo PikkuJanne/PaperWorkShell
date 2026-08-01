@@ -109,14 +109,6 @@ _ERROR_PARAMETER_TYPES: Final[dict[str, str]] = {
     "sequence": "integer",
     "expected_sequence": "integer",
     "observed_sequence": "integer",
-    "capability_id": "token",
-    "operation_kind": "token",
-    "resource_kind": "token",
-    "state": "token",
-    "limit_name": "token",
-    "dependency_id": "token",
-    "unit": "token",
-    "area": "token",
     "request_id": "uuid",
     "operation_id": "uuid",
     "message_id": "uuid",
@@ -1258,6 +1250,7 @@ def _error_issues(data: Mapping[str, Any], document: str) -> list[RpcIssue]:
         return []
 
     issues: list[RpcIssue] = []
+    code = error.get("code")
     retry_action = error.get("retry_action")
     restart_required = error.get("restart_required")
     if (retry_action == "restart_worker") is not (restart_required is True):
@@ -1278,6 +1271,39 @@ def _error_issues(data: Mapping[str, Any], document: str) -> list[RpcIssue]:
                 document,
                 "$.payload.error.category",
                 "protocol errors require the protocol category",
+            ),
+        )
+    expected_code: str | None = None
+    if message_type == "protocol.error":
+        expected_code = "RPC_MESSAGE_INVALID"
+    elif message_type == "worker.fault":
+        expected_code = "WORKER_INTERNAL_FAULT"
+    elif message_type == "operation.result":
+        outcome = payload.get("outcome")
+        if outcome == "failed":
+            expected_code = "WORKER_OPERATION_FAILED"
+        elif outcome == "timed_out":
+            expected_code = "WORKER_OPERATION_TIMED_OUT"
+    if expected_code is not None and code != expected_code:
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_ERROR_INVALID",
+                document,
+                "$.payload.error.code",
+                "the error code is not registered for this message context",
+            ),
+        )
+    if message_type == "protocol.error" and (
+        retry_action != "restart_worker" or restart_required is not True
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_ERROR_INVALID",
+                document,
+                "$.payload.error.retry_action",
+                "protocol errors require a worker restart",
             ),
         )
     if message_type == "worker.fault" and restart_required is not True:

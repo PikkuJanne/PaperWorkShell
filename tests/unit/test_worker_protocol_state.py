@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from uuid import UUID
 
+from paperworkshell.worker.protocol.codec import decode_message
 from paperworkshell.worker.protocol.errors import ProtocolError
 from paperworkshell.worker.protocol.models import (
     MAX_MESSAGE_BYTES,
@@ -16,6 +18,7 @@ from paperworkshell.worker.protocol.models import (
     ClosedReason,
     Direction,
     ErrorCategory,
+    ErrorCode,
     ErrorPayload,
     MessagePayload,
     MessageType,
@@ -162,6 +165,41 @@ def _accept_operation(state: ConversationState, *, message_number: int = 4) -> C
 
 
 class WorkerProtocolStateTests(unittest.TestCase):
+    def test_all_canonical_results_replay_through_a_complete_conversation(self) -> None:
+        examples = Path("schemas/examples/worker-rpc/v1")
+        prefix = (
+            "session-hello.json",
+            "session-ready.json",
+            "operation-start.json",
+            "operation-accepted.json",
+            "operation-progress.json",
+            "operation-cancel.json",
+            "operation-cancel-ack.json",
+        )
+        suffix = ("session-shutdown.json", "session-closed.json")
+        result_names = (
+            "operation-result-succeeded.json",
+            "operation-result-cancelled.json",
+            "operation-result-failed.json",
+            "operation-result-timed-out.json",
+        )
+
+        for result_name in result_names:
+            with self.subTest(result=result_name):
+                names = (*prefix, result_name, *suffix)
+                messages = tuple(decode_message((examples / name).read_bytes()) for name in names)
+                first = messages[0]
+                state = ConversationState(
+                    first.session_id,
+                    first.worker_instance_id,
+                    first.session_capability,
+                    first.case_id,
+                )
+                for message in messages:
+                    state = state.accept(message)
+
+                self.assertEqual(ConversationPhase.CLOSED, state.phase)
+
     def test_full_cancelled_operation_and_shutdown_conversation(self) -> None:
         state = _accept_operation(_start(_negotiate()))
         state = state.accept(
@@ -447,7 +485,7 @@ class WorkerProtocolStateTests(unittest.TestCase):
     def test_worker_fault_must_invalidate_exactly_the_active_operation(self) -> None:
         state = _accept_operation(_start(_negotiate()))
         fault_error = ErrorPayload(
-            code="WORKER_FAULT",
+            code=ErrorCode.WORKER_INTERNAL_FAULT,
             category=ErrorCategory.INTERNAL,
             retry_action=RetryAction.RESTART_WORKER,
             restart_required=True,
@@ -484,7 +522,7 @@ class WorkerProtocolStateTests(unittest.TestCase):
     def test_timed_out_result_is_terminal_and_later_events_are_rejected(self) -> None:
         state = _accept_operation(_start(_negotiate()))
         error = ErrorPayload(
-            code="OPERATION_TIMED_OUT",
+            code=ErrorCode.WORKER_OPERATION_TIMED_OUT,
             category=ErrorCategory.RESOURCE_LIMIT,
             retry_action=RetryAction.RETRY,
             restart_required=False,
@@ -530,6 +568,33 @@ class WorkerProtocolStateTests(unittest.TestCase):
             ):
                 state.accept(later)
             self.assertEqual("RPC_OPERATION_TERMINAL", raised.exception.code)
+
+    def test_restart_required_operation_result_faults_the_session(self) -> None:
+        state = _accept_operation(_start(_negotiate()))
+        error = ErrorPayload(
+            code=ErrorCode.WORKER_OPERATION_FAILED,
+            category=ErrorCategory.INTERNAL,
+            retry_action=RetryAction.RESTART_WORKER,
+            restart_required=True,
+            parameters=(),
+        )
+        result = _message(
+            MessageType.OPERATION_RESULT,
+            Direction.WORKER_TO_CLIENT,
+            OperationResultPayload(OperationOutcome.FAILED, (), error),
+            sender_sequence=2,
+            message_number=50,
+            request_id=START_REQUEST,
+            operation_id=OPERATION_ID,
+        )
+
+        faulted = state.accept(result)
+
+        self.assertEqual(ConversationPhase.FAULTED, faulted.phase)
+        self.assertIsNone(faulted.active_operation_id)
+        with self.assertRaises(ProtocolError) as terminal:
+            faulted.accept(result)
+        self.assertEqual("RPC_SESSION_TERMINAL", terminal.exception.code)
 
 
 if __name__ == "__main__":

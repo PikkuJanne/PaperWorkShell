@@ -17,7 +17,7 @@
     "outputs": [],
     "error": {
       "error_version": 1,
-      "code": "OPERATION_FAILED",
+      "code": "WORKER_OPERATION_FAILED",
       "category": "operation",
       "retry_action": "never",
       "restart_required": false,

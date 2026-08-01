@@ -28,6 +28,7 @@ from paperworkshell.worker.protocol.models import (
     ClosedReason,
     Direction,
     ErrorCategory,
+    ErrorCode,
     ErrorParameter,
     ErrorPayload,
     MessagePayload,
@@ -413,7 +414,7 @@ def _decode_error(value: object, location: str) -> ErrorPayload:
     parameters = _array(obj["parameters"], f"{location}.parameters")
     return ErrorPayload(
         error_version=_integer(obj["error_version"], f"{location}.error_version"),
-        code=_string(obj["code"], f"{location}.code"),
+        code=_enum(obj["code"], ErrorCode, f"{location}.code", code="RPC_INVALID_ERROR"),
         category=_enum(obj["category"], ErrorCategory, f"{location}.category"),
         retry_action=_enum(obj["retry_action"], RetryAction, f"{location}.retry_action"),
         restart_required=_boolean(obj["restart_required"], f"{location}.restart_required"),
@@ -708,7 +709,7 @@ def _encode_reference(value: CaseObjectReference) -> dict[str, object]:
 def _encode_error(value: ErrorPayload) -> dict[str, object]:
     return {
         "error_version": value.error_version,
-        "code": value.code,
+        "code": value.code.value,
         "category": value.category.value,
         "retry_action": value.retry_action.value,
         "restart_required": value.restart_required,

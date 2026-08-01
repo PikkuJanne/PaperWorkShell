@@ -59,7 +59,7 @@ class WorkerRpcValidationTests(unittest.TestCase):
         self.assertIsNotNone(summary)
         assert summary is not None
         self.assertEqual(15, summary.positive_count)
-        self.assertEqual(21, summary.negative_count)
+        self.assertEqual(26, summary.negative_count)
 
     def test_every_message_type_has_a_valid_canonical_example(self) -> None:
         expected_types = {
@@ -86,10 +86,13 @@ class WorkerRpcValidationTests(unittest.TestCase):
 
     def test_each_negative_fixture_is_rejected_for_its_intended_reason(self) -> None:
         expected = {
+            "cancel-ack-unknown-operation.json": "RPC_SCHEMA_VALIDATION",
             "duplicate-capability.json": "RPC_CAPABILITY_DUPLICATE",
             "duplicate-key.json": "RPC_JSON_DUPLICATE_KEY",
             "duplicate-worker-fault-id.json": "RPC_ID_DUPLICATE",
+            "error-code-unknown.json": "RPC_ERROR_INVALID",
             "error-parameter-unknown.json": "RPC_ERROR_PARAMETER_INVALID",
+            "error-parameter-token.json": "RPC_ERROR_PARAMETER_INVALID",
             "error-restart-mismatch.json": "RPC_ERROR_INVALID",
             "future-message-version.json": "RPC_MESSAGE_VERSION_UNSUPPORTED",
             "future-protocol-version.json": "RPC_VERSION_UNSUPPORTED",
@@ -102,8 +105,10 @@ class WorkerRpcValidationTests(unittest.TestCase):
             "noop-input.json": "RPC_OPERATION_INPUT_INVALID",
             "progress-overrun.json": "RPC_PROGRESS_INVALID",
             "prohibited-path-field.json": "RPC_PROHIBITED_MEMBER",
+            "protocol-error-no-restart.json": "RPC_ERROR_INVALID",
             "result-error-mismatch.json": "RPC_RESULT_INVALID",
             "result-reference-scope.json": "RPC_REFERENCE_OPERATION_INVALID",
+            "session-closed-idle-timeout.json": "RPC_SCHEMA_VALIDATION",
             "unknown-message-type.json": "RPC_MESSAGE_TYPE_UNKNOWN",
             "unsupported-operation.json": "RPC_OPERATION_UNSUPPORTED",
             "wrong-direction.json": "RPC_DIRECTION_INVALID",
@@ -361,10 +366,18 @@ class WorkerRpcValidationTests(unittest.TestCase):
         cases.append(("accepted-registry", accepted, "RPC_OPERATION_UNSUPPORTED"))
 
         output = _load_example("operation-result-succeeded.json")
-        output_ref = cast(list[dict[str, Any]], cast(dict[str, Any], output["payload"])["outputs"])[
-            0
-        ]
-        output_ref["expected_sha256"] = None
+        outputs = cast(list[dict[str, Any]], cast(dict[str, Any], output["payload"])["outputs"])
+        outputs.append(
+            {
+                "reference_version": 1,
+                "area": "operation_staging",
+                "object_id": "40000000-0000-4000-8000-000000000001",
+                "operation_id": output["operation_id"],
+                "content_kind": "application.pdf",
+                "expected_byte_size": 128,
+                "expected_sha256": None,
+            }
+        )
         cases.append(("output-integrity", output, "RPC_REFERENCE_INTEGRITY_REQUIRED"))
 
         protocol_error = _load_example("protocol-error.json")
@@ -382,8 +395,12 @@ class WorkerRpcValidationTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(expected_code, self._codes(data))
 
-    def test_error_restart_coupling_rejects_both_mismatch_directions(self) -> None:
-        for retry_action, restart_required in (("never", True), ("restart_worker", False)):
+    def test_protocol_errors_always_require_worker_restart(self) -> None:
+        for retry_action, restart_required in (
+            ("never", False),
+            ("never", True),
+            ("restart_worker", False),
+        ):
             with self.subTest(
                 retry_action=retry_action,
                 restart_required=restart_required,
