@@ -32,5 +32,6 @@ Thumbs.db
 /diagnostic-exports/
 /local-cases/
 /packaging/out/
+/benchmark-results/
 /secrets/
 /signing/

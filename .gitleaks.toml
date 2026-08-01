@@ -1,0 +1,11 @@
+title = "PaperWorkShell secret-scanning policy"
+minVersion = "v8.30.1"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "paperworkshell-quality-canary"
+description = "Detect the synthetic canary used to prove the local secret-scanning gate."
+regex = '''PWS_QUALITY_CANARY_[A-Z0-9]{32}'''
+keywords = ["PWS_QUALITY_CANARY_"]

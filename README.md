@@ -10,9 +10,10 @@ The repository is currently at the foundation stage. It does not yet contain the
 
 Prerequisites:
 
-- Git
+- Git 2.45 or newer
 - Standard CPython 3.14 (not the experimental free-threaded build)
 - `uv` 0.11.32
+- Gitleaks 8.30.1
 
 Install the pinned `uv` release with WinGet when it is not already available:
 
@@ -21,6 +22,12 @@ winget install --id=astral-sh.uv --version 0.11.32 -e
 ```
 
 See the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for other supported installation methods. Verify that `uv --version` reports 0.11.32 before bootstrapping.
+
+Install the pinned Gitleaks release used by the local and CI secret-scanning gate:
+
+```powershell
+winget install --id Gitleaks.Gitleaks --version 8.30.1 -e
+```
 
 Create the locked development environment from a clean checkout:
 
@@ -32,6 +39,9 @@ uv sync --locked
 
 Stable developer commands use a standard-library dispatcher and structured subprocess arguments:
 
+`py -3.14 tools/dev.py list` is the generated command inventory. The ordered registry in
+`tools/dev.py` is the single executable source of truth for both local checks and CI.
+
 | Command | Purpose |
 |---|---|
 | `py -3.14 tools/dev.py bootstrap` | Synchronize the locked development environment |
@@ -41,11 +51,26 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py check-import-boundaries` | Validate package layout and architecture imports |
 | `py -3.14 tools/dev.py typecheck` | Run strict type checking |
 | `py -3.14 tools/dev.py test-unit` | Run unit tests |
-| `py -3.14 tools/dev.py validate-schemas` | Validate `TASKS.yaml` against its JSON Schema |
+| `py -3.14 tools/dev.py test-integration` | Run cross-component and command integration tests |
+| `py -3.14 tools/dev.py test-security` | Run security-focused tests |
+| `py -3.14 tools/dev.py test-accessibility` | Run accessibility-focused tests |
+| `py -3.14 tools/dev.py validate-schemas` | Validate every registered schema and checked-in instance |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
+| `py -3.14 tools/dev.py validate-reference-profile` | Validate the low-spec Windows environment/workload profile |
+| `py -3.14 tools/dev.py scan-secrets` | Scan reachable Git/index blobs and nonignored local source bytes with Gitleaks |
+| `py -3.14 tools/dev.py quality-self-test` | Prove deliberate format/type/schema/cycle/secret violations are rejected |
+| `py -3.14 tools/dev.py benchmark-reference` | Run the record-only generated-I/O baseline workload |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
 On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).
+
+The GitHub Actions workflow runs the same `bootstrap` and `check` entry points on Windows. It uses
+read-only permissions and does not upload source, fixtures, caches, scan reports, benchmark
+reports, or artifacts. Secret scanning respects `.gitignore`, so ignored local cases and other
+sensitive local state are not traversed. Full behavior, negative tests, and reference-profile
+instructions are documented in
+[`docs/development/quality-gates.md`](docs/development/quality-gates.md), with the architectural
+record in [`docs/adr/0002-local-quality-gates.md`](docs/adr/0002-local-quality-gates.md).
 
 ## Architecture baseline
 
