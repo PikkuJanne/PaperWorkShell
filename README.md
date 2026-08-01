@@ -82,6 +82,12 @@ The source tree separates pure domain rules, toolkit-free application orchestrat
 The binding foundation threat model, trust boundaries, lifecycle data flows, control ownership, and
 planned security evidence are indexed in [`docs/security/README.md`](docs/security/README.md).
 
+The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
+migration policy are documented in
+[`docs/schemas/case-manifest-v1.md`](docs/schemas/case-manifest-v1.md). The authoritative manifest
+stores only completed immutable-source records and opaque case-internal references; external source
+paths are never persisted in it.
+
 ## Bundle contents
 
 | File | Purpose |

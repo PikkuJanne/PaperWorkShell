@@ -40,6 +40,19 @@ The accessibility lane currently contains a foundation sentinel: it proves that 
 surface exists without widget-level tests. The first UI task must replace that sentinel with real
 keyboard, focus, label, scaling, and announcement coverage.
 
+## Schema validation
+
+```powershell
+py -3.14 tools/dev.py validate-schemas
+```
+
+The registry validates the task graph, reference profile, and case-manifest v1 contracts. Case
+manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a self-contained Draft
+2020-12 schema, and semantic checks for IDs, references, source-page bounds, operation replay,
+normalized boxes, confirmation coupling, storage names, and output-name collisions. Both canonical
+synthetic examples must pass and every checked-in negative fixture must fail. Diagnostics use
+stable codes and JSON locations without echoing document values or absolute paths.
+
 ## Documentation validation
 
 ```powershell

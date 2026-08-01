@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Final
 
 from tools.reference_profile import PROFILE_PATH, SCHEMA_PATH, validate_profile
+from tools.validate_manifests import MANIFEST_SCHEMA_PATH, validate_manifest_fixture_set
 from tools.validate_tasks import SCHEMA_FILE, TASK_FILE, validate_repository
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
@@ -19,8 +20,11 @@ def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
 
     _, task_issues = validate_repository(root, schema_only=True)
     _, profile_issues = validate_profile(root)
+    _, manifest_issues = validate_manifest_fixture_set(root)
     return sorted(
-        [issue.render() for issue in task_issues] + [issue.render() for issue in profile_issues]
+        [issue.render() for issue in task_issues]
+        + [issue.render() for issue in profile_issues]
+        + [issue.render() for issue in manifest_issues]
     )
 
 
@@ -42,6 +46,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print(f"OK: validated {TASK_FILE} with {SCHEMA_FILE}.")
     print(f"OK: validated {PROFILE_PATH.as_posix()} with {SCHEMA_PATH.as_posix()}.")
+    print(f"OK: validated case-manifest v1 with {MANIFEST_SCHEMA_PATH.as_posix()}.")
     return 0
 
 
