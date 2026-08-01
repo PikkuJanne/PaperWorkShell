@@ -1044,7 +1044,8 @@ def _safe_filename_stem(stem: str) -> bool:
     device_basename = stem.split(".", maxsplit=1)[0].casefold()
     if device_basename in _WINDOWS_RESERVED_BASENAMES:
         return False
-    return len(stem.encode("utf-16-le")) // 2 <= MAX_FILENAME_STEM_UTF16_UNITS
+    utf16_units = sum(2 if ord(character) > 0xFFFF else 1 for character in stem)
+    return utf16_units <= MAX_FILENAME_STEM_UTF16_UNITS
 
 
 def _url_is_inert_https(value: str) -> bool:

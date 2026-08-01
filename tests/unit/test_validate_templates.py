@@ -266,6 +266,8 @@ class TemplateValidatorTests(unittest.TestCase):
             with self.subTest(stem=stem):
                 self.assertFalse(_safe_filename_stem(stem))
         self.assertTrue(_safe_filename_stem("application-form"))
+        self.assertTrue(_safe_filename_stem("a" * 118 + "\U0001f4c4"))
+        self.assertFalse(_safe_filename_stem("a" * 119 + "\U0001f4c4"))
 
     def test_identifiers_references_and_order_are_checked_semantically(self) -> None:
         namespace_collision = _canonical_template()
