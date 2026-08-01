@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar, cast
+from unittest.mock import patch
 
 from tools.validate_manifests import (
     MANIFEST_INVALID_FIXTURE_DIRECTORY,
@@ -326,6 +327,20 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertEqual(
             {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
             {issue.code for issue in complete_issues},
+        )
+
+        with patch(
+            "tools.validate_manifests.json.dumps",
+            side_effect=RecursionError("synthetic encoder depth limit"),
+        ):
+            deeply_nested_issues = validate_manifest_data(
+                _load_example("case-manifest-v1-minimal.json"),
+                {},
+                document="synthetic-manifest.json",
+            )
+        self.assertEqual(
+            {"MANIFEST_SCHEMA_IDENTITY_MISMATCH"},
+            {issue.code for issue in deeply_nested_issues},
         )
 
         with tempfile.TemporaryDirectory() as temporary:

@@ -372,7 +372,7 @@ def _schema_fingerprint(schema: Mapping[str, Any]) -> str | None:
             separators=(",", ":"),
             sort_keys=True,
         ).encode("utf-8")
-    except TypeError, UnicodeEncodeError, ValueError:
+    except RecursionError, TypeError, UnicodeEncodeError, ValueError:
         return None
     return hashlib.sha256(encoded).hexdigest()
 
