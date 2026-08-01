@@ -14,6 +14,14 @@ Prerequisites:
 - Standard CPython 3.14 (not the experimental free-threaded build)
 - `uv` 0.11.32
 
+Install the pinned `uv` release with WinGet when it is not already available:
+
+```powershell
+winget install --id=astral-sh.uv --version 0.11.32 -e
+```
+
+See the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) for other supported installation methods. Verify that `uv --version` reports 0.11.32 before bootstrapping.
+
 Create the locked development environment from a clean checkout:
 
 ```powershell

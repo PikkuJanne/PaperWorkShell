@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 113515,
-      "sha256": "09878eae927db286981d4943a835ec94c56f3a589ed8992b772bd0d0db2f1672"
+      "bytes": 113552,
+      "sha256": "cc9446b9a0557804c9abd8d01f0ff0df1f490ec8a5ac08b0c18550a4cb29d77a"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 8913,
-      "sha256": "e65bee45de24de708b1440779df7f7d26f8f7f70d276fc491f47c5b9aab01ddf"
+      "bytes": 9271,
+      "sha256": "034ebb0d25237b424944ba11aeb32e16449b9ab9148ba3c22493c4ef74eec1e1"
     }
   ],
   "validation": {
