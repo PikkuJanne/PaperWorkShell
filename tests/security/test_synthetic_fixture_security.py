@@ -47,8 +47,12 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             b"4111" + b" " + b"1111" + b" " + b"1111" + b" " + b"1111",
             b"4111" + b"1111" + b"1111" + b"1111",
             b"4000" + b"0000" + b"0000" + b"0000" + b"006",
+            b"3530" + b"1113" + b"3330" + b"0000",
+            b"3056" + b"9309" + b"0259" + b"04",
             b"GB82" + b"WEST" + b"1234" + b"5698" + b"7654" + b"32",
             b"gb82" + b" west" + b" 1234" + b" 5698" + b" 7654" + b" 32",
+            b"AL47" + b"2121" + b"1009" + b"0000" + b"0002" + b"3569" + b"8741",
+            b"TR33" + b"0006" + b"1005" + b"1978" + b"6457" + b"8413" + b"26",
             b"P<" + b"UTO" + b"SYNTHETIC<<<<<<<<<<<<<<<<<<<<<<",
         )
 
@@ -56,6 +60,9 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             with self.subTest(kind=len(candidate)):
                 self.assertTrue(_contains_prohibited_pattern(candidate))
         self.assertFalse(_contains_prohibited_pattern(b"quality" + b"@" + b"example.invalid"))
+        self.assertFalse(
+            _contains_prohibited_pattern(b"abc" + b"3649" + b"5221" + b"0051" + b"811" + b"def")
+        )
 
     def test_generated_fixture_bytes_have_no_prohibited_patterns(self) -> None:
         for fixture in build_committed_fixtures():
@@ -70,6 +77,7 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             b"%PDF-1.4\n" + canary,
             b"\xef\xbb\xbf\n%PDF-1.4\n" + canary,
             b"\r\n  %PDF-1.4\n" + canary,
+            b"X\x00JUNK%PDF-1.7\n" + canary,
         )
         for variant in variants:
             with self.subTest(prefix_length=variant.index(b"%PDF")):
@@ -148,6 +156,54 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             root = Path(temporary)
             self._repository(root)
             self._git(root, "tag", "-a", "synthetic-review", "-m", f"synthetic tag {canary}")
+
+            with self.assertRaises(RepositoryPrivacyFinding) as raised:
+                inspect_repository_contents(root, _repository_inspector(frozenset()))
+
+        self.assertEqual("FIXTURE_PRIVACY_PATTERN", raised.exception.code)
+        self.assertNotIn(canary, str(raised.exception))
+
+    def test_custom_commit_header_is_inspected(self) -> None:
+        canary = "123" + "-" + "45" + "-" + "6789"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._repository(root)
+            tree = subprocess.run(  # noqa: S603 - fixed Git test setup
+                ["git", "write-tree"],
+                cwd=root,
+                check=True,
+                shell=False,
+                capture_output=True,
+            ).stdout.strip()
+            parent = subprocess.run(  # noqa: S603 - fixed Git test setup
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                check=True,
+                shell=False,
+                capture_output=True,
+            ).stdout.strip()
+            identity = b"PWS Synthetic Quality <quality@example.invalid> 0 +0000"
+            commit = b"\n".join(
+                (
+                    b"tree " + tree,
+                    b"parent " + parent,
+                    b"author " + identity,
+                    b"committer " + identity,
+                    b"x-audit " + canary.encode("ascii"),
+                    b"",
+                    b"synthetic custom-header regression",
+                    b"",
+                )
+            )
+            object_id = subprocess.run(  # noqa: S603 - fixed Git test setup
+                ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+                cwd=root,
+                check=True,
+                shell=False,
+                capture_output=True,
+                input=commit,
+            ).stdout.strip()
+            self._git(root, "update-ref", "refs/heads/custom-header", object_id.decode("ascii"))
 
             with self.assertRaises(RepositoryPrivacyFinding) as raised:
                 inspect_repository_contents(root, _repository_inspector(frozenset()))

@@ -2150,12 +2150,19 @@ def inspect_repository_contents(
             source_label,
             budget,
         )
-        _, separator, message_body = object_content.partition(b"\n\n")
+        header, separator, message_body = object_content.partition(b"\n\n")
         if not separator:
             raise SecretScanError("SECRET_SCAN_GIT_FAILED", f"Git could not read {source_label}.")
-        # Author/committer/tagger headers are Git provenance and may contain maintainer identity.
-        # The document-data callback inspects only the free-form message body. Gitleaks separately
-        # scans each complete raw commit/tag object, including those headers.
+        identity_prefixes = (
+            (b"author ", b"committer ") if object_type == "commit" else (b"tagger ",)
+        )
+        inspectable_header = b"\n".join(
+            line for line in header.splitlines() if not line.startswith(identity_prefixes)
+        )
+        # Only the standard author/committer/tagger identity lines are Git provenance. Custom and
+        # continuation headers remain untrusted content and are inspected with the free-form body.
+        # Gitleaks separately scans each complete raw commit/tag object, including identity lines.
+        inspector(inspectable_header)
         inspector(message_body)
     for item_number, (object_id, object_size) in enumerate(index_blobs, start=1):
         inspector(
