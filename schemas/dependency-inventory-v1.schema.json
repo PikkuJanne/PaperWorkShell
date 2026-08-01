@@ -427,6 +427,20 @@
           },
           "then": {
             "properties": {
+              "version": {
+                "properties": {
+                  "pin_kind": {
+                    "enum": ["exact", "git-commit", "lockfile"]
+                  }
+                }
+              },
+              "integrity": {
+                "properties": {
+                  "verification": {
+                    "enum": ["git-commit", "sha256", "uv-lock"]
+                  }
+                }
+              },
               "packaging": {
                 "properties": {
                   "ship_state": {

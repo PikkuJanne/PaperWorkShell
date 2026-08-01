@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import tempfile
 import unittest
 from collections.abc import Callable
@@ -40,6 +41,25 @@ def _relationships(document: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _codes(issues: list[DependencyIssue]) -> set[str]:
     return {issue.code for issue in issues}
+
+
+REPOSITORY_POLICY_INPUTS = (
+    Path(".github/workflows/quality.yml"),
+    Path(".python-version"),
+    Path("DECISIONS.md"),
+    Path("TASKS.yaml"),
+    Path("docs/development/dependency-policy.md"),
+    Path("pyproject.toml"),
+    Path("tools/dev.py"),
+    Path("uv.lock"),
+)
+
+
+def _copy_repository_policy_inputs(root: Path) -> None:
+    for relative_path in REPOSITORY_POLICY_INPUTS:
+        target = root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(PROJECT_ROOT / relative_path, target)
 
 
 class DependencyInventorySecurityTests(unittest.TestCase):
@@ -341,6 +361,30 @@ class DependencyInventorySecurityTests(unittest.TestCase):
 
         self.assertIn("DEPENDENCY_DISTRIBUTION_DECISION_REQUIRED", _codes(issues))
 
+        cases = (
+            (
+                "MIT AND AGPL-3.0-or-later",
+                "DEPENDENCY_DISTRIBUTION_DECISION_REQUIRED",
+            ),
+            (
+                "LicenseRef-Artifex-Commercial",
+                "DEPENDENCY_DISTRIBUTION_DECISION_REQUIRED",
+            ),
+            ("LicenseRef-Qt-Commercial", "DEPENDENCY_LICENSE_ROUTE_INVALID"),
+        )
+        for expression, expected_code in cases:
+            with self.subTest(expression=expression):
+                document = copy.deepcopy(self.baseline)
+                component = _component(document, "attrs")
+                component["active_scopes"] = ["runtime"]
+                license_data = cast(dict[str, Any], component["license"])
+                license_data["expression"] = expression
+                license_data["distribution_altering"] = False
+
+                issues = self._document_issues(document)
+
+                self.assertIn(expected_code, _codes(issues))
+
     def test_unknown_license_identifiers_fail_closed(self) -> None:
         document = copy.deepcopy(self.baseline)
         cast(dict[str, Any], _component(document, "ruff")["license"])["expression"] = (
@@ -351,10 +395,86 @@ class DependencyInventorySecurityTests(unittest.TestCase):
 
         self.assertIn("DEPENDENCY_LICENSE_EXPRESSION_INVALID", _codes(issues))
 
+        document = copy.deepcopy(self.baseline)
+        cast(dict[str, Any], document["license_refs"])["LicenseRef-Synthetic-Safe"] = {
+            "name": "Synthetic unreviewed terms",
+            "terms_url": "https://example.invalid/synthetic-terms",
+            "review_status": "notice-closure-required",
+        }
+        cast(dict[str, Any], _component(document, "attrs")["license"])["expression"] = (
+            "LicenseRef-Synthetic-Safe"
+        )
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_LICENSE_REF_UNREVIEWED", _codes(issues))
+
+    def test_custom_license_urls_are_rejected_without_credential_disclosure(self) -> None:
+        document = copy.deepcopy(self.baseline)
+        canaries = ("synthetic-license-user", "synthetic-license-password")
+        license_refs = cast(dict[str, dict[str, Any]], document["license_refs"])
+        license_refs["LicenseRef-Artifex-Commercial"]["terms_url"] = (
+            "https://synthetic-license-user:synthetic-license-password@127.0.0.1/terms"
+        )
+
+        issues = self._document_issues(document)
+        rendered = "\n".join(issue.render() for issue in issues)
+
+        self.assertIn("DEPENDENCY_SOURCE_URL_UNSAFE", _codes(issues))
+        for canary in canaries:
+            self.assertNotIn(canary, rendered)
+
+        for unsafe_host in (
+            "2130706433",
+            "0x7f000001",
+            "127.1",
+            "0177.0.0.1",
+            "%31%32%37.0.0.1",
+        ):
+            with self.subTest(unsafe_host=unsafe_host):
+                document = copy.deepcopy(self.baseline)
+                license_refs = cast(dict[str, dict[str, Any]], document["license_refs"])
+                license_refs["LicenseRef-Artifex-Commercial"]["terms_url"] = (
+                    f"https://{unsafe_host}/terms"
+                )
+
+                issues = self._document_issues(document)
+
+                self.assertIn("DEPENDENCY_SOURCE_URL_UNSAFE", _codes(issues))
+
+    def test_shipped_license_obligations_cannot_be_self_declared_away(self) -> None:
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "attrs")
+        license_data = cast(dict[str, Any], component["license"])
+        license_data["notice_required"] = False
+        license_data["source_offer_required"] = False
+        license_data["relinking_required"] = False
+        packaging = cast(dict[str, Any], component["packaging"])
+        packaging["ship_state"] = "bundled"
+        packaging["redistribution_assets"] = ["sbom"]
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_LICENSE_OBLIGATION_ASSET_MISSING", _codes(issues))
+
     def test_hostile_document_parser_cannot_be_admitted_in_the_gui_process(self) -> None:
         document = copy.deepcopy(self.baseline)
         component = _component(document, "ruff")
         cast(dict[str, Any], component["binary"])["processes_untrusted_documents"] = True
+        component["security"] = {
+            "boundary": "gui-process",
+            "network_needed_at_runtime": False,
+            "adapter_required": False,
+            "contract_tests_required": False,
+        }
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_SECURITY_BOUNDARY_INVALID", _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "pikepdf")
+        cast(dict[str, Any], component["binary"])["processes_untrusted_documents"] = False
         component["security"] = {
             "boundary": "gui-process",
             "network_needed_at_runtime": False,
@@ -406,12 +526,18 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 }
             )
 
+        def conflicting_edge_state(document: dict[str, Any]) -> None:
+            relationship = copy.deepcopy(_relationships(document)[0])
+            relationship["enabled"] = not relationship["enabled"]
+            _relationships(document).append(relationship)
+
         cases = (
             (duplicate_component, "DEPENDENCY_COMPONENT_ID_DUPLICATE"),
             (dangling_edge, "DEPENDENCY_RELATIONSHIP_REFERENCE_UNKNOWN"),
             (self_edge, "DEPENDENCY_RELATIONSHIP_SELF_REFERENCE"),
             (prohibited_edge, "DEPENDENCY_RELATIONSHIP_ADMISSION_INVALID"),
             (cyclic_edge, "DEPENDENCY_RELATIONSHIP_CYCLE"),
+            (conflicting_edge_state, "DEPENDENCY_RELATIONSHIP_DUPLICATE"),
         )
         for mutate, expected_code in cases:
             with self.subTest(expected_code=expected_code):
@@ -424,6 +550,22 @@ class DependencyInventorySecurityTests(unittest.TestCase):
 
     def test_issue_limit_is_bounded_and_deterministic(self) -> None:
         document = copy.deepcopy(self.baseline)
+        components = cast(list[dict[str, Any]], document["components"])
+        template = _component(document, "ruff")
+        for index in range(200):
+            component = copy.deepcopy(template)
+            component_id = f"synthetic-{index:03d}"
+            canary = rf"C:\Synthetic\private-{index}.txt"
+            component["component_id"] = component_id
+            component["name"] = canary
+            cast(dict[str, Any], component["version"])["constraint"] = canary
+            cast(dict[str, Any], component["license"])["distribution_note"] = canary
+            cast(dict[str, Any], component["maintenance"])["note"] = canary
+            cast(dict[str, Any], component["packaging"])["windows_impact"] = canary
+            sbom = cast(dict[str, Any], component["sbom"])
+            sbom["purl"] = f"pkg:pypi/{component_id}@0.15.22"
+            sbom["supplier"] = canary
+            components.append(component)
         repeated_self_edge = {
             "from": "ruff",
             "type": "depends-on",
@@ -441,6 +583,287 @@ class DependencyInventorySecurityTests(unittest.TestCase):
             [issue.render() for issue in first],
             [issue.render() for issue in second],
         )
+
+    def test_repository_rejects_unreviewed_build_configuration(self) -> None:
+        cases = (
+            (
+                'build-backend = "uv_build"',
+                'build-backend = "synthetic.backend"',
+                "DEPENDENCY_DECLARATION_MISMATCH",
+            ),
+            (
+                'requires = ["uv_build==0.11.32"]',
+                'requires = ["uv_build==0.11.32", "synthetic-build-tool>=1"]',
+                "DEPENDENCY_DECLARATION_VERSION_MISMATCH",
+            ),
+        )
+        for original, replacement, expected_code in cases:
+            with (
+                self.subTest(expected_code=expected_code),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _copy_repository_policy_inputs(root)
+                project_path = root / "pyproject.toml"
+                project = project_path.read_text(encoding="utf-8")
+                self.assertIn(original, project)
+                project_path.write_text(project.replace(original, replacement), encoding="utf-8")
+
+                validated, issues = validate_dependency_data(
+                    self.baseline,
+                    self.schema,
+                    document="synthetic-dependency-inventory.json",
+                    root=root,
+                    repository_checks=True,
+                )
+
+                self.assertIn(expected_code, _codes(issues))
+                self.assertIsNone(validated)
+
+    def test_repository_rejects_sbom_purl_identity_mismatch(self) -> None:
+        document = copy.deepcopy(self.baseline)
+        cast(dict[str, Any], _component(document, "ruff")["sbom"])["purl"] = (
+            "pkg:pypi/synthetic-unrelated-name@999.0"
+        )
+
+        validated, issues = validate_dependency_data(
+            document,
+            self.schema,
+            document="synthetic-dependency-inventory.json",
+            root=PROJECT_ROOT,
+            repository_checks=True,
+        )
+
+        self.assertIn("DEPENDENCY_SBOM_INPUT_INVALID", _codes(issues))
+        self.assertIsNone(validated)
+
+    def test_concrete_version_integrity_and_release_identity_are_bound(self) -> None:
+        cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str], ...] = (
+            (
+                "pin-integrity pair",
+                lambda document: _component(document, "attrs").update(
+                    {
+                        "integrity": {
+                            "verification": "git-commit",
+                            "revision": "0" * 40,
+                            "hashes": [],
+                        }
+                    }
+                ),
+                "DEPENDENCY_RELEASE_PIN_INVALID",
+            ),
+            (
+                "release URL version boundary",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "attrs")["source"]
+                ).update({"release_url": "https://example.invalid/releases/226.1.0"}),
+                "DEPENDENCY_RELEASE_PIN_INVALID",
+            ),
+            (
+                "artifact version boundary",
+                lambda document: cast(
+                    list[dict[str, Any]],
+                    cast(dict[str, Any], _component(document, "uv-build")["integrity"])["hashes"],
+                )[0].update({"artifact": "uv_build-0.11.320.tar.gz"}),
+                "DEPENDENCY_RELEASE_PIN_INVALID",
+            ),
+            (
+                "maintenance review",
+                lambda document: cast(
+                    dict[str, Any], _component(document, "ruff")["maintenance"]
+                ).update({"status": "unselected"}),
+                "DEPENDENCY_RELEASE_PIN_INVALID",
+            ),
+        )
+        for label, mutate, expected_code in cases:
+            with self.subTest(case=label):
+                document = copy.deepcopy(self.baseline)
+                mutate(document)
+
+                issues = self._document_issues(document)
+
+                self.assertIn(expected_code, _codes(issues))
+
+        document = copy.deepcopy(self.baseline)
+        component = _component(document, "pypdfium2")
+        component["admission_status"] = "evaluated"
+        component["version"] = {
+            "constraint": ">=1.0.0",
+            "selected": "1.0.0",
+            "pin_kind": "minimum",
+            "pin_source": "synthetic security test",
+        }
+        component["integrity"] = {
+            "verification": "environment-version",
+            "revision": None,
+            "hashes": [],
+        }
+
+        issues = self._document_issues(document)
+
+        self.assertIn("DEPENDENCY_SCHEMA_VALIDATION", _codes(issues))
+
+    def test_repository_rejects_spoofed_workflow_security_controls(self) -> None:
+        cases = (
+            ("fetch-depth: 0", "fetch-depth: 1"),
+            ("persist-credentials: false", "persist-credentials: true"),
+            ("check-latest: false", "check-latest: true"),
+            ("enable-cache: false", "enable-cache: true"),
+            ("restore-cache: false", "restore-cache: true"),
+            ("save-cache: false", "save-cache: true"),
+            (
+                "download-from-astral-mirror: false",
+                "download-from-astral-mirror: true",
+            ),
+        )
+        for original, replacement in cases:
+            with self.subTest(control=original), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _copy_repository_policy_inputs(root)
+                workflow_path = root / ".github" / "workflows" / "quality.yml"
+                workflow = workflow_path.read_text(encoding="utf-8")
+                self.assertIn(original, workflow)
+                workflow_path.write_text(
+                    workflow.replace(original, replacement),
+                    encoding="utf-8",
+                )
+
+                validated, issues = validate_dependency_data(
+                    self.baseline,
+                    self.schema,
+                    document="synthetic-dependency-inventory.json",
+                    root=root,
+                    repository_checks=True,
+                )
+
+                self.assertIn("DEPENDENCY_CONFIG_PIN_MISMATCH", _codes(issues))
+                self.assertIsNone(validated)
+
+    def test_repository_rejects_lock_origin_duplicates_and_optional_declarations(self) -> None:
+        def duplicate_attrs(root: Path) -> None:
+            path = root / "uv.lock"
+            lock = path.read_text(encoding="utf-8")
+            sections = lock.split("[[package]]")
+            attrs = next(
+                section for section in sections if section.lstrip().startswith('name = "attrs"')
+            )
+            path.write_text(lock + "\n[[package]]" + attrs, encoding="utf-8")
+
+        def replace_wheel_origin(root: Path) -> None:
+            path = root / "uv.lock"
+            lock = path.read_text(encoding="utf-8")
+            original = (
+                "https://files.pythonhosted.org/packages/cb/46/"
+                "4965251734c2b6fcdca1b1b187d20bcac3af0ee5b083b89c910bb961ce3a/"
+                "ruff-0.15.22-py3-none-win_amd64.whl"
+            )
+            self.assertIn(original, lock)
+            path.write_text(
+                lock.replace(original, "https://example.invalid/unreviewed-ruff-win_amd64.whl"),
+                encoding="utf-8",
+            )
+
+        def add_optional_dependency(root: Path) -> None:
+            path = root / "pyproject.toml"
+            project = path.read_text(encoding="utf-8")
+            project += '\n[project.optional-dependencies]\nfeature = ["attrs==26.1.0"]\n'
+            path.write_text(project, encoding="utf-8")
+
+        cases = (
+            (duplicate_attrs, "DEPENDENCY_LOCK_COMPONENT_MISMATCH"),
+            (replace_wheel_origin, "DEPENDENCY_LOCK_SOURCE_MISMATCH"),
+            (add_optional_dependency, "DEPENDENCY_DECLARATION_MISMATCH"),
+        )
+        for mutate, expected_code in cases:
+            with (
+                self.subTest(expected_code=expected_code),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _copy_repository_policy_inputs(root)
+                mutate(root)
+
+                validated, issues = validate_dependency_data(
+                    self.baseline,
+                    self.schema,
+                    document="synthetic-dependency-inventory.json",
+                    root=root,
+                    repository_checks=True,
+                )
+
+                self.assertIn(expected_code, _codes(issues))
+                self.assertIsNone(validated)
+
+    def test_repository_rejects_yaml_and_job_control_bypasses(self) -> None:
+        cases = (
+            (
+                "          save-cache: false",
+                "          save-cache: false\n          save-cache: true",
+                "DEPENDENCY_REPOSITORY_INPUT_INVALID",
+            ),
+            (
+                "    timeout-minutes: 20",
+                "    timeout-minutes: 20\n    permissions:\n      contents: write\n      id-token: write",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "      - name: Run local-equivalent quality suite\n"
+                "        run: python tools/dev.py check",
+                "      - name: Run local-equivalent quality suite\n"
+                "        if: false\n"
+                "        run: python tools/dev.py check",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "  push:\n  pull_request:\n  workflow_dispatch:",
+                "  workflow_dispatch:",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "          Invoke-WebRequest -Uri $uri -OutFile $archive",
+                '          $uri = "https://example.invalid/unreviewed.zip"\n'
+                "          Invoke-WebRequest -Uri $uri -OutFile $archive",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "          if ($actual -ne $expected) {",
+                "          $expected = $actual\n          if ($actual -ne $expected) {",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                '            throw "Gitleaks archive checksum mismatch."',
+                '            Write-Output "Gitleaks archive checksum mismatch."',
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                '          & (Join-Path $destination "gitleaks.exe") version',
+                '          & (Join-Path $destination "gitleaks.exe") version\n'
+                "          Invoke-RestMethod -Uri https://example.invalid/synthetic",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+        )
+        for original, replacement, expected_code in cases:
+            with (
+                self.subTest(expected_code=expected_code),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _copy_repository_policy_inputs(root)
+                path = root / ".github" / "workflows" / "quality.yml"
+                workflow = path.read_text(encoding="utf-8")
+                self.assertIn(original, workflow)
+                path.write_text(workflow.replace(original, replacement), encoding="utf-8")
+
+                validated, issues = validate_dependency_data(
+                    self.baseline,
+                    self.schema,
+                    document="synthetic-dependency-inventory.json",
+                    root=root,
+                    repository_checks=True,
+                )
+
+                self.assertIn(expected_code, _codes(issues))
+                self.assertIsNone(validated)
 
     def test_repository_validation_is_offline_and_starts_no_processes(self) -> None:
         forbidden = AssertionError("dependency validation attempted external execution")
