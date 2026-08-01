@@ -8,24 +8,36 @@ from pathlib import Path
 from typing import Any, cast
 
 from tools.reference_profile import PROJECT_ROOT
+from tools.validate_dependencies import (
+    INVALID_FIXTURE_DIRECTORY,
+    INVENTORY_PATH,
+    INVENTORY_SCHEMA_PATH,
+)
 from tools.validate_schemas import validation_messages
 
 
 class RepositorySchemaRegistryTests(unittest.TestCase):
     def _copy_registry_root(self, root: Path) -> None:
-        (root / "benchmarks").mkdir()
-        (root / "schemas" / "examples").mkdir(parents=True)
-        (root / "tests" / "fixtures" / "manifests" / "v1").mkdir(parents=True)
-        (root / "tests" / "fixtures" / "worker-rpc" / "v1").mkdir(parents=True)
-        for name in ("TASKS.yaml", "TASKS.schema.json"):
-            shutil.copy2(PROJECT_ROOT / name, root / name)
         for relative_path in (
+            Path(".github/workflows/quality.yml"),
+            Path(".python-version"),
+            Path("DECISIONS.md"),
+            Path("TASKS.schema.json"),
+            Path("TASKS.yaml"),
+            Path("benchmarks/reference-windows-v1.json"),
+            Path("docs/development/dependency-policy.md"),
+            INVENTORY_PATH,
+            Path("pyproject.toml"),
             Path("schemas/reference-profile.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
+            INVENTORY_SCHEMA_PATH,
             Path("schemas/worker-rpc-v1.schema.json"),
-            Path("benchmarks/reference-windows-v1.json"),
+            Path("tools/dev.py"),
+            Path("uv.lock"),
         ):
+            (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(PROJECT_ROOT / relative_path, root / relative_path)
+        (root / "schemas" / "examples").mkdir(parents=True, exist_ok=True)
         shutil.copytree(
             PROJECT_ROOT / "schemas" / "examples",
             root / "schemas" / "examples",
@@ -38,6 +50,10 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / "tests" / "fixtures" / "worker-rpc" / "v1" / "invalid",
             root / "tests" / "fixtures" / "worker-rpc" / "v1" / "invalid",
+        )
+        shutil.copytree(
+            PROJECT_ROOT / INVALID_FIXTURE_DIRECTORY,
+            root / INVALID_FIXTURE_DIRECTORY,
         )
 
     def test_checked_in_schema_registry_passes(self) -> None:
@@ -88,6 +104,22 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             messages = validation_messages(root)
 
         self.assertTrue(any("RPC_POSITIVE_FIXTURE_INVALID" in message for message in messages))
+
+    def test_invalid_dependency_inventory_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_registry_root(root)
+            inventory_path = root / INVENTORY_PATH
+            loaded = json.loads(inventory_path.read_text(encoding="utf-8"))
+            inventory = cast(dict[str, Any], loaded)
+            inventory["schema_version"] = 2
+            inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+
+            messages = validation_messages(root)
+
+        self.assertTrue(
+            any("DEPENDENCY_POSITIVE_FIXTURE_INVALID" in message for message in messages)
+        )
 
 
 if __name__ == "__main__":
