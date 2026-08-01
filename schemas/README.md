@@ -18,6 +18,21 @@ The schema is self-contained Draft 2020-12. Repository validation combines struc
 with deterministic semantic checks for IDs, references, page bounds, operation replay, normalized
 boxes, storage names, confirmations, and export-history references.
 
+## Declarative template v1
+
+- Contract: [`template-v1.schema.json`](template-v1.schema.json)
+- Canonical synthetic example:
+  [`examples/template-v1-minimal.json`](examples/template-v1-minimal.json)
+- Data-only semantics, trust boundaries, and evolution policy:
+  [`docs/schemas/template-v1.md`](../docs/schemas/template-v1.md)
+
+The template schema is a closed, self-contained Draft 2020-12 contract for procedural packaging
+guidance, unconditional checklist counts/order, output constraints, inert provenance, lifecycle
+dates, warnings, and user-review confirmations. It provides no executable, condition, eligibility,
+legal-decision, automatic-completion, path, or arbitrary filename-format surface. Embedded
+provenance is explicitly untrusted; the future loader derives trust externally and never
+dereferences a template URL.
+
 ## Worker RPC v1
 
 - Contract: [`worker-rpc-v1.schema.json`](worker-rpc-v1.schema.json)

@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "template_id": "generic-portal-application",
+  "template_version": "1.0.0",
+  "scope": "document_packaging_only",
+  "title": "Generic portal application packet",
+  "locale": "en",
+  "provenance": {
+    "source_kind": "built_in",
+    "publisher": "PaperWorkShell project",
+    "source_reference": "pws.generic.portal",
+    "source_url": "https://paperworkshell.invalid/templates/generic-portal-application",
+    "source_document_sha256": null,
+    "assertion_status": "untrusted_embedded_claims",
+    "trust_policy": "external_verification_required"
+  },
+  "lifecycle": {
+    "verified_on": "2026-08-01",
+    "review_due_on": "2026-12-01",
+    "expires_on": "2027-08-01"
+  },
+  "instructions": [
+    {
+      "instruction_id": "add-and-review",
+      "text": "Add the documents listed below, then review their assignment and order."
+    },
+    {
+      "instruction_id": "check-source-guidance",
+      "text": "Check the current application instructions before creating the package."
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "application-form",
+      "title": "Application form",
+      "guidance": "Add the application form intended for this packet.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 1
+      }
+    },
+    {
+      "requirement_id": "identity-evidence",
+      "title": "Identity evidence",
+      "guidance": "Add the identity evidence requested by the current application instructions.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 2
+      }
+    },
+    {
+      "requirement_id": "address-evidence",
+      "title": "Proof of address",
+      "guidance": "Add the proof of address requested by the current application instructions.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 2
+      }
+    },
+    {
+      "requirement_id": "supporting-evidence",
+      "title": "Supporting evidence",
+      "guidance": "Add the supporting documents intended for this application packet.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 10
+      }
+    }
+  ],
+  "requirement_order": [
+    "application-form",
+    "identity-evidence",
+    "address-evidence",
+    "supporting-evidence"
+  ],
+  "output": {
+    "output_version": 1,
+    "allowed_modes": ["combined_pdf", "separate_pdfs", "zip"],
+    "default_mode": "combined_pdf",
+    "encryption_policy": "must_be_unencrypted",
+    "flatten_policy": "required",
+    "limits": {
+      "maximum_file_count": 4,
+      "maximum_total_bytes": 10485760,
+      "maximum_file_bytes": 5242880,
+      "maximum_pages_per_file": 100
+    },
+    "filename_policy": {
+      "policy_version": 1,
+      "pattern": "safe_static_stem_with_counter_v1",
+      "package_stem": "generic-application-packet",
+      "requirement_stems": [
+        {
+          "requirement_id": "application-form",
+          "stem": "application-form"
+        },
+        {
+          "requirement_id": "identity-evidence",
+          "stem": "identity-evidence"
+        },
+        {
+          "requirement_id": "address-evidence",
+          "stem": "address-evidence"
+        },
+        {
+          "requirement_id": "supporting-evidence",
+          "stem": "supporting-evidence"
+        }
+      ],
+      "collision_policy": "append_counter",
+      "extension_policy": "derive_from_output_mode"
+    }
+  },
+  "warnings": [
+    {
+      "warning_id": "identity-sides-review",
+      "severity": "needs_review",
+      "message": "Review whether every intended side of the identity evidence is included.",
+      "scope": {
+        "kind": "requirement",
+        "requirement_id": "identity-evidence"
+      }
+    },
+    {
+      "warning_id": "packaging-only",
+      "severity": "information",
+      "message": "PaperWorkShell checks packaging constraints only; review the current application instructions before submission.",
+      "scope": {
+        "kind": "package"
+      }
+    }
+  ],
+  "confirmations": [
+    {
+      "confirmation_id": "package-reviewed",
+      "statement": "I reviewed the document assignments and package order.",
+      "scope": {
+        "kind": "package"
+      },
+      "actor": "user",
+      "effect": "records_review_only"
+    }
+  ]
+}
