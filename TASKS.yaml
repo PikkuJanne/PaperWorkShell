@@ -199,7 +199,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -233,10 +233,18 @@ tasks:
   - supply-chain
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "a77e4f8"
+    commands:
+    - "py -3.14 tools/dev.py check - passed; format, lint, import boundaries, strict typing, 93 unit tests, 2 integration tests, 36 security tests, 2 accessibility tests, schema/task/profile validation, live secret scanning, and 5 negative self-tests"
+    - "py -3.14 tools/dev.py benchmark-reference - passed; deterministic two-file record-only local-smoke workload completed with no guessed product target"
+    - "fresh remote clone at a77e4f8: uv sync --locked; full tools/dev.py check and benchmark-reference passed"
+    - "GitHub Actions run 30703343451 on windows-2025 - passed the local-equivalent quality suite"
+    notes:
+    - Stable developer commands now share one registry used by local runs, integration tests, documentation, and pinned Windows CI.
+    - Secret scanning covers reachable Git history, exact index state, tracked and nonignored untracked bytes with redacted diagnostics, fail-closed limits, process-tree cleanup, and no routine content upload.
+    - The machine-readable reference profile records two-core, 4096-MiB, integrated-graphics, limited-storage, and rotational-HDD scenarios; numeric product targets remain intentionally unmeasured.
+    - Independent exact-tree audits of staged tree dab68859 found no actionable P1/P2 issues.
 - id: PWS-0004
   milestone: M0
   title: Document threat model and data flows
