@@ -9,10 +9,12 @@
     "$schema",
     "schema_version",
     "inventory_id",
+    "inventory_profile",
     "inventory_revision",
     "reviewed_on",
     "target",
     "policy",
+    "license_refs",
     "components",
     "relationships"
   ],
@@ -25,6 +27,9 @@
     },
     "inventory_id": {
       "const": "paperworkshell-dependencies"
+    },
+    "inventory_profile": {
+      "const": "policy-baseline"
     },
     "inventory_revision": {
       "type": "integer",
@@ -39,6 +44,9 @@
     },
     "policy": {
       "$ref": "#/$defs/policy"
+    },
+    "license_refs": {
+      "$ref": "#/$defs/license_refs"
     },
     "components": {
       "type": "array",
@@ -98,6 +106,7 @@
         "release_pinning_required",
         "release_source_hash_verification_required",
         "distribution_altering_requires_decision_change",
+        "resolved_build_inventory_required_before_release",
         "transitive_resolution_sources",
         "target_sbom_formats"
       ],
@@ -112,6 +121,9 @@
           "const": true
         },
         "distribution_altering_requires_decision_change": {
+          "const": true
+        },
+        "resolved_build_inventory_required_before_release": {
           "const": true
         },
         "transitive_resolution_sources": {
@@ -129,6 +141,31 @@
         },
         "target_sbom_formats": {
           "const": ["CycloneDX JSON", "SPDX JSON"]
+        }
+      }
+    },
+    "license_refs": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^LicenseRef-[A-Za-z0-9.-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "terms_url", "review_status"],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/short_text"
+          },
+          "terms_url": {
+            "$ref": "#/$defs/https_uri"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": ["candidate-only", "decision-required", "notice-closure-required"]
+          }
         }
       }
     },
@@ -184,7 +221,14 @@
         },
         "admission_status": {
           "type": "string",
-          "enum": ["approved", "candidate", "deferred", "requires-decision-change"]
+          "enum": [
+            "approved",
+            "candidate",
+            "deferred",
+            "evaluated",
+            "planned",
+            "requires-decision-change"
+          ]
         },
         "active_scopes": {
           "type": "array",
@@ -294,7 +338,9 @@
               "packaging": {
                 "properties": {
                   "ship_state": {
-                    "const": "not-shipped"
+                    "not": {
+                      "const": "prohibited-without-decision-change"
+                    }
                   }
                 }
               }
@@ -304,7 +350,46 @@
             "properties": {
               "active_scopes": {
                 "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admission_status": {
+                "enum": ["approved", "evaluated"]
+              }
+            },
+            "required": ["admission_status"]
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "properties": {
+                  "selected": {
+                    "type": "string"
+                  },
+                  "pin_kind": {
+                    "not": {
+                      "const": "unselected"
+                    }
+                  }
+                }
               },
+              "integrity": {
+                "properties": {
+                  "verification": {
+                    "not": {
+                      "const": "required-before-admission"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
               "version": {
                 "properties": {
                   "selected": {
@@ -334,26 +419,18 @@
         {
           "if": {
             "properties": {
-              "license": {
-                "properties": {
-                  "distribution_altering": {
-                    "const": true
-                  }
-                },
-                "required": ["distribution_altering"]
+              "admission_status": {
+                "const": "evaluated"
               }
             },
-            "required": ["license"]
+            "required": ["admission_status"]
           },
           "then": {
             "properties": {
-              "admission_status": {
-                "const": "requires-decision-change"
-              },
               "packaging": {
                 "properties": {
                   "ship_state": {
-                    "const": "prohibited-without-decision-change"
+                    "const": "candidate"
                   }
                 }
               }
@@ -433,6 +510,7 @@
         "hashes": {
           "type": "array",
           "maxItems": 64,
+          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/hash"
           }
@@ -553,6 +631,19 @@
         },
         "distribution_altering": {
           "type": "boolean"
+        },
+        "selected_route": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 120,
+              "pattern": "^[A-Za-z0-9.+-]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -624,7 +715,15 @@
       "properties": {
         "ship_state": {
           "type": "string",
-          "enum": ["candidate", "not-shipped", "planned", "prohibited-without-decision-change"]
+          "enum": [
+            "bundled",
+            "candidate",
+            "external-runtime",
+            "not-shipped",
+            "planned",
+            "prohibited-without-decision-change",
+            "shipped"
+          ]
         },
         "windows_impact": {
           "$ref": "#/$defs/short_text"
@@ -716,7 +815,33 @@
         "note": {
           "$ref": "#/$defs/short_text"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not-measured"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evidence_urls": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "evidence_urls": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "relationship": {
       "type": "object",
@@ -730,7 +855,16 @@
         },
         "type": {
           "type": "string",
-          "enum": ["build-depends-on", "contains", "depends-on", "optional-tool", "required-tool"]
+          "enum": [
+            "build-depends-on",
+            "contains",
+            "depends-on",
+            "optional-depends-on",
+            "optional-tool",
+            "provisions",
+            "required-tool",
+            "uses-data"
+          ]
         },
         "to": {
           "type": "string",

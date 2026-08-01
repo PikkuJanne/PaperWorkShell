@@ -36,6 +36,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "test-security",
             "test-accessibility",
             "validate-schemas",
+            "validate-dependencies",
             "validate-task-graph",
             "validate-docs",
             "validate-reference-profile",
@@ -54,6 +55,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertEqual(expected, CHECK_COMMANDS)
         self.assertNotIn("format", CHECK_COMMANDS)
         self.assertNotIn("benchmark-reference", CHECK_COMMANDS)
+        self.assertNotIn("validate-dependencies", CHECK_COMMANDS)
         self.assertIn("format-check", CHECK_COMMANDS)
         self.assertIn("quality-self-test", CHECK_COMMANDS)
 

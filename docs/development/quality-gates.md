@@ -46,8 +46,22 @@ keyboard, focus, label, scaling, and announcement coverage.
 py -3.14 tools/dev.py validate-schemas
 ```
 
-The registry validates the task graph, reference profile, case-manifest v1, and worker-RPC v1
-contracts. Case manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a
+The registry validates the task graph, reference profile, case-manifest v1, worker-RPC v1, and
+dependency-inventory v1 contracts. The dependency validator is also available directly:
+
+```powershell
+py -3.14 tools/dev.py validate-dependencies
+```
+
+It validates the complete policy baseline, proves every rejected example fails for its reviewed
+reason, and reconciles admitted Python components with `pyproject.toml` and `uv.lock`, CI/tool
+pins, task and decision authorities, dependency relationships, renderer evidence, worker
+boundaries, license routes, and redistribution gates. It is offline, bounded, rejects duplicate
+JSON keys, and never executes or fetches a listed component. The baseline is deliberately not
+release/SBOM proof; see
+[`dependency-policy.md`](dependency-policy.md) for the resolved-build requirements.
+
+Case manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a
 self-contained Draft
 2020-12 schema, and semantic checks for IDs, references, source-page bounds, operation replay,
 normalized boxes, confirmation coupling, storage names, and output-name collisions. Both canonical

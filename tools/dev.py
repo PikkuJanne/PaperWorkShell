@@ -148,6 +148,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.validate_schemas"),
         "Validate every registered repository schema and instance.",
     ),
+    "validate-dependencies": CommandSpec(
+        ("python", "-m", "tools.validate_dependencies"),
+        "Validate dependency, license, provenance, and redistribution policy.",
+        include_in_check=False,
+    ),
     "validate-task-graph": CommandSpec(
         ("python", "tools/validate_tasks.py"),
         "Validate task references, gates, and the dependency DAG.",

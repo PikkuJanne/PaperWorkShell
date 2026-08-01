@@ -55,6 +55,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py test-security` | Run security-focused tests |
 | `py -3.14 tools/dev.py test-accessibility` | Run accessibility-focused tests |
 | `py -3.14 tools/dev.py validate-schemas` | Validate every registered schema and checked-in instance |
+| `py -3.14 tools/dev.py validate-dependencies` | Validate the dependency, license, provenance, and redistribution baseline |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
 | `py -3.14 tools/dev.py validate-reference-profile` | Validate the low-spec Windows environment/workload profile |
@@ -81,6 +82,11 @@ The source tree separates pure domain rules, toolkit-free application orchestrat
 
 The binding foundation threat model, trust boundaries, lifecycle data flows, control ownership, and
 planned security evidence are indexed in [`docs/security/README.md`](docs/security/README.md).
+
+Third-party admission, exact pin/hash evidence, Windows redistribution, renderer comparison, and
+SBOM inputs are governed by
+[`docs/development/dependency-policy.md`](docs/development/dependency-policy.md). The checked-in
+inventory is a policy baseline, not evidence of the exact files in a release package.
 
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in
@@ -192,13 +198,15 @@ After bootstrapping, run all validation layers:
 
 ```powershell
 py -3.14 tools/dev.py validate-schemas
+py -3.14 tools/dev.py validate-dependencies
 py -3.14 tools/dev.py validate-task-graph
 py -3.14 tools/dev.py validate-docs
 ```
 
 Schema validation uses safe YAML loading with duplicate-key rejection and offline Draft 2020-12
-JSON Schema validation with date-format checking. Case manifests and worker-RPC messages also use
-their bounded strict parsers and deterministic semantic validators. Documentation validation checks
+JSON Schema validation with date-format checking. Dependency inventories, case manifests, and
+worker-RPC messages also use bounded strict parsers and deterministic semantic validators.
+Documentation validation checks
 supported local Markdown links/anchors and decision, task, and security references without retrieving
 network content.
 

@@ -31,3 +31,17 @@ payload. Repository validation adds strict bounded JSON decoding and semantic ch
 correlation, operation registration, logical case-object references, progress,
 results, and closed sanitized error codes without public context values. Messages never carry filesystem paths or raw exception
 text.
+
+## Dependency inventory v1
+
+- Contract: [`dependency-inventory-v1.schema.json`](dependency-inventory-v1.schema.json)
+- Complete policy baseline:
+  [`packaging/dependency-inventory-v1.json`](../packaging/dependency-inventory-v1.json)
+- Admission, license, redistribution, and release-evidence policy:
+  [`docs/development/dependency-policy.md`](../docs/development/dependency-policy.md)
+
+The schema describes a non-release policy baseline. Its offline validator adds strict bounded JSON
+decoding, schema fingerprinting, dependency-graph closure, frozen-decision and task references,
+lock/declaration/workflow reconciliation, worker-boundary checks, renderer evidence, selected
+license routes, and the distribution-changing decision gate. A resolved Windows build and final
+SBOM require a later versioned release-evidence contract and packaged-file inventory.

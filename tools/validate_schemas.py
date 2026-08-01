@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Final
 
 from tools.reference_profile import PROFILE_PATH, SCHEMA_PATH, validate_profile
+from tools.validate_dependencies import (
+    INVENTORY_SCHEMA_PATH,
+    validate_dependency_fixture_set,
+)
 from tools.validate_manifests import MANIFEST_SCHEMA_PATH, validate_manifest_fixture_set
 from tools.validate_tasks import SCHEMA_FILE, TASK_FILE, validate_repository
 from tools.validate_worker_rpc import RPC_SCHEMA_PATH, validate_worker_rpc_fixture_set
@@ -23,11 +27,13 @@ def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
     _, profile_issues = validate_profile(root)
     _, manifest_issues = validate_manifest_fixture_set(root)
     _, rpc_issues = validate_worker_rpc_fixture_set(root)
+    _, dependency_issues = validate_dependency_fixture_set(root)
     return sorted(
         [issue.render() for issue in task_issues]
         + [issue.render() for issue in profile_issues]
         + [issue.render() for issue in manifest_issues]
         + [issue.render() for issue in rpc_issues]
+        + [issue.render() for issue in dependency_issues]
     )
 
 
@@ -51,6 +57,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"OK: validated {PROFILE_PATH.as_posix()} with {SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated case-manifest v1 with {MANIFEST_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated worker-RPC v1 with {RPC_SCHEMA_PATH.as_posix()}.")
+    print(f"OK: validated dependency inventory v1 with {INVENTORY_SCHEMA_PATH.as_posix()}.")
     return 0
 
 

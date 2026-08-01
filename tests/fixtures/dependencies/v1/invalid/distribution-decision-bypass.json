@@ -1,0 +1,100 @@
+{
+  "$schema": "../schemas/dependency-inventory-v1.schema.json",
+  "schema_version": 1,
+  "inventory_id": "paperworkshell-dependencies",
+  "inventory_profile": "policy-baseline",
+  "inventory_revision": 1,
+  "reviewed_on": "2026-08-01",
+  "target": {
+    "os": "Windows",
+    "architecture": "x86_64",
+    "python_minor": "3.14"
+  },
+  "policy": {
+    "document": "docs/development/dependency-policy.md",
+    "release_pinning_required": true,
+    "release_source_hash_verification_required": true,
+    "distribution_altering_requires_decision_change": true,
+    "resolved_build_inventory_required_before_release": true,
+    "transitive_resolution_sources": ["uv.lock"],
+    "target_sbom_formats": ["CycloneDX JSON", "SPDX JSON"]
+  },
+  "license_refs": {
+    "LicenseRef-Example": {
+      "name": "Example terms",
+      "terms_url": "https://example.invalid/license",
+      "review_status": "candidate-only"
+    }
+  },
+  "components": [
+    {
+      "component_id": "unsafe-renderer",
+      "name": "Rejected strong-copyleft renderer",
+      "ecosystem": "native-library",
+      "relationship": "direct",
+      "admission_status": "approved",
+      "active_scopes": ["runtime", "worker"],
+      "decision_refs": ["PWS-D034"],
+      "task_refs": ["PWS-0005"],
+      "version": {
+        "constraint": "==1.0.0",
+        "selected": "1.0.0",
+        "pin_kind": "exact",
+        "pin_source": "rejected example"
+      },
+      "source": {
+        "project_url": "https://example.invalid/project",
+        "release_url": "https://example.invalid/releases/1.0.0",
+        "license_url": "https://example.invalid/license"
+      },
+      "integrity": {
+        "verification": "sha256",
+        "revision": null,
+        "hashes": [
+          {
+            "algorithm": "SHA-256",
+            "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "artifact": "unsafe-renderer-1.0.0.zip"
+          }
+        ]
+      },
+      "license": {
+        "expression": "AGPL-3.0-or-later",
+        "distribution_note": "This rejected example falsely claims that strong-copyleft distribution is already admitted.",
+        "notice_required": true,
+        "source_offer_required": false,
+        "relinking_required": false,
+        "distribution_altering": false
+      },
+      "binary": {
+        "contains_native_code": true,
+        "installs_executable": false,
+        "processes_untrusted_documents": true
+      },
+      "maintenance": {
+        "status": "active",
+        "checked_on": "2026-08-01",
+        "evidence_url": "https://example.invalid/releases",
+        "note": "Synthetic rejected example only."
+      },
+      "security": {
+        "boundary": "worker-process",
+        "network_needed_at_runtime": false,
+        "adapter_required": true,
+        "contract_tests_required": true
+      },
+      "packaging": {
+        "ship_state": "planned",
+        "windows_impact": "Synthetic rejected example only.",
+        "redistribution_assets": ["hashes", "license-text", "notice", "sbom"]
+      },
+      "sbom": {
+        "component_type": "library",
+        "purl": "pkg:generic/unsafe-renderer@1.0.0",
+        "supplier": "Synthetic fixture",
+        "transitive_components_from": "upstream-release-inventory"
+      }
+    }
+  ],
+  "relationships": []
+}
