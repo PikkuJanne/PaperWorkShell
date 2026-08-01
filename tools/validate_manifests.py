@@ -707,6 +707,28 @@ def _check_known_page_list(
             )
 
 
+def _check_introduced_page_list(
+    page_ids: Sequence[str],
+    known_pages: Mapping[str, Mapping[str, Any]],
+    introduced_page_ids: set[str],
+    *,
+    document: str,
+    path: str,
+    issues: list[ManifestIssue],
+) -> None:
+    for index, page_id in enumerate(page_ids):
+        if page_id in known_pages and page_id not in introduced_page_ids:
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_OPERATION_PAGE_NOT_INTRODUCED",
+                    document,
+                    f"{path}[{index}]",
+                    "page operation precedes the page's first import",
+                ),
+            )
+
+
 def _normalized_output_name(name: str) -> str:
     return unicodedata.normalize("NFC", name).casefold()
 
@@ -1132,7 +1154,8 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
         payload = cast(Mapping[str, Any], operation["payload"])
         kind = cast(str, payload["kind"])
         if kind in {"rotate", "crop"}:
-            if cast(str, payload["page_id"]) not in page_index:
+            page_id = cast(str, payload["page_id"])
+            if page_id not in page_index:
                 _add_issue(
                     issues,
                     _issue(
@@ -1140,6 +1163,16 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                         document,
                         f"$.page_operations[{index}].payload.page_id",
                         "page reference does not resolve",
+                    ),
+                )
+            elif page_id not in introduced_page_ids:
+                _add_issue(
+                    issues,
+                    _issue(
+                        "MANIFEST_OPERATION_PAGE_NOT_INTRODUCED",
+                        document,
+                        f"$.page_operations[{index}].payload.page_id",
+                        "page operation precedes the page's first import",
                     ),
                 )
             if kind == "crop":
@@ -1196,9 +1229,18 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                 introduced_page_ids.update(set(after) - set(before))
             replay_sequence = list(after)
         elif kind == "set_group":
+            group_page_ids = cast(list[str], payload["page_ids"])
             _check_known_page_list(
-                cast(list[str], payload["page_ids"]),
+                group_page_ids,
                 page_index,
+                document=document,
+                path=f"$.page_operations[{index}].payload.page_ids",
+                issues=issues,
+            )
+            _check_introduced_page_list(
+                group_page_ids,
+                page_index,
+                introduced_page_ids,
                 document=document,
                 path=f"$.page_operations[{index}].payload.page_ids",
                 issues=issues,
@@ -1436,7 +1478,17 @@ def validate_manifest_data(
     schema_issues = _schema_validation_issues(data, schema, document)
     if schema_issues:
         return schema_issues
-    return _semantic_issues(data, document)
+    try:
+        return _semantic_issues(data, document)
+    except Exception:
+        return [
+            _issue(
+                "MANIFEST_SEMANTIC_EXECUTION_INVALID",
+                document,
+                "$",
+                "semantic validation could not complete safely",
+            )
+        ]
 
 
 def validate_manifest_document(

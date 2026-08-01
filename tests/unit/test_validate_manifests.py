@@ -300,6 +300,29 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertEqual(before, data)
 
+    def test_substitute_schema_cannot_escape_the_manifest_contract_or_raise(self) -> None:
+        incomplete = {"schema_version": 1}
+        issues = validate_manifest_data(
+            incomplete,
+            {},
+            document="synthetic-manifest.json",
+        )
+        self.assertEqual(
+            {"MANIFEST_SEMANTIC_EXECUTION_INVALID"},
+            {issue.code for issue in issues},
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "manifest.json"
+            path.write_text(json.dumps(incomplete), encoding="utf-8")
+            loaded, document_issues = validate_manifest_document(path, schema={})
+
+        self.assertIsNone(loaded)
+        self.assertEqual(
+            {"MANIFEST_SEMANTIC_EXECUTION_INVALID"},
+            {issue.code for issue in document_issues},
+        )
+
     def test_generated_normalized_box_boundaries_are_exact(self) -> None:
         coordinates = (0, 1, 125_000, 500_000, 875_000, 999_999)
         cases: list[tuple[int, int, int, int, bool]] = []
@@ -467,6 +490,68 @@ class CaseManifestValidationTests(unittest.TestCase):
             }
         ]
         self.assertEqual([], self._issues(imported))
+
+        page_local_payloads: tuple[dict[str, Any], ...] = (
+            {
+                "kind": "rotate",
+                "page_id": second_page_id,
+                "quarter_turns_clockwise": 1,
+            },
+            {
+                "kind": "crop",
+                "page_id": second_page_id,
+                "box": {
+                    "coordinate_space": "normalized_page_millionths_v1",
+                    "x": 0,
+                    "y": 0,
+                    "width": 1_000_000,
+                    "height": 1_000_000,
+                },
+            },
+            {
+                "kind": "set_group",
+                "group_id": _uuid(0x90000000, 100),
+                "page_ids": [second_page_id],
+            },
+        )
+        for offset, operation_payload in enumerate(page_local_payloads, start=1):
+            with self.subTest(
+                operation_kind=operation_payload["kind"],
+                timing="before-import",
+            ):
+                before_import = copy.deepcopy(imported)
+                before_import_operations = cast(
+                    list[dict[str, Any]], before_import["page_operations"]
+                )
+                before_import_operations[0]["sequence"] = 2
+                before_import_operations.insert(
+                    0,
+                    {
+                        "operation_id": _uuid(0x50000000, 200 + offset),
+                        "operation_version": 1,
+                        "sequence": 1,
+                        "payload": operation_payload,
+                    },
+                )
+                self.assertIn(
+                    "MANIFEST_OPERATION_PAGE_NOT_INTRODUCED",
+                    self._codes(before_import),
+                )
+
+            with self.subTest(
+                operation_kind=operation_payload["kind"],
+                timing="after-import",
+            ):
+                after_import = copy.deepcopy(imported)
+                cast(list[dict[str, Any]], after_import["page_operations"]).append(
+                    {
+                        "operation_id": _uuid(0x50000000, 300 + offset),
+                        "operation_version": 1,
+                        "sequence": 2,
+                        "payload": operation_payload,
+                    }
+                )
+                self.assertEqual([], self._issues(after_import))
 
         never_introduced = _generated_reference_graph(1, 2)
         never_introduced["page_sequence_base"] = [first_page_id]

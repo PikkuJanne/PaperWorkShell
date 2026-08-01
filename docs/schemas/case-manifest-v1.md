@@ -64,7 +64,8 @@ history. Every other page in the registry must first appear through exactly one 
 The sequence-change reason is checked against membership: `remove` strictly removes IDs while
 preserving survivor order; `import` strictly introduces never-before-active IDs; `restore` strictly
 reintroduces previously active IDs; and `reorder`, `split`, and `combine` retain exactly the same
-page-ID membership. Additive transitions preserve the prior relative order.
+page-ID membership. Additive transitions preserve the prior relative order. Rotation, crop, and
+group operations cannot precede a referenced page's first import.
 
 ## Normalized geometry
 
