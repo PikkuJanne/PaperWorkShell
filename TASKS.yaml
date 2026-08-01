@@ -353,7 +353,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0002
@@ -387,10 +387,18 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "e4aedbc"
+    commands:
+    - "py -3.14 tools/dev.py check at e4aedbc - passed; formatting, lint, 12-layer import boundaries, strict typing, 154 unit tests, 2 integration tests, 36 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync python -m unittest tests.unit.test_validate_manifests - passed; 29 manifest tests and 189 generated subtests covered canonical, malformed, hostile-schema, geometry, and source/page-reference cases"
+    - "fresh remote clone at e4aedbc: uv sync --locked and the full py -3.14 tools/dev.py check passed"
+    - "GitHub Actions runs 30710588150 (push) and 30710589744 (pull_request) on windows-2025 - passed the local-equivalent quality suite at e4aedbc"
+    notes:
+    - The self-contained Draft 2020-12 v1 schema defines case identity, immutable source/page references, deterministic replay operations, inert overlays, assignments, constraints, confirmations, and export-history references using synthetic examples only.
+    - Strict bounded loading, canonical-schema fingerprinting, non-recursive local references, ID/reference integrity, import/restore ordering, fixed-point geometry, timestamp precision, Windows-safe names, and sanitized stable errors fail closed without external paths or executable fields.
+    - Canonical validation covers 2 positive examples and 11 intended-negative fixtures; deterministic generated grids exercise normalized-box and multi-source page-reference boundaries and their failure paths.
+    - Three independent exact-commit audits found no remaining actionable schema, validator, security, privacy, or test-coverage issues at e4aedbc.
 - id: PWS-0007
   milestone: M0
   title: Define declarative template schema v1
