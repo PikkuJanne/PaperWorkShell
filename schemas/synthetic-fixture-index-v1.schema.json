@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:paperworkshell:schema:synthetic-fixture-index:1",
+  "title": "PaperWorkShell public synthetic fixture index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "corpus_id",
+    "generator",
+    "policy",
+    "coverage",
+    "fixtures",
+    "on_demand_recipes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "corpus_id": {
+      "const": "paperworkshell-public-synthetic-v1"
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {
+          "const": "paperworkshell-stdlib-fixtures"
+        },
+        "version": {
+          "const": 1
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "marker",
+        "external_source_material",
+        "decision_ref"
+      ],
+      "properties": {
+        "classification": {
+          "const": "public-synthetic-only"
+        },
+        "marker": {
+          "const": "PWS-SYNTHETIC-FIXTURE"
+        },
+        "external_source_material": {
+          "const": false
+        },
+        "decision_ref": {
+          "const": "PWS-D035"
+        }
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": {
+        "$ref": "#/$defs/coverage_entry"
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/fixture"
+      }
+    },
+    "on_demand_recipes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/on_demand_recipe"
+      }
+    }
+  },
+  "$defs": {
+    "category": {
+      "enum": [
+        "annotation",
+        "attachment",
+        "blank",
+        "born-digital",
+        "cmyk",
+        "crop",
+        "duplicate",
+        "handwriting-demonstration",
+        "image-only",
+        "incremental",
+        "long-path",
+        "low-resolution",
+        "malformed",
+        "mixed",
+        "multilingual",
+        "page-size",
+        "protected",
+        "rotated",
+        "rtl",
+        "script-marker",
+        "signed-marker",
+        "transparency",
+        "unicode",
+        "very-large"
+      ]
+    },
+    "coverage_entry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "status", "fixture_ids"],
+          "properties": {
+            "category": {
+              "$ref": "#/$defs/category"
+            },
+            "status": {
+              "const": "committed"
+            },
+            "fixture_ids": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identifier"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "status", "recipe_id"],
+          "properties": {
+            "category": {
+              "$ref": "#/$defs/category"
+            },
+            "status": {
+              "const": "on-demand"
+            },
+            "recipe_id": {
+              "enum": ["long-path-tree-v1", "oversized-pdf-v1"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "status", "scheduled_task", "reason_code"],
+          "properties": {
+            "category": {
+              "$ref": "#/$defs/category"
+            },
+            "status": {
+              "const": "scheduled"
+            },
+            "scheduled_task": {
+              "pattern": "^PWS-[0-9]{4}$",
+              "type": "string"
+            },
+            "reason_code": {
+              "enum": [
+                "cmyk-image-engine-required",
+                "font-engine-required",
+                "pdf-encryption-engine-required",
+                "rtl-layout-engine-required"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "media_type",
+        "bytes",
+        "sha256",
+        "categories",
+        "recipe",
+        "construction_assertions",
+        "provenance"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 180,
+          "pattern": "^(pdf/[a-z0-9-]+\\.pdf|image/[a-z0-9-]+\\.png)$"
+        },
+        "media_type": {
+          "enum": ["application/pdf", "image/png"]
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 32,
+          "maximum": 1048576
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/category"
+          }
+        },
+        "recipe": {
+          "$ref": "#/$defs/identifier"
+        },
+        "construction_assertions": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": ["boolean", "integer", "string"]
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source_material", "contains_personal_data", "review_decision"],
+          "properties": {
+            "kind": {
+              "const": "algorithmic"
+            },
+            "source_material": {
+              "const": "none"
+            },
+            "contains_personal_data": {
+              "const": false
+            },
+            "review_decision": {
+              "const": "PWS-D035"
+            }
+          }
+        }
+      }
+    },
+    "on_demand_recipe": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "committed",
+            "default_component_count",
+            "expected_minimum_path_characters"
+          ],
+          "properties": {
+            "id": {
+              "const": "long-path-tree-v1"
+            },
+            "kind": {
+              "const": "long-path"
+            },
+            "committed": {
+              "const": false
+            },
+            "default_component_count": {
+              "const": 8
+            },
+            "expected_minimum_path_characters": {
+              "const": 260
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind", "committed", "default_bytes", "maximum_bytes"],
+          "properties": {
+            "id": {
+              "const": "oversized-pdf-v1"
+            },
+            "kind": {
+              "const": "large-hostile"
+            },
+            "committed": {
+              "const": false
+            },
+            "default_bytes": {
+              "const": 52428801
+            },
+            "maximum_bytes": {
+              "const": 268435456
+            }
+          }
+        }
+      ]
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    }
+  }
+}

@@ -1,8 +1,23 @@
 # Product schemas
 
-Versioned PaperWorkShell case-manifest, template, and worker-RPC schemas belong in this directory.
+Versioned PaperWorkShell case-manifest, template, worker-RPC, and synthetic-fixture schemas belong in this directory.
 Schema meaning is introduced and migrated by the corresponding roadmap task; `TASKS.schema.json`
 remains at the repository root because it validates the repository task graph itself.
+
+## Synthetic fixture index v1
+
+- Contract: [`synthetic-fixture-index-v1.schema.json`](synthetic-fixture-index-v1.schema.json)
+- Canonical generated index:
+  [`tests/fixtures/synthetic/v1/index.json`](../tests/fixtures/synthetic/v1/index.json)
+- Corpus and restricted-sample policy:
+  [`docs/development/synthetic-fixture-policy.md`](../docs/development/synthetic-fixture-policy.md)
+
+The closed, self-contained Draft 2020-12 contract records exact generated fixture bytes,
+construction assertions, public-only provenance, complete roadmap-category coverage, and bounded
+on-demand recipes. Repository validation authenticates the schema, proves rejected version and
+structure examples fail, regenerates committed artifacts byte-for-byte, and enforces the historical,
+index, tracked, and nonignored-untracked document policy without opening documents in a feature
+engine.
 
 ## Case manifest v1
 

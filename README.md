@@ -54,6 +54,8 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py test-integration` | Run cross-component and command integration tests |
 | `py -3.14 tools/dev.py test-security` | Run security-focused tests |
 | `py -3.14 tools/dev.py test-accessibility` | Run accessibility-focused tests |
+| `py -3.14 tools/dev.py generate-fixtures` | Regenerate the reviewed public synthetic PDF/PNG corpus |
+| `py -3.14 tools/dev.py validate-fixtures` | Validate fixture bytes, provenance, coverage, and repository document policy |
 | `py -3.14 tools/dev.py validate-schemas` | Validate every registered schema and checked-in instance |
 | `py -3.14 tools/dev.py validate-dependencies` | Validate the dependency, license, provenance, and redistribution baseline |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
@@ -104,6 +106,12 @@ The version-1 worker RPC envelope, lifecycle, capability negotiation, logical ca
 references, bounded decoding rules, and sanitized error contract are documented in
 [`docs/schemas/worker-rpc-v1.md`](docs/schemas/worker-rpc-v1.md). The schema and semantic validator
 reject unknown versions, unregistered operations, path-bearing messages, and raw exception fields.
+
+The public synthetic document corpus, exact generated provenance, on-demand hostile recipes, and
+outside-repository restricted bug-sample procedure are documented in
+[`docs/development/synthetic-fixture-policy.md`](docs/development/synthetic-fixture-policy.md).
+Committed PDFs and PNGs are reconstructed byte-for-byte without external document input; valid
+encrypted and complex-script/font fixtures remain explicitly assigned to their owning engine tasks.
 
 ## Bundle contents
 

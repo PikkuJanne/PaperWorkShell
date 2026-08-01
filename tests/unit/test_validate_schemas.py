@@ -7,6 +7,12 @@ import unittest
 from pathlib import Path
 from typing import Any, cast
 
+from tools.generate_synthetic_fixtures import (
+    INDEX_PATH as FIXTURE_INDEX_PATH,
+)
+from tools.generate_synthetic_fixtures import (
+    SCHEMA_PATH as FIXTURE_INDEX_SCHEMA_PATH,
+)
 from tools.reference_profile import PROJECT_ROOT
 from tools.validate_dependencies import (
     INVALID_FIXTURE_DIRECTORY,
@@ -14,6 +20,9 @@ from tools.validate_dependencies import (
     INVENTORY_SCHEMA_PATH,
 )
 from tools.validate_schemas import validation_messages
+from tools.validate_synthetic_fixtures import (
+    NEGATIVE_FIXTURE_DIRECTORY as FIXTURE_NEGATIVE_DIRECTORY,
+)
 from tools.validate_templates import (
     TEMPLATE_INVALID_FIXTURE_DIRECTORY,
     TEMPLATE_SCHEMA_PATH,
@@ -34,11 +43,13 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("pyproject.toml"),
             Path("schemas/reference-profile.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
+            FIXTURE_INDEX_SCHEMA_PATH,
             TEMPLATE_SCHEMA_PATH,
             INVENTORY_SCHEMA_PATH,
             Path("schemas/worker-rpc-v1.schema.json"),
             Path("tools/dev.py"),
             Path("uv.lock"),
+            FIXTURE_INDEX_PATH,
         ):
             (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(PROJECT_ROOT / relative_path, root / relative_path)
@@ -63,6 +74,10 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / TEMPLATE_INVALID_FIXTURE_DIRECTORY,
             root / TEMPLATE_INVALID_FIXTURE_DIRECTORY,
+        )
+        shutil.copytree(
+            PROJECT_ROOT / FIXTURE_NEGATIVE_DIRECTORY,
+            root / FIXTURE_NEGATIVE_DIRECTORY,
         )
 
     def test_checked_in_schema_registry_passes(self) -> None:
@@ -143,6 +158,20 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         self.assertTrue(
             any("DEPENDENCY_POSITIVE_FIXTURE_INVALID" in message for message in messages)
         )
+
+    def test_invalid_synthetic_fixture_index_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_registry_root(root)
+            index_path = root / FIXTURE_INDEX_PATH
+            loaded = json.loads(index_path.read_text(encoding="utf-8"))
+            index = cast(dict[str, Any], loaded)
+            index["schema_version"] = 2
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+
+            messages = validation_messages(root)
+
+        self.assertTrue(any("FIXTURE_INDEX_VERSION_FUTURE" in message for message in messages))
 
 
 if __name__ == "__main__":

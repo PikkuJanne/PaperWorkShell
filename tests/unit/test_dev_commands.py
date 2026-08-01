@@ -35,6 +35,8 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "test-integration",
             "test-security",
             "test-accessibility",
+            "generate-fixtures",
+            "validate-fixtures",
             "validate-schemas",
             "validate-dependencies",
             "validate-task-graph",
@@ -55,8 +57,10 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertEqual(expected, CHECK_COMMANDS)
         self.assertNotIn("format", CHECK_COMMANDS)
         self.assertNotIn("benchmark-reference", CHECK_COMMANDS)
+        self.assertNotIn("generate-fixtures", CHECK_COMMANDS)
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)
         self.assertIn("format-check", CHECK_COMMANDS)
+        self.assertIn("validate-fixtures", CHECK_COMMANDS)
         self.assertIn("quality-self-test", CHECK_COMMANDS)
 
     def test_secret_scan_arguments_are_local_redacted_and_bounded(self) -> None:

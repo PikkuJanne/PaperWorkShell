@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "corpus_id": "paperworkshell-public-synthetic-v1",
+  "generator": {
+    "id": "paperworkshell-stdlib-fixtures",
+    "version": 1
+  },
+  "policy": {
+    "classification": "public-synthetic-only",
+    "marker": "PWS-SYNTHETIC-FIXTURE",
+    "external_source_material": false,
+    "decision_ref": "PWS-D035"
+  },
+  "coverage": [],
+  "fixtures": [
+    {
+      "id": "unsafe-path",
+      "path": "../outside.pdf",
+      "media_type": "application/pdf",
+      "bytes": 64,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "categories": ["born-digital"],
+      "recipe": "negative-v1",
+      "construction_assertions": {
+        "page_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    }
+  ],
+  "on_demand_recipes": []
+}

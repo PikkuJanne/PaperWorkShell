@@ -1,0 +1,539 @@
+{
+  "schema_version": 1,
+  "corpus_id": "paperworkshell-public-synthetic-v1",
+  "generator": {
+    "id": "paperworkshell-stdlib-fixtures",
+    "version": 1
+  },
+  "policy": {
+    "classification": "public-synthetic-only",
+    "marker": "PWS-SYNTHETIC-FIXTURE",
+    "external_source_material": false,
+    "decision_ref": "PWS-D035"
+  },
+  "coverage": [
+    {
+      "category": "annotation",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-annotation"
+      ]
+    },
+    {
+      "category": "attachment",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-attachment"
+      ]
+    },
+    {
+      "category": "blank",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-blank"
+      ]
+    },
+    {
+      "category": "born-digital",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-born-digital"
+      ]
+    },
+    {
+      "category": "cmyk",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0201",
+      "reason_code": "cmyk-image-engine-required"
+    },
+    {
+      "category": "crop",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-page-geometry"
+      ]
+    },
+    {
+      "category": "duplicate",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-duplicate-a",
+        "pdf-duplicate-b"
+      ]
+    },
+    {
+      "category": "handwriting-demonstration",
+      "status": "committed",
+      "fixture_ids": [
+        "png-handwriting-demonstration"
+      ]
+    },
+    {
+      "category": "image-only",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-image-only"
+      ]
+    },
+    {
+      "category": "incremental",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-incremental"
+      ]
+    },
+    {
+      "category": "long-path",
+      "status": "on-demand",
+      "recipe_id": "long-path-tree-v1"
+    },
+    {
+      "category": "low-resolution",
+      "status": "committed",
+      "fixture_ids": [
+        "png-low-resolution"
+      ]
+    },
+    {
+      "category": "malformed",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-malformed"
+      ]
+    },
+    {
+      "category": "mixed",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-mixed"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0303",
+      "reason_code": "font-engine-required"
+    },
+    {
+      "category": "page-size",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-page-geometry"
+      ]
+    },
+    {
+      "category": "protected",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0105",
+      "reason_code": "pdf-encryption-engine-required"
+    },
+    {
+      "category": "rotated",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-page-geometry"
+      ]
+    },
+    {
+      "category": "rtl",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0704",
+      "reason_code": "rtl-layout-engine-required"
+    },
+    {
+      "category": "script-marker",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-script-marker"
+      ]
+    },
+    {
+      "category": "signed-marker",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-signed-marker"
+      ]
+    },
+    {
+      "category": "transparency",
+      "status": "committed",
+      "fixture_ids": [
+        "png-transparent"
+      ]
+    },
+    {
+      "category": "unicode",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0303",
+      "reason_code": "font-engine-required"
+    },
+    {
+      "category": "very-large",
+      "status": "on-demand",
+      "recipe_id": "oversized-pdf-v1"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "pdf-annotation",
+      "path": "pdf/annotation.pdf",
+      "media_type": "application/pdf",
+      "bytes": 865,
+      "sha256": "42f9dde1c47c6e852a7254d6223f7a5272dd7cf7ee4e872a921a65466040f35a",
+      "categories": [
+        "annotation"
+      ],
+      "recipe": "annotation-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "annotation_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-attachment",
+      "path": "pdf/attachment.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1101,
+      "sha256": "1b2ff87ff47a5995e888c5e36f9a7a7ae943c3c68b7d169834e93a405b35b8e1",
+      "categories": [
+        "attachment"
+      ],
+      "recipe": "attachment-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "embedded_file_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-blank",
+      "path": "pdf/blank.pdf",
+      "media_type": "application/pdf",
+      "bytes": 439,
+      "sha256": "97e6e10d05526eb58578e07d7e81e0439770c1dc093b42ffaa08b42d25691d6a",
+      "categories": [
+        "blank"
+      ],
+      "recipe": "blank-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "content_stream_count": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-born-digital",
+      "path": "pdf/born-digital.pdf",
+      "media_type": "application/pdf",
+      "bytes": 802,
+      "sha256": "3f62fe484b8b389ec18afe115939d491f795e517195a7acf7fe5989075839c47",
+      "categories": [
+        "born-digital"
+      ],
+      "recipe": "text-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "has_text_operator": true
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-duplicate-a",
+      "path": "pdf/duplicate-a.pdf",
+      "media_type": "application/pdf",
+      "bytes": 805,
+      "sha256": "5db79fd077ad039f15b5579bba35f909c7cb7766129dc151a17b757ec3f80f48",
+      "categories": [
+        "duplicate"
+      ],
+      "recipe": "duplicate-pdf-v1",
+      "construction_assertions": {
+        "duplicate_group": "pdf-exact-pair-v1"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-duplicate-b",
+      "path": "pdf/duplicate-b.pdf",
+      "media_type": "application/pdf",
+      "bytes": 805,
+      "sha256": "5db79fd077ad039f15b5579bba35f909c7cb7766129dc151a17b757ec3f80f48",
+      "categories": [
+        "duplicate"
+      ],
+      "recipe": "duplicate-pdf-v1",
+      "construction_assertions": {
+        "duplicate_group": "pdf-exact-pair-v1"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-image-only",
+      "path": "pdf/image-only.pdf",
+      "media_type": "application/pdf",
+      "bytes": 973,
+      "sha256": "e69b5ec4cf655d07136cd7c77d24e0a8d70ce197b3dde537cd3a0c0c8889198b",
+      "categories": [
+        "image-only"
+      ],
+      "recipe": "image-only-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "image_xobject_count": 1,
+        "has_text_operator": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-incremental",
+      "path": "pdf/incremental-update.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1006,
+      "sha256": "cdbc1d99d2a84cb0d09f42c3f548757e986ea8d1c10316caffed6d9e3ab3e76d",
+      "categories": [
+        "incremental"
+      ],
+      "recipe": "incremental-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "revision_count": 2,
+        "prev_trailer_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-malformed",
+      "path": "pdf/malformed-truncated.pdf",
+      "media_type": "application/pdf",
+      "bytes": 97,
+      "sha256": "3d9c1b442c5621be869ce6e8358d7bfc7fbfcb19a489653d28006b41abc212ca",
+      "categories": [
+        "malformed"
+      ],
+      "recipe": "truncated-pdf-v1",
+      "construction_assertions": {
+        "parse_expected": false,
+        "truncated": true
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-mixed",
+      "path": "pdf/mixed.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1359,
+      "sha256": "4d91cae4580b767c69662dd8d4d63481bed34aea44e42c568bdd53adaac7758d",
+      "categories": [
+        "mixed"
+      ],
+      "recipe": "mixed-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "text_page_count": 1,
+        "image_page_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-page-geometry",
+      "path": "pdf/page-geometry.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1046,
+      "sha256": "c58b0456ba3a3c6f547a858754b2c09d33cd056dde66220ee34bd4985f8fa391",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "geometry-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "rotation_degrees": 90,
+        "distinct_media_boxes": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-script-marker",
+      "path": "pdf/script-marker.pdf",
+      "media_type": "application/pdf",
+      "bytes": 847,
+      "sha256": "226de12e099580ec2b0873fb1cd457409fde0fe3b9f45642691f49155f3e3e8f",
+      "categories": [
+        "script-marker"
+      ],
+      "recipe": "orphan-script-marker-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "script_marker_count": 1,
+        "script_reachable_from_catalog": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-signed-marker",
+      "path": "pdf/signed-marker.pdf",
+      "media_type": "application/pdf",
+      "bytes": 934,
+      "sha256": "520a27e1952cdad2d936729041dd28c7ce7bbb150510cac9ab7481485976c3e4",
+      "categories": [
+        "signed-marker"
+      ],
+      "recipe": "unsigned-signature-field-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "signature_field_marker": true,
+        "cryptographically_signed": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-handwriting-demonstration",
+      "path": "image/handwriting-demonstration.png",
+      "media_type": "image/png",
+      "bytes": 37080,
+      "sha256": "b7889c1f825c7587851eecdf242cf7d6631fae64b3caad6215893f15eb321cab",
+      "categories": [
+        "handwriting-demonstration"
+      ],
+      "recipe": "handwriting-demonstration-png-v1",
+      "construction_assertions": {
+        "width": 192,
+        "height": 64,
+        "is_signature": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-low-resolution",
+      "path": "image/low-resolution.png",
+      "media_type": "image/png",
+      "bytes": 344,
+      "sha256": "2c5d5a34149c7ce24072771fdc1efb60a5106d5c1b30f2bb7269d324e7cc7724",
+      "categories": [
+        "low-resolution"
+      ],
+      "recipe": "low-resolution-png-v1",
+      "construction_assertions": {
+        "width": 8,
+        "height": 8,
+        "color_type": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-transparent",
+      "path": "image/transparent.png",
+      "media_type": "image/png",
+      "bytes": 1175,
+      "sha256": "7bc269e5b630e004ea31c19298198899aaa49216c226f46642bc346a0cc7fb08",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "transparent-png-v1",
+      "construction_assertions": {
+        "width": 16,
+        "height": 16,
+        "color_type": 6
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    }
+  ],
+  "on_demand_recipes": [
+    {
+      "id": "long-path-tree-v1",
+      "kind": "long-path",
+      "committed": false,
+      "default_component_count": 8,
+      "expected_minimum_path_characters": 260
+    },
+    {
+      "id": "oversized-pdf-v1",
+      "kind": "large-hostile",
+      "committed": false,
+      "default_bytes": 52428801,
+      "maximum_bytes": 268435456
+    }
+  ]
+}

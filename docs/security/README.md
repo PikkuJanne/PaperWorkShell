@@ -16,6 +16,9 @@ extend one concern without weakening the others:
   decisions and implementation tasks or gates.
 - [Initial security test plan](security-test-plan.md): deterministic success and failure evidence
   expected as the mapped tasks are implemented.
+- [Synthetic fixture and restricted-sample policy](../development/synthetic-fixture-policy.md):
+  public-only corpus provenance, deterministic regeneration, and the outside-repository handling
+  rule for sensitive bug samples mapped by TM-028 and ST-020.
 
 The frozen decisions in [DECISIONS.md](../../DECISIONS.md), the binding requirements in
 [ROADMAP.md](../../ROADMAP.md), and the selected tasks in [TASKS.yaml](../../TASKS.yaml) remain

@@ -26,8 +26,29 @@ class QualityEntryPointIntegrationTests(unittest.TestCase):
         self.assertIn("test-integration", completed.stdout)
         self.assertIn("validate-docs", completed.stdout)
         self.assertIn("validate-dependencies", completed.stdout)
+        self.assertIn("generate-fixtures", completed.stdout)
+        self.assertIn("validate-fixtures", completed.stdout)
         self.assertIn("scan-secrets", completed.stdout)
         self.assertIn("benchmark-reference", completed.stdout)
+
+    def test_fixture_index_entry_point_is_non_disclosing(self) -> None:
+        completed = subprocess.run(  # noqa: S603 - interpreter and repository module are fixed
+            [
+                sys.executable,
+                "-m",
+                "tools.validate_synthetic_fixtures",
+                "--index-only",
+            ],
+            cwd=ROOT,
+            check=False,
+            shell=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn("24 coverage entries", completed.stdout)
+        self.assertNotIn(str(ROOT), completed.stdout + completed.stderr)
 
     def test_reference_benchmark_entry_point_is_sanitized(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

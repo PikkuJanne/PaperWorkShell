@@ -12,7 +12,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -144,6 +144,15 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("pytest", "tests/accessibility"),
         "Run accessibility-focused tests.",
     ),
+    "generate-fixtures": CommandSpec(
+        ("python", "-m", "tools.generate_synthetic_fixtures", "regenerate"),
+        "Regenerate the reviewed public synthetic document corpus.",
+        include_in_check=False,
+    ),
+    "validate-fixtures": CommandSpec(
+        ("python", "-m", "tools.validate_synthetic_fixtures"),
+        "Validate synthetic fixture bytes, provenance, and repository document policy.",
+    ),
     "validate-schemas": CommandSpec(
         ("python", "-m", "tools.validate_schemas"),
         "Validate every registered repository schema and instance.",
@@ -225,6 +234,18 @@ class _SecretScanSummary:
     history_message_object_count: int
     historical_path_count: int
     index_count: int
+    tracked_count: int
+    untracked_count: int
+
+
+@dataclass(frozen=True)
+class RepositoryContentSummary:
+    """Counts for one hardened, callback-inspected repository snapshot."""
+
+    history_blob_count: int
+    history_message_object_count: int
+    historical_path_count: int
+    index_blob_count: int
     tracked_count: int
     untracked_count: int
 
@@ -2005,6 +2026,236 @@ def _scan_working_paths(
         budget=budget,
     )
     return scanned
+
+
+def inspect_repository_contents(
+    root: Path,
+    inspector: Callable[[bytes], None],
+) -> RepositoryContentSummary:
+    """Inspect one complete, bounded Git/index/working snapshot with a pure callback.
+
+    This reuses the secret scanner's hardened enumeration, path, object, completeness,
+    replacement-object, and mutation controls without invoking Gitleaks. The callback must
+    not retain or disclose source bytes and may raise its own sanitized policy exception.
+    """
+
+    budget = _SecretScanEnumerationBudget()
+    try:
+        repository_root = root.resolve(strict=True)
+    except OSError as error:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_INVALID", "repository root is not a readable directory."
+        ) from error
+    if not repository_root.is_dir():
+        raise SecretScanError("SECRET_SCAN_INPUT_INVALID", "repository root is not a directory.")
+    git = _git_executable(budget)
+    _require_git_worktree_root(git, repository_root, budget)
+    _require_local_ref_storage(git, repository_root, budget)
+    _require_complete_git_history(git, repository_root, budget)
+    history_roots = _history_roots(git, repository_root, budget)
+    historical_path_entries = _historical_path_entries(
+        git,
+        repository_root,
+        history_roots,
+        budget,
+    )
+    index_entries = _index_entries(git, repository_root, budget)
+    historical_blobs, historical_message_objects = _historical_objects(
+        git,
+        repository_root,
+        history_roots,
+        historical_path_entries,
+        budget,
+    )
+    index_blobs = sorted({(entry.object_id, entry.object_size) for entry in index_entries})
+    bounded_sizes = (
+        *(object_size for _, object_size in historical_blobs),
+        *(object_size for _, _, object_size in historical_message_objects),
+        *(object_size for _, object_size in index_blobs),
+    )
+    if any(object_size > MAX_SECRET_SCAN_BYTES for object_size in bounded_sizes):
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE", "a Git object exceeds the 50 MiB scanner limit."
+        )
+
+    tracked_paths = _git_paths(git, repository_root, ("ls-files", "--cached"), budget)
+    untracked_paths = _git_paths(
+        git,
+        repository_root,
+        ("ls-files", "--others", "--exclude-standard"),
+        budget,
+    )
+    item_count = sum(
+        (
+            len(history_roots.ref_names),
+            len(historical_path_entries),
+            len(index_entries),
+            len(historical_blobs),
+            len(historical_message_objects),
+            len(tracked_paths),
+            len(untracked_paths),
+        )
+    )
+    if item_count > MAX_SECRET_SCAN_ITEMS:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE",
+            f"repository enumeration exceeds the {MAX_SECRET_SCAN_ITEMS:,}-item scanner limit.",
+        )
+    tracked_state = _working_path_state(
+        repository_root,
+        tracked_paths,
+        category="tracked working-tree",
+        allow_missing=True,
+        budget=budget,
+    )
+    untracked_state = _working_path_state(
+        repository_root,
+        untracked_paths,
+        category="untracked source",
+        allow_missing=False,
+        budget=budget,
+    )
+
+    for ref_name in history_roots.ref_names:
+        budget.checkpoint()
+        inspector(ref_name)
+    for entry in historical_path_entries:
+        budget.checkpoint()
+        inspector(os.fsencode(entry.relative_path.as_posix()))
+    for entry in index_entries:
+        budget.checkpoint()
+        inspector(os.fsencode(entry.relative_path.as_posix()))
+    for item_number, (object_id, object_size) in enumerate(historical_blobs, start=1):
+        inspector(
+            _read_git_blob(
+                git,
+                repository_root,
+                object_id,
+                object_size,
+                f"historical blob item {item_number}",
+                budget,
+            )
+        )
+    # Commit and tag objects intentionally remain in the bounded snapshot count but are not
+    # passed to a document-data callback: their author/committer identity is Git provenance,
+    # not fixture content. The separate Gitleaks lane still scans those raw objects.
+    for item_number, (object_id, object_size) in enumerate(index_blobs, start=1):
+        inspector(
+            _read_git_blob(
+                git,
+                repository_root,
+                object_id,
+                object_size,
+                f"index blob item {item_number}",
+                budget,
+            )
+        )
+
+    def inspect_working_paths(
+        paths: Sequence[Path],
+        expected_state: Sequence[tuple[Path, bytes | None]],
+        *,
+        category: str,
+        allow_missing: bool,
+    ) -> int:
+        if len(paths) != len(expected_state):
+            raise SecretScanError(
+                "SECRET_SCAN_INPUT_INVALID", "repository state changed during scanning."
+            )
+        inspected = 0
+        for item_number, (relative_path, expected) in enumerate(
+            zip(paths, expected_state, strict=True),
+            start=1,
+        ):
+            expected_path, expected_digest = expected
+            if relative_path != expected_path:
+                raise SecretScanError(
+                    "SECRET_SCAN_INPUT_INVALID", "repository state changed during scanning."
+                )
+            content = _read_scan_input(
+                repository_root,
+                relative_path,
+                allow_missing=allow_missing,
+                source_label=f"{category} item {item_number}",
+                work_budget=budget,
+            )
+            actual_digest = None if content is None else hashlib.sha256(content).digest()
+            if actual_digest != expected_digest:
+                raise SecretScanError(
+                    "SECRET_SCAN_INPUT_INVALID", "repository state changed during scanning."
+                )
+            inspector(os.fsencode(relative_path.as_posix()))
+            if content is not None:
+                inspector(content)
+                inspected += 1
+        return inspected
+
+    tracked_count = inspect_working_paths(
+        tracked_paths,
+        tracked_state,
+        category="tracked working-tree",
+        allow_missing=True,
+    )
+    untracked_count = inspect_working_paths(
+        untracked_paths,
+        untracked_state,
+        category="untracked source",
+        allow_missing=False,
+    )
+
+    final_index_entries = _index_entries(git, repository_root, budget)
+    final_tracked_paths = _git_paths(
+        git,
+        repository_root,
+        ("ls-files", "--cached"),
+        budget,
+    )
+    final_untracked_paths = _git_paths(
+        git,
+        repository_root,
+        ("ls-files", "--others", "--exclude-standard"),
+        budget,
+    )
+    if (
+        final_index_entries != index_entries
+        or final_tracked_paths != tracked_paths
+        or final_untracked_paths != untracked_paths
+        or _working_path_state(
+            repository_root,
+            final_tracked_paths,
+            category="tracked working-tree",
+            allow_missing=True,
+            budget=budget,
+        )
+        != tracked_state
+        or _working_path_state(
+            repository_root,
+            final_untracked_paths,
+            category="untracked source",
+            allow_missing=False,
+            budget=budget,
+        )
+        != untracked_state
+    ):
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_INVALID", "repository state changed during scanning."
+        )
+    _require_git_worktree_root(git, repository_root, budget)
+    _require_local_ref_storage(git, repository_root, budget)
+    _require_complete_git_history(git, repository_root, budget)
+    if _history_roots(git, repository_root, budget) != history_roots:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_INVALID", "Git refs changed during repository scanning."
+        )
+    budget.checkpoint()
+    return RepositoryContentSummary(
+        history_blob_count=len(historical_blobs),
+        history_message_object_count=len(historical_message_objects),
+        historical_path_count=len(historical_path_entries),
+        index_blob_count=len(index_blobs),
+        tracked_count=tracked_count,
+        untracked_count=untracked_count,
+    )
 
 
 def _scan_repository_checked(

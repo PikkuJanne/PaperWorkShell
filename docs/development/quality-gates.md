@@ -31,7 +31,7 @@ py -3.14 tools/dev.py check
 
 `check` runs every non-mutating command marked `[check]` by `list`, in registry order. It covers
 formatting, linting, architecture boundaries, strict typing, unit/integration/security/
-accessibility lanes, repository schemas, the task graph, the reference profile, secret scanning,
+accessibility lanes, public synthetic fixture regeneration/provenance, repository schemas, the task graph, the reference profile, secret scanning,
 offline documentation links/anchors/security references, and deliberate negative self-tests. Use
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
@@ -47,7 +47,7 @@ py -3.14 tools/dev.py validate-schemas
 ```
 
 The registry validates the task graph, reference profile, case-manifest v1, declarative-template
-v1, worker-RPC v1, and dependency-inventory v1 contracts. The dependency validator is also
+v1, worker-RPC v1, dependency-inventory v1, and synthetic-fixture-index v1 contracts. The dependency validator is also
 available directly:
 
 ```powershell
@@ -81,6 +81,29 @@ members are rejected structurally; shell-looking narrative and provenance URLs r
 are never executed or dereferenced. The checked-in positive and negative fixture inventories and
 their expected failure codes are exact. See
 [`docs/schemas/template-v1.md`](../schemas/template-v1.md) for the data contract.
+
+## Synthetic fixture validation
+
+```powershell
+py -3.14 tools/dev.py validate-fixtures
+```
+
+The non-mutating validator authenticates the closed index schema, proves the exact negative index
+examples fail for their reviewed reasons, reconstructs all committed PDF/PNG bytes in memory, and
+compares their canonical index and exact tree. It then reuses the secret scanner's hardened,
+bounded Git/index/working-tree snapshot machinery to reject an unapproved document/image blob or a
+high-confidence prohibited data-shaped pattern without printing the source path or value. The
+separate Gitleaks lane retains responsibility for Git author/tag/commit bytes and secret patterns.
+Neither automated pattern scan is anonymization; closed no-input generation and exact provenance
+are the corpus admission rule. See
+[`synthetic-fixture-policy.md`](synthetic-fixture-policy.md) for scheduled engine-owned classes,
+on-demand hostile generation, limitations, and restricted bug-sample handling.
+
+Regeneration is explicit and mutating, so it is not part of `check`:
+
+```powershell
+py -3.14 tools/dev.py generate-fixtures
+```
 
 Worker-RPC validation separately caps each message at 65,536 bytes, depth at 32, nodes at 4,096,
 string code points at 4,096, and collection members at 256 before offline schema evaluation. It
