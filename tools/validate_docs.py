@@ -27,17 +27,39 @@ DECISION_REFERENCE: Final = re.compile(r"(?<![A-Za-z0-9-])PWS-D[0-9]{3}(?![A-Za-
 TASK_REFERENCE: Final = re.compile(r"(?<![A-Za-z0-9-])PWS-[0-9]{4}(?![A-Za-z0-9-])")
 THREAT_REFERENCE: Final = re.compile(r"(?<![A-Za-z0-9-])TM-[0-9]{3}(?![A-Za-z0-9-])")
 TEST_REFERENCE: Final = re.compile(r"(?<![A-Za-z0-9-])ST-[0-9]{3}(?![A-Za-z0-9-])")
-ATX_HEADING: Final = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(?P<title>.*?)[ \t]*$")
+ATX_HEADING: Final = re.compile(r"^[ \t]{0,3}(?P<marks>#{1,6})[ \t]+(?P<title>.*?)[ \t]*$")
 FENCE: Final = re.compile(r"^[ \t]{0,3}(?P<marker>`{3,}|~{3,})(?P<rest>.*)$")
 INLINE_LINK: Final = re.compile(
     r"!?\[[^\]\n]*\]\(\s*(?P<target><[^>\n]*>|[^)\s]+)"
     r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^)]*\)))?\s*\)"
 )
 WINDOWS_DRIVE_PATH: Final = re.compile(r"^[A-Za-z]:")
-TABLE_SEPARATOR_CELL: Final = re.compile(r"^:?-{3,}:?$")
 
 ALLOWED_EXTERNAL_SCHEMES: Final = frozenset({"http", "https", "mailto"})
 ALLOWED_IMPACTS: Final = frozenset({"low", "medium", "high", "critical"})
+
+THREAT_CATALOGUE_HEADING: Final = (2, "Threat catalogue")
+THREAT_CATALOGUE_HEADER: Final = (
+    "ID",
+    "Threat scenario",
+    "Impact",
+    "Required security outcome",
+)
+TRACEABILITY_HEADING: Final = (1, "Threat-to-decision and task traceability")
+TRACEABILITY_HEADER: Final = (
+    "Threat",
+    "Frozen decisions",
+    "Implementation tasks and gates",
+    "Planned evidence focus",
+)
+TEST_PLAN_HEADING: Final = (1, "Initial security and privacy test plan")
+TEST_PLAN_HEADER: Final = (
+    "Test ID",
+    "Threats",
+    "Earliest owning tasks",
+    "Layer and synthetic scenario",
+    "Required oracle",
+)
 
 # These stable catalogue entries prove the eleven categories explicitly required by PWS-0004.
 # A scenario must retain the listed plain-language terms; a matching identifier alone is not enough.
@@ -195,14 +217,133 @@ def _documentation_paths(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(paths, key=lambda path: _relative_label(root, path)))
 
 
-def _split_table_row(text: str) -> tuple[str, ...] | None:
+def _table_cells(text: str) -> tuple[str, ...] | None:
     stripped = text.strip()
     if not stripped.startswith("|") or not stripped.endswith("|"):
         return None
-    cells = tuple(cell.strip() for cell in stripped[1:-1].split("|"))
-    if cells and all(TABLE_SEPARATOR_CELL.fullmatch(cell) is not None for cell in cells):
+    return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
+
+
+def _starts_with_table_identifier(text: str, identifier: re.Pattern[str]) -> bool:
+    stripped = text.strip()
+    if not stripped.startswith("|"):
+        return False
+    first_cell = stripped[1:].split("|", maxsplit=1)[0].strip()
+    return identifier.fullmatch(first_cell) is not None
+
+
+def _heading_identity(line: VisibleLine) -> tuple[int, str] | None:
+    match = ATX_HEADING.match(line.text)
+    if match is None:
         return None
-    return cells
+    title = re.sub(r"[ \t]+#+[ \t]*$", "", match.group("title")).strip()
+    return len(match.group("marks")), title
+
+
+def _canonical_table_rows(
+    root: Path,
+    path: Path,
+    visible_by_path: dict[Path, tuple[VisibleLine, ...]],
+    *,
+    heading: tuple[int, str],
+    header: tuple[str, ...],
+    identifier: re.Pattern[str],
+    issue_code: str,
+    table_name: str,
+) -> tuple[list[tuple[VisibleLine, tuple[str, ...]]], list[DocumentationIssue]]:
+    lines = visible_by_path.get(path, ())
+    issues: list[DocumentationIssue] = []
+    heading_indexes = [
+        index for index, line in enumerate(lines) if _heading_identity(line) == heading
+    ]
+    if len(heading_indexes) != 1:
+        issues.append(
+            _issue(
+                issue_code,
+                root,
+                path,
+                0,
+                f"{table_name} requires exactly one canonical heading",
+            )
+        )
+        return [], issues
+
+    heading_index = heading_indexes[0]
+    section_end = len(lines)
+    for index in range(heading_index + 1, len(lines)):
+        identity = _heading_identity(lines[index])
+        if identity is not None and identity[0] <= heading[0]:
+            section_end = index
+            break
+
+    header_indexes = [
+        index
+        for index in range(heading_index + 1, section_end)
+        if _table_cells(lines[index].text) == header
+    ]
+    if len(header_indexes) != 1:
+        issues.append(
+            _issue(
+                issue_code,
+                root,
+                path,
+                0,
+                f"{table_name} requires exactly one canonical table header",
+            )
+        )
+        return [], issues
+
+    header_index = header_indexes[0]
+    separator = tuple("---" for _cell in header)
+    if header_index + 1 >= section_end or _table_cells(lines[header_index + 1].text) != separator:
+        issues.append(
+            _issue(
+                issue_code,
+                root,
+                path,
+                lines[header_index].number,
+                f"{table_name} requires its exact table separator",
+            )
+        )
+        return [], issues
+
+    rows: list[tuple[VisibleLine, tuple[str, ...]]] = []
+    index = header_index + 2
+    while index < section_end:
+        cells = _table_cells(lines[index].text)
+        if cells is None or len(cells) != len(header) or identifier.fullmatch(cells[0]) is None:
+            break
+        rows.append((lines[index], cells))
+        index += 1
+
+    canonical_line_numbers = {line.number for line, _cells in rows}
+    stray_lines = [
+        line
+        for line in lines
+        if line.number not in canonical_line_numbers
+        and _starts_with_table_identifier(line.text, identifier)
+    ]
+    for line in stray_lines:
+        issues.append(
+            _issue(
+                issue_code,
+                root,
+                path,
+                line.number,
+                f"{table_name} row appears outside the canonical contiguous table",
+            )
+        )
+    if not rows:
+        issues.append(
+            _issue(
+                issue_code,
+                root,
+                path,
+                lines[header_index].number,
+                f"{table_name} has no canonical data rows",
+            )
+        )
+    return rows, issues
 
 
 def _exact_case_file(root: Path, relative_path: Path) -> tuple[Path | None, str | None]:
@@ -236,7 +377,10 @@ def _resolved_local_target(
     if WINDOWS_DRIVE_PATH.match(target) is not None or target.startswith("//"):
         return None, None, "absolute"
 
-    parsed = urlsplit(target)
+    try:
+        parsed = urlsplit(target)
+    except ValueError:
+        return None, None, "invalid"
     scheme = parsed.scheme.casefold()
     if scheme in ALLOWED_EXTERNAL_SCHEMES:
         return None, None, "external"
@@ -313,10 +457,18 @@ def _canonical_threats(
 ) -> dict[str, ThreatRecord]:
     path = root / THREAT_MODEL_PATH
     records: dict[str, ThreatRecord] = {}
-    for line in visible_by_path.get(path, ()):
-        cells = _split_table_row(line.text)
-        if cells is None or len(cells) != 4 or THREAT_REFERENCE.fullmatch(cells[0]) is None:
-            continue
+    rows, table_issues = _canonical_table_rows(
+        root,
+        path,
+        visible_by_path,
+        heading=THREAT_CATALOGUE_HEADING,
+        header=THREAT_CATALOGUE_HEADER,
+        identifier=THREAT_REFERENCE,
+        issue_code="THREAT_CATALOGUE_STRUCTURE_INVALID",
+        table_name="threat catalogue",
+    )
+    issues.extend(table_issues)
+    for line, cells in rows:
         threat_id, scenario, impact, _outcome = cells
         if threat_id in records:
             issues.append(
@@ -375,12 +527,18 @@ def _validate_traceability(
     tasks: frozenset[str],
 ) -> list[DocumentationIssue]:
     path = root / TRACEABILITY_PATH
-    issues: list[DocumentationIssue] = []
+    rows, issues = _canonical_table_rows(
+        root,
+        path,
+        visible_by_path,
+        heading=TRACEABILITY_HEADING,
+        header=TRACEABILITY_HEADER,
+        identifier=THREAT_REFERENCE,
+        issue_code="THREAT_TRACE_STRUCTURE_INVALID",
+        table_name="threat traceability",
+    )
     traced: dict[str, int] = {}
-    for line in visible_by_path.get(path, ()):
-        cells = _split_table_row(line.text)
-        if cells is None or len(cells) != 4 or THREAT_REFERENCE.fullmatch(cells[0]) is None:
-            continue
+    for line, cells in rows:
         threat_id, decision_cell, task_cell, _evidence = cells
         if threat_id in traced:
             issues.append(
@@ -429,13 +587,19 @@ def _validate_test_plan(
     threats: dict[str, ThreatRecord],
 ) -> list[DocumentationIssue]:
     path = root / TEST_PLAN_PATH
-    issues: list[DocumentationIssue] = []
+    rows, issues = _canonical_table_rows(
+        root,
+        path,
+        visible_by_path,
+        heading=TEST_PLAN_HEADING,
+        header=TEST_PLAN_HEADER,
+        identifier=TEST_REFERENCE,
+        issue_code="SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+        table_name="security test plan",
+    )
     test_lines: dict[str, int] = {}
     covered: set[str] = set()
-    for line in visible_by_path.get(path, ()):
-        cells = _split_table_row(line.text)
-        if cells is None or len(cells) != 5 or TEST_REFERENCE.fullmatch(cells[0]) is None:
-            continue
+    for line, cells in rows:
         test_id, threat_cell, _tasks, _scenario, _oracle = cells
         if test_id in test_lines:
             issues.append(
@@ -493,7 +657,6 @@ def validation_issues(root: Path = PROJECT_ROOT) -> list[DocumentationIssue]:
     root = root.resolve()
     issues: list[DocumentationIssue] = []
     documentation_paths = _documentation_paths(root)
-    text_by_path: dict[Path, str] = {}
     visible_by_path: dict[Path, tuple[VisibleLine, ...]] = {}
     anchors_by_path: dict[Path, frozenset[str]] = {}
 
@@ -514,7 +677,6 @@ def validation_issues(root: Path = PROJECT_ROOT) -> list[DocumentationIssue]:
             issues.append(read_issue)
             continue
         assert text is not None
-        text_by_path[path] = text
         visible = _visible_lines(text)
         visible_by_path[path] = visible
         anchors_by_path[path] = _heading_anchors(visible)
@@ -523,9 +685,12 @@ def validation_issues(root: Path = PROJECT_ROOT) -> list[DocumentationIssue]:
     if tasks_issue is not None:
         issues.append(tasks_issue)
         tasks_text = ""
-    decisions_text = text_by_path.get(root / DECISIONS_PATH, "")
-
-    decision_definitions = DECISION_DEFINITION.findall(decisions_text)
+    decision_lines = visible_by_path.get(root / DECISIONS_PATH, ())
+    decision_definitions = [
+        match.group(1)
+        for line in decision_lines
+        if (match := DECISION_DEFINITION.match(line.text)) is not None
+    ]
     task_definitions = TASK_DEFINITION.findall(tasks_text or "")
     decisions = frozenset(decision_definitions)
     tasks = frozenset(task_definitions)

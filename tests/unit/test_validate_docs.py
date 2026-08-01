@@ -66,8 +66,8 @@ def _minimal_repository(root: Path) -> None:
     )
     _write_text(
         root / "docs/security/threat-traceability.md",
-        "# Traceability\n\n"
-        "| Threat | Frozen decisions | Implementation tasks and gates | Evidence |\n"
+        "# Threat-to-decision and task traceability\n\n"
+        "| Threat | Frozen decisions | Implementation tasks and gates | Planned evidence focus |\n"
         "|---|---|---|---|\n"
         f"{trace_rows}\n",
     )
@@ -75,8 +75,8 @@ def _minimal_repository(root: Path) -> None:
     threat_list = ", ".join(threat_id for threat_id, _scenario in THREAT_ROWS)
     _write_text(
         root / "docs/security/security-test-plan.md",
-        "# Test plan\n\n"
-        "| Test ID | Threats | Tasks | Scenario | Oracle |\n"
+        "# Initial security and privacy test plan\n\n"
+        "| Test ID | Threats | Earliest owning tasks | Layer and synthetic scenario | Required oracle |\n"
         "|---|---|---|---|---|\n"
         f"| ST-001 | {threat_list} | PWS-0001 | Synthetic case | Stable result |\n",
     )
@@ -185,6 +185,36 @@ class DocumentationValidationTests(unittest.TestCase):
 
         self.assertIn("DOC_LINK_ANCHOR_MISSING", codes)
 
+    def test_malformed_url_is_a_stable_sanitized_link_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write("\n[malformed](http://[)\n")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = main(["--root", str(root)])
+
+        self.assertEqual(1, result)
+        self.assertIn("DOC_LINK_INVALID", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        self.assertNotIn(temporary, stderr.getvalue())
+
+    def test_fenced_decision_heading_is_not_authoritative(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            with (root / "DECISIONS.md").open("a", encoding="utf-8") as stream:
+                stream.write("\n```markdown\n## PWS-D999 — Not a decision\n```\n")
+            with (root / "README.md").open("a", encoding="utf-8") as stream:
+                stream.write("\nPWS-D999 is not authoritative.\n")
+
+            codes = _codes(root)
+
+        self.assertIn("DOC_DECISION_REFERENCE_UNKNOWN", codes)
+
     def test_invalid_utf8_diagnostic_is_sorted_relative_and_sanitized(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -270,6 +300,55 @@ class DocumentationValidationTests(unittest.TestCase):
             codes = _codes(root)
 
         self.assertIn("SECURITY_TEST_ID_DUPLICATE", codes)
+
+    def test_canonical_tables_require_exact_heading_header_and_separator(self) -> None:
+        cases = (
+            (
+                "docs/security/threat-model.md",
+                "## Threat catalogue",
+                "## Renamed catalogue",
+                "THREAT_CATALOGUE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/threat-traceability.md",
+                "| Threat | Frozen decisions | Implementation tasks and gates | Planned evidence focus |",
+                "| Threat | Decisions | Tasks | Evidence |",
+                "THREAT_TRACE_STRUCTURE_INVALID",
+            ),
+            (
+                "docs/security/security-test-plan.md",
+                "|---|---|---|---|---|",
+                "|---|---|---|---|--|",
+                "SECURITY_TEST_PLAN_STRUCTURE_INVALID",
+            ),
+        )
+        for relative_path, old, new, expected_code in cases:
+            with (
+                self.subTest(relative_path=relative_path),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                _minimal_repository(root)
+                _replace(root / relative_path, old, new)
+
+                codes = _codes(root)
+
+            self.assertIn(expected_code, codes)
+
+    def test_stray_trace_row_cannot_substitute_for_canonical_mapping(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _minimal_repository(root)
+            traceability = root / "docs/security/threat-traceability.md"
+            row = "| TM-020 | PWS-D001 | PWS-0001 | Synthetic evidence |\n"
+            _replace(traceability, row, "")
+            with traceability.open("a", encoding="utf-8") as stream:
+                stream.write(f"\n## Appendix\n\n{row}")
+
+            codes = _codes(root)
+
+        self.assertIn("THREAT_TRACE_STRUCTURE_INVALID", codes)
+        self.assertIn("THREAT_TRACE_MISSING", codes)
 
 
 if __name__ == "__main__":
