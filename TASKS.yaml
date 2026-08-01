@@ -449,7 +449,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0002
@@ -481,10 +481,18 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "8438448"
+    commands:
+    - "fresh SSH clone at 8438448: uv sync --locked and py -3.14 tools/dev.py check passed; formatting, lint, 12-layer import boundaries, strict typing, 194 unit tests, 2 integration tests, 51 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync python -m unittest tests.unit.test_worker_protocol_models tests.unit.test_worker_protocol_codec tests.unit.test_worker_protocol_state tests.unit.test_validate_worker_rpc tests.security.test_worker_protocol_security - passed; 54 focused tests and 255 subtests covered typed round trips, full canonical conversations, state races, hostile decoding, and leakage boundaries"
+    - "py -3.14 tools/dev.py validate-schemas - passed; worker RPC v1 validated 15 canonical messages and 27 intended-negative fixtures offline"
+    - "GitHub Actions runs 30714104861 (push) and 30714106395 (pull_request) on windows-2025 passed the local-equivalent quality suite at 8438448"
+    notes:
+    - The closed Draft 2020-12 schema, immutable typed models, canonical JSON codec, explicit operation registry, and pure conversation state cover negotiation, start, progress, cooperative cancellation, all terminal outcomes, shutdown, protocol errors, and worker faults.
+    - Strict UTF-8 decoding enforces 64-KiB messages, bounded depth/nodes/strings/collections, exact versions, UUID/capability/case binding, replay-safe sequences, logical case-object references, resource limits, and deterministic cleanup state without paths or shell strings.
+    - Worker-originated capabilities, progress stages, public error codes, and error context fail closed before UI or logging; restart-required results fault the session, and public v1 errors contain no raw or worker-controlled context values.
+    - Three independent exact-commit audits and 5,525 differential mutations found no remaining schema/runtime/validator mismatch or worker-controlled string channel; transport framing, Windows ACLs, egress denial, process limits, and case-object handle resolution remain intentionally assigned to PWS-0107.
 - id: PWS-0009
   milestone: M0
   title: Create synthetic document corpus harness
