@@ -174,6 +174,11 @@ class CaseManifestValidationTests(unittest.TestCase):
         trailing_newline["created_at"] = "2026-08-01T10:00:00Z\n"
         self.assertEqual({"MANIFEST_SCHEMA_VALIDATION"}, self._codes(trailing_newline))
 
+        sub_microsecond = _load_example("case-manifest-v1-minimal.json")
+        sub_microsecond["created_at"] = "2026-08-01T10:00:00.1234567Z"
+        sub_microsecond["updated_at"] = "2026-08-01T10:00:00.1234567Z"
+        self.assertEqual({"MANIFEST_SCHEMA_VALIDATION"}, self._codes(sub_microsecond))
+
     def test_loader_limits_and_diagnostics_do_not_disclose_absolute_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_root = Path(temporary)
@@ -184,12 +189,25 @@ class CaseManifestValidationTests(unittest.TestCase):
             oversized = temporary_root / "oversized.json"
             oversized.write_bytes(b"{" + (b" " * MAX_MANIFEST_BYTES) + b"}")
             _, size_issues = validate_manifest_document(oversized, schema=self.schema)
-            rendered = "\n".join(issue.render() for issue in [*encoding_issues, *size_issues])
+            case_root = temporary_root / "case-root"
+            case_root.mkdir()
+            traversal_canary = "CANARY-TRAVERSAL-CLIENT-NAME.json"
+            traversal_path = case_root / ".." / traversal_canary
+            traversal_path.write_bytes(b'{"schema_version":1,"value":"\xff"}')
+            _, traversal_issues = validate_manifest_document(
+                traversal_path,
+                root=case_root,
+                schema=self.schema,
+            )
+            rendered = "\n".join(
+                issue.render() for issue in [*encoding_issues, *size_issues, *traversal_issues]
+            )
 
         self.assertIn("MANIFEST_TEXT_ENCODING_INVALID", rendered)
         self.assertIn("MANIFEST_INPUT_TOO_LARGE", rendered)
         self.assertNotIn(str(temporary_root), rendered)
         self.assertNotIn(filename_canary, rendered)
+        self.assertNotIn(traversal_canary, rendered)
 
     def test_schema_rejects_external_or_unresolved_references(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -199,9 +217,13 @@ class CaseManifestValidationTests(unittest.TestCase):
             for reference, expected_code in (
                 ("https://invalid.example/schema.json", "MANIFEST_SCHEMA_REFERENCE_UNSAFE"),
                 ("#/$defs/does-not-exist", "MANIFEST_SCHEMA_REFERENCE_INVALID"),
+                ("#/$defs/~2invalid-escape", "MANIFEST_SCHEMA_REFERENCE_INVALID"),
+                (f"#/allOf/{'9' * 5_000}", "MANIFEST_SCHEMA_REFERENCE_INVALID"),
             ):
                 with self.subTest(reference=reference):
                     schema = copy.deepcopy(self.schema)
+                    if reference.startswith("#/allOf/"):
+                        schema["allOf"] = [{}]
                     cast(dict[str, Any], schema["properties"])["schema_version"] = {
                         "$ref": reference
                     }
@@ -209,6 +231,65 @@ class CaseManifestValidationTests(unittest.TestCase):
                     loaded, issues = load_manifest_schema(temporary_root)
                     self.assertIsNone(loaded)
                     self.assertIn(expected_code, {issue.code for issue in issues})
+
+    def test_schema_rejects_recursive_and_multi_resource_reference_features(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            (temporary_root / "schemas").mkdir()
+            schema_path = temporary_root / MANIFEST_SCHEMA_PATH
+            cases: list[tuple[str, dict[str, Any], str]] = []
+
+            root_cycle = copy.deepcopy(self.schema)
+            root_cycle["allOf"] = [{"$ref": "#"}]
+            cases.append(("root-cycle", root_cycle, "MANIFEST_SCHEMA_REFERENCE_CYCLE"))
+
+            definition_cycle = copy.deepcopy(self.schema)
+            cast(dict[str, Any], definition_cycle["$defs"])["loop"] = {"$ref": "#/$defs/loop"}
+            cases.append(("definition-cycle", definition_cycle, "MANIFEST_SCHEMA_REFERENCE_CYCLE"))
+
+            nested_resource = copy.deepcopy(self.schema)
+            case_id_schema = cast(
+                dict[str, Any],
+                cast(dict[str, Any], nested_resource["properties"])["case_id"],
+            )
+            case_id_schema["$id"] = "nested-resource"
+            cases.append(
+                (
+                    "nested-resource",
+                    nested_resource,
+                    "MANIFEST_SCHEMA_RESOURCE_SCOPE_UNSAFE",
+                )
+            )
+
+            dynamic_reference = copy.deepcopy(self.schema)
+            cast(dict[str, Any], dynamic_reference["properties"])["case_id"] = {
+                "$dynamicRef": "#/$defs/uuidV4"
+            }
+            cases.append(
+                (
+                    "dynamic-reference",
+                    dynamic_reference,
+                    "MANIFEST_SCHEMA_REFERENCE_FEATURE_UNSAFE",
+                )
+            )
+
+            for name, schema, expected_code in cases:
+                with self.subTest(name=name):
+                    schema_path.write_text(json.dumps(schema), encoding="utf-8")
+                    loaded, issues = load_manifest_schema(temporary_root)
+                    self.assertIsNone(loaded)
+                    self.assertIn(expected_code, {issue.code for issue in issues})
+
+        direct_cycle = {"allOf": [{"$ref": "#"}]}
+        direct_issues = validate_manifest_data(
+            _load_example("case-manifest-v1-minimal.json"),
+            direct_cycle,
+            document="synthetic-manifest.json",
+        )
+        self.assertEqual(
+            {"MANIFEST_SCHEMA_EXECUTION_INVALID"},
+            {issue.code for issue in direct_issues},
+        )
 
     def test_validation_does_not_mutate_input(self) -> None:
         data = _load_example("case-manifest-v1-representative.json")
@@ -348,15 +429,52 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertIn("MANIFEST_SEQUENCE_REASON_INVALID", self._codes(reorder_removal))
         self.assertIn("MANIFEST_SEQUENCE_REASON_INVALID", self._codes(remove_reorder))
 
-        for reason in ("import", "restore"):
-            with self.subTest(reason=reason):
-                restoration = _load_example("case-manifest-v1-representative.json")
-                restoration_operations = cast(list[dict[str, Any]], restoration["page_operations"])
-                payload = cast(dict[str, Any], restoration_operations[3]["payload"])
-                payload["reason"] = reason
-                payload["after_page_ids"] = list(restoration["page_sequence_base"])
-                restoration["page_sequence"] = list(restoration["page_sequence_base"])
-                self.assertEqual([], self._issues(restoration))
+        restoration = _load_example("case-manifest-v1-representative.json")
+        restoration_operations = cast(list[dict[str, Any]], restoration["page_operations"])
+        restoration_payload = cast(dict[str, Any], restoration_operations[3]["payload"])
+        restoration_payload["reason"] = "restore"
+        restoration_payload["after_page_ids"] = list(restoration["page_sequence_base"])
+        restoration["page_sequence"] = list(restoration["page_sequence_base"])
+        self.assertEqual([], self._issues(restoration))
+
+        mislabeled_restore = copy.deepcopy(restoration)
+        mislabeled_restore_operations = cast(
+            list[dict[str, Any]], mislabeled_restore["page_operations"]
+        )
+        cast(dict[str, Any], mislabeled_restore_operations[3]["payload"])["reason"] = "import"
+        self.assertIn(
+            "MANIFEST_SEQUENCE_REASON_INVALID",
+            self._codes(mislabeled_restore),
+        )
+
+        imported = _generated_reference_graph(1, 2)
+        imported_pages = cast(list[dict[str, Any]], imported["pages"])
+        first_page_id = imported_pages[0]["page_id"]
+        second_page_id = imported_pages[1]["page_id"]
+        imported["page_sequence_base"] = [first_page_id]
+        imported["page_sequence"] = [first_page_id, second_page_id]
+        imported["page_operations"] = [
+            {
+                "operation_id": _uuid(0x50000000, 100),
+                "operation_version": 1,
+                "sequence": 1,
+                "payload": {
+                    "kind": "change_sequence",
+                    "reason": "import",
+                    "before_page_ids": [first_page_id],
+                    "after_page_ids": [first_page_id, second_page_id],
+                },
+            }
+        ]
+        self.assertEqual([], self._issues(imported))
+
+        never_introduced = _generated_reference_graph(1, 2)
+        never_introduced["page_sequence_base"] = [first_page_id]
+        never_introduced["page_sequence"] = [first_page_id]
+        self.assertIn(
+            "MANIFEST_PAGE_INTRODUCTION_INCOMPLETE",
+            self._codes(never_introduced),
+        )
 
         for reason in ("reorder", "split", "combine"):
             with self.subTest(reason=reason):
@@ -433,6 +551,22 @@ class CaseManifestValidationTests(unittest.TestCase):
         cast(dict[str, Any], disguised["constraints"])["requested_output_names"] = [
             "application\u202efdp.exe"
         ]
+        c1_control = _load_example("case-manifest-v1-representative.json")
+        cast(dict[str, Any], c1_control["constraints"])["requested_output_names"] = [
+            "application\u0085form.pdf"
+        ]
+        surrogate = _load_example("case-manifest-v1-representative.json")
+        cast(dict[str, Any], surrogate["constraints"])["requested_output_names"] = [
+            "application\ud800form.pdf"
+        ]
+        exact_utf16_limit = _load_example("case-manifest-v1-representative.json")
+        cast(dict[str, Any], exact_utf16_limit["constraints"])["requested_output_names"] = [
+            ("\U0001f4c4" * 88) + ".pdf"
+        ]
+        over_utf16_limit = _load_example("case-manifest-v1-representative.json")
+        cast(dict[str, Any], over_utf16_limit["constraints"])["requested_output_names"] = [
+            ("\U0001f4c4" * 89) + ".pdf"
+        ]
         too_many_for_constraint = _load_example("case-manifest-v1-representative.json")
         cast(dict[str, Any], too_many_for_constraint["constraints"])["requested_output_names"] = [
             "one.pdf",
@@ -446,7 +580,11 @@ class CaseManifestValidationTests(unittest.TestCase):
             f"output-{index}.pdf" for index in range(4_097)
         ]
 
-        self.assertIn("MANIFEST_OUTPUT_NAME_FORMAT_CONTROL", self._codes(disguised))
+        self.assertIn("MANIFEST_OUTPUT_NAME_UNSAFE_UNICODE", self._codes(disguised))
+        self.assertIn("MANIFEST_OUTPUT_NAME_UNSAFE_UNICODE", self._codes(c1_control))
+        self.assertIn("MANIFEST_OUTPUT_NAME_UNSAFE_UNICODE", self._codes(surrogate))
+        self.assertEqual([], self._issues(exact_utf16_limit))
+        self.assertIn("MANIFEST_OUTPUT_NAME_TOO_LONG", self._codes(over_utf16_limit))
         self.assertIn(
             "MANIFEST_OUTPUT_NAME_COUNT_INVALID",
             self._codes(too_many_for_constraint),
@@ -461,7 +599,16 @@ class CaseManifestValidationTests(unittest.TestCase):
         noncanonical_source = cast(list[dict[str, Any]], noncanonical["sources"])[0]
         noncanonical_source["display_name"] = "Synthetic re\u0301sume\u0301.pdf"
 
-        self.assertIn("MANIFEST_DISPLAY_NAME_FORMAT_CONTROL", self._codes(format_control))
+        c1_control = _load_example("case-manifest-v1-representative.json")
+        c1_source = cast(list[dict[str, Any]], c1_control["sources"])[0]
+        c1_source["display_name"] = "Synthetic\u0085application.pdf"
+        surrogate = _load_example("case-manifest-v1-representative.json")
+        surrogate_source = cast(list[dict[str, Any]], surrogate["sources"])[0]
+        surrogate_source["display_name"] = "Synthetic\ud800application.pdf"
+
+        self.assertIn("MANIFEST_DISPLAY_NAME_UNSAFE_UNICODE", self._codes(format_control))
+        self.assertIn("MANIFEST_DISPLAY_NAME_UNSAFE_UNICODE", self._codes(c1_control))
+        self.assertIn("MANIFEST_DISPLAY_NAME_UNSAFE_UNICODE", self._codes(surrogate))
         self.assertIn("MANIFEST_DISPLAY_NAME_NONCANONICAL", self._codes(noncanonical))
 
     def test_display_names_and_overlay_text_remain_inert_data(self) -> None:
@@ -481,9 +628,15 @@ class CaseManifestValidationTests(unittest.TestCase):
         event = _load_example("case-manifest-v1-representative.json")
         source = cast(list[dict[str, Any]], event["sources"])[0]
         source["imported_at"] = "2026-08-01T10:31:00Z"
+        fractional = _load_example("case-manifest-v1-representative.json")
+        fractional_assignment = cast(list[dict[str, Any]], fractional["assignments"])[0]
+        fractional_confirmation = cast(list[dict[str, Any]], fractional["confirmations"])[1]
+        fractional_assignment["assigned_at"] = "2026-08-01T10:20:00.123456Z"
+        fractional_confirmation["recorded_at"] = "2026-08-01T10:20:00.123455Z"
 
         self.assertIn("MANIFEST_TIMESTAMP_ORDER_INVALID", self._codes(revision))
         self.assertIn("MANIFEST_TIMESTAMP_ORDER_INVALID", self._codes(event))
+        self.assertIn("MANIFEST_TIMESTAMP_ORDER_INVALID", self._codes(fractional))
 
     def test_diagnostics_are_deterministic_and_do_not_echo_instance_values(self) -> None:
         canary = "CANARY-SENSITIVE-DISPLAY-NAME"

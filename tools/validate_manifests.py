@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import unicodedata
+from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,10 +32,15 @@ MAX_JSON_NODES: Final = 100_000
 MAX_JSON_STRING_CODEPOINTS: Final = 1_048_576
 MAX_FIXTURE_FILES: Final = 256
 MAX_REPORTED_ISSUES: Final = 512
+MAX_OUTPUT_NAME_UTF16_CODE_UNITS: Final = 180
 NORMALIZED_PAGE_MILLIONTHS: Final = 1_000_000
 
 _SAFE_PATH_TOKEN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_INVALID_JSON_POINTER_ESCAPE: Final = re.compile(r"~(?:[^01]|$)")
 _REFERENCE_KEYWORDS: Final = frozenset({"$ref", "$dynamicRef", "$recursiveRef"})
+_UNSUPPORTED_SCHEMA_REFERENCE_KEYWORDS: Final = frozenset(
+    {"$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveAnchor", "$recursiveRef"}
+)
 _WINDOWS_RESERVED_BASENAMES: Final = frozenset(
     {
         "aux",
@@ -158,8 +164,10 @@ def _json_path(parts: Iterable[object]) -> str:
 
 def _document_label(path: Path, root: Path) -> str:
     try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
+        resolved_root = root.resolve(strict=False)
+        resolved_path = path.resolve(strict=False)
+        return resolved_path.relative_to(resolved_root).as_posix()
+    except OSError, RuntimeError, ValueError:
         return "external-manifest.json"
 
 
@@ -351,24 +359,109 @@ def _schema_references(schema: Mapping[str, Any]) -> list[tuple[str, str]]:
     return found
 
 
-def _local_reference_resolves(schema: Mapping[str, Any], reference: str) -> bool:
+def _local_reference_target_path(
+    schema: Mapping[str, Any], reference: str
+) -> tuple[object, ...] | None:
     if reference == "#":
-        return True
+        return ()
     if not reference.startswith("#/"):
-        return False
+        return None
     current: object = schema
+    target_path: list[object] = []
     for encoded_part in reference[2:].split("/"):
+        if _INVALID_JSON_POINTER_ESCAPE.search(encoded_part):
+            return None
         part = encoded_part.replace("~1", "/").replace("~0", "~")
         if isinstance(current, Mapping) and part in current:
             current = current[part]
+            target_path.append(part)
         elif isinstance(current, list) and part.isascii() and part.isdecimal():
+            if not current or (len(part) > 1 and part.startswith("0")):
+                return None
+            if len(part) > len(str(len(current) - 1)):
+                return None
             index = int(part)
             if index >= len(current):
-                return False
+                return None
             current = current[index]
+            target_path.append(index)
         else:
-            return False
-    return True
+            return None
+    return tuple(target_path)
+
+
+def _schema_policy_issues(schema: Mapping[str, Any], document: str) -> list[ManifestIssue]:
+    issues: list[ManifestIssue] = []
+    stack: list[tuple[object, tuple[object, ...]]] = [(schema, ())]
+    while stack:
+        value, path = stack.pop()
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                child_path = (*path, key)
+                if key in {"$id", "$schema"} and path:
+                    _add_issue(
+                        issues,
+                        _issue(
+                            "MANIFEST_SCHEMA_RESOURCE_SCOPE_UNSAFE",
+                            document,
+                            _json_path(child_path),
+                            "nested schema resource and dialect declarations are not permitted",
+                        ),
+                    )
+                if key in _UNSUPPORTED_SCHEMA_REFERENCE_KEYWORDS:
+                    _add_issue(
+                        issues,
+                        _issue(
+                            "MANIFEST_SCHEMA_REFERENCE_FEATURE_UNSAFE",
+                            document,
+                            _json_path(child_path),
+                            "dynamic, recursive, and anchor reference features are not permitted",
+                        ),
+                    )
+                stack.append((child, child_path))
+        elif isinstance(value, list):
+            stack.extend((child, (*path, index)) for index, child in enumerate(value))
+    return _sorted_issues(issues)
+
+
+def _schema_has_reference_cycle(schema: Mapping[str, Any]) -> bool:
+    graph: dict[tuple[object, ...], list[tuple[object, ...]]] = {}
+    stack: list[tuple[object, tuple[object, ...]]] = [(schema, ())]
+    while stack:
+        value, path = stack.pop()
+        edges = graph.setdefault(path, [])
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                child_path = (*path, key)
+                if key == "$ref" and isinstance(child, str):
+                    target_path = _local_reference_target_path(schema, child)
+                    if target_path is not None:
+                        edges.append(target_path)
+                elif isinstance(child, (Mapping, list)):
+                    edges.append(child_path)
+                    stack.append((child, child_path))
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                if isinstance(child, (Mapping, list)):
+                    child_path = (*path, index)
+                    edges.append(child_path)
+                    stack.append((child, child_path))
+
+    indegree = {node: 0 for node in graph}
+    for edges in graph.values():
+        for target in edges:
+            indegree.setdefault(target, 0)
+            indegree[target] += 1
+    ready = deque(node for node, count in indegree.items() if count == 0)
+    visited = 0
+    while ready:
+        node = ready.popleft()
+        visited += 1
+        for target in graph.get(node, ()):
+            indegree[target] -= 1
+            if indegree[target] == 0:
+                ready.append(target)
+    return visited != len(indegree)
 
 
 def load_manifest_schema(
@@ -384,6 +477,9 @@ def load_manifest_schema(
     if schema is None:
         return None, issues
     document = MANIFEST_SCHEMA_PATH.as_posix()
+    policy_issues = _schema_policy_issues(schema, document)
+    if policy_issues:
+        return None, policy_issues
     reference_issues: list[ManifestIssue] = []
     for path, reference in _schema_references(schema):
         if not reference.startswith("#"):
@@ -396,7 +492,7 @@ def load_manifest_schema(
                     "schema references must remain inside this schema",
                 ),
             )
-        elif not _local_reference_resolves(schema, reference):
+        elif _local_reference_target_path(schema, reference) is None:
             _add_issue(
                 reference_issues,
                 _issue(
@@ -408,6 +504,15 @@ def load_manifest_schema(
             )
     if reference_issues:
         return None, _sorted_issues(reference_issues)
+    if _schema_has_reference_cycle(schema):
+        return None, [
+            _issue(
+                "MANIFEST_SCHEMA_REFERENCE_CYCLE",
+                document,
+                "$",
+                "recursive local schema references are not permitted",
+            )
+        ]
     try:
         Draft202012Validator.check_schema(schema)
     except SchemaError as error:
@@ -428,20 +533,30 @@ def _schema_validation_issues(
     document: str,
 ) -> list[ManifestIssue]:
     issues: list[ManifestIssue] = []
-    validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    for error in validator.iter_errors(data):
-        message = _SCHEMA_MESSAGES.get(error.validator, "value violates the manifest schema")
-        _add_issue(
-            issues,
+    try:
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        for error in validator.iter_errors(data):
+            message = _SCHEMA_MESSAGES.get(error.validator, "value violates the manifest schema")
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_SCHEMA_VALIDATION",
+                    document,
+                    _json_path(error.absolute_path),
+                    message,
+                ),
+            )
+            if any(issue.code == "MANIFEST_ISSUE_LIMIT" for issue in issues):
+                break
+    except Exception:
+        return [
             _issue(
-                "MANIFEST_SCHEMA_VALIDATION",
+                "MANIFEST_SCHEMA_EXECUTION_INVALID",
                 document,
-                _json_path(error.absolute_path),
-                message,
-            ),
-        )
-        if any(issue.code == "MANIFEST_ISSUE_LIMIT" for issue in issues):
-            break
+                "$",
+                "schema validation could not complete safely",
+            )
+        ]
     return _sorted_issues(issues)
 
 
@@ -596,8 +711,15 @@ def _normalized_output_name(name: str) -> str:
     return unicodedata.normalize("NFC", name).casefold()
 
 
-def _contains_format_control(value: str) -> bool:
-    return any(unicodedata.category(character) == "Cf" for character in value)
+def _contains_unsafe_unicode_codepoint(value: str) -> bool:
+    return any(unicodedata.category(character) in {"Cc", "Cf", "Cs"} for character in value)
+
+
+def _utf16_code_units(value: str) -> int | None:
+    try:
+        return len(value.encode("utf-16-le")) // 2
+    except UnicodeEncodeError:
+        return None
 
 
 def _check_output_names(
@@ -611,14 +733,25 @@ def _check_output_names(
     for index, name in enumerate(names):
         path = f"$.constraints.requested_output_names[{index}]"
         normalized = _normalized_output_name(name)
-        if _contains_format_control(name):
+        if _contains_unsafe_unicode_codepoint(name):
             _add_issue(
                 issues,
                 _issue(
-                    "MANIFEST_OUTPUT_NAME_FORMAT_CONTROL",
+                    "MANIFEST_OUTPUT_NAME_UNSAFE_UNICODE",
                     document,
                     path,
-                    "output name contains unsafe Unicode formatting controls",
+                    "output name contains unsafe Unicode controls or surrogate code points",
+                ),
+            )
+        utf16_units = _utf16_code_units(name)
+        if utf16_units is not None and utf16_units > MAX_OUTPUT_NAME_UTF16_CODE_UNITS:
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_OUTPUT_NAME_TOO_LONG",
+                    document,
+                    path,
+                    "output name exceeds the Windows-safe UTF-16 component limit",
                 ),
             )
         if name != unicodedata.normalize("NFC", name):
@@ -667,17 +800,26 @@ def _check_output_names(
         )
 
 
-def _sequence_reason_matches(reason: str, before: Sequence[str], after: Sequence[str]) -> bool:
+def _sequence_reason_matches(
+    reason: str,
+    before: Sequence[str],
+    after: Sequence[str],
+    introduced_page_ids: set[str],
+) -> bool:
     before_set = set(before)
     after_set = set(after)
+    added_page_ids = after_set - before_set
     if reason == "remove":
         return after_set < before_set and list(after) == [
             page_id for page_id in before if page_id in after_set
         ]
     if reason in {"import", "restore"}:
-        return before_set < after_set and list(before) == [
+        preserves_prior_order = before_set < after_set and list(before) == [
             page_id for page_id in after if page_id in before_set
         ]
+        if reason == "import":
+            return preserves_prior_order and added_page_ids.isdisjoint(introduced_page_ids)
+        return preserves_prior_order and added_page_ids <= introduced_page_ids
     return before_set == after_set
 
 
@@ -807,14 +949,14 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
         source_id = cast(str, source["source_id"])
         storage_name = cast(str, source["storage_name"])
         display_name = cast(str, source["display_name"])
-        if _contains_format_control(display_name):
+        if _contains_unsafe_unicode_codepoint(display_name):
             _add_issue(
                 issues,
                 _issue(
-                    "MANIFEST_DISPLAY_NAME_FORMAT_CONTROL",
+                    "MANIFEST_DISPLAY_NAME_UNSAFE_UNICODE",
                     document,
                     f"$.sources[{index}].display_name",
-                    "display name contains unsafe Unicode formatting controls",
+                    "display name contains unsafe Unicode controls or surrogate code points",
                 ),
             )
         if display_name != unicodedata.normalize("NFC", display_name):
@@ -973,18 +1115,8 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
         path="$.page_sequence",
         issues=issues,
     )
-    if set(base_sequence) != set(page_index):
-        _add_issue(
-            issues,
-            _issue(
-                "MANIFEST_BASE_SEQUENCE_INCOMPLETE",
-                document,
-                "$.page_sequence_base",
-                "base sequence must contain every page exactly once",
-            ),
-        )
-
     replay_sequence = list(base_sequence)
+    introduced_page_ids = set(base_sequence)
     group_ids: set[str] = set()
     for index, operation in enumerate(operations):
         if cast(int, operation["sequence"]) != index + 1:
@@ -1045,7 +1177,12 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                         "operation baseline does not match replayed sequence",
                     ),
                 )
-            if not _sequence_reason_matches(reason, before, after):
+            if not _sequence_reason_matches(
+                reason,
+                before,
+                after,
+                introduced_page_ids,
+            ):
                 _add_issue(
                     issues,
                     _issue(
@@ -1055,6 +1192,8 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                         "sequence transition does not match its declared reason",
                     ),
                 )
+            if reason == "import":
+                introduced_page_ids.update(set(after) - set(before))
             replay_sequence = list(after)
         elif kind == "set_group":
             _check_known_page_list(
@@ -1087,6 +1226,16 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                 document,
                 "$.page_sequence",
                 "final page sequence does not match replayed operations",
+            ),
+        )
+    if introduced_page_ids != set(page_index):
+        _add_issue(
+            issues,
+            _issue(
+                "MANIFEST_PAGE_INTRODUCTION_INCOMPLETE",
+                document,
+                "$.page_sequence_base",
+                "every page must appear in the replay baseline or one import operation",
             ),
         )
 

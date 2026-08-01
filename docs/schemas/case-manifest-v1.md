@@ -59,9 +59,12 @@ current replay state; its `after_page_ids` becomes the next state. All reference
 does not independently replace the page sequence. This prevents a stored snapshot and its history
 from both validating while contradicting one another.
 
-The sequence-change reason is also checked against membership: `remove` strictly removes IDs while
-preserving survivor order; `import` and `restore` strictly add IDs while preserving the prior order;
-and `reorder`, `split`, and `combine` retain exactly the same page-ID membership.
+The replay baseline may contain every page or only those active at the beginning of retained
+history. Every other page in the registry must first appear through exactly one `import` transition.
+The sequence-change reason is checked against membership: `remove` strictly removes IDs while
+preserving survivor order; `import` strictly introduces never-before-active IDs; `restore` strictly
+reintroduces previously active IDs; and `reorder`, `split`, and `combine` retain exactly the same
+page-ID membership. Additive transitions preserve the prior relative order.
 
 ## Normalized geometry
 
@@ -97,7 +100,7 @@ cannot express:
 
 - strict bounded UTF-8 JSON with duplicate-key and non-finite-number rejection;
 - exact version dispatch before schema validation or mutation;
-- offline Draft 2020-12 validation with format checking;
+- offline Draft 2020-12 validation with format checking and a single, non-recursive schema resource;
 - unique and case-wide non-colliding internal IDs;
 - source/page index bounds and unique `(source_id, source_page_index)` pairs;
 - storage-name/ID coupling and media-appropriate inspection states;
@@ -113,8 +116,11 @@ The v1 parsing envelope is capped at 8 MiB, 64 nesting levels, 100,000 JSON node
 members in each manifest collection. These are defensive contract limits that prevent a small
 manifest from amplifying schema/semantic work; they are not portal, case-size, or document-engine
 performance claims. Later measured document-processing limits remain owned by their roadmap
-tasks. Requested output names must also fit the active file-count constraint and cannot contain
-Unicode formatting controls that could disguise their visible order.
+tasks. UTC timestamps allow at most six fractional-second digits so ordering remains exact in the
+canonical parser. Requested output names must also fit the active file-count constraint. Display
+and output names cannot contain Unicode control, formatting-control, or surrogate code points.
+Output names are additionally capped at 180 UTF-16 code units, leaving headroom beneath the
+Windows component limit even when astral characters use surrogate pairs.
 
 Canonical examples are
 [`case-manifest-v1-minimal.json`](../../schemas/examples/case-manifest-v1-minimal.json) and
