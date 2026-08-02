@@ -94,6 +94,12 @@ fixed layout, deferrals, and failure behavior are documented in
 system mechanism and residual risks recorded in
 [`docs/adr/0003-secure-case-workspace.md`](docs/adr/0003-secure-case-workspace.md).
 
+The local case-lifecycle service creates an atomic empty manifest, lists only valid current-version
+internal IDs, retains one active authenticated lease, and performs explicit manifest-first
+case-scoped deletion with honest partial reporting and no forensic-erasure claim. Its domain,
+application, storage, concurrency, parsing, and failure contracts are documented in
+[`docs/architecture/case-lifecycle.md`](docs/architecture/case-lifecycle.md).
+
 The bounded Windows import precheck identifies PDF, JPEG, and PNG by content while retaining one
 authenticated read-only source handle, enforcing caller-supplied byte/image/expansion budgets, and
 returning only typed preliminary state or sanitized errors. Its exact lease, format checks, limits,

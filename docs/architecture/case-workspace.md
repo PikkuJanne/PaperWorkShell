@@ -1,9 +1,10 @@
 # Secure case-workspace contract
 
-- Status: Implemented PWS-0101 contract
-- Task: PWS-0101
+- Status: Implemented PWS-0101 contract with PWS-0102 lifecycle extension
+- Tasks: PWS-0101, PWS-0102
 - Decisions: PWS-D009, PWS-D010, PWS-D028, PWS-D029
 - ADR: [ADR 0003](../adr/0003-secure-case-workspace.md)
+- Lifecycle: [Local case-lifecycle contract](case-lifecycle.md)
 
 ## Scope
 
@@ -19,8 +20,8 @@ namespace does not re-export implementations.
 
 | Area | Provisioned by PWS-0101 | PWS-0101 mutation | Future owner |
 |---|---:|---|---|
-| case root | yes | private creation and verification | PWS-0102 lifecycle |
-| `manifest.json` | reserved only | none | PWS-0102 initial record; PWS-0109 repository |
+| case root | yes | private creation and verification | PWS-0102 active lease and full removal |
+| `manifest.json` | reserved only | none | PWS-0102 atomic initial record; PWS-0109 later transactions |
 | `journal/` | yes | no general cleanup | PWS-0109 atomic persistence and recovery |
 | `originals/` | yes | no general cleanup | PWS-0104 immutable import |
 | `cache/thumbnails/` | yes | authenticated child cleanup; root preserved | PWS-0108 bounded thumbnail service |
@@ -51,6 +52,14 @@ directories created by the failed call, in reverse order, after identity revalid
   case identity, token, and liveness.
 - `cleanup_disposable()` removes only an authenticated cache/temp inventory and returns a
   sanitized `CleanupReport` with complete or partial status.
+- `enumerate_case_ids()` authenticates the cases root and bounds UUID-named candidates without
+  creating storage; the lifecycle store authenticates each candidate independently so one damaged
+  entry is reported as unavailable without hiding valid cases.
+- `authenticate_case()` retains cases-root and case-root handles under shared lifecycle,
+  reservation, and deletion coordination.
+- `remove_case()` accepts only an authenticated delete authority, validates a complete case-tree
+  inventory before mutation, invalidates `manifest.json` first, and returns sanitized complete or
+  partial counts.
 
 Callers must not perform security-sensitive I/O merely because `resolve_case_relative()` returned a
 path. An owning broker operation must authenticate the opened handle immediately before use.
@@ -80,8 +89,8 @@ fail closed. One per-case coordination lock covers fresh authenticated inventory
 publication guards, and release; a publish-and-release cannot leave the next claim using an older
 snapshot. File accounting uses logical length, not allocated clusters.
 
-The reservation is not itself filesystem authority. The PWS-0101 manager does not expose a general
-write method; the later broker operation that owns a write must compare its exact target and object
+The reservation is not itself filesystem authority. The manager does not expose a general write
+method; the owning broker operation must compare its exact target and object
 type and actual byte/entry amounts with the retained reservation scope, authenticate and retain the
 opened case/parent/target identity, and hold `publication_guard` through authoritative publication.
 The guard rejects inactive, excessive, mismatched, or replacement-case use and coordinates with
@@ -128,9 +137,16 @@ must present partial status accurately and may offer a later retry after active 
 The authenticated case handle is retained across the complete cleanup, and the selected-area reopen
 must match that case identity before inventory begins.
 
+PWS-0102 adds a separate whole-case path after exact confirmation. It rejects active leases and
+reservations, validates the supported matching manifest and complete authenticated inventory before
+mutation, removes the manifest validity marker first, then deletes the remaining inventory
+deepest-first and the exact case root last. A post-invalidation failure is reported as partial;
+sibling cases and external objects are never in the inventory. This is application-managed removal,
+not a forensic-erasure claim. The full sequence is specified in the
+[local case-lifecycle contract](case-lifecycle.md).
+
 ## Explicit deferrals
 
-- PWS-0102: create/open/close lifecycle, ownership of active operations, and full case removal.
 - PWS-0104: single-open external source copy, content hash, immutable publication, and original-file
   enforcement.
 - PWS-0107: worker host/client lifecycle, active-case capability, cancellation, limits, and initial

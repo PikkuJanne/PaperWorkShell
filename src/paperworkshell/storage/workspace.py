@@ -6,12 +6,12 @@ import os
 import re
 import unicodedata
 from collections.abc import Callable, Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path, PureWindowsPath
 from threading import Lock, RLock
-from typing import Final
+from typing import Final, Self
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
@@ -41,6 +41,8 @@ from paperworkshell.storage.quotas import (
 
 DEFAULT_CASES_ROOT_PARTS: Final = ("AppData", "Local", "PaperWorkShell", "Cases")
 MAX_CASE_ID_COLLISION_ATTEMPTS: Final = 16
+DEFAULT_MAXIMUM_CASE_CANDIDATES: Final = 4096
+MAX_AUTHORITATIVE_RECORD_BYTES: Final = 8 * 1024 * 1024
 
 _UUID4_RE: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z"
@@ -96,6 +98,13 @@ class CleanupTarget(StrEnum):
 
 class CleanupStatus(StrEnum):
     """Whether bounded cleanup removed the complete authenticated inventory."""
+
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+
+
+class CaseRemovalStatus(StrEnum):
+    """Whether authenticated whole-case removal reached its exact root."""
 
     COMPLETE = "complete"
     PARTIAL = "partial"
@@ -167,6 +176,18 @@ class CleanupReport:
     failure_code: WorkspaceErrorCode | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class CaseRemovalReport:
+    """Sanitized counts from one whole-case removal attempt."""
+
+    case_id: UUID
+    status: CaseRemovalStatus
+    removed_files: int
+    removed_directories: int
+    released_bytes: int
+    failure_code: WorkspaceErrorCode | None = None
+
+
 @dataclass(slots=True, weakref_slot=True)
 class _CaseReservationState:
     """Per-case coordination shared by every manager in the broker process."""
@@ -174,11 +195,87 @@ class _CaseReservationState:
     book: QuotaReservationBook
     coordination_lock: RLock = field(default_factory=RLock)
     case_identity: FileIdentity | None = None
+    active_leases: int = 0
+    deletion_in_progress: bool = False
 
 
 _RESERVATION_REGISTRY: WeakValueDictionary[tuple[str, UUID], _CaseReservationState] = (
     WeakValueDictionary()
 )
+
+
+class AuthenticatedCase(AbstractContextManager["AuthenticatedCase"]):
+    """Retained case authority that keeps ancestor and case identities pinned."""
+
+    __slots__ = (
+        "_closed",
+        "_deletion_claim",
+        "_manager_token",
+        "_stack",
+        "_state",
+        "_tracks_lease",
+        "handle",
+        "layout",
+    )
+
+    def __init__(
+        self,
+        *,
+        layout: CaseWorkspacePaths,
+        handle: WindowsHandle,
+        stack: ExitStack,
+        state: _CaseReservationState,
+        manager_token: object,
+        tracks_lease: bool,
+        deletion_claim: bool,
+    ) -> None:
+        self.layout = layout
+        self.handle = handle
+        self._stack = stack
+        self._state = state
+        self._manager_token = manager_token
+        self._tracks_lease = tracks_lease
+        self._deletion_claim = deletion_claim
+        self._closed = False
+
+    @property
+    def case_id(self) -> UUID:
+        return self.layout.case_id
+
+    @property
+    def identity(self) -> FileIdentity:
+        return self.handle.info.identity
+
+    @property
+    def is_open(self) -> bool:
+        return not self._closed
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "case.lease",
+                "The authenticated case authority is no longer available.",
+            )
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """Release retained handles and process-local lifecycle coordination idempotently."""
+
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._stack.close()
+        finally:
+            with self._state.coordination_lock:
+                if self._tracks_lease:
+                    self._state.active_leases = max(0, self._state.active_leases - 1)
+                if self._deletion_claim:
+                    self._state.deletion_in_progress = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,6 +594,7 @@ class CaseWorkspaceManager:
         self._permissions = permissions or WindowsPrivateDirectoryPermissions()
         self._id_factory = id_factory
         self._reservation_states: dict[tuple[str, UUID], _CaseReservationState] = {}
+        self._lifecycle_token = object()
 
     @classmethod
     def for_current_user(
@@ -554,6 +652,119 @@ class CaseWorkspaceManager:
                 "The relative path is outside the case workspace.",
             )
         return candidate
+
+    def enumerate_case_ids(
+        self,
+        *,
+        maximum_candidates: int = DEFAULT_MAXIMUM_CASE_CANDIDATES,
+    ) -> tuple[UUID, ...]:
+        """Return bounded UUID-named candidates beneath the authenticated cases root."""
+
+        if (
+            type(maximum_candidates) is not int
+            or not 1 <= maximum_candidates <= DEFAULT_MAXIMUM_CASE_CANDIDATES
+        ):
+            reject(
+                WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED,
+                "cases.limit",
+                "A bounded case-enumeration limit is required.",
+            )
+        if not os.path.lexists(self._cases_root):
+            return ()
+        with self._pinned_cases_root(create=False):
+            try:
+                names: list[str] = []
+                with os.scandir(self._cases_root) as iterator:
+                    for entry in iterator:
+                        if len(names) >= maximum_candidates:
+                            reject(
+                                WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED,
+                                "cases.entries",
+                                "Case storage exceeds its configured enumeration limit.",
+                            )
+                        names.append(entry.name)
+            except OSError:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "cases.enumerate",
+                    "Case storage changed during its bounded enumeration.",
+                )
+            identifiers: list[UUID] = []
+            for name in sorted(names, key=str.casefold):
+                try:
+                    case_id = validate_case_id(name)
+                except WorkspaceError:
+                    continue
+                identifiers.append(case_id)
+            return tuple(sorted(identifiers, key=str))
+
+    def authenticate_case(
+        self,
+        case_id: UUID | str,
+        *,
+        retain_lease: bool = False,
+        for_deletion: bool = False,
+    ) -> AuthenticatedCase:
+        """Retain authenticated ancestor/case handles under shared lifecycle coordination."""
+
+        if type(retain_lease) is not bool or type(for_deletion) is not bool:
+            reject(
+                WorkspaceErrorCode.PATH_INVALID,
+                "case.authority",
+                "A valid case-authority mode is required.",
+            )
+        if retain_lease and for_deletion:
+            reject(
+                WorkspaceErrorCode.PATH_INVALID,
+                "case.authority",
+                "A case authority cannot be both active and deleting.",
+            )
+        layout = self.layout(case_id)
+        with self._coordinated_reservation_state(layout.case_id) as (key, state):
+            if state.deletion_in_progress:
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "case.deleting",
+                    "The case is already being removed from application storage.",
+                )
+            if for_deletion and (state.active_leases or state.book.has_reservations):
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "case.active",
+                    "An active case or storage operation must close before deletion.",
+                )
+            stack = ExitStack()
+            authority: AuthenticatedCase | None = None
+            try:
+                stack.enter_context(self._pinned_cases_root(create=False))
+                case_handle = stack.enter_context(
+                    open_handle(layout.case_root, delete=for_deletion)
+                )
+                require_expected_handle(case_handle, layout.case_root, directory=True)
+                verify_private_acl(case_handle)
+                require_no_alternate_streams(layout.case_root)
+                self._bind_case_identity(state, case_handle.info.identity)
+                authority = AuthenticatedCase(
+                    layout=layout,
+                    handle=case_handle,
+                    stack=stack,
+                    state=state,
+                    manager_token=self._lifecycle_token,
+                    tracks_lease=retain_lease,
+                    deletion_claim=for_deletion,
+                )
+                if retain_lease:
+                    state.active_leases += 1
+                if for_deletion:
+                    state.deletion_in_progress = True
+                self._reservation_states[key] = state
+                return authority
+            except BaseException:
+                if authority is None:
+                    stack.close()
+                else:
+                    authority.close()
+                raise
 
     def provision(self, case_id: UUID | str | None = None) -> CaseWorkspacePaths:
         """Create and independently verify a new private directory skeleton."""
@@ -641,6 +852,12 @@ class CaseWorkspaceManager:
             )
         layout = self.layout(parsed_id)
         with self._coordinated_reservation_state(parsed_id) as (key, state):
+            if state.deletion_in_progress:
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "quota.case_deleting",
+                    "Capacity cannot be reserved while the case is being removed.",
+                )
             usage, identity = self._measure_usage_and_identity(layout)
             self._bind_case_identity(state, identity)
             reservation = state.book.reserve(
@@ -679,6 +896,12 @@ class CaseWorkspaceManager:
         target_path = layout.cache if target is CleanupTarget.CACHE else layout.temp
         quota_area = QuotaArea.CACHE if target is CleanupTarget.CACHE else QuotaArea.TEMP
         with self._coordinated_reservation_state(layout.case_id) as (_, reservation_state):
+            if reservation_state.deletion_in_progress:
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "cleanup.case_deleting",
+                    "Disposable cleanup cannot run while the case is being removed.",
+                )
             with self._pinned_layout(layout) as case_handle:
                 require_no_alternate_streams(layout.case_root)
                 identity = case_handle.info.identity
@@ -695,6 +918,205 @@ class CaseWorkspaceManager:
                     target_path,
                     expected_case_identity=identity,
                 )
+
+    def remove_case(
+        self,
+        authority: AuthenticatedCase,
+        *,
+        manifest_validator: Callable[[bytes], None],
+        maximum_manifest_bytes: int,
+    ) -> CaseRemovalReport:
+        """Remove one fully inventoried authenticated case, invalidating its manifest first."""
+
+        if (
+            type(authority) is not AuthenticatedCase
+            or authority._manager_token is not self._lifecycle_token
+            or not authority.is_open
+            or not authority._deletion_claim
+        ):
+            reject(
+                WorkspaceErrorCode.CLEANUP_FAILED,
+                "case.delete_authority",
+                "An authenticated deletion authority is required.",
+            )
+        if not callable(manifest_validator) or (
+            type(maximum_manifest_bytes) is not int
+            or not 1 <= maximum_manifest_bytes <= MAX_AUTHORITATIVE_RECORD_BYTES
+        ):
+            reject(
+                WorkspaceErrorCode.CLEANUP_FAILED,
+                "case.manifest_validator",
+                "A bounded authoritative-manifest validator is required.",
+            )
+        layout = authority.layout
+        state = authority._state
+        with state.coordination_lock:
+            if not state.deletion_in_progress or state.active_leases or state.book.has_reservations:
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "case.active",
+                    "An active case or storage operation must close before deletion.",
+                )
+            require_expected_handle(
+                authority.handle,
+                layout.case_root,
+                directory=True,
+                expected_identity=state.case_identity,
+            )
+            verify_private_acl(authority.handle)
+            require_no_alternate_streams(layout.case_root)
+            inventory_state = _InventoryState(entries=[])
+            self._inventory_directory(
+                layout.case_root,
+                authority.handle,
+                relative_parts=(),
+                depth=0,
+                state=inventory_state,
+                top_level=True,
+            )
+            manifests = [
+                entry
+                for entry in inventory_state.entries
+                if entry.relative_parts == ("manifest.json",)
+            ]
+            if len(manifests) != 1 or manifests[0].is_directory:
+                reject(
+                    WorkspaceErrorCode.PATH_INVALID,
+                    "case.manifest",
+                    "The case does not contain one authoritative manifest record.",
+                )
+            return self._delete_case_inventory(
+                layout,
+                authority.handle,
+                inventory_state.entries,
+                manifest_validator=manifest_validator,
+                maximum_manifest_bytes=maximum_manifest_bytes,
+            )
+
+    def _delete_case_inventory(
+        self,
+        layout: CaseWorkspacePaths,
+        case_handle: WindowsHandle,
+        entries: list[_InventoryEntry],
+        *,
+        manifest_validator: Callable[[bytes], None],
+        maximum_manifest_bytes: int,
+    ) -> CaseRemovalReport:
+        removed_files = 0
+        removed_directories = 0
+        released_bytes = 0
+        by_parts = {entry.relative_parts: entry for entry in entries}
+        manifest = by_parts[("manifest.json",)]
+        remaining = sorted(
+            (entry for entry in entries if entry is not manifest),
+            key=lambda entry: (len(entry.relative_parts), entry.is_directory),
+            reverse=True,
+        )
+        manifest_path = layout.manifest
+        try:
+            with open_handle(manifest_path, delete=True, read=True) as manifest_handle:
+                require_expected_handle(
+                    manifest_handle,
+                    manifest_path,
+                    directory=False,
+                    expected_identity=manifest.identity,
+                )
+                if manifest_handle.info.link_count != 1:
+                    reject(
+                        WorkspaceErrorCode.ALIAS_DETECTED,
+                        "case.delete_links",
+                        "A case file changed into an aliased filesystem object.",
+                    )
+                if manifest_handle.info.logical_size != manifest.logical_size:
+                    reject(
+                        WorkspaceErrorCode.IDENTITY_CHANGED,
+                        "case.delete_size",
+                        "A case file changed after deletion inventory.",
+                    )
+                require_no_alternate_streams(manifest_path)
+                manifest_payload = manifest_handle.read_bytes(maximum_bytes=maximum_manifest_bytes)
+                manifest_validator(manifest_payload)
+                manifest_handle.mark_for_deletion()
+            removed_files += 1
+            released_bytes += manifest.logical_size
+        except WorkspaceError as error:
+            return CaseRemovalReport(
+                case_id=layout.case_id,
+                status=CaseRemovalStatus.PARTIAL,
+                removed_files=removed_files,
+                removed_directories=removed_directories,
+                released_bytes=released_bytes,
+                failure_code=error.code,
+            )
+        for entry in remaining:
+            try:
+                with ExitStack() as stack:
+                    current_path = layout.case_root
+                    current_handle = case_handle
+                    for count, component in enumerate(entry.relative_parts, start=1):
+                        current_path = current_path / component
+                        is_leaf = count == len(entry.relative_parts)
+                        opened = stack.enter_context(open_handle(current_path, delete=is_leaf))
+                        expected = by_parts[entry.relative_parts[:count]]
+                        require_expected_handle(
+                            opened,
+                            current_path,
+                            directory=expected.is_directory,
+                            expected_identity=expected.identity,
+                        )
+                        if not opened.info.is_directory and opened.info.link_count != 1:
+                            reject(
+                                WorkspaceErrorCode.ALIAS_DETECTED,
+                                "case.delete_links",
+                                "A case file changed into an aliased filesystem object.",
+                            )
+                        if (
+                            not opened.info.is_directory
+                            and opened.info.logical_size != expected.logical_size
+                        ):
+                            reject(
+                                WorkspaceErrorCode.IDENTITY_CHANGED,
+                                "case.delete_size",
+                                "A case file changed after deletion inventory.",
+                            )
+                        require_no_alternate_streams(current_path)
+                        current_handle = opened
+                    current_handle.mark_for_deletion()
+                if entry.is_directory:
+                    removed_directories += 1
+                else:
+                    removed_files += 1
+                    released_bytes += entry.logical_size
+            except WorkspaceError as error:
+                return CaseRemovalReport(
+                    case_id=layout.case_id,
+                    status=CaseRemovalStatus.PARTIAL,
+                    removed_files=removed_files,
+                    removed_directories=removed_directories,
+                    released_bytes=released_bytes,
+                    failure_code=error.code,
+                )
+        try:
+            require_expected_handle(case_handle, layout.case_root, directory=True)
+            require_no_alternate_streams(layout.case_root)
+            case_handle.mark_for_deletion()
+            removed_directories += 1
+        except WorkspaceError as error:
+            return CaseRemovalReport(
+                case_id=layout.case_id,
+                status=CaseRemovalStatus.PARTIAL,
+                removed_files=removed_files,
+                removed_directories=removed_directories,
+                released_bytes=released_bytes,
+                failure_code=error.code,
+            )
+        return CaseRemovalReport(
+            case_id=layout.case_id,
+            status=CaseRemovalStatus.COMPLETE,
+            removed_files=removed_files,
+            removed_directories=removed_directories,
+            released_bytes=released_bytes,
+        )
 
     def _cleanup_authenticated_target(
         self,

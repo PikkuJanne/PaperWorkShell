@@ -306,17 +306,23 @@ flowchart LR
     Delete --> Report["Deleted / partial failure / retry state"]
 ```
 
-1. The UI identifies a case by internal ID, shows what case-scoped data will be removed, explains
-   what exports remain, and states that forensic erasure is not guaranteed.
-2. Active worker operations are cancelled/terminated and handles are closed before mutation.
+1. PWS-0102 accepts only an internal UUID and the exact application-storage removal confirmation.
+   Its result states that forensic erasure is not guaranteed. The accessible inventory review,
+   export explanation, and assisted-retention presentation remain owned by PWS-0706/PWS-0111.
+2. The PWS-0102 application service rejects its active case, and the storage boundary rejects any
+   retained lifecycle lease or quota reservation before mutation. Future document-worker
+   composition must cancel/terminate active operations and close their handles before releasing
+   that lease.
 3. A trusted storage broker—not the document worker—resolves the internal ID beneath the configured
    case root and validates exact opened-file identity, containment, permissions, and
    reparse/symlink/hardlink behavior. Display names and user-provided paths never determine the
    deletion target.
-4. Deletion cannot cross the one case root. Cancellation or partial failure produces an accurately
-   inventoried, understandable partial-failure state rather than success; remaining case data is
-   recoverable where possible and retry/cleanup is offered. Deleted bytes are not promised
-   recoverable, and unrelated cases/external exports are not deleted.
+4. The broker validates the supported matching manifest and inventories the complete fixed case
+   tree before the first removal. It invalidates `manifest.json` first, then removes the verified
+   inventory deepest-first and the exact root last. Deletion cannot cross the one case root. A
+   post-invalidation failure returns sanitized partial counts rather than success; PWS-0113 owns
+   restart cleanup/retry discovery. Deleted bytes are not promised recoverable, and unrelated
+   cases/external exports are not deleted.
 5. Assisted-use retention, expiry, automatic lock, and delete-after-verified-export remain gated
    by PWS-0705 and PWS-0706.
 

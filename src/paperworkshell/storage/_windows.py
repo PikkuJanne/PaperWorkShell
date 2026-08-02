@@ -17,17 +17,23 @@ _INVALID_HANDLE_VALUE: Final = ctypes.c_void_p(-1).value
 
 _READ_CONTROL: Final = 0x0002_0000
 _DELETE: Final = 0x0001_0000
+_GENERIC_READ: Final = 0x8000_0000
+_GENERIC_WRITE: Final = 0x4000_0000
 _FILE_READ_ATTRIBUTES: Final = 0x0000_0080
 _FILE_SHARE_READ: Final = 0x0000_0001
 _FILE_SHARE_WRITE: Final = 0x0000_0002
+_FILE_SHARE_DELETE: Final = 0x0000_0004
+_CREATE_NEW: Final = 1
 _OPEN_EXISTING: Final = 3
 _FILE_FLAG_OPEN_REPARSE_POINT: Final = 0x0020_0000
 _FILE_FLAG_BACKUP_SEMANTICS: Final = 0x0200_0000
+_FILE_ATTRIBUTE_NORMAL: Final = 0x0000_0080
 _FILE_ATTRIBUTE_DIRECTORY: Final = 0x0000_0010
 _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
 _FILE_ATTRIBUTE_SPARSE_FILE: Final = 0x0000_0200
 
 _FILE_STANDARD_INFO_CLASS: Final = 1
+_FILE_RENAME_INFO_CLASS: Final = 3
 _FILE_ATTRIBUTE_TAG_INFO_CLASS: Final = 9
 _FILE_ID_INFO_CLASS: Final = 18
 _FILE_DISPOSITION_INFO_CLASS: Final = 4
@@ -46,6 +52,8 @@ _TOKEN_QUERY: Final = 0x0008
 _TOKEN_USER_CLASS: Final = 1
 _TOKEN_OWNER_CLASS: Final = 4
 _ERROR_INSUFFICIENT_BUFFER: Final = 122
+_ERROR_FILE_EXISTS: Final = 80
+_ERROR_ALREADY_EXISTS: Final = 183
 
 _DRIVE_FIXED: Final = 3
 _FILE_PERSISTENT_ACLS: Final = 0x0000_0008
@@ -293,8 +301,95 @@ class WindowsHandle(AbstractContextManager["WindowsHandle"]):
                 "PaperWorkShell could not remove a verified disposable item.",
             )
 
+    def read_bytes(self, *, maximum_bytes: int) -> bytes:
+        """Read one already-authenticated regular file through its retained handle."""
 
-def open_handle(path: Path, *, delete: bool = False) -> WindowsHandle:
+        if type(maximum_bytes) is not int or maximum_bytes < 1:
+            reject(
+                WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED,
+                "filesystem.read_limit",
+                "A positive bounded file-read limit is required.",
+            )
+        if self._handle == 0 or self._info.is_directory:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file is no longer available.",
+            )
+        expected_size = self._info.logical_size
+        if expected_size > maximum_bytes:
+            reject(
+                WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED,
+                "filesystem.read_limit",
+                "The authenticated file exceeds its configured read limit.",
+            )
+
+        kernel32, _, _ = _libraries()
+        read_file = kernel32.ReadFile
+        read_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        read_file.restype = wintypes.BOOL
+        chunks: list[bytes] = []
+        remaining = expected_size
+        while remaining:
+            requested = min(remaining, 1024 * 1024)
+            buffer = ctypes.create_string_buffer(requested)
+            received = wintypes.DWORD()
+            if not read_file(
+                wintypes.HANDLE(self._handle),
+                buffer,
+                requested,
+                ctypes.byref(received),
+                None,
+            ):
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "filesystem.read",
+                    "The authenticated file changed while it was being read.",
+                )
+            count = int(received.value)
+            if count <= 0 or count > requested:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "filesystem.read",
+                    "The authenticated file changed while it was being read.",
+                )
+            chunks.append(buffer.raw[:count])
+            remaining -= count
+
+        probe = ctypes.create_string_buffer(1)
+        received = wintypes.DWORD()
+        if (
+            not read_file(
+                wintypes.HANDLE(self._handle),
+                probe,
+                1,
+                ctypes.byref(received),
+                None,
+            )
+            or received.value != 0
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file changed while it was being read.",
+            )
+        current = _query_opened_info(self._handle)
+        if current.identity != self._info.identity or current.logical_size != expected_size:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file changed while it was being read.",
+            )
+        return b"".join(chunks)
+
+
+def open_handle(path: Path, *, delete: bool = False, read: bool = False) -> WindowsHandle:
     """Open a path without following its final reparse point or sharing deletion."""
 
     kernel32, _, _ = _libraries()
@@ -312,10 +407,13 @@ def open_handle(path: Path, *, delete: bool = False) -> WindowsHandle:
     access = _READ_CONTROL | _FILE_READ_ATTRIBUTES
     if delete:
         access |= _DELETE
+    if read:
+        access |= _GENERIC_READ
+    share_mode = _FILE_SHARE_READ if read else _FILE_SHARE_READ | _FILE_SHARE_WRITE
     raw_handle = create_file(
         str(path),
         access,
-        _FILE_SHARE_READ | _FILE_SHARE_WRITE,
+        share_mode,
         None,
         _OPEN_EXISTING,
         _FILE_FLAG_BACKUP_SEMANTICS | _FILE_FLAG_OPEN_REPARSE_POINT,
@@ -337,6 +435,210 @@ def open_handle(path: Path, *, delete: bool = False) -> WindowsHandle:
         close_handle(wintypes.HANDLE(handle_value))
         raise
     return WindowsHandle(handle_value, info)
+
+
+def write_new_file(path: Path, data: bytes) -> WindowsHandle:
+    """Exclusively create, fully write, flush, and retain one authenticated file."""
+
+    if type(data) is not bytes:
+        reject(
+            WorkspaceErrorCode.CREATE_FAILED,
+            "filesystem.write",
+            "PaperWorkShell could not create the authoritative case record.",
+        )
+    kernel32, _, _ = _libraries()
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    raw_handle = create_file(
+        str(path),
+        _GENERIC_WRITE | _DELETE | _READ_CONTROL | _FILE_READ_ATTRIBUTES,
+        _FILE_SHARE_READ | _FILE_SHARE_DELETE,
+        None,
+        _CREATE_NEW,
+        _FILE_ATTRIBUTE_NORMAL,
+        None,
+    )
+    handle_value = int(raw_handle) if raw_handle else 0
+    if not handle_value or handle_value == _INVALID_HANDLE_VALUE:
+        code = (
+            WorkspaceErrorCode.ALREADY_EXISTS
+            if ctypes.get_last_error() in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+            else WorkspaceErrorCode.CREATE_FAILED
+        )
+        reject(
+            code,
+            "filesystem.write",
+            "PaperWorkShell could not create the authoritative case record.",
+        )
+
+    handle: WindowsHandle | None = None
+    try:
+        info = _query_opened_info(handle_value)
+        handle = WindowsHandle(handle_value, info)
+        require_expected_handle(handle, path, directory=False)
+        if info.link_count != 1:
+            reject(
+                WorkspaceErrorCode.ALIAS_DETECTED,
+                "filesystem.write",
+                "The new case record unexpectedly aliases another filesystem object.",
+            )
+
+        write_file = kernel32.WriteFile
+        write_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        write_file.restype = wintypes.BOOL
+        offset = 0
+        while offset < len(data):
+            chunk = data[offset : offset + 1024 * 1024]
+            buffer = ctypes.create_string_buffer(chunk)
+            written = wintypes.DWORD()
+            if not write_file(
+                wintypes.HANDLE(handle_value),
+                buffer,
+                len(chunk),
+                ctypes.byref(written),
+                None,
+            ) or int(written.value) != len(chunk):
+                reject(
+                    WorkspaceErrorCode.CREATE_FAILED,
+                    "filesystem.write",
+                    "PaperWorkShell could not create the authoritative case record.",
+                )
+            offset += len(chunk)
+        flush = kernel32.FlushFileBuffers
+        flush.argtypes = (wintypes.HANDLE,)
+        flush.restype = wintypes.BOOL
+        if not flush(wintypes.HANDLE(handle_value)):
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "filesystem.flush",
+                "PaperWorkShell could not commit the authoritative case record.",
+            )
+        final_info = _query_opened_info(handle_value)
+        if final_info.identity != info.identity or final_info.logical_size != len(data):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.write",
+                "The new case record changed before it could be committed.",
+            )
+        return handle
+    except BaseException:
+        if handle is not None:
+            try:
+                handle.mark_for_deletion()
+            except BaseException:
+                pass
+            handle.close()
+        else:
+            close_handle = kernel32.CloseHandle
+            close_handle.argtypes = (wintypes.HANDLE,)
+            close_handle.restype = wintypes.BOOL
+            close_handle(wintypes.HANDLE(handle_value))
+        raise
+
+
+def publish_new_file(
+    source_handle: WindowsHandle,
+    destination_root: WindowsHandle,
+    *,
+    destination: Path,
+) -> None:
+    """Atomically rename an exact opened file beneath an authenticated directory handle."""
+
+    if source_handle.info.is_directory or source_handle.info.link_count != 1:
+        reject(
+            WorkspaceErrorCode.ALIAS_DETECTED,
+            "filesystem.publish",
+            "The staged case record unexpectedly aliases another filesystem object.",
+        )
+    if not destination_root.info.is_directory or destination_root.info.is_reparse_point:
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "filesystem.publish",
+            "The case storage location changed before publication.",
+        )
+    destination_name = destination.name
+    if (
+        destination.parent != destination_root.info.final_path
+        or destination_name != "manifest.json"
+    ):
+        reject(
+            WorkspaceErrorCode.PATH_INVALID,
+            "filesystem.publish",
+            "The authoritative case record has an unexpected destination.",
+        )
+
+    destination_text = str(destination)
+    destination_utf16 = destination_text.encode("utf-16-le")
+    destination_code_units = len(destination_utf16) // 2
+
+    class _FileRenameInfo(ctypes.Structure):
+        _fields_ = [
+            ("replace_if_exists", wintypes.BOOLEAN),
+            ("root_directory", wintypes.HANDLE),
+            ("file_name_length", wintypes.DWORD),
+            ("file_name", wintypes.WCHAR * (destination_code_units + 1)),
+        ]
+
+    rename = _FileRenameInfo(
+        wintypes.BOOLEAN(0),
+        wintypes.HANDLE(),
+        wintypes.DWORD(len(destination_utf16)),
+        destination_text,
+    )
+    kernel32, _, _ = _libraries()
+    set_information = kernel32.SetFileInformationByHandle
+    set_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    set_information.restype = wintypes.BOOL
+    if not set_information(
+        wintypes.HANDLE(source_handle.value),
+        _FILE_RENAME_INFO_CLASS,
+        ctypes.byref(rename),
+        ctypes.sizeof(rename),
+    ):
+        code = (
+            WorkspaceErrorCode.ALREADY_EXISTS
+            if ctypes.get_last_error() in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+            else WorkspaceErrorCode.CREATE_FAILED
+        )
+        reject(
+            code,
+            "filesystem.publish",
+            "PaperWorkShell could not publish the authoritative case record.",
+        )
+    published = _query_opened_info(source_handle.value)
+    if (
+        published.identity != source_handle.info.identity
+        or published.is_directory
+        or published.is_reparse_point
+        or published.link_count != 1
+        or _normalized_path(published.final_path) != _normalized_path(destination)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "filesystem.publish",
+            "The authoritative case record changed during publication.",
+        )
+    require_no_alternate_streams(destination)
 
 
 def _query_opened_info(handle: int) -> OpenedFileInfo:

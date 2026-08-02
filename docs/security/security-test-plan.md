@@ -56,6 +56,19 @@
 Every TM-001 through TM-028 threat appears in at least one planned suite. The documentation
 validator enforces that inventory while PWS-0004 is the current model.
 
+## PWS-0102 implemented lifecycle evidence
+
+The local lifecycle suites implement the PWS-0102 portion of ST-005 and TM-019. They prove an
+atomic create/list/close/fresh-service reopen/delete round trip; incomplete publication is never a
+valid case; malformed, legacy, future, duplicate-key, and mismatched manifests fail before
+mutation; active leases and capacity reservations exclude deletion; and a complete no-follow
+inventory precedes manifest-first removal. Dedicated lifecycle cases cover hard links, alternate
+streams, sibling cases, external sentinels, malformed UUID-named candidates, and injected
+mid-delete failures. They reuse PWS-0101's live reparse and file-identity inventory boundary for
+whole-case removal. Together these prove scope and honest partial reporting. Error/result checks
+prohibit paths, canaries, raw exceptions, and any forensic-erasure claim. PWS-0706 retains the later
+human inventory/retention workflow, and PWS-0113 retains restart orphan cleanup and diagnostics.
+
 ## PWS-0107 required live evidence
 
 PWS-0107 unit doubles prove deterministic protocol and lifecycle logic, but do not prove the

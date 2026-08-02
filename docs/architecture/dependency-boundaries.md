@@ -2,7 +2,7 @@
 
 - Status: Binding implementation policy
 - Task: PWS-0002
-- Extension: PWS-0107 restricted worker lifecycle
+- Extensions: PWS-0102 local case lifecycle; PWS-0107 restricted worker lifecycle
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -34,7 +34,7 @@ worker host -> domain
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Output planning, verification, and derivative commit behavior |
 | `templates` | Declarative, versioned template loading and validation |
-| `storage` | Authenticated case workspaces, bounded external-source leases, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md) and [Bounded import-precheck contract](import-prechecks.md) |
+| `storage` | Authenticated case workspaces, local lifecycle, bounded external-source leases, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), and [Bounded import-precheck contract](import-prechecks.md) |
 | `diagnostics` | Sanitized logging and previewable diagnostic data |
 
 ## Enforced import rules
@@ -69,6 +69,15 @@ PWS-0103 adds pure import policy in `domain.import_precheck` and a narrow extern
 handle; it is not a general filesystem API. Preliminary PDF/image framing checks are deliberately
 bounded and do not move document-engine parsing into the desktop process. The lease and deferrals
 are specified in [Bounded import-precheck contract](import-prechecks.md).
+
+PWS-0102 adds pure lifecycle result/error types in `domain.case_lifecycle`, a structural storage
+protocol and one-active-case coordinator in `app.case_lifecycle`, and a concrete authenticated
+Windows implementation in `storage.case_lifecycle`. Storage depends on domain contracts but never
+imports `app`; desktop composition will inject the concrete store. The adapter parses only the
+bounded lifecycle envelope and does not import repository tools or a third-party schema engine.
+Atomic initial publication, retained leases, and case-scoped removal are specified in the
+[Local case-lifecycle contract](case-lifecycle.md). PWS-0109 retains ownership of full runtime
+manifest validation and later transactions.
 
 PWS-0107 makes the worker split concrete. GUI-safe `worker.client` modules own only cached lifecycle
 state and abstract process/transport contracts; `worker.protocol` owns bounded framing, bootstrap,
