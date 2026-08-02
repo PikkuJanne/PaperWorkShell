@@ -4,6 +4,7 @@
 - Gate conclusion: PASS
 - Review date: 2026-08-02
 - Evidence revision: `ebe66c856aae1932d89d233606012e0d35c122af`
+- Review-state closure revision: `f9e910db8c7e2a3b9d9c9705de735e0373d25b78`
 - Review branch: `codex/pws-0010-foundation-gate`
 - Frozen decisions: PWS-D003, PWS-D034, PWS-D035, PWS-D036
 
@@ -113,7 +114,7 @@ process containment, filesystem confinement, or egress denial; PWS-0107 owns tho
 | `py -3.14 tools/dev.py benchmark-reference` | Pass: deterministic two-file local-smoke record; no product target evaluated |
 | `uv sync --locked` in a fresh SSH clone | Pass: twenty-two locked packages installed at the exact evidence revision |
 | `py -3.14 tools/dev.py check` in that clone | Pass: 56-file format/lint, twelve-layer boundaries, strict typing, 256 unit, three integration, 103 security with two disclosed local privilege skips, two accessibility tests, all validators/scans, and five negative self-tests |
-| GitHub Actions local-equivalent suite | Pass: [push run 30728665451](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728665451) and [pull-request run 30728666356](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728666356); hosted Windows passed all 105 security tests without skips |
+| GitHub Actions local-equivalent suite | Pass: evidence-baseline [push run 30728665451](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728665451) and [pull-request run 30728666356](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728666356), plus review-state [push run 30728984177](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728984177) and [pull-request run 30728985626](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728985626); hosted Windows passed all 105 security tests without skips |
 
 The gate evidence used a quiescent fresh SSH clone. Repository scanning deliberately fails closed
 if Git refs, the index, tracked paths, or selected bytes change during its snapshot; such a race
@@ -197,6 +198,6 @@ contract checks, bundle verification, platform link/identity review, and three i
 No unresolved M0 release-blocking defect remains.
 
 This conclusion approves only the documented foundation and its owned future-risk plan. It does
-not claim that any future runtime control or product feature exists. After final task-state review,
-PWS-0010 can become `done` and PWS-0101 becomes the next ready task. A later regression in a
-required check reopens the owning task or gate; it is not converted into a warning.
+not claim that any future runtime control or product feature exists. PWS-0010 is `done`, and
+PWS-0101 is the next ready task. A later regression in a required check reopens the owning task or
+gate; it is not converted into a warning.

@@ -562,7 +562,7 @@ tasks:
   kind: gate
   priority: P0
   effort: M
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0001
@@ -601,17 +601,26 @@ tasks:
   - foundation
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "f9e910d"
+    commands:
+    - "fresh SSH clone at ebe66c8: uv sync --locked installed 22 packages and py -3.14 tools/dev.py check passed; 56-file formatting/lint, 12-layer boundaries, strict typing, 256 unit tests, 3 integration tests, 103 security tests with 2 disclosed local Windows symlink-privilege skips, 2 accessibility tests, all validators/scans, and 5 negative self-tests"
+    - "py -3.14 tools/dev.py check at review commit f9e910d - passed; the complete registry-derived suite revalidated the committed PASS report and task-review state"
+    - "manual Windows review at ebe66c8 - passed; real NTFS junctions were rejected without target mutation, file-identity ABA replacements survived cleanup, and the focused KeyboardInterrupt cleanup test passed"
+    - "GitHub Actions runs 30728984177 (push) and 30728985626 (pull_request) on windows-2025 passed the local-equivalent quality suite at f9e910d, including all 105 security tests without skips"
+    notes:
+    - The M0 report records PASS for every roadmap exit and PWS-0010 acceptance criterion with no waiver or unresolved release-blocking defect.
+    - All 28 threats map to frozen decisions, non-gate implementation owners, and 20 planned security suites; future runtime controls remain explicitly unimplemented until their tasks and gates pass.
+    - The validated dependency record is a 41-component, 29-relationship policy baseline rather than a resolved release inventory or SBOM.
+    - "The public corpus is synthetic by closed no-input construction: 17 deterministic files cover 18 committed categories, with 2 on-demand and 4 engine/UI-owned scheduled categories."
+    - Three independent exact-commit gate audits found no remaining actionable security, privacy, schema, dependency, corpus, traceability, or evidence issue.
 - id: PWS-0101
   milestone: M1
   title: Implement secure case workspace conventions
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0010
