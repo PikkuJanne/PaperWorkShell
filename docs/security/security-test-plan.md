@@ -34,12 +34,12 @@
 |---|---|---|---|---|
 | ST-001 | TM-001, TM-003, TM-022, TM-023 | PWS-0103, PWS-0105, PWS-0106, PWS-0107 | Security/integration: malformed/truncated/deep PDF/image inputs; corrupted/truncated/oversized/wrong-case/raced canonical preview buffers; hostile worker/tool results | GUI never invokes a general-purpose decoder on worker bytes; worker terminates/restarts where required; stable error; case/original unchanged |
 | ST-002 | TM-002 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0201, PWS-0208 | Security/performance: byte/page/pixel/decompression/recursion/memory/CPU/temp limits at boundaries | Work stops within budget; partial state is non-authoritative; retry remains possible |
-| ST-003 | TM-004 | PWS-0107, PWS-0204, PWS-0803 | Security: worker/OCR socket/DNS/HTTP attempts plus updater privacy capture | Processing egress denied; updater request contains no case/document fields |
+| ST-003 | TM-004 | PWS-0107, PWS-0204, PWS-0803 | Security: real worker and descendant attempt IPv4/IPv6 TCP and UDP against controlled loopback listeners; reachable non-isolated control; OCR socket/DNS/HTTP attempts; updater privacy capture | AppContainer token has zero capability SIDs; no listener receives isolated traffic while control succeeds; descendants retain denial; updater request contains no case/document fields |
 | ST-004 | TM-005, TM-023 | PWS-0103, PWS-0104, PWS-0112 | Security/integration: one-handle source replacement/truncation; post-import case-copy mutation before parse/export; destination swap between verification/temp copy/digest/commit | Race/mutation detected before an authoritative result; exact verified bytes or no export commit; external source/prior export hashes and last valid manifest unchanged |
-| ST-005 | TM-006, TM-019, TM-023 | PWS-0101, PWS-0102, PWS-0104, PWS-0407, PWS-0706 | Security: traversal, absolute/device/UNC/ADS/reserved names, symlink/reparse/hardlink/file-ID alias, case-insensitive/Unicode collision, cache/temp link swap, ZIP/deletion escape; worker writes to originals/manifest/journal/other-operation staging | Reject before mutation and again at opened handle; worker can write only its operation subroot; broker alone publishes state; no file outside the exact case/destination root changes |
+| ST-005 | TM-006, TM-019, TM-023 | PWS-0101, PWS-0102, PWS-0104, PWS-0107, PWS-0407, PWS-0706 | Security: traversal, absolute/device/UNC/ADS/reserved names, symlink/reparse/hardlink/file-ID alias, case-insensitive/Unicode collision, cache/temp link swap, ZIP/deletion escape; restricted worker tries case roots, originals, manifest/journal/history, sibling case, external and inherited user-temp paths; deliberate exact-handle control when available | Reject before mutation and again at opened handle; no path-based worker case access; only an authenticated least-privilege handle works; broker alone publishes state; no file outside exact scope changes |
 | ST-006 | TM-007 | PWS-0006, PWS-0109, PWS-0804 | Unit/integration: old/current/future/invalid schemas, partial atomic write, journal corruption, interrupted migration | Future/invalid fails before mutation; last valid state reopens; source hashes/intent preserved |
-| ST-007 | TM-008 | PWS-0008, PWS-0107 | Unit/property/integration: hostile local connection; wrong endpoint ACL/session/worker capability/case/operation; malformed, oversized, replayed, cross-case, unknown, or out-of-order envelope | Decoder/state machine rejects before work; token from another launch/case/session fails; protocol fault terminates worker when required; no raw values leak |
-| ST-008 | TM-009 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0204 | Security: metacharacter/quote/newline input; decoy executable/DLL/plugin/config/font/language resource in PATH, PATHEXT, TEMP and untrusted cwd; child-spawn attempt and excessive stdout/stderr | Fixed executable/resource identity, cwd, search paths, environment, and argument vector observed; no shell/interpolation; descendants inherit egress/limit/kill policy; stable sanitized result |
+| ST-007 | TM-008 | PWS-0008, PWS-0107 | Unit/property/integration: wrong fixed bootstrap size/magic/version/identity/capability; zero/oversized/truncated/fragmented/coalesced frames; wrong session/worker/capability/case/operation/generation/direction/sequence/request; malformed, replayed, unknown, or out-of-order envelope | Bootstrap/frame/decoder/state rejects before work; grant from another launch fails; first protocol fault poisons generation and terminates when required; stale restart events do not mutate state; no raw values leak |
+| ST-008 | TM-009 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0204 | Security: metacharacter/quote/newline input; decoy executable/DLL/plugin/config/font/language resource in user PATH/PATHEXT/TEMP/cwd; proxy/cloud/command/Python environment canaries; inherited-handle inventory; child-spawn and excessive output | Fixed executable/resource identity, fixed argv/cwd, no shell; only constructed allowlist with per-launch profile temp values; exactly RPC/bootstrap handles; descendants inherit egress/limit/kill policy; stable sanitized result |
 | ST-009 | TM-010 | PWS-0007, PWS-0401 | Security/unit: script/import/expression/path-bearing executable field, duplicate keys, tamper, expiry, future version; schema-permitted inert provenance URL under network/file spy | No execution or dereference/file/network access; inert provenance stays data; trust state is visible; case unchanged; invalid template code and plain remediation |
 | ST-010 | TM-011, TM-018, TM-026 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Security: distinct context-specific canaries plus diagnostic entry mutation/addition/removal after preview and before write | No prohibited canary; produced entries/digests exactly match frozen approved snapshot; mutation fails closed; cancel writes nothing |
 | ST-011 | TM-012, TM-013, TM-023 | PWS-0101, PWS-0108, PWS-0113, PWS-0705 | Integration/security: cancel/crash/power-loss, stale/raced/aliased cache, unrelated case, lock/expiry/restart | Partial data stays operation/case scoped and is ignored/cleaned/recovered; wrong-case/raced cache is rejected; unrelated case is not visible |
@@ -56,6 +56,38 @@
 Every TM-001 through TM-028 threat appears in at least one planned suite. The documentation
 validator enforces that inventory while PWS-0004 is the current model.
 
+## PWS-0107 required live evidence
+
+PWS-0107 unit doubles prove deterministic protocol and lifecycle logic, but do not prove the
+Windows security boundary. Its completion evidence must launch the real fixed Python host and
+demonstrate all of the following on the supported Windows target:
+
+1. The worker reports an AppContainer token with zero capability SIDs, Job membership, and the
+   exact constructed environment before `session.ready`.
+2. Process creation is suspended; Job assignment occurs before resume; the inherited handle list
+   is exactly standard input/output plus the 92-byte bootstrap reader; no shell is used.
+3. The environment omits user `PATH`, `PATHEXT`, `PYTHONPATH`, command processor, proxy, cloud
+   credential, and user temp canaries. `LOCALAPPDATA`, `TEMP`, and `TMP` resolve only inside the
+   per-launch AppContainer profile.
+4. IPv4 and IPv6 TCP connect/listen and UDP send/receive probes run in both the worker and a
+   descendant. A non-isolated control proves the local listener is reachable; the listener receives
+   no isolated traffic.
+5. Forced termination or retained Job handle close ends the worker and every descendant, with no
+   breakaway or surviving pipe/profile authority.
+6. The current no-op receives no document handle. Path opens for a case root, sibling case,
+   originals, manifest, journal, export history, external path, user temp, and unrelated profile
+   fail. Once an owning operation adds brokerage, a deliberately authenticated exact handle works
+   and siblings/other access still fail.
+7. Handshake, operation, cancellation-grace, and shutdown deadlines; result/deadline and
+   result/cancel races; crash/partial frame; malformed message; clean close; forced stop; and fresh
+   restart converge on exactly one stable terminal client state without raw values.
+8. The exact job tree exits before runtime/code access grants are revoked and the per-launch
+   profile is deleted; cleanup failure is reported rather than hidden.
+
+A socket monkeypatch, proxy setting, firewall-rule inference, launcher Boolean, test-only
+production RPC operation, path-only mock, or skipped required platform probe is not equivalent
+evidence.
+
 ## Milestone evidence progression
 
 ### M0 foundation
@@ -71,6 +103,8 @@ validator enforces that inventory while PWS-0004 is the current model.
   audits.
 - Force worker crash, timeout, cancellation, malformed message, disk-full, permission failure,
   destination failure, and recovery.
+- For PWS-0107 specifically, retain the live AppContainer/egress/job/environment/handle/filesystem
+  evidence above; the no-op lifecycle does not by itself prove case access confinement.
 - PWS-0114 requires original hashes, verified export, worker recovery, egress evidence, and clean
   logs on the reference profile.
 

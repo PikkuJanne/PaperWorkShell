@@ -6,7 +6,9 @@ PaperWorkShell is a local-first desktop application that converts mixed PDFs and
 
 ## Development bootstrap
 
-The repository is currently at the foundation stage. It does not yet contain the PySide6 UI or any PDF, image, OCR, renderer, installer, cloud, or signing dependency.
+The repository has completed its foundation gate and is implementing the Milestone 1 architecture
+proof. It does not yet contain the PySide6 UI or any PDF, image, OCR, renderer, installer, cloud,
+or signing dependency.
 
 Prerequisites:
 
@@ -119,6 +121,16 @@ The version-1 worker RPC envelope, lifecycle, capability negotiation, logical ca
 references, bounded decoding rules, and sanitized error contract are documented in
 [`docs/schemas/worker-rpc-v1.md`](docs/schemas/worker-rpc-v1.md). The schema and semantic validator
 reject unknown versions, unregistered operations, path-bearing messages, and raw exception fields.
+
+The PWS-0107 Windows worker boundary launches a fresh zero-capability AppContainer inside a retained
+Job Object, inherits only two RPC handles plus a fixed 92-byte bootstrap handle, constructs a
+minimal per-launch environment, and supports bounded negotiation, progress, cancellation, timeout,
+shutdown, forced tree termination, and fresh restart. Its current no-op operation receives no
+document handles and does not claim case filesystem access. The implementation contract and live
+egress/job/environment/filesystem evidence requirements are documented in
+[`docs/architecture/worker-lifecycle.md`](docs/architecture/worker-lifecycle.md), with the operating
+system decision in
+[`docs/adr/0004-windows-worker-isolation.md`](docs/adr/0004-windows-worker-isolation.md).
 
 The public synthetic document corpus, exact generated provenance, on-demand hostile recipes, and
 outside-repository restricted bug-sample procedure are documented in

@@ -117,8 +117,8 @@ account remains outside the confidentiality/integrity guarantee.
 | ID | Boundary | Crossing rule |
 |---|---|---|
 | TB-01 | Person / Windows shell to desktop UI | Treat selected paths, typed values, drag data, clipboard data, and confirmations as untrusted input |
-| TB-02 | Desktop application to worker client/RPC transport | Per-launch endpoint ACL and unguessable capability/nonce; versioned typed messages bound to the worker instance, active case, operation, sequence, and request; size limits, replay rejection, and fail-closed decoding |
-| TB-03 | Restricted worker to active case workspace | Immutable originals are read-only; worker writes only operation-specific cache/temp/staging and cannot publish manifests, journals, source records, or export history; validate opened file identity, containment, links/reparse points, and aliases |
+| TB-02 | Desktop application to worker client/RPC transport | Fresh zero-capability AppContainer generation; explicit anonymous-pipe handles and fixed one-shot capability grant; versioned typed messages bound to worker, case, operation, sequence, and request; size limits, replay rejection, and fail-closed decoding |
+| TB-03 | Restricted worker to active case workspace | No path or directory capability; future operations receive only exact broker-authenticated least-privilege handles, keep originals read-only and writes operation-scoped, and cannot publish manifests, journals, source records, or export history |
 | TB-04 | Worker adapter to external executable/resource | Approved executable/resource identity, fixed working directory and argument array, controlled DLL/plugin/config/font/language search, minimal environment, bounded I/O/time/resources and descendants, no shell interpolation |
 | TB-05 | Import/storage adapter to external source | Classify local/device/network policy before open; use one read-only handle for bounded streaming copy/hash; never treat a partial copy as a source record |
 | TB-06 | Export staging to external destination | Classify destination policy, commit exact verified bytes through a destination-local temporary file, verify size/digest, reject original/prior-output aliases, then atomically replace only that new derivative name |
@@ -128,8 +128,32 @@ account remains outside the confidentiality/integrity guarantee.
 | TB-10 | Case storage to other local users/processes | Random internal names, restrictive permissions, lock/retention policy, no promise against account/admin compromise |
 
 The [dependency-boundary policy](../architecture/dependency-boundaries.md) enforces code-level
-direction. PWS-0008 and PWS-0107 must make TB-02 enforceable; PWS-0101 must make TB-03/TB-10
-enforceable. This document does not claim those future controls already exist.
+direction. PWS-0008 defines the closed protocol and PWS-0107 implements TB-02 for the current
+no-document worker. PWS-0101 establishes private case storage, but TB-03 is not a filesystem-access
+claim until an owning operation proves exact handle brokerage. The current `protocol.noop` worker
+has no document handles and no AppContainer access-control entry on a case root.
+
+### Implemented PWS-0107 worker boundary
+
+Each worker generation uses a new classic Windows AppContainer profile with zero capability SIDs,
+a Job Object assigned while the process is suspended, and an explicit inherited-handle list
+containing only client-to-worker RPC, worker-to-client RPC, and a one-shot bootstrap reader. The
+bootstrap is a fixed 92-byte versioned grant containing only session/worker/case UUIDs and the
+per-launch capability. It is not an argument, environment value, endpoint name, or log field.
+
+The launch environment is constructed from a closed allowlist. `LOCALAPPDATA`, `TEMP`, and `TMP`
+point inside the per-launch AppContainer profile rather than inheriting user locations. That
+ephemeral sandbox storage is writable so Python can start; it is not case authority. Only approved
+runtime/code roots receive temporary read/execute access. The exact job tree exits before those
+grants and profile are removed. See the
+[worker lifecycle contract](../architecture/worker-lifecycle.md) and
+[Windows isolation ADR](../adr/0004-windows-worker-isolation.md).
+
+These mechanisms define the intended boundary but do not replace evidence. Required Windows tests
+must demonstrate real IPv4/IPv6 TCP and UDP denial for the worker and descendants, whole-tree kill,
+minimal environment, exact handle inheritance, denial of path-based case/external/user-temp access,
+and success only for deliberately brokered handles. A required skipped or simulated probe leaves
+PWS-0107 or the consuming gate open.
 
 ## Mandatory mitigation principles
 
@@ -137,10 +161,11 @@ enforceable. This document does not claim those future controls already exist.
    derivative path.
 2. Quarantine before complex parsing: only bounded signature/size checks occur before a random,
    case-scoped pending copy exists; the desktop process never parses full untrusted documents.
-3. Minimize worker authority: immutable inputs are read-only; writes are limited to one
-   operation-specific cache/temp/staging root; a trusted broker alone publishes source records,
-   manifest/journal revisions, and exports. Use a minimal environment, denied network, explicit
-   executables/resources, capability-bound RPC, and whole-descendant-tree kill/restart behavior.
+3. Minimize worker authority: use a zero-capability AppContainer, minimal constructed environment,
+   fixed executables/resources, capability-bound RPC, and retained Job Object for whole-tree
+   limits/kill/restart. A trusted broker alone may grant an exact authenticated read-only input or
+   operation-specific output handle and publish source records, manifest/journal revisions, and
+   exports. A logical case binding or path is never filesystem authority.
 4. Bound all work: bytes, pages, dimensions, pixels, decompression, nesting, memory, CPU/time,
    temporary storage, messages, and captured child output.
 5. Treat every boundary result as untrusted: validate worker output, canonical bounded preview
@@ -166,14 +191,14 @@ effect before mitigations. Every threat is mapped in
 
 | ID | Threat scenario | Impact | Required security outcome |
 |---|---|---|---|
-| TM-001 | A malformed PDF/image exploits a parser, renderer, OCR engine, or inspection library | High | Compromise is contained to a restartable, network-denied, case-scoped worker; severe faults terminate it |
+| TM-001 | A malformed PDF/image exploits a parser, renderer, OCR engine, or inspection library | High | Compromise is contained to a restartable, network-denied worker with only exact brokered case handles; severe faults terminate its whole job tree |
 | TM-002 | Extreme size, page count, pixels, compression, recursion, memory, CPU, or temp use exhausts the host | High | Prechecks and worker quotas stop bounded work with a stable recoverable error |
 | TM-003 | UI/application code directly parses complex document content or reaches low-level engine APIs | High | Import boundaries and process architecture keep full parsing in worker adapters |
 | TM-004 | A compromised worker or tool sends document/case content over the network | High | Processing egress is denied and tested; update networking is a separate component |
 | TM-005 | Import, editing, or export modifies/overwrites an external original or immutable case copy | High | Sources are read-only, copied/hashed once, integrity-checked, and never export targets |
 | TM-006 | Traversal, device/UNC paths, ADS, symlink/reparse/hardlink aliases, permissions, or random-name failures escape/expose a case | High | Local-location policy, opened-handle identity/containment, random internal names, restrictive permissions, and case-scoped cleanup fail closed |
 | TM-007 | A partial/corrupt manifest, journal, migration, or rollback becomes authoritative | High | Version/schema validation and atomic transactional recovery preserve the last valid state |
-| TM-008 | A hostile local peer or spoofed, malformed, oversized, replayed, cross-case, or incompatible RPC message controls the worker/client | High | Endpoint ACL plus a per-launch capability binds versioned envelopes to worker/case/operation/sequence; limits, replay rejection, and protocol-fault termination fail closed |
+| TM-008 | A hostile local peer or spoofed, malformed, oversized, replayed, cross-case, or incompatible RPC message controls the worker/client | High | Explicit inherited pipes plus a one-shot per-launch grant bind versioned envelopes to worker/case/operation/sequence; limits, replay rejection, and protocol-fault termination fail closed |
 | TM-009 | Filenames, template/OCR/document text, environment data, arguments, working directory, or search paths inject commands or substitute code/resources | High | Fixed approved executables/resources, working directory, search paths, and argument arrays run without a shell in a minimal environment; limits/egress denial cover descendants |
 | TM-010 | A template executes code, dereferences files/network, escapes paths, impersonates trusted guidance, or silently makes eligibility decisions | High | Templates are declarative schema-validated data with visible provenance/trust state; unsafe/future/tampered content is rejected before case mutation |
 | TM-011 | Routine logs, errors, application-controlled crash reports, or metrics disclose text, values, names, paths, metadata, thumbnails, or signatures | High | Application diagnostics contain only the documented allowlist and pass prohibited-token tests; platform artifact limitations are disclosed |
@@ -222,9 +247,9 @@ effect before mitigations. Every threat is mapped in
 - A mitigation that cannot be demonstrated must leave the consuming task or milestone gate open;
   documentation alone is not evidence.
 - Unknown inspection or verification state is not equivalent to absence or success.
-- Parser compromise can still expose the active case within the worker's granted scope. Case
-  minimization, network denial, termination, updates, and isolation reduce blast radius rather
-  than promising perfect sandboxing.
+- Parser compromise can expose every exact object handle deliberately brokered to that operation
+  and the worker's ephemeral AppContainer storage. Handle minimization, network denial, job-tree
+  termination, updates, and isolation reduce blast radius rather than promising perfect sandboxing.
 - SHA-256 records detect accidental or unsanctioned source changes under the application model;
   they do not authenticate state against malware able to rewrite both case files and manifests.
 - Random names and filesystem ACLs reduce accidental disclosure and peer-process access but are
@@ -240,8 +265,10 @@ effect before mitigations. Every threat is mapped in
 - Supply-chain controls are staged: admission begins in PWS-0005 and packaged inventory/SBOM and
   update evidence mature in PWS-0801 through PWS-0808. Until then, dependency compromise remains
   residual exposure; the project does not claim continuous vulnerability monitoring.
-- Windows filesystem, job, firewall/AppContainer, and installer primitives must be selected and
-  evidenced by their implementation tasks; this document does not guess the final mechanism.
+- PWS-0107 selects AppContainer, suspended process creation, explicit inherited pipes, and a Job
+  Object for the worker. Their live egress, environment, filesystem, descendant, and cleanup
+  behavior must be re-evidenced for packaged builds. Case filesystem access remains unclaimed until
+  exact handle brokerage is implemented and tested; installer primitives remain future work.
 - M6 extends this model with redaction-specific adversarial evidence. M8 extends it for the final
   updater, installer, dependencies, migrations, diagnostics, and release artifacts.
 
