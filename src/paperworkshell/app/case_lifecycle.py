@@ -198,19 +198,21 @@ class CaseLifecycleService:
         except Exception:
             reject_case_lifecycle(failure_code, context)
         try:
-            summary = lease.summary
-        except CaseLifecycleError:
+            try:
+                summary = lease.summary
+            except CaseLifecycleError:
+                raise
+            except Exception:
+                reject_case_lifecycle(failure_code, context)
+            if not isinstance(summary, CaseSummary) or (
+                expected_case_id is not None and summary.case_id != expected_case_id
+            ):
+                reject_case_lifecycle(failure_code, f"{context}_result")
+            active = _ActiveCase(lease, summary)
+        except BaseException:
             _close_rejected_lease(lease)
             raise
-        except Exception:
-            _close_rejected_lease(lease)
-            reject_case_lifecycle(failure_code, context)
-        if not isinstance(summary, CaseSummary) or (
-            expected_case_id is not None and summary.case_id != expected_case_id
-        ):
-            _close_rejected_lease(lease)
-            reject_case_lifecycle(failure_code, f"{context}_result")
-        self._active = _ActiveCase(lease, summary)
+        self._active = active
         return summary
 
 

@@ -226,6 +226,10 @@ class WindowsCaseLifecycleStore:
             if authority is not None:
                 _close_authority_safely(authority)
             reject_case_lifecycle(CaseLifecycleErrorCode.OPEN_FAILED, "case.open_storage")
+        except BaseException:
+            if authority is not None:
+                _close_authority_safely(authority)
+            raise
 
     def delete_case(
         self,

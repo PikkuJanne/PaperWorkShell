@@ -64,10 +64,12 @@ valid case; malformed, legacy, future, duplicate-key, and mismatched manifests f
 mutation; active leases and capacity reservations exclude deletion; and a complete no-follow
 inventory precedes manifest-first removal. Dedicated lifecycle cases cover hard links, alternate
 streams, sibling cases, external sentinels, malformed UUID-named candidates, and injected
-mid-delete failures. They reuse PWS-0101's live reparse and file-identity inventory boundary for
-whole-case removal. Together these prove scope and honest partial reporting. Error/result checks
-prohibit paths, canaries, raw exceptions, and any forensic-erasure claim. PWS-0706 retains the later
-human inventory/retention workflow, and PWS-0113 retains restart orphan cleanup and diagnostics.
+mid-delete failures. A direct post-inventory leaf-identity swap proves that whole-case removal
+stops after manifest invalidation without touching the replacement's outside target; the inventory
+also reuses PWS-0101's live reparse and file-identity boundary. Together these prove scope and
+honest partial reporting. Error/result checks prohibit paths, canaries, raw exceptions, and any
+forensic-erasure claim. PWS-0706 retains the later human inventory/retention workflow, and PWS-0113
+retains restart orphan cleanup and diagnostics.
 
 ## PWS-0107 required live evidence
 

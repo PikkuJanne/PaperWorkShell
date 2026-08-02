@@ -18,6 +18,7 @@ from paperworkshell.domain.case_lifecycle import (
     CaseLifecycleError,
     CaseLifecycleErrorCode,
 )
+from paperworkshell.storage._windows import WindowsHandle
 from paperworkshell.storage.case_lifecycle import (
     WindowsCaseLifecycleStore,
     build_initial_manifest_bytes,
@@ -162,6 +163,52 @@ def test_hard_link_rejection_precedes_every_case_removal(tmp_path: Path) -> None
     assert _file_snapshot(outside) == outside_before
     assert ordinary.read_bytes() == b"ordinary-preserved"
     assert layout.manifest.exists()
+
+
+def test_post_inventory_leaf_identity_swap_is_partial_and_preserves_outside_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = _profile(tmp_path)
+    manager = _manager(profile, identifiers=(FIRST_ID,))
+    service = _service(manager)
+    service.create_case()
+    service.close_case(FIRST_ID)
+    layout = manager.layout(FIRST_ID)
+    leaf = layout.temp / "leaf.bin"
+    leaf.write_bytes(b"original-leaf")
+    outside = tmp_path / "outside-swap-target.bin"
+    outside.write_bytes(b"outside-preserved")
+    probe = tmp_path / "hardlink-probe.bin"
+    try:
+        os.link(outside, probe)
+        probe.unlink()
+    except OSError as error:
+        pytest.skip(f"hard links unavailable on the test volume: {type(error).__name__}")
+    outside_before = _file_snapshot(outside)
+    real_mark_for_deletion = WindowsHandle.mark_for_deletion
+    injected = False
+
+    def swap_leaf_after_manifest(handle: WindowsHandle) -> None:
+        nonlocal injected
+        real_mark_for_deletion(handle)
+        if not injected:
+            injected = True
+            leaf.unlink()
+            os.link(outside, leaf)
+
+    monkeypatch.setattr(WindowsHandle, "mark_for_deletion", swap_leaf_after_manifest)
+
+    result = service.delete_case(FIRST_ID, CONFIRM)
+
+    assert injected
+    assert result.status is CaseDeletionStatus.PARTIAL
+    assert result.failure_code is CaseLifecycleErrorCode.DELETE_FAILED
+    assert result.removed_files == 1
+    assert not layout.manifest.exists()
+    assert layout.case_root.is_dir()
+    assert leaf.read_bytes() == b"outside-preserved"
+    assert _file_snapshot(outside) == outside_before
 
 
 def test_alternate_stream_rejection_precedes_every_case_removal(tmp_path: Path) -> None:

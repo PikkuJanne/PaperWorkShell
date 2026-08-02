@@ -36,9 +36,16 @@ def _summary(case_id: UUID) -> CaseSummary:
 
 @dataclass(slots=True)
 class FakeLease:
-    summary: CaseSummary
+    _summary: CaseSummary
+    summary_error: BaseException | None = None
     close_error: Exception | None = None
     close_calls: int = 0
+
+    @property
+    def summary(self) -> CaseSummary:
+        if self.summary_error is not None:
+            raise self.summary_error
+        return self._summary
 
     def close(self) -> None:
         self.close_calls += 1
@@ -204,6 +211,23 @@ def test_open_rejects_mismatched_store_result_and_closes_lease() -> None:
 
     assert raised.value.code is CaseLifecycleErrorCode.OPEN_FAILED
     assert mismatched.close_calls == 1
+    assert service.active_case is None
+
+
+@pytest.mark.parametrize("operation", ["create", "open"])
+def test_activation_interruption_closes_unrecorded_lease(operation: str) -> None:
+    store = FakeStore()
+    lease = store.create_lease if operation == "create" else store.open_leases[FIRST_ID]
+    lease.summary_error = KeyboardInterrupt()
+    service = CaseLifecycleService(store)
+
+    with pytest.raises(KeyboardInterrupt):
+        if operation == "create":
+            service.create_case()
+        else:
+            service.open_case(FIRST_ID)
+
+    assert lease.close_calls == 1
     assert service.active_case is None
 
 

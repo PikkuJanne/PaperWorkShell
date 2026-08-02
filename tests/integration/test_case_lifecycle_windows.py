@@ -188,6 +188,29 @@ def test_interrupted_lease_registration_rolls_back_coordination_state(
         pass
 
 
+def test_interrupted_open_summary_read_releases_retained_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = _profile(tmp_path)
+    manager = _manager(profile, identifiers=(FIRST_ID,))
+    service = _service(manager)
+    service.create_case()
+    service.close_case(FIRST_ID)
+    store = WindowsCaseLifecycleStore(manager, clock=lambda: NOW)
+
+    def interrupt_summary_read(_authority: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(lifecycle_storage, "_read_case_summary", interrupt_summary_read)
+    with pytest.raises(KeyboardInterrupt):
+        store.open_case(FIRST_ID)
+
+    result = store.delete_case(FIRST_ID, CONFIRM)
+    assert result.status is CaseDeletionStatus.COMPLETE
+    assert not manager.layout(FIRST_ID).case_root.exists()
+
+
 def test_manifest_publication_supports_non_bmp_profile_components(tmp_path: Path) -> None:
     profile = tmp_path / "profile-\U0001f4c4"
     profile.mkdir()
