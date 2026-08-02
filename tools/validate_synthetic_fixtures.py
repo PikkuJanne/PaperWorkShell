@@ -59,6 +59,10 @@ _EMAIL_PATTERN: Final = re.compile(
 _SSN_PATTERN: Final = re.compile(rb"(?<![0-9])([0-9]{3})-([0-9]{2})-([0-9]{4})(?![0-9])")
 _PAN_DIGIT_GROUP_PATTERN: Final = re.compile(rb"[0-9]+")
 _PAN_CANDIDATE_START_PATTERN: Final = re.compile(rb"(?<![A-Za-z0-9])[1-6]")
+_UUID_PATTERN: Final = re.compile(
+    rb"(?i)(?<![A-F0-9])[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-"
+    rb"[A-F0-9]{4}-[A-F0-9]{12}(?![A-F0-9])"
+)
 _IBAN_START_PATTERN: Final = re.compile(rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}")
 _MRZ_PATTERN: Final = re.compile(rb"(?m)^P<[A-Z<]{3}[A-Z<]{20,40}$")
 _DOCUMENT_SIGNATURES: Final = (
@@ -912,11 +916,22 @@ def _pan_separator_width(content: bytes, position: int) -> int:
     return _financial_separator_width(content, position)
 
 
+def _pan_start_is_within_uuid(content: bytes, position: int) -> bool:
+    window_start = max(0, position - 36)
+    window_end = min(len(content), position + 37)
+    return any(
+        match.start() <= position < match.end()
+        for match in _UUID_PATTERN.finditer(content, window_start, window_end)
+    )
+
+
 def _contains_valid_pan(content: bytes) -> bool:
-    for candidate_number, candidate_start in enumerate(
-        _PAN_CANDIDATE_START_PATTERN.finditer(content), start=1
-    ):
-        if candidate_number > _MAX_PAN_CANDIDATE_STARTS:
+    candidate_count = 0
+    for candidate_start in _PAN_CANDIDATE_START_PATTERN.finditer(content):
+        if _pan_start_is_within_uuid(content, candidate_start.start()):
+            continue
+        candidate_count += 1
+        if candidate_count > _MAX_PAN_CANDIDATE_STARTS:
             return True
         digits = bytearray()
         position = candidate_start.start()
@@ -924,11 +939,11 @@ def _contains_valid_pan(content: bytes) -> bool:
             group_match = _PAN_DIGIT_GROUP_PATTERN.match(content, position)
             if group_match is None:
                 break
-            group = group_match.group(0)
-            if len(digits) + len(group) > 19:
+            group_start, group_end = group_match.span(0)
+            if len(digits) + group_end - group_start > 19:
                 break
-            digits.extend(group)
-            position = group_match.end()
+            digits.extend(content[group_start:group_end])
+            position = group_end
             ends_at_boundary = position == len(content) or not _ascii_alphanumeric(
                 content[position]
             )

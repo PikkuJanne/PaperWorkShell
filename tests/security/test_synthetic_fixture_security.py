@@ -4,6 +4,7 @@ import ast
 import hashlib
 import subprocess
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -156,6 +157,22 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         with patch("tools.validate_synthetic_fixtures._luhn_valid", return_value=False) as checksum:
             self.assertTrue(_contains_prohibited_pattern(b"1 " * 4_097))
         self.assertLessEqual(checksum.call_count, 4_096)
+
+        oversized_digit_group = b"|" + (b"4" * 1_048_576) + b"|"
+        tracemalloc.start()
+        try:
+            self.assertFalse(_contains_prohibited_pattern(oversized_digit_group))
+            _, peak_bytes = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        self.assertLess(peak_bytes, 262_144)
+
+    def test_uuid_shapes_do_not_become_cross_group_payment_cards(self) -> None:
+        uuid_token = b"f51338d7-" + b"36f9-" + b"5dd4-" + b"2427-" + b"296047067694"
+        visa_pan = b"4111" + b"1111" + b"1111" + b"1111"
+
+        self.assertFalse(_contains_prohibited_pattern(uuid_token))
+        self.assertTrue(_contains_prohibited_pattern(uuid_token + b" " + visa_pan))
 
     def test_generated_fixture_bytes_have_no_prohibited_patterns(self) -> None:
         for fixture in build_committed_fixtures():
