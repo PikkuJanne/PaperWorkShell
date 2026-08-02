@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ _MAX_SINGLE_FILE_BYTES: Final = 128 * 1024 * 1024
 _REPARSE_POINT_ATTRIBUTE: Final = 0x0000_0400
 _RUNTIME_DIRECTORIES: Final = ("DLLs", "Lib")
 _RUNTIME_IGNORED_DIRECTORIES: Final = frozenset({"site-packages"})
+_STAGE_PREFIX: Final = "pws-worker-resources-"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,13 @@ class _CopyBudget:
             raise RuntimeError("a Windows worker test-resource source has too many entries")
         if self.total_bytes > _MAX_RESOURCE_BYTES:
             raise RuntimeError("Windows worker test resources are too large")
+
+
+def create_worker_test_stage_root() -> Path:
+    """Create one random staging directory directly under CPython's fixed drive."""
+
+    fixed_drive_root = Path(Path(sys.base_prefix).anchor)
+    return Path(tempfile.mkdtemp(prefix=_STAGE_PREFIX, dir=fixed_drive_root))
 
 
 def stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
@@ -133,10 +142,33 @@ def stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
         return resources
     except BaseException:
         try:
-            shutil.rmtree(stage_root)
+            _remove_stage_root(stage_root)
         except OSError:
             raise RuntimeError("Windows worker test-resource cleanup failed") from None
         raise
+
+
+def cleanup_worker_test_resources(resources: WorkerTestResources) -> None:
+    """Remove exactly the validated random fixed-drive staging directory."""
+
+    _remove_stage_root(resources.stage_root)
+
+
+def _remove_stage_root(stage_root: Path) -> None:
+    fixed_drive_root = Path(Path(sys.base_prefix).anchor).resolve(strict=True)
+    try:
+        resolved = stage_root.resolve(strict=True)
+    except OSError:
+        raise RuntimeError("the Windows worker test-resource stage is unavailable") from None
+    if (
+        resolved.parent != fixed_drive_root
+        or not resolved.name.startswith(_STAGE_PREFIX)
+        or len(resolved.name) <= len(_STAGE_PREFIX)
+        or not resolved.is_dir()
+        or _is_reparse_point(resolved)
+    ):
+        raise RuntimeError("the Windows worker test-resource cleanup target is invalid")
+    shutil.rmtree(resolved)
 
 
 def _audit_runtime_source(root: Path, budget: _CopyBudget) -> tuple[Path, ...]:

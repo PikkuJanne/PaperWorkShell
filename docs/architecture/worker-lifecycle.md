@@ -267,7 +267,9 @@ PWS-0107 is complete only with real supported-Windows evidence for:
   temp, and unrelated profile data denied.
 
 Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
-probes into a temporary physical tree before launch. This keeps developer and hosted-runner
+probes into a temporary physical tree at the root of CPython's fixed drive before launch. The
+fixed-drive location gives AppContainer descendants stable ancestor-traverse semantics even when a
+hosted runner's per-user temporary hierarchy is private. This keeps developer and hosted-runner
 junctions or interpreter aliases outside the approved resource tree without weakening production:
 the copy rejects nested reparse points and special entries, omits `site-packages`, receives fresh
 ACLs, and must pass the same unchanged resource validator used by the real launcher. A real canary
