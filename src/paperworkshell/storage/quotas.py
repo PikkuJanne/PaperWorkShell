@@ -97,16 +97,40 @@ class _ReservedCapacity:
 class QuotaReservation(AbstractContextManager["QuotaReservation"]):
     """A conservative in-process capacity claim released explicitly or on exit."""
 
-    __slots__ = ("_book", "_closed", "_token")
+    __slots__ = ("_book", "_capacity", "_closed", "_token")
 
-    def __init__(self, book: QuotaReservationBook, token: UUID) -> None:
+    def __init__(
+        self,
+        book: QuotaReservationBook,
+        token: UUID,
+        capacity: _ReservedCapacity,
+    ) -> None:
         self._book = book
+        self._capacity = capacity
         self._closed = False
         self._token = token
 
     @property
     def token(self) -> UUID:
         return self._token
+
+    @property
+    def area(self) -> QuotaArea:
+        return self._capacity.area
+
+    @property
+    def byte_count(self) -> int:
+        return self._capacity.byte_count
+
+    @property
+    def entry_count(self) -> int:
+        return self._capacity.entry_count
+
+    @property
+    def is_active(self) -> bool:
+        """Return a synchronized point-in-time liveness result."""
+
+        return self._book._contains(self._token)
 
     def __enter__(self) -> Self:
         return self
@@ -136,6 +160,19 @@ class QuotaReservationBook:
         """Return the immutable policy bound to this reservation book."""
 
         return self._quota
+
+    @property
+    def has_reservations(self) -> bool:
+        """Return whether any capacity claim remains active."""
+
+        with self._lock:
+            return bool(self._reservations)
+
+    def has_reservations_for(self, area: QuotaArea) -> bool:
+        """Return whether the selected disposable area has an active claim."""
+
+        with self._lock:
+            return any(item.area is area for item in self._reservations.values())
 
     def reserve(
         self,
@@ -178,8 +215,13 @@ class QuotaReservationBook:
             token = uuid4()
             while token in self._reservations:
                 token = uuid4()
-            self._reservations[token] = _ReservedCapacity(area, byte_count, entry_count)
-        return QuotaReservation(self, token)
+            capacity = _ReservedCapacity(area, byte_count, entry_count)
+            self._reservations[token] = capacity
+        return QuotaReservation(self, token, capacity)
+
+    def _contains(self, token: UUID) -> bool:
+        with self._lock:
+            return token in self._reservations
 
     def _release(self, token: UUID) -> None:
         with self._lock:

@@ -12,13 +12,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from paperworkshell.storage._windows import WindowsHandle
+from paperworkshell.storage._windows import WindowsHandle, open_handle
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.permissions import (
     PermissionVerification,
     WindowsPrivateDirectoryPermissions,
 )
-from paperworkshell.storage.quotas import MAXIMUM_WORKSPACE_DEPTH, WorkspaceQuota
+from paperworkshell.storage.quotas import MAXIMUM_WORKSPACE_DEPTH, QuotaArea, WorkspaceQuota
 from paperworkshell.storage.workspace import (
     CaseWorkspaceManager,
     CleanupReport,
@@ -412,6 +412,33 @@ def test_terminal_file_identity_swap_returns_partial_without_deleting_replacemen
     assert candidate.read_bytes() == b"replacement-identity"
 
 
+def test_terminal_file_size_change_returns_partial_without_deleting_same_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager(tmp_path)
+    layout = manager.provision()
+    candidate = layout.temp / f"{uuid4()}.tmp"
+    candidate.write_bytes(b"short")
+    original_delete = manager._delete_inventory
+
+    def resize_then_delete(
+        target: CleanupTarget,
+        target_path: Path,
+        target_handle: WindowsHandle,
+        entries: list[Any],
+    ) -> CleanupReport:
+        candidate.write_bytes(b"longer-same-file-identity")
+        return original_delete(target, target_path, target_handle, entries)
+
+    monkeypatch.setattr(manager, "_delete_inventory", resize_then_delete)
+    report = manager.cleanup_disposable(layout.case_id, CleanupTarget.TEMP)
+
+    assert report.status is CleanupStatus.PARTIAL
+    assert report.failure_code is WorkspaceErrorCode.IDENTITY_CHANGED
+    assert candidate.read_bytes() == b"longer-same-file-identity"
+
+
 def test_terminal_directory_swap_to_junction_never_traverses_outside(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -648,3 +675,54 @@ def test_inventory_depth_cap_returns_stable_error_before_python_recursion_limit(
 
     assert raised.value.code is WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED
     assert raised.value.context == "inventory.depth"
+
+
+def test_active_reservation_rejects_same_uuid_case_replacement(tmp_path: Path) -> None:
+    case_id = UUID("40000000-0000-4000-8000-000000000020")
+    manager = _manager(tmp_path)
+    original = manager.provision(case_id)
+    relative_path = f"temp/{uuid4()}.tmp"
+    reservation = manager.reserve_capacity(
+        case_id,
+        QuotaArea.TEMP,
+        relative_path=relative_path,
+        is_directory=False,
+        byte_count=1,
+    )
+    retained_original = tmp_path / "retained-original-case"
+    original.case_root.rename(retained_original)
+    replacement_manager = _manager(tmp_path)
+    replacement = replacement_manager.provision(case_id)
+    with open_handle(replacement.case_root) as replacement_handle:
+        replacement_identity = replacement_handle.info.identity
+
+    with pytest.raises(WorkspaceError) as publication:
+        with reservation.publication_guard(
+            case_identity=replacement_identity,
+            relative_parts=reservation.relative_parts,
+            is_directory=False,
+            byte_count=1,
+            entry_count=1,
+        ):
+            pytest.fail("a replacement case consumed a stale reservation")
+    with pytest.raises(WorkspaceError) as new_claim:
+        replacement_manager.reserve_capacity(
+            case_id,
+            QuotaArea.TEMP,
+            relative_path=f"temp/{uuid4()}.tmp",
+            is_directory=False,
+            byte_count=1,
+        )
+
+    reservation.release()
+    replacement_claim = replacement_manager.reserve_capacity(
+        case_id,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{uuid4()}.tmp",
+        is_directory=False,
+        byte_count=1,
+    )
+    replacement_claim.release()
+
+    assert publication.value.code is WorkspaceErrorCode.IDENTITY_CHANGED
+    assert new_claim.value.code is WorkspaceErrorCode.IDENTITY_CHANGED

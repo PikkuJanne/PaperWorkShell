@@ -47,7 +47,8 @@ directories created by the failed call, in reverse order, after identity revalid
 - `measure_usage()` returns a bounded no-follow logical usage snapshot.
 - `reserve_capacity()` binds an intended relative path and file/directory type to a process-local
   cache/temp claim against measured and outstanding use. The returned
-  `WorkspaceCapacityReservation` retains that declared scope.
+  `WorkspaceCapacityReservation` retains that declared scope, byte/entry amounts, authenticated
+  case identity, token, and liveness.
 - `cleanup_disposable()` removes only an authenticated cache/temp inventory and returns a
   sanitized `CleanupReport` with complete or partial status.
 
@@ -75,12 +76,17 @@ Quota maxima are inclusive. Inventory stops before accepting an entry beyond the
 and consumes no more than the remaining budget plus one rejection sentinel. It rejects a directory
 deeper than the configured maximum before descending. Reservations for the same authenticated case
 identity share one book across manager instances in the broker process, and conflicting policies
-fail closed. File accounting uses logical length, not allocated clusters.
+fail closed. One per-case coordination lock covers fresh authenticated inventory, adding a claim,
+publication guards, and release; a publish-and-release cannot leave the next claim using an older
+snapshot. File accounting uses logical length, not allocated clusters.
 
 The reservation is not itself filesystem authority. The PWS-0101 manager does not expose a general
 write method; the later broker operation that owns a write must compare its exact target and object
-type with the retained reservation scope, authenticate the opened parent/target, and keep the claim
-until success or cleanup.
+type and actual byte/entry amounts with the retained reservation scope, authenticate and retain the
+opened case/parent/target identity, and hold `publication_guard` through authoritative publication.
+The guard rejects inactive, excessive, mismatched, or replacement-case use and coordinates with
+other reservations. The caller keeps the claim until success or cleanup, then releases it outside
+the guard.
 
 ### `storage.errors`
 
@@ -115,9 +121,10 @@ directory is safer than deleting an unverified object.
 
 Disposable cleanup is intentionally not all-or-nothing. It validates the complete initial inventory
 before deletion, removes deepest entries first, and stops on the first changed or failed object. Its
-report counts only successful removals and logical bytes released before that point. The report does
-not contain names or paths. Callers must present partial status accurately and may offer a later
-retry after active operations close.
+report counts only successful removals and revalidated logical bytes released before that point. The
+report does not contain names or paths. Cleanup shares per-case coordination with reservations and
+publication; an active claim in the selected cache/temp area fails cleanup before deletion. Callers
+must present partial status accurately and may offer a later retry after active operations close.
 
 ## Explicit deferrals
 

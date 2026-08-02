@@ -82,10 +82,12 @@ bypass a logical-byte quota.
 
 Deletion is restricted to the closed `cache` or `temp` target type. Cleanup first builds a complete
 bounded no-follow inventory. It then reopens every ancestor and leaf, compares the terminal file
-identity with the inventory, and marks that verified handle for deletion with
+identity and logical size with the inventory, and marks that verified handle for deletion with
 `SetFileInformationByHandle`. The cache root and its `thumbnails` and `previews` roots, or the temp
 root, remain in place. A changed identity, alias, or deletion error returns an accurate partial
-report and stops; cleanup never falls back to recursive name-based deletion.
+report and stops; cleanup never falls back to recursive name-based deletion. Cleanup holds the same
+per-case coordination lock as publication and fails while the selected area has an active capacity
+claim, so it cannot delete or misreport a cooperating in-flight write.
 
 ### Quotas and failures
 
@@ -97,8 +99,12 @@ budget plus one rejection sentinel before sorting. Capacity reservations bind an
 case-relative cache/temp path and object type, reject excessive depth before mutation, and serialize
 measured use and outstanding claims by authenticated case identity across manager instances inside
 one trusted storage-broker process. They are conservative claims, not filesystem allocation
-guarantees. The returned reservation retains that declared scope; a future owning write adapter must
-compare its exact target and type with the reservation before mutation.
+guarantees. Fresh authenticated inventory, claim creation, publication coordination, and release use
+one per-case lock so a publish-and-release cannot race a stale usage snapshot. The returned
+reservation retains the case identity, declared path/type, byte and entry claims, and liveness. A
+future owning write adapter must hold its `publication_guard` while publishing from the same opened
+case identity; mismatched scope, excessive amounts, case replacement, and use after release fail
+closed.
 
 Failures use the closed `WorkspaceErrorCode` registry, a fixed context token, and a plain safe
 message. Paths, filenames, account names, SIDs, raw Win32 errors, document values, and original

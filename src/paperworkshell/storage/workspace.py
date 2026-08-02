@@ -10,7 +10,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path, PureWindowsPath
-from threading import Lock
+from threading import Lock, RLock
 from typing import Final
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
@@ -72,9 +72,6 @@ _FIXED_CACHE_DIRECTORY_PARTS: Final[frozenset[tuple[str, ...]]] = frozenset(
     {("thumbnails",), ("previews",)}
 )
 _RESERVATION_REGISTRY_LOCK = Lock()
-_RESERVATION_REGISTRY: WeakValueDictionary[tuple[str, FileIdentity], QuotaReservationBook] = (
-    WeakValueDictionary()
-)
 
 
 class WorkspaceArea(StrEnum):
@@ -170,6 +167,20 @@ class CleanupReport:
     failure_code: WorkspaceErrorCode | None = None
 
 
+@dataclass(slots=True, weakref_slot=True)
+class _CaseReservationState:
+    """Per-case coordination shared by every manager in the broker process."""
+
+    book: QuotaReservationBook
+    coordination_lock: RLock = field(default_factory=RLock)
+    case_identity: FileIdentity | None = None
+
+
+_RESERVATION_REGISTRY: WeakValueDictionary[tuple[str, UUID], _CaseReservationState] = (
+    WeakValueDictionary()
+)
+
+
 @dataclass(frozen=True, slots=True)
 class WorkspaceCapacityReservation:
     """A quota claim bound to one validated disposable case-relative object."""
@@ -177,8 +188,16 @@ class WorkspaceCapacityReservation:
     case_id: UUID
     area: QuotaArea
     is_directory: bool
+    byte_count: int
+    entry_count: int
+    _case_identity: FileIdentity = field(repr=False)
     _relative_parts: tuple[str, ...] = field(repr=False)
     _reservation: QuotaReservation = field(repr=False)
+    _state: _CaseReservationState = field(repr=False)
+
+    @property
+    def case_identity(self) -> FileIdentity:
+        return self._case_identity
 
     @property
     def relative_parts(self) -> tuple[str, ...]:
@@ -187,6 +206,11 @@ class WorkspaceCapacityReservation:
     @property
     def token(self) -> UUID:
         return self._reservation.token
+
+    @property
+    def is_active(self) -> bool:
+        with self._state.coordination_lock:
+            return self._reservation.is_active
 
     def __enter__(self) -> WorkspaceCapacityReservation:
         return self
@@ -197,7 +221,53 @@ class WorkspaceCapacityReservation:
     def release(self) -> None:
         """Release the underlying process-local quota claim idempotently."""
 
-        self._reservation.release()
+        with self._state.coordination_lock:
+            self._reservation.release()
+
+    @contextmanager
+    def publication_guard(
+        self,
+        *,
+        case_identity: FileIdentity,
+        relative_parts: tuple[str, ...],
+        is_directory: bool,
+        byte_count: int,
+        entry_count: int,
+    ) -> Iterator[None]:
+        """Hold quota coordination while a matching authenticated write publishes."""
+
+        validate_quota_request(byte_count=byte_count, entry_count=entry_count)
+        with self._state.coordination_lock:
+            if not self._reservation.is_active:
+                reject(
+                    WorkspaceErrorCode.QUOTA_INVALID,
+                    "quota.reservation",
+                    "The workspace capacity reservation is no longer active.",
+                )
+            if case_identity != self._case_identity:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "quota.case_identity",
+                    "The reserved case changed before the bounded write could publish.",
+                )
+            if (
+                type(relative_parts) is not tuple
+                or relative_parts != self._relative_parts
+                or type(is_directory) is not bool
+                or is_directory is not self.is_directory
+            ):
+                reject(
+                    WorkspaceErrorCode.QUOTA_INVALID,
+                    "quota.scope",
+                    "The bounded write does not match its workspace reservation scope.",
+                )
+            if byte_count > self.byte_count or entry_count > self.entry_count:
+                reject(
+                    WorkspaceErrorCode.QUOTA_EXCEEDED,
+                    "quota.claim",
+                    "The bounded write exceeds its reserved workspace capacity.",
+                )
+            yield
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,7 +496,7 @@ class CaseWorkspaceManager:
         self._quota = quota
         self._permissions = permissions or WindowsPrivateDirectoryPermissions()
         self._id_factory = id_factory
-        self._reservation_books: dict[tuple[str, FileIdentity], QuotaReservationBook] = {}
+        self._reservation_states: dict[tuple[str, UUID], _CaseReservationState] = {}
 
     @classmethod
     def for_current_user(
@@ -505,7 +575,16 @@ class CaseWorkspaceManager:
                             "A case with this internal identifier already exists.",
                         )
                     continue
-                self._provision_layout(layout)
+                try:
+                    self._provision_layout(layout)
+                except WorkspaceError as error:
+                    if (
+                        not explicit
+                        and error.code is WorkspaceErrorCode.ALREADY_EXISTS
+                        and error.context == "case.root"
+                    ):
+                        continue
+                    raise
                 return layout
         reject(
             WorkspaceErrorCode.ALREADY_EXISTS,
@@ -561,32 +640,26 @@ class CaseWorkspaceManager:
                 "The requested object would exceed the configured workspace depth.",
             )
         layout = self.layout(parsed_id)
-        usage, identity = self._measure_usage_and_identity(layout)
-        key = (_normalized(self._cases_root), identity)
-        with _RESERVATION_REGISTRY_LOCK:
-            book = _RESERVATION_REGISTRY.get(key)
-            if book is None:
-                book = QuotaReservationBook(self._quota)
-                _RESERVATION_REGISTRY[key] = book
-            elif book.quota != self._quota:
-                reject(
-                    WorkspaceErrorCode.QUOTA_INVALID,
-                    "quota.configuration",
-                    "One case cannot use conflicting workspace quota policies.",
-                )
-            self._reservation_books[key] = book
-        reservation = book.reserve(
-            usage,
-            area,
-            byte_count=byte_count,
-            entry_count=entry_count,
-        )
+        with self._coordinated_reservation_state(parsed_id) as (key, state):
+            usage, identity = self._measure_usage_and_identity(layout)
+            self._bind_case_identity(state, identity)
+            reservation = state.book.reserve(
+                usage,
+                area,
+                byte_count=byte_count,
+                entry_count=entry_count,
+            )
+            self._reservation_states[key] = state
         return WorkspaceCapacityReservation(
             case_id=parsed_id,
             area=area,
             is_directory=is_directory,
+            byte_count=byte_count,
+            entry_count=entry_count,
+            _case_identity=identity,
             _relative_parts=parts,
             _reservation=reservation,
+            _state=state,
         )
 
     def cleanup_disposable(
@@ -604,41 +677,107 @@ class CaseWorkspaceManager:
             )
         layout = self.layout(case_id)
         target_path = layout.cache if target is CleanupTarget.CACHE else layout.temp
-        with self._pinned_layout(layout, target_path=target_path) as target_handle:
-            with ExitStack() as stack:
-                fixed_cache_identities: dict[tuple[str, ...], FileIdentity] = {}
-                if target is CleanupTarget.CACHE:
-                    for fixed_parts in sorted(_FIXED_CACHE_DIRECTORY_PARTS):
-                        path = target_path.joinpath(*fixed_parts)
-                        handle = stack.enter_context(open_handle(path))
-                        require_expected_handle(handle, path, directory=True)
-                        verify_private_acl(handle)
-                        require_no_alternate_streams(path)
-                        fixed_cache_identities[fixed_parts] = handle.info.identity
-                state = _InventoryState(entries=[])
-                self._inventory_directory(
-                    target_path,
-                    target_handle,
-                    relative_parts=(),
-                    depth=0,
-                    state=state,
-                    top_level=False,
+        quota_area = QuotaArea.CACHE if target is CleanupTarget.CACHE else QuotaArea.TEMP
+        with self._coordinated_reservation_state(layout.case_id) as (_, reservation_state):
+            identity = self._authenticate_case_identity(layout)
+            self._bind_case_identity(reservation_state, identity)
+            if reservation_state.book.has_reservations_for(quota_area):
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "cleanup.active_reservation",
+                    "Disposable cleanup cannot run while the selected area is in use.",
                 )
-                inventory = {entry.relative_parts: entry for entry in state.entries}
-                for fixed_parts, identity in fixed_cache_identities.items():
-                    entry = inventory.get(fixed_parts)
-                    if entry is None or not entry.is_directory or entry.identity != identity:
-                        reject(
-                            WorkspaceErrorCode.IDENTITY_CHANGED,
-                            "cleanup.cache_layout",
-                            "A fixed cache directory changed during cleanup inventory.",
-                        )
-                return self._delete_inventory(
-                    target,
-                    target_path,
-                    target_handle,
-                    state.entries,
+            with self._pinned_layout(layout, target_path=target_path) as target_handle:
+                with ExitStack() as stack:
+                    fixed_cache_identities: dict[tuple[str, ...], FileIdentity] = {}
+                    if target is CleanupTarget.CACHE:
+                        for fixed_parts in sorted(_FIXED_CACHE_DIRECTORY_PARTS):
+                            path = target_path.joinpath(*fixed_parts)
+                            handle = stack.enter_context(open_handle(path))
+                            require_expected_handle(handle, path, directory=True)
+                            verify_private_acl(handle)
+                            require_no_alternate_streams(path)
+                            fixed_cache_identities[fixed_parts] = handle.info.identity
+                    inventory_state = _InventoryState(entries=[])
+                    self._inventory_directory(
+                        target_path,
+                        target_handle,
+                        relative_parts=(),
+                        depth=0,
+                        state=inventory_state,
+                        top_level=False,
+                    )
+                    inventory = {entry.relative_parts: entry for entry in inventory_state.entries}
+                    for fixed_parts, fixed_identity in fixed_cache_identities.items():
+                        entry = inventory.get(fixed_parts)
+                        if (
+                            entry is None
+                            or not entry.is_directory
+                            or entry.identity != fixed_identity
+                        ):
+                            reject(
+                                WorkspaceErrorCode.IDENTITY_CHANGED,
+                                "cleanup.cache_layout",
+                                "A fixed cache directory changed during cleanup inventory.",
+                            )
+                    return self._delete_inventory(
+                        target,
+                        target_path,
+                        target_handle,
+                        inventory_state.entries,
+                    )
+
+    @contextmanager
+    def _coordinated_reservation_state(
+        self,
+        case_id: UUID,
+    ) -> Iterator[tuple[tuple[str, UUID], _CaseReservationState]]:
+        key = (_normalized(self._cases_root), case_id)
+        while True:
+            with _RESERVATION_REGISTRY_LOCK:
+                state = _RESERVATION_REGISTRY.get(key)
+                if state is None:
+                    state = _CaseReservationState(book=QuotaReservationBook(self._quota))
+                    _RESERVATION_REGISTRY[key] = state
+            with state.coordination_lock:
+                with _RESERVATION_REGISTRY_LOCK:
+                    if _RESERVATION_REGISTRY.get(key) is not state:
+                        continue
+                if state.book.quota != self._quota:
+                    if state.case_identity is None and not state.book.has_reservations:
+                        replacement = _CaseReservationState(book=QuotaReservationBook(self._quota))
+                        with _RESERVATION_REGISTRY_LOCK:
+                            if _RESERVATION_REGISTRY.get(key) is state:
+                                _RESERVATION_REGISTRY[key] = replacement
+                        continue
+                    reject(
+                        WorkspaceErrorCode.QUOTA_INVALID,
+                        "quota.configuration",
+                        "One case cannot use conflicting workspace quota policies.",
+                    )
+                yield key, state
+                return
+
+    @staticmethod
+    def _bind_case_identity(
+        state: _CaseReservationState,
+        identity: FileIdentity,
+    ) -> None:
+        if state.case_identity is None:
+            state.case_identity = identity
+        elif state.case_identity != identity:
+            if state.book.has_reservations:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "quota.case_identity",
+                    "The reserved case changed while capacity claims remain active.",
                 )
+            state.case_identity = identity
+
+    def _authenticate_case_identity(self, layout: CaseWorkspacePaths) -> FileIdentity:
+        with self._pinned_layout(layout) as case_handle:
+            require_no_alternate_streams(layout.case_root)
+            return case_handle.info.identity
 
     def _measure_usage_and_identity(
         self,
@@ -940,6 +1079,15 @@ class CaseWorkspaceManager:
                                 WorkspaceErrorCode.ALIAS_DETECTED,
                                 "cleanup.links",
                                 "A disposable file changed into an aliased filesystem object.",
+                            )
+                        if (
+                            not opened.info.is_directory
+                            and opened.info.logical_size != expected.logical_size
+                        ):
+                            reject(
+                                WorkspaceErrorCode.IDENTITY_CHANGED,
+                                "cleanup.size",
+                                "A disposable file changed after cleanup inventory.",
                             )
                         require_no_alternate_streams(current_path)
                         current_handle = opened
