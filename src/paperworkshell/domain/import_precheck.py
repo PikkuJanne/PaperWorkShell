@@ -9,6 +9,7 @@ from typing import Final, Never
 MAX_SAFE_IMPORT_INTEGER: Final = 9_007_199_254_740_991
 MINIMUM_HEADER_BUDGET: Final = 2_048
 MAXIMUM_HEADER_BUDGET: Final = 1_048_576
+MAXIMUM_STRUCTURE_RECORDS: Final = 256
 
 
 class DetectedMediaType(StrEnum):
@@ -172,6 +173,13 @@ class ImportLimits:
                 ImportPreliminaryState.LIMIT_EXCEEDED,
                 "limits.decompression",
                 "The decompression warning threshold cannot exceed the hard limit.",
+            )
+        if self.maximum_structure_records > MAXIMUM_STRUCTURE_RECORDS:
+            reject_import(
+                ImportPrecheckErrorCode.LIMIT_INVALID,
+                ImportPreliminaryState.LIMIT_EXCEEDED,
+                "limits.structure_records",
+                "The structure-record budget exceeds the supported safe maximum.",
             )
 
 

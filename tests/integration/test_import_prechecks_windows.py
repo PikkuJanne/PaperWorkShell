@@ -341,6 +341,35 @@ def test_sparse_logical_size_is_rejected_before_content_inspection(tmp_path: Pat
     assert path.stat().st_size == 2_000_000
 
 
+def test_jpeg_fill_bomb_has_a_small_fixed_native_read_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = (tmp_path / "fill-bomb.jpg").resolve()
+    path.write_bytes(b"\xff\xd8" + b"\xff" * (1_048_576 - 2))
+    delegate = AuthenticatedSourceHandle.read_at
+    native_reads = 0
+
+    def counting_read(handle: AuthenticatedSourceHandle, offset: int, count: int) -> bytes:
+        nonlocal native_reads
+        native_reads += 1
+        return delegate(handle, offset, count)
+
+    monkeypatch.setattr(AuthenticatedSourceHandle, "read_at", counting_read)
+    with pytest.raises(ImportPrecheckError) as raised:
+        with WindowsSourcePrechecker(
+            _limits(
+                maximum_header_bytes=1_048_576,
+                maximum_structure_records=64,
+            )
+        ).open(path):
+            pytest.fail("a JPEG fill bomb cannot yield a usable lease")
+
+    assert raised.value.code is ImportPrecheckErrorCode.HEADER_LIMIT_EXCEEDED
+    assert raised.value.context == "limits.structure_records"
+    assert native_reads <= 70
+
+
 def test_final_file_symlink_is_rejected_without_reading_target(tmp_path: Path) -> None:
     target = (tmp_path / "target.pdf").resolve()
     link = (tmp_path / "selected.pdf").resolve()

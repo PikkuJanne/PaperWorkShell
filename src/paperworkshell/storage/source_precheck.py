@@ -43,6 +43,7 @@ _PNG_IHDR_LENGTH: Final = 13
 _PNG_HEADER_BYTES: Final = 33
 _JPEG_TAIL_BYTES: Final = 64
 _PDF_HEADER_BYTES: Final = 9
+_MAXIMUM_HEADER_READ_OPERATIONS: Final = 1_024
 _SUPPORTED_PDF_VERSIONS: Final = frozenset(
     {*(f"1.{minor}".encode("ascii") for minor in range(8)), b"2.0"}
 )
@@ -121,13 +122,14 @@ class BoundedBinarySource(Protocol):
 
 
 class _BudgetedReader:
-    __slots__ = ("_byte_size", "_consumed", "_maximum", "_source")
+    __slots__ = ("_byte_size", "_consumed", "_maximum", "_operations", "_source")
 
     def __init__(self, source: BoundedBinarySource, maximum: int, byte_size: int) -> None:
         self._source = source
         self._maximum = maximum
         self._byte_size = byte_size
         self._consumed = 0
+        self._operations = 0
 
     @property
     def byte_size(self) -> int:
@@ -147,6 +149,13 @@ class _BudgetedReader:
                 "limits.header",
                 "The selected file exceeds the bounded header-inspection budget.",
             )
+        if self._operations >= _MAXIMUM_HEADER_READ_OPERATIONS:
+            reject_import(
+                ImportPrecheckErrorCode.HEADER_LIMIT_EXCEEDED,
+                ImportPreliminaryState.LIMIT_EXCEEDED,
+                "limits.header_operations",
+                "The selected file exceeds the bounded preliminary read-operation limit.",
+            )
         if offset > self.byte_size - count:
             reject_import(
                 ImportPrecheckErrorCode.HEADER_TRUNCATED,
@@ -155,6 +164,7 @@ class _BudgetedReader:
                 "The selected file ends before its preliminary header is complete.",
             )
         self._consumed += count
+        self._operations += 1
         try:
             value = self._source.read_at(offset, count)
         except ImportPrecheckError:
@@ -574,6 +584,14 @@ def _inspect_jpeg(reader: _BudgetedReader, limits: ImportLimits) -> PreliminaryI
             marker = reader.read_exact(offset, 1)[0]
             if marker != 0xFF:
                 break
+            records += 1
+            if records >= limits.maximum_structure_records:
+                reject_import(
+                    ImportPrecheckErrorCode.HEADER_LIMIT_EXCEEDED,
+                    ImportPreliminaryState.LIMIT_EXCEEDED,
+                    "limits.structure_records",
+                    "The selected JPEG exceeds the bounded marker-inspection limit.",
+                )
         offset += 1
         records += 1
         if marker == 0x00 or marker == 0xD8:

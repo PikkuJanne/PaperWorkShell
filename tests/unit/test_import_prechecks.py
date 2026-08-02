@@ -11,6 +11,7 @@ import pytest
 from paperworkshell.domain.import_precheck import (
     MAX_SAFE_IMPORT_INTEGER,
     MAXIMUM_HEADER_BUDGET,
+    MAXIMUM_STRUCTURE_RECORDS,
     DeclaredMediaType,
     DetectedMediaType,
     FeatureCheckState,
@@ -551,6 +552,21 @@ def test_jpeg_structure_record_limit_stops_marker_bomb() -> None:
     assert raised.value.context == "limits.structure_records"
 
 
+def test_jpeg_fill_bytes_consume_structure_and_operation_budgets() -> None:
+    source = BytesSource(b"\xff\xd8" + b"\xff" * 10_000 + b"\xc0")
+
+    with pytest.raises(ImportPrecheckError) as raised:
+        inspect_bounded_source(
+            source,
+            DeclaredMediaType.JPEG,
+            _limits(maximum_structure_records=64),
+        )
+
+    assert raised.value.code is ImportPrecheckErrorCode.HEADER_LIMIT_EXCEEDED
+    assert raised.value.context == "limits.structure_records"
+    assert len(source.reads) <= 70
+
+
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [
@@ -699,6 +715,17 @@ def test_header_budget_accepts_adapter_cap_and_rejects_cap_plus_one() -> None:
 
     with pytest.raises(ImportPrecheckError) as raised:
         _limits(maximum_header_bytes=MAXIMUM_HEADER_BUDGET + 1)
+
+    assert raised.value.code is ImportPrecheckErrorCode.LIMIT_INVALID
+
+
+def test_structure_record_budget_accepts_hard_cap_and_rejects_cap_plus_one() -> None:
+    assert _limits(
+        maximum_structure_records=MAXIMUM_STRUCTURE_RECORDS
+    ).maximum_structure_records == (MAXIMUM_STRUCTURE_RECORDS)
+
+    with pytest.raises(ImportPrecheckError) as raised:
+        _limits(maximum_structure_records=MAXIMUM_STRUCTURE_RECORDS + 1)
 
     assert raised.value.code is ImportPrecheckErrorCode.LIMIT_INVALID
 

@@ -94,11 +94,13 @@ or complete; it means only that the same retained byte stream is eligible for bo
 - total preliminary header bytes read; and
 - JPEG structure records examined.
 
-The header budget must be from 2,048 through 1,048,576 bytes, and the warning ratio cannot exceed the
-hard ratio. Limits are inclusive: an observation equal to a maximum is accepted, while maximum plus
-one fails. Source size is checked before the first content read. Every random-access read is exact,
-individually bounded by the same one-mebibyte adapter cap, and charged against one cumulative header
-budget. JPEG marker walking also has a separate record limit.
+The header budget must be from 2,048 through 1,048,576 bytes, the JPEG structure-record budget may
+not exceed 256, and the warning ratio cannot exceed the hard ratio. Limits are inclusive: an
+observation equal to a maximum is accepted, while maximum plus one fails. Source size is checked
+before the first content read. Every random-access read is exact, individually bounded by the same
+one-mebibyte adapter cap, and charged against one cumulative header budget. Preliminary parsing also
+has a fixed 1,024-read-operation ceiling. Every JPEG marker and repeated marker-fill byte consumes
+the structure-record budget, so redundant fill cannot amplify one record into unbounded native I/O.
 
 PNG decompression estimates conservatively cover scanline filter bytes, Adam7 passes when present,
 palette expansion, and possible `tRNS` alpha in an expanded pixel buffer. APNG aggregate frames and
