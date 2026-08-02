@@ -1,0 +1,245 @@
+"""Cross-component tests for the authenticated worker-host runtime."""
+
+from __future__ import annotations
+
+import os
+import threading
+from dataclasses import dataclass
+from types import TracebackType
+from uuid import UUID
+
+from paperworkshell.worker.operations import OperationContext, RuntimeOperationRegistry
+from paperworkshell.worker.protocol.bootstrap import BootstrapGrant
+from paperworkshell.worker.protocol.framing import read_frame, write_frame
+from paperworkshell.worker.protocol.models import (
+    NOOP_CAPABILITY,
+    CancelReason,
+    CapabilityDescriptor,
+    Direction,
+    ErrorCode,
+    MessagePayload,
+    MessageType,
+    OperationCancelPayload,
+    OperationOutcome,
+    OperationResultPayload,
+    OperationStartPayload,
+    ProtocolEnvelope,
+    ResourceLimits,
+    SessionCapability,
+    SessionHelloPayload,
+    SessionShutdownPayload,
+    ShutdownReason,
+)
+from paperworkshell.worker.protocol.peer import PeerBinding, ProtocolPeer
+from paperworkshell.worker.protocol.state import ConversationPhase
+from paperworkshell.worker.runtime import HostExitCode, WorkerHostRuntime
+
+
+def _uuid(value: int) -> UUID:
+    return UUID(f"00000000-0000-4000-8000-{value:012x}")
+
+
+def _limits(wall_time_ms: int = 1_000) -> ResourceLimits:
+    return ResourceLimits(wall_time_ms, 1_000, 64 * 1024 * 1024, 1_024, 1_024, 1, 1)
+
+
+class _Harness:
+    def __init__(self, operations: RuntimeOperationRegistry | None = None) -> None:
+        self.binding = PeerBinding(
+            _uuid(1),
+            _uuid(2),
+            _uuid(3),
+            SessionCapability("a" * 64),
+        )
+        to_host_read, to_host_write = os.pipe()
+        from_host_read, from_host_write = os.pipe()
+        self.host_reader = os.fdopen(to_host_read, "rb", buffering=0)
+        self.client_writer = os.fdopen(to_host_write, "wb", buffering=0)
+        self.client_reader = os.fdopen(from_host_read, "rb", buffering=0)
+        self.host_writer = os.fdopen(from_host_write, "wb", buffering=0)
+        grant = BootstrapGrant(
+            self.binding.session_id,
+            self.binding.worker_instance_id,
+            self.binding.case_id,
+            self.binding.session_capability,
+        )
+        runtime = (
+            WorkerHostRuntime(grant, self.host_reader, self.host_writer)
+            if operations is None
+            else WorkerHostRuntime(
+                grant,
+                self.host_reader,
+                self.host_writer,
+                operations=operations,
+            )
+        )
+        self.client = ProtocolPeer(self.binding, Direction.CLIENT_TO_WORKER)
+        self.exit_codes: list[HostExitCode] = []
+        self.thread = threading.Thread(
+            target=lambda: self.exit_codes.append(runtime.run()),
+            name="test-worker-host",
+            daemon=True,
+        )
+        self.thread.start()
+
+    def __enter__(self) -> _Harness:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        for stream in (
+            self.client_writer,
+            self.client_reader,
+            self.host_reader,
+            self.host_writer,
+        ):
+            try:
+                stream.close()
+            except OSError:
+                pass
+        self.thread.join(timeout=1)
+
+    def send(
+        self,
+        message_type: MessageType,
+        payload: MessagePayload,
+        *,
+        request_id: UUID,
+        operation_id: UUID | None,
+    ) -> None:
+        prepared = self.client.prepare_outbound(
+            message_type,
+            payload,
+            request_id=request_id,
+            operation_id=operation_id,
+        )
+        write_frame(self.client_writer, prepared.encoded)
+
+    def receive(self) -> ProtocolEnvelope:
+        raw = read_frame(self.client_reader)
+        assert raw is not None
+        return self.client.accept_inbound(raw)
+
+    def negotiate(self) -> None:
+        request_id = _uuid(10)
+        self.send(
+            MessageType.SESSION_HELLO,
+            SessionHelloPayload((1,), (NOOP_CAPABILITY,)),
+            request_id=request_id,
+            operation_id=None,
+        )
+        assert self.receive().message_type is MessageType.SESSION_READY
+
+    def wait_for_exit(self) -> HostExitCode:
+        self.thread.join(timeout=2)
+        assert not self.thread.is_alive()
+        assert len(self.exit_codes) == 1
+        return self.exit_codes[0]
+
+
+def _start(harness: _Harness, *, wall_time_ms: int = 1_000) -> tuple[UUID, UUID]:
+    request_id = _uuid(20)
+    operation_id = _uuid(21)
+    harness.send(
+        MessageType.OPERATION_START,
+        OperationStartPayload("protocol.noop", 1, (), (), _limits(wall_time_ms)),
+        request_id=request_id,
+        operation_id=operation_id,
+    )
+    return request_id, operation_id
+
+
+def _receive_result(harness: _Harness) -> OperationResultPayload:
+    while True:
+        message = harness.receive()
+        if message.message_type is MessageType.OPERATION_RESULT:
+            payload = message.payload
+            assert type(payload) is OperationResultPayload
+            return payload
+
+
+def test_runtime_round_trip_progress_and_clean_shutdown() -> None:
+    with _Harness() as harness:
+        harness.negotiate()
+        _start(harness)
+        result = _receive_result(harness)
+        assert result.outcome is OperationOutcome.SUCCEEDED
+
+        shutdown_request = _uuid(30)
+        harness.send(
+            MessageType.SESSION_SHUTDOWN,
+            SessionShutdownPayload(ShutdownReason.APPLICATION_EXIT),
+            request_id=shutdown_request,
+            operation_id=None,
+        )
+        assert harness.receive().message_type is MessageType.SESSION_CLOSED
+        assert harness.wait_for_exit() is HostExitCode.CLEAN
+        assert harness.client.state.phase is ConversationPhase.CLOSED
+
+
+def test_runtime_cooperatively_cancels_an_active_operation() -> None:
+    with _Harness() as harness:
+        harness.negotiate()
+        _request_id, operation_id = _start(harness)
+        while harness.receive().message_type is not MessageType.OPERATION_PROGRESS:
+            pass
+        harness.send(
+            MessageType.OPERATION_CANCEL,
+            OperationCancelPayload(CancelReason.USER_REQUESTED),
+            request_id=_uuid(31),
+            operation_id=operation_id,
+        )
+        result = _receive_result(harness)
+        assert result.outcome is OperationOutcome.CANCELLED
+
+
+def test_runtime_timeout_is_restart_required_and_exits() -> None:
+    with _Harness() as harness:
+        harness.negotiate()
+        _start(harness, wall_time_ms=1)
+        result = _receive_result(harness)
+
+        assert result.outcome is OperationOutcome.TIMED_OUT
+        assert result.error is not None
+        assert result.error.code is ErrorCode.WORKER_OPERATION_TIMED_OUT
+        assert result.error.restart_required
+        assert harness.wait_for_exit() is HostExitCode.OPERATION_TIMED_OUT
+        assert harness.client.state.phase is ConversationPhase.FAULTED
+
+
+@dataclass(frozen=True, slots=True)
+class _ExplodingHandler:
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return NOOP_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        del context
+        raise RuntimeError("C:/private/canary-document.pdf")
+
+
+def test_handler_exception_becomes_sanitized_failure() -> None:
+    registry = RuntimeOperationRegistry((_ExplodingHandler(),))
+    with _Harness(registry) as harness:
+        harness.negotiate()
+        _start(harness)
+        result = _receive_result(harness)
+
+        assert result.outcome is OperationOutcome.FAILED
+        assert result.error is not None
+        assert result.error.code is ErrorCode.WORKER_OPERATION_FAILED
+        assert "canary-document" not in repr(result)
+
+
+def test_malformed_frame_fails_closed_with_one_protocol_error() -> None:
+    with _Harness() as harness:
+        write_frame(harness.client_writer, b"{}")
+        message = harness.receive()
+
+        assert message.message_type is MessageType.PROTOCOL_ERROR
+        assert harness.wait_for_exit() is HostExitCode.PROTOCOL_FAULT
+        assert harness.client.state.phase is ConversationPhase.FAULTED

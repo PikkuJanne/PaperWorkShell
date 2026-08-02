@@ -128,7 +128,7 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         "Validate package layout and architecture imports.",
     ),
     "typecheck": CommandSpec(
-        ("mypy", "src", "tools", "tests"),
+        ("python", "-m", "mypy", "src", "tools", "tests"),
         "Run strict static type checking.",
     ),
     "test-unit": CommandSpec(("pytest", "tests/unit"), "Run unit tests."),
