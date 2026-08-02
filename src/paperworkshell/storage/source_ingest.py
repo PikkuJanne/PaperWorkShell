@@ -879,7 +879,10 @@ def _validate_ingest_manifest(
             _reject_manifest("source.manifest_media_type")
         byte_size = _manifest_positive_integer(record["byte_size"])
         page_count = _manifest_positive_integer(record["page_count"])
-        if page_count > MAX_SOURCE_PAGES:
+        if (
+            page_count > MAX_SOURCE_PAGES
+            or len(expected_page_pairs) > MAX_SOURCE_PAGES - page_count
+        ):
             _reject_manifest("source.manifest_page_count")
         digest = record["sha256"]
         if type(digest) is not str or _SHA256_RE.fullmatch(digest) is None:

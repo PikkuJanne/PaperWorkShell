@@ -406,6 +406,52 @@ def test_ingest_validator_sanitizes_unhashable_pdf_inspection_state() -> None:
     assert "Sensitive Applicant State" not in repr(raised.value)
 
 
+def test_ingest_validator_rejects_cumulative_page_count_amplification() -> None:
+    document = _document(build_initial_manifest_bytes(CASE_ID, CREATED_AT))
+    first_page_count = MAX_SOURCE_PAGES // 2
+    second_page_count = MAX_SOURCE_PAGES - first_page_count + 1
+    second_timestamp = "2026-08-02T10:11:13.123456Z"
+    document["revision"] = 2
+    document["updated_at"] = second_timestamp
+    document["sources"] = [
+        {
+            "source_id": str(IMAGE_SOURCE_ID),
+            "display_name": "Synthetic first.pdf",
+            "storage_name": f"{IMAGE_SOURCE_ID}.bin",
+            "detected_media_type": DetectedMediaType.PDF.value,
+            "byte_size": 1,
+            "page_count": first_page_count,
+            "sha256": "1" * 64,
+            "signature_state": SourceSignatureState.NONE_DETECTED.value,
+            "encryption_state": SourceEncryptionState.UNENCRYPTED.value,
+            "import_state": "complete",
+            "imported_at": "2026-08-02T10:11:12.123456Z",
+        },
+        {
+            "source_id": str(PDF_SOURCE_ID),
+            "display_name": "Synthetic second.pdf",
+            "storage_name": f"{PDF_SOURCE_ID}.bin",
+            "detected_media_type": DetectedMediaType.PDF.value,
+            "byte_size": 1,
+            "page_count": second_page_count,
+            "sha256": "2" * 64,
+            "signature_state": SourceSignatureState.NONE_DETECTED.value,
+            "encryption_state": SourceEncryptionState.UNENCRYPTED.value,
+            "import_state": "complete",
+            "imported_at": second_timestamp,
+        },
+    ]
+
+    with pytest.raises(SourceIngestError) as raised:
+        ingest_storage._validate_ingest_manifest(_serialized(document), IDENTITY, CASE_ID)
+
+    assert first_page_count <= MAX_SOURCE_PAGES
+    assert second_page_count <= MAX_SOURCE_PAGES
+    assert first_page_count + second_page_count == MAX_SOURCE_PAGES + 1
+    assert raised.value.code is SourceIngestErrorCode.MANIFEST_INVALID
+    assert raised.value.context == "source.manifest_page_count"
+
+
 def test_ingest_validator_rejects_future_version_before_other_state() -> None:
     document = _valid_candidate_document()
     document["schema_version"] = 2
