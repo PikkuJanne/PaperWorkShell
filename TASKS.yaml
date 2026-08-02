@@ -709,7 +709,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: review
   critical_path: true
   depends_on:
   - PWS-0101
@@ -740,9 +740,17 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    revision: "3182132"
+    commands:
+    - "py -3.14 tools/dev.py check at 3182132 - passed; formatting, lint, 12-layer import boundaries, strict typing over 70 files, 525 unit tests, 45 integration tests with 1 disclosed symlink-privilege skip, 147 security tests with 3 disclosed link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_import_prechecks.py tests/integration/test_import_prechecks_windows.py tests/security/test_import_prechecks_security.py at 3182132 - passed; 233 tests passed and the one local file-symlink privilege case skipped, while mandatory real NTFS junction coverage ran and passed"
+    - "GitHub Actions runs 30738294562 (push) and 30738296416 (pull_request) on windows-2025 passed the Windows quality suite at 3182132"
+    - "py -3.14 tools/dev.py validate-fixtures at 3182132 - passed; 17 deterministic fixtures, 457 reachable-history blobs, 198 index blobs, and 205 working files were admitted without an unindexed document"
+    notes:
+    - PDF, JPEG, and PNG are detected from strict bounded framing bytes; missing suffixes may pass by content, mismatches and unsupported media fail closed, and PDF page, structure, encryption, and signature inspection remain explicitly deferred to the owning restricted-worker adapter.
+    - Caller-supplied source, page-observation, image dimension, pixel, decompression, header-byte, and JPEG-structure limits are typed and inclusive; preliminary reads, source path depth, UTF-16 length, JPEG marker-fill steps, and native range operations also have fixed hard ceilings.
+    - The retained Windows lease pins a no-follow same-volume ancestor chain and one read-only default-stream handle, denies write/delete sharing, requests no recall, revalidates terminal identity, never mutates the external source or case state, and exposes no path or raw exception in routine errors.
+    - Three independent exact-commit audits of parser arithmetic, Win32 races/privacy, and end-to-end acceptance evidence found no remaining blocker; the reproduced 1 MiB JPEG fill attack fell from 71.364 seconds before the fix to 0.0355 seconds at the final implementation revision.
 - id: PWS-0104
   milestone: M1
   title: Implement immutable ingest and SHA-256 source records
