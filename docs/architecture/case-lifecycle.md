@@ -93,12 +93,14 @@ Deletion never uses `rmtree`, a shell command, a display name, or a caller path:
 
 1. Require the exact application-storage confirmation and an inactive internal UUID.
 2. Retain authenticated cases-root and delete-capable case-root handles.
-3. Strictly read the matching supported manifest before any removal.
-4. Complete a bounded, no-follow inventory of the whole fixed case tree. Reject unexpected
+3. Complete a bounded, no-follow inventory of the whole fixed case tree. Reject unexpected
    top-level objects, reparse points, hard links, alternate streams, insecure directory ACLs,
    changed identity/type/size, or entry/depth overflow before deleting the first object.
-5. Delete the authenticated `manifest.json` entry first so an interrupted removal is no longer
-   reported as a valid case.
+4. Reopen the inventory-selected `manifest.json` with read/delete authority, revalidate its exact
+   identity, type, size, single-link and stream state, then strictly read the matching supported
+   lifecycle envelope while retaining that handle.
+5. Mark that same validated manifest handle for deletion first so an interrupted removal is no
+   longer reported as a valid case.
 6. Delete the remaining verified inventory deepest-first and mark the exact case-root handle last.
 
 Removal stops on the first post-invalidation error. A partial result counts only successfully
