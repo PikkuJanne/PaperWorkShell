@@ -87,7 +87,9 @@ identity and logical size with the inventory, and marks that verified handle for
 root, remain in place. A changed identity, alias, or deletion error returns an accurate partial
 report and stops; cleanup never falls back to recursive name-based deletion. Cleanup holds the same
 per-case coordination lock as publication and fails while the selected area has an active capacity
-claim, so it cannot delete or misreport a cooperating in-flight write.
+claim, so it cannot delete or misreport a cooperating in-flight write. Its authenticated case handle
+remains open through inventory and deletion, and the target reopen must match that case identity;
+a same-UUID replacement cannot become the cleanup target.
 
 ### Quotas and failures
 

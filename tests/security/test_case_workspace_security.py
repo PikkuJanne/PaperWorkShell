@@ -726,3 +726,52 @@ def test_active_reservation_rejects_same_uuid_case_replacement(tmp_path: Path) -
 
     assert publication.value.code is WorkspaceErrorCode.IDENTITY_CHANGED
     assert new_claim.value.code is WorkspaceErrorCode.IDENTITY_CHANGED
+
+
+def test_cleanup_pins_authenticated_case_identity_through_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_id = UUID("40000000-0000-4000-8000-000000000021")
+    manager = _manager(tmp_path)
+    layout = manager.provision(case_id)
+    original_disposable = layout.temp / f"{uuid4()}.tmp"
+    original_disposable.write_bytes(b"original-disposable")
+    retained_original = tmp_path / "retained-cleanup-original"
+    replacement_marker: Path | None = None
+    replacement_was_blocked = False
+    original_bind = manager._bind_case_identity
+
+    def bind_then_attempt_replacement(
+        state: Any,
+        identity: Any,
+    ) -> None:
+        nonlocal replacement_marker, replacement_was_blocked
+        original_bind(state, identity)
+        try:
+            layout.case_root.rename(retained_original)
+        except OSError:
+            replacement_was_blocked = True
+            return
+        replacement_manager = _manager(tmp_path)
+        replacement = replacement_manager.provision(case_id)
+        replacement_marker = replacement.temp / f"{uuid4()}.tmp"
+        replacement_marker.write_bytes(b"replacement-must-survive")
+
+    monkeypatch.setattr(manager, "_bind_case_identity", bind_then_attempt_replacement)
+
+    try:
+        report = manager.cleanup_disposable(case_id, CleanupTarget.TEMP)
+    except WorkspaceError as error:
+        assert error.code is WorkspaceErrorCode.IDENTITY_CHANGED
+        assert not replacement_was_blocked
+        assert replacement_marker is not None
+        assert replacement_marker.read_bytes() == b"replacement-must-survive"
+        assert (retained_original / "temp" / original_disposable.name).read_bytes() == (
+            b"original-disposable"
+        )
+    else:
+        assert replacement_was_blocked
+        assert replacement_marker is None
+        assert report.status is CleanupStatus.COMPLETE
+        assert not original_disposable.exists()

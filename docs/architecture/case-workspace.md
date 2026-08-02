@@ -125,6 +125,8 @@ report counts only successful removals and revalidated logical bytes released be
 report does not contain names or paths. Cleanup shares per-case coordination with reservations and
 publication; an active claim in the selected cache/temp area fails cleanup before deletion. Callers
 must present partial status accurately and may offer a later retry after active operations close.
+The authenticated case handle is retained across the complete cleanup, and the selected-area reopen
+must match that case identity before inventory begins.
 
 ## Explicit deferrals
 
