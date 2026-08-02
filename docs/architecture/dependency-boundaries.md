@@ -2,7 +2,8 @@
 
 - Status: Binding implementation policy
 - Task: PWS-0002
-- Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D014, PWS-D015, PWS-D016, PWS-D017
+- Extension: PWS-0107 restricted worker lifecycle
+- Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
 
@@ -68,6 +69,22 @@ PWS-0103 adds pure import policy in `domain.import_precheck` and a narrow extern
 handle; it is not a general filesystem API. Preliminary PDF/image framing checks are deliberately
 bounded and do not move document-engine parsing into the desktop process. The lease and deferrals
 are specified in [Bounded import-precheck contract](import-prechecks.md).
+
+PWS-0107 makes the worker split concrete. GUI-safe `worker.client` modules own only cached lifecycle
+state and abstract process/transport contracts; `worker.protocol` owns bounded framing, bootstrap,
+typed messages, and pure conversation state. The private Windows launcher, host composition,
+runtime coordinator, and operation handlers stay outside those GUI-safe subpackages. A
+zero-capability AppContainer, retained Job Object, explicit three-handle inheritance, fixed launch
+grant, minimal environment, and fresh-generation restart are specified in the
+[Restricted worker lifecycle contract](worker-lifecycle.md) and
+[ADR 0004](../adr/0004-windows-worker-isolation.md).
+
+That boundary does not create a new `storage -> worker` or `worker -> storage` import edge. The
+current no-op operation has no document handles and the AppContainer SID has no case-root access.
+Future operations must use a trusted composition/broker layer to authenticate and transfer exact
+least-privilege handles for logical case-object references. They may not import the private storage
+Windows adapter into GUI-safe client/protocol code, pass a case path over RPC, or grant the worker a
+general case directory capability.
 
 A new external engine is not admitted by editing code alone: the dependency policy and licensing review in PWS-0005 and the engine-specific roadmap task must approve it first. Renderer ownership remains intentionally unspecified until PWS-0106 records its evidence-based ADR.
 

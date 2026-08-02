@@ -886,7 +886,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: done
   critical_path: true
   depends_on:
   - PWS-0008
@@ -921,10 +921,21 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "6cbd6c2"
+    commands:
+    - "uv run python tools/dev.py lint and uv run python tools/dev.py typecheck at 6cbd6c2 - passed; Ruff checked 102 files and strict mypy reported no issues in 102 source files"
+    - "uv run --locked --no-sync pytest -q tests/security/test_worker_windows_containment_security.py tests/security/test_worker_windows_isolation_security.py at 6cbd6c2 - passed; both live zero-capability AppContainer, Job Object, egress, filesystem-scope, descendant-isolation, and cleanup probes passed"
+    - "uv run --locked --no-sync pytest -q tests/unit/worker/test_worker_resource_staging.py tests/unit/worker/test_exception_compatibility.py at 6cbd6c2 - passed; 4 staging-cleanup and CPython 3.14 exception-compatibility regressions passed"
+    - "GitHub Actions runs 30753004606 (push) and 30753006610 (pull_request) on windows-2025 passed the complete Windows quality suite at 6cbd6c2"
+    - "fresh SSH clone at 6cbd6c2: uv sync --locked installed 22 packages and uv run python tools/dev.py check passed; 102-file formatting/lint, 12-layer boundaries over 40 source files, strict typing over 102 files, 580 unit tests, 122 integration tests with 2 disclosed local link-capability skips, 156 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    notes:
+    - The GUI-safe client and sole worker-launch broker implement bounded versioned framing, correlation and state validation, progress, cancellation, deadlines, crash classification, deterministic terminal-race arbitration, severe-fault termination, and clean restart without exposing raw worker exceptions.
+    - Windows workers launch directly and suspended in a zero-capability AppContainer, inherit exactly three identity-checked protocol/bootstrap kernel objects, receive a minimal environment and only validated case/runtime resources, and remain in a kill-on-close Job Object with CPU, memory, process-count, and whole-tree cleanup enforcement.
+    - Live security evidence proves IPv4 and IPv6 TCP denial, bounded UDP probe behavior, active-case filesystem scope, denied external reads and writes, descendant token/profile/job inheritance, descendant cleanup, protected singleton brokering, and shell-free structured process creation.
+    - Test-only worker resources are copied into bounded, validated, fixed-drive staging trees so hosted-runner reparse-point layouts cannot weaken the production resource policy; every setup and teardown failure path removes only an authenticated staging root.
+    - The hosted-only descendant failure was traced to CPython opening the Windows NUL device for subprocess.DEVNULL inside the zero-capability AppContainer; bounded anonymous pipes avoid that device access, and both hosted descendant probes then passed without relaxing AppContainer, Job, ACL, environment, or egress controls.
+    - Independent exact-commit reviews of Win32 launch/cleanup behavior, CI portability, diagnostic privacy, and handle lifecycle found no remaining P0-P2 issue; document-library adapters and their format-specific resource limits remain owned by PWS-0105, PWS-0106, and later worker operations.
 - id: PWS-0108
   milestone: M1
   title: Implement bounded PDF thumbnail service

@@ -6,9 +6,13 @@ from dataclasses import dataclass
 from typing import Never
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class ProtocolError(ValueError):
-    """A stable protocol failure that never includes rejected input values."""
+    """A stable protocol failure that never includes rejected input values.
+
+    Exception traceback, cause, and context attributes are interpreter-managed,
+    so exception instances cannot use frozen-dataclass assignment guards.
+    """
 
     code: str
     location: str

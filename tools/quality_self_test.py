@@ -94,7 +94,9 @@ def _typing_violation(root: Path) -> SelfTestResult:
     )
     completed = _run_capture(
         (
-            _required_executable("mypy"),
+            sys.executable,
+            "-m",
+            "mypy",
             "--config-file",
             str(PROJECT_ROOT / "pyproject.toml"),
             "--no-pretty",

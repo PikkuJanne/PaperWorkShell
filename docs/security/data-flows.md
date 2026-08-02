@@ -26,8 +26,9 @@ flowchart LR
     Engines ==> Tools["Approved local executables/resources"]
     Source["External source (read only)"] ==> Import["Narrow import/storage adapter"]
     Import ==> Case["Active case workspace"]
-    Case == "immutable inputs (read only)" ==> Worker
-    Worker ==> Stage["Operation-scoped cache/temp/staging only"]
+    Case ==> Handles["Trusted case-object handle broker"]
+    Handles == "exact authenticated handles only" ==> Worker
+    Worker ==> Stage["Brokered operation cache/temp/staging handles only"]
     Stage ==> Destination["External export destination"]
     App --> Diagnostics["Sanitized diagnostics collector"]
     Diagnostics ==> Destination
@@ -38,19 +39,21 @@ flowchart LR
 Text alternative: the person interacts only with the desktop process. Application/domain logic
 orchestrates a validated worker client. Full document processing occurs in a restricted worker
 through admitted adapters and local tools. External sources enter through a narrow read-only
-import/storage path and become random case-scoped files before complex parsing. Verified output
-moves from case staging to a user-selected external destination. Templates enter as validated
-data. Diagnostics use a separate allowlisted flow. A future updater is separate from document
-processing and sends no case data.
+import/storage path and become random case-scoped files before complex parsing. A trusted broker
+must authenticate and transfer an exact least-privilege handle before a worker operation can touch
+one of those objects; logical case binding is not path access. Verified output moves from case
+staging to a user-selected external destination. Templates enter as validated data. Diagnostics
+use a separate allowlisted flow. A future updater is separate from document processing and sends
+no case data. The current `protocol.noop` worker receives no document handles.
 
 ## Boundary inventory
 
 | Boundary | Producer → consumer | Data crossing | Required check before consumption |
 |---|---|---|---|
 | TB-01 | Person/Windows shell → UI | Paths, typed values, drag/clipboard data, confirmation | Length/type/state validation; no trust from extension or familiar display |
-| TB-02 | Application → worker | Versioned request, per-launch capability, internal IDs, case-relative references, limits | Endpoint ACL; bind worker launch, active case, operation, sequence, and request; schema/type/version/size/state validation; replay rejection |
-| TB-02 | Worker → application | Progress, typed result, capability, stable error | Validate endpoint/session binding, envelope, IDs, sequence/state transition, size, paths, counts, and sanitized parameters |
-| TB-03 | Worker/storage → case workspace | Read-only immutable inputs; operation-specific cache/temp/staging | Opened-handle file identity and case/subroot containment; link/reparse/hardlink/ADS policy; permissions, quotas, random names; broker-only authoritative publication |
+| TB-02 | Application → worker | Versioned request, per-launch capability, internal IDs, logical case-object references, limits | Fresh AppContainer/job generation; explicit inherited pipes and fixed bootstrap grant; bind worker, case, operation, sequence, and request; schema/type/version/size/state validation; replay rejection |
+| TB-02 | Worker → application | Progress, typed result, capability, stable error | Validate explicit transport/session binding, envelope, IDs, sequence/state transition, size, references, counts, and sanitized parameters |
+| TB-03 | Trusted broker → worker | Exact opened read-only input or operation-scoped cache/temp/staging handle | Authenticate file identity, case/area/operation scope, access, containment, links/reparse/hardlink/ADS state, size/digest, quota, and lifetime before transfer; broker-only authoritative publication |
 | TB-04 | Worker adapter → local tool/resource | Executable, arguments, input/output handles, controlled environment/search paths | Approved path/version/identity, fixed working directory, no shell, bounded I/O/time/resources/descendants, network denial |
 | TB-05 | Import adapter → external source | One read-only handle and bounded byte stream | Classify local/device/network location before open; supported regular-file identity; never request write access |
 | TB-06 | Verified staging → export destination | Exact verified PDF/ZIP/summary bytes, size/digest, and safe name | Classify destination; reject original/prior-output aliases; destination-local temporary file, collision policy, terminal identity/digest recheck, per-artifact atomic commit |
@@ -58,6 +61,58 @@ processing and sends no case data.
 | TB-08 | Template store → loader | Template bytes, provenance, and trust state | Size, schema, version, checksum/signature when supported, expiry; data only; inert provenance URLs are never dereferenced |
 | TB-09 | Updater ↔ network/install | Version/channel metadata and package | No case fields; authenticated metadata/package; rollback/expiry/channel policy |
 | TB-10 | Case storage → local account/session | Case files and lock/retention state | Restrictive permissions, random names, consent/lock/expiry policy |
+
+## DF-WORKER-LIFECYCLE — launch, negotiate, operate, stop, and restart
+
+```mermaid
+sequenceDiagram
+    participant App as Application coordinator
+    participant Client as GUI-safe worker client
+    participant Win as Trusted Windows launcher
+    participant Host as Restricted worker host
+    App->>Client: Start with logical case ID and trusted policies
+    Client->>Win: Fresh session, worker ID, capability, resource policy
+    Win->>Win: Create zero-capability profile, pipes, and Job Object
+    Win->>Host: Create suspended with exactly stdin/stdout/bootstrap handles
+    Win->>Win: Assign job; write fixed 92-byte grant; resume
+    Host->>Host: Validate grant and audit token/job/environment
+    Client->>Host: Framed, authenticated session.hello
+    Host-->>Client: Validated session.ready
+    Client->>Host: One registered operation and explicit limits
+    Host-->>Client: Accepted, progress, and one terminal result
+    Client->>Host: Optional cooperative cancel or graceful shutdown
+    Host-->>Client: Cancel acknowledgement/result or session.closed
+    Client->>Win: Timeout, fault, or force-stop terminates retained job tree
+    Client->>Win: Restart creates a wholly fresh generation; no replay
+```
+
+1. TB-02 launch state is generated by the trusted client, not the worker: a new generation,
+   session UUID, worker-instance UUID, case UUID binding, and 256-bit capability.
+2. The launcher creates a per-launch AppContainer with no capability SIDs. It temporarily grants
+   read/execute only to approved runtime/code roots. Its constructed `LOCALAPPDATA`, `TEMP`, and
+   `TMP` point into the ephemeral profile; no user environment or case path is inherited.
+3. The child is created suspended with a fixed absolute executable/argument array, no shell, and
+   exactly three anonymous-pipe handles. The Job Object is configured/assigned before resume and
+   covers memory, CPU, process-count, kill-on-close, and descendant termination policy.
+4. Standard error is a one-shot bootstrap reader, not a diagnostic channel. The exact 92-byte
+   grant carries only fixed magic/version, three UUID identities, and the capability. RPC on
+   standard input/output is independently length-framed to 65,536 payload bytes.
+5. The worker fails before `session.ready` unless the grant, AppContainer token, zero capabilities,
+   Job membership, minimal environment, protocol binding, and negotiation validate. Malformed,
+   replayed, cross-generation, or out-of-order messages fault the generation before dispatch.
+6. One coordinator actor on each side owns protocol state. Progress/operation threads report
+   bounded events only. A valid terminal result processed before a deadline event wins; a cancel
+   acknowledgement is nonterminal. A timeout/fault terminates the complete job tree.
+7. A clean shutdown requires correlated `session.closed`. Unexpected EOF/exit becomes a stable
+   failure without killing the desktop process or exposing exit/stderr values. Restart creates new
+   profile/job/pipes/IDs/capability/sequences and never replays work.
+8. The current no-op carries no inputs, outputs, or document handles. Case access remains absent
+   until a future trusted broker authenticates and transfers an exact handle out of band.
+9. Live evidence must cover real IPv4/IPv6 TCP/UDP denial for worker and descendant, whole-tree
+   kill/no-breakaway, exact inherited handles, environment canary absence, path denial, deliberate
+   handle success, and profile/grant cleanup. A required skip is not a pass.
+
+Primary threats: TM-001, TM-002, TM-004, TM-008, TM-009, TM-011, TM-012, TM-022, TM-023.
 
 ## DF-IMPORT — select, precheck, copy, inspect, and commit source
 
@@ -74,7 +129,8 @@ sequenceDiagram
     UI->>Import: Import request and active case ID
     Import->>Import: Canonicalize; open read-only; size/signature precheck
     Import->>Case: Stream to random pending file while hashing
-    Import->>Worker: Read-only case-relative pending ID and explicit limits
+    Import->>Broker: Logical pending ID, retained read-only handle, and explicit limits
+    Broker->>Worker: Validated request plus exact read-only handle
     Worker->>Worker: Content inspection in bounded adapter
     Worker-->>Broker: Typed inspection result or stable error
     Broker->>Manifest: Commit source record only after complete copy/hash/validation
@@ -89,10 +145,12 @@ sequenceDiagram
 3. TB-03: bytes stream into a random, case-scoped pending name while SHA-256 is calculated. A
    changing/truncated source, cancellation, limit, disk-full, or write failure leaves no valid
    source record.
-4. TB-02/TB-03: complex inspection receives only a read-only case-relative quarantine reference,
-   per-launch capability, case/operation binding, and explicit limits. The worker cannot write the
-   quarantine, manifest, journal, or source records. Its typed result is validated and raw
-   third-party exceptions are discarded.
+4. TB-02/TB-03: when PWS-0105 registers complex inspection, RPC carries only a logical quarantine
+   reference, per-launch capability, case/operation binding, and explicit limits. The trusted
+   broker must separately transfer the same retained, authenticated read-only handle. The worker
+   cannot write the quarantine, manifest, journal, or source records. Its typed result is validated
+   and raw third-party exceptions are discarded. The current no-op performs no inspection and
+   receives no handle.
 5. The trusted storage broker alone publishes a source record/manifest revision after complete
    copy/hash/inspection policy succeeds. The external source is never opened for writing. A later
    hash detects application-model mutation; it is not authentication against malware able to
@@ -115,9 +173,10 @@ flowchart LR
 
 1. The UI names an internal source/page ID, desired bounded dimensions, and cancellation token; it
    never opens the source document.
-2. TB-02/TB-03: the worker resolves the ID against its read-only active-case capability, applies
-   page/pixel/time/memory limits, and writes only to this operation's cache through an admitted
-   adapter.
+2. TB-02/TB-03: the trusted broker resolves the logical ID, authenticates exact read/output
+   handles for the case and operation, and only then transfers those handles. The worker applies
+   page/pixel/time/memory limits and writes only through the brokered operation-cache handle. A
+   path or case UUID alone never authorizes access.
 3. Output uses a versioned canonical preview contract: fixed pixel layout, bounded dimensions and
    exact byte length, not a general-purpose encoded image. The trusted client opens one snapshot,
    validates file identity, case/operation/correlation, header, dimensions, stride, and length,
@@ -138,7 +197,7 @@ sequenceDiagram
     participant OCR as OCR adapter
     participant Tool as OCRmyPDF/Tesseract
     participant Temp as Case temp/cache
-    App->>Worker: Versioned operation, case-relative page IDs, language/profile, limits
+    App->>Worker: Versioned operation, logical page IDs, language/profile, limits
     Worker->>OCR: Validated request and approved resources
     OCR->>Tool: Explicit executable and argument array
     Tool->>Temp: Bounded partial output
@@ -147,7 +206,9 @@ sequenceDiagram
     Worker-->>App: Validated progress/result
 ```
 
-1. TB-02 validates page IDs, operation/profile versions, language IDs, limits, and cancellation.
+1. TB-02 validates logical page IDs, operation/profile versions, language IDs, limits, and
+   cancellation. TB-03 separately requires exact brokered input/temp/output handles; none is
+   inferred from a case path or identifier.
 2. TB-04 starts only approved local executables/resources with fixed identities, fixed argument
    arrays and working directory, controlled DLL/plugin/config/font/language search paths, a
    minimal environment, bounded I/O/time/resources, no shell interpolation, and processing
@@ -180,10 +241,11 @@ flowchart LR
    order, transforms, overlays, constraints, output names, and verification profile. Before an
    export capability is granted, the trusted broker verifies the identity and recorded digest of
    every immutable source snapshot; changed or unknown state blocks export.
-2. TB-02/TB-03: the worker reads immutable case inputs and writes only a new operation-scoped
-   staging derivative. It cannot publish manifests, journals, export history, or external files.
-   Signed-source policy is checked before any modifying operation; detection may be unknown and is
-   not cryptographic validation.
+2. TB-02/TB-03: the trusted broker authenticates and transfers exact immutable-input and new
+   operation-staging handles. The worker has no case-directory or destination path authority and
+   cannot publish manifests, journals, export history, or external files. Signed-source policy is
+   checked before any modifying operation; detection may be unknown and is not cryptographic
+   validation.
 3. The temporary result is reopened. Required parse, structural, page-count, encryption,
    attachment/interactive policy, naming/size, and render checks must pass. Unknown required state
    is failure.

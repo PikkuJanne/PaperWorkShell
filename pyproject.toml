@@ -19,6 +19,9 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/PikkuJanne/PaperWorkShell"
 
+[project.scripts]
+paperworkshell-worker = "paperworkshell.worker.host:main"
+
 [dependency-groups]
 dev = [
   { include-group = "quality" },

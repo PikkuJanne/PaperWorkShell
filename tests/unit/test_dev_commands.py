@@ -62,6 +62,10 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertIn("format-check", CHECK_COMMANDS)
         self.assertIn("validate-fixtures", CHECK_COMMANDS)
         self.assertIn("quality-self-test", CHECK_COMMANDS)
+        self.assertEqual(
+            ("python", "-m", "mypy", "src", "tools", "tests"),
+            COMMANDS["typecheck"].arguments,
+        )
 
     def test_secret_scan_arguments_are_local_redacted_and_bounded(self) -> None:
         rendered = " ".join(GITLEAKS_STDIN_ARGUMENTS)
