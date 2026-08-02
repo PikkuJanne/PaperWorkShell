@@ -1,32 +1,34 @@
 # Secure case-workspace contract
 
-- Status: Implemented PWS-0101 contract with PWS-0102 lifecycle extension
-- Tasks: PWS-0101, PWS-0102
+- Status: Implemented PWS-0101 contract with PWS-0102 lifecycle and PWS-0104 ingest extensions
+- Tasks: PWS-0101, PWS-0102, PWS-0104
 - Decisions: PWS-D009, PWS-D010, PWS-D028, PWS-D029
 - ADR: [ADR 0003](../adr/0003-secure-case-workspace.md)
 - Lifecycle: [Local case-lifecycle contract](case-lifecycle.md)
+- Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
 
 ## Scope
 
 `paperworkshell.storage` owns the authenticated Windows filesystem boundary for case-workspace
-layout, private directory creation, bounded inventory, cache/temp capacity reservation, and safe
-disposable cleanup. It does not parse documents and does not import UI, application, worker, PDF,
-image, OCR, overlay, preflight, export, or diagnostics layers.
+layout, private directory creation, bounded inventory, cache/temp capacity reservation, immutable
+source preparation/publication, and safe disposable cleanup. It does not parse documents and does
+not import UI, application, worker, PDF, image, OCR, overlay, preflight, export, or diagnostics
+layers.
 
 Package initializers remain passive. Consumers import the explicit submodule that owns a type; the
 namespace does not re-export implementations.
 
 ## Fixed layout and ownership
 
-| Area | Provisioned by PWS-0101 | PWS-0101 mutation | Future owner |
+| Area | Provisioned by PWS-0101 | PWS-0101 mutation | Owning task/boundary |
 |---|---:|---|---|
 | case root | yes | private creation and verification | PWS-0102 active lease and full removal |
-| `manifest.json` | reserved only | none | PWS-0102 atomic initial record; PWS-0109 later transactions |
+| `manifest.json` | reserved only | none | PWS-0102 initial record; PWS-0104 narrow import append; PWS-0109 general transactions |
 | `journal/` | yes | no general cleanup | PWS-0109 atomic persistence and recovery |
-| `originals/` | yes | no general cleanup | PWS-0104 immutable import |
+| `originals/` | yes | no general cleanup | PWS-0104 authenticated immutable source publication and integrity checks |
 | `cache/thumbnails/` | yes | authenticated child cleanup; root preserved | PWS-0108 bounded thumbnail service |
 | `cache/previews/` | yes | authenticated child cleanup; root preserved | PWS-0106/PWS-0108 rendering work |
-| `temp/` | yes | authenticated child cleanup; root preserved | PWS-0107/PWS-0112 operations; PWS-0113 orphan cleanup |
+| `temp/` | yes | authenticated child cleanup; root preserved | PWS-0104 source preparation; PWS-0107/PWS-0112 operations; PWS-0113 orphan cleanup |
 | `export-history.json` | reserved only | none | PWS-0112 verified export records with PWS-0109 persistence integration |
 
 Case roots use canonical lowercase UUIDv4 names. Provisioning retries generated collisions up to a
@@ -63,6 +65,21 @@ directories created by the failed call, in reverse order, after identity revalid
 
 Callers must not perform security-sensitive I/O merely because `resolve_case_relative()` returned a
 path. An owning broker operation must authenticate the opened handle immediately before use.
+
+### PWS-0104 immutable-ingest extension
+
+The immutable-ingest storage boundary adds no general original or manifest writer. It accepts one
+live PWS-0103 source lease, streams to a random authenticated pending file, verifies the staged bytes,
+and publishes only the exact retained identity under the derived `<source-id>.bin` name. It holds
+shared case coordination through source publication and the narrow manifest commit, so deletion or
+a second publisher cannot operate on an older case snapshot.
+
+The manifest operation is restricted to a fully validated import-only state. It adds one source and
+its complete page catalogue, appends those page IDs to matching base/final sequences, creates no
+page operation, and atomically replaces the manifest as the final commit point. Content inspection
+is supplied as typed metadata; storage never calls a PDF or image engine. Exact phases, duplicate
+behavior, cancellation, and integrity checks are defined by the
+[immutable source-ingest contract](immutable-ingest.md).
 
 ### `storage.permissions`
 
@@ -145,14 +162,21 @@ sibling cases and external objects are never in the inventory. This is applicati
 not a forensic-erasure claim. The full sequence is specified in the
 [local case-lifecycle contract](case-lifecycle.md).
 
+PWS-0104 cleanup is similarly identity-scoped. Failure before manifest commit leaves the previous
+manifest authoritative and removes only a pending or published source whose retained identity still
+matches. If immediate proof is unavailable, a random unreferenced case object may remain; it is not
+a valid source record and PWS-0113 owns bounded restart cleanup. An unknown manifest-replacement
+outcome preserves the random source until a fresh open resolves whether it is referenced. A
+confirmed manifest replacement wins over late cancellation rather than attempting an unsafe
+rollback.
+
 ## Explicit deferrals
 
-- PWS-0104: single-open external source copy, content hash, immutable publication, and original-file
-  enforcement.
 - PWS-0107: worker host/client lifecycle, active-case capability, cancellation, limits, and initial
   filesystem/network restrictions.
 - PWS-0108: bounded thumbnail writes, cache keys, cancellation, invalidation, and cache cleanup.
-- PWS-0109: authoritative manifest transactions, autosave journal, validation, and recovery.
+- PWS-0109: general authoritative manifest transactions, autosave journal, migration, and recovery
+  beyond the PWS-0104 import-only append.
 - PWS-0110: deterministic page operations and undo/redo history.
 - PWS-0112: export staging, assembly, reopen, verification, record, and destination commit.
 - PWS-0113: crash recovery, orphan-temp cleanup, sanitized logs, and diagnostic baseline.

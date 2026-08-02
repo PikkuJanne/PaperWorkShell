@@ -2,7 +2,7 @@
 
 - Status: Binding implementation policy
 - Task: PWS-0002
-- Extensions: PWS-0102 local case lifecycle; PWS-0107 restricted worker lifecycle
+- Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0107 restricted worker lifecycle
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -34,7 +34,7 @@ worker host -> domain
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Output planning, verification, and derivative commit behavior |
 | `templates` | Declarative, versioned template loading and validation |
-| `storage` | Authenticated case workspaces, local lifecycle, bounded external-source leases, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), and [Bounded import-precheck contract](import-prechecks.md) |
+| `storage` | Authenticated case workspaces, local lifecycle, bounded external-source leases, immutable ingest/integrity, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), and [Immutable source-ingest contract](immutable-ingest.md) |
 | `diagnostics` | Sanitized logging and previewable diagnostic data |
 
 ## Enforced import rules
@@ -76,8 +76,18 @@ Windows implementation in `storage.case_lifecycle`. Storage depends on domain co
 imports `app`; desktop composition will inject the concrete store. The adapter parses only the
 bounded lifecycle envelope and does not import repository tools or a third-party schema engine.
 Atomic initial publication, retained leases, and case-scoped removal are specified in the
-[Local case-lifecycle contract](case-lifecycle.md). PWS-0109 retains ownership of full runtime
-manifest validation and later transactions.
+[Local case-lifecycle contract](case-lifecycle.md). PWS-0109 retains ownership of general runtime
+manifest validation, autosave/journal behavior, migration, and arbitrary later transactions.
+
+PWS-0104 adds path-free metadata, duplicate/integrity results, progress, and closed errors in
+`domain.source_ingest`; `app.source_ingest` orchestrates only the structural prepare lease,
+inspection, commit, progress/cancellation, and integrity protocols. `storage` implements the
+retained-handle copy/hash, authenticated random case publication, and narrow import-only manifest
+append. Storage still does not import `app`, and application/domain code does not import the private
+Windows adapter. Complete PDF/image inspection arrives as typed metadata from its owning adapter
+through composition; storage never imports an engine or worker host. The two-phase and
+PWS-0109/PWS-0110 handoffs are specified in the
+[Immutable source-ingest contract](immutable-ingest.md).
 
 PWS-0107 makes the worker split concrete. GUI-safe `worker.client` modules own only cached lifecycle
 state and abstract process/transport contracts; `worker.protocol` owns bounded framing, bootstrap,

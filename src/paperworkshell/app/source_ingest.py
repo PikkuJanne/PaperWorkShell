@@ -1,0 +1,320 @@
+"""Toolkit-free orchestration for two-phase immutable source ingest."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import TracebackType
+from typing import Protocol, Self, runtime_checkable
+from uuid import UUID
+
+from paperworkshell.domain.source_ingest import (
+    CompletedSourceInspection,
+    PreparedSourceSummary,
+    SourceImportProgress,
+    SourceImportResult,
+    SourceIngestError,
+    SourceIngestErrorCode,
+    SourceIntegrityResult,
+    reject_source_ingest,
+    require_internal_id,
+    require_source_display_name,
+)
+
+
+class CancellationProbe(Protocol):
+    """Callable cooperative-cancellation check used by every long phase."""
+
+    def __call__(self) -> bool:
+        """Return an exact boolean without blocking."""
+
+
+class ProgressSink(Protocol):
+    """Callable receiver for path-free bounded progress records."""
+
+    def __call__(self, progress: SourceImportProgress, /) -> None:
+        """Receive one already validated progress record."""
+
+
+@runtime_checkable
+class PreparedSourceLease(Protocol):
+    """Storage-owned pending copy retained until commit or exact cleanup."""
+
+    @property
+    def summary(self) -> PreparedSourceSummary:
+        """Return immutable verified facts about the pending case copy."""
+
+    def __enter__(self) -> Self:
+        """Retain the pending source and its case authority."""
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
+        """Clean an uncommitted pending copy and release retained authority."""
+
+    def commit(
+        self,
+        inspection: CompletedSourceInspection,
+        *,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> SourceImportResult:
+        """Publish source bytes first and atomically publish the manifest last."""
+
+
+@runtime_checkable
+class SourceInspector(Protocol):
+    """Complete format-specific metadata for one exact prepared case copy."""
+
+    def inspect(
+        self,
+        source: PreparedSourceSummary,
+        *,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> CompletedSourceInspection:
+        """Return metadata bound to the supplied pending identifier."""
+
+
+@runtime_checkable
+class SourceIngestStore(Protocol):
+    """Narrow storage port for pending copies, commits, and integrity checks."""
+
+    def prepare(
+        self,
+        case_id: UUID,
+        source_path: Path,
+        display_name: str,
+        *,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> PreparedSourceLease:
+        """Return only after copy verification and terminal external-source recheck."""
+
+    def verify_integrity(
+        self,
+        case_id: UUID,
+        source_id: UUID,
+        *,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> SourceIntegrityResult:
+        """Hash one exact committed case copy without mutating it or its manifest."""
+
+
+class _SafeCancellationProbe:
+    __slots__ = ("_callback",)
+
+    def __init__(self, callback: CancellationProbe | None) -> None:
+        self._callback = callback
+
+    def __call__(self) -> bool:
+        callback = self._callback
+        if callback is None:
+            return False
+        try:
+            value = callback()
+        except SourceIngestError:
+            raise
+        except Exception:
+            reject_source_ingest(
+                SourceIngestErrorCode.CANCELLATION_FAILED,
+                "source.cancellation",
+            )
+        if type(value) is not bool:
+            reject_source_ingest(
+                SourceIngestErrorCode.CANCELLATION_FAILED,
+                "source.cancellation",
+            )
+        return value
+
+
+class _SafeProgressSink:
+    __slots__ = ("_callback",)
+
+    def __init__(self, callback: ProgressSink | None) -> None:
+        self._callback = callback
+
+    def __call__(self, progress: SourceImportProgress) -> None:
+        if type(progress) is not SourceImportProgress:
+            reject_source_ingest(SourceIngestErrorCode.PROGRESS_FAILED, "source.progress")
+        callback = self._callback
+        if callback is None:
+            return
+        try:
+            callback(progress)
+        except SourceIngestError:
+            raise
+        except Exception:
+            reject_source_ingest(SourceIngestErrorCode.PROGRESS_FAILED, "source.progress")
+
+
+class SourceIngestService:
+    """Order prepare, inspection, commit, and read-only integrity verification."""
+
+    __slots__ = ("_inspector", "_store")
+
+    def __init__(self, store: SourceIngestStore, inspector: SourceInspector) -> None:
+        self._store = store
+        self._inspector = inspector
+
+    def import_source(
+        self,
+        case_id: UUID,
+        source_path: Path,
+        display_name: str,
+        *,
+        cancellation: CancellationProbe | None = None,
+        progress: ProgressSink | None = None,
+    ) -> SourceImportResult:
+        """Commit only a fully copied, terminally rechecked, and inspected source."""
+
+        selected_case = require_internal_id(case_id, context="import.case_id")
+        if not isinstance(source_path, Path):
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_PATH_INVALID, "import.source_path")
+        safe_display_name = require_source_display_name(display_name)
+        cancellation_probe = _SafeCancellationProbe(cancellation)
+        progress_sink = _SafeProgressSink(progress)
+        _require_not_cancelled(cancellation_probe, context="import.before_prepare")
+
+        try:
+            pending = self._store.prepare(
+                selected_case,
+                source_path,
+                safe_display_name,
+                cancellation=cancellation_probe,
+                progress=progress_sink,
+            )
+        except SourceIngestError:
+            raise
+        except Exception:
+            reject_source_ingest(SourceIngestErrorCode.PREPARE_FAILED, "import.prepare")
+
+        phase = SourceIngestErrorCode.PREPARE_FAILED
+        validated_result: SourceImportResult | None = None
+        try:
+            with pending as active:
+                summary = _require_prepared_summary(active.summary, selected_case)
+                _require_not_cancelled(cancellation_probe, context="import.before_inspection")
+
+                phase = SourceIngestErrorCode.INSPECT_FAILED
+                inspection = self._inspector.inspect(
+                    summary,
+                    cancellation=cancellation_probe,
+                    progress=progress_sink,
+                )
+                _require_matching_inspection(inspection, summary)
+                _require_not_cancelled(cancellation_probe, context="import.before_commit")
+
+                phase = SourceIngestErrorCode.COMMIT_FAILED
+                result = active.commit(
+                    inspection,
+                    cancellation=cancellation_probe,
+                    progress=progress_sink,
+                )
+                validated_result = _require_matching_result(result, summary, inspection)
+        except SourceIngestError:
+            if validated_result is not None:
+                return validated_result
+            raise
+        except Exception:
+            if validated_result is not None:
+                return validated_result
+            reject_source_ingest(phase, f"import.{_phase_context(phase)}")
+        if validated_result is None:
+            reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "import.result")
+        return validated_result
+
+    def verify_integrity(
+        self,
+        case_id: UUID,
+        source_id: UUID,
+        *,
+        cancellation: CancellationProbe | None = None,
+        progress: ProgressSink | None = None,
+    ) -> SourceIntegrityResult:
+        """Return one hardened path-free integrity result without modifying case state."""
+
+        selected_case = require_internal_id(case_id, context="verify.case_id")
+        selected_source = require_internal_id(source_id, context="verify.source_id")
+        if selected_case == selected_source:
+            reject_source_ingest(SourceIngestErrorCode.IDENTIFIER_INVALID, "verify.identifiers")
+        cancellation_probe = _SafeCancellationProbe(cancellation)
+        progress_sink = _SafeProgressSink(progress)
+        _require_not_cancelled(cancellation_probe, context="verify.before_start")
+        try:
+            result = self._store.verify_integrity(
+                selected_case,
+                selected_source,
+                cancellation=cancellation_probe,
+                progress=progress_sink,
+            )
+        except SourceIngestError:
+            raise
+        except Exception:
+            reject_source_ingest(SourceIngestErrorCode.VERIFY_FAILED, "verify.storage")
+        if (
+            type(result) is not SourceIntegrityResult
+            or result.case_id != selected_case
+            or result.source_id != selected_source
+        ):
+            reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "verify.result")
+        return result
+
+
+def _require_not_cancelled(cancellation: CancellationProbe, *, context: str) -> None:
+    if cancellation():
+        reject_source_ingest(SourceIngestErrorCode.CANCELLED, context)
+
+
+def _require_prepared_summary(
+    value: object,
+    expected_case_id: UUID,
+) -> PreparedSourceSummary:
+    if type(value) is not PreparedSourceSummary or value.case_id != expected_case_id:
+        reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "import.prepared_result")
+    return value
+
+
+def _require_matching_inspection(
+    value: object,
+    source: PreparedSourceSummary,
+) -> CompletedSourceInspection:
+    if (
+        type(value) is not CompletedSourceInspection
+        or value.pending_id != source.pending_id
+        or value.media_type is not source.media_type
+    ):
+        reject_source_ingest(
+            SourceIngestErrorCode.INSPECTION_MISMATCH,
+            "import.inspection_result",
+        )
+    return value
+
+
+def _require_matching_result(
+    value: object,
+    source: PreparedSourceSummary,
+    inspection: CompletedSourceInspection,
+) -> SourceImportResult:
+    if (
+        type(value) is not SourceImportResult
+        or value.case_id != source.case_id
+        or value.source_id != source.source_id
+        or value.media_type is not source.media_type
+        or value.byte_size != source.byte_size
+        or value.sha256 != source.sha256
+        or len(value.page_ids) != inspection.page_count
+    ):
+        reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "import.commit_result")
+    return value
+
+
+def _phase_context(code: SourceIngestErrorCode) -> str:
+    if code is SourceIngestErrorCode.PREPARE_FAILED:
+        return "prepare"
+    if code is SourceIngestErrorCode.INSPECT_FAILED:
+        return "inspect"
+    return "commit"

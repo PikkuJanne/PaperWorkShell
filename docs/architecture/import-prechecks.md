@@ -4,6 +4,7 @@
 - Task: PWS-0103
 - Decisions: PWS-D007, PWS-D013, PWS-D038
 - Data flow: [DF-IMPORT](../security/data-flows.md#df-import--select-precheck-copy-inspect-and-commit-source)
+- Next boundary: [Immutable source-ingest contract](immutable-ingest.md)
 
 ## Scope
 
@@ -35,12 +36,13 @@ No third-party dependency is introduced.
 - refreshes identity, final path, size, link count, timestamps, attributes, and reparse state before
   the context can finish successfully.
 
-The result alone is not authorization to reopen a path. PWS-0104 must consume the still-live lease
-when it streams a pending immutable source; otherwise the precheck and copy could observe different
-file identities. Authoritative publication must occur only after the context exits successfully and
-its terminal identity checks pass. The lease closes deterministically on success and every failure
-path. A source already open for writing, or one that cannot remain unchanged, fails with a stable
-source error.
+The result alone is not authorization to reopen a path. PWS-0104 consumes the still-live lease when
+it streams and verifies a random pending case copy; otherwise the precheck and copy could observe
+different file identities. The pending copy is still non-authoritative when control returns through
+this context. Publication beneath `originals/` can begin only after the context exits successfully
+and its terminal identity checks pass. The lease closes deterministically on success and every
+failure path. A source already open for writing, or one that cannot remain unchanged, fails with a
+stable source error.
 
 UNC, device-namespace, extended-namespace, drive-relative, removable, mapped-network, cloud
 placeholder, control-character, reserved-name, trailing-dot/space, and explicit named-stream paths
@@ -53,9 +55,9 @@ UTF-16 code units. The retained ancestor chain therefore has a fixed handle, que
 cleanup ceiling.
 
 The selected path addresses only the unnamed/default file stream. An existing named alternate data
-stream is neither opened nor interpreted as document content. PWS-0104 must likewise copy only the
-same default stream from the retained handle; it must not enumerate or persist external named
-streams.
+stream is neither opened nor interpreted as document content. PWS-0104 likewise copies only the
+same default stream from the retained handle; it does not enumerate or persist external named
+streams. Its case-scoped pending and immutable files must not contain named streams.
 
 ## Content policy
 
@@ -120,9 +122,11 @@ text is discarded. Paths, original filenames, file bytes, metadata, and user-con
 not enter the result, exception text, or object representation.
 
 The precheck has no case-workspace write capability. Rejection cannot create a pending original,
-manifest entry, journal record, cache object, or partial valid document. PWS-0104 owns copy/hash and
-pending-file cleanup; PWS-0105 owns PDF structural classification; PWS-0107 owns restricted worker
-process resources; and PWS-0201 owns full JPEG/PNG decode and normalization.
+manifest entry, journal record, cache object, or partial valid document. The
+[immutable ingest boundary](immutable-ingest.md) owns same-lease copy/hash, pending-file cleanup,
+verified publication, and the narrow complete source/page manifest append. PWS-0105 owns PDF
+structural classification; PWS-0107 owns restricted worker process resources; and PWS-0201 owns full
+JPEG/PNG decode and normalization.
 
 ## Verification evidence
 

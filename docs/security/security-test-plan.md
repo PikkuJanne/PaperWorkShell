@@ -35,14 +35,14 @@
 | ST-001 | TM-001, TM-003, TM-022, TM-023 | PWS-0103, PWS-0105, PWS-0106, PWS-0107 | Security/integration: malformed/truncated/deep PDF/image inputs; corrupted/truncated/oversized/wrong-case/raced canonical preview buffers; hostile worker/tool results | GUI never invokes a general-purpose decoder on worker bytes; worker terminates/restarts where required; stable error; case/original unchanged |
 | ST-002 | TM-002 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0201, PWS-0208 | Security/performance: byte/page/pixel/decompression/recursion/memory/CPU/temp limits at boundaries | Work stops within budget; partial state is non-authoritative; retry remains possible |
 | ST-003 | TM-004 | PWS-0107, PWS-0204, PWS-0803 | Security: real worker and descendant attempt IPv4/IPv6 TCP and UDP against controlled loopback listeners; reachable non-isolated control; OCR socket/DNS/HTTP attempts; updater privacy capture | AppContainer token has zero capability SIDs; no listener receives isolated traffic while control succeeds; descendants retain denial; updater request contains no case/document fields |
-| ST-004 | TM-005, TM-023 | PWS-0103, PWS-0104, PWS-0112 | Security/integration: one-handle source replacement/truncation; post-import case-copy mutation before parse/export; destination swap between verification/temp copy/digest/commit | Race/mutation detected before an authoritative result; exact verified bytes or no export commit; external source/prior export hashes and last valid manifest unchanged |
+| ST-004 | TM-005, TM-023 | PWS-0103, PWS-0104, PWS-0112 | Security/integration: one-handle source replacement/truncation; pending-copy corruption; post-import case-copy mutation before parse/export; destination swap between verification/temp copy/digest/commit | Race/mutation detected before an authoritative result; successful source/staged/stored digests agree or no source record; exact verified export bytes or no export commit; external source/prior export hashes and last valid manifest unchanged |
 | ST-005 | TM-006, TM-019, TM-023 | PWS-0101, PWS-0102, PWS-0104, PWS-0107, PWS-0407, PWS-0706 | Security: traversal, absolute/device/UNC/ADS/reserved names, symlink/reparse/hardlink/file-ID alias, case-insensitive/Unicode collision, cache/temp link swap, ZIP/deletion escape; restricted worker tries case roots, originals, manifest/journal/history, sibling case, external and inherited user-temp paths; deliberate exact-handle control when available | Reject before mutation and again at opened handle; no path-based worker case access; only an authenticated least-privilege handle works; broker alone publishes state; no file outside exact scope changes |
-| ST-006 | TM-007 | PWS-0006, PWS-0109, PWS-0804 | Unit/integration: old/current/future/invalid schemas, partial atomic write, journal corruption, interrupted migration | Future/invalid fails before mutation; last valid state reopens; source hashes/intent preserved |
+| ST-006 | TM-007 | PWS-0006, PWS-0104, PWS-0109, PWS-0804 | Unit/integration: old/current/future/invalid schemas, interrupted import-only append, partial atomic write, journal corruption, interrupted migration | Future/invalid fails before mutation; a precommit import exposes no source record; last valid state reopens; source hashes/intent preserved |
 | ST-007 | TM-008 | PWS-0008, PWS-0107 | Unit/property/integration: wrong fixed bootstrap size/magic/version/identity/capability; zero/oversized/truncated/fragmented/coalesced frames; wrong session/worker/capability/case/operation/generation/direction/sequence/request; malformed, replayed, unknown, or out-of-order envelope | Bootstrap/frame/decoder/state rejects before work; grant from another launch fails; first protocol fault poisons generation and terminates when required; stale restart events do not mutate state; no raw values leak |
 | ST-008 | TM-009 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0204 | Security: metacharacter/quote/newline input; decoy executable/DLL/plugin/config/font/language resource in user PATH/PATHEXT/TEMP/cwd; proxy/cloud/command/Python environment canaries; inherited-handle inventory; child-spawn and excessive output | Fixed executable/resource identity, fixed argv/cwd, no shell; only constructed allowlist with per-launch profile temp values; exactly RPC/bootstrap handles; descendants inherit egress/limit/kill policy; stable sanitized result |
 | ST-009 | TM-010 | PWS-0007, PWS-0401 | Security/unit: script/import/expression/path-bearing executable field, duplicate keys, tamper, expiry, future version; schema-permitted inert provenance URL under network/file spy | No execution or dereference/file/network access; inert provenance stays data; trust state is visible; case unchanged; invalid template code and plain remediation |
 | ST-010 | TM-011, TM-018, TM-026 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Security: distinct context-specific canaries plus diagnostic entry mutation/addition/removal after preview and before write | No prohibited canary; produced entries/digests exactly match frozen approved snapshot; mutation fails closed; cancel writes nothing |
-| ST-011 | TM-012, TM-013, TM-023 | PWS-0101, PWS-0108, PWS-0113, PWS-0705 | Integration/security: cancel/crash/power-loss, stale/raced/aliased cache, unrelated case, lock/expiry/restart | Partial data stays operation/case scoped and is ignored/cleaned/recovered; wrong-case/raced cache is rejected; unrelated case is not visible |
+| ST-011 | TM-012, TM-013, TM-023 | PWS-0101, PWS-0104, PWS-0108, PWS-0113, PWS-0705 | Integration/security: cancel/crash/power-loss, pre-manifest source orphan, stale/raced/aliased cache, unrelated case, lock/expiry/restart | Partial data stays operation/case scoped and non-authoritative, and is ignored/cleaned/recovered; wrong-case/raced state is rejected; unrelated case is not visible |
 | ST-012 | TM-014, TM-015 | PWS-0112, PWS-0406, PWS-0407 | Integration/security: truncated/wrong-page/encrypted/unrenderable output, collision/alias/UNC policy, ZIP names, destination-local temp digest mismatch, disk-full/permission/partial multi-file | Required verification failure blocks artifact/package success; each commit is atomic; partial set is inventoried for cleanup/retry; previous good output remains |
 | ST-013 | TM-016 | PWS-0105, PWS-0206, PWS-0208, PWS-0305 | Integration/accessibility: signed-marker source through modify/cancel/export and signature-image wording | Warning/confirmation precedes change; original preserved; output says unsigned derivative; visual mark makes no crypto claim |
 | ST-014 | TM-017 | PWS-0405, PWS-0601, PWS-0603, PWS-0606, PWS-0607, PWS-0608 | Security/golden/manual: visual-cover negative case and adversarial text/image/object/revision/metadata/OCR/viewer/resave canaries | Ordinary shape never passes; any recovered/unknown canary blocks export; independent gate remains mandatory |
@@ -70,6 +70,30 @@ also reuses PWS-0101's live reparse and file-identity boundary. Together these p
 honest partial reporting. Error/result checks prohibit paths, canaries, raw exceptions, and any
 forensic-erasure claim. PWS-0706 retains the later human inventory/retention workflow, and PWS-0113
 retains restart orphan cleanup and diagnostics.
+
+## PWS-0104 immutable-ingest evidence
+
+The immutable-ingest suites implement the PWS-0104 portions of ST-004 through ST-006, ST-011, and
+ST-018. Unit tests stream deterministic content at copy-chunk boundaries and compare independent
+source, pending-copy, committed-copy, and manifest SHA-256 values. Short reads, cancellation at each
+precommit phase, injected disk-full/write/flush failure, pending-copy corruption, ID collisions, and
+manifest-stage failure leave the prior manifest authoritative and no valid source/page record.
+
+Windows integration holds the real PWS-0103 source lease through copy, proves the selected external
+file is never opened for writing and retains its content and modification time, and forces a
+terminal source change. It also proves atomic import-only manifest replacement, source-bearing
+fresh-service reopen, serialized concurrent imports, advisory duplicates with distinct random
+copies, and the post-copy/pre-manifest orphan boundary. Confirmed replacement wins over late
+cancellation; an unknown replacement outcome preserves the random source for fresh-open authority
+resolution. PWS-0113 retains restart orphan discovery and cleanup.
+
+Security cases race parent/original/temp/manifest identities, hard links, alternate streams, and
+reparse targets while preserving sibling and outside sentinels. Integrity checks detect missing,
+size-changed, digest-changed, hard-linked, streamed, or reparse case copies without repair. Separate
+canaries in paths, display names, content, named streams, and raw failures prove that only the
+protected manifest contains the intended display name and that logs/results contain no paths,
+names, bytes, metadata, or digests. Required Windows filesystem controls are evidence only when the
+real supported volume exercises them; a mocked or skipped required race is not a pass.
 
 ## PWS-0107 required live evidence
 
@@ -116,6 +140,8 @@ evidence.
 
 - Implement ST-001 through ST-008, the M1 portions of ST-010 through ST-012, and source hash/log
   audits.
+- Retain PWS-0104 source/pending/committed hash equality, unchanged external-original, atomic
+  import-only append, cancellation commit-point, orphan, duplicate, and later-integrity evidence.
 - Force worker crash, timeout, cancellation, malformed message, disk-full, permission failure,
   destination failure, and recovery.
 - For PWS-0107 specifically, retain the live AppContainer/egress/job/environment/handle/filesystem

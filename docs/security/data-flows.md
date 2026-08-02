@@ -120,21 +120,24 @@ Primary threats: TM-001, TM-002, TM-004, TM-008, TM-009, TM-011, TM-012, TM-022,
 sequenceDiagram
     actor Person
     participant UI as Desktop/UI
-    participant Import as Import/storage adapter
-    participant Case as Case quarantine (worker read only)
-    participant Worker as Restricted worker
+    participant Precheck as Source precheck
+    participant Case as Case pending/originals
+    participant Inspect as Typed inspection boundary
     participant Broker as Trusted storage broker
     participant Manifest as Manifest transaction
     Person->>UI: Select source path
-    UI->>Import: Import request and active case ID
-    Import->>Import: Canonicalize; open read-only; size/signature precheck
-    Import->>Case: Stream to random pending file while hashing
-    Import->>Broker: Logical pending ID, retained read-only handle, and explicit limits
-    Broker->>Worker: Validated request plus exact read-only handle
-    Worker->>Worker: Content inspection in bounded adapter
-    Worker-->>Broker: Typed inspection result or stable error
-    Broker->>Manifest: Commit source record only after complete copy/hash/validation
-    Manifest-->>UI: Internal source ID and concrete status
+    UI->>Precheck: Import request, selected path, limits
+    Precheck->>Precheck: Canonicalize; open once read-only; bounded framing
+    Precheck->>Case: Stream same live handle to random pending file; hash
+    Case->>Case: Flush, reopen, verify size/digest/identity
+    Precheck->>Precheck: Terminal external-source identity check; close lease
+    Precheck-->>Broker: Prepared logical ID and verified byte facts
+    Broker->>Inspect: Exact prepared-copy handle and explicit limits
+    Inspect-->>Broker: Typed complete metadata or stable error
+    Broker->>Case: Publish exact copy as random source ID
+    Broker->>Manifest: Append source + complete pages/base/final sequence
+    Manifest->>Manifest: Validate target; atomically replace manifest
+    Manifest-->>UI: Committed source ID, duplicate advisory, concrete status
 ```
 
 1. TB-01: the selected path and displayed extension are untrusted.
@@ -142,21 +145,35 @@ sequenceDiagram
    and opens a supported regular source exactly once with read-only sharing/identity policy. It may
    perform only bounded signature/size checks while streaming that handle; it never parses full
    PDF/image structure in the UI process.
-3. TB-03: bytes stream into a random, case-scoped pending name while SHA-256 is calculated. A
-   changing/truncated source, cancellation, limit, disk-full, or write failure leaves no valid
-   source record.
-4. TB-02/TB-03: when PWS-0105 registers complex inspection, RPC carries only a logical quarantine
-   reference, per-launch capability, case/operation binding, and explicit limits. The trusted
-   broker must separately transfer the same retained, authenticated read-only handle. The worker
-   cannot write the quarantine, manifest, journal, or source records. Its typed result is validated
-   and raw third-party exceptions are discarded. The current no-op performs no inspection and
-   receives no handle.
-5. The trusted storage broker alone publishes a source record/manifest revision after complete
-   copy/hash/inspection policy succeeds. The external source is never opened for writing. A later
-   hash detects application-model mutation; it is not authentication against malware able to
-   rewrite both case files and manifests.
+3. TB-03/TB-05: bytes stream from that same live handle into a random case-scoped pending name while
+   SHA-256 is calculated. The pending file is flushed, reauthenticated, and independently read back
+   for exact size/digest verification. It remains non-authoritative until the source context exits
+   normally and its terminal identity check succeeds. A changing/truncated source, cancellation,
+   limit, disk-full, or write failure leaves no valid source record.
+4. TB-02/TB-03: complex inspection receives only a logical prepared reference, case/operation
+   binding, explicit limits, and an exact broker-authenticated read-only handle. It returns typed
+   complete metadata for that copy. PDF `not_checked` values and a missing page count cannot be
+   promoted into a source record. The worker cannot write the pending copy, manifest, journal,
+   source records, or page records; raw third-party exceptions are discarded.
+5. The trusted broker validates the complete metadata and serializes duplicate detection against
+   committed SHA-256 values. A match is advisory: each accepted import retains a distinct random
+   source ID, immutable case copy, display name, and page identity.
+6. The broker publishes the exact verified pending identity beneath `originals/`, then uses the
+   PWS-0104 import-only appender to add the source, its complete zero-based page catalogue, and the
+   new page IDs to both base and final sequences without an operation. The complete target manifest
+   validates before atomic replacement; replacement is the commit point. PWS-0109 later owns the
+   general repository and PWS-0110 owns page-operation replay.
+7. Cancellation before that commit point retains the previous valid manifest and removes only an
+   exact object still owned by the operation. A post-copy/pre-manifest crash can leave a random
+   unreferenced case orphan for PWS-0113; it is not a source record. A manifest replacement reported
+   as unknown preserves the random source until fresh-open recovery determines whether it is
+   referenced. Confirmed commit wins over late cancellation. The external source is never opened
+   for writing. Later read-only size, SHA-256, link, stream, reparse, and containment checks detect
+   application-model mutation; they do not authenticate against malware able to rewrite both case
+   files and manifests.
 
-Primary threats: TM-001, TM-002, TM-003, TM-005, TM-006, TM-022, TM-023, TM-026.
+Primary threats: TM-001, TM-002, TM-003, TM-005, TM-006, TM-007, TM-011, TM-012, TM-022,
+TM-023, TM-026.
 
 ## DF-PREVIEW — render bounded thumbnails/previews
 

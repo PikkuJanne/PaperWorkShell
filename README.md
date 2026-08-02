@@ -106,6 +106,14 @@ returning only typed preliminary state or sanitized errors. Its exact lease, for
 and worker deferrals are documented in
 [`docs/architecture/import-prechecks.md`](docs/architecture/import-prechecks.md).
 
+Immutable ingest streams that same live source handle into a random case-scoped pending copy,
+verifies independent SHA-256 values, waits for complete typed inspection metadata, and then commits
+a distinct random original plus its complete source/page manifest graph. Duplicate content is an
+advisory rather than silent deduplication; manifest replacement is the cancellation commit point;
+later integrity checks detect missing, changed, or unsafe case copies. The two-phase flow, privacy
+rules, orphan recovery handoff, and PWS-0109/PWS-0110 boundaries are documented in
+[`docs/architecture/immutable-ingest.md`](docs/architecture/immutable-ingest.md).
+
 Third-party admission, exact pin/hash evidence, Windows redistribution, renderer comparison, and
 SBOM inputs are governed by
 [`docs/development/dependency-policy.md`](docs/development/dependency-policy.md). The checked-in

@@ -1,9 +1,10 @@
 # Local case-lifecycle contract
 
-- Status: Implemented PWS-0102 contract
-- Task: PWS-0102
+- Status: Implemented PWS-0102 contract with PWS-0104 immutable-ingest extension
+- Tasks: PWS-0102, PWS-0104
 - Decisions: PWS-D005, PWS-D010, PWS-D028
 - Depends on: PWS-0101 secure case workspace; PWS-0006 case manifest v1
+- Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
 
 ## Scope and layers
 
@@ -14,10 +15,12 @@ use case through a structural storage protocol and holds at most one active leas
 `storage.case_lifecycle` adapter authenticates Windows filesystem objects through
 `CaseWorkspaceManager`; it never imports the application layer.
 
-The service has no UI, network operation, document engine, new runtime dependency, migration, or
-general manifest transaction API. PWS-0111 owns the first accessible desktop workflow, PWS-0109
-owns full schema/semantic validation and later manifest revisions, and PWS-0113 owns restart-time
-orphan recovery.
+The lifecycle service has no UI, network operation, document engine, new runtime dependency,
+migration, or general manifest transaction API. PWS-0104 adds a separate narrow import-only
+manifest appender after the initial record; it does not turn lifecycle storage into a general
+repository. PWS-0111 owns the first accessible desktop workflow, PWS-0109 owns general
+schema/semantic persistence, autosave, and later revisions, and PWS-0113 owns restart-time orphan
+recovery.
 
 ## Public lifecycle behavior
 
@@ -26,8 +29,9 @@ orphan recovery.
   UUID-named candidates are authenticated independently; entries that are incomplete or invalid
   are returned separately as path-free unavailable issues and never hide valid cases.
 - `open_case(case_id)` strictly reads the lifecycle envelope and retains an authenticated case-root
-  lease. Opening the already-active ID is idempotent; opening or creating a different ID requires
-  closing the current lease first.
+  lease. The envelope may describe an empty case or a complete PWS-0104 source/page import revision.
+  Opening the already-active ID is idempotent; opening or creating a different ID requires closing
+  the current lease first.
 - `close_case()` releases the retained handles idempotently. An optional supplied ID must match the
   active case.
 - `delete_case(case_id, confirmation)` accepts only the closed
@@ -58,6 +62,22 @@ case cannot appear in the valid index. Interruption after it leaves one complete
 A failed pre-publication cleanup may conservatively leave a random incomplete skeleton; PWS-0113
 owns bounded restart cleanup, and listing continues to classify it as unavailable.
 
+## Narrow source-import revisions
+
+PWS-0104 publishes the first post-creation revision through its own import-only transaction. It
+requires a supported fully validated current manifest with no page operations and matching base and
+final page sequences. One transaction adds a complete source record, every source page record, and
+the new page IDs to both sequences without creating an operation. It preserves unrelated state,
+increments the revision once, and validates the complete target before atomic replacement.
+
+The manifest replacement is the import commit point and follows publication of the exact verified
+randomly named case copy. Interruption before replacement leaves the prior manifest authoritative;
+an unreferenced random original may require PWS-0113 cleanup. Interruption after replacement leaves
+a complete source/page graph that a fresh lifecycle service can list and open. An unknown
+replacement outcome preserves the source until that fresh open resolves whether the manifest
+references it. PWS-0109 later absorbs this narrow behavior into the general repository, and
+PWS-0110 owns subsequent operation replay.
+
 ## Bounded manifest dispatch
 
 Listing, opening, and deletion read the exact authenticated manifest handle with an 8 MiB cap and
@@ -72,9 +92,11 @@ matching UUIDv4, a bounded integer revision, schema-shaped top-level collection/
 valid ordered UTC timestamps. The fixed directory skeleton is reauthenticated before a summary is
 accepted.
 
-This is deliberately lifecycle-envelope validation, not a second implementation of the complete
-manifest schema and semantic validator. PWS-0109 must move the canonical full validator into the
-runtime persistence boundary before it publishes later revisions.
+Lifecycle list/open/delete still perform envelope validation rather than reimplementing the complete
+manifest schema and semantic validator. The PWS-0104 appender separately validates its complete
+current and target import-only manifests before publication. PWS-0109 must consolidate canonical
+full validation in the general runtime persistence boundary before it publishes arbitrary later
+revisions.
 
 ## Active leases and concurrency
 
@@ -86,6 +108,11 @@ sharing, so another process also cannot acquire deletion authority while the cas
 Application transitions hold one service lock through their storage call. A failed create or open
 does not replace prior active state. Delete obtains delete access before mutation, rejects active
 leases/reservations, and prevents new leases or capacity claims until its authority closes.
+
+PWS-0104 source preparation and commit use the same per-case coordination identity. A publisher
+cannot commit against an older manifest snapshot while deletion or another import owns the case
+publication boundary; concurrent imports serialize or return a stable conflict rather than losing a
+revision.
 
 ## Authenticated deletion
 
@@ -127,3 +154,7 @@ integration and security tests cover the complete lifecycle round trip, fresh-se
 interrupted publication, version safety without mutation, active-lease and capacity-reservation
 exclusion, resilient candidate listing, manifest-first partial deletion, whole-tree pre-inventory,
 alias/stream rejection, sibling/external preservation, and prohibited-value sanitization.
+
+PWS-0104 adds source-bearing reopen, complete source/page graph, serialized revision, atomic
+replacement, pre/post-commit interruption, and unreferenced-orphan evidence. The detailed ingest
+matrix is owned by the [immutable source-ingest contract](immutable-ingest.md).
