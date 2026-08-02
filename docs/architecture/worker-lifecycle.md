@@ -22,7 +22,7 @@ boundary; it does not prove PDF/image parsing or case-file access.
 
 | Component | Responsibility | Trust rule |
 |---|---|---|
-| `worker.client.client` | Owner-thread lifecycle, local snapshots, deadlines, cancellation, shutdown, fault and restart | GUI-safe; no host/platform/document-adapter import |
+| `worker.client.client` | Dedicated coordinator-thread lifecycle, local snapshots, deadlines, cancellation, shutdown, fault and restart | GUI-process-side; no host/platform/document-adapter import |
 | `worker.client.process` | Typed launcher/process/transport contracts and bounded framed transport | Hides payloads, paths, commands, and environment from representations |
 | `worker.client._windows` | AppContainer profile, ACL grant lease, pipes, suspended process, Job Object, termination and cleanup | Windows-only private launcher; no UI dependency |
 | `worker.protocol.bootstrap` | Exact 92-byte launch grant | Launch-only; secret redacted and never extensibly decoded |
@@ -52,6 +52,14 @@ The command is a fixed structured argument array, never a shell string:
 
 No filename, template value, OCR/document text, case path, or RPC value can alter that array.
 
+`WindowsProcessLauncher` is the sole process-creation broker in the GUI process. Every future
+GUI-side process launch must use the same broker and creation lock. That lock spans creation of
+the first temporarily inheritable pipe endpoint through confirmed closure or de-inheritance of
+every worker-only broker copy. Acquisition is bounded, and a cleanup failure quarantines retained
+handle authority and makes later launch attempts fail with a stable error. A source-architecture
+test rejects direct subprocess/multiprocessing entry points, common Python spawn aliases, and the
+Windows CreateProcess/ShellExecute/WinExec families outside this broker.
+
 ### Ordered Windows launch
 
 One generation is created in this order:
@@ -68,7 +76,19 @@ One generation is created in this order:
 8. Configure and assign the Job Object before resume.
 9. Close broker duplicates of the worker-only pipe ends; write and close the exact bootstrap
    grant; resume the primary thread.
-10. Retain the process, job, profile, and broker pipe ends for the full generation.
+10. Before negotiation or descendant launch, clear and re-query `HANDLE_FLAG_INHERIT` on all
+    three worker endpoints.
+11. Retain the process, job, profile, and broker pipe ends for the full generation.
+
+Runtime/code ACL changes are SID-specific and serialized across sessions by a protected Global
+mutex. Its owner is the current user, its DACL grants only that user and LocalSystem, its handle is
+non-inheritable, and an existing object's owner/DACL must match exactly. An abandoned mutex retains
+ownership in an in-process quarantine and is not intentionally released before exit because the
+interrupted ACL state is unknown. The broker preflights the complete bounded resource tree before
+mutation, rejects an absent or NULL DACL, and removes only the launch SID's entries during cleanup.
+Overlapping profiles therefore retain one another's access; cleanup proves the temporary SID absent
+and restores each observed object's original auto-inheritance state without replaying a stale whole
+descriptor. Numeric Job Object limits are range-checked before conversion to the Windows ABI.
 
 The child receives exactly three handles: standard input for client-to-worker RPC, standard output
 for worker-to-client RPC, and standard error as a one-shot bootstrap reader. It receives no case,
@@ -78,8 +98,8 @@ source, cache, manifest, journal, destination, diagnostic, or logging handle.
 
 The fixed grant is 92 bytes: an eight-byte magic, four-byte big-endian version, three 16-byte UUID
 identities, and the raw 32-byte capability. The worker performs an exact blocking read, validates
-the complete grant, and then audits its AppContainer token, zero capabilities, Job membership, and
-environment before it accepts `session.hello`.
+the complete grant, and then audits its AppContainer token, zero capabilities, Job membership,
+environment, and non-inheritable standard endpoints before it accepts `session.hello`.
 
 A bootstrap failure exits with a stable numeric host code and emits no raw stderr. Standard error
 cannot become a document-content side channel because it is occupied by the one-shot read pipe.
@@ -95,12 +115,12 @@ Each RPC frame contains a four-byte unsigned big-endian payload length followed 
 - rejects partial headers/bodies and nonconforming reads; and
 - never includes payload bytes or a source exception in its stable error text.
 
-The GUI owner validates and enqueues outbound bytes into a bounded queue; a private writer thread
-performs the blocking pipe write and flush. A worker that stops reading therefore cannot pin the
-GUI thread before its lifecycle deadline is armed. The writer completes only writes that make
-bounded forward progress and does not retry a zero/blocked write indefinitely. Bounded inbound and
-outbound queues prevent an unconsumed peer from creating unbounded in-process storage; a queue or
-writer failure faults the transport and generation.
+The lifecycle coordinator validates and enqueues outbound bytes into a bounded queue; a private
+writer thread performs the blocking pipe write and flush. A worker that stops reading therefore
+cannot pin the coordinator before its lifecycle deadline is armed. The writer completes only
+writes that make bounded forward progress and does not retry a zero/blocked write indefinitely.
+Bounded inbound and outbound queues prevent an unconsumed peer from creating unbounded in-process
+storage; a queue or writer failure faults the transport and generation.
 
 Framing validity is not message validity. Every payload passes the strict protocol-v1 codec and
 `ProtocolPeer` before dispatch. Binding covers capability, session, worker instance, case,
@@ -110,8 +130,13 @@ faults the session before operation work.
 
 ## Client lifecycle
 
-`WorkerClient` is an actor owned by the thread that constructs it. All mutating calls and accepted
-transport events must run on that owner thread. Its phases are:
+`WorkerClient` is an actor owned by the thread that constructs it. Because Windows launch,
+tree-termination confirmation, AppContainer cleanup, and serialized ACL mutation are synchronous,
+the owner must be a dedicated lifecycle-coordinator thread in the GUI process, never the GUI event
+thread. All mutating calls and accepted transport events run on that coordinator. UI/application
+integration delivers immutable snapshots and commands across a message boundary; it does not call
+the client directly from the event loop. PWS-0111 owns that accessible UI integration. Its phases
+are:
 
 | Phase | Meaning | Permitted next outcomes |
 |---|---|---|
@@ -145,9 +170,11 @@ deadline, so ordering is explicit rather than a thread race.
    first, repeated, or already terminal; it is never completion.
 5. Exactly one valid `operation.result` is authoritative. A result may still be `succeeded` after a
    cancel request when completion won the race.
-6. A valid terminal payload processed before an explicit deadline event wins, including when both
-   carry the same monotonic timestamp. If the deadline event is processed first, timeout wins,
-   the job is terminated, and later events cannot change the terminal client state.
+6. The host publishes one terminal record and its monotonic occurrence time before enqueueing it.
+   A record at or before the host deadline wins older queued cancel/progress traffic; a later
+   record times out. At the client, a valid terminal payload processed before an explicit deadline
+   event wins, including at the same timestamp. Once the client deadline event wins, the job is
+   terminated and later events cannot change terminal state.
 7. Host operation timeout emits the closed `WORKER_OPERATION_TIMED_OUT` result with
    `restart_worker`, then exits. Broker operation, cancellation-grace, handshake, and shutdown
    timeout also terminate the complete job tree and fault the generation.
@@ -169,6 +196,13 @@ Restart performs no retry and replays no operation. It first terminates and clos
 transport, process handles, ACL grant lease, and AppContainer profile. It then creates a new
 generation with fresh session/worker UUIDs, capability, pipes, profile, job, peer state, message
 IDs, and sender sequences. Events tagged with any earlier generation are rejected as stale.
+
+Handle, ACL, mutex, profile, and partial-launch cleanup retain authority until Windows confirms the
+release. Bounded retries may physically release a resource, but an earlier unconfirmed lifecycle
+remains sticky to the client. Unresolved authorities are quarantined, and another launch is
+rejected rather than treating a later idempotent call as proof that the earlier generation was
+clean. After the Job Object proves the process tree empty, profile/grant cleanup is independent of
+whether an exited process or Job handle itself closes on the first bounded attempt.
 
 ## Stable failures
 
@@ -214,7 +248,8 @@ No later task may substitute a case path, general directory capability, or broad
 PWS-0107 is complete only with real supported-Windows evidence for:
 
 - fixed executable, arguments, working directory, no shell, and constructed minimal environment;
-- exact three-handle inheritance and exact 92-byte one-shot grant;
+- exact three-handle inheritance, child-side de-inheritance, descendant non-propagation, and the
+  exact 92-byte one-shot grant;
 - live host negotiation only after AppContainer/zero-capability/job/environment self-audit;
 - frame boundaries, strict protocol validation, replay/cross-generation rejection, and bounded
   reader/write failure;
@@ -226,11 +261,12 @@ PWS-0107 is complete only with real supported-Windows evidence for:
 - environment canaries absent, profile bootstrap-storage writes succeeding, and tested
   case/application/user locations remaining denied;
 - path-based attempts against cases, authoritative records, external locations, inherited user
-  temp, and unrelated profile data denied; and
-- exact deliberately brokered handles working once an operation introduces them.
+  temp, and unrelated profile data denied.
 
 The current no-op must not fake handle evidence with a test-only production RPC operation. Tests
 may inject fixed launch/operation adapters, but release claims require the real launcher and host.
+Successful case-object handle brokerage is not a PWS-0107 completion criterion; the first later
+operation that introduces it must prove that only its exact deliberately brokered handles work.
 Any required skipped probe, leaked canary, surviving descendant, unexpected writable path, or
 cleanup failure leaves the task/gate open.
 

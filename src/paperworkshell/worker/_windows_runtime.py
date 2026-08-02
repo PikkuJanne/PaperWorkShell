@@ -7,19 +7,27 @@ import os
 from ctypes import wintypes
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Any, Final
 
 from paperworkshell.worker.protocol.bootstrap import BOOTSTRAP_BYTES
 
 _TOKEN_QUERY: Final = 0x0008
 _TOKEN_IS_APP_CONTAINER: Final = 29
 _TOKEN_CAPABILITIES: Final = 30
+_STD_INPUT_HANDLE: Final = -10
+_STD_OUTPUT_HANDLE: Final = -11
 _STD_ERROR_HANDLE: Final = -12
+_STANDARD_HANDLE_IDS: Final = (_STD_INPUT_HANDLE, _STD_OUTPUT_HANDLE, _STD_ERROR_HANDLE)
+_HANDLE_FLAG_INHERIT: Final = 0x0000_0001
+_INVALID_HANDLE_VALUE: Final = ctypes.c_void_p(-1).value
 _ERROR_BROKEN_PIPE: Final = 109
 _ALLOWED_ENVIRONMENT: Final = frozenset(
     {
         "SYSTEMROOT",
         "WINDIR",
+        "LOCALAPPDATA",
+        "TEMP",
+        "TMP",
         "PYTHONIOENCODING",
         "PYTHONUTF8",
     }
@@ -35,6 +43,7 @@ class IsolationAuditCode(StrEnum):
     NETWORK_CAPABILITY_PRESENT = "WORKER_ISOLATION_NETWORK_CAPABILITY_PRESENT"
     JOB_REQUIRED = "WORKER_ISOLATION_JOB_REQUIRED"
     ENVIRONMENT_INVALID = "WORKER_ISOLATION_ENVIRONMENT_INVALID"
+    STANDARD_HANDLE_POLICY_INVALID = "WORKER_ISOLATION_STANDARD_HANDLE_POLICY_INVALID"
     BOOTSTRAP_UNAVAILABLE = "WORKER_BOOTSTRAP_UNAVAILABLE"
 
 
@@ -56,10 +65,42 @@ class RuntimeIsolationEvidence:
     zero_capabilities: bool
     in_job: bool
     minimal_environment: bool
+    standard_handles_non_inheritable: bool
 
 
 def _fail(code: IsolationAuditCode) -> None:
     raise IsolationAuditError(code) from None
+
+
+def _clear_and_verify_standard_handle_inheritance(kernel32: Any) -> None:
+    """Prevent the three launch-only handles from reaching worker descendants."""
+
+    get_std_handle = kernel32.GetStdHandle
+    get_std_handle.argtypes = (wintypes.DWORD,)
+    get_std_handle.restype = wintypes.HANDLE
+    set_handle_information = kernel32.SetHandleInformation
+    set_handle_information.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD)
+    set_handle_information.restype = wintypes.BOOL
+    get_handle_information = kernel32.GetHandleInformation
+    get_handle_information.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    get_handle_information.restype = wintypes.BOOL
+
+    handles: list[wintypes.HANDLE] = []
+    for identifier in _STANDARD_HANDLE_IDS:
+        handle = get_std_handle(wintypes.DWORD(identifier & 0xFFFF_FFFF))
+        if not handle or handle == _INVALID_HANDLE_VALUE:
+            _fail(IsolationAuditCode.STANDARD_HANDLE_POLICY_INVALID)
+        handles.append(wintypes.HANDLE(handle))
+    for handle in handles:
+        if not set_handle_information(handle, _HANDLE_FLAG_INHERIT, 0):
+            _fail(IsolationAuditCode.STANDARD_HANDLE_POLICY_INVALID)
+    for handle in handles:
+        flags = wintypes.DWORD()
+        if (
+            not get_handle_information(handle, ctypes.byref(flags))
+            or flags.value & _HANDLE_FLAG_INHERIT
+        ):
+            _fail(IsolationAuditCode.STANDARD_HANDLE_POLICY_INVALID)
 
 
 def read_bootstrap_from_standard_error() -> bytes:
@@ -110,6 +151,7 @@ def verify_runtime_isolation() -> RuntimeIsolationEvidence:
     if os.name != "nt":
         _fail(IsolationAuditCode.UNSUPPORTED_PLATFORM)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _clear_and_verify_standard_handle_inheritance(kernel32)
     advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
     current_process = kernel32.GetCurrentProcess()
     token = wintypes.HANDLE()
@@ -176,4 +218,4 @@ def verify_runtime_isolation() -> RuntimeIsolationEvidence:
         _fail(IsolationAuditCode.JOB_REQUIRED)
     if any(name.upper() not in _ALLOWED_ENVIRONMENT for name in os.environ):
         _fail(IsolationAuditCode.ENVIRONMENT_INVALID)
-    return RuntimeIsolationEvidence(True, True, True, True)
+    return RuntimeIsolationEvidence(True, True, True, True, True)
