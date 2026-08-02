@@ -248,8 +248,9 @@ No later task may substitute a case path, general directory capability, or broad
 PWS-0107 is complete only with real supported-Windows evidence for:
 
 - fixed executable, arguments, working directory, no shell, and constructed minimal environment;
-- exact three-handle inheritance, child-side de-inheritance, descendant non-propagation, and the
-  exact 92-byte one-shot grant;
+- exact three-handle inheritance, child-side de-inheritance, descendant non-propagation verified by
+  kernel-object identity rather than reusable process-local `HANDLE` numbers, and the exact 92-byte
+  one-shot grant;
 - live host negotiation only after AppContainer/zero-capability/job/environment self-audit;
 - frame boundaries, strict protocol validation, replay/cross-generation rejection, and bounded
   reader/write failure;

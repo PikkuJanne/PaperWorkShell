@@ -53,7 +53,10 @@ _AMBIENT_NAMES: Final = (
     "PYTHONPATH",
 )
 
-_INITIAL_REQUIRED_MASK: Final = (1 << 19) - 1
+# Bit 17 used to infer ambient-handle absence from raw process-local HANDLE
+# numbers. Exact kernel-object identity is now proved directly by the launcher
+# test, outside this worker-reported mask.
+_INITIAL_REQUIRED_MASK: Final = ((1 << 19) - 1) & ~(1 << 17)
 _DESCENDANT_REQUIRED_MASK: Final = (_INITIAL_REQUIRED_MASK & ~(1 << 16)) | (1 << 19)
 _RESPONSE_KEYS: Final = frozenset(
     {
@@ -70,6 +73,8 @@ _SYNCHRONIZE: Final = 0x0010_0000
 _WAIT_OBJECT_0: Final = 0
 _WAIT_TIMEOUT: Final = 258
 _HANDLE_FLAG_INHERIT: Final = 1
+_DUPLICATE_SAME_ACCESS: Final = 0x0000_0002
+_ERROR_INVALID_HANDLE: Final = 6
 _REQUIRED_PROFILE_RELATIONS: Final = 0b01011010
 
 
@@ -182,7 +187,6 @@ def _encode_control(
     profile_path: Path,
     denied_paths: tuple[Path, ...],
     ports: tuple[int, int, int, int],
-    ambient_handles: tuple[int, ...],
 ) -> bytes:
     return json.dumps(
         {
@@ -190,8 +194,6 @@ def _encode_control(
             "denied_read_paths": [os.fspath(path) for path in denied_paths],
             "denied_write_paths": [os.fspath(path) for path in denied_paths],
             "ports": list(ports),
-            "ambient_handles": list(ambient_handles),
-            "forbidden_inherited_handles": [],
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -231,6 +233,56 @@ def _create_inheritable_event() -> int:
         wintypes.HANDLE(handle), _HANDLE_FLAG_INHERIT, _HANDLE_FLAG_INHERIT
     )
     return int(handle)
+
+
+def _assert_process_did_not_inherit_handles(
+    source_handles: tuple[int, ...],
+    target_process_handle: int,
+) -> None:
+    """Prove object absence without treating process-local HANDLE values as identities."""
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    current_process = kernel32.GetCurrentProcess
+    current_process.argtypes = ()
+    current_process.restype = wintypes.HANDLE
+    duplicate_handle = kernel32.DuplicateHandle
+    duplicate_handle.argtypes = (
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.DWORD,
+    )
+    duplicate_handle.restype = wintypes.BOOL
+    compare_handles = ctypes.WinDLL("kernelbase", use_last_error=True).CompareObjectHandles
+    compare_handles.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    compare_handles.restype = wintypes.BOOL
+    local_process = current_process()
+
+    for source_handle in source_handles:
+        local_copy = wintypes.HANDLE()
+        ctypes.set_last_error(0)
+        duplicated = duplicate_handle(
+            wintypes.HANDLE(target_process_handle),
+            wintypes.HANDLE(source_handle),
+            local_process,
+            ctypes.byref(local_copy),
+            0,
+            False,
+            _DUPLICATE_SAME_ACCESS,
+        )
+        if not duplicated:
+            assert ctypes.get_last_error() == _ERROR_INVALID_HANDLE
+            continue
+        assert local_copy.value
+        try:
+            assert not compare_handles(
+                wintypes.HANDLE(source_handle), wintypes.HANDLE(local_copy.value)
+            )
+        finally:
+            _close_handle(int(local_copy.value))
 
 
 def _open_process_for_wait(process_id: int) -> int:
@@ -315,8 +367,12 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
             descendant_handle = 0
             try:
                 assert process.isolation.satisfies_required_boundary
+                _assert_process_did_not_inherit_handles(
+                    ambient_handles,
+                    process._process.value,
+                )
                 process.transport.send_payload(
-                    _encode_control(profile_path, denied_paths, listeners.ports, ambient_handles)
+                    _encode_control(profile_path, denied_paths, listeners.ports)
                 )
                 received = process.transport.receive_payload(30.0)
                 assert received.kind is TransportReceiveKind.PAYLOAD

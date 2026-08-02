@@ -201,7 +201,8 @@ Task completion requires live Windows evidence, not launcher flags or this ADR a
 - the worker observes only the allowlisted constructed environment;
 - the inherited handle inventory contains exactly the two RPC endpoints and bootstrap endpoint,
   all child copies are made non-inheritable before negotiation, and an inheritance-permitting
-  descendant receives none of them;
+  descendant receives none of them; live tests compare kernel-object identity rather than raw
+  process-local `HANDLE` numbers, which Windows may reuse for unrelated objects;
 - path opens for another case, case-authoritative records, external source/destination, and user
   temporary locations fail; and
 - runtime/code access grants and the per-launch profile are removed only after the job tree exits.

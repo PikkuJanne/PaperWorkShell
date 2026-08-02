@@ -38,6 +38,8 @@ _STD_OUTPUT_HANDLE: Final = -11
 _STD_ERROR_HANDLE: Final = -12
 _STANDARD_HANDLE_IDS: Final = (_STD_INPUT_HANDLE, _STD_OUTPUT_HANDLE, _STD_ERROR_HANDLE)
 _INVALID_HANDLE_VALUE: Final = ctypes.c_void_p(-1).value
+_DUPLICATE_SAME_ACCESS: Final = 0x0000_0002
+_ERROR_INVALID_HANDLE: Final = 6
 _AMBIENT_CANARY: Final = "PWS_AMBIENT_ENV_CANARY_0107"
 _AMBIENT_NAMES: Final = frozenset(
     {
@@ -75,7 +77,6 @@ DENIED_READS_BLOCKED: Final = 1 << 13
 DENIED_WRITES_BLOCKED: Final = 1 << 14
 TARGETS_ABSENT_FROM_ARGV_ENVIRONMENT: Final = 1 << 15
 TARGETS_ABSENT_FROM_BOOTSTRAP: Final = 1 << 16
-AMBIENT_HANDLES_UNUSABLE: Final = 1 << 17
 STANDARD_HANDLES_NON_INHERITABLE: Final = 1 << 18
 PARENT_STANDARD_HANDLES_ABSENT: Final = 1 << 19
 
@@ -96,7 +97,6 @@ _BASE_REQUIRED_MASK: Final = (
     | DENIED_READS_BLOCKED
     | DENIED_WRITES_BLOCKED
     | TARGETS_ABSENT_FROM_ARGV_ENVIRONMENT
-    | AMBIENT_HANDLES_UNUSABLE
     | STANDARD_HANDLES_NON_INHERITABLE
 )
 INITIAL_REQUIRED_MASK: Final = _BASE_REQUIRED_MASK | TARGETS_ABSENT_FROM_BOOTSTRAP
@@ -108,8 +108,6 @@ _CONTROL_KEYS: Final = frozenset(
         "denied_read_paths",
         "denied_write_paths",
         "ports",
-        "ambient_handles",
-        "forbidden_inherited_handles",
     }
 )
 _RESPONSE_KEYS: Final = frozenset(
@@ -134,8 +132,6 @@ class _Control:
     denied_read_paths: tuple[Path, ...]
     denied_write_paths: tuple[Path, ...]
     ports: tuple[int, int, int, int]
-    ambient_handles: tuple[int, ...]
-    forbidden_inherited_handles: tuple[int, ...]
 
     @property
     def forbidden_paths(self) -> tuple[Path, ...]:
@@ -153,8 +149,6 @@ def _decode_control(payload: bytes) -> _Control:
     read_paths = decoded["denied_read_paths"]
     write_paths = decoded["denied_write_paths"]
     ports = decoded["ports"]
-    ambient_handles = decoded["ambient_handles"]
-    forbidden_inherited_handles = decoded["forbidden_inherited_handles"]
     if (
         type(profile) is not str
         or "\x00" in profile
@@ -170,12 +164,6 @@ def _decode_control(payload: bytes) -> _Control:
         or type(ports) is not list
         or len(ports) != _PORT_COUNT
         or any(type(port) is not int or not 1 <= port <= 65_535 for port in ports)
-        or type(ambient_handles) is not list
-        or not 1 <= len(ambient_handles) <= 8
-        or any(type(handle) is not int or handle <= 0 for handle in ambient_handles)
-        or type(forbidden_inherited_handles) is not list
-        or len(forbidden_inherited_handles) > 8
-        or any(type(handle) is not int or handle <= 0 for handle in forbidden_inherited_handles)
     ):
         raise ValueError("invalid control")
     return _Control(
@@ -183,8 +171,6 @@ def _decode_control(payload: bytes) -> _Control:
         denied_read_paths=tuple(Path(value) for value in read_paths),
         denied_write_paths=tuple(Path(value) for value in write_paths),
         ports=(ports[0], ports[1], ports[2], ports[3]),
-        ambient_handles=tuple(ambient_handles),
-        forbidden_inherited_handles=tuple(forbidden_inherited_handles),
     )
 
 
@@ -265,20 +251,6 @@ def _environment_is_clean(startup_environment: tuple[tuple[str, str], ...]) -> b
     )
 
 
-def _ambient_handles_unusable(handles: tuple[int, ...]) -> bool:
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    set_event = kernel32.SetEvent
-    set_event.argtypes = (wintypes.HANDLE,)
-    set_event.restype = wintypes.BOOL
-    for handle in handles:
-        try:
-            if set_event(wintypes.HANDLE(handle)):
-                return False
-        except OSError:
-            continue
-    return True
-
-
 def _standard_handle_values() -> tuple[int, int, int]:
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     get_std_handle = kernel32.GetStdHandle
@@ -293,34 +265,81 @@ def _standard_handle_values() -> tuple[int, int, int]:
     return values[0], values[1], values[2]
 
 
-def _handles_are_unavailable(handles: tuple[int, ...]) -> bool:
-    if not handles:
+def _close_raw_handle(handle: int) -> bool:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    return bool(close_handle(wintypes.HANDLE(handle)))
+
+
+def _process_handles_are_distinct_from_sources(
+    source_handles: tuple[int, ...],
+    target_process_handle: int,
+) -> bool:
+    """Compare objects across processes; HANDLE integers alone are not identities."""
+
+    if not source_handles or target_process_handle <= 0:
         return False
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    get_handle_information = kernel32.GetHandleInformation
-    get_handle_information.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
-    get_handle_information.restype = wintypes.BOOL
-    for handle in handles:
-        flags = wintypes.DWORD()
-        try:
-            if get_handle_information(wintypes.HANDLE(handle), ctypes.byref(flags)):
+    current_process = kernel32.GetCurrentProcess
+    current_process.argtypes = ()
+    current_process.restype = wintypes.HANDLE
+    duplicate_handle = kernel32.DuplicateHandle
+    duplicate_handle.argtypes = (
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.DWORD,
+    )
+    duplicate_handle.restype = wintypes.BOOL
+    compare_handles = ctypes.WinDLL("kernelbase", use_last_error=True).CompareObjectHandles
+    compare_handles.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    compare_handles.restype = wintypes.BOOL
+    local_process = current_process()
+    try:
+        for source_handle in source_handles:
+            local_copy = wintypes.HANDLE()
+            ctypes.set_last_error(0)
+            if not duplicate_handle(
+                wintypes.HANDLE(target_process_handle),
+                wintypes.HANDLE(source_handle),
+                local_process,
+                ctypes.byref(local_copy),
+                0,
+                False,
+                _DUPLICATE_SAME_ACCESS,
+            ):
+                if ctypes.get_last_error() != _ERROR_INVALID_HANDLE:
+                    return False
+                continue
+            if not local_copy.value:
                 return False
-        except OSError:
-            continue
+            try:
+                same_object = bool(
+                    compare_handles(
+                        wintypes.HANDLE(source_handle), wintypes.HANDLE(local_copy.value)
+                    )
+                )
+            finally:
+                copy_closed = _close_raw_handle(int(local_copy.value))
+            if same_object or not copy_closed:
+                return False
+    except OSError, TypeError, ValueError, AttributeError:
+        return False
     return True
 
 
-def _encode_descendant_control(
-    control: _Control, parent_standard_handles: tuple[int, int, int]
-) -> bytes:
+def _encode_descendant_control(control: _Control) -> bytes:
     return json.dumps(
         {
             "profile_path": os.fspath(control.profile_path),
             "denied_read_paths": [os.fspath(path) for path in control.denied_read_paths],
             "denied_write_paths": [os.fspath(path) for path in control.denied_write_paths],
             "ports": list(control.ports),
-            "ambient_handles": list(control.ambient_handles),
-            "forbidden_inherited_handles": list(parent_standard_handles),
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -433,21 +452,6 @@ def _probe_mask(
         mask |= TARGETS_ABSENT_FROM_ARGV_ENVIRONMENT
     if bootstrap is not None and _targets_absent_from_bootstrap(control, bootstrap):
         mask |= TARGETS_ABSENT_FROM_BOOTSTRAP
-    if _handles_are_unavailable(control.forbidden_inherited_handles):
-        mask |= PARENT_STANDARD_HANDLES_ABSENT
-    try:
-        if _ambient_handles_unusable(control.ambient_handles):
-            mask |= AMBIENT_HANDLES_UNUSABLE
-    except OSError:
-        return -71, 0, udp_send_reported
-    except TypeError:
-        return -72, 0, udp_send_reported
-    except ValueError:
-        return -73, 0, udp_send_reported
-    except AttributeError:
-        return -74, 0, udp_send_reported
-    except Exception:
-        return -79, 0, udp_send_reported
     try:
         return mask, _profile_relations(control), udp_send_reported
     except Exception:
@@ -501,10 +505,21 @@ def _spawn_descendant(
         shell=False,
         env=dict(os.environ),
     )
+    child_process_handle = getattr(child, "_handle", 0)
+    endpoints_absent = (
+        isinstance(child_process_handle, int)
+        and not isinstance(child_process_handle, bool)
+        and (
+            _process_handles_are_distinct_from_sources(
+                parent_standard_handles,
+                int(child_process_handle),
+            )
+        )
+    )
     if child.stdin is None or child.stdout is None:
         child.kill()
         raise ValueError("descendant channel unavailable")
-    write_frame(child.stdin, _encode_descendant_control(control, parent_standard_handles))
+    write_frame(child.stdin, _encode_descendant_control(control))
     child.stdin.flush()
     child.stdin.close()
     response = read_frame(child.stdout)
@@ -513,6 +528,8 @@ def _spawn_descendant(
         child.kill()
         raise ValueError("descendant evidence unavailable")
     descendant_mask, profile_relations, udp_send_reported = _decode_descendant_response(response)
+    if endpoints_absent:
+        descendant_mask |= PARENT_STANDARD_HANDLES_ABSENT
     return child, descendant_mask, profile_relations, udp_send_reported
 
 
