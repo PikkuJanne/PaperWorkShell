@@ -767,7 +767,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0102
@@ -799,10 +799,19 @@ tasks:
   - storage
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "b5f6913"
+    commands:
+    - "uv run python tools/dev.py check at b5f6913 - passed; formatting, lint, 12-layer import boundaries over 46 source files, strict typing over 119 files, 762 unit tests, 165 integration tests with 2 disclosed local link-capability skips, 168 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_source_ingest_domain.py tests/unit/test_source_ingest_service.py tests/unit/test_source_ingest_storage.py tests/integration/test_case_workspace_windows.py tests/integration/test_source_ingest_windows_primitives.py tests/integration/test_source_ingest_windows.py tests/security/test_source_ingest_security.py at b5f6913 - passed; 171 immutable-ingest, case-coordination, atomic-publication, integrity, privacy, and failure-path tests"
+    - "uv run python tools/dev.py scan-secrets at b5f6913 - passed; 625 historical blobs, 111 commit/tag objects, 637 historical path/blob pairs, 251 index blobs, 258 tracked files, and 0 untracked files were scanned"
+    notes:
+    - Exact external default-stream bytes are copied once through the retained read-only PWS-0103 lease, hashed while streaming, flushed, independently rehashed, terminally source-checked, and published under a random UUIDv4 `.bin` name without overwriting the external source or an existing case object.
+    - Source-first and manifest-last publication preserves the prior authoritative manifest on every confirmed precommit failure; identity-resolved committed, not-committed, and unknown outcomes prevent false rollback, unsafe deletion, and post-commit false failure while PWS-0113 retains restart orphan recovery.
+    - Complete source/page records append atomically to both base and current sequences, duplicate digests remain advisory with distinct copies, and later bounded integrity verification reports verified, missing, or mismatch without repair or manifest mutation.
+    - One finite monotonic deadline spans prepare, inspection, commit, integrity chunks, callbacks, and 50-millisecond case-coordination waits; cancellation and timeout stop before the next prepublication step, while confirmed publication remains authoritative and cleanup faults cannot mask either a commit or the original failure.
+    - Synthetic Windows evidence covers copy boundaries, quota/cancellation/timeouts, true concurrent stale commits, source changes, random-name/log privacy, hard-link and byte mutations, interruption/ambiguity settlement, and sibling/outside preservation; operating-system disk-full/write-flush injection, end-to-end ADS/reparse races, power loss, and restart cleanup remain explicitly assigned to their adjacent or later gate owners rather than claimed here.
+    - Independent transaction, deadline, filesystem, privacy, and acceptance-evidence audits found no remaining high-confidence blocker; the exact rule-scoped Gitleaks exception admits only the public PWS-0104 privacy canary and retains positive near-miss and realistic-key detection tests.
 - id: PWS-0105
   milestone: M1
   title: Implement pikepdf/qpdf adapter and PDF structural inspection
