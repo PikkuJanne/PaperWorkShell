@@ -4,7 +4,7 @@ Milestone gate reports and their reproducible evidence belong in this directory.
 
 ## Reports
 
-- [Milestone 0 foundation gate](m0-foundation-gate.md) — PWS-0010; review in progress
+- [Milestone 0 foundation gate](m0-foundation-gate.md) — PWS-0010; PASS under final task review
 
 Each report records the reviewed revision and environment, prerequisite status, automated and
 manual evidence, known limitations, unresolved defects, owned future risks, and an explicit pass

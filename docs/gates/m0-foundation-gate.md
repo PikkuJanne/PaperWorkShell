@@ -1,9 +1,9 @@
 # Milestone 0 foundation gate — PWS-0010
 
-- Review status: In progress
-- Gate conclusion: Pending final clean-clone and exact-revision evidence
+- Review status: Complete; final task-state review
+- Gate conclusion: PASS
 - Review date: 2026-08-02
-- Evidence revision: Pending
+- Evidence revision: `ebe66c856aae1932d89d233606012e0d35c122af`
 - Review branch: `codex/pws-0010-foundation-gate`
 - Frozen decisions: PWS-D003, PWS-D034, PWS-D035, PWS-D036
 
@@ -35,7 +35,7 @@ Authoritative sources for this review are [ROADMAP.md](../../ROADMAP.md),
 | uv | 0.11.32 | Exact project-manager pin |
 | Git | 2.55.0.windows.3 | Meets the 2.45 minimum |
 | Gitleaks | 8.30.1 | Exact scanner pin |
-| GitHub Actions | `windows-2025` | Exact-revision run pending |
+| GitHub Actions | `windows-2025` | Exact-revision push and pull-request runs passed |
 | Product engines | None | No PDF, image, renderer, OCR, UI, or installer runtime is admitted in M0 |
 
 The local machine exposes eight logical processors and about 16.5 GB RAM. The reference profile
@@ -69,16 +69,16 @@ that `cb29771` and `454bc9a` are the same revision.
 | Criterion | Result | Evidence |
 |---|---|---|
 | Every M0 prerequisite is done | Pass | PWS-0001 through PWS-0009 are `done`; task graph validation accepts every dependency and gate edge |
-| Locked toolchain and clean bootstrap | Pending final run | CPython 3.14 and uv 0.11.32 are pinned; final fresh-clone `uv sync --locked` remains to be recorded |
-| Complete local quality suite | Pending final run | Stable commands and historical clean/CI results exist; final exact-revision `check` remains to be recorded |
+| Locked toolchain and clean bootstrap | Pass | Fresh SSH clone at the evidence revision installed all twenty-two locked packages with `uv sync --locked` |
+| Complete local quality suite | Pass | The fresh clone passed the registry-derived `check`; exact-revision push and pull-request Actions passed the same suite |
 | Architecture boundaries | Pass | Twelve package roots import without optional engines; boundary tests include deliberate prohibited imports |
 | Threats map to planned mitigations | Pass as planning evidence | TM-001 through TM-028 map to frozen decisions, non-gate implementation owners, and ST-001 through ST-020 oracles; future controls are not claimed implemented |
 | Dependency families have license treatment | Pass for policy baseline | Forty-one components and twenty-nine relationships have closed license, source, boundary, packaging, and owner treatment; release resolution remains PWS-0801 |
-| Schemas pass positive and negative validation | Pass; final rerun pending | Exact positive/negative inventories below; schema validator and focused suites pass |
-| Task graph passes positive and negative validation | Pass; final rerun pending | Eighty tasks, 238 edges, nine milestones, forty decisions; deliberate invalid date and cycle are rejected |
+| Schemas pass positive and negative validation | Pass | Exact positive/negative inventories below; schema validator and focused suites pass at the evidence revision |
+| Task graph passes positive and negative validation | Pass | Eighty tasks, 238 edges, nine milestones, forty decisions; deliberate invalid date and cycle are rejected |
 | Public corpus is safe for the repository | Pass as synthetic construction | Seventeen exact deterministic files; eighteen committed, two on-demand, and four scheduled coverage classes; no external document is anonymized into the corpus |
 | Open risks have owners and gates | Pass | The risk register below assigns every remaining implementation area to future tasks and a blocking gate |
-| No unresolved M0 release-blocking defect | Pending final review | No substantive defect is open; final exact-revision clone/CI and Windows junction review must close |
+| No unresolved M0 release-blocking defect | Pass | Clean clone, local and hosted suites, junction/ABA review, and three independent exact-commit audits found no blocker |
 
 ## Contract validation inventory
 
@@ -105,19 +105,19 @@ process containment, filesystem confinement, or egress denial; PWS-0107 owns tho
 |---|---|
 | `py -3.14 tools/dev.py validate-schemas` | Pass: all seven registered contracts |
 | `py -3.14 tools/dev.py validate-dependencies` | Pass: one complete and four rejected examples |
-| `py -3.14 tools/dev.py validate-fixtures` | Pass: seventeen deterministic fixtures, 50,489 bytes; exact final snapshot count pending |
+| `py -3.14 tools/dev.py validate-fixtures` | Pass: seventeen deterministic fixtures, 50,489 bytes, 404 historical blobs, 181 index blobs, and 188 working files |
 | `py -3.14 tools/dev.py validate-task-graph` | Pass: eighty tasks, 238 dependencies, nine milestones, forty decisions |
 | `py -3.14 tools/dev.py validate-docs` | Pass: local links, references, twenty-eight threats, owner mappings, and planned tests |
 | `py -3.14 tools/dev.py validate-reference-profile` | Pass: two-core, 4,096-MiB, integrated-graphics, limited-storage, and HDD profiles |
 | `py -3.14 tools/dev.py quality-self-test` | Pass: all five deliberate format, type, schema, cycle, and staged-binary secret violations rejected and removed |
 | `py -3.14 tools/dev.py benchmark-reference` | Pass: deterministic two-file local-smoke record; no product target evaluated |
-| `uv sync --locked` in a fresh clone | Pending final evidence revision |
-| `py -3.14 tools/dev.py check` in that clone | Pending final evidence revision |
-| GitHub Actions local-equivalent suite | Pending final evidence revision |
+| `uv sync --locked` in a fresh SSH clone | Pass: twenty-two locked packages installed at the exact evidence revision |
+| `py -3.14 tools/dev.py check` in that clone | Pass: 56-file format/lint, twelve-layer boundaries, strict typing, 256 unit, three integration, 103 security with two disclosed local privilege skips, two accessibility tests, all validators/scans, and five negative self-tests |
+| GitHub Actions local-equivalent suite | Pass: [push run 30728665451](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728665451) and [pull-request run 30728666356](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728666356); hosted Windows passed all 105 security tests without skips |
 
-The final gate evidence will use a quiescent fresh SSH clone. Repository scanning deliberately
-fails closed if Git refs, the index, tracked paths, or selected bytes change during its snapshot;
-such a race is not accepted as a corpus or secret-scan pass.
+The gate evidence used a quiescent fresh SSH clone. Repository scanning deliberately fails closed
+if Git refs, the index, tracked paths, or selected bytes change during its snapshot; such a race
+was not accepted as a corpus or secret-scan pass.
 
 ## Manual gate review
 
@@ -127,8 +127,8 @@ such a race is not accepted as a corpus or secret-scan pass.
 | Threat owners and oracles | Pass after aligning TM-002, TM-015, TM-016, and TM-023 with owners already assigned by TASKS/test-plan evidence |
 | Dependency/license treatment | Pass for the M0 policy baseline: 29 approved, six planned, three candidates, and three decision-gated component records |
 | Corpus provenance and category disposition | Pass: closed no-input construction; seventeen files; eighteen committed, two on-demand, four scheduled categories |
-| Bundle file inventory | Pending final task/report revision |
-| Windows linked-directory capability | Pending final recorded junction review; two Python symlink tests skip with WinError 1314 |
+| Bundle file inventory | Pass: all seven v0.1.28 records matched byte counts and SHA-256 at the evidence revision |
+| Windows linked-directory capability | Pass by explicit junction/ABA review; two Python symlink tests remain disclosed local WinError 1314 skips, while hosted Windows ran all 105 security tests |
 | Accessibility scope | Pass for M0: two sentinel tests and no UI surface; real widget coverage is mandatory when PySide6 appears |
 | Manual product demonstration | Not applicable in M0: no document engine or UI exists; the required manual activity is this foundation evidence review |
 
@@ -140,11 +140,12 @@ workstation because WinError 1314 reports that symbolic-link privilege is unavai
 - `test_regeneration_rejects_a_real_linked_directory_without_touching_target`
 - `test_long_path_recipe_rejects_a_real_linked_child_without_touching_repository`
 
-The final review uses real NTFS junctions, which do not require that privilege, to exercise both
-Windows reparse-point paths. It must show that committed-corpus generation rejects a junction
-without changing an outside sentinel and that long-path generation rejects a nested junction
-without changing its protected target. A separate real-file identity-ABA scenario must show that
-cleanup does not remove a replacement file.
+The review used real NTFS junctions, which do not require that privilege, to exercise both Windows
+reparse-point paths. Committed-corpus generation rejected its junction with
+`FIXTURE_OUTPUT_UNREADABLE` and left the outside sentinel byte-identical. Long-path generation
+rejected its nested junction with `FIXTURE_OUTPUT_UNSAFE` and left the protected target empty. A
+separate real-file identity-ABA scenario for both on-demand recipes showed that cleanup preserves
+a replacement file at the same name.
 
 The committed `test_on_demand_recipes_remove_partial_files_when_cancelled` test writes partial
 bytes, raises `KeyboardInterrupt`, and proves identity-matched cleanup for both on-demand recipes.
@@ -186,15 +187,16 @@ tasks prove safe semantics.
 | TM-015 omitted PWS-0112, TM-016 omitted PWS-0305/PWS-0308, TM-023 omitted PWS-0108, and TM-002 omitted PWS-0105 from the complete ownership map | P2 documentation precision | Resolved in PWS-0010 by aligning traceability and the planned test-owner rows |
 | PWS-0009 evidence called its interruption coverage an “abnormal-exit” probe | P2 evidence precision | Resolved in PWS-0010: committed coverage is KeyboardInterrupt cleanup; hard termination leaves a non-overwritable scoped partial |
 | Two directory-symlink tests require an unavailable Windows privilege | Capability limitation | Not a product-control skip; final gate records real junction and ABA review and retains the two explicit automated skips |
-| Other unresolved M0 defect | — | Pending final exact-revision review |
+| Other unresolved M0 defect | — | None found in the clean clone, hosted runs, or three independent exact-commit audits |
 
 ## Gate conclusion
 
-**PENDING.** The reviewed foundation has no known substantive blocker, but PWS-0010 remains
-`in_progress` until the report revision is committed, the Windows junction and ABA scenarios are
-recorded, a fresh locked clone passes the complete suite, exact-revision GitHub Actions pass, and
-the final defect review confirms no M0 release-blocking issue.
+**PASS.** All nine prerequisite tasks are done. The exact evidence revision passed a locked fresh
+bootstrap, the full local suite, both hosted Windows suites, focused positive and negative
+contract checks, bundle verification, platform link/identity review, and three independent audits.
+No unresolved M0 release-blocking defect remains.
 
-If those checks pass, the gate conclusion becomes **PASS**, PWS-0010 becomes `done`, and PWS-0101
-becomes the next ready task. A failed required check leaves this conclusion pending or failed; it
-is not converted into a warning.
+This conclusion approves only the documented foundation and its owned future-risk plan. It does
+not claim that any future runtime control or product feature exists. After final task-state review,
+PWS-0010 can become `done` and PWS-0101 becomes the next ready task. A later regression in a
+required check reopens the owning task or gate; it is not converted into a warning.
