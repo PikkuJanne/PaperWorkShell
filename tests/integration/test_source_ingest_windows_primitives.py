@@ -222,6 +222,7 @@ def test_interrupt_after_native_manifest_rename_resolves_as_committed(
     candidate_payload = _candidate_bytes(previous)
     candidate = write_new_file(layout.temp / f"{uuid4()}.tmp", candidate_payload)
     real_rename = windows_module._rename_open_file
+    interruption = KeyboardInterrupt()
 
     def rename_then_interrupt(
         source_handle: windows_module.WindowsHandle,
@@ -231,7 +232,7 @@ def test_interrupt_after_native_manifest_rename_resolves_as_committed(
     ) -> tuple[bool, int]:
         outcome = real_rename(source_handle, destination=destination, replace=replace)
         assert outcome[0], outcome
-        raise KeyboardInterrupt
+        raise interruption
 
     monkeypatch.setattr(windows_module, "_rename_open_file", rename_then_interrupt)
     try:
@@ -244,10 +245,48 @@ def test_interrupt_after_native_manifest_rename_resolves_as_committed(
             ) as expected:
                 result = replace_manifest_atomically(candidate, authority.handle, expected)
         assert result.state is ManifestReplaceState.COMMITTED
+        assert result.delayed_exception is interruption
         candidate.close()
         assert layout.manifest.read_bytes() == candidate_payload
     finally:
         candidate.close()
+
+
+def test_interrupt_before_manifest_rename_propagates_when_not_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, layout = _case(tmp_path)
+    previous = layout.manifest.read_bytes()
+    candidate_path = layout.temp / f"{uuid4()}.tmp"
+    candidate = write_new_file(candidate_path, _candidate_bytes(previous))
+    interruption = KeyboardInterrupt()
+
+    def interrupt_before_rename(
+        _source_handle: windows_module.WindowsHandle,
+        *,
+        destination: Path,
+        replace: bool,
+    ) -> tuple[bool, int]:
+        del destination, replace
+        raise interruption
+
+    monkeypatch.setattr(windows_module, "_rename_open_file", interrupt_before_rename)
+    try:
+        with manager.authenticate_case(layout.case_id) as authority:
+            with open_handle(
+                layout.manifest,
+                read=True,
+                delete=True,
+                share_delete=True,
+            ) as expected:
+                with pytest.raises(KeyboardInterrupt) as raised:
+                    replace_manifest_atomically(candidate, authority.handle, expected)
+        assert raised.value is interruption
+        assert layout.manifest.read_bytes() == previous
+        assert candidate_path.exists()
+    finally:
+        _cleanup_file_handle(candidate)
 
 
 def test_interrupt_with_unknown_manifest_identity_returns_unknown_without_cleanup(
@@ -260,6 +299,7 @@ def test_interrupt_with_unknown_manifest_identity_returns_unknown_without_cleanu
     candidate = write_new_file(candidate_path, _candidate_bytes(previous))
     real_resolver = windows_module._resolve_manifest_replace_state
     resolutions = 0
+    interruption = KeyboardInterrupt()
 
     def first_old_then_unknown(
         destination: Path,
@@ -284,7 +324,7 @@ def test_interrupt_with_unknown_manifest_identity_returns_unknown_without_cleanu
         replace: bool,
     ) -> tuple[bool, int]:
         del destination, replace
-        raise KeyboardInterrupt
+        raise interruption
 
     monkeypatch.setattr(
         windows_module,
@@ -302,6 +342,7 @@ def test_interrupt_with_unknown_manifest_identity_returns_unknown_without_cleanu
             ) as expected:
                 result = replace_manifest_atomically(candidate, authority.handle, expected)
         assert result.state is ManifestReplaceState.UNKNOWN
+        assert result.delayed_exception is interruption
         assert candidate_path.exists()
         assert layout.manifest.read_bytes() == previous
     finally:

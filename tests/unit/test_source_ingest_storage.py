@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -33,6 +35,8 @@ from paperworkshell.storage import source_ingest as ingest_storage
 from paperworkshell.storage._windows import (
     MAXIMUM_STREAM_CHUNK_BYTES,
     FileIdentity,
+    ManifestReplaceResult,
+    ManifestReplaceState,
     WindowsPendingSourceFile,
 )
 from paperworkshell.storage.case_lifecycle import (
@@ -206,6 +210,136 @@ class _CancelAt:
     def __call__(self) -> bool:
         self.calls += 1
         return self.calls == self._call_number
+
+
+class _ExpireAt:
+    def __init__(self, call_number: int) -> None:
+        self._call_number = call_number
+        self.calls = 0
+
+    def __call__(self) -> bool:
+        self.calls += 1
+        return self.calls >= self._call_number
+
+
+class _CleanupFault(BaseException):
+    pass
+
+
+class _FaultingPending:
+    def __init__(self, *, fail_mark: bool, fail_close: bool) -> None:
+        self.handle = object()
+        self.fail_mark = fail_mark
+        self.fail_close = fail_close
+        self.marks = 0
+        self.closes = 0
+
+    def mark_for_deletion(self) -> None:
+        self.marks += 1
+        if self.fail_mark:
+            raise _CleanupFault("private pending deletion fault")
+
+    def close(self) -> None:
+        self.closes += 1
+        if self.fail_close:
+            raise _CleanupFault("private pending close fault")
+
+
+class _FaultingReservation:
+    def __init__(self, relative_parts: tuple[str, ...], *, fail_release: bool) -> None:
+        self.relative_parts = relative_parts
+        self.byte_count = MAX_MANIFEST_BYTES
+        self.fail_release = fail_release
+        self.releases = 0
+
+    def publication_guard(self, **_kwargs: object) -> AbstractContextManager[None]:
+        return nullcontext()
+
+    def release(self) -> None:
+        self.releases += 1
+        if self.fail_release:
+            raise _CleanupFault("private reservation release fault")
+
+
+class _SyntheticLayout:
+    def __init__(self) -> None:
+        self.temp = Path("C:/synthetic-case/temp")
+        self.originals = Path("C:/synthetic-case/originals")
+        self.manifest = Path("C:/synthetic-case/manifest.json")
+
+
+class _FaultingAuthority:
+    def __init__(self, *, fail_close: bool) -> None:
+        self.layout = _SyntheticLayout()
+        self.identity = IDENTITY
+        self.handle = object()
+        self.fail_close = fail_close
+        self.closes = 0
+
+    def close(self) -> None:
+        self.closes += 1
+        if self.fail_close:
+            raise _CleanupFault("private authority close fault")
+
+
+class _SyntheticHandleInfo:
+    def __init__(self, identity: FileIdentity) -> None:
+        self.identity = identity
+
+
+class _SyntheticCleanupHandle:
+    def __init__(
+        self,
+        *,
+        identity: FileIdentity = IDENTITY,
+        fail_close: bool = False,
+    ) -> None:
+        self.info = _SyntheticHandleInfo(identity)
+        self.fail_close = fail_close
+        self.closes = 0
+
+    def __enter__(self) -> _SyntheticCleanupHandle:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self.closes += 1
+        if self.fail_close:
+            raise _CleanupFault("private handle close fault")
+
+
+def _cleanup_fault_lease(
+    *,
+    store: ingest_storage.WindowsSourceIngestStore,
+    pending: _FaultingPending,
+    source_reservation: _FaultingReservation,
+    manifest_reservation: _FaultingReservation,
+    authority: _FaultingAuthority,
+) -> ingest_storage.WindowsPreparedSourceLease:
+    return ingest_storage.WindowsPreparedSourceLease(
+        store=store,
+        authority=cast(Any, authority),
+        summary=_summary(DetectedMediaType.PNG, IMAGE_SOURCE_ID),
+        display_name=DISPLAY_NAME,
+        snapshot=_initial_snapshot(),
+        pending=cast(Any, pending),
+        source_reservation=cast(Any, source_reservation),
+        manifest_reservation=cast(Any, manifest_reservation),
+        manifest_stage_path=authority.layout.temp / f"{PDF_SOURCE_ID}.tmp",
+    )
+
+
+def _cleanup_fault_store() -> ingest_storage.WindowsSourceIngestStore:
+    return ingest_storage.WindowsSourceIngestStore(
+        cast(Any, object()),
+        cast(Any, object()),
+        maximum_page_count=MAX_SOURCE_PAGES,
+        clock=lambda: CREATED_AT + timedelta(seconds=1),
+        id_factory=lambda: PAGE_IDS[0],
+        temp_id_factory=lambda: PDF_SOURCE_ID,
+    )
 
 
 def test_initial_manifest_is_accepted_as_the_exact_empty_ingest_state() -> None:
@@ -574,6 +708,7 @@ def test_copy_and_readback_hashes_in_bounded_chunks_with_monotonic_progress() ->
         operation_id=PENDING_ID,
         byte_size=len(data),
         cancellation=lambda: False,
+        deadline=lambda: False,
         progress=progress.append,
     )
 
@@ -629,6 +764,7 @@ def test_copy_rejects_source_short_read_and_stored_digest_mismatch(
             operation_id=PENDING_ID,
             byte_size=len(SOURCE_BYTES),
             cancellation=lambda: False,
+            deadline=lambda: False,
             progress=lambda _value: None,
         )
 
@@ -642,8 +778,9 @@ def test_copy_rejects_source_short_read_and_stored_digest_mismatch(
     ("cancel_at", "expected_context", "sealed", "rewound"),
     [
         (2, "source.copy_cancel", False, False),
-        (3, "source.verify_cancel", True, False),
-        (4, "source.verify_cancel", True, True),
+        (5, "source.copy_cancel", False, False),
+        (6, "source.verify_cancel", True, False),
+        (7, "source.verify_cancel", True, True),
     ],
 )
 def test_copy_cancellation_stops_before_the_next_mutating_or_readback_step(
@@ -664,10 +801,50 @@ def test_copy_cancellation_stops_before_the_next_mutating_or_readback_step(
             operation_id=PENDING_ID,
             byte_size=len(data),
             cancellation=cancellation,
+            deadline=lambda: False,
             progress=lambda _value: None,
         )
 
     assert raised.value.code is SourceIngestErrorCode.CANCELLED
+    assert raised.value.context == expected_context
+    assert pending.sealed is sealed
+    assert pending.rewound is rewound
+    assert all(size <= MAXIMUM_STREAM_CHUNK_BYTES for _offset, size in source.reads)
+    assert all(size <= MAXIMUM_STREAM_CHUNK_BYTES for size in pending.read_sizes)
+
+
+@pytest.mark.parametrize(
+    ("expire_at", "expected_context", "sealed", "rewound"),
+    [
+        (2, "source.copy_timeout", False, False),
+        (5, "source.copy_timeout", False, False),
+        (6, "source.verify_timeout", True, False),
+        (7, "source.verify_timeout", True, True),
+        (9, "source.verify_timeout", True, True),
+    ],
+)
+def test_copy_timeout_stops_before_the_next_mutating_or_readback_step(
+    expire_at: int,
+    expected_context: str,
+    sealed: bool,
+    rewound: bool,
+) -> None:
+    data = b"x" * (MAXIMUM_STREAM_CHUNK_BYTES + 1)
+    source = _SyntheticSource(data)
+    pending = _SyntheticPending()
+
+    with pytest.raises(SourceIngestError) as raised:
+        ingest_storage._copy_and_verify_source(
+            source,
+            cast(WindowsPendingSourceFile, pending),
+            operation_id=PENDING_ID,
+            byte_size=len(data),
+            cancellation=lambda: False,
+            deadline=_ExpireAt(expire_at),
+            progress=lambda _value: None,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.TIMED_OUT
     assert raised.value.context == expected_context
     assert pending.sealed is sealed
     assert pending.rewound is rewound
@@ -713,3 +890,255 @@ def test_manifest_snapshot_repr_excludes_payload_display_name_and_digest() -> No
     assert payload.decode() not in rendered
     assert "document=" not in rendered
     assert "sources=" not in rendered
+
+
+def test_confirmed_commit_survives_cleanup_baseexceptions_and_closes_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _cleanup_fault_store()
+    pending = _FaultingPending(fail_mark=True, fail_close=True)
+    source_reservation = _FaultingReservation(
+        ("originals", f"{IMAGE_SOURCE_ID}.bin"),
+        fail_release=True,
+    )
+    manifest_reservation = _FaultingReservation(("manifest.json",), fail_release=True)
+    authority = _FaultingAuthority(fail_close=True)
+    prepared = _cleanup_fault_lease(
+        store=store,
+        pending=pending,
+        source_reservation=source_reservation,
+        manifest_reservation=manifest_reservation,
+        authority=authority,
+    )
+    expected_manifest = _SyntheticCleanupHandle(fail_close=True)
+    manifest_candidate = _SyntheticCleanupHandle(
+        identity=FileIdentity(29, b"committed-candidate"),
+        fail_close=True,
+    )
+    monkeypatch.setattr(
+        ingest_storage,
+        "open_handle",
+        lambda _path, **_kwargs: _SyntheticCleanupHandle(),
+    )
+    monkeypatch.setattr(ingest_storage, "require_expected_handle", lambda *_a, **_k: None)
+    monkeypatch.setattr(ingest_storage, "verify_private_acl", lambda *_a, **_k: None)
+    monkeypatch.setattr(ingest_storage, "require_no_alternate_streams", lambda *_a: None)
+    monkeypatch.setattr(
+        ingest_storage,
+        "_read_retained_manifest_snapshot",
+        lambda *_a, **_k: (_initial_snapshot(), expected_manifest),
+    )
+    monkeypatch.setattr(
+        ingest_storage,
+        "write_new_file",
+        lambda *_a, **_k: manifest_candidate,
+    )
+    monkeypatch.setattr(ingest_storage, "publish_new_original", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        ingest_storage,
+        "replace_manifest_atomically",
+        lambda *_a, **_k: ManifestReplaceResult(ManifestReplaceState.COMMITTED),
+    )
+
+    result = prepared.commit(
+        _inspection(DetectedMediaType.PNG, 1),
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _value: None,
+    )
+
+    assert result.case_id == CASE_ID
+    assert result.source_id == IMAGE_SOURCE_ID
+    assert result.page_ids == PAGE_IDS[:1]
+    assert result.manifest_revision == 1
+    assert pending.marks == 0
+    assert pending.closes == 1
+    assert expected_manifest.closes == 1
+    assert manifest_candidate.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1
+
+    prepared.abort()
+
+    assert pending.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1
+
+
+def test_precommit_interrupt_survives_all_handle_close_baseexceptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _cleanup_fault_store()
+    pending = _FaultingPending(fail_mark=False, fail_close=False)
+    source_reservation = _FaultingReservation(
+        ("originals", f"{IMAGE_SOURCE_ID}.bin"),
+        fail_release=False,
+    )
+    manifest_reservation = _FaultingReservation(("manifest.json",), fail_release=False)
+    authority = _FaultingAuthority(fail_close=False)
+    prepared = _cleanup_fault_lease(
+        store=store,
+        pending=pending,
+        source_reservation=source_reservation,
+        manifest_reservation=manifest_reservation,
+        authority=authority,
+    )
+    temp_root = _SyntheticCleanupHandle(fail_close=True)
+    originals_root = _SyntheticCleanupHandle(fail_close=True)
+    expected_manifest = _SyntheticCleanupHandle(fail_close=True)
+    manifest_candidate = _SyntheticCleanupHandle(
+        identity=FileIdentity(30, b"uncommitted-candidate"),
+        fail_close=True,
+    )
+    interruption = KeyboardInterrupt()
+
+    def open_synthetic_root(path: Path, **_kwargs: object) -> _SyntheticCleanupHandle:
+        if path == authority.layout.temp:
+            return temp_root
+        assert path == authority.layout.originals
+        return originals_root
+
+    def interrupt_replace(*_args: object, **_kwargs: object) -> ManifestReplaceResult:
+        raise interruption
+
+    monkeypatch.setattr(ingest_storage, "open_handle", open_synthetic_root)
+    monkeypatch.setattr(ingest_storage, "require_expected_handle", lambda *_a, **_k: None)
+    monkeypatch.setattr(ingest_storage, "verify_private_acl", lambda *_a, **_k: None)
+    monkeypatch.setattr(ingest_storage, "require_no_alternate_streams", lambda *_a: None)
+    monkeypatch.setattr(
+        ingest_storage,
+        "_read_retained_manifest_snapshot",
+        lambda *_a, **_k: (_initial_snapshot(), expected_manifest),
+    )
+    monkeypatch.setattr(
+        ingest_storage,
+        "write_new_file",
+        lambda *_a, **_k: manifest_candidate,
+    )
+    monkeypatch.setattr(ingest_storage, "publish_new_original", lambda *_a, **_k: None)
+    monkeypatch.setattr(ingest_storage, "replace_manifest_atomically", interrupt_replace)
+    monkeypatch.setattr(
+        ingest_storage,
+        "_resolve_manifest_destination",
+        lambda *_a, **_k: ManifestReplaceState.NOT_COMMITTED,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        prepared.commit(
+            _inspection(DetectedMediaType.PNG, 1),
+            cancellation=lambda: False,
+            deadline=lambda: False,
+            progress=lambda _value: None,
+        )
+
+    assert raised.value is interruption
+    assert temp_root.closes == 1
+    assert originals_root.closes == 1
+    assert expected_manifest.closes == 1
+    assert manifest_candidate.closes == 1
+    assert pending.marks == 1
+    assert pending.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1
+
+
+def test_uncommitted_primary_failure_is_preserved_while_cleanup_closes_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _cleanup_fault_store()
+    pending = _FaultingPending(fail_mark=True, fail_close=True)
+    source_reservation = _FaultingReservation(
+        ("originals", f"{IMAGE_SOURCE_ID}.bin"),
+        fail_release=True,
+    )
+    manifest_reservation = _FaultingReservation(("manifest.json",), fail_release=True)
+    authority = _FaultingAuthority(fail_close=True)
+    prepared = _cleanup_fault_lease(
+        store=store,
+        pending=pending,
+        source_reservation=source_reservation,
+        manifest_reservation=manifest_reservation,
+        authority=authority,
+    )
+    primary = SourceIngestError(
+        code=SourceIngestErrorCode.MANIFEST_CONFLICT,
+        context="source.manifest_cas",
+    )
+
+    def fail_candidate(*_args: object, **_kwargs: object) -> tuple[bytes, tuple[UUID, ...]]:
+        raise primary
+
+    monkeypatch.setattr(ingest_storage, "_build_candidate_manifest", fail_candidate)
+
+    with pytest.raises(SourceIngestError) as raised:
+        prepared.commit(
+            _inspection(DetectedMediaType.PNG, 1),
+            cancellation=lambda: False,
+            deadline=lambda: False,
+            progress=lambda _value: None,
+        )
+
+    assert raised.value is primary
+    assert pending.marks == 1
+    assert pending.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1
+
+    prepared.abort()
+
+    assert pending.marks == 1
+    assert pending.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1
+
+
+def test_precommit_validation_failure_also_aborts_with_sanitized_primary_error() -> None:
+    store = _cleanup_fault_store()
+    pending = _FaultingPending(fail_mark=True, fail_close=True)
+    source_reservation = _FaultingReservation(
+        ("originals", f"{IMAGE_SOURCE_ID}.bin"),
+        fail_release=True,
+    )
+    manifest_reservation = _FaultingReservation(("manifest.json",), fail_release=True)
+    authority = _FaultingAuthority(fail_close=True)
+    prepared = _cleanup_fault_lease(
+        store=store,
+        pending=pending,
+        source_reservation=source_reservation,
+        manifest_reservation=manifest_reservation,
+        authority=authority,
+    )
+    wrong_inspection = replace(
+        _inspection(DetectedMediaType.PNG, 1),
+        pending_id=PDF_SOURCE_ID,
+    )
+
+    with pytest.raises(SourceIngestError) as raised:
+        prepared.commit(
+            wrong_inspection,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+            progress=lambda _value: None,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.INSPECTION_MISMATCH
+    assert raised.value.context == "source.commit_inspection"
+    assert "private" not in str(raised.value)
+    assert pending.marks == 1
+    assert pending.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1
+
+    prepared.abort()
+
+    assert pending.marks == 1
+    assert pending.closes == 1
+    assert source_reservation.releases == 1
+    assert manifest_reservation.releases == 1
+    assert authority.closes == 1

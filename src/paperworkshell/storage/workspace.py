@@ -43,6 +43,7 @@ DEFAULT_CASES_ROOT_PARTS: Final = ("AppData", "Local", "PaperWorkShell", "Cases"
 MAX_CASE_ID_COLLISION_ATTEMPTS: Final = 16
 DEFAULT_MAXIMUM_CASE_CANDIDATES: Final = 4096
 MAX_AUTHORITATIVE_RECORD_BYTES: Final = 8 * 1024 * 1024
+_COORDINATION_LOCK_POLL_SECONDS: Final = 0.05
 
 _UUID4_RE: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z"
@@ -204,6 +205,37 @@ _RESERVATION_REGISTRY: WeakValueDictionary[tuple[str, UUID], _CaseReservationSta
 )
 
 
+@contextmanager
+def _coordination_guard(
+    state: _CaseReservationState,
+    coordination_checkpoint: Callable[[], None] | None,
+) -> Iterator[None]:
+    """Acquire one reentrant case lock with optional bounded cancellation polls.
+
+    A checkpoint failure after acquisition releases the lock before it propagates,
+    so the guarded critical section never starts. Once yielded, release and other
+    safety cleanup remain deliberately uninterruptible.
+    """
+
+    if coordination_checkpoint is None:
+        with state.coordination_lock:
+            yield
+        return
+
+    coordination_checkpoint()
+    while not state.coordination_lock.acquire(timeout=_COORDINATION_LOCK_POLL_SECONDS):
+        coordination_checkpoint()
+    try:
+        coordination_checkpoint()
+    except BaseException:
+        state.coordination_lock.release()
+        raise
+    try:
+        yield
+    finally:
+        state.coordination_lock.release()
+
+
 class AuthenticatedCase(AbstractContextManager["AuthenticatedCase"]):
     """Retained case authority that keeps ancestor and case identities pinned."""
 
@@ -330,11 +362,12 @@ class WorkspaceCapacityReservation:
         is_directory: bool,
         byte_count: int,
         entry_count: int,
+        coordination_checkpoint: Callable[[], None] | None = None,
     ) -> Iterator[None]:
         """Hold quota coordination while a matching authenticated write publishes."""
 
         validate_quota_request(byte_count=byte_count, entry_count=entry_count)
-        with self._state.coordination_lock:
+        with _coordination_guard(self._state, coordination_checkpoint):
             if not self._reservation.is_active:
                 reject(
                     WorkspaceErrorCode.QUOTA_INVALID,
@@ -704,6 +737,7 @@ class CaseWorkspaceManager:
         *,
         retain_lease: bool = False,
         for_deletion: bool = False,
+        coordination_checkpoint: Callable[[], None] | None = None,
     ) -> AuthenticatedCase:
         """Retain authenticated ancestor/case handles under shared lifecycle coordination."""
 
@@ -720,7 +754,10 @@ class CaseWorkspaceManager:
                 "A case authority cannot be both active and deleting.",
             )
         layout = self.layout(case_id)
-        with self._coordinated_reservation_state(layout.case_id) as (key, state):
+        with self._coordinated_reservation_state(
+            layout.case_id,
+            coordination_checkpoint=coordination_checkpoint,
+        ) as (key, state):
             if state.deletion_in_progress:
                 reject(
                     WorkspaceErrorCode.CLEANUP_FAILED,
@@ -819,6 +856,7 @@ class CaseWorkspaceManager:
         is_directory: bool,
         byte_count: int,
         entry_count: int = 1,
+        coordination_checkpoint: Callable[[], None] | None = None,
     ) -> WorkspaceCapacityReservation:
         """Reserve a bounded cache/temp write within this storage broker process."""
 
@@ -851,7 +889,10 @@ class CaseWorkspaceManager:
                 "The requested object would exceed the configured workspace depth.",
             )
         layout = self.layout(parsed_id)
-        with self._coordinated_reservation_state(parsed_id) as (key, state):
+        with self._coordinated_reservation_state(
+            parsed_id,
+            coordination_checkpoint=coordination_checkpoint,
+        ) as (key, state):
             if state.deletion_in_progress:
                 reject(
                     WorkspaceErrorCode.CLEANUP_FAILED,
@@ -1170,6 +1211,8 @@ class CaseWorkspaceManager:
     def _coordinated_reservation_state(
         self,
         case_id: UUID,
+        *,
+        coordination_checkpoint: Callable[[], None] | None = None,
     ) -> Iterator[tuple[tuple[str, UUID], _CaseReservationState]]:
         key = (_normalized(self._cases_root), case_id)
         while True:
@@ -1178,7 +1221,7 @@ class CaseWorkspaceManager:
                 if state is None:
                     state = _CaseReservationState(book=QuotaReservationBook(self._quota))
                     _RESERVATION_REGISTRY[key] = state
-            with state.coordination_lock:
+            with _coordination_guard(state, coordination_checkpoint):
                 with _RESERVATION_REGISTRY_LOCK:
                     if _RESERVATION_REGISTRY.get(key) is not state:
                         continue

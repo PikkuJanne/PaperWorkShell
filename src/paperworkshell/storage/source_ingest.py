@@ -131,6 +131,7 @@ _CONSERVATIVE_TIMESTAMP: Final = "9999-12-31T23:59:59.999999Z"
 _PLACEHOLDER_PAGE_ID: Final = "00000000-0000-4000-8000-000000000000"
 
 CancellationProbe = Callable[[], bool]
+DeadlineProbe = Callable[[], bool]
 ProgressSink = Callable[[SourceImportProgress], None]
 
 
@@ -220,18 +221,24 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         inspection: CompletedSourceInspection,
         *,
         cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
         progress: ProgressSink,
     ) -> SourceImportResult:
         """Publish the exact source first and replace the complete manifest last."""
 
         if self._closed:
             reject_source_ingest(SourceIngestErrorCode.COMMIT_FAILED, "source.commit_closed")
-        return self._store._commit_prepared(
-            self,
-            inspection,
-            cancellation=cancellation,
-            progress=progress,
-        )
+        try:
+            return self._store._commit_prepared(
+                self,
+                inspection,
+                cancellation=cancellation,
+                deadline=deadline,
+                progress=progress,
+            )
+        except BaseException:
+            self.abort()
+            raise
 
     def abort(self) -> None:
         """Remove only the exact retained pending object, then release all authority."""
@@ -255,14 +262,16 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
     def _release(self) -> None:
         try:
             self._manifest_reservation.release()
-        finally:
-            try:
-                self._source_reservation.release()
-            finally:
-                try:
-                    self._authority.close()
-                except Exception:
-                    pass
+        except BaseException:
+            pass
+        try:
+            self._source_reservation.release()
+        except BaseException:
+            pass
+        try:
+            self._authority.close()
+        except BaseException:
+            pass
 
 
 class WindowsSourceIngestStore:
@@ -308,6 +317,7 @@ class WindowsSourceIngestStore:
         display_name: str,
         *,
         cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
         progress: ProgressSink,
     ) -> WindowsPreparedSourceLease:
         """Copy through the one live precheck handle and return after terminal recheck."""
@@ -316,7 +326,20 @@ class WindowsSourceIngestStore:
         safe_display_name = require_source_display_name(display_name)
         if not isinstance(source_path, Path):
             reject_source_ingest(SourceIngestErrorCode.SOURCE_PATH_INVALID, "source.prepare_path")
-        _require_not_cancelled(cancellation, context="source.prepare_cancel")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.prepare_cancel",
+            timeout_context="source.prepare_timeout",
+        )
+
+        def coordination_checkpoint() -> None:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.prepare_cancel",
+                timeout_context="source.prepare_timeout",
+            )
 
         authority: AuthenticatedCase | None = None
         pending: WindowsPendingSourceFile | None = None
@@ -324,7 +347,11 @@ class WindowsSourceIngestStore:
         manifest_reservation: WorkspaceCapacityReservation | None = None
         prepared = False
         try:
-            authority = self._manager.authenticate_case(selected_case, retain_lease=True)
+            authority = self._manager.authenticate_case(
+                selected_case,
+                retain_lease=True,
+                coordination_checkpoint=coordination_checkpoint,
+            )
             with _open_manifest_snapshot(authority) as (snapshot, _manifest_handle):
                 used_ids = set(snapshot.identifiers)
                 used_ids.add(selected_case)
@@ -371,6 +398,7 @@ class WindowsSourceIngestStore:
                     relative_path=f"temp/{pending_id}.tmp",
                     is_directory=False,
                     byte_count=result.byte_size,
+                    coordination_checkpoint=coordination_checkpoint,
                 )
                 manifest_reservation = self._manager.reserve_capacity(
                     selected_case,
@@ -378,6 +406,7 @@ class WindowsSourceIngestStore:
                     relative_path=f"temp/{manifest_stage_id}.tmp",
                     is_directory=False,
                     byte_count=manifest_upper_bound,
+                    coordination_checkpoint=coordination_checkpoint,
                 )
                 with open_handle(authority.layout.temp) as temp_root:
                     require_expected_handle(temp_root, authority.layout.temp, directory=True)
@@ -389,6 +418,7 @@ class WindowsSourceIngestStore:
                         is_directory=False,
                         byte_count=result.byte_size,
                         entry_count=1,
+                        coordination_checkpoint=coordination_checkpoint,
                     ):
                         pending = create_pending_source_file(
                             source_stage_path,
@@ -400,6 +430,7 @@ class WindowsSourceIngestStore:
                             operation_id=pending_id,
                             byte_size=result.byte_size,
                             cancellation=cancellation,
+                            deadline=deadline,
                             progress=progress,
                         )
                 summary = PreparedSourceSummary(
@@ -462,15 +493,33 @@ class WindowsSourceIngestStore:
         source_id: UUID,
         *,
         cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
         progress: ProgressSink,
     ) -> SourceIntegrityResult:
         """Stream one committed source through an authenticated read-only handle."""
 
         selected_case = require_internal_id(case_id, context="integrity.case_id")
         selected_source = require_internal_id(source_id, context="integrity.source_id")
-        _require_not_cancelled(cancellation, context="integrity.cancel")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="integrity.cancel",
+            timeout_context="integrity.timeout",
+        )
+
+        def coordination_checkpoint() -> None:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="integrity.cancel",
+                timeout_context="integrity.timeout",
+            )
+
         try:
-            with self._manager.authenticate_case(selected_case) as authority:
+            with self._manager.authenticate_case(
+                selected_case,
+                coordination_checkpoint=coordination_checkpoint,
+            ) as authority:
                 with _open_manifest_snapshot(authority) as (snapshot, _manifest_handle):
                     record = next(
                         (item for item in snapshot.sources if item.source_id == selected_source),
@@ -512,9 +561,11 @@ class WindowsSourceIngestStore:
                             digest = hashlib.sha256()
                             completed = 0
                             while completed < record.byte_size:
-                                _require_not_cancelled(
+                                _require_active(
                                     cancellation,
-                                    context="integrity.cancel",
+                                    deadline,
+                                    cancel_context="integrity.cancel",
+                                    timeout_context="integrity.timeout",
                                 )
                                 count = min(
                                     MAXIMUM_STREAM_CHUNK_BYTES,
@@ -531,6 +582,12 @@ class WindowsSourceIngestStore:
                                         record.byte_size,
                                     ),
                                 )
+                            _require_active(
+                                cancellation,
+                                deadline,
+                                cancel_context="integrity.cancel",
+                                timeout_context="integrity.timeout",
+                            )
                             current = source_handle.require_eof()
                             if (
                                 current.identity != info.identity
@@ -560,6 +617,7 @@ class WindowsSourceIngestStore:
         inspection: CompletedSourceInspection,
         *,
         cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
         progress: ProgressSink,
     ) -> SourceImportResult:
         summary = prepared._summary
@@ -573,12 +631,28 @@ class WindowsSourceIngestStore:
                 SourceIngestErrorCode.INSPECTION_MISMATCH,
                 "source.commit_inspection",
             )
-        _require_not_cancelled(cancellation, context="source.commit_cancel")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.commit_cancel",
+            timeout_context="source.commit_timeout",
+        )
+
+        def coordination_checkpoint() -> None:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.commit_cancel",
+                timeout_context="source.commit_timeout",
+            )
+
         manifest_handle: WindowsHandle | None = None
         source_published = False
         preserve_source = False
         preserve_manifest_candidate = False
         committed_result: SourceImportResult | None = None
+        replace_state: ManifestReplaceState | None = None
+        replace_failure: BaseException | None = None
         failure: BaseException | None = None
         page_ids: tuple[UUID, ...] = ()
         duplicates: tuple[UUID, ...] = ()
@@ -601,7 +675,12 @@ class WindowsSourceIngestStore:
                     SourceIngestErrorCode.CAPACITY_EXCEEDED,
                     "source.manifest_reservation",
                 )
-            _require_not_cancelled(cancellation, context="source.commit_cancel")
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.commit_cancel",
+                timeout_context="source.commit_timeout",
+            )
             _report_progress(
                 progress,
                 SourceImportProgress(
@@ -620,6 +699,7 @@ class WindowsSourceIngestStore:
                 is_directory=False,
                 byte_count=summary.byte_size,
                 entry_count=1,
+                coordination_checkpoint=coordination_checkpoint,
             ):
                 with prepared._manifest_reservation.publication_guard(
                     case_identity=authority.identity,
@@ -627,8 +707,10 @@ class WindowsSourceIngestStore:
                     is_directory=False,
                     byte_count=len(candidate),
                     entry_count=1,
+                    coordination_checkpoint=coordination_checkpoint,
                 ):
-                    with open_handle(authority.layout.temp) as temp_root:
+                    temp_root = open_handle(authority.layout.temp)
+                    try:
                         require_expected_handle(temp_root, authority.layout.temp, directory=True)
                         verify_private_acl(temp_root)
                         require_no_alternate_streams(authority.layout.temp)
@@ -651,16 +733,25 @@ class WindowsSourceIngestStore:
                                     SourceIngestErrorCode.MANIFEST_CONFLICT,
                                     "source.manifest_cas",
                                 )
+                            _require_active(
+                                cancellation,
+                                deadline,
+                                cancel_context="source.commit_cancel",
+                                timeout_context="source.commit_timeout",
+                            )
                             manifest_handle = write_new_file(
                                 prepared._manifest_stage_path,
                                 candidate,
                             )
                             require_no_alternate_streams(prepared._manifest_stage_path)
-                            _require_not_cancelled(
+                            _require_active(
                                 cancellation,
-                                context="source.commit_cancel",
+                                deadline,
+                                cancel_context="source.commit_cancel",
+                                timeout_context="source.commit_timeout",
                             )
-                            with open_handle(authority.layout.originals) as originals_root:
+                            originals_root = open_handle(authority.layout.originals)
+                            try:
                                 require_expected_handle(
                                     originals_root,
                                     authority.layout.originals,
@@ -679,9 +770,15 @@ class WindowsSourceIngestStore:
                                     authority.handle,
                                     expected_manifest,
                                 )
+                                replace_state = replace_result.state
+                                replace_failure = replace_result.delayed_exception
+                            finally:
+                                _close_handle_no_raise(originals_root)
                         finally:
-                            expected_manifest.close()
-                    if replace_result.state is ManifestReplaceState.COMMITTED:
+                            _close_handle_no_raise(expected_manifest)
+                    finally:
+                        _close_handle_no_raise(temp_root)
+                    if replace_state is ManifestReplaceState.COMMITTED:
                         preserve_source = True
                         committed_result = SourceImportResult(
                             case_id=summary.case_id,
@@ -693,9 +790,11 @@ class WindowsSourceIngestStore:
                             manifest_revision=prepared._snapshot.revision + 1,
                             duplicate=DuplicateContentSignal(duplicates),
                         )
-                    elif replace_result.state is ManifestReplaceState.UNKNOWN:
+                    elif replace_state is ManifestReplaceState.UNKNOWN:
                         preserve_source = True
                         preserve_manifest_candidate = True
+                        if replace_failure is not None:
+                            raise replace_failure
                         reject_source_ingest(
                             SourceIngestErrorCode.COMMIT_FAILED,
                             "source.commit_uncertain",
@@ -708,12 +807,28 @@ class WindowsSourceIngestStore:
         except BaseException as error:
             failure = error
         finally:
-            if source_published and manifest_handle is not None and committed_result is None:
-                resolved = _resolve_manifest_destination(
-                    prepared._authority,
-                    candidate_identity=manifest_handle.info.identity,
-                    expected_identity=prepared._snapshot.identity,
+            if replace_state is ManifestReplaceState.COMMITTED and committed_result is None:
+                preserve_source = True
+                preserve_manifest_candidate = True
+                committed_result = SourceImportResult(
+                    case_id=summary.case_id,
+                    source_id=summary.source_id,
+                    page_ids=page_ids,
+                    media_type=summary.media_type,
+                    byte_size=summary.byte_size,
+                    sha256=summary.sha256,
+                    manifest_revision=prepared._snapshot.revision + 1,
+                    duplicate=DuplicateContentSignal(duplicates),
                 )
+            elif source_published and manifest_handle is not None and committed_result is None:
+                try:
+                    resolved = _resolve_manifest_destination(
+                        prepared._authority,
+                        candidate_identity=manifest_handle.info.identity,
+                        expected_identity=prepared._snapshot.identity,
+                    )
+                except BaseException:
+                    resolved = ManifestReplaceState.UNKNOWN
                 if resolved is ManifestReplaceState.COMMITTED:
                     preserve_source = True
                     preserve_manifest_candidate = True
@@ -735,12 +850,9 @@ class WindowsSourceIngestStore:
                     _delete_handle_no_raise(manifest_handle)
                 else:
                     _close_handle_no_raise(manifest_handle)
-            if committed_result is not None:
-                prepared._complete(preserve_source=True)
-            elif preserve_source:
-                prepared._complete(preserve_source=True)
-            elif source_published:
-                prepared._complete(preserve_source=False)
+            prepared._complete(
+                preserve_source=committed_result is not None or preserve_source,
+            )
         if committed_result is not None:
             return committed_result
         if isinstance(failure, SourceIngestError):
@@ -1113,12 +1225,18 @@ def _copy_and_verify_source(
     operation_id: UUID,
     byte_size: int,
     cancellation: CancellationProbe,
+    deadline: DeadlineProbe,
     progress: ProgressSink,
 ) -> str:
     source_digest = hashlib.sha256()
     completed = 0
     while completed < byte_size:
-        _require_not_cancelled(cancellation, context="source.copy_cancel")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.copy_cancel",
+            timeout_context="source.copy_timeout",
+        )
         count = min(MAXIMUM_STREAM_CHUNK_BYTES, byte_size - completed)
         read_at = getattr(source, "read_at", None)
         if not callable(read_at):
@@ -1126,6 +1244,12 @@ def _copy_and_verify_source(
         chunk = read_at(completed, count)
         if type(chunk) is not bytes or len(chunk) != count:
             reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.copy_read")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.copy_cancel",
+            timeout_context="source.copy_timeout",
+        )
         pending.write_chunk(chunk)
         source_digest.update(chunk)
         completed += count
@@ -1138,13 +1262,29 @@ def _copy_and_verify_source(
                 byte_size,
             ),
         )
+    _require_active(
+        cancellation,
+        deadline,
+        cancel_context="source.copy_cancel",
+        timeout_context="source.copy_timeout",
+    )
     pending.seal(expected_size=byte_size)
-    _require_not_cancelled(cancellation, context="source.verify_cancel")
+    _require_active(
+        cancellation,
+        deadline,
+        cancel_context="source.verify_cancel",
+        timeout_context="source.verify_timeout",
+    )
     pending.rewind()
     stored_digest = hashlib.sha256()
     completed = 0
     while completed < byte_size:
-        _require_not_cancelled(cancellation, context="source.verify_cancel")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.verify_cancel",
+            timeout_context="source.verify_timeout",
+        )
         count = min(MAXIMUM_STREAM_CHUNK_BYTES, byte_size - completed)
         stored_digest.update(pending.read_exact(count))
         completed += count
@@ -1157,6 +1297,12 @@ def _copy_and_verify_source(
                 byte_size,
             ),
         )
+    _require_active(
+        cancellation,
+        deadline,
+        cancel_context="source.verify_cancel",
+        timeout_context="source.verify_timeout",
+    )
     pending.require_eof()
     source_hex = source_digest.hexdigest()
     if stored_digest.hexdigest() != source_hex:
@@ -1222,6 +1368,30 @@ def _require_not_cancelled(cancellation: CancellationProbe, *, context: str) -> 
         reject_source_ingest(SourceIngestErrorCode.CANCELLATION_FAILED, context)
     if cancelled:
         reject_source_ingest(SourceIngestErrorCode.CANCELLED, context)
+
+
+def _require_not_expired(deadline: DeadlineProbe, *, context: str) -> None:
+    try:
+        expired = deadline()
+    except SourceIngestError:
+        raise
+    except Exception:
+        reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, context)
+    if type(expired) is not bool:
+        reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, context)
+    if expired:
+        reject_source_ingest(SourceIngestErrorCode.TIMED_OUT, context)
+
+
+def _require_active(
+    cancellation: CancellationProbe,
+    deadline: DeadlineProbe,
+    *,
+    cancel_context: str,
+    timeout_context: str,
+) -> None:
+    _require_not_expired(deadline, context=timeout_context)
+    _require_not_cancelled(cancellation, context=cancel_context)
 
 
 def _report_progress(progress: ProgressSink, value: SourceImportProgress) -> None:

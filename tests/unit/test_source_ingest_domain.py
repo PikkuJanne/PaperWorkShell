@@ -6,6 +6,7 @@ import pytest
 
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.source_ingest import (
+    MAX_SOURCE_OPERATION_TIMEOUT_SECONDS,
     MAX_SOURCE_PAGES,
     CompletedSourceInspection,
     DuplicateContentSignal,
@@ -20,6 +21,7 @@ from paperworkshell.domain.source_ingest import (
     SourceProgressPhase,
     SourceSignatureState,
     require_source_display_name,
+    require_source_timeout_seconds,
 )
 
 
@@ -125,6 +127,46 @@ def test_display_name_validation_is_separate_and_matches_manifest_safety() -> No
             assert value not in repr(raised.value)
             assert value not in str(raised.value)
             assert value not in repr(raised.value.args)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (1, 0.125, MAX_SOURCE_OPERATION_TIMEOUT_SECONDS),
+)
+def test_source_timeout_accepts_only_finite_positive_bounded_seconds(
+    value: int | float,
+) -> None:
+    assert require_source_timeout_seconds(value, context="import.timeout_seconds") == float(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        True,
+        0,
+        -1,
+        float("nan"),
+        float("inf"),
+        MAX_SOURCE_OPERATION_TIMEOUT_SECONDS + 0.001,
+        "60",
+        None,
+    ),
+)
+def test_source_timeout_rejects_invalid_values_without_echoing_them(value: object) -> None:
+    with pytest.raises(SourceIngestError) as raised:
+        require_source_timeout_seconds(value, context="import.timeout_seconds")
+
+    assert raised.value.code is SourceIngestErrorCode.MODEL_INVALID
+    assert raised.value.context == "import.timeout_seconds"
+
+
+def test_timed_out_error_is_stable_and_sanitized() -> None:
+    error = SourceIngestError(SourceIngestErrorCode.TIMED_OUT, "import.before_commit")
+
+    assert error.code.value == "SOURCE_OPERATION_TIMED_OUT"
+    assert error.safe_message == (
+        "The source operation exceeded its configured time limit before completion."
+    )
 
 
 @pytest.mark.parametrize(

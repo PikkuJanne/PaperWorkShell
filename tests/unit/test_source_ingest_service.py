@@ -9,6 +9,8 @@ import pytest
 
 from paperworkshell.app.source_ingest import (
     CancellationProbe,
+    DeadlineProbe,
+    MonotonicClock,
     PreparedSourceLease,
     ProgressSink,
     SourceIngestService,
@@ -89,6 +91,7 @@ class _Lease:
         self._commit_error = commit_error
         self._exit_error = exit_error
         self.received_inspection: CompletedSourceInspection | None = None
+        self.received_deadline: DeadlineProbe | None = None
         self.received_cancellation: CancellationProbe | None = None
         self.received_progress: ProgressSink | None = None
 
@@ -116,11 +119,13 @@ class _Lease:
         self,
         inspection: CompletedSourceInspection,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> SourceImportResult:
         self._events.append("commit")
         self.received_inspection = inspection
+        self.received_deadline = deadline
         self.received_cancellation = cancellation
         self.received_progress = progress
         if self._commit_error is not None:
@@ -139,8 +144,10 @@ class _Store:
         )
         self.display_name: str | None = None
         self.source_path: Path | None = None
+        self.prepare_deadline: DeadlineProbe | None = None
         self.prepare_cancellation: CancellationProbe | None = None
         self.prepare_progress: ProgressSink | None = None
+        self.integrity_deadline: DeadlineProbe | None = None
 
     def prepare(
         self,
@@ -148,6 +155,7 @@ class _Store:
         source_path: Path,
         display_name: str,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> PreparedSourceLease:
@@ -155,6 +163,7 @@ class _Store:
         self.events.append("prepare")
         self.display_name = display_name
         self.source_path = source_path
+        self.prepare_deadline = deadline
         self.prepare_cancellation = cancellation
         self.prepare_progress = progress
         if self.prepare_error is not None:
@@ -166,12 +175,14 @@ class _Store:
         case_id: UUID,
         source_id: UUID,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> SourceIntegrityResult:
         assert case_id == _uuid(2)
         assert source_id == _uuid(3)
         self.events.append("verify")
+        self.integrity_deadline = deadline
         if self.integrity_error is not None:
             raise self.integrity_error
         cancellation()
@@ -192,6 +203,7 @@ class _Inspector:
         self.value = _inspection() if value is None else value
         self.error: Exception | None = None
         self.received_source: PreparedSourceSummary | None = None
+        self.received_deadline: DeadlineProbe | None = None
         self.received_cancellation: CancellationProbe | None = None
         self.received_progress: ProgressSink | None = None
 
@@ -199,11 +211,13 @@ class _Inspector:
         self,
         source: PreparedSourceSummary,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> CompletedSourceInspection:
         self._events.append("inspect")
         self.received_source = source
+        self.received_deadline = deadline
         self.received_cancellation = cancellation
         self.received_progress = progress
         if self.error is not None:
@@ -224,6 +238,21 @@ class _CancellationSequence:
         return cast(bool, value)
 
 
+class _MonotonicSequence:
+    def __init__(self, *values: object) -> None:
+        self.values = list(values)
+        self.calls = 0
+        self._last: object = values[-1] if values else 0.0
+
+    def __call__(self) -> float:
+        self.calls += 1
+        value = self.values.pop(0) if self.values else self._last
+        self._last = value
+        if isinstance(value, BaseException):
+            raise value
+        return cast(float, value)
+
+
 def _service(
     *,
     lease_summary: object | None = None,
@@ -231,6 +260,7 @@ def _service(
     inspection: object | None = None,
     commit_error: Exception | None = None,
     exit_error: Exception | None = None,
+    monotonic: MonotonicClock | None = None,
 ) -> tuple[SourceIngestService, _Store, _Inspector, _Lease, list[str]]:
     events: list[str] = []
     lease = _Lease(
@@ -242,7 +272,12 @@ def _service(
     )
     store = _Store(events, lease)
     inspector = _Inspector(events, inspection)
-    return SourceIngestService(store, inspector), store, inspector, lease, events
+    service = (
+        SourceIngestService(store, inspector)
+        if monotonic is None
+        else SourceIngestService(store, inspector, monotonic=monotonic)
+    )
+    return service, store, inspector, lease, events
 
 
 def test_service_orders_prepare_inspection_and_commit_with_hardened_callbacks() -> None:
@@ -269,6 +304,95 @@ def test_service_orders_prepare_inspection_and_commit_with_hardened_callbacks() 
     assert store.prepare_cancellation is lease.received_cancellation
     assert store.prepare_progress is inspector.received_progress
     assert store.prepare_progress is lease.received_progress
+    assert store.prepare_deadline is inspector.received_deadline
+    assert store.prepare_deadline is lease.received_deadline
+    assert store.prepare_deadline is not None
+    assert store.prepare_deadline() is False
+
+
+@pytest.mark.parametrize(
+    ("clock_values", "expected_events"),
+    (
+        ((0.0, 1.0), []),
+        ((0.0, 0.0, 1.0), ["prepare", "enter", "summary", "exit"]),
+        (
+            (0.0, 0.0, 0.0, 1.0),
+            ["prepare", "enter", "summary", "inspect", "exit"],
+        ),
+    ),
+)
+def test_absolute_deadline_stops_import_at_phase_boundaries(
+    clock_values: tuple[float, ...],
+    expected_events: list[str],
+) -> None:
+    clock = _MonotonicSequence(*clock_values)
+    service, _, _, _, events = _service(monotonic=clock)
+
+    with pytest.raises(SourceIngestError) as raised:
+        service.import_source(
+            _uuid(2),
+            Path("C:/synthetic/source.pdf"),
+            "Synthetic.pdf",
+            timeout_seconds=1.0,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.TIMED_OUT
+    assert events == expected_events
+
+
+@pytest.mark.parametrize(
+    "timeout_seconds",
+    (True, 0, -1, float("nan"), float("inf"), 86_400.001, "60"),
+)
+def test_invalid_public_timeout_fails_before_clock_callbacks_or_storage(
+    timeout_seconds: object,
+) -> None:
+    clock = _MonotonicSequence(0.0)
+    service, _, _, _, events = _service(monotonic=clock)
+
+    with pytest.raises(SourceIngestError) as imported:
+        service.import_source(
+            _uuid(2),
+            Path("C:/synthetic/source.pdf"),
+            "Synthetic.pdf",
+            timeout_seconds=cast(float, timeout_seconds),
+        )
+    assert imported.value.code is SourceIngestErrorCode.MODEL_INVALID
+
+    with pytest.raises(SourceIngestError) as verified:
+        service.verify_integrity(
+            _uuid(2),
+            _uuid(3),
+            timeout_seconds=cast(float, timeout_seconds),
+        )
+    assert verified.value.code is SourceIngestErrorCode.MODEL_INVALID
+    assert clock.calls == 0
+    assert events == []
+
+
+@pytest.mark.parametrize(
+    "clock_value",
+    (
+        KeyboardInterrupt("private clock detail"),
+        float("nan"),
+        10**1_000,
+        True,
+        object(),
+    ),
+)
+def test_invalid_monotonic_clock_is_contained_before_storage(
+    clock_value: object,
+) -> None:
+    canary = "private clock detail"
+    clock = _MonotonicSequence(clock_value)
+    service, _, _, _, events = _service(monotonic=clock)
+
+    with pytest.raises(SourceIngestError) as raised:
+        service.import_source(_uuid(2), Path("C:/synthetic/source.pdf"), "Synthetic.pdf")
+
+    assert raised.value.code is SourceIngestErrorCode.INTERNAL_ERROR
+    assert canary not in str(raised.value)
+    assert events == []
 
 
 def test_cancellation_before_prepare_performs_no_storage_work() -> None:
@@ -418,7 +542,63 @@ def test_cancellation_probe_requires_exact_boolean_and_hides_callback_errors(
     assert events == []
 
 
-def test_progress_callback_errors_are_closed_and_abort_component_work() -> None:
+@pytest.mark.parametrize(
+    "failure",
+    (
+        KeyboardInterrupt("private keyboard detail"),
+        SystemExit("private exit detail"),
+        SourceIngestError(SourceIngestErrorCode.SOURCE_CHANGED, "source.private"),
+    ),
+)
+def test_cancellation_callback_cannot_escape_or_inject_closed_failures(
+    failure: BaseException,
+) -> None:
+    service, _, _, _, events = _service()
+
+    def fail() -> bool:
+        raise failure
+
+    with pytest.raises(SourceIngestError) as raised:
+        service.import_source(
+            _uuid(2),
+            Path("C:/synthetic/source.pdf"),
+            "Synthetic.pdf",
+            cancellation=fail,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.CANCELLATION_FAILED
+    assert "private" not in str(raised.value)
+    assert events == []
+
+
+def test_cancellation_callback_cannot_consume_the_remaining_deadline() -> None:
+    clock = _MonotonicSequence(0.0, 0.0, 1.0)
+    service, _, _, _, events = _service(monotonic=clock)
+
+    with pytest.raises(SourceIngestError) as raised:
+        service.import_source(
+            _uuid(2),
+            Path("C:/synthetic/source.pdf"),
+            "Synthetic.pdf",
+            timeout_seconds=1.0,
+            cancellation=lambda: False,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.TIMED_OUT
+    assert events == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        RuntimeError("private progress detail"),
+        KeyboardInterrupt("private progress detail"),
+        SourceIngestError(SourceIngestErrorCode.SOURCE_CHANGED, "source.private"),
+    ),
+)
+def test_progress_callback_errors_are_closed_and_abort_component_work(
+    failure: BaseException,
+) -> None:
     service, store, _, _, _ = _service()
     canary = "private progress detail"
 
@@ -427,17 +607,18 @@ def test_progress_callback_errors_are_closed_and_abort_component_work() -> None:
         source_path: Path,
         display_name: str,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> PreparedSourceLease:
-        del case_id, source_path, display_name, cancellation
+        del case_id, source_path, display_name, deadline, cancellation
         progress(SourceImportProgress(_uuid(1), SourceProgressPhase.COPYING, 0, 1))
         return store.lease
 
     store.prepare = prepare_with_progress  # type: ignore[method-assign]
 
     def failing_progress(_progress: SourceImportProgress) -> None:
-        raise RuntimeError(canary)
+        raise failure
 
     with pytest.raises(SourceIngestError) as raised:
         service.import_source(
@@ -451,8 +632,41 @@ def test_progress_callback_errors_are_closed_and_abort_component_work() -> None:
     assert canary not in str(raised.value)
 
 
+def test_progress_callback_cannot_consume_the_remaining_deadline() -> None:
+    clock = _MonotonicSequence(0.0, 0.0, 0.0, 1.0)
+    service, store, _, _, events = _service(monotonic=clock)
+
+    def prepare_with_progress(
+        case_id: UUID,
+        source_path: Path,
+        display_name: str,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> PreparedSourceLease:
+        del case_id, source_path, display_name, deadline, cancellation
+        events.append("prepare")
+        progress(SourceImportProgress(_uuid(1), SourceProgressPhase.COPYING, 0, 1))
+        return store.lease
+
+    store.prepare = prepare_with_progress  # type: ignore[method-assign]
+
+    with pytest.raises(SourceIngestError) as raised:
+        service.import_source(
+            _uuid(2),
+            Path("C:/synthetic/source.pdf"),
+            "Synthetic.pdf",
+            timeout_seconds=1.0,
+            progress=lambda _progress: None,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.TIMED_OUT
+    assert events == ["prepare"]
+
+
 def test_integrity_verification_hardens_callbacks_and_exact_result_identity() -> None:
-    service, _, _, _, events = _service()
+    service, store, _, _, events = _service()
     reported: list[SourceImportProgress] = []
 
     result = service.verify_integrity(
@@ -466,6 +680,33 @@ def test_integrity_verification_hardens_callbacks_and_exact_result_identity() ->
     assert events == ["verify"]
     assert len(reported) == 1
     assert reported[0].phase is SourceProgressPhase.VERIFYING_INTEGRITY
+    assert store.integrity_deadline is not None
+    assert store.integrity_deadline() is False
+
+
+def test_integrity_result_is_discarded_when_storage_crosses_deadline() -> None:
+    clock = _MonotonicSequence(0.0, 0.0, 1.0)
+    service, store, _, _, events = _service(monotonic=clock)
+
+    def verify_without_checkpoints(
+        case_id: UUID,
+        source_id: UUID,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> SourceIntegrityResult:
+        del case_id, source_id, deadline, cancellation, progress
+        events.append("verify")
+        return SourceIntegrityResult(_uuid(2), _uuid(3), SourceIntegrityStatus.VERIFIED)
+
+    store.verify_integrity = verify_without_checkpoints  # type: ignore[method-assign]
+
+    with pytest.raises(SourceIngestError) as raised:
+        service.verify_integrity(_uuid(2), _uuid(3), timeout_seconds=1.0)
+
+    assert raised.value.code is SourceIngestErrorCode.TIMED_OUT
+    assert events == ["verify"]
 
 
 def test_integrity_verification_rejects_mismatched_or_raw_results() -> None:

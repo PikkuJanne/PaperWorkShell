@@ -14,11 +14,11 @@ page records. It also reports advisory content duplicates and verifies the later
 committed case copy.
 
 `domain.source_ingest` carries path-free source metadata, prepared/committed results, duplicate
-signals, integrity status, progress, and closed sanitized errors. Application orchestration depends
-on structural preparation, commit, and integrity protocols. The concrete storage adapter owns the
-authenticated Windows handles, bounded streaming I/O, case publication, and the narrow import-only
-manifest append. Storage does not import the application layer or parse PDF/image structure, and no
-package initializer re-exports an implementation.
+signals, integrity status, progress, cooperative monotonic deadlines, and closed sanitized errors.
+Application orchestration depends on structural preparation, commit, and integrity protocols. The
+concrete storage adapter owns the authenticated Windows handles, bounded streaming I/O, case
+publication, and the narrow import-only manifest append. Storage does not import the application
+layer or parse PDF/image structure, and no package initializer re-exports an implementation.
 
 This task does not add a document engine, general manifest repository, autosave journal, page-edit
 operation, UI, network behavior, or runtime dependency. PWS-0105 and later image adapters own
@@ -36,26 +36,30 @@ authoritative source.
    selected path is never reopened for the copy.
 2. The operation allocates distinct random pending and source UUIDv4 identities. While the lease is
    live, the ingest adapter streams the exact default stream into the pending case file and
-   calculates SHA-256. Reads and writes are bounded and cancellation is checked between chunks.
+   calculates SHA-256. Reads and writes are bounded; cancellation and the immutable monotonic
+   deadline are checked between chunks.
 3. The pending file is flushed and reauthenticated as a regular single-link file with no reparse
    point or named stream. Its retained handle rewinds and independently rehashes the written bytes
    to verify the exact size and digest.
 4. Control returns normally through the PWS-0103 context so its terminal source identity, size,
    timestamps, link count, final path, and ancestor checks complete before preparation succeeds.
 5. The resulting `PreparedSourceSummary` contains only pending, case, and source IDs, verified byte
-   facts, preliminary media state, and case-scoped authority. It is not a source record and cannot
-   be resolved from an external path.
+   facts, and preliminary media state. The surrounding storage lease, not the summary, retains the
+   case-scoped authority. The summary is not a source record and cannot be resolved from an
+   external path.
 
-Cancellation, a changed or short source, disk-full, a partial write, flush failure, staged-copy
-mutation, or failed terminal source check leaves no authoritative source record. The external source
-is never opened for writing and its display path does not become case authority.
+Cancellation, timeout, a changed or short source, storage failure, staged-copy mismatch, or failed
+terminal source check leaves no authoritative source record. The external source is never opened
+for writing and its display path does not become case authority. Operating-system disk-full and
+Win32 write/flush fault injection remain explicit integration evidence to add; current tests prove
+quota rejection and the other named exercised paths.
 
 ### Inspection between phases
 
 Commit requires complete trusted metadata for the exact prepared copy:
 
 - detected PDF, JPEG, or PNG media type;
-- verified byte size and SHA-256 digest;
+- binding to the already verified byte size and SHA-256 digest in the prepared summary;
 - a positive bounded page count;
 - media-appropriate signature and encryption states; and
 - a bounded, normalized display name for protected presentation only.
@@ -78,8 +82,9 @@ After complete metadata validates:
 The commit holds both source-byte and manifest-growth reservations under the shared per-case
 publication guard through the following ordered publications.
 
-1. The prepared source ID determines the only storage name, `<source-id>.bin`. Generated
-   collisions are retried within a fixed bound and never overwrite an existing object.
+1. The prepared source ID determines the only storage name, `<source-id>.bin`. Identifier
+   collisions against the validated manifest are retried within a fixed bound; any destination
+   object collision fails without overwrite.
 2. The exact verified pending file is atomically published beneath `originals/` while authenticated
    case and parent handles remain pinned. The same sealed exact handle remains live through manifest
    publication; its broker writer rejects every post-seal write and is not exposed outside storage.
@@ -92,8 +97,9 @@ publication guard through the following ordered publications.
    `page_sequence_base` and `page_sequence` and creates no page operation.
 5. The appender requires the import-only replay shape: the current manifest is supported and fully
    valid, `page_operations` is empty, and its base and final page sequences match before the append.
-   It preserves every unrelated member, increments the revision once, uses ordered UTC timestamps,
-   and validates the complete target manifest before publication.
+   It preserves the other members accepted by the narrow import-only validator, increments the
+   revision once, uses ordered UTC timestamps, and revalidates the complete target manifest before
+   publication.
 6. A random staged manifest is written and flushed, then atomically replaces `manifest.json`.
    `ManifestReplaceResult` distinguishes `committed`, `not_committed`, and `unknown`; a confirmed
    replacement is the import commit point. The committed manifest and published source together are
@@ -104,35 +110,55 @@ state, coalesce edits, migrate schemas, publish a journal, or append imports aft
 operations exist. PWS-0109 must absorb this validated append behavior into the general transaction
 boundary without weakening its version, identity, schema, or semantic checks.
 
-## Cancellation, failure, and restart boundary
+## Cancellation, deadlines, failure, and restart boundary
 
-Cancellation is cooperative before the manifest replacement commit point. Before that point, the
-operation returns a cancelled result, retains the previous valid manifest, and removes only a
-staged or published object whose exact identity it still proves. Cleanup stops rather than following
-a replaced name, link, stream, or reparse target.
+`SourceIngestService` arms one immutable monotonic deadline for the complete import or integrity
+operation. Import defaults to 300 seconds and integrity verification defaults to 60 seconds. A
+caller may supply another finite positive duration up to the hard maximum of 86,400 seconds (24
+hours); invalid, non-finite, zero, negative, or larger values fail before storage work. These are
+cooperative deadlines checked at application phase boundaries and between bounded storage chunks;
+case-coordination lock acquisition uses 50-millisecond timed waits and checks the same probe again
+immediately after acquisition. Deadlines do not preempt a Win32 call or an already entered critical
+section; exact resource release and outcome settlement still run to completion.
 
-Publishing the immutable copy necessarily precedes the manifest commit. A crash, cancellation, or
-manifest failure in that interval can therefore leave a random case-scoped file in `originals/`
-that no valid manifest references. It is an orphan, not a source record. Normal failure handling may
-remove the exact retained object; PWS-0113 owns bounded restart discovery and cleanup when immediate
-proof or cleanup is unavailable.
+Cancellation and deadline expiry are checked through the last pre-publication boundary. Before
+source publication, either condition returns its stable closed failure, retains the previous valid
+manifest, and removes only a staged object whose exact identity it still proves. Cleanup stops
+rather than following a replaced name, link, stream, or reparse target.
 
-`not_committed` permits exact cleanup of the new source. An `unknown` replacement outcome preserves
-the random published bytes because the manifest may reference them; it returns a stable
-failure/review state and makes no new valid-record claim until a fresh open resolves authority.
-PWS-0113 may remove the copy only if recovery proves it remains unreferenced.
+Publishing the immutable copy necessarily precedes the manifest commit. A crash, interruption, or
+unresolved manifest failure in that interval can therefore leave a random case-scoped file in
+`originals/` that no valid manifest references. It is an orphan, not a source record. Normal failure
+handling may remove the exact retained object; PWS-0113 owns bounded restart discovery and cleanup
+when immediate proof or cleanup is unavailable.
 
-Once manifest replacement is confirmed, late cancellation or response loss cannot roll the import
-back or report a precommit cancellation. A fresh open observes the complete committed source/page
-graph, and a retry can report the prior content through the ordinary duplicate advisory. No failure
-path rewrites the external original or a previously committed case copy.
+Lease cleanup is one-shot and attempts the pending handle, both quota reservations, and retained
+case authority independently. Cleanup faults cannot replace the original precommit failure. After
+an authoritative manifest commit, cleanup faults likewise cannot turn the committed import into a
+failure response; any unreleased process-local bookkeeping remains fail-safe capacity until process
+restart rather than permitting an unsafe second write.
+
+`not_committed` permits exact cleanup of the new source. An `unknown` replacement report
+conservatively preserves the random published bytes and staged manifest; the store does not downgrade
+that uncertainty to permission to delete. It returns a stable failure and makes no new valid-record
+claim. A delayed process-control interruption is propagated only after those recovery artifacts are
+preserved. A fresh lifecycle open reports only what the current valid manifest names; PWS-0113 owns
+explicit orphan resolution and may remove a copy only if recovery proves it remains unreferenced.
+
+After source publication begins, commit code stops consulting cancellation and deadline probes and
+settles the manifest outcome by exact destination identity. Once manifest replacement is confirmed,
+late cancellation, deadline expiry, interruption, or response loss cannot roll the import back or
+report a precommit failure. A fresh open observes the complete committed source/page graph, and a
+retry can report the prior content through the ordinary duplicate advisory. No failure path rewrites
+the external original or a previously committed case copy.
 
 ## Integrity verification
 
 Integrity verification resolves only a validated source record and opaque storage name beneath its
-authenticated case. It opens the case copy read-only, rejects a missing, reparse, directory,
-hard-linked, alternate-stream, replaced, or otherwise out-of-scope object, streams its default
-contents within the recorded size bound, and compares both size and SHA-256 with the manifest.
+authenticated case. It classifies an absent case copy as `missing` and unsafe reparse, directory,
+hard-linked, alternate-stream, replaced, or otherwise out-of-scope objects as `mismatch`. For an
+admissible object it streams the default contents within the recorded size bound and compares both
+size and SHA-256 with the manifest.
 
 `SourceIntegrityResult` has exactly three `SourceIntegrityStatus` values: `verified`, `missing`, and
 `mismatch`. `mismatch` covers unsafe object identity/type/link/stream/reparse state as well as a size
@@ -145,11 +171,12 @@ manifest.
 
 ## Privacy and diagnostics
 
-The external path is never persisted. The display name exists only inside the protected manifest;
-it is not a storage/temp name, RPC path, cache key, command argument, result representation, or log
-field. Routine diagnostics also exclude source/case paths, file content, metadata values, SHA-256
-digests, raw exceptions, and Win32 messages. They may contain only opaque internal IDs, versions,
-numeric counts/resource observations, duration, stable error codes, and sanitized context tokens.
+The external path is never persisted. The display name is persisted only inside the protected
+manifest; during import it is transient validated application/storage input, not a storage/temp
+name, RPC path, cache key, command argument, result representation, or log field. Routine
+diagnostics also exclude source/case paths, file content, metadata values, SHA-256 digests, raw
+exceptions, and Win32 messages. They may contain only opaque internal IDs, versions, numeric
+counts/resource observations, duration, stable error codes, and sanitized context tokens.
 
 Named streams attached to an external source are not document content and are neither enumerated nor
 copied. Case pending files and immutable originals must have only the default stream. Random names,
@@ -167,25 +194,32 @@ erasure or same-account-malware claim.
 - `SourceIntegrityResult` carries only case/source IDs and the closed integrity status.
 - `SourceImportProgress` reports monotonic numeric units for `copying`, `verifying_copy`,
   `inspecting`, `committing`, or `verifying_integrity`; it contains no display or path value.
+- Each import/integrity call uses one immutable monotonic deadline; its probe crosses every adapter
+  boundary and is checked cooperatively until the documented publication settlement boundary.
 - `SourceIngestError` exposes only one closed `SourceIngestErrorCode`, stable context token, and safe
   message. Its string and representation never append a path, display name, digest, or raw failure.
 
 `app.source_ingest.SourceIngestService` orders preparation, inspection, and commit inside one
 `PreparedSourceLease`, then validates every returned case/pending/source/media/size/digest/page
 binding before exposing a result. `SourceIngestStore` is the narrow prepare/integrity port;
-`SourceInspector` supplies complete typed metadata; `CancellationProbe` and `ProgressSink` are
-wrapped so callback failures become sanitized closed errors. The application layer never opens a
-source, pending file, original, or manifest itself.
+`SourceInspector` supplies complete typed metadata; `DeadlineProbe`, `CancellationProbe`, and
+`ProgressSink` cross the same typed ports. Cancellation/progress callbacks and monotonic-clock
+failures become sanitized closed errors. The application layer never opens a source, pending file,
+original, or manifest itself.
 
 ## Verification ownership
 
-Unit tests cover boundary-sized streaming, independent source/staged hashes, short reads, write and
-flush faults, cancellation points, ID collisions, duplicate advisories, complete source/page
-manifest construction, the import-only replay precondition, commit-point behavior, immutable
-results, and sanitized errors.
+Unit tests cover boundary-sized streaming, independent source/staged hashes, short reads, staged
+readback mismatch, cooperative cancellation/deadline phase checks, ID collisions, duplicate
+advisories, complete source/page manifest construction, the import-only replay precondition,
+immutable results, and sanitized errors.
 
 Windows integration and security tests cover the real single source lease, unchanged external
-content and modification time, source mutation during copy, disk-full, atomic manifest replacement,
-fresh-service reopen, concurrent imports, post-publication interruption, random-name privacy,
-hard-link/alternate-stream/reparse races, sibling/outside preservation, and later case-copy
-mutation. All document fixtures are synthetic and large boundary carriers are generated on demand.
+content/size/modification time/file identity, a link-count source change during copy, quota
+rejection, atomic manifest outcome states, fresh-service reopen, simultaneous stale commits,
+post-publication cancellation/interruption settlement, random-name privacy, stored-copy hard links,
+sibling/outside preservation, and later missing/size/digest mutation. All document fixtures are
+synthetic and boundary carriers are generated on demand. Operating-system disk-full and Win32
+write/flush fault injection, end-to-end alternate-stream/reparse identity races, power-loss, and
+restart orphan cleanup are not claimed by PWS-0104 evidence; their mapped later/adjacent owners
+retain those scenarios.

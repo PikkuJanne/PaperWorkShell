@@ -29,7 +29,11 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
     reject_source_ingest,
 )
-from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
+from paperworkshell.storage._windows import (
+    MAXIMUM_STREAM_CHUNK_BYTES,
+    ManifestReplaceResult,
+    WindowsHandle,
+)
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
@@ -48,6 +52,7 @@ CASE_ID = UUID("10000000-0000-4000-8000-000000000204")
 NOW = datetime(2026, 8, 2, 13, 0, tzinfo=UTC)
 
 CancellationProbe = Callable[[], bool]
+DeadlineProbe = Callable[[], bool]
 ProgressSink = Callable[[SourceImportProgress], None]
 
 
@@ -67,9 +72,12 @@ class _SyntheticImageInspector:
         self,
         source: PreparedSourceSummary,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> CompletedSourceInspection:
+        if deadline():
+            reject_source_ingest(SourceIngestErrorCode.TIMED_OUT, "test.inspection")
         if cancellation():
             reject_source_ingest(SourceIngestErrorCode.CANCELLED, "test.inspection")
         progress(
@@ -296,6 +304,53 @@ def test_integrity_verification_rejects_case_copy_hardlink_alias(tmp_path: Path)
         stack.service.verify_integrity(CASE_ID, result.source_id).status
         is SourceIntegrityStatus.VERIFIED
     )
+
+
+def test_post_publication_failure_cleans_only_new_case_objects_and_preserves_sentinels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "publication-failure.jpg").resolve()
+    source.write_bytes(_jpeg_of_size(8_193, fill=b"publication-failure-"))
+    source_before = _external_snapshot(source)
+    manifest_before = stack.layout.manifest.read_bytes()
+    sibling_root = stack.layout.case_root.parent / "20000000-0000-4000-8000-000000000204"
+    sibling_root.mkdir()
+    sibling = sibling_root / "sibling-sentinel.bin"
+    outside = tmp_path / "outside-sentinel.bin"
+    sibling.write_bytes(b"sibling-sentinel-content")
+    outside.write_bytes(b"outside-sentinel-content")
+    sibling_before = _external_snapshot(sibling)
+    outside_before = _external_snapshot(outside)
+    raw_failure_token = f"RAW-PUBLICATION-FAILURE:{outside}"
+
+    def fail_after_source_publication(
+        _candidate_handle: WindowsHandle,
+        _case_root: WindowsHandle,
+        _expected_manifest_handle: WindowsHandle,
+    ) -> ManifestReplaceResult:
+        raise OSError(raw_failure_token)
+
+    monkeypatch.setattr(
+        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        fail_after_source_publication,
+    )
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.service.import_source(CASE_ID, source, "Publication failure synthetic.jpg")
+
+    assert raised.value.code is SourceIngestErrorCode.COMMIT_FAILED
+    assert raised.value.context == "source.commit_storage"
+    assert raw_failure_token not in str(raised.value)
+    assert raw_failure_token not in repr(raised.value)
+    assert str(outside) not in str(raised.value)
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.originals.iterdir()) == []
+    assert list(stack.layout.temp.iterdir()) == []
+    assert _external_snapshot(source) == source_before
+    assert _external_snapshot(sibling) == sibling_before
+    assert _external_snapshot(outside) == outside_before
 
 
 def _qualified_name(node: ast.expr) -> str | None:

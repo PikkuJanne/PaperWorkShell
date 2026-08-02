@@ -275,6 +275,189 @@ def test_reservations_are_shared_by_case_identity_across_managers(tmp_path: Path
     assert raised.value.code is WorkspaceErrorCode.QUOTA_EXCEEDED
 
 
+def test_authenticate_checkpoint_exits_while_case_coordination_is_contended(
+    tmp_path: Path,
+) -> None:
+    manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota())
+    layout = manager.provision()
+    reservation = manager.reserve_capacity(
+        layout.case_id,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{uuid4()}.tmp",
+        is_directory=False,
+        byte_count=1,
+    )
+    lock_held = Event()
+    release_lock = Event()
+    checkpoint_calls = 0
+
+    def hold_case_coordination() -> None:
+        with reservation.publication_guard(
+            case_identity=reservation.case_identity,
+            relative_parts=reservation.relative_parts,
+            is_directory=False,
+            byte_count=1,
+            entry_count=1,
+        ):
+            lock_held.set()
+            assert release_lock.wait(timeout=5)
+
+    def expire_after_one_poll() -> None:
+        nonlocal checkpoint_calls
+        checkpoint_calls += 1
+        if checkpoint_calls >= 2:
+            raise TimeoutError("synthetic case-coordination deadline")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        holder = pool.submit(hold_case_coordination)
+        assert lock_held.wait(timeout=2)
+        try:
+            with pytest.raises(TimeoutError, match="case-coordination deadline"):
+                manager.authenticate_case(
+                    layout.case_id,
+                    retain_lease=True,
+                    coordination_checkpoint=expire_after_one_poll,
+                )
+        finally:
+            release_lock.set()
+        holder.result(timeout=2)
+
+    assert checkpoint_calls == 2
+    with manager.authenticate_case(layout.case_id, retain_lease=True) as authority:
+        assert authority.case_id == layout.case_id
+    reservation.release()
+
+
+def test_reserve_checkpoint_failure_after_acquire_releases_before_measurement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota())
+    layout = manager.provision()
+    existing = manager.reserve_capacity(
+        layout.case_id,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{uuid4()}.tmp",
+        is_directory=False,
+        byte_count=1,
+    )
+    measurement_entered = Event()
+    original_measure = manager._measure_usage_and_identity
+
+    def observe_measurement(
+        measured_layout: CaseWorkspacePaths,
+    ) -> tuple[WorkspaceUsage, FileIdentity]:
+        measurement_entered.set()
+        return original_measure(measured_layout)
+
+    monkeypatch.setattr(manager, "_measure_usage_and_identity", observe_measurement)
+    checkpoint_calls = 0
+
+    def fail_immediately_after_acquire() -> None:
+        nonlocal checkpoint_calls
+        checkpoint_calls += 1
+        if checkpoint_calls == 2:
+            raise RuntimeError("synthetic coordination cancellation")
+
+    with pytest.raises(RuntimeError, match="coordination cancellation"):
+        manager.reserve_capacity(
+            layout.case_id,
+            QuotaArea.TEMP,
+            relative_path=f"temp/{uuid4()}.tmp",
+            is_directory=False,
+            byte_count=1,
+            coordination_checkpoint=fail_immediately_after_acquire,
+        )
+
+    assert checkpoint_calls == 2
+    assert not measurement_entered.is_set()
+
+    def prove_lock_was_released() -> int:
+        probe_calls = 0
+
+        def fail_if_coordination_remains_locked() -> None:
+            nonlocal probe_calls
+            probe_calls += 1
+            if probe_calls >= 4:
+                raise TimeoutError("case coordination remained locked")
+
+        with existing.publication_guard(
+            case_identity=existing.case_identity,
+            relative_parts=existing.relative_parts,
+            is_directory=False,
+            byte_count=1,
+            entry_count=1,
+            coordination_checkpoint=fail_if_coordination_remains_locked,
+        ):
+            return probe_calls
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(prove_lock_was_released).result(timeout=2) == 2
+    existing.release()
+
+
+def test_publication_checkpoint_preserves_reentrancy_and_never_yields_after_failure(
+    tmp_path: Path,
+) -> None:
+    manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota())
+    layout = manager.provision()
+    reservation = manager.reserve_capacity(
+        layout.case_id,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{uuid4()}.tmp",
+        is_directory=False,
+        byte_count=1,
+    )
+    reentrant_checks = 0
+
+    def record_reentrant_checkpoint() -> None:
+        nonlocal reentrant_checks
+        reentrant_checks += 1
+
+    with reservation.publication_guard(
+        case_identity=reservation.case_identity,
+        relative_parts=reservation.relative_parts,
+        is_directory=False,
+        byte_count=1,
+        entry_count=1,
+        coordination_checkpoint=record_reentrant_checkpoint,
+    ):
+        with reservation.publication_guard(
+            case_identity=reservation.case_identity,
+            relative_parts=reservation.relative_parts,
+            is_directory=False,
+            byte_count=1,
+            entry_count=1,
+            coordination_checkpoint=record_reentrant_checkpoint,
+        ):
+            assert reservation.is_active
+    assert reentrant_checks == 4
+
+    failure_checks = 0
+    yielded = False
+
+    def fail_immediately_after_acquire() -> None:
+        nonlocal failure_checks
+        failure_checks += 1
+        if failure_checks == 2:
+            raise RuntimeError("synthetic post-acquire failure")
+
+    with pytest.raises(RuntimeError, match="post-acquire failure"):
+        with reservation.publication_guard(
+            case_identity=reservation.case_identity,
+            relative_parts=reservation.relative_parts,
+            is_directory=False,
+            byte_count=1,
+            entry_count=1,
+            coordination_checkpoint=fail_immediately_after_acquire,
+        ):
+            yielded = True
+
+    assert failure_checks == 2
+    assert not yielded
+    reservation.release()
+
+
 def test_capacity_reservation_rejects_intended_depth_before_mutation(tmp_path: Path) -> None:
     manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota(depth=2))
     layout = manager.provision()

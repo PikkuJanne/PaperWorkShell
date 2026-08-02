@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from paperworkshell.domain.import_precheck import DetectedMediaType
 MAX_SAFE_SOURCE_INTEGER: Final = 9_007_199_254_740_991
 MAX_SOURCE_PAGES: Final = 4_096
 MAX_SOURCE_DISPLAY_NAME_CODEPOINTS: Final = 255
+MAX_SOURCE_OPERATION_TIMEOUT_SECONDS: Final = 86_400.0
 
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}\Z")
@@ -29,6 +31,7 @@ class SourceIngestErrorCode(StrEnum):
     INSPECTION_INVALID = "SOURCE_INSPECTION_INVALID"
     INSPECTION_MISMATCH = "SOURCE_INSPECTION_MISMATCH"
     CANCELLED = "SOURCE_IMPORT_CANCELLED"
+    TIMED_OUT = "SOURCE_OPERATION_TIMED_OUT"
     CANCELLATION_FAILED = "SOURCE_CANCELLATION_CHECK_FAILED"
     PROGRESS_FAILED = "SOURCE_PROGRESS_FAILED"
     CASE_UNAVAILABLE = "SOURCE_CASE_UNAVAILABLE"
@@ -66,6 +69,9 @@ _SAFE_ERROR_MESSAGES: Final[dict[SourceIngestErrorCode, str]] = {
         "Document inspection did not match the prepared source."
     ),
     SourceIngestErrorCode.CANCELLED: "The source operation was cancelled before completion.",
+    SourceIngestErrorCode.TIMED_OUT: (
+        "The source operation exceeded its configured time limit before completion."
+    ),
     SourceIngestErrorCode.CANCELLATION_FAILED: (
         "PaperWorkShell could not read the source-operation cancellation state safely."
     ),
@@ -170,6 +176,21 @@ def require_source_display_name(value: object) -> str:
             "source.display_name",
         )
     return value
+
+
+def require_source_timeout_seconds(value: object, *, context: str) -> float:
+    """Return one finite positive timeout within the source-operation hard limit."""
+
+    if type(value) is int:
+        if 0 < value <= MAX_SOURCE_OPERATION_TIMEOUT_SECONDS:
+            return float(value)
+    elif (
+        type(value) is float
+        and math.isfinite(value)
+        and 0 < value <= MAX_SOURCE_OPERATION_TIMEOUT_SECONDS
+    ):
+        return value
+    reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, context)
 
 
 class SourceSignatureState(StrEnum):

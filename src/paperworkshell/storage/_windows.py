@@ -7,7 +7,7 @@ import os
 import re
 from contextlib import AbstractContextManager
 from ctypes import wintypes
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final, Never, Self
@@ -214,6 +214,11 @@ class ManifestReplaceResult:
     """Sanitized commit state; callers preserve source bytes whenever state is unknown."""
 
     state: ManifestReplaceState
+    delayed_exception: BaseException | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 def _libraries() -> tuple[Any, Any, Any]:
@@ -1228,38 +1233,38 @@ def replace_manifest_atomically(
     if initial is not ManifestReplaceState.NOT_COMMITTED:
         return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
 
+    delayed_exception: BaseException | None = None
     try:
         renamed, _error_number = _rename_open_file(
             candidate_handle,
             destination=destination,
             replace=True,
         )
-    except BaseException:
-        resolved = _resolve_manifest_replace_state(
-            destination,
-            candidate_identity=candidate_current.identity,
-            expected_identity=expected_current.identity,
-        )
-        if resolved is ManifestReplaceState.COMMITTED:
-            try:
-                candidate_handle.refresh_info()
-            except Exception:
-                pass
-        return ManifestReplaceResult(resolved)
+    except BaseException as error:
+        delayed_exception = error
+        renamed = False
 
     resolved = _resolve_manifest_replace_state(
         destination,
         candidate_identity=candidate_current.identity,
         expected_identity=expected_current.identity,
     )
+    result = ManifestReplaceResult(
+        resolved,
+        delayed_exception=delayed_exception,
+    )
     if resolved is ManifestReplaceState.COMMITTED:
         try:
             candidate_handle.refresh_info()
         except Exception:
             pass
-        return ManifestReplaceResult(resolved)
+        return result
+    if delayed_exception is not None and resolved is ManifestReplaceState.NOT_COMMITTED:
+        raise delayed_exception
+    if delayed_exception is not None:
+        return result
     if not renamed and resolved is ManifestReplaceState.NOT_COMMITTED:
-        return ManifestReplaceResult(resolved)
+        return result
     return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
 
 

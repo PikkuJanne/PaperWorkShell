@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import math
+import time
 from pathlib import Path
 from types import TracebackType
-from typing import Protocol, Self, runtime_checkable
+from typing import Final, Protocol, Self, runtime_checkable
 from uuid import UUID
 
 from paperworkshell.domain.source_ingest import (
@@ -18,7 +20,25 @@ from paperworkshell.domain.source_ingest import (
     reject_source_ingest,
     require_internal_id,
     require_source_display_name,
+    require_source_timeout_seconds,
 )
+
+DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS: Final = 300.0
+DEFAULT_SOURCE_INTEGRITY_TIMEOUT_SECONDS: Final = 60.0
+
+
+class DeadlineProbe(Protocol):
+    """Callable check for one immutable absolute monotonic deadline."""
+
+    def __call__(self) -> bool:
+        """Return whether the operation is at or beyond its deadline."""
+
+
+class MonotonicClock(Protocol):
+    """Trusted monotonic clock seam used to arm and test operation deadlines."""
+
+    def __call__(self) -> float:
+        """Return finite monotonic seconds from an unspecified reference point."""
 
 
 class CancellationProbe(Protocol):
@@ -58,6 +78,7 @@ class PreparedSourceLease(Protocol):
         self,
         inspection: CompletedSourceInspection,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> SourceImportResult:
@@ -72,6 +93,7 @@ class SourceInspector(Protocol):
         self,
         source: PreparedSourceSummary,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> CompletedSourceInspection:
@@ -88,6 +110,7 @@ class SourceIngestStore(Protocol):
         source_path: Path,
         display_name: str,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> PreparedSourceLease:
@@ -98,27 +121,42 @@ class SourceIngestStore(Protocol):
         case_id: UUID,
         source_id: UUID,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> SourceIntegrityResult:
         """Hash one exact committed case copy without mutating it or its manifest."""
 
 
-class _SafeCancellationProbe:
-    __slots__ = ("_callback",)
+class _MonotonicDeadline:
+    __slots__ = ("_expires_at", "_monotonic")
 
-    def __init__(self, callback: CancellationProbe | None) -> None:
-        self._callback = callback
+    def __init__(self, timeout_seconds: float, monotonic: MonotonicClock) -> None:
+        self._monotonic = monotonic
+        expires_at = _read_monotonic(monotonic) + timeout_seconds
+        if not math.isfinite(expires_at):
+            reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, "source.deadline")
+        self._expires_at = expires_at
 
     def __call__(self) -> bool:
+        return _read_monotonic(self._monotonic) >= self._expires_at
+
+
+class _SafeCancellationProbe:
+    __slots__ = ("_callback", "_deadline")
+
+    def __init__(self, callback: CancellationProbe | None, deadline: DeadlineProbe) -> None:
+        self._callback = callback
+        self._deadline = deadline
+
+    def __call__(self) -> bool:
+        _require_not_timed_out(self._deadline, context="source.cancellation")
         callback = self._callback
         if callback is None:
             return False
         try:
             value = callback()
-        except SourceIngestError:
-            raise
-        except Exception:
+        except BaseException:
             reject_source_ingest(
                 SourceIngestErrorCode.CANCELLATION_FAILED,
                 "source.cancellation",
@@ -128,37 +166,46 @@ class _SafeCancellationProbe:
                 SourceIngestErrorCode.CANCELLATION_FAILED,
                 "source.cancellation",
             )
+        _require_not_timed_out(self._deadline, context="source.cancellation")
         return value
 
 
 class _SafeProgressSink:
-    __slots__ = ("_callback",)
+    __slots__ = ("_callback", "_deadline")
 
-    def __init__(self, callback: ProgressSink | None) -> None:
+    def __init__(self, callback: ProgressSink | None, deadline: DeadlineProbe) -> None:
         self._callback = callback
+        self._deadline = deadline
 
     def __call__(self, progress: SourceImportProgress) -> None:
         if type(progress) is not SourceImportProgress:
             reject_source_ingest(SourceIngestErrorCode.PROGRESS_FAILED, "source.progress")
+        _require_not_timed_out(self._deadline, context="source.progress")
         callback = self._callback
         if callback is None:
             return
         try:
             callback(progress)
-        except SourceIngestError:
-            raise
-        except Exception:
+        except BaseException:
             reject_source_ingest(SourceIngestErrorCode.PROGRESS_FAILED, "source.progress")
+        _require_not_timed_out(self._deadline, context="source.progress")
 
 
 class SourceIngestService:
     """Order prepare, inspection, commit, and read-only integrity verification."""
 
-    __slots__ = ("_inspector", "_store")
+    __slots__ = ("_inspector", "_monotonic", "_store")
 
-    def __init__(self, store: SourceIngestStore, inspector: SourceInspector) -> None:
+    def __init__(
+        self,
+        store: SourceIngestStore,
+        inspector: SourceInspector,
+        *,
+        monotonic: MonotonicClock = time.monotonic,
+    ) -> None:
         self._store = store
         self._inspector = inspector
+        self._monotonic = monotonic
 
     def import_source(
         self,
@@ -166,6 +213,7 @@ class SourceIngestService:
         source_path: Path,
         display_name: str,
         *,
+        timeout_seconds: float = DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
         cancellation: CancellationProbe | None = None,
         progress: ProgressSink | None = None,
     ) -> SourceImportResult:
@@ -175,8 +223,13 @@ class SourceIngestService:
         if not isinstance(source_path, Path):
             reject_source_ingest(SourceIngestErrorCode.SOURCE_PATH_INVALID, "import.source_path")
         safe_display_name = require_source_display_name(display_name)
-        cancellation_probe = _SafeCancellationProbe(cancellation)
-        progress_sink = _SafeProgressSink(progress)
+        timeout = require_source_timeout_seconds(
+            timeout_seconds,
+            context="import.timeout_seconds",
+        )
+        deadline = _MonotonicDeadline(timeout, self._monotonic)
+        cancellation_probe = _SafeCancellationProbe(cancellation, deadline)
+        progress_sink = _SafeProgressSink(progress, deadline)
         _require_not_cancelled(cancellation_probe, context="import.before_prepare")
 
         try:
@@ -184,6 +237,7 @@ class SourceIngestService:
                 selected_case,
                 source_path,
                 safe_display_name,
+                deadline=deadline,
                 cancellation=cancellation_probe,
                 progress=progress_sink,
             )
@@ -202,6 +256,7 @@ class SourceIngestService:
                 phase = SourceIngestErrorCode.INSPECT_FAILED
                 inspection = self._inspector.inspect(
                     summary,
+                    deadline=deadline,
                     cancellation=cancellation_probe,
                     progress=progress_sink,
                 )
@@ -211,6 +266,7 @@ class SourceIngestService:
                 phase = SourceIngestErrorCode.COMMIT_FAILED
                 result = active.commit(
                     inspection,
+                    deadline=deadline,
                     cancellation=cancellation_probe,
                     progress=progress_sink,
                 )
@@ -232,6 +288,7 @@ class SourceIngestService:
         case_id: UUID,
         source_id: UUID,
         *,
+        timeout_seconds: float = DEFAULT_SOURCE_INTEGRITY_TIMEOUT_SECONDS,
         cancellation: CancellationProbe | None = None,
         progress: ProgressSink | None = None,
     ) -> SourceIntegrityResult:
@@ -241,13 +298,19 @@ class SourceIngestService:
         selected_source = require_internal_id(source_id, context="verify.source_id")
         if selected_case == selected_source:
             reject_source_ingest(SourceIngestErrorCode.IDENTIFIER_INVALID, "verify.identifiers")
-        cancellation_probe = _SafeCancellationProbe(cancellation)
-        progress_sink = _SafeProgressSink(progress)
+        timeout = require_source_timeout_seconds(
+            timeout_seconds,
+            context="verify.timeout_seconds",
+        )
+        deadline = _MonotonicDeadline(timeout, self._monotonic)
+        cancellation_probe = _SafeCancellationProbe(cancellation, deadline)
+        progress_sink = _SafeProgressSink(progress, deadline)
         _require_not_cancelled(cancellation_probe, context="verify.before_start")
         try:
             result = self._store.verify_integrity(
                 selected_case,
                 selected_source,
+                deadline=deadline,
                 cancellation=cancellation_probe,
                 progress=progress_sink,
             )
@@ -261,12 +324,34 @@ class SourceIngestService:
             or result.source_id != selected_source
         ):
             reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "verify.result")
+        _require_not_timed_out(deadline, context="verify.after_storage")
         return result
 
 
 def _require_not_cancelled(cancellation: CancellationProbe, *, context: str) -> None:
     if cancellation():
         reject_source_ingest(SourceIngestErrorCode.CANCELLED, context)
+
+
+def _require_not_timed_out(deadline: DeadlineProbe, *, context: str) -> None:
+    if deadline():
+        reject_source_ingest(SourceIngestErrorCode.TIMED_OUT, context)
+
+
+def _read_monotonic(monotonic: MonotonicClock) -> float:
+    try:
+        value = monotonic()
+    except BaseException:
+        reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, "source.deadline_clock")
+    if type(value) not in {int, float}:
+        reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, "source.deadline_clock")
+    try:
+        observed = float(value)
+    except OverflowError, ValueError:
+        reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, "source.deadline_clock")
+    if not math.isfinite(observed):
+        reject_source_ingest(SourceIngestErrorCode.INTERNAL_ERROR, "source.deadline_clock")
+    return observed
 
 
 def _require_prepared_summary(

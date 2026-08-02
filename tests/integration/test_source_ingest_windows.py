@@ -7,9 +7,11 @@ import json
 import os
 import struct
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Barrier, Event, Lock
 from typing import cast
 from uuid import UUID
 
@@ -23,6 +25,7 @@ from paperworkshell.domain.source_ingest import (
     PreparedSourceSummary,
     SourceEncryptionState,
     SourceImportProgress,
+    SourceImportResult,
     SourceIngestError,
     SourceIngestErrorCode,
     SourceIntegrityStatus,
@@ -30,10 +33,19 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
     reject_source_ingest,
 )
-from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
+from paperworkshell.storage._windows import (
+    MAXIMUM_STREAM_CHUNK_BYTES,
+    ManifestReplaceResult,
+    ManifestReplaceState,
+    WindowsHandle,
+    replace_manifest_atomically,
+)
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
-from paperworkshell.storage.quotas import WorkspaceQuota
-from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
+from paperworkshell.storage.quotas import QuotaArea, WorkspaceQuota
+from paperworkshell.storage.source_ingest import (
+    WindowsPreparedSourceLease,
+    WindowsSourceIngestStore,
+)
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.workspace import (
     CaseWorkspaceManager,
@@ -51,6 +63,7 @@ CREATED_AT = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
 IMPORTED_AT = datetime(2026, 8, 2, 12, 1, tzinfo=UTC)
 
 CancellationProbe = Callable[[], bool]
+DeadlineProbe = Callable[[], bool]
 ProgressSink = Callable[[SourceImportProgress], None]
 
 
@@ -58,10 +71,12 @@ class _SequentialUuidFactory:
     def __init__(self, prefix: int) -> None:
         self._prefix = prefix
         self._next = 1
+        self._lock = Lock()
 
     def __call__(self) -> UUID:
-        value = UUID(f"{self._prefix:08x}-0000-4000-8000-{self._next:012x}")
-        self._next += 1
+        with self._lock:
+            value = UUID(f"{self._prefix:08x}-0000-4000-8000-{self._next:012x}")
+            self._next += 1
         return value
 
 
@@ -72,9 +87,12 @@ class _SyntheticImageInspector:
         self,
         source: PreparedSourceSummary,
         *,
+        deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ProgressSink,
     ) -> CompletedSourceInspection:
+        if deadline():
+            reject_source_ingest(SourceIngestErrorCode.TIMED_OUT, "test.inspection")
         if cancellation():
             reject_source_ingest(SourceIngestErrorCode.CANCELLED, "test.inspection")
         progress(
@@ -445,6 +463,7 @@ def test_manifest_conflict_aborts_stale_pending_copy_without_record(
         CASE_ID,
         stale_source,
         "Stale synthetic.jpg",
+        deadline=lambda: False,
         cancellation=lambda: False,
         progress=lambda _value: None,
     ) as pending:
@@ -456,12 +475,14 @@ def test_manifest_conflict_aborts_stale_pending_copy_without_record(
         )
         inspection = _SyntheticImageInspector().inspect(
             pending.summary,
+            deadline=lambda: False,
             cancellation=lambda: False,
             progress=lambda _value: None,
         )
         with pytest.raises(SourceIngestError) as raised:
             pending.commit(
                 inspection,
+                deadline=lambda: False,
                 cancellation=lambda: False,
                 progress=lambda _value: None,
             )
@@ -477,3 +498,281 @@ def test_manifest_conflict_aborts_stale_pending_copy_without_record(
     assert not (stack.layout.originals / f"{stale_id}.bin").exists()
     assert (stack.layout.originals / f"{winner.source_id}.bin").is_file()
     _assert_no_staged_files(stack)
+
+
+@pytest.mark.parametrize("interrupt_after_replace", [False, True])
+def test_confirmed_manifest_replace_wins_over_late_cancellation_or_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    interrupt_after_replace: bool,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "late-signal.jpg").resolve()
+    payload = _jpeg_of_size(8_193, fill=b"late-signal-")
+    source.write_bytes(payload)
+    manifest_before = stack.layout.manifest.read_bytes()
+    cancelled = False
+    real_replace = replace_manifest_atomically
+
+    def replace_then_signal(
+        candidate_handle: WindowsHandle,
+        case_root: WindowsHandle,
+        expected_manifest_handle: WindowsHandle,
+    ) -> ManifestReplaceResult:
+        nonlocal cancelled
+        outcome = real_replace(candidate_handle, case_root, expected_manifest_handle)
+        assert outcome.state is ManifestReplaceState.COMMITTED
+        cancelled = True
+        if interrupt_after_replace:
+            raise KeyboardInterrupt
+        return outcome
+
+    monkeypatch.setattr(
+        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        replace_then_signal,
+    )
+
+    result = stack.service.import_source(
+        CASE_ID,
+        source,
+        "Late signal synthetic.jpg",
+        cancellation=lambda: cancelled,
+    )
+
+    assert cancelled
+    assert result.manifest_revision == 1
+    assert stack.layout.manifest.read_bytes() != manifest_before
+    document = _manifest(stack.layout)
+    sources = document["sources"]
+    assert isinstance(sources, list)
+    assert [item["source_id"] for item in sources if isinstance(item, dict)] == [
+        str(result.source_id)
+    ]
+    assert (stack.layout.originals / f"{result.source_id}.bin").read_bytes() == payload
+    _assert_no_staged_files(stack)
+
+
+@pytest.mark.parametrize(
+    ("replace_state", "preserves_uncertain_artifacts", "expected_context"),
+    [
+        (ManifestReplaceState.NOT_COMMITTED, False, "source.manifest_replace"),
+        (ManifestReplaceState.UNKNOWN, True, "source.commit_uncertain"),
+    ],
+)
+def test_store_manifest_replace_outcome_controls_exact_cleanup_and_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replace_state: ManifestReplaceState,
+    preserves_uncertain_artifacts: bool,
+    expected_context: str,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "replace-outcome.jpg").resolve()
+    source.write_bytes(_jpeg_of_size(8_194, fill=b"replace-outcome-"))
+    manifest_before = stack.layout.manifest.read_bytes()
+
+    def forced_replace_outcome(
+        _candidate_handle: WindowsHandle,
+        _case_root: WindowsHandle,
+        _expected_manifest_handle: WindowsHandle,
+    ) -> ManifestReplaceResult:
+        return ManifestReplaceResult(replace_state)
+
+    monkeypatch.setattr(
+        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        forced_replace_outcome,
+    )
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.service.import_source(CASE_ID, source, "Replace outcome synthetic.jpg")
+
+    assert raised.value.code is SourceIngestErrorCode.COMMIT_FAILED
+    assert raised.value.context == expected_context
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert _manifest(stack.layout)["sources"] == []
+    originals = list(stack.layout.originals.iterdir())
+    staged = list(stack.layout.temp.iterdir())
+    if preserves_uncertain_artifacts:
+        assert len(originals) == len(staged) == 1
+        assert originals[0].suffix == ".bin"
+        assert UUID(originals[0].stem).version == 4
+        assert staged[0].suffix == ".tmp"
+        assert UUID(staged[0].stem).version == 4
+    else:
+        assert originals == []
+        assert staged == []
+
+    fresh_manager = CaseWorkspaceManager(profile_root=stack.profile, quota=_quota())
+    fresh_service = CaseLifecycleService(WindowsCaseLifecycleStore(fresh_manager))
+    reopened = fresh_service.open_case(CASE_ID)
+    assert reopened.revision == 0
+    fresh_service.close_case(CASE_ID)
+
+
+def test_unknown_manifest_outcome_preserves_artifacts_and_delayed_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "unknown-interrupt.jpg").resolve()
+    source.write_bytes(_jpeg_of_size(8_195, fill=b"unknown-interrupt-"))
+    manifest_before = stack.layout.manifest.read_bytes()
+    interruption = KeyboardInterrupt()
+
+    monkeypatch.setattr(
+        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        lambda *_args, **_kwargs: ManifestReplaceResult(
+            ManifestReplaceState.UNKNOWN,
+            delayed_exception=interruption,
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        stack.service.import_source(CASE_ID, source, "Unknown interrupt synthetic.jpg")
+
+    assert raised.value is interruption
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert _manifest(stack.layout)["sources"] == []
+    originals = list(stack.layout.originals.iterdir())
+    staged = list(stack.layout.temp.iterdir())
+    assert len(originals) == len(staged) == 1
+    assert originals[0].suffix == ".bin"
+    assert staged[0].suffix == ".tmp"
+
+
+def test_concurrent_commits_from_one_snapshot_allow_exactly_one_winner(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    first_path = (tmp_path / "concurrent-first.jpg").resolve()
+    second_path = (tmp_path / "concurrent-second.jpg").resolve()
+    first_path.write_bytes(_jpeg_of_size(8_195, fill=b"concurrent-first-"))
+    second_path.write_bytes(_jpeg_of_size(8_196, fill=b"concurrent-second-"))
+    first_before = _external_snapshot(first_path)
+    second_before = _external_snapshot(second_path)
+    first = stack.store.prepare(
+        CASE_ID,
+        first_path,
+        "Concurrent first synthetic.jpg",
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        progress=lambda _value: None,
+    )
+    second = stack.store.prepare(
+        CASE_ID,
+        second_path,
+        "Concurrent second synthetic.jpg",
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        progress=lambda _value: None,
+    )
+    commit_barrier = Barrier(2)
+
+    def attempt(
+        pending: WindowsPreparedSourceLease,
+    ) -> SourceImportResult | SourceIngestError:
+        inspection = _SyntheticImageInspector().inspect(
+            pending.summary,
+            deadline=lambda: False,
+            cancellation=lambda: False,
+            progress=lambda _value: None,
+        )
+
+        def progress(value: SourceImportProgress) -> None:
+            if value.phase is SourceProgressPhase.COMMITTING and value.completed_units == 0:
+                commit_barrier.wait(timeout=10)
+
+        try:
+            return pending.commit(
+                inspection,
+                deadline=lambda: False,
+                cancellation=lambda: False,
+                progress=progress,
+            )
+        except SourceIngestError as error:
+            return error
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first_future = executor.submit(attempt, first)
+            second_future = executor.submit(attempt, second)
+            outcomes = (first_future.result(), second_future.result())
+    finally:
+        first.abort()
+        second.abort()
+
+    committed = tuple(outcome for outcome in outcomes if isinstance(outcome, SourceImportResult))
+    rejected = tuple(outcome for outcome in outcomes if isinstance(outcome, SourceIngestError))
+    assert len(committed) == len(rejected) == 1
+    assert rejected[0].code is SourceIngestErrorCode.MANIFEST_CONFLICT
+    winner = committed[0]
+    document = _manifest(stack.layout)
+    sources = document["sources"]
+    assert isinstance(sources, list)
+    assert document["revision"] == 1
+    assert [item["source_id"] for item in sources if isinstance(item, dict)] == [
+        str(winner.source_id)
+    ]
+    assert sorted(path.name for path in stack.layout.originals.iterdir()) == [
+        f"{winner.source_id}.bin"
+    ]
+    _assert_no_staged_files(stack)
+    assert _external_snapshot(first_path) == first_before
+    assert _external_snapshot(second_path) == second_before
+
+
+def test_import_deadline_expires_while_case_coordination_is_contended(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "coordination-timeout.jpg").resolve()
+    source.write_bytes(_jpeg_of_size(8_197, fill=b"coordination-timeout-"))
+    source_before = _external_snapshot(source)
+    manifest_before = stack.layout.manifest.read_bytes()
+    reservation_name = "90000000-0000-4000-8000-000000000104.tmp"
+    reservation = stack.manager.reserve_capacity(
+        CASE_ID,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{reservation_name}",
+        is_directory=False,
+        byte_count=1,
+    )
+    lock_held = Event()
+    release_lock = Event()
+
+    def hold_case_coordination() -> None:
+        with reservation.publication_guard(
+            case_identity=reservation.case_identity,
+            relative_parts=reservation.relative_parts,
+            is_directory=False,
+            byte_count=1,
+            entry_count=1,
+        ):
+            lock_held.set()
+            assert release_lock.wait(timeout=5)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            holder = executor.submit(hold_case_coordination)
+            assert lock_held.wait(timeout=2)
+            try:
+                with pytest.raises(SourceIngestError) as raised:
+                    stack.service.import_source(
+                        CASE_ID,
+                        source,
+                        "Coordination timeout synthetic.jpg",
+                        timeout_seconds=0.02,
+                    )
+            finally:
+                release_lock.set()
+            holder.result(timeout=2)
+    finally:
+        release_lock.set()
+        reservation.release()
+
+    assert raised.value.code is SourceIngestErrorCode.TIMED_OUT
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.originals.iterdir()) == []
+    assert list(stack.layout.temp.iterdir()) == []
+    assert _external_snapshot(source) == source_before
