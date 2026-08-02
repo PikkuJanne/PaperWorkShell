@@ -9,3 +9,11 @@ id = "paperworkshell-quality-canary"
 description = "Detect the synthetic canary used to prove the local secret-scanning gate."
 regex = '''PWS_QUALITY_CANARY_[A-Z0-9]{32}'''
 keywords = ["PWS_QUALITY_CANARY_"]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Allow only the fixed public PWS-0104 privacy-test canary."
+regexTarget = "secret"
+regexes = ['''^PRIVATE-PARENT-PWS0104-CANARY$''']

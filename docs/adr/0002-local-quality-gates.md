@@ -67,6 +67,11 @@ description without inventing performance promises before feature workloads exis
    enumeration, filesystem work, tool probes, and scanning, and each subprocess receives only the
    remaining time before a terminal deadline check. Historical mirror entries use deterministic
    per-item namespaces so batch construction is linear.
+   The only repository-specific false-positive exception targets the inherited `generic-api-key`
+   rule and the exact extracted secret `PRIVATE-PARENT-PWS0104-CANARY`. That fixed public value is
+   a privacy-test label, not a credential. The exception has no path, commit, baseline, stopword,
+   or pattern-family scope. A security regression proves the exact value is accepted while a
+   one-character neighbor and a runtime-assembled realistic access-key shape are still detected.
 4. The aggregate suite includes a negative self-test that creates temporary synthetic violations
    for formatting, typing, schema format, graph cycles, and secret detection. The secret case
    proves exact staged PDF-like bytes are scanned after working bytes change. Temporary Git setup
@@ -144,8 +149,10 @@ requires an empty product-target list and records measurements for later gate de
   Action commits and tool archives are pinned, while reference measurements remain separate.
 - Gitleaks pattern matching can produce false positives. Any future PaperWorkShell allowlist must
   be narrow, reviewed, and tested; no baseline or broad fixture exclusion is accepted by this
-  ADR. Gitleaks 8.30.1's inherited broad path allowlist is not trusted as coverage: raw bytes and
-  controlled rule-preserving aliases independently cover its excluded paths.
+  ADR. The PWS-0104 exception records the permitted model: one rule, one exact public test value,
+  and adjacent positive-detection tests. Gitleaks 8.30.1's inherited broad path allowlist is not
+  trusted as coverage: raw bytes and controlled rule-preserving aliases independently cover its
+  excluded paths.
 - Secret scanning examines raw container bytes but does not unpack compressed or encrypted
   payloads. Synthetic archives added later require explicit content-generation and inspection
   policy under PWS-0009/PWS-0005; broad archive exclusions are not permitted.

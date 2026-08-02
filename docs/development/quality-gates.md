@@ -195,6 +195,11 @@ rejected before Gitleaks starts. One five-minute scan-wide deadline covers enume
 work, tool probes, and scanning, with each subprocess receiving only the remaining time and a
 terminal deadline check.
 Deterministic per-item mirror namespaces avoid quadratic path-conflict batching.
+The local policy has one reviewed false-positive exception: the inherited `generic-api-key` rule
+may ignore only the exact extracted value `PRIVATE-PARENT-PWS0104-CANARY`, a fixed public label
+used by the PWS-0104 privacy test. It does not exclude a path, commit, baseline, stopword, or token
+family. The security lane scans the exact value successfully and proves that a one-character
+neighbor plus a runtime-assembled realistic access-key shape still fail.
 Refs, registered worktrees, the selected index, tracked/untracked path sets, and scanned
 working-file digests are snapshotted and rechecked; mutations observed between those checkpoints
 fail closed. This is a bounded snapshot check, not an atomic repository lock: a writer must be
