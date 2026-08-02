@@ -80,6 +80,20 @@ def create_worker_test_stage_root() -> Path:
 
 
 def stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
+    """Copy trusted test resources and remove the stage after every failure."""
+
+    try:
+        return _stage_worker_test_resources(stage_root)
+    except BaseException:
+        if os.path.lexists(stage_root):
+            try:
+                _remove_stage_root(stage_root)
+            except OSError, RuntimeError:
+                raise RuntimeError("Windows worker test-resource cleanup failed") from None
+        raise
+
+
+def _stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
     """Copy trusted test resources away from hosted-runner reparse paths."""
 
     if os.name != "nt":
