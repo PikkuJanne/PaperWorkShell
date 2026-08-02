@@ -709,7 +709,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0101
@@ -739,13 +739,15 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
+    completed_at: '2026-08-02'
     revision: "3182132"
     commands:
     - "py -3.14 tools/dev.py check at 3182132 - passed; formatting, lint, 12-layer import boundaries, strict typing over 70 files, 525 unit tests, 45 integration tests with 1 disclosed symlink-privilege skip, 147 security tests with 3 disclosed link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
     - "uv run pytest -q tests/unit/test_import_prechecks.py tests/integration/test_import_prechecks_windows.py tests/security/test_import_prechecks_security.py at 3182132 - passed; 233 tests passed and the one local file-symlink privilege case skipped, while mandatory real NTFS junction coverage ran and passed"
     - "GitHub Actions runs 30738294562 (push) and 30738296416 (pull_request) on windows-2025 passed the Windows quality suite at 3182132"
     - "py -3.14 tools/dev.py validate-fixtures at 3182132 - passed; 17 deterministic fixtures, 457 reachable-history blobs, 198 index blobs, and 205 working files were admitted without an unindexed document"
+    - "fresh SSH clone at c0c21fa: uv sync --locked installed 22 packages and py -3.14 tools/dev.py check passed; 70-file formatting/lint/type checks, 12-layer boundaries over 26 source files, 525 unit tests, 45 integration tests with 1 disclosed capability skip, 147 security tests with 3 disclosed capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "GitHub Actions runs 30738719481 (push) and 30738721155 (pull_request) on windows-2025 passed the Windows quality suite at review commit c0c21fa"
     notes:
     - PDF, JPEG, and PNG are detected from strict bounded framing bytes; missing suffixes may pass by content, mismatches and unsupported media fail closed, and PDF page, structure, encryption, and signature inspection remain explicitly deferred to the owning restricted-worker adapter.
     - Caller-supplied source, page-observation, image dimension, pixel, decompression, header-byte, and JPEG-structure limits are typed and inclusive; preliminary reads, source path depth, UTF-16 length, JPEG marker-fill steps, and native range operations also have fixed hard ceilings.
@@ -799,7 +801,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0005
@@ -843,7 +845,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0005
