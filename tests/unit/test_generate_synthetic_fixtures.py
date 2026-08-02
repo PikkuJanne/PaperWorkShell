@@ -299,7 +299,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
             with (
                 patch(
                     "tools.generate_synthetic_fixtures._is_link_or_reparse",
-                    side_effect=lambda path: path == linked_component,
+                    side_effect=lambda path: path.name == LONG_PATH_COMPONENT,
                 ),
                 self.assertRaisesRegex(FixtureGenerationError, "unsafe directory"),
             ):
