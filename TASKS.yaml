@@ -555,7 +555,7 @@ tasks:
     - The closed standard-library generator and fingerprint-bound Draft 2020-12 index produce 17 byte-deterministic PDF/image fixtures with 24 reviewed coverage entries, 5 intended-negative index examples, explicit scheduled categories, and outside-repository recipes for long-path and excessive-size cases.
     - Repository admission authenticates schema and fixture handles, rejects links/reparse points and identity races, scans reachable Git history plus index and working-tree bytes, and applies sanitized bounded checks for document signatures, personal-data shapes, issuer-qualified PANs, fixed-length IBANs, reserved example domains, and canonical UUID identifiers.
     - On-demand generation is exclusive, bounded, non-overwriting, outside the repository, and removes identity-matched partial files on cancellation or failure; sensitive bug samples remain prohibited from Git and require separately authorized restricted storage.
-    - Three independent exact-commit audits found no remaining actionable generator, security, privacy, integration, resource-bound, determinism, or evidence issue; real NTFS junction ABA and abnormal-exit probes supplemented the two unavailable Python directory-link capability tests.
+    - Three independent exact-commit audits found no remaining actionable generator, security, privacy, integration, resource-bound, determinism, or evidence issue; real NTFS junction and file-identity ABA probes supplemented the two unavailable Python directory-link capability tests, while committed KeyboardInterrupt tests cover identity-matched partial cleanup and a hard process termination can leave a scoped partial that retry refuses to overwrite.
 - id: PWS-0010
   milestone: M0
   title: Run Milestone 0 foundation gate

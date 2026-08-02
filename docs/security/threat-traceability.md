@@ -16,7 +16,7 @@ A milestone gate reviews accumulated evidence; the gate itself is never a mitiga
 | Threat | Frozen decisions | Implementation tasks and gates | Planned evidence focus |
 |---|---|---|---|
 | TM-001 | PWS-D012, PWS-D013 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0114 | Hostile parser corpus, worker crash/termination, containment |
-| TM-002 | PWS-D013 | PWS-0103, PWS-0106, PWS-0107, PWS-0201, PWS-0208, PWS-0209 | Byte/page/pixel/decompression/time/memory/temp limits |
+| TM-002 | PWS-D013 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0201, PWS-0208, PWS-0209 | Byte/page/pixel/decompression/time/memory/temp limits |
 | TM-003 | PWS-D012 | PWS-0002, PWS-0008, PWS-0107, PWS-0114 | Import-boundary and separate-process integration tests |
 | TM-004 | PWS-D005, PWS-D013, PWS-D027 | PWS-0107, PWS-0204, PWS-0114, PWS-0209, PWS-0803 | Worker/OCR egress denial and updater privacy capture |
 | TM-005 | PWS-D009, PWS-D029 | PWS-0104, PWS-0112, PWS-0114 | External/case source hashes and no-overwrite export tests |
@@ -29,15 +29,15 @@ A milestone gate reviews accumulated evidence; the gate itself is never a mitiga
 | TM-012 | PWS-D028, PWS-D039 | PWS-0101, PWS-0108, PWS-0113, PWS-0705, PWS-0706 | Cancel/crash cleanup, cache isolation, retention inventory |
 | TM-013 | PWS-D028, PWS-D031 | PWS-0705, PWS-0706, PWS-0707 | Consent, lock, expiry, case isolation, handover/deletion |
 | TM-014 | PWS-D029, PWS-D037 | PWS-0112, PWS-0407, PWS-0114, PWS-0409 | Corrupt/partial/wrong-page output blocked before commit |
-| TM-015 | PWS-D008, PWS-D028, PWS-D029 | PWS-0101, PWS-0406, PWS-0407 | Filename/ZIP traversal, collision, race, no-overwrite tests |
-| TM-016 | PWS-D020, PWS-D021, PWS-D037 | PWS-0105, PWS-0206, PWS-0208, PWS-0209 | Signed-source detection, confirmation, unsigned-derivative wording |
+| TM-015 | PWS-D008, PWS-D028, PWS-D029 | PWS-0101, PWS-0112, PWS-0406, PWS-0407 | Filename/ZIP traversal, collision, race, no-overwrite tests |
+| TM-016 | PWS-D020, PWS-D021, PWS-D037 | PWS-0105, PWS-0206, PWS-0208, PWS-0209, PWS-0305, PWS-0308 | Signed-source detection, confirmation, unsigned-derivative and signature-image wording |
 | TM-017 | PWS-D022, PWS-D023 | PWS-0405, PWS-0601, PWS-0603, PWS-0606, PWS-0607, PWS-0608 | Visual-cover rejection, canary extraction, blocked failure, independent gate |
 | TM-018 | PWS-D027, PWS-D039 | PWS-0113, PWS-0805 | Inventory preview, opt-in, local-only bundle, canary scan |
 | TM-019 | PWS-D028, PWS-D031, PWS-D037 | PWS-0101, PWS-0102, PWS-0705, PWS-0706 | Case-ID scoping, partial failure, erasure wording, restart |
 | TM-020 | PWS-D034 | PWS-0005, PWS-0801, PWS-0802, PWS-0803, PWS-0808 | Admission, pin/hash/signature, license inventory, SBOM, artifact match |
 | TM-021 | PWS-D005, PWS-D013, PWS-D034 | PWS-0803, PWS-0807, PWS-0808 | Tamper/expiry/channel/rollback/offline/interruption/privacy tests |
 | TM-022 | PWS-D012, PWS-D013, PWS-D027, PWS-D038 | PWS-0008, PWS-0105, PWS-0107 | Typed result validation, hostile paths/counts, sanitized exceptions |
-| TM-023 | PWS-D009, PWS-D029 | PWS-0103, PWS-0104, PWS-0112, PWS-0401, PWS-0407 | Source/cache/preview/destination/template alias, snapshot, race, and terminal recheck tests |
+| TM-023 | PWS-D009, PWS-D029 | PWS-0103, PWS-0104, PWS-0108, PWS-0112, PWS-0401, PWS-0407 | Source/cache/preview/destination/template alias, snapshot, race, and terminal recheck tests |
 | TM-024 | PWS-D026, PWS-D032, PWS-D033, PWS-D037 | PWS-0207, PWS-0403, PWS-0404, PWS-0408, PWS-0409 | Deterministic review signals, confirmation ownership, and prohibited-claim/wording checks |
 | TM-025 | PWS-D008, PWS-D019, PWS-D025 | PWS-0105, PWS-0401, PWS-0405, PWS-0501 | XFA/script/action/form/attachment/archive/revision inventory |
 | TM-026 | PWS-D027, PWS-D028 | PWS-0006, PWS-0104, PWS-0305, PWS-0408, PWS-0501, PWS-0805 | Random names, metadata/assets, intended-output summaries, prohibited-log values |
