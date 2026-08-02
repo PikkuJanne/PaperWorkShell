@@ -33,7 +33,7 @@ worker host -> domain
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Output planning, verification, and derivative commit behavior |
 | `templates` | Declarative, versioned template loading and validation |
-| `storage` | Authenticated case workspaces and atomic persistence; its implemented PWS-0101 contract is documented in [Secure case-workspace contract](case-workspace.md) |
+| `storage` | Authenticated case workspaces, bounded external-source leases, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md) and [Bounded import-precheck contract](import-prechecks.md) |
 | `diagnostics` | Sanitized logging and previewable diagnostic data |
 
 ## Enforced import rules
@@ -62,6 +62,12 @@ contracts described in [Secure case-workspace contract](case-workspace.md). A le
 path is never an authorization token, and later lifecycle/import/worker/export tasks must add
 narrow broker operations instead of importing `storage._windows` or introducing general recursive
 mutation.
+
+PWS-0103 adds pure import policy in `domain.import_precheck` and a narrow external-source adapter in
+`storage.source_precheck`. The private Win32 implementation authenticates one retained read-only
+handle; it is not a general filesystem API. Preliminary PDF/image framing checks are deliberately
+bounded and do not move document-engine parsing into the desktop process. The lease and deferrals
+are specified in [Bounded import-precheck contract](import-prechecks.md).
 
 A new external engine is not admitted by editing code alone: the dependency policy and licensing review in PWS-0005 and the engine-specific roadmap task must approve it first. Renderer ownership remains intentionally unspecified until PWS-0106 records its evidence-based ADR.
 
