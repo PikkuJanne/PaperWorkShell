@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import dataclass
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -143,13 +144,62 @@ class FailingLauncher:
         raise OSError("C:\\private\\applicant-name.pdf")
 
 
+class AdvancingLauncher(FakeLauncher):
+    def __init__(self, clock: FakeClock) -> None:
+        super().__init__()
+        self.clock = clock
+
+    def launch(self, request: WorkerLaunchRequest) -> FakeProcess:
+        self.clock.value += 20.0
+        return super().launch(request)
+
+
+class NullTransportLauncher(FakeLauncher):
+    def launch(self, request: WorkerLaunchRequest) -> FakeProcess:
+        process = super().launch(request)
+        process.transport = cast(FakeTransport, None)
+        return process
+
+
+class FailingSendTransport(FakeTransport):
+    def send_payload(self, payload: bytes) -> None:
+        del payload
+        raise OSError("C:\\private\\post-launch-transport-canary.pdf")
+
+
+class FailingSendTransportLauncher(FakeLauncher):
+    def launch(self, request: WorkerLaunchRequest) -> FakeProcess:
+        process = super().launch(request)
+        process.transport = FailingSendTransport()
+        return process
+
+
+class InvalidHelloIdFactory:
+    def __init__(self) -> None:
+        self._values: deque[object] = deque(
+            (
+                UUID("22222222-2222-4222-8222-222222222222"),
+                UUID("33333333-3333-4333-8333-333333333333"),
+                object(),
+            )
+        )
+
+    def __call__(self) -> UUID:
+        return cast(UUID, self._values.popleft())
+
+
+class InvalidPostLaunchClock:
+    def __call__(self) -> float:
+        return cast(float, object())
+
+
 def _isolation(**overrides: bool | int) -> IsolationEvidence:
     values: dict[str, bool | int] = {
         "app_container": True,
         "network_denied": True,
         "job_object_assigned": True,
         "kill_on_job_close": True,
-        "case_access_by_handles": True,
+        "case_paths_absent": True,
         "minimal_environment": True,
         "explicit_handle_list": True,
         "shell_disabled": True,
@@ -288,6 +338,94 @@ def test_start_negotiates_and_query_is_local_and_secret_free() -> None:
     assert secret not in repr(snapshot)
     assert "path" not in " ".join(snapshot.__dataclass_fields__)
     assert "capability" not in " ".join(snapshot.__dataclass_fields__)
+
+
+def test_handshake_deadline_starts_after_synchronous_containment_launch() -> None:
+    clock = FakeClock()
+    launcher = AdvancingLauncher(clock)
+    client = _client(launcher, clock)
+
+    client.start(CASE_ID)
+    client.check_deadlines(clock.value)
+
+    assert clock.value == 30.0
+    assert client.query().phase is WorkerLifecyclePhase.STARTING
+    clock.value = 32.0
+    client.check_deadlines()
+    failure = client.query().last_failure
+    assert failure is not None
+    assert failure.code is WorkerClientErrorCode.HANDSHAKE_TIMED_OUT
+
+
+@pytest.mark.parametrize(
+    ("launcher", "expected_code"),
+    (
+        (NullTransportLauncher(), WorkerClientErrorCode.LAUNCH_FAILED),
+        (FailingSendTransportLauncher(), WorkerClientErrorCode.TRANSPORT_FAILED),
+    ),
+)
+def test_every_post_launch_transport_failure_disposes_the_process(
+    launcher: FakeLauncher,
+    expected_code: WorkerClientErrorCode,
+) -> None:
+    client = _client(launcher)
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.start(CASE_ID)
+
+    process = launcher.records[0].process
+    snapshot = client.query()
+    assert raised.value.code is expected_code
+    assert snapshot.phase is WorkerLifecyclePhase.FAULTED
+    assert snapshot.pid is None
+    assert snapshot.last_failure is not None
+    assert snapshot.last_failure.code is expected_code
+    assert process.terminate_calls == 1
+    assert process.close_calls == 1
+
+
+def test_invalid_post_launch_hello_id_disposes_the_process() -> None:
+    launcher = FakeLauncher()
+    client = WorkerClient(
+        launcher,
+        _resource_policy(),
+        _timeout_policy(),
+        id_factory=InvalidHelloIdFactory(),
+    )
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.start(CASE_ID)
+
+    process = launcher.records[0].process
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert client.query().phase is WorkerLifecyclePhase.FAULTED
+    failure = client.query().last_failure
+    assert failure is not None
+    assert failure.code is raised.value.code
+    assert process.terminate_calls == 1
+    assert process.close_calls == 1
+
+
+def test_invalid_post_launch_clock_disposes_the_process() -> None:
+    launcher = FakeLauncher()
+    client = WorkerClient(
+        launcher,
+        _resource_policy(),
+        _timeout_policy(),
+        clock=InvalidPostLaunchClock(),
+    )
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.start(CASE_ID)
+
+    process = launcher.records[0].process
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert client.query().phase is WorkerLifecyclePhase.FAULTED
+    failure = client.query().last_failure
+    assert failure is not None
+    assert failure.code is raised.value.code
+    assert process.terminate_calls == 1
+    assert process.close_calls == 1
 
 
 def test_operation_accept_progress_and_success_are_protocol_authoritative() -> None:
@@ -686,10 +824,20 @@ def test_process_and_timeout_configuration_reject_boolean_or_incoherent_limits()
         WorkerResourcePolicy(3, 2, 1, 1)
     with pytest.raises(WorkerClientError) as timeout_error:
         WorkerTimeoutPolicy(1.0, 0.0, 1.0)
+    with pytest.raises(WorkerClientError) as huge_policy_error:
+        WorkerTimeoutPolicy(10**1_000, 1.0, 1.0)
+    client = _client(FakeLauncher())
+    with pytest.raises(WorkerClientError) as huge_wait_error:
+        client.pump(10**1_000)
+    with pytest.raises(WorkerClientError) as huge_observed_time_error:
+        client.check_deadlines(10**1_000)
 
     assert memory_error.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
     assert job_error.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
     assert timeout_error.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert huge_policy_error.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert huge_wait_error.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert huge_observed_time_error.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
 
 
 def test_ids_are_uuid4_and_no_path_or_command_is_launch_authority() -> None:

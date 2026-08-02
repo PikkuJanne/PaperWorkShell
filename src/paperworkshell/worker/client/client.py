@@ -1,4 +1,4 @@
-"""Single-owner GUI-side coordinator for one restricted worker generation."""
+"""Single-owner GUI-process-side coordinator for one restricted worker generation."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from paperworkshell.worker.client.errors import (
     WorkerClientContext,
+    WorkerClientError,
     WorkerClientErrorCode,
     WorkerFailure,
     reject_client,
@@ -97,9 +98,12 @@ class _ActiveOperation:
 class WorkerClient:
     """Coordinate launch, RPC, deadlines, cancellation, shutdown, and restart.
 
-    All mutating inputs, including decoded transport events, are serialized by the
-    thread that constructs this object.  ``query`` returns only cached immutable
-    state and never polls a process or reads a pipe.
+    Construct and use this object on a dedicated lifecycle-coordinator thread,
+    never the GUI event thread: OS-confirmed termination and ACL cleanup are
+    intentionally synchronous.  All mutating inputs, including decoded transport
+    events, are serialized by that owner.  ``query`` returns only cached immutable
+    state and never polls a process or reads a pipe.  UI integration must deliver
+    those snapshots through the application message boundary.
     """
 
     def __init__(
@@ -260,7 +264,6 @@ class WorkerClient:
         self._clear_deadlines()
         self._shutdown_after_operation = False
         self._pending_shutdown_reason = None
-        self._handshake_deadline = self._deadline_after(self._timeout_policy.handshake_seconds)
 
         launched: WorkerProcess | None = None
         try:
@@ -275,49 +278,67 @@ class WorkerClient:
             )
             reject_client(failure.code, failure.context)
 
-        valid_process = True
-        pid: object = None
-        isolation: object = None
-        transport: object = None
-        try:
-            pid = launched.pid
-            isolation = launched.isolation
-            transport = launched.transport
-        except Exception:
-            valid_process = False
         self._process = launched
-        if (
-            not valid_process
-            or type(pid) is not int
-            or pid < 1
-            or type(isolation) is not IsolationEvidence
-        ):
+        try:
+            pid: object = None
+            isolation: object = None
+            transport: object = None
+            launch_properties_valid = True
+            try:
+                pid = launched.pid
+                isolation = launched.isolation
+                transport = launched.transport
+            except Exception:
+                launch_properties_valid = False
+            if (
+                not launch_properties_valid
+                or type(pid) is not int
+                or pid < 1
+                or type(isolation) is not IsolationEvidence
+                or transport is None
+            ):
+                reject_client(
+                    WorkerClientErrorCode.LAUNCH_FAILED,
+                    WorkerClientContext.LAUNCH,
+                )
+            self._pid = pid
+            self._transport = cast(WorkerTransport, transport)
+            if not isolation.satisfies_required_boundary:
+                reject_client(
+                    WorkerClientErrorCode.ISOLATION_INSUFFICIENT,
+                    WorkerClientContext.ISOLATION,
+                )
+
+            # AppContainer/profile/ACL setup is a separate trusted launch phase and
+            # can legitimately serialize with another application instance.  The
+            # handshake budget starts only once the isolated process and transport
+            # have passed local validation and immediately before session.hello.
+            self._handshake_deadline = self._deadline_after(self._timeout_policy.handshake_seconds)
+            hello_request_id = self._new_id()
+            self._send_outbound(
+                MessageType.SESSION_HELLO,
+                SessionHelloPayload(
+                    supported_protocol_versions=(PROTOCOL_VERSION,),
+                    required_capabilities=self._required_capabilities,
+                ),
+                request_id=hello_request_id,
+                operation_id=None,
+            )
+        except WorkerClientError as error:
+            # `_send_outbound()` performs its own fault transition after a
+            # transport failure.  Every other failure in this post-launch window
+            # still owns a live process and must cross the same cleanup boundary.
+            if self._phase is WorkerLifecyclePhase.FAULTED:
+                raise
+            failure = self._fault(error.code, error.context, terminate=True)
+            reject_client(failure.code, failure.context)
+        except Exception:
             failure = self._fault(
                 WorkerClientErrorCode.LAUNCH_FAILED,
                 WorkerClientContext.LAUNCH,
                 terminate=True,
             )
             reject_client(failure.code, failure.context)
-        self._pid = pid
-        self._transport = cast(WorkerTransport, transport)
-        if not isolation.satisfies_required_boundary:
-            failure = self._fault(
-                WorkerClientErrorCode.ISOLATION_INSUFFICIENT,
-                WorkerClientContext.ISOLATION,
-                terminate=True,
-            )
-            reject_client(failure.code, failure.context)
-
-        hello_request_id = self._new_id()
-        self._send_outbound(
-            MessageType.SESSION_HELLO,
-            SessionHelloPayload(
-                supported_protocol_versions=(PROTOCOL_VERSION,),
-                required_capabilities=self._required_capabilities,
-            ),
-            request_id=hello_request_id,
-            operation_id=None,
-        )
         return generation
 
     def query(self) -> WorkerClientSnapshot:
@@ -910,16 +931,15 @@ class WorkerClient:
 
     @staticmethod
     def _validated_time(value: object) -> float:
+        numeric: float | None = None
         if type(value) is int:
-            numeric = float(value)
+            try:
+                numeric = float(value)
+            except OverflowError:
+                pass
         elif type(value) is float:
             numeric = value
-        else:
-            reject_client(
-                WorkerClientErrorCode.CONFIGURATION_INVALID,
-                WorkerClientContext.CONFIGURATION,
-            )
-        if not math.isfinite(numeric) or numeric < 0:
+        if numeric is None or not math.isfinite(numeric) or numeric < 0:
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
                 WorkerClientContext.CONFIGURATION,

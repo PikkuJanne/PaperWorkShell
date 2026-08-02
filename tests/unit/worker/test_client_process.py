@@ -74,14 +74,16 @@ class BlockingWriter:
         self.released.set()
 
 
-class ExplodingCloseBytesIO(io.BytesIO):
+class FailOnceCloseBytesIO(io.BytesIO):
     def __init__(self, initial_bytes: bytes = b"") -> None:
         super().__init__(initial_bytes)
         self.close_calls = 0
 
     def close(self) -> None:
         self.close_calls += 1
-        raise OSError("C:\\private\\close-canary.pdf")
+        if self.close_calls == 1:
+            raise OSError("C:\\private\\close-canary.pdf")
+        super().close()
 
 
 class BlockingRawReader(io.RawIOBase):
@@ -180,8 +182,8 @@ def test_blocked_worker_input_never_blocks_the_gui_sending_thread() -> None:
 
 
 def test_endpoint_close_failure_is_sanitized_sticky_and_attempts_both_ends() -> None:
-    reader = ExplodingCloseBytesIO()
-    writer = ExplodingCloseBytesIO()
+    reader = FailOnceCloseBytesIO()
+    writer = FailOnceCloseBytesIO()
     transport = create_worker_transport(reader, writer)
     assert transport.receive_payload(1.0).kind is TransportReceiveKind.CLOSED
 
@@ -193,10 +195,10 @@ def test_endpoint_close_failure_is_sanitized_sticky_and_attempts_both_ends() -> 
     assert first.value.code is WorkerClientErrorCode.TRANSPORT_FAILED
     assert second.value.code is WorkerClientErrorCode.TRANSPORT_FAILED
     assert "close-canary" not in f"{first.value!s} {first.value!r}"
-    assert reader.close_calls == 1
-    assert writer.close_calls == 1
-    io.BytesIO.close(reader)
-    io.BytesIO.close(writer)
+    assert reader.close_calls == 2
+    assert writer.close_calls == 2
+    assert reader.closed
+    assert writer.closed
 
 
 def test_buffered_endpoint_locks_cannot_make_transport_close_unbounded(

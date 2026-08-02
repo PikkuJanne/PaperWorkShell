@@ -1,4 +1,4 @@
-"""GUI-safe process and transport contracts for the restricted worker."""
+"""GUI-process-side process and transport contracts for the restricted worker."""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ class IsolationEvidence:
     network_denied: bool
     job_object_assigned: bool
     kill_on_job_close: bool
-    case_access_by_handles: bool
+    case_paths_absent: bool
     minimal_environment: bool
     explicit_handle_list: bool
     shell_disabled: bool
@@ -117,7 +117,7 @@ class IsolationEvidence:
             self.network_denied,
             self.job_object_assigned,
             self.kill_on_job_close,
-            self.case_access_by_handles,
+            self.case_paths_absent,
             self.minimal_environment,
             self.explicit_handle_list,
             self.shell_disabled,
@@ -146,7 +146,7 @@ class IsolationEvidence:
                 self.network_denied,
                 self.job_object_assigned,
                 self.kill_on_job_close,
-                self.case_access_by_handles,
+                self.case_paths_absent,
                 self.minimal_environment,
                 self.explicit_handle_list,
                 self.shell_disabled,
@@ -228,9 +228,9 @@ class WorkerTransport(Protocol):
 class _FramedWorkerTransport:
     """Bounded framed transport with private blocking I/O threads.
 
-    The GUI owner only enqueues immutable outbound payloads.  A worker that
-    stops draining its input therefore cannot pin the owner thread inside a
-    synchronous pipe write before the lifecycle coordinator arms a deadline.
+    The lifecycle coordinator only enqueues immutable outbound payloads.  A
+    worker that stops draining its input therefore cannot pin that owner inside
+    a synchronous pipe write before the coordinator arms a deadline.
     """
 
     def __init__(self, reader: BinaryReader, writer: BinaryWriter) -> None:
@@ -322,39 +322,39 @@ class _FramedWorkerTransport:
                 self._condition.notify_all()
         if first_close:
             with self._condition:
+                self._payloads.clear()
                 self._outbound_payloads.clear()
-            close_results = [False, False]
+        close_results = [False, False]
 
-            def close_endpoint(index: int, endpoint: BinaryReader | BinaryWriter) -> None:
-                try:
-                    endpoint.close()
-                except Exception:
-                    return
-                close_results[index] = True
+        def close_endpoint(index: int, endpoint: BinaryReader | BinaryWriter) -> None:
+            try:
+                endpoint.close()
+            except Exception:
+                return
+            close_results[index] = True
 
-            close_threads = tuple(
-                threading.Thread(
-                    target=close_endpoint,
-                    args=(index, endpoint),
-                    name="PaperWorkShellWorkerTransportCloser",
-                    daemon=True,
-                )
-                for index, endpoint in enumerate((self._reader, self._writer))
+        # Retry endpoint closure even after the transport has entered its terminal
+        # state.  Windows endpoints retain failed CloseHandle authority, so a later
+        # process cleanup attempt must be able to release the operating-system
+        # resource.  `_cleanup_failed` remains sticky and prevents a later retry
+        # from being reported as a clean lifecycle.
+        close_threads = tuple(
+            threading.Thread(
+                target=close_endpoint,
+                args=(index, endpoint),
+                name="PaperWorkShellWorkerTransportCloser",
+                daemon=True,
             )
-            for thread in close_threads:
-                thread.start()
-        else:
-            close_results = []
-            close_threads = ()
+            for index, endpoint in enumerate((self._reader, self._writer))
+        )
+        for thread in close_threads:
+            thread.start()
         deadline = time.monotonic() + TRANSPORT_CLOSE_SECONDS
         for thread in close_threads:
             thread.join(max(0.0, deadline - time.monotonic()))
-        if close_threads:
-            failed = (
-                any(thread.is_alive() for thread in close_threads)
-                or not all(close_results)
-                or failed
-            )
+        failed = (
+            any(thread.is_alive() for thread in close_threads) or not all(close_results) or failed
+        )
         threads = (
             self._reader_thread,
             self._writer_thread,

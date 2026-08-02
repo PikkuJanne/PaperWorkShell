@@ -69,12 +69,13 @@ class WorkerTimeoutPolicy:
             self.cancellation_grace_seconds,
             self.shutdown_grace_seconds,
         ):
-            if (
-                type(value) not in {int, float}
-                or isinstance(value, bool)
-                or not math.isfinite(value)
-                or not 0 < value <= MAXIMUM_CLIENT_TIMEOUT_SECONDS
-            ):
+            if type(value) is int:
+                valid = 0 < value <= MAXIMUM_CLIENT_TIMEOUT_SECONDS
+            elif type(value) is float:
+                valid = math.isfinite(value) and 0 < value <= MAXIMUM_CLIENT_TIMEOUT_SECONDS
+            else:
+                valid = False
+            if not valid:
                 reject_client(
                     WorkerClientErrorCode.CONFIGURATION_INVALID,
                     WorkerClientContext.CONFIGURATION,
