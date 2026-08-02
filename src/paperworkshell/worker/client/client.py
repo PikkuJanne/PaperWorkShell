@@ -172,6 +172,7 @@ class WorkerClient:
         self._capabilities: tuple[CapabilityDescriptor, ...] = ()
         self._process: WorkerProcess | None = None
         self._transport: WorkerTransport | None = None
+        self._cleanup_unconfirmed = False
         self._peer: ProtocolPeer | None = None
         self._active_operation: _ActiveOperation | None = None
         self._pending_cancel_request_ids: set[UUID] = set()
@@ -200,6 +201,15 @@ class WorkerClient:
         self._require_uuid4(case_id)
         if self._phase not in {WorkerLifecyclePhase.STOPPED, WorkerLifecyclePhase.FAULTED}:
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.STATE)
+        if self._cleanup_unconfirmed:
+            self._set_failure(
+                WorkerClientErrorCode.TERMINATION_FAILED,
+                WorkerClientContext.PROCESS,
+            )
+            reject_client(
+                WorkerClientErrorCode.TERMINATION_FAILED,
+                WorkerClientContext.PROCESS,
+            )
         if self._phase is WorkerLifecyclePhase.FAULTED and not self._dispose_process(
             terminate=True
         ):
@@ -258,12 +268,12 @@ class WorkerClient:
         except Exception:
             pass
         if launched is None:
-            self._fault(
+            failure = self._fault(
                 WorkerClientErrorCode.LAUNCH_FAILED,
                 WorkerClientContext.LAUNCH,
                 terminate=False,
             )
-            reject_client(WorkerClientErrorCode.LAUNCH_FAILED, WorkerClientContext.LAUNCH)
+            reject_client(failure.code, failure.context)
 
         valid_process = True
         pid: object = None
@@ -282,24 +292,21 @@ class WorkerClient:
             or pid < 1
             or type(isolation) is not IsolationEvidence
         ):
-            self._fault(
+            failure = self._fault(
                 WorkerClientErrorCode.LAUNCH_FAILED,
                 WorkerClientContext.LAUNCH,
                 terminate=True,
             )
-            reject_client(WorkerClientErrorCode.LAUNCH_FAILED, WorkerClientContext.LAUNCH)
+            reject_client(failure.code, failure.context)
         self._pid = pid
         self._transport = cast(WorkerTransport, transport)
         if not isolation.satisfies_required_boundary:
-            self._fault(
+            failure = self._fault(
                 WorkerClientErrorCode.ISOLATION_INSUFFICIENT,
                 WorkerClientContext.ISOLATION,
                 terminate=True,
             )
-            reject_client(
-                WorkerClientErrorCode.ISOLATION_INSUFFICIENT,
-                WorkerClientContext.ISOLATION,
-            )
+            reject_client(failure.code, failure.context)
 
         hello_request_id = self._new_id()
         self._send_outbound(
@@ -349,15 +356,12 @@ class WorkerClient:
         except Exception:
             receive_failed = True
         if receive_failed or type(receive) is not TransportReceive:
-            self._fault(
+            failure = self._fault(
                 WorkerClientErrorCode.TRANSPORT_FAILED,
                 WorkerClientContext.TRANSPORT,
                 terminate=True,
             )
-            reject_client(
-                WorkerClientErrorCode.TRANSPORT_FAILED,
-                WorkerClientContext.TRANSPORT,
-            )
+            reject_client(failure.code, failure.context)
 
         if receive.kind is TransportReceiveKind.PAYLOAD:
             payload = receive.payload
@@ -770,23 +774,20 @@ class WorkerClient:
         except Exception:
             send_failed = True
         if send_failed:
-            self._fault(
+            failure = self._fault(
                 WorkerClientErrorCode.TRANSPORT_FAILED,
                 WorkerClientContext.TRANSPORT,
                 terminate=True,
             )
-            reject_client(
-                WorkerClientErrorCode.TRANSPORT_FAILED,
-                WorkerClientContext.TRANSPORT,
-            )
+            reject_client(failure.code, failure.context)
 
     def _protocol_fault(self) -> Never:
-        self._fault(
+        failure = self._fault(
             WorkerClientErrorCode.PROTOCOL_FAILED,
             WorkerClientContext.PROTOCOL,
             terminate=True,
         )
-        reject_client(WorkerClientErrorCode.PROTOCOL_FAILED, WorkerClientContext.PROTOCOL)
+        reject_client(failure.code, failure.context)
 
     def _fault(
         self,
@@ -794,7 +795,7 @@ class WorkerClient:
         context: WorkerClientContext,
         *,
         terminate: bool,
-    ) -> None:
+    ) -> WorkerFailure:
         disposed = self._dispose_process(terminate=terminate)
         self._peer = None
         self._pid = None
@@ -807,37 +808,53 @@ class WorkerClient:
         if not disposed:
             code = WorkerClientErrorCode.TERMINATION_FAILED
             context = WorkerClientContext.PROCESS
-        self._set_failure(code, context)
+        return self._set_failure(code, context)
 
     def _set_failure(
         self,
         code: WorkerClientErrorCode,
         context: WorkerClientContext,
-    ) -> None:
-        self._last_failure = WorkerFailure(code=code, context=context)
+    ) -> WorkerFailure:
+        failure = WorkerFailure(code=code, context=context)
+        self._last_failure = failure
         self._phase = WorkerLifecyclePhase.FAULTED
+        return failure
 
     def _dispose_process(self, *, terminate: bool) -> bool:
+        if self._cleanup_unconfirmed:
+            return False
         process = self._process
         transport = self._transport
-        self._process = None
-        self._transport = None
-        success = True
+        process_closed = True
+        transport_closed = True
         if process is not None and terminate:
             try:
                 process.terminate_tree()
             except Exception:
-                success = False
+                # A successful mandatory close remains authoritative: concrete
+                # process adapters must confirm the tree and all launch authority
+                # are gone before returning from close().
+                pass
         if process is not None:
             try:
                 process.close()
             except Exception:
-                success = False
+                process_closed = False
         if transport is not None:
             try:
                 transport.close()
             except Exception:
-                success = False
+                transport_closed = False
+        success = process_closed and transport_closed
+        if success:
+            self._process = None
+            self._transport = None
+        else:
+            # Never launch another generation after any cleanup authority has
+            # failed to prove closure.  Retain references for process-lifetime
+            # kill-on-close protection, but make the uncertainty sticky rather
+            # than treating a later idempotent no-op as fresh evidence.
+            self._cleanup_unconfirmed = True
         return success
 
     def _next_deadline(self) -> float | None:

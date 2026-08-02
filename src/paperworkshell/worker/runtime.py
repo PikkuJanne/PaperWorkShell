@@ -19,6 +19,7 @@ from paperworkshell.worker.operations import (
     timed_out_operation_result,
 )
 from paperworkshell.worker.protocol.bootstrap import BootstrapGrant
+from paperworkshell.worker.protocol.codec import DEFAULT_OPERATION_REGISTRY
 from paperworkshell.worker.protocol.errors import ProtocolError
 from paperworkshell.worker.protocol.framing import (
     FrameError,
@@ -41,6 +42,7 @@ from paperworkshell.worker.protocol.models import (
     OperationAcceptedPayload,
     OperationCancelAckPayload,
     OperationCancelPayload,
+    OperationOutcome,
     OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
@@ -119,6 +121,8 @@ class WorkerHostRuntime:
         self._reader = reader
         self._writer = writer
         self._operations = operations
+        if operations.capabilities != DEFAULT_OPERATION_REGISTRY.capabilities:
+            raise ValueError("runtime and protocol operation registries differ")
         self._monotonic = monotonic
         self._events: queue.Queue[_RuntimeEvent] = queue.Queue(maxsize=_EVENT_QUEUE_SIZE)
         self._stopping = threading.Event()
@@ -193,9 +197,9 @@ class WorkerHostRuntime:
                 return HostExitCode.PROTOCOL_FAULT
             return HostExitCode.TRANSPORT_CLOSED
         if type(event) is _Progress:
-            return HostExitCode.OPERATION_TIMED_OUT if self._accept_progress(event) else None
+            return self._accept_progress(event)
         if type(event) is _Completed:
-            return HostExitCode.OPERATION_TIMED_OUT if self._accept_completed(event) else None
+            return self._accept_completed(event)
         if type(event) is not _Inbound:
             return HostExitCode.INTERNAL_FAULT
         message = self._peer.accept_inbound(event.raw)
@@ -307,30 +311,35 @@ class WorkerHostRuntime:
             operation_id=operation_id,
         )
 
-    def _accept_progress(self, event: _Progress) -> bool:
+    def _accept_progress(self, event: _Progress) -> HostExitCode | None:
         active = self._active
         if active is None or event.token != active.token:
-            return False
+            return None
         if self._monotonic() >= active.deadline:
             self._complete_active(timed_out_operation_result())
-            return True
+            return HostExitCode.OPERATION_TIMED_OUT
         self._send(
             MessageType.OPERATION_PROGRESS,
             event.payload,
             request_id=active.request_id,
             operation_id=active.operation_id,
         )
-        return False
+        return None
 
-    def _accept_completed(self, event: _Completed) -> bool:
+    def _accept_completed(self, event: _Completed) -> HostExitCode | None:
         active = self._active
         if active is None or event.token != active.token:
-            return False
+            return None
         if event.occurred_at > active.deadline:
             self._complete_active(timed_out_operation_result())
-            return True
+            return HostExitCode.OPERATION_TIMED_OUT
+        restart_required = event.payload.error is not None and event.payload.error.restart_required
         self._complete_active(event.payload)
-        return False
+        if not restart_required:
+            return None
+        if event.payload.outcome is OperationOutcome.TIMED_OUT:
+            return HostExitCode.OPERATION_TIMED_OUT
+        return HostExitCode.INTERNAL_FAULT
 
     def _deadline_expired(self) -> bool:
         return self._active is not None and self._monotonic() >= self._active.deadline

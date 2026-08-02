@@ -10,7 +10,11 @@ from uuid import UUID
 import pytest
 
 from paperworkshell.worker.client.client import WorkerClient
-from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
+from paperworkshell.worker.client.errors import (
+    WorkerClientError,
+    WorkerClientErrorCode,
+    WorkerRecoveryAction,
+)
 from paperworkshell.worker.client.models import WorkerLifecyclePhase, WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import (
     IsolationEvidence,
@@ -86,6 +90,8 @@ class FakeProcess:
         self.poll_calls = 0
         self.terminate_calls = 0
         self.close_calls = 0
+        self.fail_termination = False
+        self.fail_close = False
 
     def poll(self) -> int | None:
         self.poll_calls += 1
@@ -96,9 +102,13 @@ class FakeProcess:
 
     def terminate_tree(self) -> None:
         self.terminate_calls += 1
+        if self.fail_termination:
+            raise OSError("C:\\private\\unconfirmed-worker-tree")
 
     def close(self) -> None:
         self.close_calls += 1
+        if self.fail_close:
+            raise OSError("C:\\private\\unconfirmed-worker-tree")
 
 
 @dataclass(slots=True)
@@ -525,6 +535,78 @@ def test_crash_is_stable_and_restart_rejects_the_old_generation() -> None:
     assert new_record.request.session_id != old_record.request.session_id
     assert new_record.request.worker_instance_id != old_record.request.worker_instance_id
     assert new_record.request.session_capability.value != old_capability
+
+
+def test_unconfirmed_cleanup_is_sticky_and_blocks_a_second_generation() -> None:
+    client, launcher, record, _generation = _ready_client()
+    record.process.fail_termination = True
+    record.process.fail_close = True
+
+    with pytest.raises(WorkerClientError) as termination_error:
+        client.terminate()
+    with pytest.raises(WorkerClientError) as start_error:
+        client.start(CASE_ID)
+    with pytest.raises(WorkerClientError) as restart_error:
+        client.restart()
+
+    assert termination_error.value.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert termination_error.value.recovery_action is WorkerRecoveryAction.NONE
+    assert start_error.value.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert restart_error.value.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert len(launcher.records) == 1
+    assert record.process.terminate_calls == 1
+    assert record.process.close_calls == 1
+    assert client.query().phase is WorkerLifecyclePhase.FAULTED
+
+
+def test_successful_final_close_recovers_from_an_initial_terminate_failure() -> None:
+    client, launcher, record, _generation = _ready_client()
+    record.process.fail_termination = True
+
+    client.terminate()
+    next_generation = client.start(CASE_ID)
+
+    assert client.query().phase is WorkerLifecyclePhase.STARTING
+    assert next_generation == 2
+    assert len(launcher.records) == 2
+    assert record.process.terminate_calls == 1
+    assert record.process.close_calls == 1
+
+
+def test_cleanup_failure_overrides_the_raised_protocol_failure() -> None:
+    client, _launcher, record, generation = _ready_client()
+    record.process.fail_termination = True
+    record.process.fail_close = True
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.accept_payload(generation, b"malformed")
+
+    failure = client.query().last_failure
+    assert failure is not None
+    assert raised.value.code is failure.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert raised.value.context is failure.context
+    assert raised.value.recovery_action is failure.recovery_action is WorkerRecoveryAction.NONE
+
+
+class CleanupFailingLauncher(FakeLauncher):
+    def launch(self, request: WorkerLaunchRequest) -> FakeProcess:
+        process = super().launch(request)
+        process.fail_termination = True
+        process.fail_close = True
+        return process
+
+
+def test_cleanup_failure_overrides_the_raised_isolation_failure() -> None:
+    launcher = CleanupFailingLauncher(_isolation(network_denied=False))
+    client = _client(launcher)
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.start(CASE_ID)
+
+    failure = client.query().last_failure
+    assert failure is not None
+    assert raised.value.code is failure.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert raised.value.context is failure.context
 
 
 def test_incomplete_isolation_fails_closed_and_terminates_the_process_tree() -> None:

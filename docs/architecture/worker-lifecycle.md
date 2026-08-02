@@ -95,9 +95,12 @@ Each RPC frame contains a four-byte unsigned big-endian payload length followed 
 - rejects partial headers/bodies and nonconforming reads; and
 - never includes payload bytes or a source exception in its stable error text.
 
-The writer validates before output, completes only writes that make bounded forward progress, and
-does not retry a zero/blocked write indefinitely. The transport owner flushes its buffered endpoint.
-One bounded reader queue prevents an unconsumed peer from creating unbounded in-process storage.
+The GUI owner validates and enqueues outbound bytes into a bounded queue; a private writer thread
+performs the blocking pipe write and flush. A worker that stops reading therefore cannot pin the
+GUI thread before its lifecycle deadline is armed. The writer completes only writes that make
+bounded forward progress and does not retry a zero/blocked write indefinitely. Bounded inbound and
+outbound queues prevent an unconsumed peer from creating unbounded in-process storage; a queue or
+writer failure faults the transport and generation.
 
 Framing validity is not message validity. Every payload passes the strict protocol-v1 codec and
 `ProtocolPeer` before dispatch. Binding covers capability, session, worker instance, case,
@@ -178,7 +181,7 @@ The GUI-safe client maps failures into a closed code/context pair and a trusted 
 | transport/protocol | frame/pipe failure, malformed/incompatible/replayed message | terminate and restart worker |
 | deadline | handshake, operation, cancellation-grace, or shutdown timeout | terminate and restart worker |
 | process | unexpected exit or restart-required result | restart worker |
-| termination/cleanup | job tree or launch resources could not be confirmed closed | stable retry/maintenance action; never report clean stop |
+| termination/cleanup | job tree or launch resources could not be confirmed closed | block every later generation in that client; application restart/maintenance; never report clean stop |
 
 Messages are selected from trusted code, not worker text. Host exits likewise use a closed numeric
 registry for clean close, bootstrap/isolation failure, transport close, protocol/internal fault,

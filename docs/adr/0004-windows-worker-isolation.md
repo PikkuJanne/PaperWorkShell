@@ -99,8 +99,10 @@ logged. Every restart generates a new grant; a previous grant cannot resume a co
 
 RPC uses anonymous pipes with a four-byte unsigned big-endian length followed by one payload of 1
 through 65,536 bytes. Zero, oversized, truncated, stalled, or nonconforming frames fail before
-message dispatch. Protocol v1 then performs strict decoding, capability/session/worker/case
-binding, sequence/replay checks, operation-registry checks, and state transition validation.
+message dispatch. The GUI owner only adds validated payloads to a bounded outbound queue; a private
+writer performs blocking I/O so a peer that stops reading cannot freeze the GUI before a deadline
+is armed. Protocol v1 then performs strict decoding, capability/session/worker/case binding,
+sequence/replay checks, operation-registry checks, and state transition validation.
 
 One coordinator actor owns each side's `ProtocolPeer` and mutable lifecycle. Reader, operation, and
 watchdog work can report bounded events, but they do not mutate conversation state directly. A
@@ -119,6 +121,11 @@ Restart never replays an operation. It disposes the old transport/process/job/pr
 fresh generation, session ID, worker-instance ID, capability, pipe set, peer state, and sequence
 space. An unexpected EOF or process exit before a validated `session.closed` becomes a stable
 client failure; it does not terminate the desktop process or expose the raw exit code.
+
+If any termination or cleanup step cannot prove closure, that uncertainty is sticky for the
+client's lifetime: no retry, restart, or second generation is permitted. Retained job authority
+still provides kill-on-close protection at application exit, and the failure remains a stable
+maintenance condition rather than being converted into a clean stop by a later idempotent call.
 
 ### Broker case objects by handle, never by path
 

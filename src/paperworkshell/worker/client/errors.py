@@ -95,7 +95,8 @@ _SAFE_MESSAGES: Final = MappingProxyType(
             "The document worker reported a fault and must be restarted."
         ),
         WorkerClientErrorCode.TERMINATION_FAILED: (
-            "PaperWorkShell could not confirm that the document worker stopped."
+            "PaperWorkShell could not confirm that the document worker stopped. "
+            "Close PaperWorkShell before continuing."
         ),
     }
 )
@@ -116,7 +117,7 @@ _RECOVERY_ACTIONS: Final = MappingProxyType(
         WorkerClientErrorCode.SHUTDOWN_TIMED_OUT: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.PROCESS_EXITED: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.RESTART_REQUIRED: WorkerRecoveryAction.RESTART_WORKER,
-        WorkerClientErrorCode.TERMINATION_FAILED: WorkerRecoveryAction.RETRY,
+        WorkerClientErrorCode.TERMINATION_FAILED: WorkerRecoveryAction.NONE,
     }
 )
 

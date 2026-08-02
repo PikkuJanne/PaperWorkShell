@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import threading
+import time
 from collections import deque
 from collections.abc import Buffer
 from dataclasses import dataclass, field
@@ -16,14 +17,19 @@ from paperworkshell.worker.client.errors import (
     WorkerClientErrorCode,
     reject_client,
 )
-from paperworkshell.worker.protocol.framing import read_frame, write_frame
+from paperworkshell.worker.protocol.framing import (
+    MAX_FRAME_PAYLOAD_BYTES,
+    read_frame,
+    write_frame,
+)
 from paperworkshell.worker.protocol.models import MAX_SAFE_INTEGER, SessionCapability
 
 MAXIMUM_WORKER_PROCESSES: Final = 256
 MAXIMUM_INHERITED_HANDLES: Final = 64
 MAXIMUM_BUFFERED_TRANSPORT_PAYLOADS: Final = 16
+MAXIMUM_BUFFERED_TRANSPORT_WRITES: Final = 16
 REQUIRED_LAUNCH_HANDLE_COUNT: Final = 3
-TRANSPORT_READER_JOIN_SECONDS: Final = 1.0
+TRANSPORT_CLOSE_SECONDS: Final = 1.0
 
 
 def _require_uuid4(value: object) -> None:
@@ -220,7 +226,12 @@ class WorkerTransport(Protocol):
 
 
 class _FramedWorkerTransport:
-    """Bounded framed transport with one private blocking reader thread."""
+    """Bounded framed transport with private blocking I/O threads.
+
+    The GUI owner only enqueues immutable outbound payloads.  A worker that
+    stops draining its input therefore cannot pin the owner thread inside a
+    synchronous pipe write before the lifecycle coordinator arms a deadline.
+    """
 
     def __init__(self, reader: BinaryReader, writer: BinaryWriter) -> None:
         self._reader = reader
@@ -228,7 +239,9 @@ class _FramedWorkerTransport:
         self._condition = threading.Condition()
         self._write_lock = threading.Lock()
         self._payloads: deque[bytes] = deque()
+        self._outbound_payloads: deque[bytes] = deque()
         self._closed: bool = False
+        self._cleanup_failed: bool = False
         self._peer_closed: bool = False
         self._failed: bool = False
         self._reader_thread = threading.Thread(
@@ -236,7 +249,13 @@ class _FramedWorkerTransport:
             name="PaperWorkShellWorkerTransport",
             daemon=True,
         )
+        self._writer_thread = threading.Thread(
+            target=self._write_loop,
+            name="PaperWorkShellWorkerTransportWriter",
+            daemon=True,
+        )
         self._reader_thread.start()
+        self._writer_thread.start()
 
     def __repr__(self) -> str:
         with self._condition:
@@ -244,30 +263,28 @@ class _FramedWorkerTransport:
         return f"FramedWorkerTransport(state={state!r})"
 
     def send_payload(self, payload: bytes) -> None:
-        if type(payload) is not bytes:
+        if type(payload) is not bytes or not 1 <= len(payload) <= MAX_FRAME_PAYLOAD_BYTES:
             reject_client(
                 WorkerClientErrorCode.TRANSPORT_FAILED,
                 WorkerClientContext.TRANSPORT,
             )
-        with self._write_lock:
-            with self._condition:
-                if self._closed or self._peer_closed or self._failed:
-                    reject_client(
-                        WorkerClientErrorCode.TRANSPORT_FAILED,
-                        WorkerClientContext.TRANSPORT,
-                    )
-            write_failed = False
-            try:
-                write_frame(self._writer, payload)
-                self._writer.flush()
-            except Exception:
-                write_failed = True
-            if write_failed:
-                self._mark_failed()
+        with self._condition:
+            if self._closed or self._peer_closed or self._failed:
                 reject_client(
                     WorkerClientErrorCode.TRANSPORT_FAILED,
                     WorkerClientContext.TRANSPORT,
                 )
+            if len(self._outbound_payloads) >= MAXIMUM_BUFFERED_TRANSPORT_WRITES:
+                self._failed = True
+                self._payloads.clear()
+                self._outbound_payloads.clear()
+                self._condition.notify_all()
+                reject_client(
+                    WorkerClientErrorCode.TRANSPORT_FAILED,
+                    WorkerClientContext.TRANSPORT,
+                )
+            self._outbound_payloads.append(payload)
+            self._condition.notify_all()
 
     def receive_payload(self, timeout_seconds: float) -> TransportReceive:
         if (
@@ -297,24 +314,62 @@ class _FramedWorkerTransport:
             return TransportReceive(TransportReceiveKind.CLOSED)
 
     def close(self) -> None:
+        failed = self._cleanup_failed
         with self._condition:
             first_close = not self._closed
             if first_close:
                 self._closed = True
                 self._condition.notify_all()
         if first_close:
-            for endpoint in (self._reader, self._writer):
+            with self._condition:
+                self._outbound_payloads.clear()
+            close_results = [False, False]
+
+            def close_endpoint(index: int, endpoint: BinaryReader | BinaryWriter) -> None:
                 try:
                     endpoint.close()
                 except Exception:
-                    pass
-        if threading.current_thread() is not self._reader_thread:
-            self._reader_thread.join(TRANSPORT_READER_JOIN_SECONDS)
-            if self._reader_thread.is_alive():
-                reject_client(
-                    WorkerClientErrorCode.TRANSPORT_FAILED,
-                    WorkerClientContext.TRANSPORT,
+                    return
+                close_results[index] = True
+
+            close_threads = tuple(
+                threading.Thread(
+                    target=close_endpoint,
+                    args=(index, endpoint),
+                    name="PaperWorkShellWorkerTransportCloser",
+                    daemon=True,
                 )
+                for index, endpoint in enumerate((self._reader, self._writer))
+            )
+            for thread in close_threads:
+                thread.start()
+        else:
+            close_results = []
+            close_threads = ()
+        deadline = time.monotonic() + TRANSPORT_CLOSE_SECONDS
+        for thread in close_threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
+        if close_threads:
+            failed = (
+                any(thread.is_alive() for thread in close_threads)
+                or not all(close_results)
+                or failed
+            )
+        threads = (
+            self._reader_thread,
+            self._writer_thread,
+        )
+        for thread in threads:
+            if threading.current_thread() is thread:
+                continue
+            thread.join(max(0.0, deadline - time.monotonic()))
+            failed = thread.is_alive() or failed
+        self._cleanup_failed = failed
+        if failed:
+            reject_client(
+                WorkerClientErrorCode.TRANSPORT_FAILED,
+                WorkerClientContext.TRANSPORT,
+            )
 
     def _read_loop(self) -> None:
         while True:
@@ -341,6 +396,26 @@ class _FramedWorkerTransport:
                 self._payloads.append(payload)
                 self._condition.notify()
 
+    def _write_loop(self) -> None:
+        while True:
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: bool(self._outbound_payloads) or self._closed or self._failed
+                )
+                if self._closed or self._failed:
+                    return
+                payload = self._outbound_payloads.popleft()
+            write_failed = False
+            try:
+                with self._write_lock:
+                    write_frame(self._writer, payload)
+                    self._writer.flush()
+            except Exception:
+                write_failed = True
+            if write_failed:
+                self._mark_failed()
+                return
+
     def _closed_value(self) -> bool:
         return self._closed
 
@@ -348,6 +423,7 @@ class _FramedWorkerTransport:
         with self._condition:
             self._failed = True
             self._payloads.clear()
+            self._outbound_payloads.clear()
             self._condition.notify_all()
 
 

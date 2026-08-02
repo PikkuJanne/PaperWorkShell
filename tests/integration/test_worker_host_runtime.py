@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from types import TracebackType
 from uuid import UUID
 
-from paperworkshell.worker.operations import OperationContext, RuntimeOperationRegistry
+from paperworkshell.worker.operations import (
+    OperationContext,
+    RuntimeOperationRegistry,
+    timed_out_operation_result,
+)
 from paperworkshell.worker.protocol.bootstrap import BootstrapGrant
 from paperworkshell.worker.protocol.framing import read_frame, write_frame
 from paperworkshell.worker.protocol.models import (
@@ -206,6 +210,31 @@ def test_runtime_timeout_is_restart_required_and_exits() -> None:
         assert result.outcome is OperationOutcome.TIMED_OUT
         assert result.error is not None
         assert result.error.code is ErrorCode.WORKER_OPERATION_TIMED_OUT
+        assert result.error.restart_required
+        assert harness.wait_for_exit() is HostExitCode.OPERATION_TIMED_OUT
+        assert harness.client.state.phase is ConversationPhase.FAULTED
+
+
+@dataclass(frozen=True, slots=True)
+class _EarlyRestartRequiredHandler:
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return NOOP_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        del context
+        return timed_out_operation_result()
+
+
+def test_early_restart_required_result_terminates_the_host_generation() -> None:
+    registry = RuntimeOperationRegistry((_EarlyRestartRequiredHandler(),))
+    with _Harness(registry) as harness:
+        harness.negotiate()
+        _start(harness)
+        result = _receive_result(harness)
+
+        assert result.outcome is OperationOutcome.TIMED_OUT
+        assert result.error is not None
         assert result.error.restart_required
         assert harness.wait_for_exit() is HostExitCode.OPERATION_TIMED_OUT
         assert harness.client.state.phase is ConversationPhase.FAULTED
