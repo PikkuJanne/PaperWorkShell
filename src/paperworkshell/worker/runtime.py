@@ -125,6 +125,8 @@ class WorkerHostRuntime:
             raise ValueError("runtime and protocol operation registries differ")
         self._monotonic = monotonic
         self._events: queue.Queue[_RuntimeEvent] = queue.Queue(maxsize=_EVENT_QUEUE_SIZE)
+        self._completion_lock = threading.Lock()
+        self._recorded_completion: _Completed | None = None
         self._stopping = threading.Event()
         self._active: _ActiveExecution | None = None
         binding = PeerBinding(
@@ -153,8 +155,9 @@ class WorkerHostRuntime:
                 event = self._next_event()
                 if event is None:
                     if self._deadline_expired():
-                        self._complete_active(timed_out_operation_result())
-                        return HostExitCode.OPERATION_TIMED_OUT
+                        outcome = self._settle_expired_deadline()
+                        if outcome is not None:
+                            return outcome
                     continue
                 outcome = self._dispatch(event)
                 if outcome is not None:
@@ -191,6 +194,15 @@ class WorkerHostRuntime:
             self._events.put(_TransportEnded(True))
 
     def _dispatch(self, event: _RuntimeEvent) -> HostExitCode | None:
+        if type(event) is _Inbound and self._deadline_expired():
+            # Inbound cancellation or other nonterminal traffic cannot starve
+            # the host wall deadline.  A result recorded before that deadline
+            # still wins even if this earlier-queued inbound event is dispatched
+            # first.
+            completion = self._recorded_completion_for_active()
+            active = self._active
+            if completion is None or active is None or completion.occurred_at > active.deadline:
+                return self._settle_expired_deadline()
         if type(event) is _TransportEnded:
             if event.faulted:
                 self._send_protocol_error()
@@ -216,10 +228,10 @@ class WorkerHostRuntime:
             return None
         if message.message_type is MessageType.OPERATION_START:
             self._start_operation(message.payload, message.request_id, message.operation_id)
-            return None
+            return self._accept_recorded_completion()
         if message.message_type is MessageType.OPERATION_CANCEL:
             self._cancel_operation(message.payload, message.request_id, message.operation_id)
-            return None
+            return self._accept_recorded_completion()
         if message.message_type is MessageType.SESSION_SHUTDOWN:
             if type(message.payload) is not SessionShutdownPayload or message.request_id is None:
                 raise ProtocolError("RPC_PAYLOAD_MISMATCH", "payload", "shutdown is invalid")
@@ -260,6 +272,8 @@ class WorkerHostRuntime:
             cancel_requested=threading.Event(),
         )
         self._active = active
+        with self._completion_lock:
+            self._recorded_completion = None
 
         def report_progress(progress: OperationProgressPayload) -> None:
             self._events.put(_Progress(active.token, progress))
@@ -276,7 +290,13 @@ class WorkerHostRuntime:
                 result = handler.execute(context)
             except Exception:
                 result = failed_operation_result()
-            self._events.put(_Completed(active.token, result, self._monotonic()))
+            completion = _Completed(active.token, result, self._monotonic())
+            # Publish the terminal timestamp before the bounded mixed queue put.
+            # Deadline arbitration can therefore observe a completed operation
+            # even when older inbound/progress events occupy the queue.
+            with self._completion_lock:
+                self._recorded_completion = completion
+            self._events.put(completion)
 
         threading.Thread(
             target=execute,
@@ -316,20 +336,27 @@ class WorkerHostRuntime:
         if active is None or event.token != active.token:
             return None
         if self._monotonic() >= active.deadline:
-            self._complete_active(timed_out_operation_result())
-            return HostExitCode.OPERATION_TIMED_OUT
+            completion = self._recorded_completion_for_active()
+            if completion is None or completion.occurred_at > active.deadline:
+                return self._settle_expired_deadline()
         self._send(
             MessageType.OPERATION_PROGRESS,
             event.payload,
             request_id=active.request_id,
             operation_id=active.operation_id,
         )
-        return None
+        return self._accept_recorded_completion()
 
     def _accept_completed(self, event: _Completed) -> HostExitCode | None:
         active = self._active
         if active is None or event.token != active.token:
             return None
+        with self._completion_lock:
+            if (
+                self._recorded_completion is not None
+                and self._recorded_completion.token == event.token
+            ):
+                self._recorded_completion = None
         if event.occurred_at > active.deadline:
             self._complete_active(timed_out_operation_result())
             return HostExitCode.OPERATION_TIMED_OUT
@@ -340,6 +367,29 @@ class WorkerHostRuntime:
         if event.payload.outcome is OperationOutcome.TIMED_OUT:
             return HostExitCode.OPERATION_TIMED_OUT
         return HostExitCode.INTERNAL_FAULT
+
+    def _recorded_completion_for_active(self) -> _Completed | None:
+        active = self._active
+        if active is None:
+            return None
+        with self._completion_lock:
+            completion = self._recorded_completion
+        if completion is None or completion.token != active.token:
+            return None
+        return completion
+
+    def _accept_recorded_completion(self) -> HostExitCode | None:
+        completion = self._recorded_completion_for_active()
+        if completion is None:
+            return None
+        return self._accept_completed(completion)
+
+    def _settle_expired_deadline(self) -> HostExitCode | None:
+        completion = self._recorded_completion_for_active()
+        if completion is not None:
+            return self._accept_completed(completion)
+        self._complete_active(timed_out_operation_result())
+        return HostExitCode.OPERATION_TIMED_OUT
 
     def _deadline_expired(self) -> bool:
         return self._active is not None and self._monotonic() >= self._active.deadline

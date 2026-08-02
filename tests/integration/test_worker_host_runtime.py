@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import os
 import threading
 from dataclasses import dataclass
 from types import TracebackType
 from uuid import UUID
 
+from paperworkshell.worker import runtime as runtime_module
 from paperworkshell.worker.operations import (
     OperationContext,
     RuntimeOperationRegistry,
@@ -25,8 +27,11 @@ from paperworkshell.worker.protocol.models import (
     MessageType,
     OperationCancelPayload,
     OperationOutcome,
+    OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
+    ProgressStage,
+    ProgressUnit,
     ProtocolEnvelope,
     ResourceLimits,
     SessionCapability,
@@ -238,6 +243,235 @@ def test_early_restart_required_result_terminates_the_host_generation() -> None:
         assert result.error.restart_required
         assert harness.wait_for_exit() is HostExitCode.OPERATION_TIMED_OUT
         assert harness.client.state.phase is ConversationPhase.FAULTED
+
+
+class _FakeClock:
+    def __init__(self, value: float) -> None:
+        self.value = value
+
+    def __call__(self) -> float:
+        return self.value
+
+
+def _take_frame(writer: io.BytesIO) -> bytes:
+    writer.seek(0)
+    payload = read_frame(writer)
+    assert payload is not None
+    assert read_frame(writer) is None
+    writer.seek(0)
+    writer.truncate()
+    return payload
+
+
+def _take_frames(writer: io.BytesIO, count: int) -> tuple[bytes, ...]:
+    writer.seek(0)
+    payloads: list[bytes] = []
+    for _index in range(count):
+        payload = read_frame(writer)
+        assert payload is not None
+        payloads.append(payload)
+    assert read_frame(writer) is None
+    writer.seek(0)
+    writer.truncate()
+    return tuple(payloads)
+
+
+class _BlockingSuccessHandler:
+    def __init__(self) -> None:
+        self.release = threading.Event()
+        self.finished = threading.Event()
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return NOOP_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        del context
+        self.release.wait()
+        self.finished.set()
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (), None)
+
+
+def _direct_runtime(
+    clock: _FakeClock,
+    *,
+    operations: RuntimeOperationRegistry | None = None,
+) -> tuple[WorkerHostRuntime, ProtocolPeer, io.BytesIO]:
+    binding = PeerBinding(_uuid(41), _uuid(42), _uuid(43), SessionCapability("b" * 64))
+    grant = BootstrapGrant(
+        binding.session_id,
+        binding.worker_instance_id,
+        binding.case_id,
+        binding.session_capability,
+    )
+    writer = io.BytesIO()
+    runtime = (
+        WorkerHostRuntime(grant, io.BytesIO(), writer, monotonic=clock)
+        if operations is None
+        else WorkerHostRuntime(
+            grant,
+            io.BytesIO(),
+            writer,
+            operations=operations,
+            monotonic=clock,
+        )
+    )
+    client = ProtocolPeer(binding, Direction.CLIENT_TO_WORKER)
+    hello = client.prepare_outbound(
+        MessageType.SESSION_HELLO,
+        SessionHelloPayload((1,), (NOOP_CAPABILITY,)),
+        request_id=_uuid(44),
+        operation_id=None,
+    )
+    assert runtime._dispatch(runtime_module._Inbound(hello.encoded)) is None
+    client.accept_inbound(_take_frame(writer))
+    return runtime, client, writer
+
+
+def _start_direct_operation(
+    runtime: WorkerHostRuntime,
+    client: ProtocolPeer,
+    writer: io.BytesIO,
+) -> UUID:
+    operation_id = _uuid(46)
+    start = client.prepare_outbound(
+        MessageType.OPERATION_START,
+        OperationStartPayload("protocol.noop", 1, (), (), _limits(1_000)),
+        request_id=_uuid(45),
+        operation_id=operation_id,
+    )
+    assert runtime._dispatch(runtime_module._Inbound(start.encoded)) is None
+    client.accept_inbound(_take_frame(writer))
+    return operation_id
+
+
+def _record_direct_completion(
+    runtime: WorkerHostRuntime,
+    *,
+    occurred_at: float,
+) -> None:
+    active = runtime._active
+    assert active is not None
+    completion = runtime_module._Completed(
+        active.token,
+        OperationResultPayload(OperationOutcome.SUCCEEDED, (), None),
+        occurred_at,
+    )
+    with runtime._completion_lock:
+        runtime._recorded_completion = completion
+
+
+def test_expired_host_deadline_preempts_queued_cancellation_traffic() -> None:
+    clock = _FakeClock(10.0)
+    runtime, client, writer = _direct_runtime(clock)
+    operation_id = _start_direct_operation(runtime, client, writer)
+
+    cancel = client.prepare_outbound(
+        MessageType.OPERATION_CANCEL,
+        OperationCancelPayload(CancelReason.USER_REQUESTED),
+        request_id=_uuid(47),
+        operation_id=operation_id,
+    )
+    clock.value = 11.0
+    exit_code = runtime._dispatch(runtime_module._Inbound(cancel.encoded))
+    result = client.accept_inbound(_take_frame(writer))
+
+    assert exit_code is HostExitCode.OPERATION_TIMED_OUT
+    assert result.message_type is MessageType.OPERATION_RESULT
+    assert type(result.payload) is OperationResultPayload
+    assert result.payload.outcome is OperationOutcome.TIMED_OUT
+    assert result.payload.error is not None
+    assert result.payload.error.restart_required
+
+
+def test_predeadline_completion_wins_behind_queued_cancellation() -> None:
+    clock = _FakeClock(10.0)
+    handler = _BlockingSuccessHandler()
+    runtime, client, writer = _direct_runtime(
+        clock,
+        operations=RuntimeOperationRegistry((handler,)),
+    )
+    operation_id = _start_direct_operation(runtime, client, writer)
+    cancel = client.prepare_outbound(
+        MessageType.OPERATION_CANCEL,
+        OperationCancelPayload(CancelReason.USER_REQUESTED),
+        request_id=_uuid(47),
+        operation_id=operation_id,
+    )
+    _record_direct_completion(runtime, occurred_at=10.5)
+
+    clock.value = 11.0
+    assert runtime._dispatch(runtime_module._Inbound(cancel.encoded)) is None
+    acknowledgement, result = (
+        client.accept_inbound(payload) for payload in _take_frames(writer, 2)
+    )
+
+    assert acknowledgement.message_type is MessageType.OPERATION_CANCEL_ACK
+    assert result.message_type is MessageType.OPERATION_RESULT
+    assert type(result.payload) is OperationResultPayload
+    assert result.payload.outcome is OperationOutcome.SUCCEEDED
+    assert runtime._active is None
+    handler.release.set()
+    assert handler.finished.wait(1.0)
+
+
+def test_predeadline_completion_wins_behind_queued_final_progress() -> None:
+    clock = _FakeClock(10.0)
+    handler = _BlockingSuccessHandler()
+    runtime, client, writer = _direct_runtime(
+        clock,
+        operations=RuntimeOperationRegistry((handler,)),
+    )
+    _start_direct_operation(runtime, client, writer)
+    active = runtime._active
+    assert active is not None
+    progress = runtime_module._Progress(
+        active.token,
+        OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.STEPS),
+    )
+    _record_direct_completion(runtime, occurred_at=10.5)
+
+    clock.value = 11.0
+    assert runtime._dispatch(progress) is None
+    progress_message, result = (
+        client.accept_inbound(payload) for payload in _take_frames(writer, 2)
+    )
+
+    assert progress_message.message_type is MessageType.OPERATION_PROGRESS
+    assert result.message_type is MessageType.OPERATION_RESULT
+    assert type(result.payload) is OperationResultPayload
+    assert result.payload.outcome is OperationOutcome.SUCCEEDED
+    assert runtime._active is None
+    handler.release.set()
+    assert handler.finished.wait(1.0)
+
+
+def test_postdeadline_recorded_completion_still_times_out() -> None:
+    clock = _FakeClock(10.0)
+    handler = _BlockingSuccessHandler()
+    runtime, client, writer = _direct_runtime(
+        clock,
+        operations=RuntimeOperationRegistry((handler,)),
+    )
+    operation_id = _start_direct_operation(runtime, client, writer)
+    cancel = client.prepare_outbound(
+        MessageType.OPERATION_CANCEL,
+        OperationCancelPayload(CancelReason.USER_REQUESTED),
+        request_id=_uuid(47),
+        operation_id=operation_id,
+    )
+    _record_direct_completion(runtime, occurred_at=11.1)
+
+    clock.value = 11.1
+    exit_code = runtime._dispatch(runtime_module._Inbound(cancel.encoded))
+    result = client.accept_inbound(_take_frame(writer))
+
+    assert exit_code is HostExitCode.OPERATION_TIMED_OUT
+    assert result.message_type is MessageType.OPERATION_RESULT
+    assert type(result.payload) is OperationResultPayload
+    assert result.payload.outcome is OperationOutcome.TIMED_OUT
+    handler.release.set()
+    assert handler.finished.wait(1.0)
 
 
 @dataclass(frozen=True, slots=True)
