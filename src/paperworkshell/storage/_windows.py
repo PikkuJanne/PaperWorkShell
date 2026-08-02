@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
 from contextlib import AbstractContextManager
 from ctypes import wintypes
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final, Never, Self
 from uuid import UUID
@@ -34,9 +36,12 @@ _FILE_ATTRIBUTE_SPARSE_FILE: Final = 0x0000_0200
 
 _FILE_STANDARD_INFO_CLASS: Final = 1
 _FILE_RENAME_INFO_CLASS: Final = 3
+_FILE_RENAME_INFO_EX_CLASS: Final = 22
 _FILE_ATTRIBUTE_TAG_INFO_CLASS: Final = 9
 _FILE_ID_INFO_CLASS: Final = 18
 _FILE_DISPOSITION_INFO_CLASS: Final = 4
+_FILE_RENAME_FLAG_REPLACE_IF_EXISTS: Final = 0x0000_0001
+_FILE_RENAME_FLAG_POSIX_SEMANTICS: Final = 0x0000_0002
 
 _SE_FILE_OBJECT: Final = 1
 _OWNER_SECURITY_INFORMATION: Final = 0x0000_0001
@@ -58,6 +63,16 @@ _ERROR_ALREADY_EXISTS: Final = 183
 _DRIVE_FIXED: Final = 3
 _FILE_PERSISTENT_ACLS: Final = 0x0000_0008
 _ERROR_HANDLE_EOF: Final = 38
+_FILE_BEGIN: Final = 0
+
+MAXIMUM_STREAM_CHUNK_BYTES: Final = 1024 * 1024
+_MAXIMUM_SAFE_FILE_BYTES: Final = 9_007_199_254_740_991
+_PENDING_SOURCE_NAME: Final = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp\Z"
+)
+_ORIGINAL_STORAGE_NAME: Final = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.bin\Z"
+)
 
 _EXPECTED_PRIVATE_TRUSTEES: Final = frozenset(
     {
@@ -186,6 +201,21 @@ class OpenedFileInfo:
     logical_size: int
 
 
+class ManifestReplaceState(StrEnum):
+    """Identity-resolved outcome of one authoritative manifest replacement."""
+
+    COMMITTED = "committed"
+    NOT_COMMITTED = "not_committed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestReplaceResult:
+    """Sanitized commit state; callers preserve source bytes whenever state is unknown."""
+
+    state: ManifestReplaceState
+
+
 def _libraries() -> tuple[Any, Any, Any]:
     if os.name != "nt":
         reject(
@@ -252,6 +282,18 @@ class WindowsHandle(AbstractContextManager["WindowsHandle"]):
     def info(self) -> OpenedFileInfo:
         return self._info
 
+    def refresh_info(self) -> OpenedFileInfo:
+        """Refresh security facts from this exact handle and retain the new snapshot."""
+
+        if self._handle == 0:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.refresh",
+                "The authenticated storage object is no longer available.",
+            )
+        self._info = _query_opened_info(self._handle)
+        return self._info
+
     def __enter__(self) -> Self:
         return self
 
@@ -300,6 +342,145 @@ class WindowsHandle(AbstractContextManager["WindowsHandle"]):
                 "cleanup.delete",
                 "PaperWorkShell could not remove a verified disposable item.",
             )
+
+    def rewind(self) -> None:
+        """Move one retained regular-file handle to byte zero."""
+
+        if self._handle == 0 or self._info.is_directory:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.rewind",
+                "The authenticated file is no longer available.",
+            )
+        kernel32, _, _ = _libraries()
+        set_pointer = kernel32.SetFilePointerEx
+        set_pointer.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_longlong,
+            ctypes.POINTER(ctypes.c_longlong),
+            wintypes.DWORD,
+        )
+        set_pointer.restype = wintypes.BOOL
+        if not set_pointer(
+            wintypes.HANDLE(self._handle),
+            ctypes.c_longlong(0),
+            None,
+            _FILE_BEGIN,
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.rewind",
+                "PaperWorkShell could not read the authenticated file safely.",
+            )
+
+    def read_exact(self, count: int) -> bytes:
+        """Read one exact, bounded sequential chunk from this retained handle."""
+
+        if type(count) is not int or not 0 <= count <= MAXIMUM_STREAM_CHUNK_BYTES:
+            reject(
+                WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED,
+                "filesystem.read_chunk",
+                "The authenticated file-read request exceeds its fixed chunk limit.",
+            )
+        if self._handle == 0 or self._info.is_directory:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file is no longer available.",
+            )
+        if count == 0:
+            return b""
+
+        kernel32, _, _ = _libraries()
+        read_file = kernel32.ReadFile
+        read_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        read_file.restype = wintypes.BOOL
+        buffer = ctypes.create_string_buffer(count)
+        completed = 0
+        while completed < count:
+            received = wintypes.DWORD()
+            remaining = count - completed
+            if not read_file(
+                wintypes.HANDLE(self._handle),
+                ctypes.byref(buffer, completed),
+                remaining,
+                ctypes.byref(received),
+                None,
+            ):
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "filesystem.read",
+                    "The authenticated file changed while it was being read.",
+                )
+            amount = int(received.value)
+            if amount <= 0 or amount > remaining:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "filesystem.read",
+                    "The authenticated file changed while it was being read.",
+                )
+            completed += amount
+        return buffer.raw
+
+    def require_eof(self) -> OpenedFileInfo:
+        """Require EOF and unchanged identity/size after a sequential read."""
+
+        if self._handle == 0 or self._info.is_directory:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file is no longer available.",
+            )
+        expected = self._info
+        kernel32, _, _ = _libraries()
+        read_file = kernel32.ReadFile
+        read_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        read_file.restype = wintypes.BOOL
+        probe = ctypes.create_string_buffer(1)
+        received = wintypes.DWORD()
+        if (
+            not read_file(
+                wintypes.HANDLE(self._handle),
+                probe,
+                1,
+                ctypes.byref(received),
+                None,
+            )
+            or received.value != 0
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file changed while it was being read.",
+            )
+        current = _query_opened_info(self._handle)
+        if (
+            current.identity != expected.identity
+            or current.logical_size != expected.logical_size
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse != expected.is_sparse
+            or current.link_count != expected.link_count
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.read",
+                "The authenticated file changed while it was being read.",
+            )
+        self._info = current
+        return current
 
     def read_bytes(self, *, maximum_bytes: int) -> bytes:
         """Read one already-authenticated regular file through its retained handle."""
@@ -389,8 +570,21 @@ class WindowsHandle(AbstractContextManager["WindowsHandle"]):
         return b"".join(chunks)
 
 
-def open_handle(path: Path, *, delete: bool = False, read: bool = False) -> WindowsHandle:
-    """Open a path without following its final reparse point or sharing deletion."""
+def open_handle(
+    path: Path,
+    *,
+    delete: bool = False,
+    read: bool = False,
+    share_delete: bool = False,
+) -> WindowsHandle:
+    """Open without following the final reparse point; deletion sharing is explicit."""
+
+    if any(type(value) is not bool for value in (delete, read, share_delete)):
+        reject(
+            WorkspaceErrorCode.PATH_INVALID,
+            "filesystem.open_mode",
+            "The authenticated storage open mode is invalid.",
+        )
 
     kernel32, _, _ = _libraries()
     create_file = kernel32.CreateFileW
@@ -410,6 +604,8 @@ def open_handle(path: Path, *, delete: bool = False, read: bool = False) -> Wind
     if read:
         access |= _GENERIC_READ
     share_mode = _FILE_SHARE_READ if read else _FILE_SHARE_READ | _FILE_SHARE_WRITE
+    if share_delete:
+        share_mode |= _FILE_SHARE_DELETE
     raw_handle = create_file(
         str(path),
         access,
@@ -435,6 +631,285 @@ def open_handle(path: Path, *, delete: bool = False, read: bool = False) -> Wind
         close_handle(wintypes.HANDLE(handle_value))
         raise
     return WindowsHandle(handle_value, info)
+
+
+class WindowsPendingSourceFile(AbstractContextManager["WindowsPendingSourceFile"]):
+    """One random CREATE_NEW source stage with sequential, bounded write/read access."""
+
+    __slots__ = (
+        "_bytes_written",
+        "_handle",
+        "_initial_identity",
+        "_initial_path",
+        "_sealed",
+    )
+
+    def __init__(self, handle: WindowsHandle) -> None:
+        self._handle = handle
+        self._initial_identity = handle.info.identity
+        self._initial_path = handle.info.final_path
+        self._bytes_written = 0
+        self._sealed = False
+
+    @property
+    def handle(self) -> WindowsHandle:
+        """Return the retained exact handle for authenticated publication."""
+
+        return self._handle
+
+    @property
+    def info(self) -> OpenedFileInfo:
+        return self._handle.info
+
+    @property
+    def bytes_written(self) -> int:
+        return self._bytes_written
+
+    @property
+    def is_sealed(self) -> bool:
+        return self._sealed
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def write_chunk(self, data: bytes) -> None:
+        """Append one exact chunk; callers cannot seek or rewrite staged source bytes."""
+
+        if (
+            type(data) is not bytes
+            or not data
+            or len(data) > MAXIMUM_STREAM_CHUNK_BYTES
+            or self._sealed
+            or self._handle.value == 0
+            or self._bytes_written > _MAXIMUM_SAFE_FILE_BYTES - len(data)
+        ):
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "source_stage.write",
+                "PaperWorkShell could not write the pending source safely.",
+            )
+        kernel32, _, _ = _libraries()
+        write_file = kernel32.WriteFile
+        write_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        write_file.restype = wintypes.BOOL
+        buffer = ctypes.create_string_buffer(data)
+        completed = 0
+        while completed < len(data):
+            written = wintypes.DWORD()
+            remaining = len(data) - completed
+            if not write_file(
+                wintypes.HANDLE(self._handle.value),
+                ctypes.byref(buffer, completed),
+                remaining,
+                ctypes.byref(written),
+                None,
+            ):
+                reject(
+                    WorkspaceErrorCode.CREATE_FAILED,
+                    "source_stage.write",
+                    "PaperWorkShell could not write the pending source safely.",
+                )
+            amount = int(written.value)
+            if amount <= 0 or amount > remaining:
+                reject(
+                    WorkspaceErrorCode.CREATE_FAILED,
+                    "source_stage.write",
+                    "PaperWorkShell could not write the pending source safely.",
+                )
+            completed += amount
+        self._bytes_written += len(data)
+
+    def seal(self, *, expected_size: int) -> OpenedFileInfo:
+        """Flush and authenticate the complete stage before independent readback."""
+
+        if (
+            type(expected_size) is not int
+            or not 1 <= expected_size <= _MAXIMUM_SAFE_FILE_BYTES
+            or expected_size != self._bytes_written
+            or self._sealed
+            or self._handle.value == 0
+        ):
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "source_stage.size",
+                "The pending source does not have its expected complete size.",
+            )
+        kernel32, _, _ = _libraries()
+        flush = kernel32.FlushFileBuffers
+        flush.argtypes = (wintypes.HANDLE,)
+        flush.restype = wintypes.BOOL
+        if not flush(wintypes.HANDLE(self._handle.value)):
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "source_stage.flush",
+                "PaperWorkShell could not commit the pending source bytes.",
+            )
+        current = self._handle.refresh_info()
+        if (
+            current.identity != self._initial_identity
+            or _normalized_path(current.final_path) != _normalized_path(self._initial_path)
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+            or current.logical_size != expected_size
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "source_stage.identity",
+                "The pending source changed before it could be sealed.",
+            )
+        require_no_alternate_streams(current.final_path)
+        self._sealed = True
+        return current
+
+    def rewind(self) -> None:
+        if not self._sealed:
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "source_stage.read_state",
+                "The pending source is not ready for verification.",
+            )
+        self._handle.rewind()
+
+    def read_exact(self, count: int) -> bytes:
+        if not self._sealed:
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "source_stage.read_state",
+                "The pending source is not ready for verification.",
+            )
+        return self._handle.read_exact(count)
+
+    def require_eof(self) -> OpenedFileInfo:
+        if not self._sealed:
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "source_stage.read_state",
+                "The pending source is not ready for verification.",
+            )
+        current = self._handle.require_eof()
+        if (
+            current.identity != self._initial_identity
+            or current.logical_size != self._bytes_written
+            or current.is_sparse
+            or current.link_count != 1
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "source_stage.readback",
+                "The pending source changed during verification.",
+            )
+        require_no_alternate_streams(current.final_path)
+        return current
+
+    def mark_for_deletion(self) -> None:
+        self._handle.mark_for_deletion()
+
+    def close(self) -> None:
+        self._handle.close()
+
+
+def create_pending_source_file(
+    path: Path,
+    *,
+    temp_root: WindowsHandle,
+) -> WindowsPendingSourceFile:
+    """Create one opaque pending source beneath a case temp directory."""
+
+    root_before = temp_root.info
+    root_current = temp_root.refresh_info()
+    if (
+        root_current.identity != root_before.identity
+        or not root_current.is_directory
+        or root_current.is_reparse_point
+        or root_current.final_path.name.casefold() != "temp"
+        or _normalized_path(path.parent) != _normalized_path(root_current.final_path)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "source_stage.root",
+            "The authenticated temporary directory changed before source staging.",
+        )
+    verify_private_acl(temp_root)
+    require_no_alternate_streams(root_current.final_path)
+    if _PENDING_SOURCE_NAME.fullmatch(path.name) is None:
+        reject(
+            WorkspaceErrorCode.NAME_INVALID,
+            "source_stage.name",
+            "A pending source requires a random internal staging name.",
+        )
+    kernel32, _, _ = _libraries()
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    raw_handle = create_file(
+        str(path),
+        _GENERIC_READ | _GENERIC_WRITE | _DELETE | _READ_CONTROL | _FILE_READ_ATTRIBUTES,
+        _FILE_SHARE_READ,
+        None,
+        _CREATE_NEW,
+        _FILE_ATTRIBUTE_NORMAL,
+        None,
+    )
+    handle_value = int(raw_handle) if raw_handle else 0
+    if not handle_value or handle_value == _INVALID_HANDLE_VALUE:
+        code = (
+            WorkspaceErrorCode.ALREADY_EXISTS
+            if ctypes.get_last_error() in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+            else WorkspaceErrorCode.CREATE_FAILED
+        )
+        reject(
+            code,
+            "source_stage.create",
+            "PaperWorkShell could not create the pending source safely.",
+        )
+
+    handle: WindowsHandle | None = None
+    try:
+        handle = WindowsHandle(handle_value, _query_opened_info(handle_value))
+        require_expected_handle(handle, path, directory=False)
+        if handle.info.is_sparse or handle.info.link_count != 1:
+            reject(
+                WorkspaceErrorCode.ALIAS_DETECTED,
+                "source_stage.create",
+                "The pending source unexpectedly aliases another storage object.",
+            )
+        require_no_alternate_streams(path)
+        return WindowsPendingSourceFile(handle)
+    except BaseException:
+        if handle is not None:
+            try:
+                handle.mark_for_deletion()
+            except BaseException:
+                pass
+            try:
+                handle.close()
+            except BaseException:
+                pass
+        else:
+            close_handle = kernel32.CloseHandle
+            close_handle.argtypes = (wintypes.HANDLE,)
+            close_handle.restype = wintypes.BOOL
+            close_handle(wintypes.HANDLE(handle_value))
+        raise
 
 
 def write_new_file(path: Path, data: bytes) -> WindowsHandle:
@@ -535,6 +1010,7 @@ def write_new_file(path: Path, data: bytes) -> WindowsHandle:
                 "filesystem.write",
                 "The new case record changed before it could be committed.",
             )
+        handle._info = final_info
         return handle
     except BaseException:
         if handle is not None:
@@ -581,43 +1057,15 @@ def publish_new_file(
             "filesystem.publish",
             "The authoritative case record has an unexpected destination.",
         )
-
-    destination_text = str(destination)
-    destination_utf16 = destination_text.encode("utf-16-le")
-    destination_code_units = len(destination_utf16) // 2
-
-    class _FileRenameInfo(ctypes.Structure):
-        _fields_ = [
-            ("replace_if_exists", wintypes.BOOLEAN),
-            ("root_directory", wintypes.HANDLE),
-            ("file_name_length", wintypes.DWORD),
-            ("file_name", wintypes.WCHAR * (destination_code_units + 1)),
-        ]
-
-    rename = _FileRenameInfo(
-        wintypes.BOOLEAN(0),
-        wintypes.HANDLE(),
-        wintypes.DWORD(len(destination_utf16)),
-        destination_text,
+    renamed, error_number = _rename_open_file(
+        source_handle,
+        destination=destination,
+        replace=False,
     )
-    kernel32, _, _ = _libraries()
-    set_information = kernel32.SetFileInformationByHandle
-    set_information.argtypes = (
-        wintypes.HANDLE,
-        ctypes.c_int,
-        ctypes.c_void_p,
-        wintypes.DWORD,
-    )
-    set_information.restype = wintypes.BOOL
-    if not set_information(
-        wintypes.HANDLE(source_handle.value),
-        _FILE_RENAME_INFO_CLASS,
-        ctypes.byref(rename),
-        ctypes.sizeof(rename),
-    ):
+    if not renamed:
         code = (
             WorkspaceErrorCode.ALREADY_EXISTS
-            if ctypes.get_last_error() in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+            if error_number in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
             else WorkspaceErrorCode.CREATE_FAILED
         )
         reject(
@@ -625,9 +1073,10 @@ def publish_new_file(
             "filesystem.publish",
             "PaperWorkShell could not publish the authoritative case record.",
         )
-    published = _query_opened_info(source_handle.value)
+    previous = source_handle.info
+    published = source_handle.refresh_info()
     if (
-        published.identity != source_handle.info.identity
+        published.identity != previous.identity
         or published.is_directory
         or published.is_reparse_point
         or published.link_count != 1
@@ -639,6 +1088,268 @@ def publish_new_file(
             "The authoritative case record changed during publication.",
         )
     require_no_alternate_streams(destination)
+
+
+def publish_new_original(
+    source: WindowsPendingSourceFile,
+    originals_root: WindowsHandle,
+    *,
+    storage_name: str,
+) -> OpenedFileInfo:
+    """Publish one sealed pending source once under an opaque UUIDv4 storage name."""
+
+    if (
+        not isinstance(source, WindowsPendingSourceFile)
+        or not source.is_sealed
+        or type(storage_name) is not str
+        or _ORIGINAL_STORAGE_NAME.fullmatch(storage_name) is None
+    ):
+        reject(
+            WorkspaceErrorCode.NAME_INVALID,
+            "source_publish.name",
+            "A source copy requires a valid random internal storage name.",
+        )
+    root_before = originals_root.info
+    root_current = originals_root.refresh_info()
+    if (
+        root_current.identity != root_before.identity
+        or not root_current.is_directory
+        or root_current.is_reparse_point
+        or root_current.final_path.name.casefold() != "originals"
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "source_publish.root",
+            "The authenticated originals directory changed before publication.",
+        )
+    verify_private_acl(originals_root)
+    require_no_alternate_streams(root_current.final_path)
+
+    destination = root_current.final_path / storage_name
+    staged = source.info
+    renamed, error_number = _rename_open_file(
+        source.handle,
+        destination=destination,
+        replace=False,
+    )
+    if not renamed:
+        code = (
+            WorkspaceErrorCode.ALREADY_EXISTS
+            if error_number in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+            else WorkspaceErrorCode.CREATE_FAILED
+        )
+        reject(
+            code,
+            "source_publish.rename",
+            "PaperWorkShell could not publish the immutable source copy.",
+        )
+    published = source.handle.refresh_info()
+    if (
+        published.identity != staged.identity
+        or published.logical_size != staged.logical_size
+        or published.is_directory
+        or published.is_reparse_point
+        or published.is_sparse
+        or published.link_count != 1
+        or _normalized_path(published.final_path) != _normalized_path(destination)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "source_publish.identity",
+            "The immutable source copy changed during publication.",
+        )
+    require_no_alternate_streams(destination)
+    return published
+
+
+def replace_manifest_atomically(
+    candidate_handle: WindowsHandle,
+    case_root: WindowsHandle,
+    expected_manifest_handle: WindowsHandle,
+) -> ManifestReplaceResult:
+    """Replace manifest.json last and resolve the commit by destination identity."""
+
+    case_before = case_root.info
+    case_current = case_root.refresh_info()
+    if (
+        case_current.identity != case_before.identity
+        or not case_current.is_directory
+        or case_current.is_reparse_point
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "manifest_replace.root",
+            "The authenticated case directory changed before manifest publication.",
+        )
+    verify_private_acl(case_root)
+    require_no_alternate_streams(case_current.final_path)
+    destination = case_current.final_path / "manifest.json"
+
+    candidate_before = candidate_handle.info
+    candidate_current = candidate_handle.refresh_info()
+    if (
+        candidate_current.identity != candidate_before.identity
+        or candidate_current.is_directory
+        or candidate_current.is_reparse_point
+        or candidate_current.is_sparse
+        or candidate_current.link_count != 1
+        or _normalized_path(candidate_current.final_path.parent)
+        != _normalized_path(case_current.final_path / "temp")
+        or _PENDING_SOURCE_NAME.fullmatch(candidate_current.final_path.name) is None
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "manifest_replace.candidate",
+            "The staged case record changed before publication.",
+        )
+    require_no_alternate_streams(candidate_current.final_path)
+
+    expected_before = expected_manifest_handle.info
+    expected_current = expected_manifest_handle.refresh_info()
+    if (
+        expected_current.identity != expected_before.identity
+        or expected_current.is_directory
+        or expected_current.is_reparse_point
+        or expected_current.link_count != 1
+        or _normalized_path(expected_current.final_path) != _normalized_path(destination)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "manifest_replace.expected",
+            "The authoritative case record changed before replacement.",
+        )
+    require_no_alternate_streams(destination)
+
+    initial = _resolve_manifest_replace_state(
+        destination,
+        candidate_identity=candidate_current.identity,
+        expected_identity=expected_current.identity,
+    )
+    if initial is not ManifestReplaceState.NOT_COMMITTED:
+        return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+
+    try:
+        renamed, _error_number = _rename_open_file(
+            candidate_handle,
+            destination=destination,
+            replace=True,
+        )
+    except BaseException:
+        resolved = _resolve_manifest_replace_state(
+            destination,
+            candidate_identity=candidate_current.identity,
+            expected_identity=expected_current.identity,
+        )
+        if resolved is ManifestReplaceState.COMMITTED:
+            try:
+                candidate_handle.refresh_info()
+            except Exception:
+                pass
+        return ManifestReplaceResult(resolved)
+
+    resolved = _resolve_manifest_replace_state(
+        destination,
+        candidate_identity=candidate_current.identity,
+        expected_identity=expected_current.identity,
+    )
+    if resolved is ManifestReplaceState.COMMITTED:
+        try:
+            candidate_handle.refresh_info()
+        except Exception:
+            pass
+        return ManifestReplaceResult(resolved)
+    if not renamed and resolved is ManifestReplaceState.NOT_COMMITTED:
+        return ManifestReplaceResult(resolved)
+    return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+
+
+def _resolve_manifest_replace_state(
+    destination: Path,
+    *,
+    candidate_identity: FileIdentity,
+    expected_identity: FileIdentity,
+) -> ManifestReplaceState:
+    """Resolve an attempted manifest commit without trusting a path-only observation."""
+
+    try:
+        with open_handle(destination, share_delete=True) as current:
+            require_expected_handle(current, destination, directory=False)
+            if current.info.is_reparse_point or current.info.link_count != 1:
+                return ManifestReplaceState.UNKNOWN
+            require_no_alternate_streams(destination)
+            if current.info.identity == candidate_identity:
+                return ManifestReplaceState.COMMITTED
+            if current.info.identity == expected_identity:
+                return ManifestReplaceState.NOT_COMMITTED
+    except Exception:
+        return ManifestReplaceState.UNKNOWN
+    return ManifestReplaceState.UNKNOWN
+
+
+def _rename_open_file(
+    source_handle: WindowsHandle,
+    *,
+    destination: Path,
+    replace: bool,
+) -> tuple[bool, int]:
+    """Rename one exact handle using the absolute-name Win32 form proven by PWS-0102."""
+
+    destination_text = str(destination)
+    destination_utf16 = destination_text.encode("utf-16-le")
+    destination_code_units = len(destination_utf16) // 2
+
+    if replace:
+
+        class _FileRenameInfoEx(ctypes.Structure):
+            _fields_ = [
+                ("flags", wintypes.DWORD),
+                ("root_directory", wintypes.HANDLE),
+                ("file_name_length", wintypes.DWORD),
+                ("file_name", wintypes.WCHAR * (destination_code_units + 1)),
+            ]
+
+        rename: ctypes.Structure = _FileRenameInfoEx(
+            wintypes.DWORD(_FILE_RENAME_FLAG_REPLACE_IF_EXISTS | _FILE_RENAME_FLAG_POSIX_SEMANTICS),
+            wintypes.HANDLE(),
+            wintypes.DWORD(len(destination_utf16)),
+            destination_text,
+        )
+        information_class = _FILE_RENAME_INFO_EX_CLASS
+    else:
+
+        class _FileRenameInfo(ctypes.Structure):
+            _fields_ = [
+                ("replace_if_exists", wintypes.BOOLEAN),
+                ("root_directory", wintypes.HANDLE),
+                ("file_name_length", wintypes.DWORD),
+                ("file_name", wintypes.WCHAR * (destination_code_units + 1)),
+            ]
+
+        rename = _FileRenameInfo(
+            wintypes.BOOLEAN(0),
+            wintypes.HANDLE(),
+            wintypes.DWORD(len(destination_utf16)),
+            destination_text,
+        )
+        information_class = _FILE_RENAME_INFO_CLASS
+    kernel32, _, _ = _libraries()
+    set_information = kernel32.SetFileInformationByHandle
+    set_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    set_information.restype = wintypes.BOOL
+    renamed = bool(
+        set_information(
+            wintypes.HANDLE(source_handle.value),
+            information_class,
+            ctypes.byref(rename),
+            ctypes.sizeof(rename),
+        )
+    )
+    return renamed, 0 if renamed else int(ctypes.get_last_error())
 
 
 def _query_opened_info(handle: int) -> OpenedFileInfo:

@@ -81,8 +81,8 @@ publication guard through the following ordered publications.
 1. The prepared source ID determines the only storage name, `<source-id>.bin`. Generated
    collisions are retried within a fixed bound and never overwrite an existing object.
 2. The exact verified pending file is atomically published beneath `originals/` while authenticated
-   case and parent handles remain pinned. A read-only handle to that published identity remains live
-   through manifest publication.
+   case and parent handles remain pinned. The same sealed exact handle remains live through manifest
+   publication; its broker writer rejects every post-seal write and is not exposed outside storage.
 3. Duplicate detection compares the verified SHA-256 digest with committed source records under the
    same serialized commit authority. Matching source IDs are returned as an advisory signal.
    Duplicates still receive distinct source IDs, case copies, display names, and page identities;
