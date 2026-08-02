@@ -92,6 +92,12 @@ fixed layout, deferrals, and failure behavior are documented in
 system mechanism and residual risks recorded in
 [`docs/adr/0003-secure-case-workspace.md`](docs/adr/0003-secure-case-workspace.md).
 
+The bounded Windows import precheck identifies PDF, JPEG, and PNG by content while retaining one
+authenticated read-only source handle, enforcing caller-supplied byte/image/expansion budgets, and
+returning only typed preliminary state or sanitized errors. Its exact lease, format checks, limits,
+and worker deferrals are documented in
+[`docs/architecture/import-prechecks.md`](docs/architecture/import-prechecks.md).
+
 Third-party admission, exact pin/hash evidence, Windows redistribution, renderer comparison, and
 SBOM inputs are governed by
 [`docs/development/dependency-policy.md`](docs/development/dependency-policy.md). The checked-in
