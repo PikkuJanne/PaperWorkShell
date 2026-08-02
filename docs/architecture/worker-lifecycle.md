@@ -196,6 +196,8 @@ Restart performs no retry and replays no operation. It first terminates and clos
 transport, process handles, ACL grant lease, and AppContainer profile. It then creates a new
 generation with fresh session/worker UUIDs, capability, pipes, profile, job, peer state, message
 IDs, and sender sequences. Events tagged with any earlier generation are rejected as stale.
+The concrete Windows adapter stops and confirms the live Job tree before joining transport-close
+threads, so a worker blocked in anonymous-pipe I/O cannot exhaust the bounded close deadline.
 
 Handle, ACL, mutex, profile, and partial-launch cleanup retain authority until Windows confirms the
 release. Bounded retries may physically release a resource, but an earlier unconfirmed lifecycle

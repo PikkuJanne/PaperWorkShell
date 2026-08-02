@@ -2429,13 +2429,6 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 )
             return
         failed = False
-        if not self._transport_closed:
-            try:
-                self._transport.close()
-            except Exception:
-                failed = True
-            else:
-                self._transport_closed = True
         if not self._containment_closed:
             if not self._tree_confirmed and self._job.handle._value:
                 self._tree_confirmed = _stop_job_tree_no_raise(
@@ -2480,6 +2473,16 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 _quarantine_profile(self._profile, cleanup_allowed=False)
                 self._containment_closed = job_closed and process_closed
                 failed = True
+        # Stop the process tree before closing the anonymous-pipe transport. A
+        # live worker can keep its pipe ends in a blocking ReadFile/WriteFile;
+        # terminating the retained Job first makes endpoint closure bounded.
+        if not self._transport_closed:
+            try:
+                self._transport.close()
+            except Exception:
+                failed = True
+            else:
+                self._transport_closed = True
         if self._tree_confirmed and self._profile_cleanup_allowed and not self._profile_closed:
             if _close_profile_bounded(self._profile):
                 self._profile_closed = True

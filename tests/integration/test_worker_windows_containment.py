@@ -1608,6 +1608,36 @@ def test_process_close_retries_retained_handles_and_keeps_failure_sticky(
     assert windows_module._drain_retained_handle_quarantine()
 
 
+def test_process_close_stops_live_tree_before_closing_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+    transport = SimpleNamespace(close=lambda: order.append("transport"))
+    profile = SimpleNamespace(close_no_raise=Mock(return_value=True))
+    process = WindowsWorkerProcess(
+        pid=19,
+        process=_OwnedHandle(1067),
+        job=cast(Any, SimpleNamespace(handle=_OwnedHandle(1069))),
+        profile=cast(Any, profile),
+        transport=cast(Any, transport),
+        isolation=_isolation_evidence(),
+    )
+    process._returncode = 0
+
+    def stop_tree(_job: object, _timeout_seconds: float) -> bool:
+        order.append("tree")
+        return True
+
+    monkeypatch.setattr(windows_module, "_stop_job_tree_no_raise", stop_tree)
+    monkeypatch.setattr(windows_module, "_close_raw_handle", lambda _handle: True)
+
+    process.close()
+
+    assert order == ["tree", "transport"]
+    assert process.__getattribute__("_closed")
+    profile.close_no_raise.assert_called_once_with()
+
+
 def test_client_disposal_cleans_confirmed_profile_before_sticky_handle_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
