@@ -509,26 +509,16 @@ def _spawn_descendant(
             arguments,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             close_fds=False,
             shell=False,
             env=dict(os.environ),
         )
     except OSError as error:
-        winerror = getattr(error, "winerror", None)
-        if type(winerror) is not int:
-            raise _DescendantProbeError(-19) from None
-        code = {
-            2: -11,
-            3: -12,
-            5: -13,
-            126: -14,
-            127: -15,
-            193: -16,
-            1114: -17,
-            1314: -18,
-        }.get(winerror, -19)
-        raise _DescendantProbeError(code) from None
+        for candidate in (getattr(error, "winerror", None), error.errno):
+            if type(candidate) is int and 0 < candidate <= 65_535:
+                raise _DescendantProbeError(-(100_000 + candidate)) from None
+        raise _DescendantProbeError(-100_000) from None
     child_process_handle = getattr(child, "_handle", 0)
     endpoints_absent = (
         isinstance(child_process_handle, int)
@@ -540,9 +530,10 @@ def _spawn_descendant(
             )
         )
     )
-    if child.stdin is None or child.stdout is None:
+    if child.stdin is None or child.stdout is None or child.stderr is None:
         child.kill()
         raise _DescendantProbeError(-21)
+    child.stderr.close()
     try:
         write_frame(child.stdin, _encode_descendant_control(control))
         child.stdin.flush()

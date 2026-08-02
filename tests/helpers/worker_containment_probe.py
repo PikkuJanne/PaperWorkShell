@@ -76,19 +76,10 @@ def _can_create(path: Path) -> bool:
 
 
 def _os_error_stage(error: OSError) -> int:
-    winerror = getattr(error, "winerror", None)
-    if type(winerror) is not int:
-        return 19
-    return {
-        2: 11,
-        3: 12,
-        5: 13,
-        126: 14,
-        127: 15,
-        193: 16,
-        1114: 17,
-        1314: 18,
-    }.get(winerror, 19)
+    for candidate in (getattr(error, "winerror", None), error.errno):
+        if type(candidate) is int and 0 < candidate <= 65_535:
+            return 100_000 + candidate
+    return 100_000
 
 
 def _nonzero_exit_stage(returncode: int, stderr: bytes) -> int:
@@ -100,14 +91,14 @@ def _nonzero_exit_stage(returncode: int, stderr: bytes) -> int:
     if status == 0xC000_0005:
         return 33
     lowered = stderr.lower()
+    if b"failed to get the python codec" in lowered or b"no module named 'encodings'" in lowered:
+        return 37
     if b"no module named" in lowered:
         return 34
     if b"permissionerror" in lowered or b"access is denied" in lowered:
         return 35
     if b"can't open file" in lowered:
         return 36
-    if b"failed to get the python codec" in lowered or b"no module named 'encodings'" in lowered:
-        return 37
     return 39
 
 
@@ -117,7 +108,7 @@ def _descendant_result() -> dict[str, bool | int]:
         completed = subprocess.run(
             (sys.executable, "-I", "-S", "-B", "-X", "utf8", os.fspath(child)),
             check=False,
-            stdin=subprocess.DEVNULL,
+            input=b"",
             capture_output=True,
             timeout=5.0,
             shell=False,
