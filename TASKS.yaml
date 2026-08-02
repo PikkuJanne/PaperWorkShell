@@ -514,7 +514,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -544,17 +544,25 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "4903749"
+    commands:
+    - "fresh SSH clone at 4903749: uv sync --locked and py -3.14 tools/dev.py check passed; formatting, lint, 12-layer import boundaries, strict typing, 256 unit tests, 3 integration tests, 103 security tests with 2 expected Windows directory-link capability skips, 2 accessibility tests, fixture/schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync pytest tests/security/test_synthetic_fixture_security.py -q - passed; 17 tests, 2 expected Windows directory-link capability skips, and 68 subtests covered corpus privacy, repository history, links, cancellation, structured-data boundaries, and bounded scanner work"
+    - "py -3.14 tools/dev.py validate-fixtures at 4903749 - passed; 17 deterministic public fixtures (50,489 bytes), 394 historical blobs, 180 index blobs, and 187 working files validated against the canonical generator and privacy policy"
+    - "GitHub Actions runs 30727132293 (push) and 30727133193 (pull_request) on windows-2025 passed the local-equivalent quality suite at 4903749"
+    notes:
+    - The closed standard-library generator and fingerprint-bound Draft 2020-12 index produce 17 byte-deterministic PDF/image fixtures with 24 reviewed coverage entries, 5 intended-negative index examples, explicit scheduled categories, and outside-repository recipes for long-path and excessive-size cases.
+    - Repository admission authenticates schema and fixture handles, rejects links/reparse points and identity races, scans reachable Git history plus index and working-tree bytes, and applies sanitized bounded checks for document signatures, personal-data shapes, issuer-qualified PANs, fixed-length IBANs, reserved example domains, and canonical UUID identifiers.
+    - On-demand generation is exclusive, bounded, non-overwriting, outside the repository, and removes identity-matched partial files on cancellation or failure; sensitive bug samples remain prohibited from Git and require separately authorized restricted storage.
+    - Three independent exact-commit audits found no remaining actionable generator, security, privacy, integration, resource-bound, determinism, or evidence issue; real NTFS junction ABA and abnormal-exit probes supplemented the two unavailable Python directory-link capability tests.
 - id: PWS-0010
   milestone: M0
   title: Run Milestone 0 foundation gate
   kind: gate
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0001

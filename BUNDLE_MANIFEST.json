@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.25",
+  "bundle_version": "0.1.26",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 124696,
-      "sha256": "f9e2656904bddaf2a7ca150225ec6ccc842b236341053356458ef46a4498eefa"
+      "bytes": 127013,
+      "sha256": "3785c2c448c80d24d8a187d42678ec2ede5a917fbd69dc46f6bd1d657fc77fa1"
     },
     {
       "path": "TASKS.schema.json",
@@ -55,11 +55,13 @@
     "dependency_edge_count": 238,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0010"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for the PWS-0009 synthetic fixture harness review; initial_ready_tasks records ready tasks at this bundle revision.",
+    "Regenerated for the verified PWS-0009 completion; initial_ready_tasks records ready tasks at this bundle revision.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
