@@ -57,6 +57,8 @@ _EMAIL_PATTERN: Final = re.compile(
     rb"[A-Z0-9.-]{1,190}\.[A-Z]{2,24}(?![A-Z0-9-])"
 )
 _SSN_PATTERN: Final = re.compile(rb"(?<![0-9])([0-9]{3})-([0-9]{2})-([0-9]{4})(?![0-9])")
+_PAN_DIGIT_GROUP_PATTERN: Final = re.compile(rb"[0-9]+")
+_PAN_CANDIDATE_START_PATTERN: Final = re.compile(rb"(?<![A-Za-z0-9])[1-6]")
 _IBAN_START_PATTERN: Final = re.compile(rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}")
 _MRZ_PATTERN: Final = re.compile(rb"(?m)^P<[A-Z<]{3}[A-Z<]{20,40}$")
 _DOCUMENT_SIGNATURES: Final = (
@@ -68,6 +70,7 @@ _DOCUMENT_SIGNATURES: Final = (
 )
 _RESERVED_EMAIL_SUFFIXES: Final = (b".invalid", b".example", b".test", b".localhost")
 _RESERVED_EMAIL_DOMAINS: Final = (b"example.com", b"example.net", b"example.org")
+_MAX_PAN_CANDIDATE_STARTS: Final = 4_096
 # SWIFT IBAN Registry, Release 102 (June 2026). Each country has one fixed IBAN length.
 _IBAN_LENGTHS: Final[dict[bytes, int]] = {
     b"AD": 24,
@@ -910,35 +913,36 @@ def _pan_separator_width(content: bytes, position: int) -> int:
 
 
 def _contains_valid_pan(content: bytes) -> bool:
-    position = 0
-    while position < len(content):
-        if not ord("0") <= content[position] <= ord("9"):
-            position += 1
-            continue
+    for candidate_number, candidate_start in enumerate(
+        _PAN_CANDIDATE_START_PATTERN.finditer(content), start=1
+    ):
+        if candidate_number > _MAX_PAN_CANDIDATE_STARTS:
+            return True
+        digits = bytearray()
+        position = candidate_start.start()
+        while len(digits) < 19:
+            group_match = _PAN_DIGIT_GROUP_PATTERN.match(content, position)
+            if group_match is None:
+                break
+            group = group_match.group(0)
+            if len(digits) + len(group) > 19:
+                break
+            digits.extend(group)
+            position = group_match.end()
+            ends_at_boundary = position == len(content) or not _ascii_alphanumeric(
+                content[position]
+            )
+            compact = bytes(digits)
+            if (
+                ends_at_boundary
+                and 13 <= len(compact) <= 19
+                and _plausible_pan_issuer(compact)
+                and _luhn_valid(compact)
+            ):
+                return True
 
-        start = position
-        candidate_windows: list[bytes] = []
-        candidate_found = False
-        while position < len(content):
-            group_start = position
-            while position < len(content) and ord("0") <= content[position] <= ord("9"):
-                position += 1
-            group = content[group_start:position]
-            if not candidate_found:
-                next_windows = [group] if len(group) <= 19 else []
-                next_windows.extend(
-                    previous + group
-                    for previous in candidate_windows
-                    if len(previous) + len(group) <= 19
-                )
-                candidate_windows = next_windows
-                candidate_found = any(
-                    13 <= len(candidate) <= 19
-                    and _plausible_pan_issuer(candidate)
-                    and _luhn_valid(candidate)
-                    for candidate in candidate_windows
-                )
-
+            if len(digits) == 19:
+                break
             separator_start = position
             while position < len(content):
                 separator_width = _pan_separator_width(content, position)
@@ -950,16 +954,7 @@ def _contains_valid_pan(content: bytes) -> bool:
                 or position == len(content)
                 or not ord("0") <= content[position] <= ord("9")
             ):
-                position = separator_start
                 break
-
-        starts_at_boundary = start == 0 or not _ascii_alphanumeric(content[start - 1])
-        ends_at_boundary = position == len(content) or not _ascii_alphanumeric(content[position])
-        if starts_at_boundary and ends_at_boundary and candidate_found:
-            return True
-
-        if position == start:
-            position += 1
     return False
 
 

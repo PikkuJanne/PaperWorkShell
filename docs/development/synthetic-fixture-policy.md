@@ -77,8 +77,9 @@ IBAN detection uses the fixed country lengths in the
 [SWIFT IBAN Registry Release 102](https://www.swift.com/swift_resource/9606) (June 2026) and
 performs one checksum validation per recognized candidate. Payment-card detection is deliberately
 limited to reviewed, high-confidence issuer and length ranges, with mixed visual separators parsed
-as one bounded candidate. Those ranges are privacy guardrails, not an exhaustive card-brand
-classifier.
+as bounded group candidates. Non-issuer numeric streams trigger no checksum work, and pathological
+issuer-shaped streams fail closed at a fixed candidate budget. Those ranges are privacy guardrails,
+not an exhaustive card-brand classifier.
 
 These pattern checks are guardrails, not anonymization or a proof that arbitrary prose, compressed
 streams, encrypted content, or raster pixels contain no personal information. No external document

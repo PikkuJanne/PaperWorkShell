@@ -96,6 +96,8 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             b"4111" + nbsp + b"1111-1111" + narrow_nbsp + b"1111",
             b"2 " + visa_pan,
             visa_pan + b" 2",
+            b"row2\t" + visa_pan,
+            visa_pan + b"\t2kg",
             compact_iban,
             grouped_iban,
             compact_iban + b" PAYMENT",
@@ -145,6 +147,15 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             with self.subTest(offset=offset):
                 epoch_milliseconds = str(1_780_000_000_000 + offset).encode("ascii")
                 self.assertFalse(_contains_prohibited_pattern(epoch_milliseconds))
+
+    def test_pan_scanning_has_bounded_candidate_work(self) -> None:
+        with patch("tools.validate_synthetic_fixtures._plausible_pan_issuer") as classify:
+            self.assertFalse(_contains_prohibited_pattern(b"9-" * 100_000))
+        classify.assert_not_called()
+
+        with patch("tools.validate_synthetic_fixtures._luhn_valid", return_value=False) as checksum:
+            self.assertTrue(_contains_prohibited_pattern(b"1 " * 4_097))
+        self.assertLessEqual(checksum.call_count, 4_096)
 
     def test_generated_fixture_bytes_have_no_prohibited_patterns(self) -> None:
         for fixture in build_committed_fixtures():
