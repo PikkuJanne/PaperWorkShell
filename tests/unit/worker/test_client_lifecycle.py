@@ -720,6 +720,61 @@ def test_shutdown_after_cancel_result_waits_for_the_terminal_ack() -> None:
     assert client.query().phase is WorkerLifecyclePhase.STOPPING
 
 
+@pytest.mark.parametrize("result_first", (True, False))
+def test_invalid_auto_shutdown_deadline_faults_after_either_terminal_order(
+    result_first: bool,
+) -> None:
+    clock = SwitchableClock()
+    client, _launcher, record, generation = _ready_client(clock=clock)
+    operation_id, start = _start_and_accept(client, record)
+    client.shutdown(ShutdownReason.APPLICATION_EXIT)
+    cancel = _consume(record)
+
+    if result_first:
+        first = record.worker_peer.prepare_outbound(
+            MessageType.OPERATION_RESULT,
+            OperationResultPayload(OperationOutcome.SUCCEEDED, (), None),
+            request_id=start.request_id,
+            operation_id=operation_id,
+        )
+        client.accept_payload(generation, first.encoded)
+        assert client.query().active_operation is None
+        terminal = record.worker_peer.prepare_outbound(
+            MessageType.OPERATION_CANCEL_ACK,
+            OperationCancelAckPayload(CancelDisposition.ALREADY_TERMINAL),
+            request_id=cancel.request_id,
+            operation_id=operation_id,
+        )
+    else:
+        first = record.worker_peer.prepare_outbound(
+            MessageType.OPERATION_CANCEL_ACK,
+            OperationCancelAckPayload(CancelDisposition.REQUESTED),
+            request_id=cancel.request_id,
+            operation_id=operation_id,
+        )
+        client.accept_payload(generation, first.encoded)
+        assert client.query().active_operation is not None
+        terminal = record.worker_peer.prepare_outbound(
+            MessageType.OPERATION_RESULT,
+            OperationResultPayload(OperationOutcome.SUCCEEDED, (), None),
+            request_id=start.request_id,
+            operation_id=operation_id,
+        )
+
+    clock.invalid = True
+    with pytest.raises(WorkerClientError) as raised:
+        client.accept_payload(generation, terminal.encoded)
+
+    snapshot = client.query()
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert snapshot.phase is WorkerLifecyclePhase.FAULTED
+    assert snapshot.pid is None
+    assert snapshot.active_operation is None
+    assert record.process.transport.sent == []
+    assert record.process.terminate_calls == 1
+    assert record.process.close_calls == 1
+
+
 def test_crash_is_stable_and_restart_rejects_the_old_generation() -> None:
     client, launcher, old_record, old_generation = _ready_client()
     old_capability = old_record.request.session_capability.value

@@ -622,7 +622,9 @@ class WorkerClient:
                 and self._active_operation is None
                 and not self._pending_cancel_request_ids
             ):
-                self._begin_shutdown(self._pending_shutdown_reason or ShutdownReason.USER_REQUESTED)
+                self._begin_shutdown_after_inbound(
+                    self._pending_shutdown_reason or ShutdownReason.USER_REQUESTED
+                )
             elif (
                 self._active_operation is None
                 and not self._pending_cancel_request_ids
@@ -659,7 +661,7 @@ class WorkerClient:
                 if self._pending_cancel_request_ids:
                     self._phase = WorkerLifecyclePhase.CANCELLING
                 else:
-                    self._begin_shutdown(
+                    self._begin_shutdown_after_inbound(
                         self._pending_shutdown_reason or ShutdownReason.USER_REQUESTED
                     )
             else:
@@ -767,6 +769,17 @@ class WorkerClient:
         self._phase = WorkerLifecyclePhase.STOPPING
         self._cancellation_deadline = None
         self._shutdown_deadline = shutdown_deadline
+
+    def _begin_shutdown_after_inbound(self, reason: ShutdownReason) -> None:
+        """Finish an automatic shutdown transition or fault the consumed generation."""
+
+        try:
+            self._begin_shutdown(reason)
+        except WorkerClientError as error:
+            if self._phase is WorkerLifecyclePhase.FAULTED:
+                raise
+            failure = self._fault(error.code, error.context, terminate=True)
+            reject_client(failure.code, failure.context)
 
     def _send_outbound(
         self,
