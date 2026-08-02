@@ -671,7 +671,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0101
@@ -699,10 +699,18 @@ tasks:
   - storage
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "28fcde5"
+    commands:
+    - "py -3.14 tools/dev.py check at 28fcde5 - passed; formatting, lint, 12-layer import boundaries, strict typing over 110 files, 634 unit tests, 139 integration tests with 2 disclosed local link-capability skips, 162 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_case_lifecycle_service.py tests/integration/test_case_lifecycle_windows.py tests/security/test_case_lifecycle_security.py at a9774f3 - passed; 43 lifecycle state, Windows round-trip/interruption, and deletion-boundary tests"
+    - "GitHub Actions runs 30756953278 (push) and 30756954774 (pull_request) on windows-2025 passed the complete Windows quality suite at 28fcde5"
+    notes:
+    - Create, deterministic list, open, close, and exact-confirmation delete use path-free immutable domain results, one serialized active lease, shared per-case coordination, and stable sanitized errors without parsing documents.
+    - Creation publishes the strict current-version empty manifest by flushing and renaming one retained random staging-file handle without replacement; interrupted or incomplete UUID candidates remain unavailable rather than valid or hiding healthy cases.
+    - Manifest decoding is bounded for bytes, UTF-8, duplicate/non-finite numbers, depth, nodes, strings, collections, timestamps, schema version, case identity, and lifecycle fields; unknown, legacy, future, malformed, or raced envelopes fail before authoritative mutation.
+    - Deletion authenticates and inventories the complete fixed tree before mutation, reopens and validates the inventory-selected manifest through the same retained handle it invalidates first, then removes the remaining exact inventory deepest-first with honest partial counts and no forensic-erasure claim.
+    - Independent final audits of domain/application state, Win32 publication and removal, concurrency, security/privacy, tests, and documentation found no remaining P1/P2 issue; full manifest transactions, restart orphan recovery, and human retention workflows remain owned by PWS-0109, PWS-0113, and PWS-0706.
 - id: PWS-0103
   milestone: M1
   title: Implement import sniffing and resource-limit prechecks
@@ -759,7 +767,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0102
