@@ -127,6 +127,19 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
         self.assertIsNone(schema)
         self.assertEqual({"FIXTURE_SCHEMA_PATH_UNSAFE"}, {issue.code for issue in issues})
 
+    def test_schema_read_rejects_an_open_handle_outside_the_authenticated_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_fixture_root(root)
+            with patch(
+                "tools.validate_synthetic_fixtures._opened_file_path",
+                return_value=root.parent / "external" / "synthetic-fixture-schema.json",
+            ):
+                schema, issues = load_fixture_schema(root)
+
+        self.assertIsNone(schema)
+        self.assertEqual({"FIXTURE_SCHEMA_PATH_UNSAFE"}, {issue.code for issue in issues})
+
     def test_version_duplicate_key_and_schema_failures_are_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

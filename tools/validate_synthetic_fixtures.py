@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, NoReturn, cast
+from typing import IO, Any, Final, NoReturn, cast
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
@@ -56,13 +57,6 @@ _EMAIL_PATTERN: Final = re.compile(
     rb"[A-Z0-9.-]{1,190}\.[A-Z]{2,24}(?![A-Z0-9.-])"
 )
 _SSN_PATTERN: Final = re.compile(rb"(?<![0-9])([0-9]{3})-([0-9]{2})-([0-9]{4})(?![0-9])")
-_PAN_PATTERN: Final = re.compile(
-    rb"(?<![A-Za-z0-9])(?:[0-9](?:[ \t]|\xc2\xa0|\xe2\x80\xaf)?){12,18}"
-    rb"[0-9](?![A-Za-z0-9])"
-)
-_PAN_HYPHEN_PATTERN: Final = re.compile(
-    rb"(?<![A-Za-z0-9-])(?:[0-9]{3,6}-){2,4}[0-9]{1,6}(?![A-Za-z0-9-])"
-)
 _IBAN_START_PATTERN: Final = re.compile(rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}")
 _MRZ_PATTERN: Final = re.compile(rb"(?m)^P<[A-Z<]{3}[A-Z<]{20,40}$")
 _DOCUMENT_SIGNATURES: Final = (
@@ -73,6 +67,99 @@ _DOCUMENT_SIGNATURES: Final = (
     b"MM\x00*",
 )
 _RESERVED_EMAIL_SUFFIXES: Final = (b".invalid", b".example", b".test", b".localhost")
+_RESERVED_EMAIL_DOMAINS: Final = (b"example.com", b"example.net", b"example.org")
+# SWIFT IBAN Registry, Release 102 (June 2026). Each country has one fixed IBAN length.
+_IBAN_LENGTHS: Final[dict[bytes, int]] = {
+    b"AD": 24,
+    b"AE": 23,
+    b"AL": 28,
+    b"AT": 20,
+    b"AZ": 28,
+    b"BA": 20,
+    b"BE": 16,
+    b"BG": 22,
+    b"BH": 22,
+    b"BI": 27,
+    b"BR": 29,
+    b"BY": 28,
+    b"CH": 21,
+    b"CR": 22,
+    b"CY": 28,
+    b"CZ": 24,
+    b"DE": 22,
+    b"DJ": 27,
+    b"DK": 18,
+    b"DO": 28,
+    b"EE": 20,
+    b"EG": 29,
+    b"ES": 24,
+    b"FI": 18,
+    b"FK": 18,
+    b"FO": 18,
+    b"FR": 27,
+    b"GB": 22,
+    b"GE": 22,
+    b"GI": 23,
+    b"GL": 18,
+    b"GR": 27,
+    b"GT": 28,
+    b"HN": 28,
+    b"HR": 21,
+    b"HU": 28,
+    b"IE": 22,
+    b"IL": 23,
+    b"IQ": 23,
+    b"IS": 26,
+    b"IT": 27,
+    b"JO": 30,
+    b"KW": 30,
+    b"KZ": 20,
+    b"LB": 28,
+    b"LC": 32,
+    b"LI": 21,
+    b"LT": 20,
+    b"LU": 20,
+    b"LV": 21,
+    b"LY": 25,
+    b"MC": 27,
+    b"MD": 24,
+    b"ME": 22,
+    b"MK": 19,
+    b"MN": 20,
+    b"MR": 27,
+    b"MT": 31,
+    b"MU": 30,
+    b"NI": 28,
+    b"NL": 18,
+    b"NO": 15,
+    b"OM": 23,
+    b"PK": 24,
+    b"PL": 28,
+    b"PS": 29,
+    b"PT": 25,
+    b"QA": 29,
+    b"RO": 24,
+    b"RS": 22,
+    b"RU": 33,
+    b"SA": 24,
+    b"SC": 31,
+    b"SD": 18,
+    b"SE": 24,
+    b"SI": 19,
+    b"SK": 24,
+    b"SM": 27,
+    b"SO": 23,
+    b"ST": 25,
+    b"SV": 28,
+    b"TL": 23,
+    b"TN": 24,
+    b"TR": 26,
+    b"UA": 29,
+    b"VA": 22,
+    b"VG": 24,
+    b"XK": 20,
+    b"YE": 30,
+}
 
 type JsonScalar = str | int | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -131,6 +218,10 @@ class RepositoryPrivacyFinding(Exception):
         self.message = message
 
 
+class _UnsafePathError(OSError):
+    """Signal a containment failure without exposing a path in diagnostics."""
+
+
 def _issue(code: str, document: str, path: str, message: str) -> FixtureIssue:
     return FixtureIssue(code, document, path, message)
 
@@ -181,25 +272,77 @@ def _path_is_link_or_reparse(path: Path) -> bool:
     return stat.S_ISLNK(metadata.st_mode) or bool(attributes & reparse_flag)
 
 
-def _path_chain_is_safe(path: Path, trusted_root: Path) -> bool:
+def _path_chain_is_safe(path: Path, trusted_root: Path) -> Path | None:
     try:
         root = Path(os.path.abspath(trusted_root))
         candidate = Path(os.path.abspath(path))
         relative = candidate.relative_to(root)
         if not relative.parts or any(component in {".", ".."} for component in relative.parts):
-            return False
+            return None
         if _path_is_link_or_reparse(root) or not root.is_dir():
-            return False
+            return None
         current = root
         for component in relative.parts[:-1]:
             current = current / component
             if _path_is_link_or_reparse(current) or not current.is_dir():
-                return False
+                return None
         resolved_root = root.resolve(strict=True)
         resolved_parent = candidate.parent.resolve(strict=True)
-        return resolved_parent == resolved_root or resolved_parent.is_relative_to(resolved_root)
+        if resolved_parent != resolved_root and not resolved_parent.is_relative_to(resolved_root):
+            return None
+        return resolved_parent / candidate.name
     except OSError, RuntimeError, ValueError:
-        return False
+        return None
+
+
+def _strip_windows_extended_prefix(path: str) -> str:
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
+def _opened_file_path(stream: IO[bytes]) -> Path:
+    """Return the OS-authenticated path for an already-open regular-file handle."""
+
+    if os.name == "nt":
+        import msvcrt
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        get_final_path = kernel32.GetFinalPathNameByHandleW
+        get_final_path.argtypes = (
+            wintypes.HANDLE,
+            wintypes.LPWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+        )
+        get_final_path.restype = wintypes.DWORD
+        buffer = ctypes.create_unicode_buffer(32_768)
+        length = get_final_path(
+            wintypes.HANDLE(msvcrt.get_osfhandle(stream.fileno())),
+            buffer,
+            len(buffer),
+            0,
+        )
+        if length == 0 or length >= len(buffer):
+            raise _UnsafePathError
+        return Path(_strip_windows_extended_prefix(buffer.value))
+
+    for descriptor_root in (Path("/proc/self/fd"), Path("/dev/fd")):
+        descriptor_path = descriptor_root / str(stream.fileno())
+        try:
+            return Path(os.readlink(descriptor_path))
+        except OSError:
+            continue
+    raise _UnsafePathError
+
+
+def _same_authenticated_path(actual: Path, expected: Path) -> bool:
+    actual_text = os.path.normcase(os.path.normpath(os.path.abspath(actual)))
+    expected_text = os.path.normcase(os.path.normpath(os.path.abspath(expected)))
+    return actual_text == expected_text
 
 
 def _read_regular_bytes(
@@ -210,7 +353,8 @@ def _read_regular_bytes(
     document: str,
     code_prefix: str,
 ) -> tuple[bytes | None, list[FixtureIssue]]:
-    if not _path_chain_is_safe(path, trusted_root):
+    expected_path = _path_chain_is_safe(path, trusted_root)
+    if expected_path is None:
         return None, [
             _issue(
                 f"{code_prefix}_PATH_UNSAFE",
@@ -242,6 +386,8 @@ def _read_regular_bytes(
                 or opened.st_size != metadata.st_size
             ):
                 raise OSError("input identity changed")
+            if not _same_authenticated_path(_opened_file_path(stream), expected_path):
+                raise _UnsafePathError
             content = stream.read(maximum_bytes + 1)
             opened_after = os.fstat(stream.fileno())
         final = path.lstat()
@@ -263,8 +409,17 @@ def _read_regular_bytes(
             final.st_mtime_ns,
         ):
             raise OSError("input changed")
-        if not _path_chain_is_safe(path, trusted_root):
-            raise OSError("input path changed")
+        if _path_chain_is_safe(path, trusted_root) != expected_path:
+            raise _UnsafePathError
+    except _UnsafePathError:
+        return None, [
+            _issue(
+                f"{code_prefix}_PATH_UNSAFE",
+                document,
+                "$",
+                "input path did not retain its authenticated containment",
+            )
+        ]
     except OSError as error:
         return None, [_issue(f"{code_prefix}_UNREADABLE", document, "$", type(error).__name__)]
     if len(content) > maximum_bytes:
@@ -685,6 +840,38 @@ def _luhn_valid(digits: bytes) -> bool:
     return total % 10 == 0
 
 
+def _plausible_pan_issuer(digits: bytes) -> bool:
+    """Recognize reviewed, high-confidence payment-card issuer ranges."""
+
+    length = len(digits)
+    first_two = int(digits[:2])
+    first_three = int(digits[:3])
+    first_four = int(digits[:4])
+    first_six = int(digits[:6])
+    if length == 15 and digits.startswith(b"1"):  # UATP
+        return True
+    if length in {13, 16, 19} and digits.startswith(b"4"):  # Visa
+        return True
+    if length == 16 and (51 <= first_two <= 55 or 2221 <= first_four <= 2720):
+        return True  # Mastercard
+    if length == 15 and first_two in {34, 37}:
+        return True  # American Express
+    if 16 <= length <= 19 and 3528 <= first_four <= 3589:
+        return True  # JCB
+    if length == 14 and (
+        300 <= first_three <= 305 or first_four == 3095 or first_two == 36 or 38 <= first_two <= 39
+    ):
+        return True  # Diners Club
+    if length in {16, 19} and (
+        first_four == 6011
+        or 622126 <= first_six <= 622925
+        or 644 <= first_three <= 649
+        or first_two == 65
+    ):
+        return True  # Discover
+    return 16 <= length <= 19 and digits.startswith(b"62")  # UnionPay
+
+
 def _iban_valid(candidate: bytes) -> bool:
     compact = candidate.replace(b" ", b"").decode("ascii").upper()
     if not 15 <= len(compact) <= 34:
@@ -716,16 +903,68 @@ def _financial_separator_width(content: bytes, position: int) -> int:
     return 0
 
 
+def _pan_separator_width(content: bytes, position: int) -> int:
+    if content[position] == ord("-"):
+        return 1
+    return _financial_separator_width(content, position)
+
+
+def _contains_valid_pan(content: bytes) -> bool:
+    position = 0
+    while position < len(content):
+        if not ord("0") <= content[position] <= ord("9"):
+            position += 1
+            continue
+
+        start = position
+        digits = bytearray()
+        digit_count = 0
+        while position < len(content):
+            if ord("0") <= content[position] <= ord("9"):
+                digit_count += 1
+                if digit_count <= 19:
+                    digits.append(content[position])
+                position += 1
+                continue
+
+            separator_start = position
+            while position < len(content):
+                separator_width = _pan_separator_width(content, position)
+                if separator_width == 0:
+                    break
+                position += separator_width
+            if (
+                position == separator_start
+                or position == len(content)
+                or not ord("0") <= content[position] <= ord("9")
+            ):
+                position = separator_start
+                break
+
+        starts_at_boundary = start == 0 or not _ascii_alphanumeric(content[start - 1])
+        ends_at_boundary = position == len(content) or not _ascii_alphanumeric(content[position])
+        if (
+            starts_at_boundary
+            and ends_at_boundary
+            and 13 <= digit_count <= 19
+            and _plausible_pan_issuer(bytes(digits))
+            and _luhn_valid(bytes(digits))
+        ):
+            return True
+
+        if position == start:
+            position += 1
+    return False
+
+
 def _contains_valid_iban(content: bytes) -> bool:
     for match in _IBAN_START_PATTERN.finditer(content):
+        expected_length = _IBAN_LENGTHS.get(match.group(0)[:2].upper())
+        if expected_length is None:
+            continue
         compact = bytearray(match.group(0))
         position = match.end()
-        while True:
-            if len(compact) >= 15 and _iban_valid(bytes(compact)):
-                if position == len(content) or not _ascii_alphanumeric(content[position]):
-                    return True
-            if len(compact) >= 34 or position == len(content):
-                break
+        while len(compact) < expected_length and position < len(content):
             if _ascii_alphanumeric(content[position]):
                 compact.append(content[position])
                 position += 1
@@ -739,22 +978,32 @@ def _contains_valid_iban(content: bytes) -> bool:
             ):
                 break
             position = next_position
+        if (
+            len(compact) == expected_length
+            and (position == len(content) or not _ascii_alphanumeric(content[position]))
+            and _iban_valid(bytes(compact))
+        ):
+            return True
     return False
+
+
+def _is_reserved_email_domain(domain: bytes) -> bool:
+    if domain.endswith(_RESERVED_EMAIL_SUFFIXES):
+        return True
+    return any(
+        domain == reserved or domain.endswith(b"." + reserved)
+        for reserved in _RESERVED_EMAIL_DOMAINS
+    )
 
 
 def _contains_prohibited_pattern(content: bytes) -> bool:
     for match in _EMAIL_PATTERN.finditer(content):
         domain = match.group(0).split(b"@", maxsplit=1)[1].lower()
-        if not domain.endswith(_RESERVED_EMAIL_SUFFIXES):
+        if not _is_reserved_email_domain(domain):
             return True
     if _SSN_PATTERN.search(content) is not None or _MRZ_PATTERN.search(content) is not None:
         return True
-    for pattern in (_PAN_PATTERN, _PAN_HYPHEN_PATTERN):
-        for match in pattern.finditer(content):
-            digits = bytes(value for value in match.group(0) if ord("0") <= value <= ord("9"))
-            if _luhn_valid(digits):
-                return True
-    return _contains_valid_iban(content)
+    return _contains_valid_pan(content) or _contains_valid_iban(content)
 
 
 def _repository_inspector(

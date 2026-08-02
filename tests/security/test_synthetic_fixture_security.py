@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.dev import inspect_repository_contents
 from tools.generate_synthetic_fixtures import (
@@ -17,6 +19,7 @@ from tools.generate_synthetic_fixtures import (
     write_committed_corpus,
 )
 from tools.validate_synthetic_fixtures import (
+    _IBAN_LENGTHS,
     RepositoryPrivacyFinding,
     _contains_prohibited_pattern,
     _repository_inspector,
@@ -81,11 +84,13 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             b"3530" + b"1113" + b"3330" + b"0000",
             b"3056" + b"9309" + b"0259" + b"04",
             self._luhn_candidate(b"1", 15),
-            self._luhn_candidate(b"7", 17),
-            self._luhn_candidate(b"9", 18),
+            self._luhn_candidate(b"3530", 17),
+            self._luhn_candidate(b"3530", 18),
             b"4111" + nbsp + b"1111" + nbsp + b"1111" + nbsp + b"1111",
             b"4111" + narrow_nbsp + b"1111" + narrow_nbsp + b"1111" + narrow_nbsp + b"1111",
             b"4111\t1111\t1111\t1111",
+            b"4111-" + b"1111 " + b"1111-" + b"1111",
+            b"4111" + nbsp + b"1111-1111" + narrow_nbsp + b"1111",
             compact_iban,
             grouped_iban,
             compact_iban + b" PAYMENT",
@@ -102,11 +107,39 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         for candidate in candidates:
             with self.subTest(kind=len(candidate)):
                 self.assertTrue(_contains_prohibited_pattern(candidate))
-        self.assertFalse(_contains_prohibited_pattern(b"quality" + b"@" + b"example.invalid"))
+        reserved_addresses = (
+            b"quality" + b"@" + b"example.invalid",
+            b"quality" + b"@" + b"example.com",
+            b"quality" + b"@" + b"sub.example.net",
+            b"quality" + b"@" + b"example.org",
+        )
+        for address in reserved_addresses:
+            self.assertFalse(_contains_prohibited_pattern(address))
+        self.assertTrue(_contains_prohibited_pattern(b"quality" + b"@" + b"notexample.com"))
         self.assertFalse(
             _contains_prohibited_pattern(b"abc" + b"3649" + b"5221" + b"0051" + b"811" + b"def")
         )
         self.assertFalse(_contains_prohibited_pattern(b"00000000-0000-4000-8000-000000000001"))
+
+    def test_iban_registry_bounds_validation_work_and_rejects_digest_shapes(self) -> None:
+        self.assertEqual(89, len(_IBAN_LENGTHS))
+        self.assertEqual(
+            {b"AL": 28, b"BI": 27, b"RU": 33, b"TR": 26, b"YE": 30},
+            {code: _IBAN_LENGTHS[code] for code in (b"AL", b"BI", b"RU", b"TR", b"YE")},
+        )
+        digest = hashlib.md5(b"829", usedforsecurity=False).hexdigest().encode("ascii")
+        self.assertEqual(b"ce78d1da254c0843eb23951ae077ff5f", digest)
+        self.assertFalse(_contains_prohibited_pattern(digest))
+
+        with patch("tools.validate_synthetic_fixtures._iban_valid") as validate_iban:
+            self.assertFalse(_contains_prohibited_pattern(b"AA00 " * 50_000))
+        validate_iban.assert_not_called()
+
+    def test_non_card_luhn_values_are_not_classified_as_payment_cards(self) -> None:
+        for offset in range(10):
+            with self.subTest(offset=offset):
+                epoch_milliseconds = str(1_780_000_000_000 + offset).encode("ascii")
+                self.assertFalse(_contains_prohibited_pattern(epoch_milliseconds))
 
     def test_generated_fixture_bytes_have_no_prohibited_patterns(self) -> None:
         for fixture in build_committed_fixtures():

@@ -13,7 +13,7 @@ import zlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import IO, Final
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 CORPUS_DIRECTORY: Final = Path("tests/fixtures/synthetic/v1")
@@ -1026,6 +1026,27 @@ def _remove_created_external_file(
         pass
 
 
+def _write_oversized_payload(
+    stream: IO[bytes],
+    prefix: bytes,
+    suffix: bytes,
+    fill_bytes: int,
+) -> None:
+    stream.write(prefix)
+    block = b"0" * min(1_048_576, fill_bytes)
+    remaining = fill_bytes
+    while remaining:
+        chunk = block[: min(len(block), remaining)]
+        stream.write(chunk)
+        remaining -= len(chunk)
+    stream.write(suffix)
+
+
+def _write_external_bytes(stream: IO[bytes], content: bytes) -> None:
+    if stream.write(content) != len(content):
+        raise OSError("short on-demand fixture write")
+
+
 def generate_oversized_pdf(
     output_directory: Path,
     *,
@@ -1053,18 +1074,12 @@ def generate_oversized_pdf(
             "FIXTURE_ON_DEMAND_SIZE_INVALID", "requested byte count is too small for the recipe"
         )
     created_identity: tuple[int, int] | None = None
+    succeeded = False
     try:
         with path.open("xb") as stream:
             opened = os.fstat(stream.fileno())
             created_identity = (opened.st_dev, opened.st_ino)
-            stream.write(prefix)
-            block = b"0" * min(1_048_576, fill_bytes)
-            remaining = fill_bytes
-            while remaining:
-                chunk = block[: min(len(block), remaining)]
-                stream.write(chunk)
-                remaining -= len(chunk)
-            stream.write(suffix)
+            _write_oversized_payload(stream, prefix, suffix, fill_bytes)
         final = path.lstat()
         if (
             _is_link_or_reparse(path)
@@ -1076,11 +1091,14 @@ def generate_oversized_pdf(
             or path.resolve(strict=True).parent != destination
         ):
             raise OSError("on-demand fixture path changed")
+        succeeded = True
     except OSError as error:
-        _remove_created_external_file(path, destination, created_identity)
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_UNWRITABLE", "on-demand fixture could not be written"
         ) from error
+    finally:
+        if not succeeded:
+            _remove_created_external_file(path, destination, created_identity)
     return path
 
 
@@ -1109,6 +1127,7 @@ def generate_long_path_tree(
     content = _text_pdf(f"{SYNTHETIC_MARKER}: long-path carrier")
     created_identity: tuple[int, int] | None = None
     resolved_nested: Path | None = None
+    succeeded = False
     try:
         resolved_nested = nested.resolve(strict=True)
         repository = repository_root.resolve(strict=True)
@@ -1121,9 +1140,7 @@ def generate_long_path_tree(
         with path.open("xb") as stream:
             opened = os.fstat(stream.fileno())
             created_identity = (opened.st_dev, opened.st_ino)
-            written = stream.write(content)
-        if written != len(content):
-            raise OSError("short on-demand fixture write")
+            _write_external_bytes(stream, content)
         final = path.lstat()
         if (
             _is_link_or_reparse(path)
@@ -1134,12 +1151,14 @@ def generate_long_path_tree(
             or path.resolve(strict=True).parent != resolved_nested
         ):
             raise OSError("on-demand fixture path changed")
+        succeeded = True
     except OSError as error:
-        if resolved_nested is not None:
-            _remove_created_external_file(path, resolved_nested, created_identity)
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_UNWRITABLE", "on-demand fixture could not be written"
         ) from error
+    finally:
+        if not succeeded and resolved_nested is not None:
+            _remove_created_external_file(path, resolved_nested, created_identity)
     return path
 
 

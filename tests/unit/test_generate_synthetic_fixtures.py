@@ -224,6 +224,51 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
             with self.assertRaisesRegex(FixtureGenerationError, "outside the repository"):
                 generate_long_path_tree(repository / "unsafe", repository_root=repository)
 
+    def test_on_demand_recipes_remove_partial_files_when_cancelled(self) -> None:
+        def interrupt_after_partial_write(stream: Any, *_arguments: object) -> None:
+            stream.write(b"x" * 17)
+            raise KeyboardInterrupt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            repository = base / "repository"
+            repository.mkdir()
+            oversized_output = base / "oversized"
+            with (
+                patch(
+                    "tools.generate_synthetic_fixtures._write_oversized_payload",
+                    side_effect=interrupt_after_partial_write,
+                ),
+                self.assertRaises(KeyboardInterrupt),
+            ):
+                generate_oversized_pdf(
+                    oversized_output,
+                    repository_root=repository,
+                    byte_count=1_048_576,
+                )
+            self.assertFalse((oversized_output / "pws-synthetic-oversized.pdf").exists())
+
+            long_output = base / "long"
+            with (
+                patch(
+                    "tools.generate_synthetic_fixtures._write_external_bytes",
+                    side_effect=interrupt_after_partial_write,
+                ),
+                self.assertRaises(KeyboardInterrupt),
+            ):
+                generate_long_path_tree(
+                    long_output,
+                    repository_root=repository,
+                    component_count=2,
+                )
+            long_target = (
+                long_output
+                / LONG_PATH_COMPONENT
+                / LONG_PATH_COMPONENT
+                / "pws-synthetic-long-path.pdf"
+            )
+            self.assertFalse(long_target.exists())
+
     def test_regeneration_rejects_a_linked_output_parent_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

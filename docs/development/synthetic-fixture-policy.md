@@ -69,8 +69,16 @@ the repository document-data policy to the hardened Git/index/working-tree snaps
 the secret-scanning boundary. Reachable historical, root/pseudo-ref, direct blob/tree, exact index,
 tracked, and nonignored untracked document/image bytes must either match an approved generated
 fixture digest or validation fails. High-confidence structured-data patterns are also rejected
-without echoing the matched path or value. Git author and committer records are provenance rather
-than fixture content; Gitleaks still scans their raw bytes in the separate `scan-secrets` lane.
+without echoing the matched path or value. Git author, committer, tagger, and folded-mergetag
+identity records are provenance rather than fixture content; Gitleaks still scans their raw bytes
+in the separate `scan-secrets` lane.
+
+IBAN detection uses the fixed country lengths in the
+[SWIFT IBAN Registry Release 102](https://www.swift.com/swift_resource/9606) (June 2026) and
+performs one checksum validation per recognized candidate. Payment-card detection is deliberately
+limited to reviewed, high-confidence issuer and length ranges, with mixed visual separators parsed
+as one bounded candidate. Those ranges are privacy guardrails, not an exhaustive card-brand
+classifier.
 
 These pattern checks are guardrails, not anonymization or a proof that arbitrary prose, compressed
 streams, encrypted content, or raster pixels contain no personal information. No external document
