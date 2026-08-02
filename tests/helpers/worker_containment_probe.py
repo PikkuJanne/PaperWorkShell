@@ -75,7 +75,43 @@ def _can_create(path: Path) -> bool:
     return True
 
 
-def _descendant_result() -> dict[str, bool]:
+def _os_error_stage(error: OSError) -> int:
+    winerror = getattr(error, "winerror", None)
+    if type(winerror) is not int:
+        return 19
+    return {
+        2: 11,
+        3: 12,
+        5: 13,
+        126: 14,
+        127: 15,
+        193: 16,
+        1114: 17,
+        1314: 18,
+    }.get(winerror, 19)
+
+
+def _nonzero_exit_stage(returncode: int, stderr: bytes) -> int:
+    status = returncode & 0xFFFF_FFFF
+    if status == 0xC000_0135:
+        return 31
+    if status == 0xC000_0142:
+        return 32
+    if status == 0xC000_0005:
+        return 33
+    lowered = stderr.lower()
+    if b"no module named" in lowered:
+        return 34
+    if b"permissionerror" in lowered or b"access is denied" in lowered:
+        return 35
+    if b"can't open file" in lowered:
+        return 36
+    if b"failed to get the python codec" in lowered or b"no module named 'encodings'" in lowered:
+        return 37
+    return 39
+
+
+def _descendant_result() -> dict[str, bool | int]:
     child = Path(__file__).with_name("worker_containment_descendant_probe.py")
     try:
         completed = subprocess.run(
@@ -88,13 +124,23 @@ def _descendant_result() -> dict[str, bool]:
             env=dict(os.environ),
         )
         if completed.returncode != 0:
-            return {"completed": False}
-        decoded = json.loads(completed.stdout)
+            return {
+                "completed": False,
+                "failure_stage": _nonzero_exit_stage(completed.returncode, completed.stderr),
+            }
+        try:
+            decoded = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            return {"completed": False, "failure_stage": 41}
         if type(decoded) is not dict or any(type(value) is not bool for value in decoded.values()):
-            return {"completed": False}
-        return {"completed": True, **decoded}
-    except OSError, subprocess.SubprocessError, json.JSONDecodeError:
-        return {"completed": False}
+            return {"completed": False, "failure_stage": 42}
+        return {"completed": True, "failure_stage": 0, **decoded}
+    except OSError as error:
+        return {"completed": False, "failure_stage": _os_error_stage(error)}
+    except subprocess.TimeoutExpired:
+        return {"completed": False, "failure_stage": 21}
+    except subprocess.SubprocessError:
+        return {"completed": False, "failure_stage": 29}
 
 
 def main() -> int:

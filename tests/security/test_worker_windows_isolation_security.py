@@ -386,6 +386,7 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
                 assert (
                     profile_relations & _REQUIRED_PROFILE_RELATIONS == _REQUIRED_PROFILE_RELATIONS
                 )
+                assert descendant_mask >= 0
                 assert (
                     descendant_profile_relations & _REQUIRED_PROFILE_RELATIONS
                     == _REQUIRED_PROFILE_RELATIONS

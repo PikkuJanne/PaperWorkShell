@@ -168,6 +168,7 @@ def test_zero_capability_worker_and_descendant_have_no_egress_or_broad_file_acce
     assert result["outside_source_write"] is False
     descendant = result["descendant"]
     assert type(descendant) is dict
+    assert descendant["failure_stage"] == 0
     assert descendant["completed"] is True
     assert descendant["tcp4_connected"] is False
     assert descendant["tcp6_connected"] is False

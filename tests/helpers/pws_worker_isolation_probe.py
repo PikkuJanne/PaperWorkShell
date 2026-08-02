@@ -126,6 +126,14 @@ _PORT_COUNT: Final = 4
 _MAXIMUM_TARGETS: Final = 32
 
 
+class _DescendantProbeError(Exception):
+    __slots__ = ("code",)
+
+    def __init__(self, code: int) -> None:
+        super().__init__()
+        self.code = code
+
+
 @dataclass(frozen=True, slots=True)
 class _Control:
     profile_path: Path
@@ -496,15 +504,31 @@ def _spawn_descendant(
         os.fspath(Path(__file__)),
         _DESCENDANT_ARGUMENT,
     )
-    child = subprocess.Popen(
-        arguments,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        close_fds=False,
-        shell=False,
-        env=dict(os.environ),
-    )
+    try:
+        child = subprocess.Popen(
+            arguments,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=False,
+            shell=False,
+            env=dict(os.environ),
+        )
+    except OSError as error:
+        winerror = getattr(error, "winerror", None)
+        if type(winerror) is not int:
+            raise _DescendantProbeError(-19) from None
+        code = {
+            2: -11,
+            3: -12,
+            5: -13,
+            126: -14,
+            127: -15,
+            193: -16,
+            1114: -17,
+            1314: -18,
+        }.get(winerror, -19)
+        raise _DescendantProbeError(code) from None
     child_process_handle = getattr(child, "_handle", 0)
     endpoints_absent = (
         isinstance(child_process_handle, int)
@@ -518,16 +542,30 @@ def _spawn_descendant(
     )
     if child.stdin is None or child.stdout is None:
         child.kill()
-        raise ValueError("descendant channel unavailable")
-    write_frame(child.stdin, _encode_descendant_control(control))
-    child.stdin.flush()
-    child.stdin.close()
-    response = read_frame(child.stdout)
-    child.stdout.close()
+        raise _DescendantProbeError(-21)
+    try:
+        write_frame(child.stdin, _encode_descendant_control(control))
+        child.stdin.flush()
+        child.stdin.close()
+    except OSError, ValueError:
+        child.kill()
+        raise _DescendantProbeError(-22) from None
+    try:
+        response = read_frame(child.stdout)
+        child.stdout.close()
+    except OSError, ValueError:
+        child.kill()
+        raise _DescendantProbeError(-23) from None
     if response is None:
         child.kill()
-        raise ValueError("descendant evidence unavailable")
-    descendant_mask, profile_relations, udp_send_reported = _decode_descendant_response(response)
+        raise _DescendantProbeError(-24)
+    try:
+        descendant_mask, profile_relations, udp_send_reported = _decode_descendant_response(
+            response
+        )
+    except ValueError:
+        child.kill()
+        raise _DescendantProbeError(-25) from None
     if endpoints_absent:
         descendant_mask |= PARENT_STANDARD_HANDLES_ABSENT
     return child, descendant_mask, profile_relations, udp_send_reported
@@ -663,6 +701,23 @@ def _initial_main() -> int:
             descendant_profile_relations,
             descendant_udp_send_reported,
         ) = _spawn_descendant(control, _standard_handle_values())
+    except _DescendantProbeError as error:
+        write_frame(
+            writer,
+            _fixed_response_payload(
+                {
+                    "mask": mask,
+                    "profile_relations": profile_relations,
+                    "udp_send_reported": udp_send_reported,
+                    "descendant_mask": error.code,
+                    "descendant_profile_relations": 0,
+                    "descendant_udp_send_reported": 0,
+                    "descendant_pid": 0,
+                },
+                _RESPONSE_KEYS,
+            ),
+        )
+        return 3
     except Exception:
         write_frame(
             writer,
@@ -671,7 +726,7 @@ def _initial_main() -> int:
                     "mask": mask,
                     "profile_relations": profile_relations,
                     "udp_send_reported": udp_send_reported,
-                    "descendant_mask": -4,
+                    "descendant_mask": -49,
                     "descendant_profile_relations": 0,
                     "descendant_udp_send_reported": 0,
                     "descendant_pid": 0,
