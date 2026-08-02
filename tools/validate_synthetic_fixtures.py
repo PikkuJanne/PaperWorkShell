@@ -54,7 +54,7 @@ NEGATIVE_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/synthetic/v1/invalid")
 _SAFE_JSON_PATH_TOKEN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _EMAIL_PATTERN: Final = re.compile(
     rb"(?i)(?<![A-Z0-9._%+-])[A-Z0-9._%+-]{1,64}@"
-    rb"[A-Z0-9.-]{1,190}\.[A-Z]{2,24}(?![A-Z0-9.-])"
+    rb"[A-Z0-9.-]{1,190}\.[A-Z]{2,24}(?![A-Z0-9-])"
 )
 _SSN_PATTERN: Final = re.compile(rb"(?<![0-9])([0-9]{3})-([0-9]{2})-([0-9]{4})(?![0-9])")
 _IBAN_START_PATTERN: Final = re.compile(rb"(?i)(?<![A-Z0-9])[A-Z]{2}[0-9]{2}")
@@ -917,15 +917,27 @@ def _contains_valid_pan(content: bytes) -> bool:
             continue
 
         start = position
-        digits = bytearray()
-        digit_count = 0
+        candidate_windows: list[bytes] = []
+        candidate_found = False
         while position < len(content):
-            if ord("0") <= content[position] <= ord("9"):
-                digit_count += 1
-                if digit_count <= 19:
-                    digits.append(content[position])
+            group_start = position
+            while position < len(content) and ord("0") <= content[position] <= ord("9"):
                 position += 1
-                continue
+            group = content[group_start:position]
+            if not candidate_found:
+                next_windows = [group] if len(group) <= 19 else []
+                next_windows.extend(
+                    previous + group
+                    for previous in candidate_windows
+                    if len(previous) + len(group) <= 19
+                )
+                candidate_windows = next_windows
+                candidate_found = any(
+                    13 <= len(candidate) <= 19
+                    and _plausible_pan_issuer(candidate)
+                    and _luhn_valid(candidate)
+                    for candidate in candidate_windows
+                )
 
             separator_start = position
             while position < len(content):
@@ -943,13 +955,7 @@ def _contains_valid_pan(content: bytes) -> bool:
 
         starts_at_boundary = start == 0 or not _ascii_alphanumeric(content[start - 1])
         ends_at_boundary = position == len(content) or not _ascii_alphanumeric(content[position])
-        if (
-            starts_at_boundary
-            and ends_at_boundary
-            and 13 <= digit_count <= 19
-            and _plausible_pan_issuer(bytes(digits))
-            and _luhn_valid(bytes(digits))
-        ):
+        if starts_at_boundary and ends_at_boundary and candidate_found:
             return True
 
         if position == start:

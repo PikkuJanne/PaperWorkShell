@@ -74,8 +74,11 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         grouped_iban = b"gb82" + b" west" + b" 1234" + b" 5698" + b" 7654" + b" 32"
         nbsp = b"\xc2\xa0"
         narrow_nbsp = b"\xe2\x80\xaf"
+        ordinary_email = b"person" + b"@" + b"ordinary-domain" + b".org"
+        visa_pan = b"4111" + b"1111" + b"1111" + b"1111"
         candidates = (
-            b"person" + b"@" + b"ordinary-domain" + b".org",
+            ordinary_email,
+            ordinary_email + b".",
             b"123" + b"-" + b"45" + b"-" + b"6789",
             b"4111" + b" " + b"1111" + b" " + b"1111" + b" " + b"1111",
             b"4111" + b"-" + b"1111" + b"-" + b"1111" + b"-" + b"1111",
@@ -91,6 +94,8 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             b"4111\t1111\t1111\t1111",
             b"4111-" + b"1111 " + b"1111-" + b"1111",
             b"4111" + nbsp + b"1111-1111" + narrow_nbsp + b"1111",
+            b"2 " + visa_pan,
+            visa_pan + b" 2",
             compact_iban,
             grouped_iban,
             compact_iban + b" PAYMENT",
