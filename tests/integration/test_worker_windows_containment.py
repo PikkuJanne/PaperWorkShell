@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import ctypes
 import os
-import sys
 import threading
 import time
 import traceback
@@ -68,6 +67,7 @@ from paperworkshell.worker.protocol.models import (
 from paperworkshell.worker.protocol.peer import PeerBinding, ProtocolPeer
 from paperworkshell.worker.protocol.state import ConversationPhase
 from paperworkshell.worker.runtime import HostExitCode
+from tests.worker_resources import WorkerTestResources
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt", reason="PWS-0107 containment targets the supported Windows platform"
@@ -225,14 +225,12 @@ def _restore_dacl_sddl(path: Path, sddl: str) -> None:
         local_free(descriptor)
 
 
-def _launch_config() -> WindowsLaunchConfig:
-    executable = Path(sys.base_prefix) / "python.exe"
-    runtime_roots = (Path(sys.base_prefix),)
-    source_root = _REPOSITORY_ROOT / "src"
+def _launch_config(resources: WorkerTestResources) -> WindowsLaunchConfig:
+    source_root = resources.source_root
     return WindowsLaunchConfig(
-        python_executable=executable,
+        python_executable=resources.python_executable,
         bootstrap_script=source_root / "paperworkshell" / "worker" / "host_bootstrap.py",
-        runtime_roots=runtime_roots,
+        runtime_roots=(resources.runtime_root,),
         code_roots=(source_root,),
         working_directory=source_root,
     )
@@ -345,9 +343,11 @@ def _negotiate(process: WorkerProcess, request: WorkerLaunchRequest) -> Protocol
     return peer
 
 
-def test_actual_python_host_negotiates_and_closes_inside_app_container() -> None:
+def test_actual_python_host_negotiates_and_closes_inside_app_container(
+    worker_test_resources: WorkerTestResources,
+) -> None:
     request = _launch_request()
-    process = WindowsProcessLauncher(_launch_config()).launch(request)
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(request)
     profile_folder = process._profile.local_app_data
     try:
         assert process.isolation.satisfies_required_boundary
@@ -396,9 +396,11 @@ def test_actual_python_host_negotiates_and_closes_inside_app_container() -> None
     _assert_profile_removed(profile_folder)
 
 
-def test_actual_python_host_timeout_requires_restart_and_exits() -> None:
+def test_actual_python_host_timeout_requires_restart_and_exits(
+    worker_test_resources: WorkerTestResources,
+) -> None:
     request = _launch_request()
-    process = WindowsProcessLauncher(_launch_config()).launch(request)
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(request)
     profile_folder = process._profile.local_app_data
     try:
         peer = _negotiate(process, request)
@@ -434,9 +436,11 @@ def test_actual_python_host_timeout_requires_restart_and_exits() -> None:
     _assert_profile_removed(profile_folder)
 
 
-def test_actual_python_host_malformed_rpc_fails_closed_with_protocol_error() -> None:
+def test_actual_python_host_malformed_rpc_fails_closed_with_protocol_error(
+    worker_test_resources: WorkerTestResources,
+) -> None:
     request = _launch_request()
-    process = WindowsProcessLauncher(_launch_config()).launch(request)
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(request)
     profile_folder = process._profile.local_app_data
     try:
         peer = _negotiate(process, request)
@@ -458,9 +462,11 @@ def test_actual_python_host_malformed_rpc_fails_closed_with_protocol_error() -> 
     _assert_profile_removed(profile_folder)
 
 
-def test_worker_client_real_launch_operation_cancel_restart_and_shutdown() -> None:
+def test_worker_client_real_launch_operation_cancel_restart_and_shutdown(
+    worker_test_resources: WorkerTestResources,
+) -> None:
     client = WorkerClient(
-        WindowsProcessLauncher(_launch_config()),
+        WindowsProcessLauncher(_launch_config(worker_test_resources)),
         _launch_request().resource_policy,
         WorkerTimeoutPolicy(
             handshake_seconds=15.0,
@@ -499,8 +505,12 @@ def test_worker_client_real_launch_operation_cancel_restart_and_shutdown() -> No
         client.terminate()
 
 
-def test_force_termination_ends_the_retained_job_tree() -> None:
-    process = WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+def test_force_termination_ends_the_retained_job_tree(
+    worker_test_resources: WorkerTestResources,
+) -> None:
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(
+        _launch_request()
+    )
     try:
         assert process.poll() is None
         for invalid_timeout in (True, float("nan"), -1.0):
@@ -515,9 +525,11 @@ def test_force_termination_ends_the_retained_job_tree() -> None:
         process.close()
 
 
-def test_fresh_launch_after_termination_uses_new_binding_and_negotiates() -> None:
+def test_fresh_launch_after_termination_uses_new_binding_and_negotiates(
+    worker_test_resources: WorkerTestResources,
+) -> None:
     first_request = _launch_request()
-    first = WindowsProcessLauncher(_launch_config()).launch(first_request)
+    first = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(first_request)
     _negotiate(first, first_request)
     first.terminate_tree()
     first.close()
@@ -526,7 +538,7 @@ def test_fresh_launch_after_termination_uses_new_binding_and_negotiates() -> Non
     assert second_request.session_id != first_request.session_id
     assert second_request.worker_instance_id != first_request.worker_instance_id
     assert not second_request.session_capability.matches(first_request.session_capability)
-    second = WindowsProcessLauncher(_launch_config()).launch(second_request)
+    second = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(second_request)
     try:
         _negotiate(second, second_request)
         assert second.poll() is None
@@ -722,8 +734,11 @@ def test_profile_cleanup_retries_sid_release_without_redeleting_profile(
 
 def test_close_cleans_job_and_profile_even_when_transport_close_raises(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
-    process = WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(
+        _launch_request()
+    )
     profile_folder = process._profile.local_app_data
     original_transport_close = process.transport.close
 
@@ -744,8 +759,11 @@ def test_close_cleans_job_and_profile_even_when_transport_close_raises(
 
 def test_close_retries_profile_cleanup_after_a_transient_revoke_failure(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
-    process = WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(
+        _launch_request()
+    )
     profile_folder = process._profile.local_app_data
     profile_type = type(process._profile)
     original_close = profile_type.close_no_raise
@@ -1780,8 +1798,9 @@ def test_resource_inventory_error_has_no_path_bearing_exception_context(
 
 def test_failed_launch_retries_profile_cleanup_and_restores_access_policy(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
-    config = _launch_config()
+    config = _launch_config(worker_test_resources)
     before = tuple(_dacl_sddl(path) for path in config.access_roots)
     captured: list[_AppContainerProfile] = []
     original_create = _AppContainerProfile.create
@@ -1824,6 +1843,7 @@ def test_failed_launch_retries_profile_cleanup_and_restores_access_policy(
 
 def test_partial_process_authority_terminates_owned_process_and_cleans_profile(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     process_handle = 941
     profile = SimpleNamespace(
@@ -1889,7 +1909,7 @@ def test_partial_process_authority_terminates_owned_process_and_cleans_profile(
     monkeypatch.setattr(windows_module, "_PROCESS_CREATION_QUARANTINED", False)
 
     with pytest.raises(WindowsLaunchError) as raised:
-        WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+        WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(_launch_request())
 
     assert raised.value.code is WindowsLaunchErrorCode.PROCESS_FAILED
     assert raised.value.context == "process.handles"
@@ -1901,6 +1921,7 @@ def test_partial_process_authority_terminates_owned_process_and_cleans_profile(
 
 def test_process_owners_are_allocated_before_profile_or_process_creation(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     create_profile = Mock()
     create_process = Mock()
@@ -1922,7 +1943,7 @@ def test_process_owners_are_allocated_before_profile_or_process_creation(
     )
 
     with pytest.raises(MemoryError):
-        WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+        WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(_launch_request())
 
     create_profile.assert_not_called()
     create_process.assert_not_called()
@@ -1932,6 +1953,7 @@ def test_process_owners_are_allocated_before_profile_or_process_creation(
 def test_interrupted_process_creation_is_adopted_before_waiter_and_cleanup(
     failure_stage: str,
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     process_handle = 1103
     thread_handle = 1109
@@ -2029,7 +2051,7 @@ def test_interrupted_process_creation_is_adopted_before_waiter_and_cleanup(
     monkeypatch.setattr(windows_module, "_FAILED_LAUNCH_QUARANTINE", [])
 
     with pytest.raises(WindowsLaunchError) as raised:
-        WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+        WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(_launch_request())
 
     assert waiter_completed.wait(2.0)
     assert waiter is not None
@@ -2059,6 +2081,7 @@ def test_interrupted_process_creation_is_adopted_before_waiter_and_cleanup(
 
 def test_missing_process_authority_quarantines_before_creation_lock_release(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     profile = SimpleNamespace(
         sid=ctypes.c_void_p(1),
@@ -2133,7 +2156,7 @@ def test_missing_process_authority_quarantines_before_creation_lock_release(
     monkeypatch.setattr(windows_module, "_FAILED_LAUNCH_QUARANTINE", [])
 
     with pytest.raises(WindowsLaunchError) as raised:
-        WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+        WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(_launch_request())
 
     assert waiter_completed.wait(2.0)
     assert waiter is not None
@@ -2406,6 +2429,7 @@ def test_process_creation_waiter_rechecks_quarantine_after_lock_release() -> Non
 
 def test_launcher_holds_broker_lock_until_child_handles_are_safe(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     original_create = _PipeSet.create
     pipes_created = threading.Event()
@@ -2427,7 +2451,11 @@ def test_launcher_holds_broker_lock_until_child_handles_are_safe(
 
     def launch_worker() -> None:
         try:
-            launched.append(WindowsProcessLauncher(_launch_config()).launch(_launch_request()))
+            launched.append(
+                WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(
+                    _launch_request()
+                )
+            )
         except BaseException as error:
             failures.append(error)
 
@@ -2471,7 +2499,10 @@ def test_launcher_holds_broker_lock_until_child_handles_are_safe(
     launched[0].close()
 
 
-def test_launch_config_rejects_reparse_indirection(tmp_path: Path) -> None:
+def test_launch_config_rejects_reparse_indirection(
+    tmp_path: Path,
+    worker_test_resources: WorkerTestResources,
+) -> None:
     target = tmp_path / "trusted-target"
     target.mkdir()
     bootstrap = target / "bootstrap.py"
@@ -2484,9 +2515,9 @@ def test_launch_config_rejects_reparse_indirection(tmp_path: Path) -> None:
 
     with pytest.raises(WindowsLaunchError) as raised:
         WindowsLaunchConfig(
-            python_executable=Path(sys.base_prefix) / "python.exe",
+            python_executable=worker_test_resources.python_executable,
             bootstrap_script=redirected / "bootstrap.py",
-            runtime_roots=(Path(sys.base_prefix),),
+            runtime_roots=(worker_test_resources.runtime_root,),
             code_roots=(redirected,),
             working_directory=redirected,
         )

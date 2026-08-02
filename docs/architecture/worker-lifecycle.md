@@ -264,6 +264,14 @@ PWS-0107 is complete only with real supported-Windows evidence for:
 - path-based attempts against cases, authoritative records, external locations, inherited user
   temp, and unrelated profile data denied.
 
+Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
+probes into a temporary physical tree before launch. This keeps developer and hosted-runner
+junctions or interpreter aliases outside the approved resource tree without weakening production:
+the copy rejects nested reparse points and special entries, omits `site-packages`, receives fresh
+ACLs, and must pass the same unchanged resource validator used by the real launcher. A real canary
+file remains present immediately outside the approved code roots so denial evidence cannot pass
+only because the target is absent.
+
 The current no-op must not fake handle evidence with a test-only production RPC operation. Tests
 may inject fixed launch/operation adapters, but release claims require the real launcher and host.
 Successful case-object handle brokerage is not a PWS-0107 completion criterion; the first later

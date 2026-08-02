@@ -148,9 +148,13 @@ class WorkerFailure:
         return _RECOVERY_ACTIONS[self.code]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class WorkerClientError(RuntimeError):
-    """Raised for one sanitized client misuse or lifecycle failure."""
+    """Raised for one sanitized client misuse or lifecycle failure.
+
+    Exception traceback, cause, and context attributes are interpreter-managed,
+    so exception instances cannot use frozen-dataclass assignment guards.
+    """
 
     code: WorkerClientErrorCode
     context: WorkerClientContext

@@ -26,9 +26,13 @@ class BootstrapErrorCode(StrEnum):
     INVALID_CAPABILITY = "WORKER_BOOTSTRAP_INVALID_CAPABILITY"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class BootstrapError(ValueError):
-    """Sanitized bootstrap failure that never includes launch data."""
+    """Sanitized bootstrap failure that never includes launch data.
+
+    Exception traceback, cause, and context attributes are interpreter-managed,
+    so exception instances cannot use frozen-dataclass assignment guards.
+    """
 
     code: BootstrapErrorCode
     safe_message: str

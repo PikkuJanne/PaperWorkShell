@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
-import sys
 from contextlib import ExitStack
-from pathlib import Path
 from secrets import token_hex
 from typing import Any
 from uuid import uuid4
@@ -21,24 +19,22 @@ from paperworkshell.worker.client.process import (
     WorkerResourcePolicy,
 )
 from paperworkshell.worker.protocol.models import SessionCapability
+from tests.worker_resources import WorkerTestResources
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt", reason="PWS-0107 containment targets the supported Windows platform"
 )
 
-_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-_HELPER_ROOT = _REPOSITORY_ROOT / "tests" / "helpers"
 _PROBE_PORTS = (46371, 46372, 46373, 46374, 46375)
 
 
-def _launch_config() -> WindowsLaunchConfig:
-    source_root = _REPOSITORY_ROOT / "src"
+def _launch_config(resources: WorkerTestResources) -> WindowsLaunchConfig:
     return WindowsLaunchConfig(
-        python_executable=Path(sys.base_prefix) / "python.exe",
-        bootstrap_script=_HELPER_ROOT / "worker_containment_probe.py",
-        runtime_roots=(Path(sys.base_prefix),),
-        code_roots=(source_root, _HELPER_ROOT),
-        working_directory=_HELPER_ROOT,
+        python_executable=resources.python_executable,
+        bootstrap_script=resources.helper_root / "worker_containment_probe.py",
+        runtime_roots=(resources.runtime_root,),
+        code_roots=(resources.source_root, resources.helper_root),
+        working_directory=resources.helper_root,
     )
 
 
@@ -123,6 +119,7 @@ def _assert_no_worker_traffic(listeners: tuple[socket.socket, ...]) -> None:
 
 def test_zero_capability_worker_and_descendant_have_no_egress_or_broad_file_access(
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     for name in (
         "PATH",
@@ -136,15 +133,17 @@ def test_zero_capability_worker_and_descendant_have_no_egress_or_broad_file_acce
         "COMSPEC",
     ):
         monkeypatch.setenv(name, "ambient-canary-must-not-cross-worker-boundary")
-    outside_write = _REPOSITORY_ROOT / ".pws-outside-write-probe"
-    approved_write = _HELPER_ROOT / ".pws-approved-write-probe"
+    outside_write = worker_test_resources.repository_root / ".pws-outside-write-probe"
+    approved_write = worker_test_resources.helper_root / ".pws-approved-write-probe"
     assert not outside_write.exists()
     assert not approved_write.exists()
 
     with ExitStack() as stack:
         listeners = _bound_listeners(stack)
         _prove_control_reachability(listeners)
-        process = WindowsProcessLauncher(_launch_config()).launch(_launch_request())
+        process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(
+            _launch_request()
+        )
         profile_folder = process._profile.local_app_data
         try:
             received = process.transport.receive_payload(15.0)

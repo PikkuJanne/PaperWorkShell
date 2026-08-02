@@ -7,7 +7,6 @@ import json
 import os
 import select
 import socket
-import sys
 import tempfile
 from contextlib import ExitStack
 from ctypes import wintypes
@@ -27,14 +26,12 @@ from paperworkshell.worker.client.process import (
 )
 from paperworkshell.worker.protocol.bootstrap import BootstrapGrant, encode_bootstrap_grant
 from paperworkshell.worker.protocol.models import SessionCapability
+from tests.worker_resources import WorkerTestResources
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt", reason="PWS-0107 containment targets the supported Windows platform"
 )
 
-_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[2]
-_HELPER_ROOT: Final = _REPOSITORY_ROOT / "tests" / "helpers"
-_HELPER: Final = _HELPER_ROOT / "pws_worker_isolation_probe.py"
 _AMBIENT_CANARY: Final = "PWS_AMBIENT_ENV_CANARY_0107"
 _AMBIENT_NAMES: Final = (
     "ALL_PROXY",
@@ -141,14 +138,13 @@ class _LocalListeners:
         assert readable == []
 
 
-def _launch_config() -> WindowsLaunchConfig:
-    source_root = _REPOSITORY_ROOT / "src"
+def _launch_config(resources: WorkerTestResources) -> WindowsLaunchConfig:
     return WindowsLaunchConfig(
-        python_executable=Path(sys.base_prefix) / "python.exe",
-        bootstrap_script=_HELPER,
-        runtime_roots=(Path(sys.base_prefix),),
-        code_roots=(source_root, _HELPER_ROOT),
-        working_directory=_HELPER_ROOT,
+        python_executable=resources.python_executable,
+        bootstrap_script=resources.helper_root / "pws_worker_isolation_probe.py",
+        runtime_roots=(resources.runtime_root,),
+        code_roots=(resources.source_root, resources.helper_root),
+        working_directory=resources.helper_root,
     )
 
 
@@ -340,6 +336,7 @@ def _assert_paths_absent_from_fixed_launch_data(
 def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    worker_test_resources: WorkerTestResources,
 ) -> None:
     real_user_temp = Path(tempfile.gettempdir())
     with tempfile.TemporaryDirectory(prefix="pws-0107-isolation-", dir=real_user_temp) as raw:
@@ -352,7 +349,7 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
         for name in ("LOCALAPPDATA", "TEMP", "TMP"):
             monkeypatch.setenv(name, rf"C:\{_AMBIENT_CANARY}\{name}")
 
-        config = _launch_config()
+        config = _launch_config(worker_test_resources)
         request = _launch_request()
         _assert_paths_absent_from_fixed_launch_data(config, request, denied_paths)
 
