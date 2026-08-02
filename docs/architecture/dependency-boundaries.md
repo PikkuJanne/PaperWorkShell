@@ -33,7 +33,7 @@ worker host -> domain
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Output planning, verification, and derivative commit behavior |
 | `templates` | Declarative, versioned template loading and validation |
-| `storage` | Case workspaces and atomic persistence |
+| `storage` | Authenticated case workspaces and atomic persistence; its implemented PWS-0101 contract is documented in [Secure case-workspace contract](case-workspace.md) |
 | `diagnostics` | Sanitized logging and previewable diagnostic data |
 
 ## Enforced import rules
@@ -55,6 +55,13 @@ Imports inside `TYPE_CHECKING`, conditional blocks, or exception handlers still 
 The checker enforces dependency ownership, not public API design or process isolation. Later tasks add typed protocols, a distinct GUI-safe worker client, a worker-host composition root, versioned RPC, concrete adapters, and operating-system restrictions. Desktop composition will wire UI, application services, storage, and the worker client; worker composition will wire the host and document adapters. Package initializers must not bridge those composition roots.
 
 The passive `export` namespace is not a low-level document adapter, but no `export` submodule is currently GUI-safe. Application code may eventually use pure export-plan types and interfaces, while writing, reopening, rendering, and verification remain worker-side behavior. PWS-0112 must name safe planning modules and extend the executable policy before adding them; PWS-0002 does not guess that future module split.
+
+PWS-0101 makes `storage` the first namespace with concrete product modules. Its Windows adapter is
+private to storage; callers use the fixed workspace, permission, quota, and sanitized-error
+contracts described in [Secure case-workspace contract](case-workspace.md). A lexically resolved
+path is never an authorization token, and later lifecycle/import/worker/export tasks must add
+narrow broker operations instead of importing `storage._windows` or introducing general recursive
+mutation.
 
 A new external engine is not admitted by editing code alone: the dependency policy and licensing review in PWS-0005 and the engine-specific roadmap task must approve it first. Renderer ownership remains intentionally unspecified until PWS-0106 records its evidence-based ADR.
 

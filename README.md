@@ -85,6 +85,13 @@ The source tree separates pure domain rules, toolkit-free application orchestrat
 The binding foundation threat model, trust boundaries, lifecycle data flows, control ownership, and
 planned security evidence are indexed in [`docs/security/README.md`](docs/security/README.md).
 
+The implemented Windows case-workspace boundary uses opaque UUIDv4 case names, verified private
+ACLs, handle-authenticated containment, caller-supplied quotas, and cache/temp-only cleanup. Its API,
+fixed layout, deferrals, and failure behavior are documented in
+[`docs/architecture/case-workspace.md`](docs/architecture/case-workspace.md), with the operating
+system mechanism and residual risks recorded in
+[`docs/adr/0003-secure-case-workspace.md`](docs/adr/0003-secure-case-workspace.md).
+
 Third-party admission, exact pin/hash evidence, Windows redistribution, renderer comparison, and
 SBOM inputs are governed by
 [`docs/development/dependency-policy.md`](docs/development/dependency-policy.md). The checked-in
