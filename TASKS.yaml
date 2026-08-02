@@ -620,7 +620,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0010
@@ -652,12 +652,14 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
+    completed_at: '2026-08-02'
     revision: "31d5141"
     commands:
     - "py -3.14 tools/dev.py check at 31d5141 - passed; formatting, lint, 12-layer import boundaries, strict typing, 335 unit tests, 15 integration tests, 134 security tests with 3 disclosed local Windows capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
     - "uv run --locked --no-sync pytest tests/unit/test_case_workspace.py tests/integration/test_case_workspace_windows.py tests/security/test_case_workspace_security.py -q at 31d5141 - passed; 122 tests passed and the one local symlink-privilege case skipped, while the real NTFS junction case ran and passed"
     - "GitHub Actions runs 30732657677 (push) and 30732659059 (pull_request) on windows-2025 passed the Windows quality suite at 31d5141"
+    - "fresh SSH clone at d9900d0: uv sync --locked installed 22 packages and py -3.14 tools/dev.py check passed; 64-file formatting/lint, 12-layer boundaries over 23 source files, strict typing over 64 files, 335 unit tests, 15 integration tests, 134 security tests with 3 disclosed capability skips, 2 accessibility tests, all validators/scans, and 5 negative self-tests"
+    - "GitHub Actions runs 30733008309 (push) and 30733009554 (pull_request) on windows-2025 passed the Windows quality suite at review commit d9900d0"
     notes:
     - The fixed case skeleton, canonical UUIDv4 identifiers, Windows namespace validation, handle-bound identities, protected owner-only ACL policy, quota floors, reservation coordination, and authenticated cleanup primitives satisfy the selected workspace contract.
     - Cleanup is limited to typed cache or temp areas, retains the authenticated case identity through deletion, rejects reparse points, alternate streams, hard links, identity replacement, and active publication claims, and never traverses originals or external paths.
@@ -669,7 +671,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0101
@@ -707,7 +709,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0101
@@ -874,7 +876,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0008
