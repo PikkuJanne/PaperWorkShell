@@ -290,11 +290,11 @@ class WorkerHostRuntime:
                 result = handler.execute(context)
             except Exception:
                 result = failed_operation_result()
-            completion = _Completed(active.token, result, self._monotonic())
             # Publish the terminal timestamp before the bounded mixed queue put.
             # Deadline arbitration can therefore observe a completed operation
             # even when older inbound/progress events occupy the queue.
             with self._completion_lock:
+                completion = _Completed(active.token, result, self._monotonic())
                 self._recorded_completion = completion
             self._events.put(completion)
 

@@ -442,6 +442,7 @@ class WorkerClient:
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.OPERATION)
         operation_id = self._new_id()
         request_id = self._new_id()
+        operation_deadline = self._deadline_after(payload.requested_limits.wall_time_ms / 1_000.0)
         self._send_outbound(
             MessageType.OPERATION_START,
             payload,
@@ -455,9 +456,7 @@ class WorkerClient:
             operation_version=payload.operation_version,
         )
         self._phase = WorkerLifecyclePhase.BUSY
-        self._operation_deadline = self._deadline_after(
-            payload.requested_limits.wall_time_ms / 1_000.0
-        )
+        self._operation_deadline = operation_deadline
         return operation_id
 
     def cancel(self, reason: CancelReason = CancelReason.USER_REQUESTED) -> UUID:
@@ -485,11 +484,11 @@ class WorkerClient:
         if self._phase is WorkerLifecyclePhase.READY:
             self._begin_shutdown(reason)
             return
+        if self._phase is WorkerLifecyclePhase.BUSY:
+            self._request_cancel(CancelReason.SHUTDOWN)
         if not self._shutdown_after_operation:
             self._pending_shutdown_reason = reason
         self._shutdown_after_operation = True
-        if self._phase is WorkerLifecyclePhase.BUSY:
-            self._request_cancel(CancelReason.SHUTDOWN)
 
     def terminate(self) -> None:
         """Force-stop the whole worker process tree without waiting for protocol close."""
@@ -729,6 +728,11 @@ class WorkerClient:
         }:
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.CANCELLATION)
         request_id = self._new_id()
+        cancellation_deadline = self._cancellation_deadline
+        if cancellation_deadline is None:
+            cancellation_deadline = self._deadline_after(
+                self._timeout_policy.cancellation_grace_seconds
+            )
         self._send_outbound(
             MessageType.OPERATION_CANCEL,
             OperationCancelPayload(reason),
@@ -739,9 +743,7 @@ class WorkerClient:
         active.cancellation_requested = True
         self._phase = WorkerLifecyclePhase.CANCELLING
         if self._cancellation_deadline is None:
-            self._cancellation_deadline = self._deadline_after(
-                self._timeout_policy.cancellation_grace_seconds
-            )
+            self._cancellation_deadline = cancellation_deadline
         return request_id
 
     def _begin_shutdown(self, reason: ShutdownReason) -> None:
@@ -755,6 +757,7 @@ class WorkerClient:
         ):
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.SHUTDOWN)
         request_id = self._new_id()
+        shutdown_deadline = self._deadline_after(self._timeout_policy.shutdown_grace_seconds)
         self._send_outbound(
             MessageType.SESSION_SHUTDOWN,
             SessionShutdownPayload(reason),
@@ -763,7 +766,7 @@ class WorkerClient:
         )
         self._phase = WorkerLifecyclePhase.STOPPING
         self._cancellation_deadline = None
-        self._shutdown_deadline = self._deadline_after(self._timeout_policy.shutdown_grace_seconds)
+        self._shutdown_deadline = shutdown_deadline
 
     def _send_outbound(
         self,

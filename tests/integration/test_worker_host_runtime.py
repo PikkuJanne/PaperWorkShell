@@ -7,6 +7,7 @@ import os
 import threading
 from dataclasses import dataclass
 from types import TracebackType
+from typing import Any, cast
 from uuid import UUID
 
 from paperworkshell.worker import runtime as runtime_module
@@ -292,6 +293,29 @@ class _BlockingSuccessHandler:
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (), None)
 
 
+class _WorkerPublicationGate:
+    """Pause only the operation thread before terminal timestamp publication."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.worker_waiting = threading.Event()
+        self.release_worker = threading.Event()
+        self.worker_exited = threading.Event()
+
+    def __enter__(self) -> _WorkerPublicationGate:
+        is_worker = threading.current_thread().name == "pws-worker-operation"
+        if is_worker:
+            self.worker_waiting.set()
+            self.release_worker.wait()
+        self._lock.acquire()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._lock.release()
+        if threading.current_thread().name == "pws-worker-operation":
+            self.worker_exited.set()
+
+
 def _direct_runtime(
     clock: _FakeClock,
     *,
@@ -472,6 +496,42 @@ def test_postdeadline_recorded_completion_still_times_out() -> None:
     assert result.payload.outcome is OperationOutcome.TIMED_OUT
     handler.release.set()
     assert handler.finished.wait(1.0)
+
+
+def test_deadline_arbitration_precedes_a_terminal_timestamp_not_yet_published() -> None:
+    clock = _FakeClock(10.0)
+    handler = _BlockingSuccessHandler()
+    runtime, client, writer = _direct_runtime(
+        clock,
+        operations=RuntimeOperationRegistry((handler,)),
+    )
+    operation_id = _start_direct_operation(runtime, client, writer)
+    cancel = client.prepare_outbound(
+        MessageType.OPERATION_CANCEL,
+        OperationCancelPayload(CancelReason.USER_REQUESTED),
+        request_id=_uuid(47),
+        operation_id=operation_id,
+    )
+    gate = _WorkerPublicationGate()
+    runtime._completion_lock = cast(Any, gate)
+    clock.value = 10.5
+    handler.release.set()
+    try:
+        assert gate.worker_waiting.wait(1.0)
+        clock.value = 11.0
+        exit_code = runtime._dispatch(runtime_module._Inbound(cancel.encoded))
+        result = client.accept_inbound(_take_frame(writer))
+    finally:
+        gate.release_worker.set()
+
+    assert exit_code is HostExitCode.OPERATION_TIMED_OUT
+    assert result.message_type is MessageType.OPERATION_RESULT
+    assert type(result.payload) is OperationResultPayload
+    assert result.payload.outcome is OperationOutcome.TIMED_OUT
+    assert gate.worker_exited.wait(1.0)
+    completion = runtime._recorded_completion
+    assert completion is not None
+    assert completion.occurred_at == 11.0
 
 
 @dataclass(frozen=True, slots=True)

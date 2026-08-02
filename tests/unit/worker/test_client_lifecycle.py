@@ -59,6 +59,17 @@ class FakeClock:
         return self.value
 
 
+class SwitchableClock(FakeClock):
+    def __init__(self, value: float = 10.0) -> None:
+        super().__init__(value)
+        self.invalid = False
+
+    def __call__(self) -> float:
+        if self.invalid:
+            return cast(float, object())
+        return super().__call__()
+
+
 class FakeTransport:
     def __init__(self) -> None:
         self.sent: list[bytes] = []
@@ -426,6 +437,64 @@ def test_invalid_post_launch_clock_disposes_the_process() -> None:
     assert failure.code is raised.value.code
     assert process.terminate_calls == 1
     assert process.close_calls == 1
+
+
+def test_invalid_clock_cannot_send_an_operation_without_arming_its_deadline() -> None:
+    clock = SwitchableClock()
+    client, _launcher, record, _generation = _ready_client(clock=clock)
+    clock.invalid = True
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.start_operation(
+            OperationStartPayload(
+                operation_kind=NOOP_CAPABILITY.capability_id,
+                operation_version=NOOP_CAPABILITY.capability_version,
+                inputs=(),
+                parameters=(),
+                requested_limits=_limits(),
+            )
+        )
+
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert client.query().phase is WorkerLifecyclePhase.READY
+    assert client.query().active_operation is None
+    assert record.process.transport.sent == []
+    assert record.process.terminate_calls == 0
+    assert record.process.close_calls == 0
+
+
+def test_invalid_clock_cannot_send_cancellation_without_arming_its_deadline() -> None:
+    clock = SwitchableClock()
+    client, _launcher, record, _generation = _ready_client(clock=clock)
+    _start_and_accept(client, record)
+    clock.invalid = True
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.cancel()
+
+    snapshot = client.query()
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert snapshot.phase is WorkerLifecyclePhase.BUSY
+    assert snapshot.active_operation is not None
+    assert not snapshot.active_operation.cancellation_requested
+    assert record.process.transport.sent == []
+    assert record.process.terminate_calls == 0
+    assert record.process.close_calls == 0
+
+
+def test_invalid_clock_cannot_send_shutdown_without_arming_its_deadline() -> None:
+    clock = SwitchableClock()
+    client, _launcher, record, _generation = _ready_client(clock=clock)
+    clock.invalid = True
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.shutdown()
+
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+    assert client.query().phase is WorkerLifecyclePhase.READY
+    assert record.process.transport.sent == []
+    assert record.process.terminate_calls == 0
+    assert record.process.close_calls == 0
 
 
 def test_operation_accept_progress_and_success_are_protocol_authoritative() -> None:
