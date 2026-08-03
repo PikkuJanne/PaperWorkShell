@@ -13,6 +13,7 @@ from paperworkshell.domain.pdf_rendering import (
     PdfRasterLayout,
     PdfRenderError,
     PdfRenderErrorCode,
+    checked_pdf_raster_layout,
     reject_pdf_rendering,
 )
 
@@ -60,8 +61,13 @@ class PdfPageRenderer(Protocol):
 def require_pdf_render_active(control: PdfRenderControl) -> None:
     """Fail closed when a typed cancellation or deadline probe is active or invalid."""
 
-    if not _probe(control.cancellation_requested, "render.cancel_probe"):
-        if _probe(control.deadline_expired, "render.deadline_probe"):
+    try:
+        cancellation_probe = control.cancellation_requested
+        deadline_probe = control.deadline_expired
+    except Exception:
+        reject_pdf_rendering(PdfRenderErrorCode.INTERNAL_ERROR, "render.control")
+    if not _probe(cancellation_probe, "render.cancel_probe"):
+        if _probe(deadline_probe, "render.deadline_probe"):
             reject_pdf_rendering(PdfRenderErrorCode.TIMED_OUT, "render.deadline")
         return
     reject_pdf_rendering(PdfRenderErrorCode.CANCELLED, "render.cancelled")
@@ -71,17 +77,27 @@ def write_exact_pdf_raster(
     destination: PdfRasterDestination,
     raster: Buffer,
     layout: PdfRasterLayout,
+    limits: PdfPageRenderLimits,
     control: PdfRenderControl,
 ) -> str:
     """Write, hash, and flush one exact packed raster without taking sink ownership."""
 
-    if type(layout) is not PdfRasterLayout:
+    if type(layout) is not PdfRasterLayout or type(limits) is not PdfPageRenderLimits:
         reject_pdf_rendering(PdfRenderErrorCode.MODEL_INVALID, "render.write_layout")
+    checked_layout = checked_pdf_raster_layout(
+        layout.width_pixels,
+        layout.height_pixels,
+        limits,
+    )
+    if checked_layout != layout:
+        reject_pdf_rendering(PdfRenderErrorCode.RESULT_INVALID, "render.raster_layout")
     try:
         view = memoryview(raster)
         if not view.contiguous or view.nbytes != layout.byte_count:
             reject_pdf_rendering(PdfRenderErrorCode.RESULT_INVALID, "render.raster_buffer")
         bytes_view = view.cast("B")
+        if any(bytes_view[offset] != 255 for offset in range(3, layout.byte_count, 4)):
+            reject_pdf_rendering(PdfRenderErrorCode.RESULT_INVALID, "render.raster_alpha")
     except PdfRenderError:
         raise
     except BufferError, TypeError, ValueError:
@@ -118,7 +134,7 @@ def _probe(probe: object, context: str) -> bool:
         value = probe()
     except PdfRenderError:
         raise
-    except BaseException:
+    except Exception:
         reject_pdf_rendering(PdfRenderErrorCode.INTERNAL_ERROR, context)
     if type(value) is not bool:
         reject_pdf_rendering(PdfRenderErrorCode.INTERNAL_ERROR, context)

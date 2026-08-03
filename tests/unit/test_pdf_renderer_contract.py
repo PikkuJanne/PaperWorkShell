@@ -131,11 +131,32 @@ def _layout() -> PdfRasterLayout:
     return PdfRasterLayout(2, 2, 8, 4, 16)
 
 
+def _write_limits(**changes: int) -> PdfPageRenderLimits:
+    values = {
+        "maximum_pages": 1,
+        "maximum_width_pixels": 2,
+        "maximum_height_pixels": 2,
+        "maximum_pixels": 4,
+        "maximum_bitmap_bytes": 16,
+        "maximum_destination_bytes": 16,
+        "maximum_memory_bytes": 16,
+        "wall_time_ms": 1_000,
+    }
+    values.update(changes)
+    return PdfPageRenderLimits(**values)
+
+
 def test_exact_raster_writer_handles_short_writes_by_row_and_returns_digest() -> None:
-    raster = bytes(range(16))
+    raster = bytes((0, 1, 2, 255, 4, 5, 6, 255, 8, 9, 10, 255, 12, 13, 14, 255))
     destination = _ShortWriter(3)
 
-    digest = write_exact_pdf_raster(destination, raster, _layout(), _ScriptedControl())
+    digest = write_exact_pdf_raster(
+        destination,
+        raster,
+        _layout(),
+        _write_limits(),
+        _ScriptedControl(),
+    )
 
     assert destination.getvalue() == raster
     assert digest == hashlib.sha256(raster).hexdigest()
@@ -144,7 +165,13 @@ def test_exact_raster_writer_handles_short_writes_by_row_and_returns_digest() ->
 @pytest.mark.parametrize("result", (None, 0, -1, 9, True, "4"))
 def test_exact_raster_writer_rejects_invalid_write_results(result: object) -> None:
     with pytest.raises(PdfRenderError) as raised:
-        write_exact_pdf_raster(_InvalidWriter(result), bytes(16), _layout(), _ScriptedControl())
+        write_exact_pdf_raster(
+            _InvalidWriter(result),
+            b"\x00\x00\x00\xff" * 4,
+            _layout(),
+            _write_limits(),
+            _ScriptedControl(),
+        )
 
     assert raised.value.code is PdfRenderErrorCode.DESTINATION_FAILED
     assert raised.value.context == "render.destination_write"
@@ -155,7 +182,13 @@ def test_exact_raster_writer_rejects_wrong_or_noncontiguous_buffer_before_write(
 
     for raster in (bytes(15), memoryview(bytes(32))[::2]):
         with pytest.raises(PdfRenderError) as raised:
-            write_exact_pdf_raster(destination, raster, _layout(), _ScriptedControl())
+            write_exact_pdf_raster(
+                destination,
+                raster,
+                _layout(),
+                _write_limits(),
+                _ScriptedControl(),
+            )
 
         assert raised.value.code is PdfRenderErrorCode.RESULT_INVALID
         assert raised.value.context == "render.raster_buffer"
@@ -163,9 +196,50 @@ def test_exact_raster_writer_rejects_wrong_or_noncontiguous_buffer_before_write(
     assert destination.getvalue() == b""
 
 
+def test_exact_raster_writer_rejects_nonopaque_alpha_before_writing() -> None:
+    destination = BytesIO()
+    raster = b"\x00\x00\x00\xff" * 3 + b"\x00\x00\x00\xfe"
+
+    with pytest.raises(PdfRenderError) as raised:
+        write_exact_pdf_raster(
+            destination,
+            raster,
+            _layout(),
+            _write_limits(),
+            _ScriptedControl(),
+        )
+
+    assert raised.value.code is PdfRenderErrorCode.RESULT_INVALID
+    assert raised.value.context == "render.raster_alpha"
+    assert destination.getvalue() == b""
+
+
+def test_exact_raster_writer_revalidates_operation_limits_before_writing() -> None:
+    destination = BytesIO()
+
+    with pytest.raises(PdfRenderError) as raised:
+        write_exact_pdf_raster(
+            destination,
+            b"\x00\x00\x00\xff" * 4,
+            _layout(),
+            _write_limits(maximum_destination_bytes=15),
+            _ScriptedControl(),
+        )
+
+    assert raised.value.code is PdfRenderErrorCode.LIMIT_EXCEEDED
+    assert raised.value.context == "render.destination"
+    assert destination.getvalue() == b""
+
+
 def test_exact_raster_writer_sanitizes_flush_failure() -> None:
     with pytest.raises(PdfRenderError) as raised:
-        write_exact_pdf_raster(_FailingFlush(), bytes(16), _layout(), _ScriptedControl())
+        write_exact_pdf_raster(
+            _FailingFlush(),
+            b"\x00\x00\x00\xff" * 4,
+            _layout(),
+            _write_limits(),
+            _ScriptedControl(),
+        )
 
     assert raised.value.code is PdfRenderErrorCode.DESTINATION_FAILED
     assert "private destination detail" not in str(raised.value)
@@ -200,12 +274,41 @@ def test_active_probe_has_closed_typed_failure(
     assert raised.value.context == context
 
 
+class _MissingControl:
+    pass
+
+
+class _RaisingControlProperty:
+    @property
+    def cancellation_requested(self) -> object:
+        raise RuntimeError("private control detail")
+
+    def deadline_expired(self) -> bool:
+        return False
+
+
+@pytest.mark.parametrize("control", (_MissingControl(), _RaisingControlProperty()))
+def test_control_attribute_failure_is_sanitized(control: object) -> None:
+    with pytest.raises(PdfRenderError) as raised:
+        require_pdf_render_active(cast(PdfRenderControl, control))
+
+    assert raised.value.code is PdfRenderErrorCode.INTERNAL_ERROR
+    assert raised.value.context == "render.control"
+    assert "private control detail" not in str(raised.value)
+
+
+def test_process_control_exception_from_probe_is_not_swallowed() -> None:
+    with pytest.raises(SystemExit):
+        require_pdf_render_active(_ScriptedControl(cancellations=(SystemExit(7),)))
+
+
 def test_cancellation_after_partial_output_fails_and_leaves_caller_to_discard_sink() -> None:
     destination = BytesIO()
     control = _ScriptedControl(cancellations=(False, True))
+    raster = b"\x00\x00\x00\xff" * 4
 
     with pytest.raises(PdfRenderError) as raised:
-        write_exact_pdf_raster(destination, bytes(range(16)), _layout(), control)
+        write_exact_pdf_raster(destination, raster, _layout(), _write_limits(), control)
 
     assert raised.value.code is PdfRenderErrorCode.CANCELLED
-    assert destination.getvalue() == bytes(range(8))
+    assert destination.getvalue() == raster[:8]
