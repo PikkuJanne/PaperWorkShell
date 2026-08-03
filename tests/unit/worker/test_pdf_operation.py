@@ -146,6 +146,17 @@ def _handler_context(*, cancelled: bool = False) -> OperationContext:
     )
 
 
+def _configure_worker_private_temp(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    local_root = tmp_path / "worker-profile"
+    temp_root = local_root / "Temp"
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+
+
 def _kernel32() -> Any:
     return ctypes.WinDLL("kernel32", use_last_error=True)
 
@@ -374,7 +385,9 @@ def test_handler_cancellation_after_adapter_success_discards_result_without_writ
 
 def test_adapter_authenticates_source_and_closes_case_handle_before_native_parser(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _configure_worker_private_temp(monkeypatch, tmp_path)
     payload = b"%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF\n"
     source_path = tmp_path / "synthetic.pdf"
     source_path.write_bytes(payload)
@@ -404,9 +417,11 @@ def test_adapter_authenticates_source_and_closes_case_handle_before_native_parse
 )
 def test_adapter_rejects_source_size_or_hash_misbinding_before_parser(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     expected_size_delta: int,
     expected_digest: str | None,
 ) -> None:
+    _configure_worker_private_temp(monkeypatch, tmp_path)
     payload = b"%PDF-1.4\n%%EOF\n"
     source_path = tmp_path / "synthetic.pdf"
     source_path.write_bytes(payload)
@@ -429,7 +444,11 @@ def test_adapter_rejects_source_size_or_hash_misbinding_before_parser(
     assert not _handle_is_open(handle)
 
 
-def test_adapter_cooperatively_cancels_during_authenticated_copy(tmp_path: Path) -> None:
+def test_adapter_cooperatively_cancels_during_authenticated_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _configure_worker_private_temp(monkeypatch, tmp_path)
     payload = b"%PDF-1.4\n%%EOF\n"
     source_path = tmp_path / "synthetic.pdf"
     source_path.write_bytes(payload)
@@ -456,6 +475,7 @@ def test_adapter_enforces_one_worker_wall_deadline_during_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _configure_worker_private_temp(monkeypatch, tmp_path)
     payload = b"%PDF-1.4\n%%EOF\n"
     source_path = tmp_path / "synthetic.pdf"
     source_path.write_bytes(payload)
