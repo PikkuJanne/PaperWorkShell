@@ -818,7 +818,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0005
@@ -852,10 +852,19 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "00ddd78"
+    commands:
+    - "uv run python tools/dev.py check at 00ddd78 - passed; formatting and lint over 137 files, 12-layer import boundaries over 53 source files, strict typing over 137 files, 840 unit tests, 169 integration tests with 2 disclosed local link-capability skips, 181 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_pdf_inspection_domain.py tests/unit/test_pikepdf_adapter.py tests/unit/worker/test_pdf_inspect_protocol.py tests/unit/worker/test_pdf_operation.py tests/unit/worker/test_pdf_source_inspector.py tests/unit/worker/test_windows_handle_transfer.py tests/unit/worker/test_windows_result_pipe.py tests/integration/test_pdf_inspection_worker_windows.py tests/security/test_pdf_dependency_capabilities.py tests/security/test_qpdf_checker_security.py at 00ddd78 - passed; 88 typed-contract, parser, handle-broker, AppContainer, dependency-closure, timeout, and no-shell qpdf tests"
+    - "uv run python tools/dev.py scan-secrets at 00ddd78 - passed; 693 historical blobs, 114 commit/tag objects, 705 historical path/blob pairs, 272 index blobs, 279 tracked files, and 0 nonignored untracked files were scanned"
+    notes:
+    - The closed inspection model returns only typed sanitized states and stable codes; ordinary, malformed, password-encrypted, signed-marker, attachment, interactive, action/script, and unknown outcomes remain distinct without exposing pikepdf objects, raw exceptions, PDF values, paths, or tool output.
+    - The client brokers one reduced read-only source HANDLE and one write-only result-pipe HANDLE into a one-shot zero-capability AppContainer worker; size and SHA-256 are reverified into a reparse-free worker-private temporary stream, the case HANDLE closes before native parsing, every terminal branch consumes both authorities, and the worker tree terminates before broker release.
+    - One bounded deadline covers authenticated copy and pikepdf/libqpdf inspection; page, object, graph, collection, input, temporary-storage, result-frame, and tool-output budgets fail closed, while cancellation, timeout, malformed messages, parser failures, and pipe failures have deterministic cleanup evidence.
+    - pikepdf 10.10.0, its embedded libqpdf 12.3.2 closure, and required transitive wheels are locked and inventoried with artifact/hash evidence. The independent qpdf 12.3.2 command seam uses a reviewed absolute executable, fixed argv with `--`, `shell=False`, a minimal environment, bounded discarded output, and no ambient PATH lookup.
+    - The selected lxml wheel's two upstream Schematron resources remain an explicit PWS-0801 redistribution-review blocker for bundling, not for this development/runtime adapter; the dependency inventory forbids advancing those inputs to shipped state before that review closes.
+    - Independent semantic, containment, dependency, lifecycle, privacy, and adversarial reviews found and closed encrypted-state, capability-fallback, private-temp, handle-consumption, pipe-close, and inventory-wording issues; no P0-P2 finding remains.
 - id: PWS-0106
   milestone: M1
   title: Select and implement replaceable PDF renderer adapter
