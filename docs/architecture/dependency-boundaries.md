@@ -3,7 +3,7 @@
 - Status: Binding implementation policy
 - Task: PWS-0002
 - Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
-  structural inspection; PWS-0107 restricted worker lifecycle
+  structural inspection; PWS-0107 restricted worker lifecycle; PWS-0110 page operations
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -99,6 +99,12 @@ PWS-0109 adds path-free repository/autosave contracts and complete validation in
 toolkit-free coalescing in `app`, and authenticated journal/replacement/recovery in `storage`.
 Neither pure layer imports Windows, UI, renderer, or PDF code. The fixed checkpoint and CAS contract
 are specified in the [Atomic manifest repository and autosave contract](manifest-repository.md).
+
+PWS-0110 adds typed page intent, canonical replay, immutable session undo/redo, and defensive
+manifest-candidate construction only in `domain.page_operations`. It consumes the path-free
+PWS-0109 snapshot contract but does not import `app`, `storage`, worker, renderer, PDF, or UI code.
+The command and concurrency rules are specified in the
+[Page operation, replay, undo, and redo contract](page-operations.md).
 
 PWS-0107 makes the worker split concrete. GUI-safe `worker.client` modules own only cached lifecycle
 state and abstract process/transport contracts; `worker.protocol` owns bounded framing, bootstrap,

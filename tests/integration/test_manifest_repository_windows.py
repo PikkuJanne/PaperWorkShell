@@ -24,6 +24,13 @@ from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryErrorCode,
     ManifestSaveResult,
 )
+from paperworkshell.domain.page_operations import (
+    PageCommandHistory,
+    RotatePageCommand,
+    SequenceChangeCommand,
+    SequenceChangeReason,
+    SetGroupCommand,
+)
 from paperworkshell.storage import manifest_repository as repository_storage
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
@@ -495,4 +502,110 @@ def test_real_repository_autosave_coalesces_to_exact_final_state(tmp_path: Path)
     constraints = reloaded.snapshot.document["constraints"]
     assert type(constraints) is dict
     assert constraints["maximum_file_count"] == 100
+    assert layout.manifest.read_bytes() == (layout.journal / "latest.json").read_bytes()
+
+
+def test_page_operation_history_autosave_reload_replays_equivalently(
+    tmp_path: Path,
+) -> None:
+    representative_created = datetime(2026, 8, 1, 10, 0, tzinfo=UTC)
+    manager, layout = _stack(tmp_path, created_at=representative_created)
+    repository = WindowsManifestRepository(manager)
+    opened = repository.load(CASE_ID).snapshot
+
+    representative = json.loads(REPRESENTATIVE_MANIFEST.read_bytes())
+    assert type(representative) is dict
+    representative["case_id"] = str(CASE_ID)
+    representative["revision"] = 1
+    saved = repository.save(
+        CASE_ID,
+        representative,
+        expected_revision=opened.revision,
+        expected_sha256=opened.sha256,
+        expected_cas_token=opened.cas_token,
+    )
+
+    page_one = UUID("30000000-0000-4000-8000-000000000001")
+    page_two = UUID("30000000-0000-4000-8000-000000000002")
+    page_three = UUID("30000000-0000-4000-8000-000000000003")
+    existing_group = UUID("90000000-0000-4000-8000-000000000001")
+    operation_ids = iter(
+        (
+            UUID("50000000-0000-4000-8000-000000000006"),
+            UUID("50000000-0000-4000-8000-000000000007"),
+            UUID("50000000-0000-4000-8000-000000000008"),
+        )
+    )
+
+    history = PageCommandHistory.from_snapshot(saved.snapshot)
+    history = history.execute(
+        SequenceChangeCommand(
+            reason=SequenceChangeReason.RESTORE,
+            after_page_ids=(page_three, page_two, page_one),
+        ),
+        id_factory=operation_ids.__next__,
+    )
+    history = history.execute(
+        RotatePageCommand(page_id=page_two, quarter_turns_clockwise=3),
+        id_factory=operation_ids.__next__,
+    )
+    history = history.execute(
+        SetGroupCommand(
+            page_ids=(page_three, page_two),
+            group_id=existing_group,
+        ),
+        id_factory=operation_ids.__next__,
+    )
+
+    before_undo = history
+    history = history.undo()
+    assert history.can_redo
+    history = history.redo()
+    assert history.operations == before_undo.operations
+    assert history.projection == before_undo.projection
+
+    original_document = saved.snapshot.document
+    candidate = history.to_candidate(saved.snapshot)
+    assert {
+        key: value
+        for key, value in candidate.items()
+        if key not in {"page_operations", "page_sequence"}
+    } == {
+        key: value
+        for key, value in original_document.items()
+        if key not in {"page_operations", "page_sequence"}
+    }
+    assert candidate["revision"] == saved.snapshot.revision
+    assert candidate["page_sequence"] == [
+        str(page_three),
+        str(page_two),
+        str(page_one),
+    ]
+
+    autosave = ManifestAutosaveService(
+        repository,
+        CASE_ID,
+        utc_now=lambda: representative_created + timedelta(minutes=45),
+    )
+    generation = autosave.queue(candidate)
+    result = autosave.flush()
+
+    assert generation == 1
+    assert result.status is ManifestAutosaveStatus.SAVED
+    assert result.snapshot is not None
+    assert result.snapshot.revision == 2
+
+    reloaded = WindowsManifestRepository(
+        CaseWorkspaceManager(
+            profile_root=manager.profile_root,
+            quota=_quota(),
+        )
+    ).load(CASE_ID)
+    replayed = PageCommandHistory.from_snapshot(reloaded.snapshot)
+
+    assert reloaded.snapshot.revision == 2
+    assert replayed.operations == history.operations
+    assert replayed.projection == history.projection
+    assert not replayed.can_undo
+    assert not replayed.can_redo
     assert layout.manifest.read_bytes() == (layout.journal / "latest.json").read_bytes()
