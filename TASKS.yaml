@@ -1061,7 +1061,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0006
@@ -1090,10 +1090,17 @@ tasks:
   - data-integrity
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "a78dfb7"
+    commands:
+    - "GitHub Actions run 30820309807 at a78dfb7 - passed; formatting and lint over 152 files, 12-layer import boundaries over 59 source files, strict typing over 152 files, 987 unit tests, 187 hosted integration tests, 196 hosted security tests, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run python tools/dev.py check at a78dfb7 - passed; 987 unit tests, 185 integration tests with 2 disclosed local link-capability skips, 193 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, exact fixture validation, schemas, task graph, docs, reference profile, secret scan, and all 5 deliberate quality violations"
+    - "uv run pytest -q tests/unit/test_page_operations.py tests/integration/test_manifest_repository_windows.py tests/security/test_page_operations_security.py at a78dfb7 - passed; 55 deterministic replay, generated sequence, undo/redo, save/reload, concurrency, bounded-work, and diagnostic-privacy tests"
+    notes:
+    - Exact manifest-v1 page references and rotate, crop, sequence-change, and grouping intent replay deterministically under page, operation, aggregate-work, normalized-coordinate, contiguous-sequence, and global identifier-namespace limits without importing UI, renderer, PDF, worker, or storage implementations.
+    - Immutable session histories treat loaded operations as a non-undoable durable baseline; undo and redo restore exact operation identities and projections, branching clears redo without reusing discarded identifiers, and fixed-seed plus exhaustive permutation/subset grids prove equivalent replay and serialization.
+    - Candidate construction replaces only page operations and sequence in a defensive copy, accepts only exact history-owned autosave states, rejects stale or concurrent page changes and namespace collisions, and round-trips through the real atomic repository with equivalent state after reopen.
+    - Closed errors disclose no manifest values or raw exceptions, distinguish unsupported versions, invalid group cardinality, capacity, and recovery actions, and bound adversarial identifier generation; independent replay, concurrency, privacy, boundary, integration, and final-delta reviews found no remaining P0-P2 issue.
 - id: PWS-0111
   milestone: M1
   title: Build accessible page organizer vertical-slice UI
@@ -1145,7 +1152,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0105
