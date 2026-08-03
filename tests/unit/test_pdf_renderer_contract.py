@@ -214,6 +214,23 @@ def test_exact_raster_writer_rejects_nonopaque_alpha_before_writing() -> None:
     assert destination.getvalue() == b""
 
 
+def test_alpha_validation_remains_cooperatively_cancellable_between_rows() -> None:
+    destination = BytesIO()
+    control = _ScriptedControl(cancellations=(False, True))
+
+    with pytest.raises(PdfRenderError) as raised:
+        write_exact_pdf_raster(
+            destination,
+            b"\x00\x00\x00\xff" * 4,
+            _layout(),
+            _write_limits(),
+            control,
+        )
+
+    assert raised.value.code is PdfRenderErrorCode.CANCELLED
+    assert destination.getvalue() == b""
+
+
 def test_exact_raster_writer_revalidates_operation_limits_before_writing() -> None:
     destination = BytesIO()
 
@@ -304,7 +321,7 @@ def test_process_control_exception_from_probe_is_not_swallowed() -> None:
 
 def test_cancellation_after_partial_output_fails_and_leaves_caller_to_discard_sink() -> None:
     destination = BytesIO()
-    control = _ScriptedControl(cancellations=(False, True))
+    control = _ScriptedControl(cancellations=(False, False, False, True))
     raster = b"\x00\x00\x00\xff" * 4
 
     with pytest.raises(PdfRenderError) as raised:

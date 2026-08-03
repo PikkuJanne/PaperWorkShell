@@ -96,8 +96,12 @@ def write_exact_pdf_raster(
         if not view.contiguous or view.nbytes != layout.byte_count:
             reject_pdf_rendering(PdfRenderErrorCode.RESULT_INVALID, "render.raster_buffer")
         bytes_view = view.cast("B")
-        if any(bytes_view[offset] != 255 for offset in range(3, layout.byte_count, 4)):
-            reject_pdf_rendering(PdfRenderErrorCode.RESULT_INVALID, "render.raster_alpha")
+        for row_start in range(0, layout.byte_count, layout.row_stride_bytes):
+            require_pdf_render_active(control)
+            row_end = row_start + layout.row_stride_bytes
+            alpha = bytes_view[row_start + 3 : row_end : 4].tobytes()
+            if alpha.count(255) != layout.width_pixels:
+                reject_pdf_rendering(PdfRenderErrorCode.RESULT_INVALID, "render.raster_alpha")
     except PdfRenderError:
         raise
     except BufferError, TypeError, ValueError:
