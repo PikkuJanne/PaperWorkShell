@@ -18,6 +18,7 @@ class WorkerClientErrorCode(StrEnum):
     LAUNCH_FAILED = "WORKER_LAUNCH_FAILED"
     ISOLATION_INSUFFICIENT = "WORKER_ISOLATION_INSUFFICIENT"
     TRANSPORT_FAILED = "WORKER_TRANSPORT_FAILED"
+    HANDLE_TRANSFER_FAILED = "WORKER_HANDLE_TRANSFER_FAILED"
     PROTOCOL_FAILED = "WORKER_PROTOCOL_FAILED"
     HANDSHAKE_TIMED_OUT = "WORKER_HANDSHAKE_TIMED_OUT"
     OPERATION_TIMED_OUT = "WORKER_OPERATION_TIMED_OUT"
@@ -38,6 +39,7 @@ class WorkerClientContext(StrEnum):
     LAUNCH = "worker.launch"
     ISOLATION = "worker.isolation"
     TRANSPORT = "worker.transport"
+    HANDLE_TRANSFER = "worker.handle_transfer"
     PROTOCOL = "worker.protocol"
     HANDSHAKE = "worker.handshake"
     OPERATION = "worker.operation"
@@ -72,6 +74,9 @@ _SAFE_MESSAGES: Final = MappingProxyType(
         ),
         WorkerClientErrorCode.TRANSPORT_FAILED: (
             "Communication with the document worker failed safely."
+        ),
+        WorkerClientErrorCode.HANDLE_TRANSFER_FAILED: (
+            "PaperWorkShell could not grant the document worker its required input safely."
         ),
         WorkerClientErrorCode.PROTOCOL_FAILED: (
             "The document worker sent an invalid or incompatible response."
@@ -110,6 +115,7 @@ _RECOVERY_ACTIONS: Final = MappingProxyType(
         WorkerClientErrorCode.LAUNCH_FAILED: WorkerRecoveryAction.RETRY,
         WorkerClientErrorCode.ISOLATION_INSUFFICIENT: WorkerRecoveryAction.NONE,
         WorkerClientErrorCode.TRANSPORT_FAILED: WorkerRecoveryAction.RESTART_WORKER,
+        WorkerClientErrorCode.HANDLE_TRANSFER_FAILED: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.PROTOCOL_FAILED: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.HANDSHAKE_TIMED_OUT: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.OPERATION_TIMED_OUT: WorkerRecoveryAction.RESTART_WORKER,

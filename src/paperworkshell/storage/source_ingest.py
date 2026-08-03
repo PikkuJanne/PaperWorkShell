@@ -68,6 +68,11 @@ from paperworkshell.storage.case_lifecycle import (
     _summary_from_manifest,
 )
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
+from paperworkshell.storage.prepared_source_registry import (
+    PreparedSourceReadLease,
+    PreparedSourceReadRegistry,
+    PreparedSourceRegistration,
+)
 from paperworkshell.storage.quotas import QuotaArea
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.workspace import (
@@ -169,6 +174,7 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         "_manifest_reservation",
         "_manifest_stage_path",
         "_pending",
+        "_registration",
         "_snapshot",
         "_source_reservation",
         "_store",
@@ -187,6 +193,7 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         source_reservation: WorkspaceCapacityReservation,
         manifest_reservation: WorkspaceCapacityReservation,
         manifest_stage_path: Path,
+        registration: PreparedSourceRegistration | None = None,
     ) -> None:
         self._store = store
         self._authority = authority
@@ -194,6 +201,7 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         self._display_name = display_name
         self._snapshot = snapshot
         self._pending = pending
+        self._registration = registration
         self._source_reservation = source_reservation
         self._manifest_reservation = manifest_reservation
         self._manifest_stage_path = manifest_stage_path
@@ -246,6 +254,7 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         if self._closed:
             return
         self._closed = True
+        self._revoke_registration()
         _delete_pending_no_raise(self._pending)
         self._release()
 
@@ -253,11 +262,20 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         if self._closed:
             return
         self._closed = True
+        self._revoke_registration()
         if preserve_source:
             _close_pending_no_raise(self._pending)
         else:
             _delete_pending_no_raise(self._pending)
         self._release()
+
+    def _revoke_registration(self) -> None:
+        if self._registration is not None:
+            try:
+                self._registration.close()
+            except BaseException:
+                pass
+            self._registration = None
 
     def _release(self) -> None:
         try:
@@ -283,6 +301,7 @@ class WindowsSourceIngestStore:
         "_manager",
         "_maximum_page_count",
         "_prechecker",
+        "_prepared_registry",
         "_temp_id_factory",
     )
 
@@ -295,6 +314,7 @@ class WindowsSourceIngestStore:
         clock: Callable[[], datetime] | None = None,
         id_factory: Callable[[], UUID] = uuid4,
         temp_id_factory: Callable[[], UUID] = uuid4,
+        prepared_registry: PreparedSourceReadRegistry | None = None,
     ) -> None:
         if (
             type(maximum_page_count) is not int
@@ -309,6 +329,12 @@ class WindowsSourceIngestStore:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._id_factory = id_factory
         self._temp_id_factory = temp_id_factory
+        self._prepared_registry = prepared_registry or PreparedSourceReadRegistry()
+
+    def borrow_prepared_source(self, summary: PreparedSourceSummary) -> PreparedSourceReadLease:
+        """Borrow the exact sealed pending source through its complete path-free summary."""
+
+        return self._prepared_registry.borrow(summary)
 
     def prepare(
         self,
@@ -346,6 +372,7 @@ class WindowsSourceIngestStore:
         source_reservation: WorkspaceCapacityReservation | None = None
         manifest_reservation: WorkspaceCapacityReservation | None = None
         prepared = False
+        registration: PreparedSourceRegistration | None = None
         try:
             authority = self._manager.authenticate_case(
                 selected_case,
@@ -441,6 +468,7 @@ class WindowsSourceIngestStore:
                     byte_size=result.byte_size,
                     sha256=digest,
                 )
+                registration = self._prepared_registry.register(summary, pending)
             prepared = True
             if (
                 authority is None
@@ -462,6 +490,7 @@ class WindowsSourceIngestStore:
                 source_reservation=source_reservation,
                 manifest_reservation=manifest_reservation,
                 manifest_stage_path=manifest_stage_path,
+                registration=registration,
             )
         except SourceIngestError:
             raise
@@ -475,6 +504,8 @@ class WindowsSourceIngestStore:
             reject_source_ingest(SourceIngestErrorCode.PREPARE_FAILED, "source.prepare_storage")
         finally:
             if not prepared:
+                if registration is not None:
+                    registration.close()
                 if pending is not None:
                     _delete_pending_no_raise(pending)
                 if manifest_reservation is not None:

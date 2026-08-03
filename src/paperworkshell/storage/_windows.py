@@ -21,6 +21,7 @@ _READ_CONTROL: Final = 0x0002_0000
 _DELETE: Final = 0x0001_0000
 _GENERIC_READ: Final = 0x8000_0000
 _GENERIC_WRITE: Final = 0x4000_0000
+_SYNCHRONIZE: Final = 0x0010_0000
 _FILE_READ_ATTRIBUTES: Final = 0x0000_0080
 _FILE_SHARE_READ: Final = 0x0000_0001
 _FILE_SHARE_WRITE: Final = 0x0000_0002
@@ -29,6 +30,7 @@ _CREATE_NEW: Final = 1
 _OPEN_EXISTING: Final = 3
 _FILE_FLAG_OPEN_REPARSE_POINT: Final = 0x0020_0000
 _FILE_FLAG_BACKUP_SEMANTICS: Final = 0x0200_0000
+_FILE_FLAG_SEQUENTIAL_SCAN: Final = 0x0800_0000
 _FILE_ATTRIBUTE_NORMAL: Final = 0x0000_0080
 _FILE_ATTRIBUTE_DIRECTORY: Final = 0x0000_0010
 _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
@@ -636,6 +638,93 @@ def open_handle(
         close_handle(wintypes.HANDLE(handle_value))
         raise
     return WindowsHandle(handle_value, info)
+
+
+def reopen_read_only_file(handle: WindowsHandle) -> WindowsHandle:
+    """Create an independent, non-inheritable read handle to one authenticated file.
+
+    ``ReOpenFile`` binds the new file object to the already authenticated kernel
+    object and gives it an independent file pointer.  No path lookup is performed.
+    The returned handle deliberately omits write and delete rights and shares
+    deletion so the owning pending-source lease can still clean up after a borrow.
+    """
+
+    if type(handle) is not WindowsHandle or handle.value == 0:
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "filesystem.reopen",
+            "The authenticated storage object is no longer available.",
+        )
+    original = handle.refresh_info()
+    if (
+        original.is_directory
+        or original.is_reparse_point
+        or original.is_sparse
+        or original.link_count != 1
+    ):
+        reject(
+            WorkspaceErrorCode.ALIAS_DETECTED,
+            "filesystem.reopen",
+            "The authenticated storage object is not a supported regular file.",
+        )
+
+    kernel32, _, _ = _libraries()
+    reopen_file = kernel32.ReOpenFile
+    reopen_file.argtypes = (
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
+    reopen_file.restype = wintypes.HANDLE
+    raw_handle = reopen_file(
+        wintypes.HANDLE(handle.value),
+        _GENERIC_READ | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE,
+        # Sharing write/delete does not grant either right to this handle.  It
+        # keeps the existing pending handle's retained write/delete access
+        # compatible while the borrower itself remains read-only.
+        _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE,
+        _FILE_FLAG_SEQUENTIAL_SCAN,
+    )
+    handle_value = int(raw_handle) if raw_handle else 0
+    if not handle_value or handle_value == _INVALID_HANDLE_VALUE:
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "filesystem.reopen",
+            "PaperWorkShell could not borrow the authenticated storage object safely.",
+        )
+
+    reopened: WindowsHandle | None = None
+    try:
+        reopened = WindowsHandle(handle_value, _query_opened_info(handle_value))
+        current = reopened.info
+        if (
+            current.identity != original.identity
+            or current.logical_size != original.logical_size
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "filesystem.reopen_identity",
+                "The authenticated storage object changed before it could be borrowed.",
+            )
+        require_no_alternate_streams(current.final_path)
+        return reopened
+    except BaseException:
+        if reopened is not None:
+            try:
+                reopened.close()
+            except BaseException:
+                pass
+        else:
+            close_handle = kernel32.CloseHandle
+            close_handle.argtypes = (wintypes.HANDLE,)
+            close_handle.restype = wintypes.BOOL
+            close_handle(wintypes.HANDLE(handle_value))
+        raise
 
 
 class WindowsPendingSourceFile(AbstractContextManager["WindowsPendingSourceFile"]):

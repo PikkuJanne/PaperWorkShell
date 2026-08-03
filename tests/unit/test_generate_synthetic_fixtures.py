@@ -35,7 +35,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(17, len(self.fixtures))
+        self.assertEqual(19, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -76,7 +76,8 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         by_category = {entry["category"]: entry for entry in coverage}
         self.assertEqual("on-demand", by_category["long-path"]["status"])
         self.assertEqual("on-demand", by_category["very-large"]["status"])
-        self.assertEqual("PWS-0105", by_category["protected"]["scheduled_task"])
+        self.assertEqual("committed", by_category["protected"]["status"])
+        self.assertEqual(["pdf-protected"], by_category["protected"]["fixture_ids"])
         self.assertEqual("committed", by_category["unicode"]["status"])
         self.assertEqual(["pdf-unicode-named"], by_category["unicode"]["fixture_ids"])
         self.assertEqual("PWS-0704", by_category["rtl"]["scheduled_task"])
@@ -152,6 +153,8 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         duplicate_a = self.by_id["pdf-duplicate-a"]
         duplicate_b = self.by_id["pdf-duplicate-b"]
         script = self.by_id["pdf-script-marker"].content
+        action = self.by_id["pdf-action-marker"].content
+        protected = self.by_id["pdf-protected"].content
         signed = self.by_id["pdf-signed-marker"].content
         unicode_named = self.by_id["pdf-unicode-named"]
 
@@ -162,6 +165,11 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertIn(b"/S /JavaScript", script)
         self.assertNotIn(b"/OpenAction", script)
         self.assertNotIn(b"/AA", script)
+        self.assertIn(b"/OpenAction", action)
+        self.assertIn(b"/S /GoTo", action)
+        self.assertNotIn(b"/JavaScript", action)
+        self.assertIn(b"/Filter /Standard", protected)
+        self.assertNotIn(b"password-required carrier", protected)
         self.assertIn(b"/FT /Sig", signed)
         self.assertNotIn(b"/ByteRange", signed)
         self.assertEqual("unicode-named-café.pdf", unicode_named.relative_path.name)
@@ -187,10 +195,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(17, count)
+        self.assertEqual(19, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(18, len(first))
+        self.assertEqual(20, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 

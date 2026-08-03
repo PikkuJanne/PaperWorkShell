@@ -473,6 +473,7 @@ def test_worker_client_real_launch_operation_cancel_restart_and_shutdown(
             cancellation_grace_seconds=5.0,
             shutdown_grace_seconds=10.0,
         ),
+        required_capabilities=(NOOP_CAPABILITY,),
     )
     first_generation = client.start(uuid4())
     try:
@@ -2331,15 +2332,19 @@ def _process_creation_guard_findings(
     *,
     path: Path,
     broker: Path,
+    worker_tool_adapter: Path | None = None,
 ) -> tuple[list[str], set[str]]:
     findings: list[str] = []
     broker_subprocess_calls: set[str] = set()
+    subprocess_authorities = {broker}
+    if worker_tool_adapter is not None:
+        subprocess_authorities.add(worker_tool_adapter)
     tree = ast.parse(source, filename=os.fspath(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "subprocess":
-                    if path != broker or alias.asname is not None:
+                    if path not in subprocess_authorities or alias.asname is not None:
                         findings.append("subprocess import")
                 elif alias.name == "_winapi" or alias.name.startswith("multiprocessing"):
                     findings.append(f"{alias.name} import")
@@ -2369,7 +2374,7 @@ def _process_creation_guard_findings(
         ):
             findings.append(f"dynamic process API {node.value}")
         if (
-            path == broker
+            path in subprocess_authorities
             and isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name)
@@ -2382,6 +2387,7 @@ def _process_creation_guard_findings(
 def test_production_windows_process_creation_has_one_locked_broker() -> None:
     source_root = _REPOSITORY_ROOT / "src" / "paperworkshell"
     broker = source_root / "worker" / "client" / "_windows.py"
+    worker_tool_adapter = source_root / "pdf" / "qpdf_checker.py"
     findings: list[tuple[Path, str]] = []
     broker_subprocess_calls: set[str] = set()
     for path in source_root.rglob("*.py"):
@@ -2389,12 +2395,13 @@ def test_production_windows_process_creation_has_one_locked_broker() -> None:
             path.read_text(encoding="utf-8"),
             path=path,
             broker=broker,
+            worker_tool_adapter=worker_tool_adapter,
         )
         findings.extend((path, finding) for finding in path_findings)
         broker_subprocess_calls.update(subprocess_calls)
 
     assert not findings
-    assert broker_subprocess_calls == {"list2cmdline"}
+    assert broker_subprocess_calls == {"Popen", "list2cmdline"}
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Task: PWS-0107
+- Extension: PWS-0105 first exact document-handle operation
 - Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
 
 ## Context
@@ -179,16 +180,37 @@ retries can drain quarantine, but they cannot retroactively report the earlier l
 ### Broker case objects by handle, never by path
 
 Case binding in the bootstrap and RPC identifies the active logical case but grants no filesystem
-access. The current `protocol.noop` operation has no inputs, outputs, or document handles. Its
+access. The PWS-0107 `protocol.noop` operation has no inputs, outputs, or document handles. Its
 AppContainer profile storage is intentionally writable and approved runtime/code roots receive
 read/execute grants; no broader filesystem-authority claim follows from those facts.
 
-Future document operations must resolve each logical `CaseObjectReference` in a trusted storage
-broker, authenticate the already-opened object and requested access, and transfer only the exact
-least-privilege handle out of band. They must not add a case path to RPC, arguments, or environment;
-grant an AppContainer SID broad access to a case directory; or treat a lexical path as authority.
-Until that handle broker and its denial tests exist, PaperWorkShell makes no claim that the worker
-can read or write active-case files.
+PWS-0105 is the first narrow fulfillment of this rule. The trusted storage broker registers an
+already sealed and independently verified pending PDF under its complete path-free summary. A
+borrow uses `ReOpenFile` on the retained authenticated object, rechecks identity/size/type/link/
+reparse/sparse/alternate-stream state, and obtains an independent read pointer without a lexical
+path lookup. `DuplicateHandle` transfers only `FILE_READ_DATA`, `FILE_READ_ATTRIBUTES`, and
+`SYNCHRONIZE` into the ready worker with inheritance disabled.
+
+The operation also creates a new anonymous result pipe and transfers only
+`FILE_WRITE_DATA | SYNCHRONIZE` for its worker end. The broker keeps the read end, closes its local
+writer after duplication, and never grants the AppContainer SID a case-directory ACL. The closed
+`pdf.inspect` RPC codec binds the two distinct worker-local handle values to one exact
+`source_read` object reference, expected size/digest, operation UUID, and resource limits. No case
+path appears in RPC, arguments, environment, or result.
+
+The worker copies and rehashes the exact source into bounded AppContainer-private temporary
+storage, then closes the case handle before native parsing. It writes one capped frame correlated
+to operation and source IDs and closes the result writer before sending RPC success. The broker
+terminates and confirms the one-shot job tree before releasing its source/pipe authorities, reads
+through EOF, and validates length, version, correlations, and closed typed values. It does not
+remotely close a target-process handle number because Windows may reuse that number for another
+object; whole-tree termination is the revocation boundary.
+
+This extension proves read access only to one pending PDF plus write access only to one result
+pipe. It grants no directory, committed-original, manifest, journal, cache, staging, export, or
+destination authority. Future document operations must repeat the trusted resolution,
+authentication, least-privilege transfer, correlation, termination, and denial evidence for their
+own object types; they cannot generalize PWS-0105's handle parameters into arbitrary authority.
 
 ### Require real containment evidence
 
@@ -208,8 +230,10 @@ Task completion requires live Windows evidence, not launcher flags or this ADR a
 - runtime/code access grants and the per-launch profile are removed only after the job tree exits.
 
 Successful case-object handle brokerage is not PWS-0107 evidence because `protocol.noop` receives no
-such handle. The first later operation that introduces the broker must separately prove that only
-its deliberately brokered handles work.
+such handle. PWS-0105 is the first consuming operation and separately proves that only its
+deliberately brokered source and result handles work. Its source-rights tests prove writes are
+denied; the unchanged PWS-0107 live containment evidence continues to prove path-based case access
+is denied.
 
 A skipped or simulated required probe is not passing evidence. Failure of any required property
 leaves PWS-0107 or its consuming milestone gate open.
@@ -268,13 +292,16 @@ controls on the supported Windows target.
   brokers.
 - AppContainer and private case ACLs do not protect against Windows kernel compromise,
   administrators, SYSTEM, or unrestricted malware in the launching account.
-- This task adds no document parser, renderer, OCR engine, UI, case mutation, or publish operation.
-  Later adapters must preserve this boundary and add handle-broker contract tests.
+- PWS-0107 itself added no document parser, renderer, OCR engine, UI, case mutation, or publish
+  operation. The PWS-0105 extension adds only worker-side structural inspection of one prepared PDF
+  and cannot publish case state. Later adapters must preserve this boundary and add their own
+  handle-broker contract tests.
 - Stable plain-language client failures support later accessible announcements and recovery
   actions. PWS-0111 still owns the UI focus and announcement behavior.
 
 ## Implementation references
 
+- [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md)
 - [Microsoft: Implementing an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)
 - [Microsoft: Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 - [Microsoft: Creating Processes](https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes)

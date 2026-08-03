@@ -44,7 +44,9 @@ must authenticate and transfer an exact least-privilege handle before a worker o
 one of those objects; logical case binding is not path access. Verified output moves from case
 staging to a user-selected external destination. Templates enter as validated data. Diagnostics
 use a separate allowlisted flow. A future updater is separate from document processing and sends
-no case data. The current `protocol.noop` worker receives no document handles.
+no case data. The `protocol.noop` operation receives no document handles. PWS-0105's separate
+one-shot `pdf.inspect` generation receives only one deliberately brokered
+prepared-source read handle and one write-only result-pipe handle.
 
 ## Boundary inventory
 
@@ -78,6 +80,7 @@ sequenceDiagram
     Host->>Host: Validate grant and audit token/job/environment
     Client->>Host: Framed, authenticated session.hello
     Host-->>Client: Validated session.ready
+    Client->>Win: Duplicate exact reduced source/result handles after ready
     Client->>Host: One registered operation and explicit limits
     Host-->>Client: Accepted, progress, and one terminal result
     Client->>Host: Optional cooperative cancel or graceful shutdown
@@ -106,13 +109,75 @@ sequenceDiagram
 7. A clean shutdown requires correlated `session.closed`. Unexpected EOF/exit becomes a stable
    failure without killing the desktop process or exposing exit/stderr values. Restart creates new
    profile/job/pipes/IDs/capability/sequences and never replays work.
-8. The current no-op carries no inputs, outputs, or document handles. Case access remains absent
-   until a future trusted broker authenticates and transfers an exact handle out of band.
+8. The no-op carries no inputs, outputs, or document handles. PWS-0105 adds the first narrow
+   document operation only after ready: a trusted storage broker authenticates one sealed pending
+   PDF and the Windows client duplicates reduced source-read and result-pipe-write handles into a
+   fresh generation. This does not grant a case path or directory ACL.
 9. Live evidence must cover real IPv4/IPv6 TCP/UDP denial for worker and descendant, whole-tree
    kill/no-breakaway, exact inherited handles, environment canary absence, path denial, deliberate
    handle success, and profile/grant cleanup. A required skip is not a pass.
 
 Primary threats: TM-001, TM-002, TM-004, TM-008, TM-009, TM-011, TM-012, TM-022, TM-023.
+
+## DF-PDF-INSPECTION — broker, inspect, correlate, and revoke
+
+```mermaid
+sequenceDiagram
+    participant Store as Trusted source store
+    participant Broker as PDF inspection broker
+    participant Win as Windows worker client
+    participant Host as Restricted worker
+    participant PDF as pikepdf/libqpdf adapter
+    Store-->>Broker: Sealed prepared summary and exact retained object
+    Broker->>Store: Borrow independently positioned read handle
+    Broker->>Broker: Create bounded anonymous result pipe
+    Broker->>Win: Launch fresh isolated generation; wait for pdf.inspect
+    Broker->>Win: Duplicate reduced source-read and result-write handles
+    Broker->>Host: Authenticated reference, size/digest, handle values, limits
+    Host->>Host: Copy and hash into worker-private temp; close case handle
+    Host->>PDF: Inspect verified stream under limits/deadline/cancellation
+    PDF-->>Host: Closed typed structural result or sanitized failure
+    Host-->>Broker: Write correlated capped frame; close writer; terminal RPC
+    Broker->>Win: Always terminate and confirm one-shot job tree
+    Broker->>Broker: On RPC success, read EOF and validate frame/correlations
+    Broker-->>Store: Release exact borrow and pipe authority
+```
+
+1. TB-03 begins only after PWS-0104 sealed and independently rehashed the random pending copy.
+   Storage matches the complete summary and uses `ReOpenFile` on its retained object; it rechecks
+   identity, size, regular/single-link/reparse/sparse state, and alternate streams without resolving
+   a lexical path.
+2. The ready worker receives source rights limited to read data/read attributes/synchronize and
+   result-pipe rights limited to write data/synchronize. Both child handles are non-inheritable.
+   The AppContainer SID receives no case ACL, and the source/result handle values are distinct
+   worker-local parameters in the closed `pdf.inspect` codec.
+3. The worker verifies the source's type/size, copies exactly the expected bytes into bounded
+   AppContainer-private temporary storage while recomputing SHA-256, and closes the case handle
+   before native parsing. A short, surplus, changed, or over-limit source fails without commit.
+4. The pikepdf adapter opens without password guessing or recovery, applies page/object/graph/time/
+   cancellation limits, scans all indirect objects for the registered markers, and uses embedded
+   libqpdf syntax checking. It returns only closed states; raw warning, object, and exception values
+   are discarded.
+5. The result pipe carries one length-prefixed frame capped at 4,132 bytes and bound to both the
+   operation UUID and prepared-source UUID. RPC success occurs only after the worker wrote and
+   closed that frame; it does not make the frame trusted.
+6. Success, failure, cancellation, deadline, invalid frame, or crash all end with whole-tree
+   termination before the broker releases the exact source/pipe authorities. Only after successful
+   RPC and confirmed termination does it read through EOF and validate the complete frame. It never
+   remotely closes a worker handle number that Windows could have reused.
+7. An opened unencrypted result can become complete import metadata after the trusted application
+   binding checks. Encrypted or malformed state, a missing count, unknown required state, or any
+   operation/report failure leaves the pending copy non-authoritative and the previous manifest
+   unchanged. Signature state means structural markers only, not cryptographic validation.
+
+The standalone qpdf command seam uses a fixed absolute executable and argv with `shell=False`, a
+minimal environment, bounded discarded output, cancellation/timeout cleanup, and no PATH lookup.
+It provides command-boundary evidence; the production handle-bound stream uses pikepdf's embedded
+libqpdf. See the
+[PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
+
+Primary threats: TM-001, TM-002, TM-003, TM-004, TM-005, TM-008, TM-009, TM-011, TM-012, TM-016,
+TM-022, TM-023, TM-025, TM-026.
 
 ## DF-IMPORT — select, precheck, copy, inspect, and commit source
 
@@ -150,11 +215,12 @@ sequenceDiagram
    for exact size/digest verification. It remains non-authoritative until the source context exits
    normally and its terminal identity check succeeds. A changing/truncated source, cancellation,
    limit, disk-full, or write failure leaves no valid source record.
-4. TB-02/TB-03: complex inspection receives only a logical prepared reference, case/operation
-   binding, explicit limits, and an exact broker-authenticated read-only handle. It returns typed
-   complete metadata for that copy. PDF `not_checked` values and a missing page count cannot be
-   promoted into a source record. The worker cannot write the pending copy, manifest, journal,
-   source records, or page records; raw third-party exceptions are discarded.
+4. TB-02/TB-03: complex inspection follows DF-PDF-INSPECTION. It receives only a logical prepared
+   reference, case/operation binding, explicit limits, an exact broker-authenticated read-only
+   handle, and a write-only bounded result pipe. It returns typed complete metadata for that copy.
+   PDF `not_checked` values and a missing page count cannot be promoted into a source record. The
+   one-shot worker ends before storage releases the borrow and cannot write the pending copy,
+   manifest, journal, source records, or page records; raw third-party exceptions are discarded.
 5. The trusted broker validates the complete metadata and serializes duplicate detection against
    committed SHA-256 values. A match is advisory: each accepted import retains a distinct random
    source ID, immutable case copy, display name, and page identity.

@@ -242,6 +242,10 @@ class CapabilityDescriptor:
 
 
 NOOP_CAPABILITY: Final = CapabilityDescriptor("protocol.noop", 1)
+PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
+
+PDF_INSPECT_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
+PDF_INSPECT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
 
 
 @dataclass(frozen=True, slots=True)
@@ -509,6 +513,58 @@ class OperationStartPayload:
         )
         if type(self.requested_limits) is not ResourceLimits:
             reject("RPC_INVALID_OBJECT", "payload.requested_limits", "resource limits are required")
+
+
+def validate_pdf_inspect_start(payload: OperationStartPayload) -> None:
+    """Validate the exact, path-free ``pdf.inspect`` version-1 input contract."""
+
+    if len(payload.inputs) != 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.inspect version 1 requires exactly one source reference",
+        )
+    source = payload.inputs[0]
+    if (
+        source.area is not ReferenceArea.SOURCE_READ
+        or source.content_kind != "pdf"
+        or source.expected_byte_size is None
+        or source.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.inspect version 1 requires one authenticated PDF source reference",
+        )
+
+    expected_names = {
+        PDF_INSPECT_SOURCE_HANDLE_PARAMETER,
+        PDF_INSPECT_RESULT_HANDLE_PARAMETER,
+    }
+    if (
+        len(payload.parameters) != 2
+        or {parameter.name for parameter in payload.parameters} != expected_names
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.inspect version 1 requires its two brokered handles",
+        )
+    handle_values = tuple(parameter.value for parameter in payload.parameters)
+    if (
+        any(
+            parameter.value_type is not ScalarValueType.INTEGER
+            or type(parameter.value) is not int
+            or parameter.value <= 0
+            for parameter in payload.parameters
+        )
+        or len(set(handle_values)) != 2
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.inspect brokered handles must be distinct positive integers",
+        )
 
 
 @dataclass(frozen=True, slots=True)

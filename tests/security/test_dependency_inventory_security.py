@@ -605,49 +605,12 @@ class DependencyInventorySecurityTests(unittest.TestCase):
 
         document = copy.deepcopy(self.baseline)
         component = _component(document, "qpdf")
-        component["admission_status"] = "approved"
         component["active_scopes"] = ["worker"]
-        component["version"] = {
-            "constraint": "==12.2.0",
-            "selected": "12.2.0",
-            "pin_kind": "exact",
-            "pin_source": "synthetic security test",
-        }
-        cast(dict[str, Any], component["source"])["release_url"] = (
-            "https://github.com/qpdf/qpdf/releases/tag/v12.2.0"
-        )
-        component["integrity"] = {
-            "verification": "sha256",
-            "revision": None,
-            "hashes": [
-                {
-                    "algorithm": "SHA-256",
-                    "value": "12" * 32,
-                    "artifact": "qpdf-12.2.0.zip",
-                }
-            ],
-        }
-        component["artifact_evidence"] = {
-            "artifact": "qpdf-12.2.0.zip",
-            "url": "https://github.com/qpdf/qpdf/releases/download/v12.2.0/qpdf-12.2.0.zip",
-            "target_platform": "windows-x64",
-            "size_bytes": 1,
-            "sha256": "12" * 32,
-        }
-        cast(dict[str, Any], component["maintenance"])["status"] = "active"
         cast(dict[str, Any], component["packaging"])["ship_state"] = "bundled"
-        cast(dict[str, Any], component["sbom"])["purl"] = "pkg:generic/qpdf@12.2.0"
 
-        validated, issues = validate_dependency_data(
-            document,
-            self.schema,
-            document="synthetic-dependency-inventory.json",
-            root=PROJECT_ROOT,
-            repository_checks=True,
-        )
+        issues = self._document_issues(document)
 
-        self.assertIn("DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID", _codes(issues))
-        self.assertIsNone(validated)
+        self.assertIn("DEPENDENCY_ADMISSION_PROFILE_INVALID", _codes(issues))
 
         document = copy.deepcopy(self.baseline)
         component = _component(document, "pikepdf")
@@ -962,6 +925,12 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "download-from-astral-mirror: false",
                 "download-from-astral-mirror: true",
             ),
+            (
+                "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+                "0" * 64,
+            ),
+            ("PWS_QPDF_EXECUTABLE=$qpdf", "PATH=$qpdf"),
+            ("$version = (& $qpdf --version)[0]", "$version = (& $qpdf --help)[0]"),
         )
         for original, replacement in cases:
             with self.subTest(control=original), tempfile.TemporaryDirectory() as temporary:

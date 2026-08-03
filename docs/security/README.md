@@ -2,7 +2,7 @@
 
 - Status: Binding foundation model
 - Task: PWS-0004
-- Last reviewed: 2026-08-01
+- Last reviewed: 2026-08-03
 
 This directory defines the security and privacy assumptions that must be preserved before
 PaperWorkShell parses untrusted documents. It is split into four artifacts so later tasks can
@@ -10,8 +10,9 @@ extend one concern without weakening the others:
 
 - [Threat model](threat-model.md): assets, actors, attacker capabilities, trust boundaries,
   threats, misuse cases, and mandatory mitigation principles.
-- [Data flows](data-flows.md): import, preview, OCR, export, diagnostics, deletion, template, and
-  update flows with numbered boundary crossings and failure behavior.
+- [Data flows](data-flows.md): worker lifecycle, exact PDF inspection, import, preview, OCR,
+  export, diagnostics, deletion, template, and update flows with numbered boundary crossings and
+  failure behavior.
 - [Threat traceability](threat-traceability.md): one mapping from every threat to frozen
   decisions and implementation tasks or gates.
 - [Initial security test plan](security-test-plan.md): deterministic success and failure evidence

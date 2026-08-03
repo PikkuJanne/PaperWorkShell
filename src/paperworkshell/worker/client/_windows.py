@@ -31,6 +31,7 @@ from paperworkshell.worker.protocol.bootstrap import (
 
 if TYPE_CHECKING:
     from paperworkshell.worker.client.process import (
+        BrokeredHandlePurpose,
         IsolationEvidence,
         WorkerLaunchRequest,
         WorkerResourcePolicy,
@@ -75,6 +76,26 @@ _TRUSTEE_IS_SID: Final = 0
 _TRUSTEE_IS_UNKNOWN: Final = 0
 _SUB_CONTAINERS_AND_OBJECTS_INHERIT: Final = 0x3
 _FILE_GENERIC_READ_EXECUTE: Final = 0x0012_00A9
+_FILE_READ_DATA: Final = 0x0000_0001
+_FILE_WRITE_DATA: Final = 0x0000_0002
+_FILE_APPEND_DATA: Final = 0x0000_0004
+_FILE_DELETE_CHILD: Final = 0x0000_0040
+_FILE_READ_ATTRIBUTES: Final = 0x0000_0080
+_FILE_WRITE_ATTRIBUTES: Final = 0x0000_0100
+_DELETE: Final = 0x0001_0000
+_READ_CONTROL: Final = 0x0002_0000
+_SYNCHRONIZE: Final = 0x0010_0000
+_PRIVATE_TEMP_ACCESS: Final = (
+    _FILE_READ_DATA
+    | _FILE_WRITE_DATA
+    | _FILE_APPEND_DATA
+    | _FILE_DELETE_CHILD
+    | _FILE_READ_ATTRIBUTES
+    | _FILE_WRITE_ATTRIBUTES
+    | _DELETE
+    | _READ_CONTROL
+    | _SYNCHRONIZE
+)
 _ACCESS_ALLOWED_ACE_TYPE: Final = 0
 _ACL_SIZE_INFORMATION_CLASS: Final = 2
 _MUTEX_ALL_ACCESS: Final = 0x001F_0001
@@ -151,6 +172,7 @@ class WindowsLaunchErrorCode(StrEnum):
     PIPE_FAILED = "WORKER_WINDOWS_PIPE_FAILED"
     JOB_FAILED = "WORKER_WINDOWS_JOB_FAILED"
     PROCESS_FAILED = "WORKER_WINDOWS_PROCESS_FAILED"
+    HANDLE_TRANSFER_FAILED = "WORKER_WINDOWS_HANDLE_TRANSFER_FAILED"
     BOOTSTRAP_FAILED = "WORKER_WINDOWS_BOOTSTRAP_FAILED"
     TERMINATION_FAILED = "WORKER_WINDOWS_TERMINATION_FAILED"
     CLEANUP_FAILED = "WORKER_WINDOWS_CLEANUP_FAILED"
@@ -1480,6 +1502,7 @@ class _AppContainerProfile:
             )
         try:
             local_app_data = _app_container_folder_path(sid)
+            _prepare_app_container_temp(local_app_data, sid)
         except BaseException:
             partial = _PartialAppContainerProfile(name=name, sid=sid)
             if not _close_profile_bounded(partial):
@@ -1633,6 +1656,44 @@ def _app_container_folder_path(sid: ctypes.c_void_p) -> Path:
     finally:
         _co_task_mem_free(folder)
         _local_free(rendered)
+
+
+def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> None:
+    """Provision and verify one reparse-free, profile-private writable temp root."""
+
+    if (
+        not local_app_data.is_absolute()
+        or _is_remote_or_device_path(local_app_data)
+        or not local_app_data.is_dir()
+    ):
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.temp_root",
+            "Windows did not create the isolated worker profile storage.",
+        )
+    _require_no_reparse_local_path(local_app_data)
+    temp = local_app_data / "Temp"
+    try:
+        temp.mkdir(mode=0o700, parents=False, exist_ok=True)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.temp_create",
+            "Windows could not provision private worker temporary storage.",
+        )
+    if not temp.is_dir() or not _is_within(temp, local_app_data):
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.temp_identity",
+            "Windows could not authenticate private worker temporary storage.",
+        )
+    _require_no_reparse_local_path(temp)
+    if _sid_access_mask(temp, sid) & _PRIVATE_TEMP_ACCESS != _PRIVATE_TEMP_ACCESS:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.temp_access",
+            "Windows could not verify private worker temporary-storage access.",
+        )
 
 
 @dataclass(slots=True, repr=False)
@@ -2402,6 +2463,72 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 time.sleep(_TREE_WAIT_QUANTUM_SECONDS)
         self._returncode = self._exit_code()
         return self._returncode
+
+    def duplicate_handle(
+        self,
+        source_handle: int,
+        purpose: BrokeredHandlePurpose,
+    ) -> int:
+        """Duplicate one explicitly reduced, non-inheritable handle into the worker."""
+
+        from paperworkshell.worker.client.process import BrokeredHandlePurpose
+
+        if (
+            type(source_handle) is not int
+            or not 0 < source_handle <= _MAX_WINDOWS_SIZE_T
+            or source_handle == _INVALID_HANDLE_VALUE
+            or type(purpose) is not BrokeredHandlePurpose
+        ):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "handle_transfer.request",
+                "A valid typed brokered-handle request is required.",
+            )
+        if self._closed or self._containment_closed or not self._process.is_open:
+            _reject(
+                WindowsLaunchErrorCode.HANDLE_TRANSFER_FAILED,
+                "handle_transfer.process",
+                "The document worker cannot receive another brokered handle.",
+            )
+        desired_access = {
+            BrokeredHandlePurpose.READ_SOURCE: (
+                _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE
+            ),
+            BrokeredHandlePurpose.WRITE_RESULT_PIPE: _FILE_WRITE_DATA | _SYNCHRONIZE,
+        }[purpose]
+        kernel32 = _kernel32()
+        current_process = kernel32.GetCurrentProcess
+        current_process.argtypes = ()
+        current_process.restype = wintypes.HANDLE
+        duplicate = kernel32.DuplicateHandle
+        duplicate.argtypes = (
+            wintypes.HANDLE,
+            wintypes.HANDLE,
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.HANDLE),
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        )
+        duplicate.restype = wintypes.BOOL
+        target_handle = wintypes.HANDLE()
+        succeeded = duplicate(
+            current_process(),
+            wintypes.HANDLE(source_handle),
+            wintypes.HANDLE(self._process.value),
+            ctypes.byref(target_handle),
+            desired_access,
+            False,
+            0,
+        )
+        target_value = int(target_handle.value or 0)
+        if not succeeded or target_value in {0, _INVALID_HANDLE_VALUE}:
+            _reject(
+                WindowsLaunchErrorCode.HANDLE_TRANSFER_FAILED,
+                "handle_transfer.duplicate",
+                "Windows could not transfer the required reduced-right handle.",
+            )
+        return target_value
 
     def terminate_tree(self) -> None:
         if self._closed or self._containment_closed:

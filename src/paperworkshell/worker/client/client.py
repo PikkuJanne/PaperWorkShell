@@ -28,6 +28,7 @@ from paperworkshell.worker.client.models import (
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import (
+    BrokeredHandlePurpose,
     IsolationEvidence,
     ProcessLauncher,
     TransportReceive,
@@ -43,6 +44,7 @@ from paperworkshell.worker.protocol.codec import (
 )
 from paperworkshell.worker.protocol.errors import ProtocolError
 from paperworkshell.worker.protocol.models import (
+    MAX_SAFE_INTEGER,
     PROTOCOL_VERSION,
     CancelReason,
     CapabilityDescriptor,
@@ -431,7 +433,47 @@ class WorkerClient:
             self._protocol_fault()
         self._dispatch_inbound(message)
 
-    def start_operation(self, payload: OperationStartPayload) -> UUID:
+    def duplicate_handle(
+        self,
+        source_handle: int,
+        purpose: BrokeredHandlePurpose,
+    ) -> int:
+        """Transfer one reduced-right handle into the ready worker generation."""
+
+        self._require_owner()
+        process = self._process
+        if self._phase is not WorkerLifecyclePhase.READY or process is None:
+            reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.OPERATION)
+        if type(source_handle) is not int or source_handle <= 0:
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.CONFIGURATION,
+            )
+        if type(purpose) is not BrokeredHandlePurpose:
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.CONFIGURATION,
+            )
+        target_handle: object = None
+        try:
+            target_handle = process.duplicate_handle(source_handle, purpose)
+        except Exception:
+            pass
+        if type(target_handle) is not int or not 0 < target_handle <= MAX_SAFE_INTEGER:
+            failure = self._fault(
+                WorkerClientErrorCode.HANDLE_TRANSFER_FAILED,
+                WorkerClientContext.HANDLE_TRANSFER,
+                terminate=True,
+            )
+            reject_client(failure.code, failure.context)
+        return target_handle
+
+    def start_operation(
+        self,
+        payload: OperationStartPayload,
+        *,
+        operation_id: UUID | None = None,
+    ) -> UUID:
         """Start the one negotiated operation and arm its broker wall deadline."""
 
         self._require_owner()
@@ -440,24 +482,26 @@ class WorkerClient:
             or type(payload) is not OperationStartPayload
         ):
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.OPERATION)
-        operation_id = self._new_id()
+        selected_operation_id = (
+            self._new_id() if operation_id is None else self._require_uuid4(operation_id)
+        )
         request_id = self._new_id()
         operation_deadline = self._deadline_after(payload.requested_limits.wall_time_ms / 1_000.0)
         self._send_outbound(
             MessageType.OPERATION_START,
             payload,
             request_id=request_id,
-            operation_id=operation_id,
+            operation_id=selected_operation_id,
         )
         self._active_operation = _ActiveOperation(
-            operation_id=operation_id,
+            operation_id=selected_operation_id,
             request_id=request_id,
             operation_kind=payload.operation_kind,
             operation_version=payload.operation_version,
         )
         self._phase = WorkerLifecyclePhase.BUSY
         self._operation_deadline = operation_deadline
-        return operation_id
+        return selected_operation_id
 
     def cancel(self, reason: CancelReason = CancelReason.USER_REQUESTED) -> UUID:
         """Request cooperative cancellation; acknowledgement is not terminal."""

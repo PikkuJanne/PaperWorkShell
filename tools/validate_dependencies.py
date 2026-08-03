@@ -49,10 +49,12 @@ HARD_GATED_COMPONENT_IDS: Final = frozenset({"ghostscript", "mupdf", "poppler"})
 KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
     {
         "ghostscript",
+        "lxml",
         "mupdf",
         "ocrmypdf",
         "pdfium",
         "pikepdf",
+        "pillow",
         "poppler",
         "pypdfium2",
         "qpdf",
@@ -62,10 +64,12 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
 )
 EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "ghostscript": "native-tool",
+    "lxml": "python-package",
     "mupdf": "native-library",
     "ocrmypdf": "python-package",
     "pdfium": "native-library",
     "pikepdf": "python-package",
+    "pillow": "python-package",
     "poppler": "native-library",
     "pypdfium2": "python-package",
     "qpdf": "native-library",
@@ -82,8 +86,10 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
         "ghostscript",
         "git",
         "gitleaks",
+        "lxml",
         "ocrmypdf",
         "pikepdf",
+        "pillow",
         "pyside6",
         "qpdf",
         "tesseract",
@@ -95,18 +101,21 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
 )
 REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
     "PWS-D014": frozenset({"cpython", "pyside6"}),
-    "PWS-D015": frozenset({"pikepdf", "qpdf"}),
+    "PWS-D015": frozenset({"lxml", "pikepdf", "pillow", "qpdf"}),
     "PWS-D016": frozenset({"ocrmypdf", "tesseract", "tesseract-language-data"}),
     "PWS-D017": RENDERER_COMPONENT_IDS,
 }
 ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "ocrmypdf": frozenset({"PWS-0204"}),
+    "lxml": frozenset({"PWS-0105"}),
     "pikepdf": frozenset({"PWS-0105"}),
+    "pillow": frozenset({"PWS-0105"}),
     "pyside6": frozenset({"PWS-0111"}),
     "qpdf": frozenset({"PWS-0105"}),
     "tesseract": frozenset({"PWS-0204"}),
     "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
 }
+REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset({("pikepdf", "contains", "qpdf", True)})
 EXPECTED_NEGATIVE_CODES: Final[dict[str, str]] = {
     "distribution-decision-bypass.json": "DEPENDENCY_DISTRIBUTION_DECISION_REQUIRED",
     "duplicate-key.json": "DEPENDENCY_JSON_DUPLICATE_KEY",
@@ -124,6 +133,7 @@ KNOWN_LICENSE_IDS: Final = frozenset(
         "GPL-3.0-only",
         "LGPL-3.0-only",
         "MIT",
+        "MIT-CMU",
         "MPL-2.0",
         "PSF-2.0",
     }
@@ -169,6 +179,7 @@ EXPECTED_PURL_BASES: Final[dict[str, str]] = {
     "cpython": "pkg:generic/cpython",
     "git": "pkg:github/git/git",
     "gitleaks": "pkg:github/gitleaks/gitleaks",
+    "qpdf": "pkg:generic/qpdf",
     "uv": "pkg:github/astral-sh/uv",
 }
 EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
@@ -186,6 +197,7 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "jsonschema": "https://github.com/python-jsonschema/jsonschema",
     "jsonschema-specifications": ("https://github.com/python-jsonschema/jsonschema-specifications"),
     "librt": "https://github.com/mypyc/librt",
+    "lxml": "https://github.com/lxml/lxml",
     "mupdf": "https://mupdf.com/",
     "mypy": "https://github.com/python/mypy",
     "mypy-extensions": "https://github.com/python/mypy_extensions",
@@ -194,6 +206,7 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "pathspec": "https://github.com/cpburnz/python-pathspec",
     "pdfium": "https://pdfium.googlesource.com/pdfium/",
     "pikepdf": "https://github.com/pikepdf/pikepdf",
+    "pillow": "https://github.com/python-pillow/Pillow",
     "pluggy": "https://github.com/pytest-dev/pluggy",
     "poppler": "https://poppler.freedesktop.org/",
     "pygments": "https://github.com/pygments/pygments",
@@ -229,6 +242,7 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "jsonschema": "https://github.com/python-jsonschema/jsonschema/blob/v4.26.0/COPYING",
     "jsonschema-specifications": "https://github.com/python-jsonschema/jsonschema-specifications/blob/v2025.9.1/COPYING",
     "librt": "https://github.com/mypyc/librt/blob/main/LICENSE",
+    "lxml": "https://github.com/lxml/lxml/blob/lxml-6.1.1/LICENSES.txt",
     "mupdf": "https://mupdf.com/releases",
     "mypy": "https://github.com/python/mypy/blob/v2.3.0/LICENSE",
     "mypy-extensions": "https://github.com/python/mypy_extensions/blob/1.1.0/LICENSE",
@@ -236,7 +250,8 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "packaging": "https://github.com/pypa/packaging/blob/26.2/LICENSE",
     "pathspec": "https://github.com/cpburnz/python-pathspec/blob/v1.1.1/LICENSE",
     "pdfium": "https://pdfium.googlesource.com/pdfium/+/refs/heads/main/LICENSE",
-    "pikepdf": "https://github.com/pikepdf/pikepdf/blob/main/LICENSE.txt",
+    "pikepdf": "https://github.com/pikepdf/pikepdf/blob/v10.10.0/LICENSE.txt",
+    "pillow": "https://github.com/python-pillow/Pillow/blob/12.3.0/LICENSE",
     "pluggy": "https://github.com/pytest-dev/pluggy/blob/1.6.0/LICENSE",
     "poppler": "https://cgit.freedesktop.org/poppler/poppler/tree/README-XPDF",
     "pygments": "https://github.com/pygments/pygments/blob/2.20.0/LICENSE",
@@ -244,7 +259,7 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "pyside6": "https://doc.qt.io/qtforpython-6/licenses.html",
     "pytest": "https://github.com/pytest-dev/pytest/blob/9.1.1/LICENSE",
     "pyyaml": "https://github.com/yaml/pyyaml/blob/6.0.3/LICENSE",
-    "qpdf": "https://github.com/qpdf/qpdf/blob/main/LICENSE.txt",
+    "qpdf": "https://github.com/qpdf/qpdf/blob/v12.3.2/LICENSE.txt",
     "qt-pdf": "https://doc.qt.io/qt-6/qtpdf-licensing.html",
     "referencing": "https://github.com/python-jsonschema/referencing/blob/v0.37.0/COPYING",
     "rpds-py": "https://github.com/crate-py/rpds/blob/v2026.6.3/LICENSE",
@@ -279,6 +294,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "jsonschema": ("MIT", None, True, False, False, False),
     "jsonschema-specifications": ("MIT", None, True, False, False, False),
     "librt": ("MIT", None, True, False, False, False),
+    "lxml": ("BSD-3-Clause", None, True, False, False, False),
     "mupdf": ("AGPL-3.0-or-later OR LicenseRef-Artifex-Commercial", None, True, True, False, True),
     "mypy": ("MIT", None, True, False, False, False),
     "mypy-extensions": ("MIT", None, True, False, False, False),
@@ -287,6 +303,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "pathspec": ("MPL-2.0", None, True, True, False, False),
     "pdfium": ("BSD-3-Clause AND LicenseRef-PDFium-Third-Party", None, True, False, False, False),
     "pikepdf": ("MPL-2.0", None, True, True, False, False),
+    "pillow": ("MIT-CMU", None, True, False, False, False),
     "pluggy": ("MIT", None, True, False, False, False),
     "poppler": ("GPL-2.0-only OR GPL-3.0-only", None, True, True, False, True),
     "pygments": ("BSD-2-Clause", None, True, False, False, False),
@@ -308,7 +325,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     ),
     "pytest": ("MIT", None, True, False, False, False),
     "pyyaml": ("MIT", None, True, False, False, False),
-    "qpdf": ("Apache-2.0 OR Artistic-2.0", None, True, False, False, False),
+    "qpdf": ("Apache-2.0 OR Artistic-2.0", "Apache-2.0", True, False, False, False),
     "qt-pdf": (
         "(LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only) AND LicenseRef-PDFium-Third-Party",
         None,
@@ -518,6 +535,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         False,
         False,
     ),
+    "lxml": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("runtime", "worker"),
+        "planned",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
     "mupdf": (
         "native-library",
         "candidate",
@@ -574,12 +604,12 @@ EXPECTED_ADMISSION_PROFILES: Final[
         "python-package",
         "transitive",
         "approved",
-        ("development", "test"),
-        "not-shipped",
+        ("development", "runtime", "test", "worker"),
+        "planned",
         False,
         False,
         False,
-        "developer-host",
+        "worker-process",
         False,
         False,
     ),
@@ -612,8 +642,21 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "pikepdf": (
         "python-package",
         "direct",
+        "approved",
+        ("runtime", "worker"),
         "planned",
-        (),
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "pillow": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("runtime", "worker"),
         "planned",
         True,
         False,
@@ -716,9 +759,9 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "qpdf": (
         "native-library",
         "direct",
-        "planned",
-        (),
-        "planned",
+        "approved",
+        ("runtime", "worker"),
+        "external-runtime",
         True,
         True,
         True,
@@ -911,6 +954,7 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
         "uv.lock",
     ),
     "librt": ("librt", "library", "mypyc contributors", "uv.lock"),
+    "lxml": ("lxml", "library", "lxml contributors", "upstream-release-inventory"),
     "mupdf": ("MuPDF", "library", "Artifex Software Inc.", "upstream-release-inventory"),
     "mypy": ("mypy", "application", "mypy contributors", "uv.lock"),
     "mypy-extensions": ("mypy-extensions", "library", "mypy contributors", "uv.lock"),
@@ -919,6 +963,7 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     "pathspec": ("pathspec", "library", "pathspec contributors", "uv.lock"),
     "pdfium": ("PDFium", "library", "PDFium Authors", "upstream-release-inventory"),
     "pikepdf": ("pikepdf", "library", "pikepdf contributors", "upstream-release-inventory"),
+    "pillow": ("Pillow", "library", "Pillow contributors", "upstream-release-inventory"),
     "pluggy": ("pluggy", "library", "pytest contributors", "uv.lock"),
     "poppler": ("Poppler", "library", "Poppler contributors", "upstream-release-inventory"),
     "pygments": ("Pygments", "library", "Pygments contributors", "uv.lock"),
@@ -2376,6 +2421,7 @@ def _relationship_semantic_issues(
     relationships = cast(list[Mapping[str, Any]], data["relationships"])
     issues: list[DependencyIssue] = []
     seen: set[tuple[str, str, str]] = set()
+    actual_relationships: set[tuple[str, str, str, bool]] = set()
     adjacency: dict[str, set[str]] = {}
     for index, relationship in enumerate(relationships):
         path = f"$.relationships[{index}]"
@@ -2384,6 +2430,7 @@ def _relationship_semantic_issues(
         relation_type = cast(str, relationship["type"])
         enabled = cast(bool, relationship["enabled"])
         identity = (source, relation_type, target)
+        actual_relationships.add((source, relation_type, target, enabled))
         if identity in seen:
             _add_issue(
                 issues,
@@ -2431,6 +2478,17 @@ def _relationship_semantic_issues(
             )
         if enabled and source != target:
             adjacency.setdefault(source, set()).add(target)
+
+    if not REQUIRED_REVIEWED_RELATIONSHIPS.issubset(actual_relationships):
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_RELATIONSHIP_PROFILE_INVALID",
+                document,
+                "$.relationships",
+                "reviewed embedded dependency relationships must remain present and enabled",
+            ),
+        )
 
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -3294,7 +3352,7 @@ def _workflow_reconciliation_issues(
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
         and quality_job.get("timeout-minutes") == 20
-        and len(quality_steps) == 6
+        and len(quality_steps) == 7
     )
     expected_command_steps = {
         "Bootstrap locked environment": "python tools/dev.py bootstrap",
@@ -3497,12 +3555,14 @@ def _workflow_reconciliation_issues(
         and next(iter(gitleaks_hash_pairs))[1] == EXPECTED_TOOL_ARTIFACTS["gitleaks"]
         else None
     )
-    download_steps = [
+    gitleaks_download_steps = [
         mapping
         for mapping in quality_steps
-        if isinstance(mapping.get("run"), str) and "Invoke-WebRequest" in mapping["run"]
+        if mapping.get("name") == f"Install and verify Gitleaks {gitleaks_selected}"
+        and isinstance(mapping.get("run"), str)
+        and "Invoke-WebRequest" in mapping["run"]
     ]
-    download_scripts = [cast(str, step["run"]) for step in download_steps]
+    download_scripts = [cast(str, step["run"]) for step in gitleaks_download_steps]
     gitleaks_uri: str | None = None
     gitleaks_expected_hash: str | None = None
     gitleaks_step_valid = False
@@ -3541,9 +3601,10 @@ def _workflow_reconciliation_issues(
             else []
         )
         gitleaks_step_valid = (
-            set(download_steps[0]) == {"name", "shell", "run"}
-            and download_steps[0].get("name") == f"Install and verify Gitleaks {gitleaks_selected}"
-            and download_steps[0].get("shell") == "pwsh"
+            set(gitleaks_download_steps[0]) == {"name", "shell", "run"}
+            and gitleaks_download_steps[0].get("name")
+            == f"Install and verify Gitleaks {gitleaks_selected}"
+            and gitleaks_download_steps[0].get("shell") == "pwsh"
             and script.splitlines() == expected_script_lines
             and script.count("Invoke-WebRequest") == 1
             and re.search(
@@ -3580,6 +3641,65 @@ def _workflow_reconciliation_issues(
                 document,
                 "$.components[*]",
                 "developer Gitleaks pin must match the dependency inventory",
+            ),
+        )
+
+    qpdf_component = components["qpdf"]
+    qpdf_selected = cast(str, cast(Mapping[str, Any], qpdf_component["version"])["selected"])
+    qpdf_evidence = cast(Mapping[str, Any], qpdf_component["artifact_evidence"])
+    qpdf_artifact = cast(str, qpdf_evidence["artifact"])
+    qpdf_uri = cast(str, qpdf_evidence["url"])
+    qpdf_hash = cast(str, qpdf_evidence["sha256"])
+    qpdf_download_steps = [
+        mapping
+        for mapping in quality_steps
+        if mapping.get("name") == f"Install and verify qpdf {qpdf_selected}"
+        and isinstance(mapping.get("run"), str)
+        and "Invoke-WebRequest" in mapping["run"]
+    ]
+    qpdf_step_valid = False
+    if len(qpdf_download_steps) == 1:
+        qpdf_script = cast(str, qpdf_download_steps[0]["run"])
+        expected_qpdf_script_lines = [
+            '$ErrorActionPreference = "Stop"',
+            f'$archive = Join-Path $env:RUNNER_TEMP "{qpdf_artifact}"',
+            f'$destination = Join-Path $env:RUNNER_TEMP "qpdf-{qpdf_selected}"',
+            f'$uri = "{qpdf_uri}"',
+            f'$expected = "{qpdf_hash}"',
+            "Invoke-WebRequest -Uri $uri -OutFile $archive",
+            "$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
+            "$archive).Hash.ToLowerInvariant()",
+            "if ($actual -ne $expected) {",
+            '  throw "qpdf archive checksum mismatch."',
+            "}",
+            "Expand-Archive -LiteralPath $archive -DestinationPath $destination",
+            f'$qpdf = Join-Path $destination "qpdf-{qpdf_selected}-msvc64/bin/qpdf.exe"',
+            "if (-not (Test-Path -LiteralPath $qpdf -PathType Leaf)) {",
+            '  throw "qpdf executable was not found in the reviewed archive layout."',
+            "}",
+            "$version = (& $qpdf --version)[0]",
+            f'if ($version -ne "qpdf version {qpdf_selected}") {{',
+            '  throw "qpdf version mismatch."',
+            "}",
+            '"PWS_QPDF_EXECUTABLE=$qpdf" | Out-File -FilePath '
+            "$env:GITHUB_ENV -Encoding utf8 -Append",
+        ]
+        qpdf_step_valid = (
+            set(qpdf_download_steps[0]) == {"name", "shell", "run"}
+            and qpdf_download_steps[0].get("shell") == "pwsh"
+            and qpdf_script.splitlines() == expected_qpdf_script_lines
+            and qpdf_script.count("Invoke-WebRequest") == 1
+            and "$env:GITHUB_PATH" not in qpdf_script
+            and qpdf_script.count("PWS_QPDF_EXECUTABLE") == 1
+        )
+    if not qpdf_step_valid:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+                document,
+                "$.components[*]",
+                "CI qpdf artifact, checksum, fixed executable path, and version must match the dependency inventory",
             ),
         )
     git_constraint = cast(str, cast(Mapping[str, Any], components["git"]["version"])["constraint"])

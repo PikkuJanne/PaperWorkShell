@@ -366,6 +366,34 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
     )
 
 
+def test_only_pdf_adapter_may_import_the_pinned_pikepdf_engine() -> None:
+    assert (
+        inspect_source(
+            "import pikepdf\nfrom pikepdf import Pdf\n",
+            module="paperworkshell.pdf.pikepdf_adapter",
+            package="paperworkshell.pdf",
+            path="pikepdf_adapter.py",
+        )
+        == ()
+    )
+    violations = inspect_source(
+        "import pikepdf\n",
+        module="paperworkshell.worker.operations",
+        package="paperworkshell.worker",
+        path="operations.py",
+    )
+    assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+
+    for target in ("PIL", "lxml", "packaging"):
+        violations = inspect_source(
+            f"import {target}\n",
+            module="paperworkshell.pdf.pikepdf_adapter",
+            package="paperworkshell.pdf",
+            path="pikepdf_adapter.py",
+        )
+        assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+
+
 def test_invalid_source_and_relative_import_fail_closed() -> None:
     parse_violations = inspect_source(
         "def broken(:\n",

@@ -2,7 +2,8 @@
 
 - Status: Binding implementation policy
 - Task: PWS-0002
-- Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0107 restricted worker lifecycle
+- Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
+  structural inspection; PWS-0107 restricted worker lifecycle
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -27,7 +28,7 @@ worker host -> domain
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, progress, cancellation, and limits |
-| `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations |
+| `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations; the implemented contract is documented in [PDF structural-inspection contract](pdf-structural-inspection.md) |
 | `imaging` | Image inspection and transformation interfaces/implementations |
 | `ocr` | OCR interfaces and worker-side OCRmyPDF/Tesseract implementations |
 | `overlays` | Normalized visual-overlay intent and rendering boundaries |
@@ -45,7 +46,12 @@ worker host -> domain
 2. UI direction is `paperworkshell.__main__` → future `ui` → `app`; `app` cannot import either higher tier, and `ui` cannot import the composition entrypoint. All three must not directly import `paperworkshell.pdf`, `paperworkshell.imaging`, or `paperworkshell.ocr`. They may import the passive `worker` namespace and explicit `worker.client` or `worker.protocol` modules, but not worker-host modules.
 3. Worker, adapter, and service packages must not import `paperworkshell.app` or a future `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
 4. Only the declared package layers are accepted. Adding another top-level layer requires updating this document, the checker, and positive/negative tests in the task that introduces it.
-5. PWS-0002 keeps the runtime dependency set empty, so all third-party imports from product code are rejected. The alternative standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected. Future ownership is reserved—but not approved—for PySide6 in a dedicated UI layer, pikepdf in `pdf`, and OCRmyPDF/Tesseract integration in `ocr`. Renderer ownership remains undecided.
+5. Third-party imports remain denied unless the owning task admits one exact package and the
+   executable boundary names it. PWS-0105 admits `pikepdf` only in the `pdf` layer; `domain`,
+   application/UI, GUI-safe worker client/protocol, storage, and every other adapter layer still
+   reject it. The alternative standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are
+   also rejected. Future ownership is reserved—but not approved—for PySide6 in a dedicated UI
+   layer and OCRmyPDF/Tesseract integration in `ocr`. Renderer ownership remains undecided.
 6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. A later adapter task may add a narrow, tested exception only when an admitted dependency requires one.
 7. Every package initializer is a passive namespace: it must not import or re-export product layers or implementation modules. Consequently, every package namespace remains importable without optional UI or document engines.
 
@@ -98,12 +104,21 @@ grant, minimal environment, and fresh-generation restart are specified in the
 [Restricted worker lifecycle contract](worker-lifecycle.md) and
 [ADR 0004](../adr/0004-windows-worker-isolation.md).
 
-That boundary does not create a new `storage -> worker` or `worker -> storage` import edge. The
-current no-op operation has no document handles and the AppContainer SID has no case-root access.
-Future operations must use a trusted composition/broker layer to authenticate and transfer exact
-least-privilege handles for logical case-object references. They may not import the private storage
-Windows adapter into GUI-safe client/protocol code, pass a case path over RPC, or grant the worker a
-general case directory capability.
+PWS-0105 introduces the first document operation without creating a `storage -> worker` or
+`worker -> storage` implementation edge. Storage registers the already sealed PWS-0104 pending
+source and lends one independently positioned exact read handle through a structural protocol.
+Trusted composition duplicates that handle and a new result-pipe writer into a ready worker with
+explicit reduced access. `worker.pdf_operation` composes the host-side adapter; the `pdf` adapter
+itself remains independent of worker/storage code. GUI-safe client/protocol modules know only typed
+handle-purpose and operation contracts, not the private storage Windows adapter.
+
+The worker has no case-root ACL or lexical case path. It copies and rehashes the exact brokered
+source into worker-private ephemeral storage, closes the case handle, parses that stream, and
+writes one bounded correlated result frame. The trusted broker terminates the one-shot generation
+before releasing source/result authority and validates that frame before typed metadata can reach
+application code. Later operations must repeat this pattern with their own exact access profiles;
+PWS-0105 is not approval for a general directory capability, a path in RPC, or arbitrary handle
+parameters. See the [PDF structural-inspection contract](pdf-structural-inspection.md).
 
 A new external engine is not admitted by editing code alone: the dependency policy and licensing review in PWS-0005 and the engine-specific roadmap task must approve it first. Renderer ownership remains intentionally unspecified until PWS-0106 records its evidence-based ADR.
 

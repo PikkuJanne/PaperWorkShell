@@ -3,7 +3,7 @@
 - Status: Binding foundation policy
 - Task: PWS-0009
 - Decision: PWS-D035
-- Last reviewed: 2026-08-01
+- Last reviewed: 2026-08-03
 
 PaperWorkShell treats every document and image as hostile and potentially sensitive. The routine
 repository and CI corpus is therefore **public synthetic-only**: it is built from fixed algorithms
@@ -32,10 +32,11 @@ generation plus exact inventory and byte comparison. Index properties are constr
 they do not claim that a future PDF/image engine has parsed, rendered, decrypted, extracted, or
 visually verified the artifact.
 
-The index covers each roadmap corpus class as `committed`, `on-demand`, or `scheduled`. A
-`scheduled` entry names the task that can honestly construct and verify the class:
+The index covers each roadmap corpus class as `committed`, `on-demand`, or `scheduled`. PWS-0105
+adds a deterministic password-required PDF and a separate catalog-reachable action-only PDF to the
+committed version-1 corpus. A `scheduled` entry names the later task that can honestly construct and
+verify the remaining class:
 
-- protected/encrypted PDF behavior: PWS-0105;
 - CMYK image behavior: PWS-0201;
 - rendered multilingual and complex-script text: PWS-0303;
 - right-to-left layout behavior: PWS-0704.
@@ -44,11 +45,17 @@ The Unicode category is committed as an NFC Unicode-named PDF path, which needs 
 engine. It does not claim rendered Unicode page content; that distinct behavior remains with the
 font strategy task.
 
+The password-required fixture uses a deterministic, test-only weak Standard Security Handler R2
+construction and a public synthetic password token recorded in the index. It exists only to prove
+the closed `encrypted` inspection state; it is not an approved encryption profile or sensitive
+credential. The action-only fixture contains one catalog action and no JavaScript marker, while the
+script-marker fixture contains an orphaned structural token unreachable from the document catalog.
+Their shared index category preserves the released schema vocabulary; adapter tests distinguish the
+two construction assertions.
+
 The signed-marker fixture contains an unsigned PDF signature field only. It is not a digital
-signature, does not contain a signature image, and carries no validity claim. The script-marker
-fixture contains an orphaned structural token that is unreachable from the document catalog. The
-handwriting demonstration is an algorithmic abstract stroke pattern explicitly marked as not a
-signature.
+signature, does not contain a signature image, and carries no validity claim. The handwriting
+demonstration is an algorithmic abstract stroke pattern explicitly marked as not a signature.
 
 ## Regeneration and validation
 

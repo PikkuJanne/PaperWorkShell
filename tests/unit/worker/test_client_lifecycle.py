@@ -18,6 +18,7 @@ from paperworkshell.worker.client.errors import (
 )
 from paperworkshell.worker.client.models import WorkerLifecyclePhase, WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import (
+    BrokeredHandlePurpose,
     IsolationEvidence,
     TransportReceive,
     TransportReceiveKind,
@@ -27,6 +28,7 @@ from paperworkshell.worker.client.process import (
 from paperworkshell.worker.protocol.models import (
     MAX_MESSAGE_BYTES,
     NOOP_CAPABILITY,
+    PDF_INSPECT_CAPABILITY,
     CancelDisposition,
     ClosedReason,
     Direction,
@@ -76,8 +78,11 @@ class FakeTransport:
         self.incoming: deque[TransportReceive] = deque()
         self.receive_calls = 0
         self.close_calls = 0
+        self.fail_send = False
 
     def send_payload(self, payload: bytes) -> None:
+        if self.fail_send:
+            raise OSError("C:\\private\\brokered-send-canary.pdf")
         self.sent.append(payload)
 
     def receive_payload(self, _timeout_seconds: float) -> TransportReceive:
@@ -104,6 +109,8 @@ class FakeProcess:
         self.close_calls = 0
         self.fail_termination = False
         self.fail_close = False
+        self.fail_duplicate = False
+        self.duplicate_calls: list[tuple[int, BrokeredHandlePurpose]] = []
 
     def poll(self) -> int | None:
         self.poll_calls += 1
@@ -111,6 +118,16 @@ class FakeProcess:
 
     def wait(self, _timeout_seconds: float | None) -> int | None:
         return self.exit_status
+
+    def duplicate_handle(
+        self,
+        source_handle: int,
+        purpose: BrokeredHandlePurpose,
+    ) -> int:
+        self.duplicate_calls.append((source_handle, purpose))
+        if self.fail_duplicate:
+            raise OSError("C:\\private\\brokered-handle-canary.pdf")
+        return source_handle + 10_000
 
     def terminate_tree(self) -> None:
         self.terminate_calls += 1
@@ -284,7 +301,7 @@ def _ready_client(
         MessageType.SESSION_READY,
         SessionReadyPayload(
             selected_protocol_version=1,
-            capabilities=(NOOP_CAPABILITY,),
+            capabilities=(NOOP_CAPABILITY, PDF_INSPECT_CAPABILITY),
             max_message_bytes=MAX_MESSAGE_BYTES,
         ),
         request_id=hello.request_id,
@@ -341,7 +358,7 @@ def test_start_negotiates_and_query_is_local_and_secret_free() -> None:
     assert generation == 1
     assert snapshot.phase is WorkerLifecyclePhase.READY
     assert snapshot.pid == record.process.pid
-    assert snapshot.capabilities == (NOOP_CAPABILITY,)
+    assert snapshot.capabilities == (NOOP_CAPABILITY, PDF_INSPECT_CAPABILITY)
     assert record.process.transport.receive_calls == before_receive
     assert record.process.poll_calls == before_poll
     secret = record.request.session_capability.value
@@ -461,6 +478,91 @@ def test_invalid_clock_cannot_send_an_operation_without_arming_its_deadline() ->
     assert record.process.transport.sent == []
     assert record.process.terminate_calls == 0
     assert record.process.close_calls == 0
+
+
+def test_ready_owner_can_transfer_reduced_handles_and_choose_operation_id() -> None:
+    client, _launcher, record, _generation = _ready_client()
+    chosen_operation_id = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+
+    source_target = client.duplicate_handle(71, BrokeredHandlePurpose.READ_SOURCE)
+    result_target = client.duplicate_handle(73, BrokeredHandlePurpose.WRITE_RESULT_PIPE)
+    returned_operation_id = client.start_operation(
+        OperationStartPayload(
+            operation_kind=NOOP_CAPABILITY.capability_id,
+            operation_version=NOOP_CAPABILITY.capability_version,
+            inputs=(),
+            parameters=(),
+            requested_limits=_limits(),
+        ),
+        operation_id=chosen_operation_id,
+    )
+    start = _consume(record)
+
+    assert source_target == 10_071
+    assert result_target == 10_073
+    assert record.process.duplicate_calls == [
+        (71, BrokeredHandlePurpose.READ_SOURCE),
+        (73, BrokeredHandlePurpose.WRITE_RESULT_PIPE),
+    ]
+    assert returned_operation_id == chosen_operation_id
+    assert start.operation_id == chosen_operation_id
+
+
+def test_handle_transfer_requires_owner_thread_and_ready_phase() -> None:
+    client, _launcher, record, _generation = _ready_client()
+    raised: list[WorkerClientError] = []
+
+    def transfer_from_wrong_thread() -> None:
+        try:
+            client.duplicate_handle(79, BrokeredHandlePurpose.READ_SOURCE)
+        except WorkerClientError as error:
+            raised.append(error)
+
+    thread = threading.Thread(target=transfer_from_wrong_thread)
+    thread.start()
+    thread.join(timeout=1.0)
+
+    assert len(raised) == 1
+    assert raised[0].code is WorkerClientErrorCode.OWNER_THREAD_REQUIRED
+    assert record.process.duplicate_calls == []
+    _start_and_accept(client, record)
+    with pytest.raises(WorkerClientError) as busy:
+        client.duplicate_handle(79, BrokeredHandlePurpose.READ_SOURCE)
+    assert busy.value.code is WorkerClientErrorCode.STATE_INVALID
+    assert record.process.duplicate_calls == []
+
+
+def test_duplicate_or_following_send_failure_terminates_the_generation() -> None:
+    client, _launcher, record, _generation = _ready_client()
+    record.process.fail_duplicate = True
+
+    with pytest.raises(WorkerClientError) as duplicate_failure:
+        client.duplicate_handle(83, BrokeredHandlePurpose.READ_SOURCE)
+
+    assert duplicate_failure.value.code is WorkerClientErrorCode.HANDLE_TRANSFER_FAILED
+    assert "brokered-handle-canary" not in repr(duplicate_failure.value)
+    assert client.query().phase is WorkerLifecyclePhase.FAULTED
+    assert record.process.terminate_calls == 1
+    assert record.process.close_calls == 1
+
+    client, _launcher, record, _generation = _ready_client()
+    client.duplicate_handle(89, BrokeredHandlePurpose.READ_SOURCE)
+    record.process.transport.fail_send = True
+    with pytest.raises(WorkerClientError) as send_failure:
+        client.start_operation(
+            OperationStartPayload(
+                operation_kind=NOOP_CAPABILITY.capability_id,
+                operation_version=NOOP_CAPABILITY.capability_version,
+                inputs=(),
+                parameters=(),
+                requested_limits=_limits(),
+            )
+        )
+
+    assert send_failure.value.code is WorkerClientErrorCode.TRANSPORT_FAILED
+    assert client.query().phase is WorkerLifecyclePhase.FAULTED
+    assert record.process.terminate_calls == 1
+    assert record.process.close_calls == 1
 
 
 def test_invalid_clock_cannot_send_cancellation_without_arming_its_deadline() -> None:

@@ -11,6 +11,7 @@ from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
     NOOP_CAPABILITY,
+    PDF_INSPECT_CAPABILITY,
     CancelDisposition,
     CapabilityDescriptor,
     ClosedReason,
@@ -29,6 +30,7 @@ from paperworkshell.worker.protocol.models import (
     SessionHelloPayload,
     SessionReadyPayload,
     WorkerFaultPayload,
+    validate_pdf_inspect_start,
 )
 
 MAX_TRACKED_MESSAGES: Final = 4_096
@@ -306,6 +308,8 @@ class ConversationState:
             reject(
                 "RPC_INVALID_OPERATION", "payload", "protocol.noop accepts no inputs or parameters"
             )
+        if descriptor == PDF_INSPECT_CAPABILITY:
+            validate_pdf_inspect_start(payload)
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",
@@ -515,8 +519,19 @@ class ConversationState:
             )
         if message.request_id != active.start_request_id:
             reject("RPC_REQUEST_MISMATCH", "request_id", "result does not match the start request")
-        if active.operation_kind == NOOP_CAPABILITY.capability_id and payload.outputs:
-            reject("RPC_INVALID_RESULT", "payload.outputs", "protocol.noop cannot produce outputs")
+        if (
+            active.operation_kind
+            in {
+                NOOP_CAPABILITY.capability_id,
+                PDF_INSPECT_CAPABILITY.capability_id,
+            }
+            and payload.outputs
+        ):
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "this operation cannot produce RPC object outputs",
+            )
         terminal = _TerminalOperation(
             operation_id=active.operation_id,
             start_request_id=active.start_request_id,

@@ -35,6 +35,9 @@ DESKTOP_ENTRYPOINT: Final = f"{PROJECT_PACKAGE}.__main__"
 ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
 UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
+APPROVED_EXTERNAL_IMPORTS: Final = {
+    "pdf": frozenset({"pikepdf"}),
+}
 FORBIDDEN_UI_TOOLKIT_ROOTS: Final = frozenset(("_tkinter", "tkinter", "turtle"))
 WORKER_PACKAGE: Final = f"{PROJECT_PACKAGE}.worker"
 EXPORT_PACKAGE: Final = f"{PROJECT_PACKAGE}.export"
@@ -138,6 +141,12 @@ def _target_violation(
         )
 
     if _is_standard_library(target):
+        return None
+
+    approved_external_roots = (
+        frozenset() if owner is None else APPROVED_EXTERNAL_IMPORTS.get(owner, frozenset())
+    )
+    if target_root in approved_external_roots:
         return None
 
     if _is_within(target, PROJECT_PACKAGE):
