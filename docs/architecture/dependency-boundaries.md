@@ -28,7 +28,7 @@ worker host -> domain
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, progress, cancellation, and limits |
-| `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations; the implemented contract is documented in [PDF structural-inspection contract](pdf-structural-inspection.md) |
+| `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations; implemented and in-progress contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md) and [PDF page-rendering contract](pdf-page-rendering.md) |
 | `imaging` | Image inspection and transformation interfaces/implementations |
 | `ocr` | OCR interfaces and worker-side OCRmyPDF/Tesseract implementations |
 | `overlays` | Normalized visual-overlay intent and rendering boundaries |
@@ -47,11 +47,13 @@ worker host -> domain
 3. Worker, adapter, and service packages must not import `paperworkshell.app` or a future `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
 4. Only the declared package layers are accepted. Adding another top-level layer requires updating this document, the checker, and positive/negative tests in the task that introduces it.
 5. Third-party imports remain denied unless the owning task admits one exact package and the
-   executable boundary names it. PWS-0105 admits `pikepdf` only in the `pdf` layer; `domain`,
-   application/UI, GUI-safe worker client/protocol, storage, and every other adapter layer still
-   reject it. The alternative standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are
-   also rejected. Future ownership is reserved—but not approved—for PySide6 in a dedicated UI
-   layer and OCRmyPDF/Tesseract integration in `ocr`. Renderer ownership remains undecided.
+   executable boundary names it. PWS-0105 admits `pikepdf` only in the `pdf` layer, and PWS-0106
+   reuses that admitted boundary for inherited page-geometry resolution; `domain`, application/UI,
+   GUI-safe worker client/protocol, storage, and every other adapter layer still reject it. The
+   alternative standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected.
+   Future ownership is reserved—but not approved—for PySide6 in a dedicated UI layer and
+   OCRmyPDF/Tesseract integration in `ocr`. The PDFium renderer selection remains conditional until
+   its exact binding and native closure pass PWS-0106 admission evidence.
 6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. A later adapter task may add a narrow, tested exception only when an admitted dependency requires one.
 7. Every package initializer is a passive namespace: it must not import or re-export product layers or implementation modules. Consequently, every package namespace remains importable without optional UI or document engines.
 

@@ -1,6 +1,6 @@
 # PDF page-rendering contract
 
-- Status: Proposed PWS-0106 contract; implementation and live evidence pending
+- Status: PWS-0106 implementation in progress; live PDFium adapter and evidence pending
 - Task: PWS-0106
 - Decisions: PWS-D012, PWS-D013, PWS-D017, PWS-D019, PWS-D034
 - ADR: [ADR 0005 renderer selection](../adr/0005-pdf-renderer-selection.md)
@@ -135,19 +135,39 @@ that the current PWS-0105 structural-inspection result emits page geometry. Rend
 may be used only as cross-check evidence, never as the sole source of truth. PWS-0108 later owns
 carrying and correlating the resolved geometry with its exact brokered source/render operation.
 
+The resolver opens the caller-owned authenticated stream without repair or automatic page-attribute
+materialization. Before selecting a page, it iteratively walks the catalog's exact root page tree in
+`/Kids` order without using the native unbounded page list. Page-tree objects must be indirect;
+depth, children per node, total nodes, and actual leaf pages are bounded independently. `/Count` is
+never trusted for selection or skipping: every non-negative integer declaration must equal the
+bounded descendant count. The walk validates the complete tree even after finding the requested
+page, so a later duplicate, cycle, dishonest count, malformed type, or parent mismatch fails closed.
+
+The resolver then walks from the selected leaf toward `/Parent` and takes the nearest non-null
+inherited value. Every edge must be reflected by the parent's bounded `/Kids` array, intermediate
+and root nodes must be `/Pages` dictionaries, and the chain must terminate at the catalog root. A
+missing MediaBox, encrypted source, or policy violation fails with a stable sanitized code. The
+stream remains caller-owned and is restored to its entry position; a restoration failure takes
+precedence over both an operation result and an operation failure.
+
 Geometry is resolved in unrotated PDF user space:
 
-1. Resolve the inherited MediaBox. It must contain four finite ordered coordinates and a positive
-   width and height.
+1. Resolve the inherited MediaBox. A PDF rectangle names two opposite corners, so either axis may
+   be reversed in the source; normalize each axis with `min`/`max`, then require exactly four
+   finite numeric values and positive width and height. Boolean values are not numbers here.
 2. Resolve the inherited CropBox; when absent, use MediaBox.
 3. For `crop` mode, use the non-empty intersection of CropBox and MediaBox. For `media` mode, use
-   MediaBox. A non-finite, inverted, empty, or policy-exceeding effective box is a stable geometry
-   failure, not a renderer-specific recovery.
+   MediaBox. A non-finite, zero-span, disjoint, or policy-exceeding effective box is a stable
+   geometry failure, not a renderer-specific recovery. Coordinate magnitude and box span have
+   separate trusted policy limits before conversion or fit calculations.
 4. Resolve inherited `/Rotate` as an integer multiple of 90 degrees and normalize it modulo 360.
    Reject a non-integer or non-quarter-turn value rather than depend on engine coercion.
 5. Add the requested clockwise quarter-turn modulo 360, preserving the effective visible region.
-6. Scale while preserving aspect ratio and round by one documented adapter rule. Validate the
-   final integer dimensions, stride, pixels, and bytes before bitmap allocation.
+6. Compute one uniform limiting scale exactly from the oriented spans and requested maximum
+   rectangle, then ceil each positive scaled span to an integer pixel dimension. The limiting
+   dimension therefore equals its requested maximum and the other never exceeds its maximum.
+   Reject a scale above 1,000,000 pixels per user-space unit before float conversion or native
+   calls, then validate final dimensions, stride, pixels, and bytes before bitmap allocation.
 
 The selected pypdfium2 `crop=` argument is a **bitmap-level crop applied after rotation**. A PDF
 user-space CropBox must not be passed to it as if both coordinate systems were identical. The
@@ -168,12 +188,14 @@ claim that a fitted preview has a particular physical resolution. It fits the au
 box into the requested maximum pixel rectangle; a uniform UserUnit does not change that box's
 aspect ratio.
 
-PWS-0106 geometry-resolution evidence records non-default UserUnit behavior for review and testing;
-this is not metadata claimed from the current PWS-0105 report. The renderer remains bounded by
-final pixel dimensions regardless of the value. Any future print-scale, physical-measurement, or
-DPI-sensitive feature must resolve UserUnit behind the pikepdf/qpdf boundary and add a versioned
-request/profile plus dedicated fidelity evidence; it cannot infer physical size from pypdfium2's
-`scale` alone.
+`/UserUnit` is read only from the leaf page (it is not an inherited page-tree value), defaults to
+1, and must be a finite positive number no greater than the PDF maximum of 75,000. Version 1 records
+whether it is non-default but deliberately excludes it from aspect-fit math. PWS-0106
+geometry-resolution evidence records this behavior for review and testing; this is not metadata
+claimed from the current PWS-0105 report. The renderer remains bounded by final pixel dimensions
+regardless of the value. Any future print-scale, physical-measurement, or DPI-sensitive feature
+must resolve UserUnit behind the pikepdf/qpdf boundary and add a versioned request/profile plus
+dedicated fidelity evidence; it cannot infer physical size from pypdfium2's `scale` alone.
 
 ## Transparency, color, forms, and annotations
 
@@ -189,9 +211,11 @@ result; consumers must not infer source transparency from the output.
 
 PDFium accepts DeviceCMYK and ICCBased source content but its bitmap output is in a Gray/BGR/BGRA
 family, not a CMYK preview buffer. The adapter writes only RGBA8 after renderer-native conversion.
-Synthetic DeviceCMYK and ICCBased goldens establish the supported visual behavior and bounded
-pixel-difference tolerance. The result is suitable for consistent on-screen review only; it does
-not claim preservation of source separations, ICC round-tripping, soft-proofing, or print color.
+Synthetic DeviceCMYK and standards-valid ICCBased structures establish the source cases; live
+selected-renderer tests compare bounded region relationships and record the engine-produced color
+values without inventing a device-independent RGB oracle. The result is suitable for consistent
+on-screen review only; it does not claim preservation of source separations, ICC round-tripping,
+soft-proofing, or print color.
 
 ### Forms, annotations, XFA, and scripts
 
@@ -216,10 +240,14 @@ Limits are project-owned positive integers validated at construction. The adapte
 arithmetic and fails before expensive work or allocation where possible:
 
 1. Reject an expired deadline, cancellation, unsupported engine identity/flags, invalid source
-   authority, or authenticated page count over policy before rendering. Input-byte and temporary
-   copy bounds remain independently enforced by the source/worker operation layer.
+   authority, or authenticated page count over policy before rendering. Catalog traversal also
+   enforces depth, per-node child, total-node, and actual-leaf limits before selecting native page
+   content. Input-byte and temporary-copy bounds remain independently enforced by the source/worker
+   operation layer.
 2. Reject a negative/out-of-range page index before loading the page.
-3. Reject non-finite, zero, inverted, or policy-exceeding PDF geometry and render scale.
+3. Reject non-finite, zero-span, or policy-exceeding PDF geometry and render scale. Decimal PDF
+   values are compared to coordinate, span, UserUnit, and scale policy bounds before any lossy
+   float conversion.
 4. Derive integer width and height with a closed rounding rule; enforce each dimension and total
    pixels using division-based overflow checks before multiplication.
 5. Prove `width * 4`, `height * stride`, maximum bitmap bytes, destination capacity, and the
@@ -295,8 +323,9 @@ PWS-0106 verification includes:
   stride/length/opaque-alpha validation, metadata-only results, sink failures, and no
   renderer-specific type leakage;
 - synthetic goldens for direct/inherited MediaBox/CropBox, asymmetric crop, intrinsic plus
-  requested rotations, transparency/blend/soft-mask content, DeviceCMYK, ICCBased color, and
-  embedded fonts;
+  requested rotations, transparency/blend/soft-mask content, stored annotation appearances, and
+  embedded fonts, plus structural DeviceCMYK/ICCBased fixtures and live bounded color-region
+  comparisons;
 - malformed, truncated, password-required, script/XFA/interactive, high-dimension, excessive-page,
   memory, destination, cancellation, timeout, and native-fault paths;
 - contract tests that bind pypdfium2 5.12.1, PDFium 152.0.7947.0/build 7947, empty feature flags,

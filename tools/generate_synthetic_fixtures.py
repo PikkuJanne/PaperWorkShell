@@ -66,7 +66,15 @@ class GeneratedGoldenReference:
     source_fixture_id: str
     reference_fixture_id: str
     page_index: int
-    pixels_per_point: int
+    page_box: str
+    box_source: str
+    intrinsic_rotation_degrees: int
+    additional_rotation_degrees: int
+    combined_rotation_degrees: int
+    user_unit: int
+    render_scale_pixels_per_user_unit: int
+    maximum_width_pixels: int
+    maximum_height_pixels: int
     width: int
     height: int
     maximum_channel_delta: int
@@ -98,8 +106,11 @@ def _serialize_pdf(
     info_object: int | None = None,
     trailer_entries: bytes = b"",
     header_comment: bytes = b"",
+    pdf_version: bytes = b"1.4",
 ) -> bytes:
-    output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    if pdf_version not in {b"1.4", b"1.6"}:
+        raise AssertionError("unsupported synthetic PDF version")
+    output = bytearray(b"%PDF-" + pdf_version + b"\n%\xe2\xe3\xcf\xd3\n")
     if header_comment:
         output.extend(b"% " + header_comment + b"\n")
     offsets = [0]
@@ -375,6 +386,277 @@ def _render_cmyk_pdf() -> bytes:
             b"<< /Producer (" + _pdf_literal(marker) + b") >>",
         ),
         info_object=6,
+    )
+
+
+def _render_geometry_matrix_pdf() -> bytes:
+    inherited_content = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 43 37 re f",
+            b"1 0 0 rg 3 5 15 10 re f",
+            b"0 1 0 rg 18 5 15 10 re f",
+            b"0 0 1 rg 3 15 15 10 re f",
+            b"1 1 0 rg 18 15 15 10 re f",
+        )
+    )
+    direct_content = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 48 24 re f",
+            b"1 0 0 rg 4 2 20 10 re f",
+            b"0 1 0 rg 24 2 20 10 re f",
+            b"0 0 1 rg 4 12 20 10 re f",
+            b"1 1 0 rg 24 12 20 10 re f",
+        )
+    )
+    user_unit_content = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 36 24 re f",
+            b"1 0 0 rg 0 0 18 12 re f",
+            b"0 1 0 rg 18 0 18 12 re f",
+            b"0 0 1 rg 0 12 18 12 re f",
+            b"1 1 0 rg 18 12 18 12 re f",
+        )
+    )
+    marker = f"{SYNTHETIC_MARKER}: inherited and direct renderer geometry matrix"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            (
+                b"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R] /Count 6 "
+                b"/MediaBox [0 0 43 37] /CropBox [3 5 33 25] /Resources << >> >>"
+            ),
+            b"<< /Type /Page /Parent 2 0 R /Rotate 0 /Contents 9 0 R >>",
+            b"<< /Type /Page /Parent 2 0 R /Rotate 90 /Contents 10 0 R >>",
+            b"<< /Type /Page /Parent 2 0 R /Rotate 180 /Contents 11 0 R >>",
+            b"<< /Type /Page /Parent 2 0 R /Rotate 270 /Contents 12 0 R >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 48 24] "
+                b"/CropBox [4 2 44 22] /Rotate 0 /Contents 13 0 R >>"
+            ),
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 36 24] "
+                b"/CropBox [0 0 36 24] /UserUnit 2 /Rotate 0 /Contents 14 0 R >>"
+            ),
+            _pdf_stream(inherited_content),
+            _pdf_stream(inherited_content),
+            _pdf_stream(inherited_content),
+            _pdf_stream(inherited_content),
+            _pdf_stream(direct_content),
+            _pdf_stream(user_unit_content),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=15,
+        pdf_version=b"1.6",
+    )
+
+
+def _render_soft_mask_blend_pdf() -> bytes:
+    soft_mask = _pdf_stream(
+        b"1 g 32 0 32 64 re f",
+        (
+            b"/Type /XObject /Subtype /Form /BBox [0 0 64 64] "
+            b"/Group << /S /Transparency /CS /DeviceGray /I true /K false >> "
+            b"/Resources << >>"
+        ),
+    )
+    content = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 64 64 re f",
+            b"0 0 1 rg 0 0 64 64 re f",
+            b"q /GSSoftMask gs 1 0 0 rg 0 0 64 64 re f Q",
+            b"q /GSMultiply gs 1 1 0 rg 0 32 64 32 re f Q",
+        )
+    )
+    marker = f"{SYNTHETIC_MARKER}: soft-mask and multiply-blend calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] "
+                b"/Resources << /ExtGState << /GSSoftMask 4 0 R /GSMultiply 5 0 R >> >> "
+                b"/Contents 7 0 R >>"
+            ),
+            b"<< /Type /ExtGState /SMask << /S /Alpha /G 6 0 R >> >>",
+            b"<< /Type /ExtGState /BM /Multiply >>",
+            soft_mask,
+            _pdf_stream(content),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=8,
+    )
+
+
+def _synthetic_rgb_icc_profile() -> bytes:
+    """Build a deterministic, standards-valid ICC v2.1 linear RGB monitor profile."""
+
+    def padded(payload: bytes) -> bytes:
+        return payload + (b"\x00" * (-len(payload) % 4))
+
+    def s15_fixed_16(value: float) -> bytes:
+        return struct.pack(">i", round(value * 65_536))
+
+    def xyz_tag(x: float, y: float, z: float) -> bytes:
+        return b"XYZ " + (b"\x00" * 4) + s15_fixed_16(x) + s15_fixed_16(y) + s15_fixed_16(z)
+
+    description = b"PaperWorkShell synthetic linear RGB\x00"
+    description_tag = (
+        b"desc"
+        + (b"\x00" * 4)
+        + struct.pack(">I", len(description))
+        + description
+        + (b"\x00" * 4)  # Unicode language code
+        + (b"\x00" * 4)  # Unicode character count
+        + (b"\x00" * 2)  # Macintosh script code
+        + b"\x00"  # Macintosh script-string length
+        + (b"\x00" * 67)
+    )
+    copyright_tag = (
+        b"text" + (b"\x00" * 4) + b"Public synthetic fixture; no external source material.\x00"
+    )
+    white_point_tag = xyz_tag(0.9642, 1.0, 0.8249)
+    red_colorant_tag = xyz_tag(0.4360747, 0.2225045, 0.0139322)
+    green_colorant_tag = xyz_tag(0.3850649, 0.7168786, 0.0971045)
+    blue_colorant_tag = xyz_tag(0.1430804, 0.0606169, 0.7141733)
+    linear_curve_tag = b"curv" + (b"\x00" * 4) + struct.pack(">IH", 1, 0x0100)
+
+    unique_tags = (
+        (b"desc", description_tag),
+        (b"cprt", copyright_tag),
+        (b"wtpt", white_point_tag),
+        (b"rXYZ", red_colorant_tag),
+        (b"gXYZ", green_colorant_tag),
+        (b"bXYZ", blue_colorant_tag),
+        (b"rTRC", linear_curve_tag),
+    )
+    tag_table_size = 4 + (9 * 12)
+    next_offset = 128 + tag_table_size
+    tag_locations: dict[bytes, tuple[int, int]] = {}
+    tag_payloads: list[bytes] = []
+    for signature, payload in unique_tags:
+        tag_locations[signature] = (next_offset, len(payload))
+        padded_payload = padded(payload)
+        tag_payloads.append(padded_payload)
+        next_offset += len(padded_payload)
+    tag_locations[b"gTRC"] = tag_locations[b"rTRC"]
+    tag_locations[b"bTRC"] = tag_locations[b"rTRC"]
+
+    table = bytearray(struct.pack(">I", 9))
+    for signature in (
+        b"desc",
+        b"cprt",
+        b"wtpt",
+        b"rXYZ",
+        b"gXYZ",
+        b"bXYZ",
+        b"rTRC",
+        b"gTRC",
+        b"bTRC",
+    ):
+        offset, size = tag_locations[signature]
+        table.extend(signature + struct.pack(">II", offset, size))
+
+    header = bytearray(128)
+    profile_size = 128 + len(table) + sum(len(payload) for payload in tag_payloads)
+    header[0:4] = struct.pack(">I", profile_size)
+    header[8:12] = b"\x02\x10\x00\x00"
+    header[12:16] = b"mntr"
+    header[16:20] = b"RGB "
+    header[20:24] = b"XYZ "
+    header[24:36] = struct.pack(">6H", 2026, 1, 1, 0, 0, 0)
+    header[36:40] = b"acsp"
+    header[64:68] = struct.pack(">I", 1)
+    header[68:80] = struct.pack(">iii", 63_190, 65_536, 54_061)
+    return bytes(header) + bytes(table) + b"".join(tag_payloads)
+
+
+def _render_colorspaces_pdf() -> bytes:
+    profile = _pdf_stream(
+        _synthetic_rgb_icc_profile(),
+        b"/N 3 /Alternate /DeviceRGB /Range [0 1 0 1 0 1]",
+    )
+    image = _pdf_stream(
+        _stored_zlib(bytes((255, 0, 0, 0, 0, 255))),
+        (
+            b"/Type /XObject /Subtype /Image /Width 2 /Height 1 "
+            b"/ColorSpace [/ICCBased 4 0 R] /BitsPerComponent 8 "
+            b"/Interpolate false /Filter /FlateDecode"
+        ),
+    )
+    content = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 64 64 re f",
+            b"1 0 0 0 k 0 32 32 32 re f",
+            b"0 1 0 0 k 32 32 32 32 re f",
+            b"q 64 0 0 32 0 0 cm /Im0 Do Q",
+        )
+    )
+    marker = f"{SYNTHETIC_MARKER}: DeviceCMYK and ICCBased structural calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] "
+                b"/Resources << /XObject << /Im0 5 0 R >> >> /Contents 6 0 R >>"
+            ),
+            profile,
+            image,
+            _pdf_stream(content),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=7,
+    )
+
+
+def _render_annotation_appearance_pdf() -> bytes:
+    appearance = _pdf_stream(
+        b"0 1 1 rg 0 0 32 32 re f",
+        b"/Type /XObject /Subtype /Form /BBox [0 0 32 32] /Resources << >>",
+    )
+    marker = f"{SYNTHETIC_MARKER}: stored annotation appearance calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] /Resources << >> "
+                b"/Contents 6 0 R /Annots [5 0 R] >>"
+            ),
+            appearance,
+            (
+                b"<< /Type /Annot /Subtype /Square /Rect [16 16 48 48] /F 4 "
+                b"/AP << /N 4 0 R >> /Contents (PWS synthetic stored appearance) >>"
+            ),
+            _pdf_stream(b"1 1 1 rg 0 0 64 64 re f"),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=7,
+    )
+
+
+def _render_embedded_type3_font_pdf() -> bytes:
+    font = (
+        b"<< /Type /Font /Subtype /Type3 /Name /F1 /FontBBox [0 0 500 500] "
+        b"/FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << /Glyph 5 0 R >> "
+        b"/Encoding << /Type /Encoding /Differences [65 /Glyph] >> "
+        b"/FirstChar 65 /LastChar 65 /Widths [500] /Resources << >> >>"
+    )
+    marker = f"{SYNTHETIC_MARKER}: embedded synthetic Type3 font calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 128 64] "
+                b"/Resources << /Font << /F1 4 0 R >> >> /Contents 6 0 R >>"
+            ),
+            font,
+            _pdf_stream(b"500 0 d0 0 0 500 500 re f"),
+            _pdf_stream(b"1 1 1 rg 0 0 128 64 re f 0 0 0 rg BT /F1 48 Tf 8 8 Td (AAAA) Tj ET"),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=7,
     )
 
 
@@ -745,6 +1027,139 @@ def _render_transparency_png() -> bytes:
     )
 
 
+def _quadrant_png(
+    width: int,
+    height: int,
+    *,
+    top_left: tuple[int, int, int],
+    top_right: tuple[int, int, int],
+    bottom_left: tuple[int, int, int],
+    bottom_right: tuple[int, int, int],
+    description: str,
+) -> bytes:
+    if width % 2 or height % 2:
+        raise AssertionError("quadrant oracle dimensions must be even")
+    rows: list[bytes] = []
+    for y in range(height):
+        row = bytearray()
+        for x in range(width):
+            if y < height // 2:
+                color = top_left if x < width // 2 else top_right
+            else:
+                color = bottom_left if x < width // 2 else bottom_right
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        width,
+        height,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: {description}",
+    )
+
+
+def _render_geometry_png(rotation_degrees: int) -> bytes:
+    specifications = {
+        0: (30, 20, (0, 0, 255), (255, 255, 0), (255, 0, 0), (0, 255, 0)),
+        90: (20, 30, (255, 0, 0), (0, 0, 255), (0, 255, 0), (255, 255, 0)),
+        180: (30, 20, (0, 255, 0), (255, 0, 0), (255, 255, 0), (0, 0, 255)),
+        270: (20, 30, (255, 255, 0), (0, 255, 0), (0, 0, 255), (255, 0, 0)),
+    }
+    try:
+        width, height, top_left, top_right, bottom_left, bottom_right = specifications[
+            rotation_degrees
+        ]
+    except KeyError as error:
+        raise AssertionError("unsupported analytical rotation") from error
+    return _quadrant_png(
+        width,
+        height,
+        top_left=top_left,
+        top_right=top_right,
+        bottom_left=bottom_left,
+        bottom_right=bottom_right,
+        description=f"analytical inherited-box rotation-{rotation_degrees} oracle",
+    )
+
+
+def _render_geometry_direct_box_png() -> bytes:
+    return _quadrant_png(
+        40,
+        20,
+        top_left=(0, 0, 255),
+        top_right=(255, 255, 0),
+        bottom_left=(255, 0, 0),
+        bottom_right=(0, 255, 0),
+        description="analytical direct MediaBox and CropBox oracle",
+    )
+
+
+def _render_geometry_user_unit_png() -> bytes:
+    return _quadrant_png(
+        36,
+        24,
+        top_left=(0, 0, 255),
+        top_right=(255, 255, 0),
+        bottom_left=(255, 0, 0),
+        bottom_right=(0, 255, 0),
+        description="analytical UserUnit scaling oracle",
+    )
+
+
+def _render_soft_mask_blend_png() -> bytes:
+    rows: list[bytes] = []
+    for y in range(64):
+        row = bytearray()
+        for x in range(64):
+            if y < 32:
+                color = (0, 0, 0) if x < 32 else (255, 0, 0)
+            else:
+                color = (0, 0, 255) if x < 32 else (255, 0, 0)
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        64,
+        64,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: analytical soft-mask and multiply-blend oracle",
+    )
+
+
+def _render_annotation_appearance_png() -> bytes:
+    rows: list[bytes] = []
+    for y in range(64):
+        row = bytearray()
+        for x in range(64):
+            color = (0, 255, 255) if 16 <= x < 48 and 16 <= y < 48 else (255, 255, 255)
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        64,
+        64,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: analytical stored annotation appearance oracle",
+    )
+
+
+def _render_embedded_type3_font_png() -> bytes:
+    rows: list[bytes] = []
+    for y in range(64):
+        row = bytearray()
+        for x in range(128):
+            color = (0, 0, 0) if 8 <= x < 104 and 32 <= y < 56 else (255, 255, 255)
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        128,
+        64,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: analytical embedded synthetic Type3 font oracle",
+    )
+
+
 def _low_resolution_png() -> bytes:
     pixels = _checkerboard_rgb(8, 8)
     rows = tuple(pixels[index : index + 24] for index in range(0, len(pixels), 24))
@@ -920,6 +1335,91 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
                 "image_interpolation": False,
             },
             _render_cmyk_pdf,
+        ),
+        _fixture(
+            "pdf-render-geometry-matrix",
+            "pdf/render-geometry-matrix.pdf",
+            "application/pdf",
+            ("crop", "page-size", "rotated"),
+            "render-geometry-matrix-pdf-v1",
+            {
+                "pdf_version": "1.6",
+                "page_count": 6,
+                "inherited_media_box_page_count": 4,
+                "inherited_crop_box_page_count": 4,
+                "inherited_media_box": "0 0 43 37",
+                "inherited_crop_box": "3 5 33 25",
+                "inherited_opposing_insets": "3,5,10,12",
+                "explicit_rotations_degrees": "0,90,180,270",
+                "direct_box_page_index": 4,
+                "user_unit_page_index": 5,
+                "user_unit_value": 2,
+                "user_unit_crop_box": "0 0 36 24",
+            },
+            _render_geometry_matrix_pdf,
+        ),
+        _fixture(
+            "pdf-render-soft-mask-blend",
+            "pdf/render-soft-mask-blend.pdf",
+            "application/pdf",
+            ("transparency",),
+            "render-soft-mask-blend-pdf-v1",
+            {
+                "page_count": 1,
+                "soft_mask_subtype": "Alpha",
+                "blend_mode": "Multiply",
+                "transparency_group_color_space": "DeviceGray",
+            },
+            _render_soft_mask_blend_pdf,
+        ),
+        _fixture(
+            "pdf-render-colorspaces",
+            "pdf/render-colorspaces.pdf",
+            "application/pdf",
+            ("cmyk",),
+            "render-colorspaces-pdf-v1",
+            {
+                "page_count": 1,
+                "device_cmyk_vector_swatches": 2,
+                "icc_based_image_pixels": 2,
+                "icc_components": 3,
+                "icc_alternate": "DeviceRGB",
+                "icc_profile_version": "2.1",
+                "icc_tag_count": 9,
+                "icc_shared_linear_trc": True,
+                "analytical_rgb_reference": False,
+            },
+            _render_colorspaces_pdf,
+        ),
+        _fixture(
+            "pdf-render-annotation-appearance",
+            "pdf/render-annotation-appearance.pdf",
+            "application/pdf",
+            ("annotation",),
+            "render-annotation-appearance-pdf-v1",
+            {
+                "page_count": 1,
+                "annotation_count": 1,
+                "annotation_subtype": "Square",
+                "stored_normal_appearance_count": 1,
+                "print_flag_set": True,
+            },
+            _render_annotation_appearance_pdf,
+        ),
+        _fixture(
+            "pdf-render-embedded-type3-font",
+            "pdf/render-embedded-type3-font.pdf",
+            "application/pdf",
+            ("born-digital",),
+            "render-embedded-type3-font-pdf-v1",
+            {
+                "page_count": 1,
+                "font_subtype": "Type3",
+                "embedded_charproc_count": 1,
+                "external_font_asset": False,
+                "glyph_instances": 4,
+            },
+            _render_embedded_type3_font_pdf,
         ),
         _fixture(
             "pdf-render-high-dimension",
@@ -1108,6 +1608,143 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _render_transparency_png,
         ),
         _fixture(
+            "png-render-geometry-inherited-rotate-0",
+            "image/render-geometry-inherited-rotate-0.png",
+            "image/png",
+            ("rotated",),
+            "render-geometry-inherited-rotate-0-png-v1",
+            {
+                "width": 30,
+                "height": 20,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-geometry-matrix",
+                "page_index": 0,
+            },
+            lambda: _render_geometry_png(0),
+        ),
+        _fixture(
+            "png-render-geometry-inherited-rotate-90",
+            "image/render-geometry-inherited-rotate-90.png",
+            "image/png",
+            ("rotated",),
+            "render-geometry-inherited-rotate-90-png-v1",
+            {
+                "width": 20,
+                "height": 30,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-geometry-matrix",
+                "page_index": 1,
+            },
+            lambda: _render_geometry_png(90),
+        ),
+        _fixture(
+            "png-render-geometry-inherited-rotate-180",
+            "image/render-geometry-inherited-rotate-180.png",
+            "image/png",
+            ("rotated",),
+            "render-geometry-inherited-rotate-180-png-v1",
+            {
+                "width": 30,
+                "height": 20,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-geometry-matrix",
+                "page_index": 2,
+            },
+            lambda: _render_geometry_png(180),
+        ),
+        _fixture(
+            "png-render-geometry-inherited-rotate-270",
+            "image/render-geometry-inherited-rotate-270.png",
+            "image/png",
+            ("rotated",),
+            "render-geometry-inherited-rotate-270-png-v1",
+            {
+                "width": 20,
+                "height": 30,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-geometry-matrix",
+                "page_index": 3,
+            },
+            lambda: _render_geometry_png(270),
+        ),
+        _fixture(
+            "png-render-geometry-direct-box",
+            "image/render-geometry-direct-box.png",
+            "image/png",
+            ("crop",),
+            "render-geometry-direct-box-png-v1",
+            {
+                "width": 40,
+                "height": 20,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-geometry-matrix",
+                "page_index": 4,
+            },
+            _render_geometry_direct_box_png,
+        ),
+        _fixture(
+            "png-render-geometry-user-unit",
+            "image/render-geometry-user-unit.png",
+            "image/png",
+            ("page-size",),
+            "render-geometry-user-unit-png-v1",
+            {
+                "width": 36,
+                "height": 24,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-geometry-matrix",
+                "page_index": 5,
+                "user_unit_value": 2,
+            },
+            _render_geometry_user_unit_png,
+        ),
+        _fixture(
+            "png-render-soft-mask-blend",
+            "image/render-soft-mask-blend.png",
+            "image/png",
+            ("transparency",),
+            "render-soft-mask-blend-png-v1",
+            {
+                "width": 64,
+                "height": 64,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-soft-mask-blend",
+                "page_index": 0,
+                "maximum_channel_delta": 1,
+            },
+            _render_soft_mask_blend_png,
+        ),
+        _fixture(
+            "png-render-annotation-appearance",
+            "image/render-annotation-appearance.png",
+            "image/png",
+            ("annotation",),
+            "render-annotation-appearance-png-v1",
+            {
+                "width": 64,
+                "height": 64,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-annotation-appearance",
+                "page_index": 0,
+            },
+            _render_annotation_appearance_png,
+        ),
+        _fixture(
+            "png-render-embedded-type3-font",
+            "image/render-embedded-type3-font.png",
+            "image/png",
+            ("born-digital",),
+            "render-embedded-type3-font-png-v1",
+            {
+                "width": 128,
+                "height": 64,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-embedded-type3-font",
+                "page_index": 0,
+            },
+            _render_embedded_type3_font_png,
+        ),
+        _fixture(
             "png-low-resolution",
             "image/low-resolution.png",
             "image/png",
@@ -1274,6 +1911,23 @@ def build_renderer_golden_references(
 
     selected = tuple(fixtures) if fixtures is not None else build_committed_fixtures()
     by_id = {fixture.fixture_id: fixture for fixture in selected}
+    geometry = {
+        "render-calibration-crop-rotate": ("crop", "direct", 90, 0, 1),
+        "render-calibration-media-box": ("media", "direct", 0, 0, 1),
+        "render-transparency": ("crop", "media-fallback", 0, 0, 1),
+        "render-geometry-inherited-rotate-0": ("crop", "inherited", 0, 0, 1),
+        "render-geometry-inherited-rotate-90": ("crop", "inherited", 90, 0, 1),
+        "render-geometry-inherited-rotate-180": ("crop", "inherited", 180, 0, 1),
+        "render-geometry-inherited-rotate-270": ("crop", "inherited", 270, 0, 1),
+        "render-geometry-additional-rotate-90": ("crop", "inherited", 0, 90, 1),
+        "render-geometry-additional-rotate-180": ("crop", "inherited", 0, 180, 1),
+        "render-geometry-additional-rotate-270": ("crop", "inherited", 0, 270, 1),
+        "render-geometry-direct-box": ("crop", "direct", 0, 0, 1),
+        "render-geometry-user-unit": ("crop", "direct", 0, 0, 2),
+        "render-soft-mask-blend": ("crop", "media-fallback", 0, 0, 1),
+        "render-annotation-appearance": ("crop", "media-fallback", 0, 0, 1),
+        "render-embedded-type3-font": ("crop", "media-fallback", 0, 0, 1),
+    }
     specifications = (
         (
             "render-calibration-crop-rotate",
@@ -1305,6 +1959,126 @@ def build_renderer_golden_references(
             64,
             1,
         ),
+        (
+            "render-geometry-inherited-rotate-0",
+            "render-geometry-inherited-rotate-0.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-0",
+            0,
+            30,
+            20,
+            0,
+        ),
+        (
+            "render-geometry-inherited-rotate-90",
+            "render-geometry-inherited-rotate-90.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-90",
+            1,
+            20,
+            30,
+            0,
+        ),
+        (
+            "render-geometry-inherited-rotate-180",
+            "render-geometry-inherited-rotate-180.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-180",
+            2,
+            30,
+            20,
+            0,
+        ),
+        (
+            "render-geometry-inherited-rotate-270",
+            "render-geometry-inherited-rotate-270.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-270",
+            3,
+            20,
+            30,
+            0,
+        ),
+        (
+            "render-geometry-additional-rotate-90",
+            "render-geometry-additional-rotate-90.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-90",
+            0,
+            20,
+            30,
+            0,
+        ),
+        (
+            "render-geometry-additional-rotate-180",
+            "render-geometry-additional-rotate-180.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-180",
+            0,
+            30,
+            20,
+            0,
+        ),
+        (
+            "render-geometry-additional-rotate-270",
+            "render-geometry-additional-rotate-270.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-inherited-rotate-270",
+            0,
+            20,
+            30,
+            0,
+        ),
+        (
+            "render-geometry-direct-box",
+            "render-geometry-direct-box.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-direct-box",
+            4,
+            40,
+            20,
+            0,
+        ),
+        (
+            "render-geometry-user-unit",
+            "render-geometry-user-unit.png",
+            "pdf-render-geometry-matrix",
+            "png-render-geometry-user-unit",
+            5,
+            36,
+            24,
+            0,
+        ),
+        (
+            "render-soft-mask-blend",
+            "render-soft-mask-blend.png",
+            "pdf-render-soft-mask-blend",
+            "png-render-soft-mask-blend",
+            0,
+            64,
+            64,
+            1,
+        ),
+        (
+            "render-annotation-appearance",
+            "render-annotation-appearance.png",
+            "pdf-render-annotation-appearance",
+            "png-render-annotation-appearance",
+            0,
+            64,
+            64,
+            0,
+        ),
+        (
+            "render-embedded-type3-font",
+            "render-embedded-type3-font.png",
+            "pdf-render-embedded-type3-font",
+            "png-render-embedded-type3-font",
+            0,
+            128,
+            64,
+            0,
+        ),
     )
     references: list[GeneratedGoldenReference] = []
     for (
@@ -1324,6 +2098,16 @@ def build_renderer_golden_references(
             raise AssertionError("renderer golden source fixture is unavailable") from error
         if source.media_type != "application/pdf" or reference.media_type != "image/png":
             raise AssertionError("renderer golden media types are invalid")
+        try:
+            (
+                page_box,
+                box_source,
+                intrinsic_rotation_degrees,
+                additional_rotation_degrees,
+                user_unit,
+            ) = geometry[reference_id]
+        except KeyError as error:
+            raise AssertionError("renderer golden geometry is unavailable") from error
         references.append(
             GeneratedGoldenReference(
                 reference_id=reference_id,
@@ -1331,7 +2115,16 @@ def build_renderer_golden_references(
                 source_fixture_id=source_fixture_id,
                 reference_fixture_id=reference_fixture_id,
                 page_index=page_index,
-                pixels_per_point=1,
+                page_box=page_box,
+                box_source=box_source,
+                intrinsic_rotation_degrees=intrinsic_rotation_degrees,
+                additional_rotation_degrees=additional_rotation_degrees,
+                combined_rotation_degrees=(intrinsic_rotation_degrees + additional_rotation_degrees)
+                % 360,
+                user_unit=user_unit,
+                render_scale_pixels_per_user_unit=1,
+                maximum_width_pixels=width,
+                maximum_height_pixels=height,
                 width=width,
                 height=height,
                 maximum_channel_delta=maximum_channel_delta,
@@ -1358,8 +2151,18 @@ def build_renderer_golden_index(
                 "path": reference.relative_path.as_posix(),
                 "source_fixture_id": reference.source_fixture_id,
                 "source_sha256": hashlib.sha256(source.content).hexdigest(),
-                "page_index": reference.page_index,
-                "pixels_per_point": reference.pixels_per_point,
+                "request": {
+                    "page_index": reference.page_index,
+                    "page_box": reference.page_box,
+                    "additional_rotation_degrees": reference.additional_rotation_degrees,
+                    "maximum_width_pixels": reference.maximum_width_pixels,
+                    "maximum_height_pixels": reference.maximum_height_pixels,
+                },
+                "box_source": reference.box_source,
+                "intrinsic_rotation_degrees": reference.intrinsic_rotation_degrees,
+                "combined_rotation_degrees": reference.combined_rotation_degrees,
+                "user_unit": reference.user_unit,
+                "render_scale_pixels_per_user_unit": (reference.render_scale_pixels_per_user_unit),
                 "pixel_layout": "rgb8-top-down",
                 "background": "opaque-white",
                 "width": reference.width,

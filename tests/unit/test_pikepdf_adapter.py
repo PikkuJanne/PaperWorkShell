@@ -86,8 +86,13 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "password-required.pdf",
         "render-calibration.pdf",
         "render-cmyk.pdf",
+        "render-colorspaces.pdf",
+        "render-annotation-appearance.pdf",
+        "render-embedded-type3-font.pdf",
+        "render-geometry-matrix.pdf",
         "render-high-dimension.pdf",
         "render-malformed-page-tree.pdf",
+        "render-soft-mask-blend.pdf",
         "render-transparency.pdf",
         "script-marker.pdf",
         "signed-marker.pdf",
@@ -106,7 +111,11 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "page-geometry.pdf",
         "render-calibration.pdf",
         "render-cmyk.pdf",
+        "render-colorspaces.pdf",
+        "render-embedded-type3-font.pdf",
+        "render-geometry-matrix.pdf",
         "render-high-dimension.pdf",
+        "render-soft-mask-blend.pdf",
         "render-transparency.pdf",
         *unicode_names,
     }
@@ -131,13 +140,17 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         assert result.encryption_state is PdfEncryptionState.UNENCRYPTED
         assert result.structural_state is PdfStructuralState.CLEAN
         assert result.page_count == (
-            2 if path.name in {"mixed.pdf", "page-geometry.pdf", "render-calibration.pdf"} else 1
+            6
+            if path.name == "render-geometry-matrix.pdf"
+            else 2
+            if path.name in {"mixed.pdf", "page-geometry.pdf", "render-calibration.pdf"}
+            else 1
         )
         assert result.object_count is not None and result.object_count > 0
         values = _feature_values(result.features)
         if path.name in ordinary_names:
             assert values == not_detected
-        elif path.name == "annotation.pdf":
+        elif path.name in {"annotation.pdf", "render-annotation-appearance.pdf"}:
             assert values == (
                 PdfFeatureState.NOT_DETECTED,
                 PdfFeatureState.NOT_DETECTED,

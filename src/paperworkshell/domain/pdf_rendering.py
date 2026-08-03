@@ -57,6 +57,7 @@ class PdfRenderErrorCode(StrEnum):
 
     MODEL_INVALID = "PDF_RENDER_MODEL_INVALID"
     SOURCE_INVALID = "PDF_RENDER_SOURCE_INVALID"
+    GEOMETRY_INVALID = "PDF_RENDER_GEOMETRY_INVALID"
     PAGE_OUT_OF_RANGE = "PDF_RENDER_PAGE_OUT_OF_RANGE"
     LIMIT_EXCEEDED = "PDF_RENDER_LIMIT_EXCEEDED"
     CANCELLED = "PDF_RENDER_CANCELLED"
@@ -72,6 +73,7 @@ class PdfRenderErrorCode(StrEnum):
 _SAFE_ERROR_MESSAGES: Final[dict[PdfRenderErrorCode, str]] = {
     PdfRenderErrorCode.MODEL_INVALID: "PaperWorkShell received invalid page-rendering data.",
     PdfRenderErrorCode.SOURCE_INVALID: "The selected source is not a renderable PDF.",
+    PdfRenderErrorCode.GEOMETRY_INVALID: "The selected PDF page has invalid geometry.",
     PdfRenderErrorCode.PAGE_OUT_OF_RANGE: "The requested PDF page is not available.",
     PdfRenderErrorCode.LIMIT_EXCEEDED: (
         "The requested page rendering exceeds a configured safety limit."

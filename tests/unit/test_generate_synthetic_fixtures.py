@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 import struct
@@ -11,12 +12,15 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
+from PIL import Image, ImageCms
+
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
     GOLDEN_DIRECTORY,
     LONG_PATH_COMPONENT,
     SYNTHETIC_MARKER,
     FixtureGenerationError,
+    _synthetic_rgb_icc_profile,
     build_committed_fixtures,
     build_index,
     build_renderer_golden_index,
@@ -66,7 +70,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(27, len(self.fixtures))
+        self.assertEqual(41, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -112,7 +116,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertEqual("committed", by_category["unicode"]["status"])
         self.assertEqual(["pdf-unicode-named"], by_category["unicode"]["fixture_ids"])
         self.assertEqual("committed", by_category["cmyk"]["status"])
-        self.assertEqual(["pdf-render-cmyk"], by_category["cmyk"]["fixture_ids"])
+        self.assertEqual(
+            ["pdf-render-cmyk", "pdf-render-colorspaces"],
+            by_category["cmyk"]["fixture_ids"],
+        )
         self.assertEqual("PWS-0704", by_category["rtl"]["scheduled_task"])
 
     def test_classic_pdfs_have_correct_xref_offsets_and_stream_lengths(self) -> None:
@@ -215,6 +222,11 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         calibration = self.by_id["pdf-render-calibration"].content
         transparency = self.by_id["pdf-render-transparency"].content
         cmyk = self.by_id["pdf-render-cmyk"].content
+        geometry = self.by_id["pdf-render-geometry-matrix"].content
+        soft_mask = self.by_id["pdf-render-soft-mask-blend"].content
+        colorspaces = self.by_id["pdf-render-colorspaces"].content
+        annotation = self.by_id["pdf-render-annotation-appearance"].content
+        embedded_font = self.by_id["pdf-render-embedded-type3-font"].content
         high_dimension = self.by_id["pdf-render-high-dimension"].content
         malformed = self.by_id["pdf-render-malformed-page-tree"].content
 
@@ -225,16 +237,110 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertIn(b"/ca 0.5", transparency)
         self.assertIn(b"/ColorSpace /DeviceCMYK", cmyk)
         self.assertIn(b"/Interpolate false", cmyk)
+        self.assertTrue(geometry.startswith(b"%PDF-1.6\n"))
+        self.assertIn(b"/MediaBox [0 0 43 37] /CropBox [3 5 33 25]", geometry)
+        self.assertEqual(1, geometry.count(b"/MediaBox [0 0 43 37]"))
+        self.assertEqual((3, 5, 10, 12), (3, 5, 43 - 33, 37 - 25))
+        for rotation in (0, 90, 180, 270):
+            self.assertIn(f"/Rotate {rotation}".encode("ascii"), geometry)
+        self.assertIn(b"/CropBox [0 0 36 24] /UserUnit 2", geometry)
+        self.assertIn(b"/SMask << /S /Alpha", soft_mask)
+        self.assertIn(b"/Group << /S /Transparency /CS /DeviceGray", soft_mask)
+        self.assertIn(b"/BM /Multiply", soft_mask)
+        self.assertIn(b"/ColorSpace [/ICCBased", colorspaces)
+        self.assertIn(b"/Alternate /DeviceRGB", colorspaces)
+        self.assertIn(b"/Type /Annot /Subtype /Square", annotation)
+        self.assertIn(b"/AP << /N 4 0 R >>", annotation)
+        self.assertIn(b"/Subtype /Type3", embedded_font)
+        self.assertIn(b"/CharProcs << /Glyph 5 0 R >>", embedded_font)
+        self.assertNotIn(b"/FontFile", embedded_font)
         self.assertIn(b"/MediaBox [0 0 14400 14400]", high_dimension)
         self.assertIn(b"/Pages 99 0 R", malformed)
         self.assertTrue(malformed.endswith(b"%%EOF\n"))
+
+    def test_synthetic_rgb_profile_has_nine_valid_v21_tags_with_shared_linear_trc(
+        self,
+    ) -> None:
+        profile = _synthetic_rgb_icc_profile()
+
+        self.assertEqual(len(profile), struct.unpack(">I", profile[:4])[0])
+        self.assertEqual(b"\x02\x10\x00\x00", profile[8:12])
+        self.assertEqual(b"acsp", profile[36:40])
+        self.assertEqual(b"\x00" * 4, profile[4:8])
+        self.assertEqual(b"\x00" * 4, profile[40:44])
+        self.assertEqual(b"\x00" * 8, profile[48:56])
+        self.assertEqual(b"\x00" * 4, profile[80:84])
+        self.assertEqual(9, struct.unpack(">I", profile[128:132])[0])
+        entries = {
+            profile[offset : offset + 4]: struct.unpack(">II", profile[offset + 4 : offset + 12])
+            for offset in range(132, 132 + (9 * 12), 12)
+        }
+        self.assertEqual(
+            {
+                b"desc",
+                b"cprt",
+                b"wtpt",
+                b"rXYZ",
+                b"gXYZ",
+                b"bXYZ",
+                b"rTRC",
+                b"gTRC",
+                b"bTRC",
+            },
+            set(entries),
+        )
+        self.assertEqual(entries[b"rTRC"], entries[b"gTRC"])
+        self.assertEqual(entries[b"rTRC"], entries[b"bTRC"])
+        curve_offset, curve_size = entries[b"rTRC"]
+        self.assertEqual(b"curv", profile[curve_offset : curve_offset + 4])
+        self.assertEqual(
+            1,
+            struct.unpack(">I", profile[curve_offset + 8 : curve_offset + 12])[0],
+        )
+        self.assertEqual(
+            0x0100,
+            struct.unpack(">H", profile[curve_offset + 12 : curve_offset + 14])[0],
+        )
+        self.assertEqual(14, curve_size)
+
+    def test_installed_lcms_accepts_and_transforms_the_synthetic_rgb_profile(self) -> None:
+        source = ImageCms.ImageCmsProfile(io.BytesIO(_synthetic_rgb_icc_profile()))
+        destination = ImageCms.createProfile("sRGB")
+        transform = ImageCms.buildTransformFromOpenProfiles(
+            source,
+            destination,
+            "RGB",
+            "RGB",
+        )
+        pixels = Image.new("RGB", (3, 1))
+        pixels.putdata([(0, 0, 0), (128, 64, 32), (255, 255, 255)])
+        converted = ImageCms.applyTransform(pixels, transform)
+        assert converted is not None
+        middle_pixel = cast(tuple[int, int, int], converted.getpixel((1, 0)))
+
+        self.assertEqual(
+            "PaperWorkShell synthetic linear RGB",
+            ImageCms.getProfileDescription(source).strip(),
+        )
+        self.assertEqual((0, 0, 0), converted.getpixel((0, 0)))
+        self.assertTrue(
+            all(
+                converted_channel > source_channel
+                for converted_channel, source_channel in zip(
+                    middle_pixel,
+                    (128, 64, 32),
+                    strict=True,
+                )
+            )
+        )
+        self.assertEqual((255, 255, 255), converted.getpixel((2, 0)))
 
     def test_renderer_golden_references_are_analytical_corpus_mirrors(self) -> None:
         references = build_renderer_golden_references(self.fixtures)
         index = build_renderer_golden_index(self.fixtures)
         by_reference = {reference.reference_id: reference for reference in references}
 
-        self.assertEqual(3, len(references))
+        self.assertEqual(15, len(references))
         self.assertEqual(
             self.by_id["png-render-calibration-crop-rotate"].content,
             by_reference["render-calibration-crop-rotate"].content,
@@ -247,10 +353,62 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
             self.by_id["png-render-transparency"].content,
             by_reference["render-transparency"].content,
         )
+        for reference in references:
+            with self.subTest(reference=reference.reference_id):
+                self.assertEqual(
+                    self.by_id[reference.reference_fixture_id].content, reference.content
+                )
         self.assertFalse(cast(dict[str, Any], index["policy"])["captured_from_renderer"])
+        indexed_references = {
+            item["id"]: item for item in cast(list[dict[str, Any]], index["references"])
+        }
+        inherited_270 = indexed_references["render-geometry-inherited-rotate-270"]
+        self.assertEqual(
+            {
+                "page_index": 3,
+                "page_box": "crop",
+                "additional_rotation_degrees": 0,
+                "maximum_width_pixels": 20,
+                "maximum_height_pixels": 30,
+            },
+            inherited_270["request"],
+        )
+        self.assertEqual("inherited", inherited_270["box_source"])
+        self.assertEqual(270, inherited_270["intrinsic_rotation_degrees"])
+        self.assertEqual(270, inherited_270["combined_rotation_degrees"])
+        self.assertEqual(1, inherited_270["user_unit"])
+        self.assertEqual(
+            2,
+            indexed_references["render-geometry-user-unit"]["user_unit"],
+        )
+        self.assertEqual(
+            1,
+            indexed_references["render-geometry-user-unit"]["render_scale_pixels_per_user_unit"],
+        )
+        self.assertEqual(36, indexed_references["render-geometry-user-unit"]["width"])
+        self.assertEqual(24, indexed_references["render-geometry-user-unit"]["height"])
+        self.assertNotIn("pixels_per_point", indexed_references["render-geometry-user-unit"])
+        for rotation in (90, 180, 270):
+            with self.subTest(additional_rotation=rotation):
+                additional = indexed_references[f"render-geometry-additional-rotate-{rotation}"]
+                self.assertEqual(0, additional["request"]["page_index"])
+                self.assertEqual(
+                    rotation,
+                    additional["request"]["additional_rotation_degrees"],
+                )
+                self.assertEqual(0, additional["intrinsic_rotation_degrees"])
+                self.assertEqual(rotation, additional["combined_rotation_degrees"])
+                self.assertEqual(
+                    by_reference[f"render-geometry-inherited-rotate-{rotation}"].content,
+                    by_reference[f"render-geometry-additional-rotate-{rotation}"].content,
+                )
         self.assertEqual(
             "bounded-channel-delta",
-            cast(list[dict[str, Any]], index["references"])[2]["comparison"]["mode"],
+            indexed_references["render-transparency"]["comparison"]["mode"],
+        )
+        self.assertEqual(
+            "bounded-channel-delta",
+            indexed_references["render-soft-mask-blend"]["comparison"]["mode"],
         )
         self.assertEqual(
             canonical_renderer_golden_index_bytes(self.fixtures),
@@ -274,6 +432,49 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertEqual((0, 0, 255), pixel("png-render-transparency", 10, 40))
         self.assertEqual((128, 0, 128), pixel("png-render-transparency", 30, 30))
         self.assertEqual((255, 128, 128), pixel("png-render-transparency", 52, 30))
+        rotation_corners = {
+            "png-render-geometry-inherited-rotate-0": (
+                (0, 0, 255),
+                (255, 255, 0),
+                (255, 0, 0),
+                (0, 255, 0),
+            ),
+            "png-render-geometry-inherited-rotate-90": (
+                (255, 0, 0),
+                (0, 0, 255),
+                (0, 255, 0),
+                (255, 255, 0),
+            ),
+            "png-render-geometry-inherited-rotate-180": (
+                (0, 255, 0),
+                (255, 0, 0),
+                (255, 255, 0),
+                (0, 0, 255),
+            ),
+            "png-render-geometry-inherited-rotate-270": (
+                (255, 255, 0),
+                (0, 255, 0),
+                (0, 0, 255),
+                (255, 0, 0),
+            ),
+        }
+        for fixture_id, expected_corners in rotation_corners.items():
+            width, height, _pixels = _rgb_png_pixels(self.by_id[fixture_id].content)
+            actual_corners = (
+                pixel(fixture_id, 0, 0),
+                pixel(fixture_id, width - 1, 0),
+                pixel(fixture_id, 0, height - 1),
+                pixel(fixture_id, width - 1, height - 1),
+            )
+            self.assertEqual(expected_corners, actual_corners)
+        self.assertEqual((0, 0, 255), pixel("png-render-geometry-direct-box", 0, 0))
+        self.assertEqual((0, 255, 0), pixel("png-render-geometry-user-unit", 35, 23))
+        self.assertEqual((0, 0, 0), pixel("png-render-soft-mask-blend", 8, 8))
+        self.assertEqual((255, 0, 0), pixel("png-render-soft-mask-blend", 56, 56))
+        self.assertEqual((0, 255, 255), pixel("png-render-annotation-appearance", 16, 16))
+        self.assertEqual((255, 255, 255), pixel("png-render-annotation-appearance", 15, 15))
+        self.assertEqual((0, 0, 0), pixel("png-render-embedded-type3-font", 8, 32))
+        self.assertEqual((255, 255, 255), pixel("png-render-embedded-type3-font", 7, 32))
 
     def test_regeneration_writes_only_the_reviewed_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -297,14 +498,14 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(27, count)
+        self.assertEqual(41, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(28, len(first))
+        self.assertEqual(42, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 
-        self.assertEqual(4, len(golden))
+        self.assertEqual(16, len(golden))
         self.assertEqual(
             canonical_renderer_golden_index_bytes(self.fixtures),
             golden[Path("index.json")],
