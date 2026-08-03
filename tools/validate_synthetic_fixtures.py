@@ -30,6 +30,7 @@ from tools.generate_synthetic_fixtures import (
     build_index,
     canonical_index_bytes,
 )
+from tools.reviewed_synthetic_history import reviewed_cross_branch_document_digests
 
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "33229d2fdd6a84377fd10bdc690634037307862257f938f9a6c4c053ef954f2e"
@@ -1153,6 +1154,7 @@ def validate_fixture_corpus(
     working_file_count = 0
     if inspect_repository:
         try:
+            approved_digests.update(reviewed_cross_branch_document_digests())
             repository_summary = inspect_repository_contents(
                 root,
                 _repository_inspector(frozenset(approved_digests)),

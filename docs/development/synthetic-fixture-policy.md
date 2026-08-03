@@ -80,6 +80,17 @@ without echoing the matched path or value. Git author, committer, tagger, and fo
 identity records are provenance rather than fixture content; Gitleaks still scans their raw bytes
 in the separate `scan-secrets` lane.
 
+The validator also carries an authenticated, closed provenance ledger for exact public-synthetic
+document bytes that are reachable on a reviewed sibling task branch but are not yet part of this
+branch's active corpus. Each entry records its fixture ID, path, media type, byte count, recipe,
+SHA-256 digest, PWS-D035 no-input provenance, and introducing commit. Approval is digest-exact: an
+altered or additional document still fails. This keeps repository-wide history scanning effective
+while task branches are integrated independently; it does not add those fixtures to the active v1
+corpus, authorize marker-only documents, or attest to unfinished task behavior. The current ledger
+covers the 22 renderer fixtures introduced by PWS-0106 commits `ac6ed43` and `529a6da`, whose exact
+canonical bytes passed their GitHub Actions validation before the branch became visible to other
+full-history checkouts.
+
 IBAN detection uses the fixed country lengths in the
 [SWIFT IBAN Registry Release 102](https://www.swift.com/swift_resource/9606) (June 2026) and
 performs one checksum validation per recognized candidate. Payment-card detection is deliberately
