@@ -75,8 +75,14 @@ explicit frozen-decision change.
 - Prefer the smallest reviewed PySide6 wheel set needed by the UI. Do not admit the convenience
   meta-package or Addons without inspecting whether QtPdf/PDFium and other native payloads enter
   the package. Qt PDF remains a renderer candidate until `PWS-0106` selects it.
-- Inspect the selected pikepdf wheel for bundled qpdf and runtime libraries; inventory that native
-  closure exactly once.
+- PWS-0105 selects pikepdf 10.10.0 with Pillow 12.3.0, lxml 6.1.1, packaging 26.2, and qpdf
+  12.3.2. Keep pikepdf, Pillow, lxml, and packaging at `planned` shipment state until PWS-0801
+  reconciles their native files, licenses, notices, source obligations, and final SBOM. In
+  particular, the two lxml Schematron resources identified as unlicensed by the wheel's own
+  inventory require maintainer or legal clearance before redistribution.
+- CI acquires qpdf only from the reviewed official Windows x64 ZIP, verifies the recorded SHA-256
+  before extraction, checks version 12.3.2, and exposes its absolute path through
+  `PWS_QPDF_EXECUTABLE`; it does not add qpdf to `PATH` or execute the unsigned installer.
 - Keep OCRmyPDF, Tesseract, and all document-processing helpers in the network-denied worker with
   fixed executable paths. Ghostscript remains prohibited unless the required decision or approved
   commercial route exists.

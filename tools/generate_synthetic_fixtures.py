@@ -78,8 +78,12 @@ def _serialize_pdf(
     *,
     root_object: int = 1,
     info_object: int | None = None,
+    trailer_entries: bytes = b"",
+    header_comment: bytes = b"",
 ) -> bytes:
     output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    if header_comment:
+        output.extend(b"% " + header_comment + b"\n")
     offsets = [0]
     for object_number, body in enumerate(objects, start=1):
         offsets.append(len(output))
@@ -94,6 +98,8 @@ def _serialize_pdf(
     trailer = f"trailer\n<< /Size {len(objects) + 1} /Root {root_object} 0 R".encode("ascii")
     if info_object is not None:
         trailer += f" /Info {info_object} 0 R".encode("ascii")
+    if trailer_entries:
+        trailer += b" " + trailer_entries
     output.extend(trailer + b" >>\n")
     output.extend(f"startxref\n{xref_offset}\n%%EOF\n".encode("ascii"))
     return bytes(output)
@@ -335,6 +341,99 @@ def _script_marker_pdf() -> bytes:
             b"<< /Producer (" + _pdf_literal(SYNTHETIC_MARKER) + b") >>",
         ),
         info_object=7,
+    )
+
+
+def _action_marker_pdf() -> bytes:
+    content = _text_content(f"{SYNTHETIC_MARKER}: inert action carrier")
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R /OpenAction 6 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+            ),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            _pdf_stream(content),
+            b"<< /S /GoTo /D [3 0 R /Fit] /PWSInert true >>",
+            b"<< /Producer (" + _pdf_literal(SYNTHETIC_MARKER) + b") >>",
+        ),
+        info_object=7,
+    )
+
+
+_PDF_PASSWORD_PADDING: Final = bytes.fromhex(
+    "28bf4e5e4e758a4164004e56fffa01082e2e00b6d0683e802f0ca9fe6453697a"
+)
+
+
+def _pad_pdf_password(password: bytes) -> bytes:
+    return (password + _PDF_PASSWORD_PADDING)[:32]
+
+
+def _rc4(key: bytes, content: bytes) -> bytes:
+    state = list(range(256))
+    cursor = 0
+    for index in range(256):
+        cursor = (cursor + state[index] + key[index % len(key)]) & 0xFF
+        state[index], state[cursor] = state[cursor], state[index]
+    output = bytearray()
+    left = 0
+    right = 0
+    for value in content:
+        left = (left + 1) & 0xFF
+        right = (right + state[left]) & 0xFF
+        state[left], state[right] = state[right], state[left]
+        output.append(value ^ state[(state[left] + state[right]) & 0xFF])
+    return bytes(output)
+
+
+def _pdf_rc4_object_key(file_key: bytes, object_number: int) -> bytes:
+    material = file_key + object_number.to_bytes(3, "little") + b"\x00\x00"
+    return hashlib.md5(material, usedforsecurity=False).digest()[: min(len(file_key) + 5, 16)]
+
+
+def _protected_pdf() -> bytes:
+    """Return a deterministic password-required Standard Security Handler fixture."""
+
+    user_password = _pad_pdf_password(b"locked")
+    owner_password = _pad_pdf_password(b"owner")
+    owner_key = hashlib.md5(owner_password, usedforsecurity=False).digest()[:5]
+    owner_entry = _rc4(owner_key, user_password)
+    permissions = -4
+    document_id = hashlib.sha256(
+        f"{SYNTHETIC_MARKER}: deterministic protected PDF".encode("ascii")
+    ).digest()[:16]
+    file_key = hashlib.md5(
+        user_password + owner_entry + struct.pack("<i", permissions) + document_id,
+        usedforsecurity=False,
+    ).digest()[:5]
+    user_entry = _rc4(file_key, _PDF_PASSWORD_PADDING)
+    content = _text_content(f"{SYNTHETIC_MARKER}: password-required carrier")
+    encrypted_content = _rc4(_pdf_rc4_object_key(file_key, 5), content)
+    encrypt_dictionary = (
+        b"<< /Filter /Standard /V 1 /R 2 /Length 40 /P -4 /O <"
+        + owner_entry.hex().encode("ascii")
+        + b"> /U <"
+        + user_entry.hex().encode("ascii")
+        + b"> >>"
+    )
+    identifier = document_id.hex().encode("ascii")
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+            ),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            _pdf_stream(encrypted_content),
+            encrypt_dictionary,
+        ),
+        trailer_entries=b"/Encrypt 6 0 R /ID [<" + identifier + b"><" + identifier + b">]",
+        header_comment=f"{SYNTHETIC_MARKER}: deterministic protected fixture".encode("ascii"),
     )
 
 
@@ -609,6 +708,28 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _script_marker_pdf,
         ),
         _fixture(
+            "pdf-action-marker",
+            "pdf/action-marker.pdf",
+            "application/pdf",
+            ("script-marker",),
+            "catalog-action-marker-pdf-v1",
+            {"page_count": 1, "action_marker_count": 1, "javascript_marker_count": 0},
+            _action_marker_pdf,
+        ),
+        _fixture(
+            "pdf-protected",
+            "pdf/password-required.pdf",
+            "application/pdf",
+            ("protected",),
+            "standard-security-handler-r2-pdf-v1",
+            {
+                "password_required": True,
+                "test_only_weak_encryption": True,
+                "user_password_fixture_token": "locked",
+            },
+            _protected_pdf,
+        ),
+        _fixture(
             "pdf-malformed",
             "pdf/malformed-truncated.pdf",
             "application/pdf",
@@ -664,7 +785,6 @@ def _coverage() -> list[JsonValue]:
             committed.setdefault(category, []).append(fixture.fixture_id)
     scheduled = {
         "multilingual": ("PWS-0303", "font-engine-required"),
-        "protected": ("PWS-0105", "pdf-encryption-engine-required"),
         "rtl": ("PWS-0704", "rtl-layout-engine-required"),
     }
     required_categories = (

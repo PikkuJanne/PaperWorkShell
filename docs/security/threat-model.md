@@ -118,7 +118,7 @@ account remains outside the confidentiality/integrity guarantee.
 |---|---|---|
 | TB-01 | Person / Windows shell to desktop UI | Treat selected paths, typed values, drag data, clipboard data, and confirmations as untrusted input |
 | TB-02 | Desktop application to worker client/RPC transport | Fresh zero-capability AppContainer generation; explicit anonymous-pipe handles and fixed one-shot capability grant; versioned typed messages bound to worker, case, operation, sequence, and request; size limits, replay rejection, and fail-closed decoding |
-| TB-03 | Restricted worker to active case workspace | No path or directory capability; future operations receive only exact broker-authenticated least-privilege handles, keep originals read-only and writes operation-scoped, and cannot publish manifests, journals, source records, or export history |
+| TB-03 | Restricted worker to active case workspace | No path or directory capability; PWS-0105 proves one exact broker-authenticated prepared-source read handle plus a write-only result pipe, while future object types require their own least-privilege profiles; workers cannot publish manifests, journals, source records, or export history |
 | TB-04 | Worker adapter to external executable/resource | Approved executable/resource identity, fixed working directory and argument array, controlled DLL/plugin/config/font/language search, minimal environment, bounded I/O/time/resources and descendants, no shell interpolation |
 | TB-05 | Import/storage adapter to external source | Classify local/device/network policy before open; use one read-only handle for bounded streaming copy/hash; never treat a partial copy as a source record |
 | TB-06 | Export staging to external destination | Classify destination policy, commit exact verified bytes through a destination-local temporary file, verify size/digest, reject original/prior-output aliases, then atomically replace only that new derivative name |
@@ -128,10 +128,10 @@ account remains outside the confidentiality/integrity guarantee.
 | TB-10 | Case storage to other local users/processes | Random internal names, restrictive permissions, lock/retention policy, no promise against account/admin compromise |
 
 The [dependency-boundary policy](../architecture/dependency-boundaries.md) enforces code-level
-direction. PWS-0008 defines the closed protocol and PWS-0107 implements TB-02 for the current
-no-document worker. PWS-0101 establishes private case storage, but TB-03 is not a filesystem-access
-claim until an owning operation proves exact handle brokerage. The current `protocol.noop` worker
-has no document handles and no AppContainer access-control entry on a case root.
+direction. PWS-0008 defines the closed protocol and PWS-0107 implements TB-02 for the original
+no-document worker. PWS-0101 establishes private case storage. PWS-0105 is the first owning
+operation to prove one narrow TB-03 handle path; `protocol.noop` remains handle-free and the
+AppContainer still has no access-control entry on a case root.
 
 ### Implemented PWS-0107 worker boundary
 
@@ -154,6 +154,31 @@ must demonstrate real IPv4/IPv6 TCP and UDP denial for the worker and descendant
 minimal environment, exact handle inheritance, denial of path-based case/external/user-temp access,
 and success only for deliberately brokered handles. A required skipped or simulated probe leaves
 PWS-0107 or the consuming gate open.
+
+### Implemented PWS-0105 PDF handle boundary
+
+The first real document operation is deliberately one-shot. Storage registers an already sealed
+PWS-0104 pending PDF and lends an independently positioned handle only when the complete path-free
+summary and retained object identity/size/type/link/reparse/sparse/stream checks still match. The
+worker client duplicates reduced read-data/read-attributes/synchronize rights into a fresh ready
+generation. It also duplicates only write-data/synchronize rights for a new bounded anonymous
+result pipe. Both child copies are non-inheritable; the broker closes its local writer and grants no
+case directory ACL.
+
+The worker copies and rehashes the expected bytes into bounded AppContainer-private temporary
+storage, closes the exact case handle, and only then invokes pikepdf/libqpdf. The parser reports
+closed counts/states/markers and discards library objects, warning strings, command output, and raw
+exceptions. Its correlated result frame is capped at 4,132 bytes. RPC success is insufficient on
+its own: the trusted broker terminates and confirms the one-shot job tree, reads through pipe EOF,
+and validates frame length/version plus operation/source UUIDs before accepting the typed result.
+
+Cancellation, deadline, protocol/worker failure, invalid frame, and success all terminate the
+generation before the source borrow and pipe are released. The broker never remotely closes a
+worker handle number because the target can reuse it. This is evidence for only one pending-source
+reader and one result writer; committed originals, directories, cache/staging, manifests,
+journals, exports, and destinations remain inaccessible until their owners prove separate profiles.
+See [DF-PDF-INSPECTION](data-flows.md#df-pdf-inspection--broker-inspect-correlate-and-revoke) and
+the [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
 
 ## Mandatory mitigation principles
 
@@ -267,8 +292,9 @@ effect before mitigations. Every threat is mapped in
   residual exposure; the project does not claim continuous vulnerability monitoring.
 - PWS-0107 selects AppContainer, suspended process creation, explicit inherited pipes, and a Job
   Object for the worker. Their live egress, environment, filesystem, descendant, and cleanup
-  behavior must be re-evidenced for packaged builds. Case filesystem access remains unclaimed until
-  exact handle brokerage is implemented and tested; installer primitives remain future work.
+  behavior must be re-evidenced for packaged builds. PWS-0105 proves only its exact prepared-PDF
+  read/result-pipe brokerage; every later case object and access profile remains unclaimed until
+  separately implemented and tested. Installer primitives remain future work.
 - M6 extends this model with redaction-specific adversarial evidence. M8 extends it for the final
   updater, installer, dependencies, migrations, diagnostics, and release artifacts.
 

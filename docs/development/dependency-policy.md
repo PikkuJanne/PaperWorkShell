@@ -240,15 +240,32 @@ A commercial route requires separately approved maintainer-controlled terms.
 
 ### pikepdf and qpdf
 
-`PWS-D015` fixes the structure layer as pikepdf/qpdf behind the internal PDF adapter. Concrete
-versions remain unselected until the adapter task. The chosen pikepdf Windows artifact must be
-inspected to determine whether it embeds qpdf and runtime libraries. Inventory embedded qpdf
-exactly once, with the version, license route, notices, hashes, and DLL or executable provenance
-that match the chosen wheel or separate distribution.
+`PWS-D015` fixes the structure layer as pikepdf/qpdf behind the internal PDF adapter. `PWS-0105`
+admits pikepdf 10.10.0, Pillow 12.3.0, lxml 6.1.1, and packaging 26.2 from the exact `uv.lock`
+resolution. The selected `pikepdf-10.10.0-cp314-abi3-win_amd64.whl` is 3,414,578 bytes with
+SHA-256 `66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c`.
+It embeds qpdf 12.3.2 and the Microsoft C++ runtime; security tests bind the inspected `_core.pyd`,
+qpdf DLL, and runtime DLL hashes so a wheel replacement cannot silently change the native closure.
+
+Standalone structural checking uses qpdf 12.3.2 from the official Windows x64 ZIP. CI downloads
+`qpdf-12.3.2-msvc64.zip` to runner temporary storage, verifies SHA-256
+`8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202` before extraction, checks
+the executable's exact version, and exports only the absolute `PWS_QPDF_EXECUTABLE` path. The ZIP
+route avoids executing the unsigned NSIS installer. qpdf uses the selected Apache-2.0 license
+route; its official MSVC closure reports libjpeg 9f, OpenSSL 3.6.0, zlib 1.3.1, and Microsoft CRT
+files as release-inventory inputs.
 
 pikepdf/qpdf load and process untrusted PDFs only in the worker. Application and UI modules never
 receive third-party objects or raw exceptions. Structural checking through an executable uses a
 fixed reviewed path and argument array, never ambient discovery or a shell string.
+
+These components are admitted for development and worker integration, but pikepdf, Pillow, lxml,
+and packaging remain `planned` release inputs. The selected lxml wheel contains
+`RNG2Schtrn.xsl` and `XSD2Schtrn.xsl`, which its own license inventory labels unlicensed. That does
+not block PWS-0105 development, but unresolved redistribution rights are a PWS-0801 release
+blocker: lxml and therefore pikepdf must not be marked `bundled` or `shipped` until maintainer or
+legal review closes the issue. PWS-0801 must also reconcile every qpdf/Pillow codec and runtime
+file, stage all licenses and notices, and generate the final SBOM and packaged-file inventory.
 
 ### OCRmyPDF, Tesseract, and Ghostscript
 

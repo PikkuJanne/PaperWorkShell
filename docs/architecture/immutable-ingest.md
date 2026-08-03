@@ -20,10 +20,11 @@ concrete storage adapter owns the authenticated Windows handles, bounded streami
 publication, and the narrow import-only manifest append. Storage does not import the application
 layer or parse PDF/image structure, and no package initializer re-exports an implementation.
 
-This task does not add a document engine, general manifest repository, autosave journal, page-edit
-operation, UI, network behavior, or runtime dependency. PWS-0105 and later image adapters own
-complex inspection. PWS-0109 owns general manifest transactions, autosave, and recovery; PWS-0110
-owns page operations and replay after the initial import catalogue exists.
+PWS-0104 itself does not add a document engine, general manifest repository, autosave journal,
+page-edit operation, UI, network behavior, or runtime dependency. PWS-0105 now supplies complex PDF
+inspection through the restricted worker without moving parsing into storage. Later image adapters
+retain their own inspection work. PWS-0109 owns general manifest transactions, autosave, and
+recovery; PWS-0110 owns page operations and replay after the initial import catalogue exists.
 
 ## Two-phase prepare and commit
 
@@ -66,10 +67,26 @@ Commit requires complete trusted metadata for the exact prepared copy:
 
 JPEG and PNG prechecks establish one source page and use `not_applicable` signature/encryption
 states. A PDF precheck intentionally has no page count and reports both states as `not_checked`.
-Those preliminary PDF values cannot be promoted into a source record. PWS-0105 must inspect the
-same prepared case copy through an exact brokered read-only handle and return a trusted page count
-and conservative inspection states before PDF commit. `unknown` remains a real inspection result;
-it is never fabricated to bypass `not_checked`.
+Those preliminary PDF values cannot be promoted into a source record. PWS-0105 inspects the same
+prepared case copy through an exact brokered read-only handle and returns the bounded page count,
+encryption state, and conservative signature-marker state required before PDF commit. `unknown`
+remains a real inspection result; it is never fabricated to bypass `not_checked`.
+
+After the pending copy is sealed and independently rehashed, storage registers its complete
+`PreparedSourceSummary` with the retained pending-handle authority. A borrow matches every summary
+field, uses `ReOpenFile` on that already authenticated kernel object to obtain an independent file
+pointer, and rechecks identity, size, regular/single-link/reparse/sparse state, and alternate
+streams. It never resolves the random pending name again. The trusted worker broker duplicates only
+read-data/read-attributes/synchronize rights into one isolated generation; a stale or mismatched
+summary fails. Registration is revoked before pending publication, deletion, or close.
+
+Inside the worker, the exact case handle is bounded-copy rehashed into worker-private ephemeral
+storage and closed before pikepdf parses the stream. One separately brokered write-only anonymous
+pipe returns a length-bounded result correlated to both operation and pending IDs. The broker
+terminates the one-shot worker tree before the prepared-source borrow is released, then validates
+the complete frame and typed result. No case path, write-capable source handle, pikepdf object, raw
+tool output, or exception crosses into application/storage code. See the
+[PDF structural-inspection contract](pdf-structural-inspection.md).
 
 Worker output is treated as untrusted typed input. The trusted application/storage boundary checks
 its case/source binding and limits before commit. The worker cannot publish an original, manifest,

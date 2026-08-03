@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
 import struct
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -497,6 +499,86 @@ def test_manifest_conflict_aborts_stale_pending_copy_without_record(
     assert [source["source_id"] for source in typed_sources] == [str(winner.source_id)]
     assert not (stack.layout.originals / f"{stale_id}.bin").exists()
     assert (stack.layout.originals / f"{winner.source_id}.bin").is_file()
+    _assert_no_staged_files(stack)
+
+
+def test_prepared_source_registry_lends_only_independent_read_authority(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (PROJECT_ROOT / "tests/fixtures/synthetic/v1/pdf/born-digital.pdf").resolve()
+    expected = source.read_bytes()
+    pending = stack.store.prepare(
+        CASE_ID,
+        source,
+        "Public synthetic.pdf",
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        progress=lambda _value: None,
+    )
+    summary = pending.summary
+
+    with stack.store.borrow_prepared_source(summary) as borrowed:
+        assert repr(borrowed) == "PreparedSourceReadLease(<redacted>)"
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        read_file = kernel32.ReadFile
+        read_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        read_file.restype = wintypes.BOOL
+        prefix = ctypes.create_string_buffer(16)
+        received = wintypes.DWORD()
+        assert read_file(
+            wintypes.HANDLE(borrowed.handle_value),
+            prefix,
+            len(prefix),
+            ctypes.byref(received),
+            None,
+        )
+        assert received.value == len(prefix)
+        assert prefix.raw == expected[: len(prefix)]
+
+        write_file = kernel32.WriteFile
+        write_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        write_file.restype = wintypes.BOOL
+        marker = ctypes.create_string_buffer(b"x")
+        written = wintypes.DWORD()
+        ctypes.set_last_error(0)
+        assert not write_file(
+            wintypes.HANDLE(borrowed.handle_value),
+            marker,
+            1,
+            ctypes.byref(written),
+            None,
+        )
+        assert ctypes.get_last_error() == 5
+
+    mismatched = PreparedSourceSummary(
+        pending_id=summary.pending_id,
+        case_id=summary.case_id,
+        source_id=summary.source_id,
+        media_type=summary.media_type,
+        byte_size=summary.byte_size,
+        sha256="0" * 64,
+    )
+    with pytest.raises(SourceIngestError) as mismatch:
+        stack.store.borrow_prepared_source(mismatched)
+    assert mismatch.value.code is SourceIngestErrorCode.INSPECT_FAILED
+
+    pending.abort()
+    with pytest.raises(SourceIngestError) as stale:
+        stack.store.borrow_prepared_source(summary)
+    assert stale.value.code is SourceIngestErrorCode.INSPECT_FAILED
     _assert_no_staged_files(stack)
 
 

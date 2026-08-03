@@ -13,6 +13,7 @@ from uuid import UUID
 from paperworkshell.worker import runtime as runtime_module
 from paperworkshell.worker.operations import (
     OperationContext,
+    PdfInspectionOperationHandler,
     RuntimeOperationRegistry,
     timed_out_operation_result,
 )
@@ -20,8 +21,10 @@ from paperworkshell.worker.protocol.bootstrap import BootstrapGrant
 from paperworkshell.worker.protocol.framing import read_frame, write_frame
 from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
+    PDF_INSPECT_CAPABILITY,
     CancelReason,
     CapabilityDescriptor,
+    CaseObjectReference,
     Direction,
     ErrorCode,
     MessagePayload,
@@ -34,11 +37,14 @@ from paperworkshell.worker.protocol.models import (
     ProgressStage,
     ProgressUnit,
     ProtocolEnvelope,
+    ReferenceArea,
     ResourceLimits,
+    ScalarValueType,
     SessionCapability,
     SessionHelloPayload,
     SessionShutdownPayload,
     ShutdownReason,
+    TaggedScalar,
 )
 from paperworkshell.worker.protocol.peer import PeerBinding, ProtocolPeer
 from paperworkshell.worker.protocol.state import ConversationPhase
@@ -189,6 +195,96 @@ def test_runtime_round_trip_progress_and_clean_shutdown() -> None:
         assert harness.receive().message_type is MessageType.SESSION_CLOSED
         assert harness.wait_for_exit() is HostExitCode.CLEAN
         assert harness.client.state.phase is ConversationPhase.CLOSED
+
+
+class _RecordingPdfAdapter:
+    def __init__(self) -> None:
+        self.context: OperationContext | None = None
+        self.source_handle: int | None = None
+        self.inspection = object()
+
+    def discard_source(self, source_handle: int) -> None:
+        self.source_handle = source_handle
+
+    def inspect(self, context: OperationContext, source_handle: int) -> object:
+        self.context = context
+        self.source_handle = source_handle
+        return self.inspection
+
+
+class _RecordingPdfResultWriter:
+    def __init__(self) -> None:
+        self.context: OperationContext | None = None
+        self.result_handle: int | None = None
+        self.inspection: object | None = None
+
+    def discard_result(self, result_handle: int) -> None:
+        self.result_handle = result_handle
+
+    def write(
+        self,
+        context: OperationContext,
+        result_handle: int,
+        inspection: object,
+    ) -> None:
+        self.context = context
+        self.result_handle = result_handle
+        self.inspection = inspection
+
+
+def test_pdf_inspection_runtime_passes_validated_inputs_and_writes_before_success() -> None:
+    source = CaseObjectReference(
+        ReferenceArea.SOURCE_READ,
+        _uuid(70),
+        None,
+        "pdf",
+        512,
+        "c" * 64,
+    )
+    parameters = (
+        TaggedScalar("source_handle", ScalarValueType.INTEGER, 701),
+        TaggedScalar("result_handle", ScalarValueType.INTEGER, 703),
+    )
+    adapter = _RecordingPdfAdapter()
+    writer = _RecordingPdfResultWriter()
+    registry = RuntimeOperationRegistry((PdfInspectionOperationHandler(adapter, writer),))
+
+    with _Harness(registry) as harness:
+        hello_request = _uuid(71)
+        harness.send(
+            MessageType.SESSION_HELLO,
+            SessionHelloPayload((1,), (PDF_INSPECT_CAPABILITY,)),
+            request_id=hello_request,
+            operation_id=None,
+        )
+        ready = harness.receive()
+        operation_id = _uuid(72)
+        request_id = _uuid(73)
+        harness.send(
+            MessageType.OPERATION_START,
+            OperationStartPayload(
+                PDF_INSPECT_CAPABILITY.capability_id,
+                PDF_INSPECT_CAPABILITY.capability_version,
+                (source,),
+                parameters,
+                _limits(),
+            ),
+            request_id=request_id,
+            operation_id=operation_id,
+        )
+        result = _receive_result(harness)
+
+    assert ready.message_type is MessageType.SESSION_READY
+    assert adapter.context is not None
+    assert adapter.context.operation_id == operation_id
+    assert adapter.context.inputs == (source,)
+    assert adapter.context.parameters == parameters
+    assert adapter.source_handle == 701
+    assert writer.context is adapter.context
+    assert writer.result_handle == 703
+    assert writer.inspection is adapter.inspection
+    assert result.outcome is OperationOutcome.SUCCEEDED
+    assert result.outputs == ()
 
 
 def test_runtime_cooperatively_cancels_an_active_operation() -> None:

@@ -206,7 +206,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 data = _load_inventory()
                 if mutation == "component-review-after-inventory":
-                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-02"
+                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-04"
                 elif mutation == "future-inventory-review":
                     data["reviewed_on"] = "9999-12-31"
                 else:
@@ -271,7 +271,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
                         {
                             "from": "jsonschema",
                             "type": "depends-on",
-                            "to": "pikepdf",
+                            "to": "ocrmypdf",
                             "enabled": True,
                         }
                     )
@@ -344,7 +344,9 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         data = _load_inventory()
         expected = {
             "pyside6": "PWS-0111",
+            "lxml": "PWS-0105",
             "pikepdf": "PWS-0105",
+            "pillow": "PWS-0105",
             "qpdf": "PWS-0105",
             "ocrmypdf": "PWS-0204",
             "tesseract": "PWS-0204",
@@ -354,6 +356,29 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         for component_id, task_id in expected.items():
             with self.subTest(component_id=component_id):
                 self.assertIn(task_id, _component(data, component_id)["task_refs"])
+
+    def test_pikepdf_native_and_lock_closure_relationships_fail_closed(self) -> None:
+        cases: tuple[tuple[str, str, str], ...] = (
+            ("qpdf", "contains", "DEPENDENCY_RELATIONSHIP_PROFILE_INVALID"),
+            ("lxml", "depends-on", "DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH"),
+            ("packaging", "depends-on", "DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH"),
+            ("pillow", "depends-on", "DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH"),
+        )
+        for target, relation_type, expected_code in cases:
+            with self.subTest(target=target):
+                data = _load_inventory()
+                relationship = next(
+                    relationship
+                    for relationship in cast(list[dict[str, Any]], data["relationships"])
+                    if relationship["from"] == "pikepdf"
+                    and relationship["to"] == target
+                    and relationship["type"] == relation_type
+                )
+                relationship["enabled"] = False
+                self.assertIn(
+                    expected_code,
+                    self._codes(data, repository_checks=True),
+                )
 
     def test_lock_versions_hashes_and_dependency_edges_are_reconciled(self) -> None:
         cases: tuple[tuple[str, str], ...] = (

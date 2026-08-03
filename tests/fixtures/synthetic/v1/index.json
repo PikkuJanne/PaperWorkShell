@@ -123,9 +123,10 @@
     },
     {
       "category": "protected",
-      "status": "scheduled",
-      "scheduled_task": "PWS-0105",
-      "reason_code": "pdf-encryption-engine-required"
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-protected"
+      ]
     },
     {
       "category": "rotated",
@@ -144,6 +145,7 @@
       "category": "script-marker",
       "status": "committed",
       "fixture_ids": [
+        "pdf-action-marker",
         "pdf-script-marker"
       ]
     },
@@ -175,6 +177,28 @@
     }
   ],
   "fixtures": [
+    {
+      "id": "pdf-action-marker",
+      "path": "pdf/action-marker.pdf",
+      "media_type": "application/pdf",
+      "bytes": 810,
+      "sha256": "9eb62a1bd2f1ba742e80b0a59c7931fb065ea13908db275ec434d74b90eedc39",
+      "categories": [
+        "script-marker"
+      ],
+      "recipe": "catalog-action-marker-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "action_marker_count": 1,
+        "javascript_marker_count": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
     {
       "id": "pdf-annotation",
       "path": "pdf/annotation.pdf",
@@ -402,6 +426,28 @@
         "page_count": 2,
         "rotation_degrees": 90,
         "distinct_media_boxes": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-protected",
+      "path": "pdf/password-required.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1002,
+      "sha256": "f21f26d37ceaca1302999b2cc474cf8e81b77f32196de3cff5452935485a44f0",
+      "categories": [
+        "protected"
+      ],
+      "recipe": "standard-security-handler-r2-pdf-v1",
+      "construction_assertions": {
+        "password_required": true,
+        "test_only_weak_encryption": true,
+        "user_password_fixture_token": "locked"
       },
       "provenance": {
         "kind": "algorithmic",

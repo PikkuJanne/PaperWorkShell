@@ -163,6 +163,13 @@ class TransportReceiveKind(StrEnum):
     CLOSED = "closed"
 
 
+class BrokeredHandlePurpose(StrEnum):
+    """Closed least-privilege access profiles for out-of-band worker handles."""
+
+    READ_SOURCE = "read_source"
+    WRITE_RESULT_PIPE = "write_result_pipe"
+
+
 @dataclass(frozen=True, slots=True)
 class TransportReceive:
     """One path-free receive outcome; payload bytes are hidden from representations."""
@@ -466,6 +473,13 @@ class WorkerProcess(Protocol):
 
     def wait(self, timeout_seconds: float | None) -> int | None:
         """Wait at most the supplied duration and return an exit status if observed."""
+
+    def duplicate_handle(
+        self,
+        source_handle: int,
+        purpose: BrokeredHandlePurpose,
+    ) -> int:
+        """Duplicate one reduced-right, non-inheritable handle into this worker."""
 
     def terminate_tree(self) -> None:
         """Terminate the retained job and its complete descendant tree."""

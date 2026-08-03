@@ -19,6 +19,7 @@ from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
     MESSAGE_VERSION,
     NOOP_CAPABILITY,
+    PDF_INSPECT_CAPABILITY,
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
     CancelDisposition,
@@ -55,6 +56,7 @@ from paperworkshell.worker.protocol.models import (
     ShutdownReason,
     TaggedScalar,
     WorkerFaultPayload,
+    validate_pdf_inspect_start,
 )
 
 _ENVELOPE_FIELDS: Final = frozenset(
@@ -559,15 +561,13 @@ class OperationRegistry:
 
     @property
     def capabilities(self) -> tuple[CapabilityDescriptor, ...]:
-        return (NOOP_CAPABILITY,)
+        return (NOOP_CAPABILITY, PDF_INSPECT_CAPABILITY)
 
     def validate_descriptor(self, operation_kind: str, operation_version: int) -> None:
         """Reject an operation descriptor absent from the protocol-v1 registry."""
 
-        if (operation_kind, operation_version) != (
-            NOOP_CAPABILITY.capability_id,
-            NOOP_CAPABILITY.capability_version,
-        ):
+        descriptor = CapabilityDescriptor(operation_kind, operation_version)
+        if descriptor not in self.capabilities:
             reject(
                 "RPC_UNSUPPORTED_OPERATION",
                 "payload.operation_kind",
@@ -578,12 +578,16 @@ class OperationRegistry:
         """Validate the descriptor and closed input contract for an operation start."""
 
         self.validate_descriptor(payload.operation_kind, payload.operation_version)
-        if payload.inputs or payload.parameters:
+        if payload.operation_kind == NOOP_CAPABILITY.capability_id and (
+            payload.inputs or payload.parameters
+        ):
             reject(
                 "RPC_INVALID_OPERATION",
                 "payload",
                 "protocol.noop version 1 accepts no inputs or parameters",
             )
+        if payload.operation_kind == PDF_INSPECT_CAPABILITY.capability_id:
+            validate_pdf_inspect_start(payload)
 
     def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
         """Reject worker-advertised capabilities absent from the local registry."""

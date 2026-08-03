@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract
-- Task: PWS-0107
+- Status: Implemented PWS-0107 contract; PWS-0105 document-operation extension
+- Tasks: PWS-0107, PWS-0105
 - Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -11,12 +11,17 @@
 PWS-0107 implements the separate Windows document-worker host, GUI-safe client/broker, bounded
 anonymous-pipe transport, operation runtime, cancellation/deadline lifecycle, forced tree
 termination, and restart behavior. The Windows launcher uses a zero-capability AppContainer and a
-retained Job Object. Protocol and lifecycle components remain standard-library-only and are
-injected behind process/transport interfaces for deterministic tests.
+retained Job Object. Core protocol, client, launch, and lifecycle components remain
+standard-library-only and are injected behind process/transport interfaces for deterministic
+tests. After bootstrap isolation succeeds, host composition may load the admitted worker-side PDF
+adapter from the exact staged runtime; third-party types still do not enter the core contracts.
 
-The only registered operation is `protocol.noop` version 1. It reports numeric progress, responds
-to cooperative cancellation, and produces no document output. It proves the process and protocol
-boundary; it does not prove PDF/image parsing or case-file access.
+The registry now contains `protocol.noop` version 1 and `pdf.inspect` version 1. The no-op still
+proves process/protocol lifecycle without document authority. PWS-0105 is the first real document
+operation: it proves exact prepared-source read-handle transfer, a write-only bounded result pipe,
+worker-private copy verification, pikepdf/libqpdf structural inspection, and one-shot worker
+revocation. It does not grant general case access or approve future cache, staging, render, OCR, or
+export handles. See the [PDF structural-inspection contract](pdf-structural-inspection.md).
 
 ## Component ownership
 
@@ -30,6 +35,11 @@ boundary; it does not prove PDF/image parsing or case-file access.
 | `worker.protocol.peer` | Outbound validation/encoding and inbound decode/authentication/state transition | Sole conversation owner on each side |
 | `worker.host` / `worker.runtime` | Isolation self-audit, negotiation, dispatch, progress, cancellation, timeout and close | No UI/application dependency; severe faults end the generation |
 | `worker.operations` | Immutable exact operation-handler registry | Only registered descriptors dispatch; raw handler exceptions are mapped |
+| `worker.pdf_source_inspector` | One-shot GUI-process orchestration, handle transfer, cancellation/deadline checks, termination, and result validation | Structural broker protocols only; storage and worker implementations are injected |
+| `worker.pdf_operation` | Adopt one brokered source, verify/copy/hash it, invoke the PDF adapter, and write one correlated result | Host-side only; closes the case handle before native parsing |
+| `worker._windows_broker` | Non-inheritable bounded anonymous result pipe | GUI-process-side private primitive; no path or document value |
+| `storage.prepared_source_registry` | Register/revoke one sealed pending source and lend an exact independently positioned read handle | Storage owns source identity and publication; no worker-host import |
+| `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
 
 Package initializers remain passive. Application/UI code may import explicit `worker.client` and
 `worker.protocol` modules but cannot import the host, Windows launcher implementation, operation
@@ -90,9 +100,12 @@ Overlapping profiles therefore retain one another's access; cleanup proves the t
 and restores each observed object's original auto-inheritance state without replaying a stale whole
 descriptor. Numeric Job Object limits are range-checked before conversion to the Windows ABI.
 
-The child receives exactly three handles: standard input for client-to-worker RPC, standard output
-for worker-to-client RPC, and standard error as a one-shot bootstrap reader. It receives no case,
-source, cache, manifest, journal, destination, diagnostic, or logging handle.
+At launch the child receives exactly three handles: standard input for client-to-worker RPC,
+standard output for worker-to-client RPC, and standard error as a one-shot bootstrap reader. It
+receives no inherited case, source, cache, manifest, journal, destination, diagnostic, or logging
+handle. After ready, a registered operation may receive only its explicit reduced-right handles via
+`DuplicateHandle`; those are not inherited launch authority and do not change the exact-three
+launch claim.
 
 ### Bootstrap grant
 
@@ -181,6 +194,12 @@ deadline, so ordering is explicit rather than a thread race.
 8. A handler exception becomes `WORKER_OPERATION_FAILED` with no raw exception or output. A severe
    protocol/worker fault requires restart.
 
+For `pdf.inspect`, RPC success additionally means that the worker has written and closed one
+bounded out-of-band result frame. It does not make the frame trusted. The GUI-side broker must
+terminate and confirm the one-shot job tree, read through pipe EOF, validate frame size/version,
+operation/source correlations and closed typed values, and only then expose the result. Any
+operation or frame failure leaves the prepared source non-authoritative.
+
 Graceful shutdown during active work first requests cancellation, waits for the terminal result and
 any pending acknowledgement correlation, then sends `session.shutdown`. Only the correlated,
 validated `session.closed` yields a normal stopped state. Forced termination does not wait for
@@ -228,13 +247,28 @@ environment, process, or payload values.
 
 Case binding is logical, not filesystem authority. No case path appears in the bootstrap, RPC,
 command line, environment, or snapshot. The AppContainer SID is not added to case-workspace ACLs.
+`protocol.noop` remains handle-free.
 
-`protocol.noop` has empty inputs/parameters/outputs and receives no document handle. The current
-worker therefore proves lifecycle and containment only. It does not yet claim access to an active
-case, immutable original, cache/temp/staging object, manifest, journal, export history, external
-source, or destination.
+PWS-0105 proves the first deliberately brokered access for one sealed, non-authoritative pending
+PDF. Storage authenticates the complete prepared summary and retained object, obtains an
+independently positioned read handle with `ReOpenFile`, and rechecks identity, size, regular-file,
+single-link, reparse/sparse, and alternate-stream state. The Windows client duplicates only
+read-data/read-attributes/synchronize rights into the worker, with inheritance disabled. A second
+anonymous-pipe handle carries only write-data/synchronize rights for the result. The source and
+result handle values are distinct, positive, worker-local RPC parameters for this one registered
+operation; they are not paths or a general handle API.
 
-A later operation that needs an object must preserve all of these rules:
+The worker verifies the source handle, copies exactly the expected bytes while recomputing SHA-256
+into bounded AppContainer-private temporary storage, and closes the case handle before invoking
+pikepdf. It writes one length-prefixed result containing the operation UUID, prepared-source UUID,
+and closed JSON report, then closes the result writer. The broker terminates the one-shot job tree
+before releasing either local authority and validates the frame only after EOF. It never remotely
+closes a target-process handle number because Windows can reuse that number for another object.
+
+This is a narrow read claim only. The worker still has no general access to an active case,
+immutable committed originals, cache/staging output, manifest, journal, export history, external
+source, or destination. A later operation that needs another object must preserve all of these
+rules:
 
 1. Resolve a logical `CaseObjectReference` only in the trusted storage broker.
 2. Authenticate the already-opened handle's case, area, operation, identity, type, access, size,
@@ -266,6 +300,12 @@ PWS-0107 is complete only with real supported-Windows evidence for:
 - path-based attempts against cases, authoritative records, external locations, inherited user
   temp, and unrelated profile data denied.
 
+PWS-0105 adds required supported-Windows evidence that the exact prepared PDF handle and result
+writer work while a write through the source handle and path-based sibling/case access remain
+denied; the result is correlated, bounded, and sanitized; cancellation/timeout/failure terminate
+the one-shot tree before storage revokes the borrow. This evidence belongs to the consuming
+operation and does not retroactively change PWS-0107's no-document completion claim.
+
 Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
 probes into a temporary physical tree at the root of CPython's fixed drive before launch. The
 fixed-drive location gives AppContainer descendants stable ancestor-traverse semantics even when a
@@ -276,17 +316,23 @@ ACLs, and must pass the same unchanged resource validator used by the real launc
 file remains present immediately outside the approved code roots so denial evidence cannot pass
 only because the target is absent.
 
-The current no-op must not fake handle evidence with a test-only production RPC operation. Tests
+PWS-0105's live test extends that disposable staging root with only the pinned pikepdf, embedded
+libqpdf, Pillow, lxml, and packaging runtime directories needed by the real operation. The isolated
+bootstrap adds only the staged interpreter's exact `Lib/site-packages` directory to `sys.path`; it
+does not enable ordinary `site` startup, `.pth` execution, user packages, or ambient dependency
+discovery. The copied engine files remain inside the validated runtime tree and receive the same
+temporary AppContainer runtime grant.
+
+The PWS-0107 no-op must not fake handle evidence with a test-only production RPC operation. Tests
 may inject fixed launch/operation adapters, but release claims require the real launcher and host.
-Successful case-object handle brokerage is not a PWS-0107 completion criterion; the first later
-operation that introduces it must prove that only its exact deliberately brokered handles work.
-Any required skipped probe, leaked canary, surviving descendant, unexpected writable path, or
-cleanup failure leaves the task/gate open.
+Successful case-object handle brokerage was not a PWS-0107 completion criterion. PWS-0105 is the
+first consuming operation and must prove that only its exact deliberately brokered handles work.
+Any required skipped probe, leaked canary, surviving descendant, unexpected writable path, invalid
+result correlation, or cleanup failure leaves the consuming task/gate open.
 
 ## Explicit deferrals
 
-- PWS-0104: immutable source copy/hash publication and retained import lease consumption.
-- PWS-0105/PWS-0106: PDF inspection and renderer operations behind worker adapters.
+- PWS-0106: renderer operations behind a replaceable worker adapter.
 - PWS-0108: exact thumbnail cache handle brokerage, bounded output, and cache lifecycle.
 - PWS-0109: authoritative manifest/journal persistence and recovery.
 - PWS-0112: export staging handle brokerage, verification, and destination publication.

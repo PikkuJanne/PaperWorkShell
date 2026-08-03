@@ -5,11 +5,13 @@ case-scoped document worker. The authoritative structural schema is
 [`schemas/worker-rpc-v1.schema.json`](../../schemas/worker-rpc-v1.schema.json). It is a closed,
 self-contained JSON Schema Draft 2020-12 resource and is always evaluated offline.
 
-This is a message contract, not a transport or sandbox implementation. Framing, endpoint naming,
-Windows ACLs, worker creation, capability-secret provisioning, case-object resolution, opened-handle
-handoff, network denial, process limits, termination, and cleanup are deliberately deferred to
-`PWS-0107`. That task must preserve this contract rather than adding paths or shell command text to
-messages.
+This is a message contract, not a transport or sandbox implementation. PWS-0107 implements
+framing, worker creation, capability provisioning, network denial, process limits, termination, and
+cleanup without changing the released v1 envelope. PWS-0105 adds the first exact opened-handle
+operation through the existing typed operation registry. Neither extension adds paths or shell
+command text to messages. See the
+[worker lifecycle contract](../architecture/worker-lifecycle.md) and
+[PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
 
 ## Common envelope
 
@@ -58,9 +60,18 @@ messages are exchanged. Negotiation then proceeds exactly as follows:
    incompatible or malformed negotiation produces only a sanitized protocol failure and the session
    is not usable.
 
-The initial registry contains one capability and operation: `protocol.noop` version 1. Its canonical
-start has empty `inputs` and `parameters`; its only progress stage is `processing`. It proves version
-negotiation, typed round trips, state, and cancellation without parsing a document.
+The initial foundation registry contained `protocol.noop` version 1. Its canonical start has empty
+`inputs` and `parameters`; its only progress stage is `processing`. It proves version negotiation,
+typed round trips, state, and cancellation without parsing a document.
+
+PWS-0105 adds `pdf.inspect` version 1. Negotiation still requires the client to request that exact
+descriptor and the worker to advertise it from its local registry. Its start has exactly one
+`source_read` input with content kind `pdf`, a non-null expected byte size and SHA-256, plus exactly
+two distinct positive integer parameters named `source_handle` and `result_handle`. Those integers
+are worker-local values created by the trusted Windows broker after ready; the corresponding kernel
+handles carry reduced read-source and write-result-pipe access. They are not paths, caller-selected
+object identifiers, or a general handle namespace. The operation reports only the existing
+`processing` stage and returns no protocol output reference.
 
 ## Messages and lifecycle
 
@@ -112,9 +123,11 @@ Validation is intentionally split:
 2. The operation registry selects an exact `(operation_kind, operation_version)` codec and applies
    its input, parameter, output, limit, and state rules before dispatch.
 
-Consequently, a structurally valid but unregistered operation fails closed as unsupported. The only
-registered pair in this foundation task is `protocol.noop` version 1, with no inputs, parameters,
-or outputs.
+Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
+registered pairs are now `protocol.noop` version 1 and `pdf.inspect` version 1. The latter's exact
+source reference, handle parameters, and limits are validated before host dispatch; any missing,
+extra, mistyped, nonpositive, or equal handle value fails closed.
+
 Adding an operation does not loosen generic dictionaries: it requires a named capability, a
 versioned typed codec, semantic validation, positive and negative fixtures, and bounded adapter
 tests. A changed operation meaning receives a new operation version.
@@ -133,10 +146,26 @@ read references. Successful result outputs are limited to `operation_staging`, m
 envelope's operation ID, and must include both expected byte size and SHA-256. Failed, timed-out,
 and cancelled operations return no outputs.
 
-The trusted case-workspace broker will map these identifiers to constrained objects in `PWS-0107`.
-Schema validity does not authorize a file. Resolution must still verify the case/area/operation
-binding, containment, object type, size and digest, resistance to path/reparse-point races, and the
-worker's access rights before use.
+Schema validity does not authorize a file. PWS-0105's trusted prepared-source broker is the first
+implementation: it matches the complete sealed-source summary, reopens the retained exact object
+without a path lookup, revalidates identity/type/size/link/reparse/sparse/alternate-stream state,
+and duplicates only reduced read rights into the worker. Its separate result pipe grants only
+write rights. Future reference areas still require their own trusted resolution, containment,
+object type, size/digest, alias/race, quota, lifetime, and access checks before use.
+
+### `pdf.inspect` out-of-band result
+
+The ordinary `operation.result` is still the sole protocol terminal message. For a succeeded
+`pdf.inspect`, it has no outputs and only establishes that the host handler wrote and closed one
+out-of-band result frame before returning. The broker terminates the one-shot worker tree, then
+reads that frame through EOF and independently validates its length, report version, closed typed
+fields, operation UUID, and source-object UUID. RPC success with a missing, malformed, oversized,
+surplus, future, or misbound frame is failure.
+
+The bounded frame contains no path or native object. Its two UUID correlations plus canonical
+structural report are carried over the exact anonymous result-pipe handle created for this
+operation. This specialized result channel does not change the released protocol-v1 message schema
+and is not permission for another operation to invent an unregistered side channel.
 
 ## Limits and bounded decoding
 

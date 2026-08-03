@@ -58,6 +58,30 @@ jobs:
           $destination | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $destination "gitleaks.exe") version
 
+      - name: Install and verify qpdf 12.3.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archive = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2-msvc64.zip"
+          $destination = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2"
+          $uri = "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip"
+          $expected = "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202"
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "qpdf archive checksum mismatch."
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $qpdf = Join-Path $destination "qpdf-12.3.2-msvc64/bin/qpdf.exe"
+          if (-not (Test-Path -LiteralPath $qpdf -PathType Leaf)) {
+            throw "qpdf executable was not found in the reviewed archive layout."
+          }
+          $version = (& $qpdf --version)[0]
+          if ($version -ne "qpdf version 12.3.2") {
+            throw "qpdf version mismatch."
+          }
+          "PWS_QPDF_EXECUTABLE=$qpdf" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Bootstrap locked environment
         run: python tools/dev.py bootstrap
 

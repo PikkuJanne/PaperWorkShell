@@ -32,17 +32,17 @@
 
 | Test ID | Threats | Earliest owning tasks | Layer and synthetic scenario | Required oracle |
 |---|---|---|---|---|
-| ST-001 | TM-001, TM-003, TM-022, TM-023 | PWS-0103, PWS-0105, PWS-0106, PWS-0107 | Security/integration: malformed/truncated/deep PDF/image inputs; corrupted/truncated/oversized/wrong-case/raced canonical preview buffers; hostile worker/tool results | GUI never invokes a general-purpose decoder on worker bytes; worker terminates/restarts where required; stable error; case/original unchanged |
-| ST-002 | TM-002 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0201, PWS-0208 | Security/performance: byte/page/pixel/decompression/recursion/memory/CPU/temp limits at boundaries | Work stops within budget; partial state is non-authoritative; retry remains possible |
+| ST-001 | TM-001, TM-003, TM-022, TM-023 | PWS-0103, PWS-0105, PWS-0106, PWS-0107 | Security/integration: malformed/truncated/deep PDF/image inputs; corrupted/truncated/oversized/wrong-case/misbound result or preview frames; hostile worker/tool results | GUI never invokes a general-purpose document decoder on worker bytes; worker terminates/restarts where required; exact correlations and closed result validate or stable error; case/original unchanged |
+| ST-002 | TM-002 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0201, PWS-0208 | Security/performance: byte/page/object/graph/pixel/decompression/recursion/memory/CPU/temp/result/tool-output limits at boundaries | Work stops within budget; partial state is non-authoritative; retry remains possible |
 | ST-003 | TM-004 | PWS-0107, PWS-0204, PWS-0803 | Security: real worker and descendant attempt IPv4/IPv6 TCP and UDP against controlled loopback listeners; reachable non-isolated control; OCR socket/DNS/HTTP attempts; updater privacy capture | AppContainer token has zero capability SIDs; no listener receives isolated traffic while control succeeds; descendants retain denial; updater request contains no case/document fields |
 | ST-004 | TM-005, TM-023 | PWS-0103, PWS-0104, PWS-0112 | Security/integration: one-handle source replacement/truncation; pending-copy corruption; post-import case-copy mutation before parse/export; destination swap between verification/temp copy/digest/commit | Race/mutation detected before an authoritative result; successful source/staged/stored digests agree or no source record; exact verified export bytes or no export commit; external source/prior export hashes and last valid manifest unchanged |
-| ST-005 | TM-006, TM-019, TM-023 | PWS-0101, PWS-0102, PWS-0104, PWS-0107, PWS-0407, PWS-0706 | Security: traversal, absolute/device/UNC/ADS/reserved names, symlink/reparse/hardlink/file-ID alias, case-insensitive/Unicode collision, cache/temp link swap, ZIP/deletion escape; restricted worker tries case roots, originals, manifest/journal/history, sibling case, external and inherited user-temp paths; deliberate exact-handle control when available | Reject before mutation and again at opened handle; no path-based worker case access; only an authenticated least-privilege handle works; broker alone publishes state; no file outside exact scope changes |
+| ST-005 | TM-006, TM-019, TM-023 | PWS-0101, PWS-0102, PWS-0104, PWS-0105, PWS-0107, PWS-0407, PWS-0706 | Security: traversal, absolute/device/UNC/ADS/reserved names, symlink/reparse/hardlink/file-ID alias, case-insensitive/Unicode collision, cache/temp link swap, ZIP/deletion escape; restricted worker tries case roots, originals, manifest/journal/history, sibling case, external and inherited user-temp paths; deliberate exact prepared-source/result handles | Reject before mutation and again at opened handle; no path-based worker case access; only authenticated purpose-limited handles work; source writes fail; broker alone publishes state; no file outside exact scope changes |
 | ST-006 | TM-007 | PWS-0006, PWS-0104, PWS-0109, PWS-0804 | Unit/integration: old/current/future/invalid schemas, interrupted import-only append, partial atomic write, journal corruption, interrupted migration | Future/invalid fails before mutation; a precommit import exposes no source record; last valid state reopens; source hashes/intent preserved |
 | ST-007 | TM-008 | PWS-0008, PWS-0107 | Unit/property/integration: wrong fixed bootstrap size/magic/version/identity/capability; zero/oversized/truncated/fragmented/coalesced frames; wrong session/worker/capability/case/operation/generation/direction/sequence/request; malformed, replayed, unknown, or out-of-order envelope | Bootstrap/frame/decoder/state rejects before work; grant from another launch fails; first protocol fault poisons generation and terminates when required; stale restart events do not mutate state; no raw values leak |
-| ST-008 | TM-009 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0204 | Security: metacharacter/quote/newline input; decoy executable/DLL/plugin/config/font/language resource in user PATH/PATHEXT/TEMP/cwd; proxy/cloud/command/Python environment canaries; inherited-handle inventory; child-spawn and excessive output | Fixed executable/resource identity, fixed argv/cwd, no shell; only constructed allowlist with per-launch profile temp values; exactly RPC/bootstrap handles; descendants inherit egress/limit/kill policy; stable sanitized result |
+| ST-008 | TM-009 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0204 | Security: metacharacter/quote/newline input; qpdf argv separator; decoy executable/DLL/plugin/config/font/language resource in user PATH/PATHEXT/TEMP/cwd; proxy/cloud/command/Python environment canaries; inherited-handle inventory; child-spawn and excessive output | Fixed executable/resource identity, fixed argv/cwd, no shell or PATH discovery; only constructed allowlist with per-launch profile temp values; exactly RPC/bootstrap launch handles plus registered reduced operation handles; descendants inherit egress/limit/kill policy; stable sanitized result |
 | ST-009 | TM-010 | PWS-0007, PWS-0401 | Security/unit: script/import/expression/path-bearing executable field, duplicate keys, tamper, expiry, future version; schema-permitted inert provenance URL under network/file spy | No execution or dereference/file/network access; inert provenance stays data; trust state is visible; case unchanged; invalid template code and plain remediation |
 | ST-010 | TM-011, TM-018, TM-026 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Security: distinct context-specific canaries plus diagnostic entry mutation/addition/removal after preview and before write | No prohibited canary; produced entries/digests exactly match frozen approved snapshot; mutation fails closed; cancel writes nothing |
-| ST-011 | TM-012, TM-013, TM-023 | PWS-0101, PWS-0104, PWS-0108, PWS-0113, PWS-0705 | Integration/security: cancel/crash/power-loss, pre-manifest source orphan, stale/raced/aliased cache, unrelated case, lock/expiry/restart | Partial data stays operation/case scoped and non-authoritative, and is ignored/cleaned/recovered; wrong-case/raced state is rejected; unrelated case is not visible |
+| ST-011 | TM-012, TM-013, TM-023 | PWS-0101, PWS-0104, PWS-0105, PWS-0108, PWS-0113, PWS-0705 | Integration/security: cancel/crash/power-loss, pre-manifest source orphan, stale/raced/aliased prepared source or cache, result-writer survival, unrelated case, lock/expiry/restart | Partial data stays operation/case scoped and non-authoritative; one-shot worker terminates before source/result authority release; wrong-case/raced state is rejected; unrelated case is not visible |
 | ST-012 | TM-014, TM-015 | PWS-0112, PWS-0406, PWS-0407 | Integration/security: truncated/wrong-page/encrypted/unrenderable output, collision/alias/UNC policy, ZIP names, destination-local temp digest mismatch, disk-full/permission/partial multi-file | Required verification failure blocks artifact/package success; each commit is atomic; partial set is inventoried for cleanup/retry; previous good output remains |
 | ST-013 | TM-016 | PWS-0105, PWS-0206, PWS-0208, PWS-0305 | Integration/accessibility: signed-marker source through modify/cancel/export and signature-image wording | Warning/confirmation precedes change; original preserved; output says unsigned derivative; visual mark makes no crypto claim |
 | ST-014 | TM-017 | PWS-0405, PWS-0601, PWS-0603, PWS-0606, PWS-0607, PWS-0608 | Security/golden/manual: visual-cover negative case and adversarial text/image/object/revision/metadata/OCR/viewer/resave canaries | Ordinary shape never passes; any recovered/unknown canary blocks export; independent gate remains mandatory |
@@ -107,6 +107,52 @@ restart orphan cleanup. Those remain with the broader ST-004/ST-005/ST-011 owner
 PWS-0103 and PWS-0113. Required Windows filesystem controls are evidence only when the real
 supported volume exercises them; a mocked or skipped required race is not a pass.
 
+## PWS-0105 PDF structural-inspection evidence
+
+PWS-0105 implements its portions of ST-001, ST-002, ST-005, ST-008, ST-011, ST-013, and ST-017
+through one closed adapter and one one-shot broker path.
+
+The pikepdf contract matrix inspects the complete synthetic PDF corpus. Ordinary PDFs return
+bounded page/object counts and no registered feature markers; malformed and password-required
+fixtures return distinct closed states; signed-marker, attachment, annotation, action-only, and
+orphan-script fixtures produce their specific conservative markers. Open calls use an empty
+password, disable recovery, and suppress raw warning text. Tests enforce input/page/object,
+object-graph depth/collection/node, cancellation, and monotonic deadline limits, discard syntax
+warning values, and prove raw stream/library failures do not escape the adapter. Feature results
+remain markers, not cryptographic signature validation or a general absence proof.
+
+The storage/worker broker suites authenticate the complete sealed `PreparedSourceSummary`, obtain
+an independent same-object read handle with no path lookup, reject stale/mismatched summaries, and
+exercise a denied source write. Handle-transfer tests require reduced read-source and
+write-result-pipe masks, non-inheritance, and no same-access duplication. The `pdf.inspect` codec
+accepts exactly one source reference plus two distinct positive handle parameters. Result-frame
+tests reject truncation, surplus, oversize, duplicate keys, future versions, and wrong operation or
+source UUIDs without echoing bytes. Broker lifecycle tests assert that success, worker failure,
+cancellation, deadline, and malformed or misbound results terminate the one-shot worker
+before the source lease and pipe close; only protocol success permits an EOF read after
+termination.
+
+A supported-Windows integration test stages only the selected pinned PDF-engine packages into the
+disposable worker runtime, launches the real zero-capability AppContainer/Job host, prepares a real
+synthetic pending copy, transfers the two exact handles after `pdf.inspect` negotiation, and
+receives a correlated typed result only after the one-shot generation is stopped. The test also
+asserts that no pending case-temp artifact remains; the worker-private copy stays inside the
+generation-scoped AppContainer profile cleanup boundary established by PWS-0107. Existing
+PWS-0107 live tests retain path-based case/external/user-temp denial and network/descendant
+containment; PWS-0105 does not infer those properties from a unit double.
+
+The standalone qpdf security seam requires the reviewed absolute qpdf 12.3.2 executable. Tests use
+clean, malformed, and metacharacter-bearing synthetic paths; assert the fixed `--check`,
+`--suppress-recovery`, `--no-warn`, `--` argument vector with `shell=False`; exclude ambient
+`PATH`, `PATHEXT`, proxy, and command variables; close anonymous-pipe stdin; count/discard bounded
+stdout and stderr concurrently; map only documented return codes; and prove cancellation and
+timeout termination escalation. Tool output and unexpected return details never enter errors or
+logs. Separate dependency capability tests bind the admitted pikepdf/libqpdf native closure.
+
+This evidence proves structural inspection of one prepared PDF, not rendering, export acceptance,
+signature validity, active-content removal, or general case-object access. PWS-0106, PWS-0112,
+PWS-0208, and PWS-0501 retain those later claims.
+
 ## PWS-0107 required live evidence
 
 PWS-0107 unit doubles prove deterministic protocol and lifecycle logic, but do not prove the
@@ -125,10 +171,10 @@ demonstrate all of the following on the supported Windows target:
    no isolated traffic.
 5. Forced termination or retained Job handle close ends the worker and every descendant, with no
    breakaway or surviving pipe/profile authority.
-6. The current no-op receives no document handle. Path opens for a case root, sibling case,
-   originals, manifest, journal, export history, external path, user temp, and unrelated profile
-   fail. Once an owning operation adds brokerage, a deliberately authenticated exact handle works
-   and siblings/other access still fail.
+6. The no-op receives no document handle. Path opens for a case root, sibling case, originals,
+   manifest, journal, export history, external path, user temp, and unrelated profile fail.
+   PWS-0105 separately proves that its deliberately authenticated prepared-source/result handles
+   work while source writes and sibling/other access remain denied.
 7. Handshake, operation, cancellation-grace, and shutdown deadlines; result/deadline and
    result/cancel races; crash/partial frame; malformed message; clean close; forced stop; and fresh
    restart converge on exactly one stable terminal client state without raw values.
@@ -157,7 +203,8 @@ evidence.
 - Force worker crash, timeout, cancellation, malformed message, disk-full, permission failure,
   destination failure, and recovery.
 - For PWS-0107 specifically, retain the live AppContainer/egress/job/environment/handle/filesystem
-  evidence above; the no-op lifecycle does not by itself prove case access confinement.
+  evidence above; combine it with PWS-0105's real one-shot prepared-source/result-handle path rather
+  than treating the no-op lifecycle by itself as case-access evidence.
 - PWS-0114 requires original hashes, verified export, worker recovery, egress evidence, and clean
   logs on the reference profile.
 

@@ -121,8 +121,12 @@ class WorkerHostRuntime:
         self._reader = reader
         self._writer = writer
         self._operations = operations
-        if operations.capabilities != DEFAULT_OPERATION_REGISTRY.capabilities:
-            raise ValueError("runtime and protocol operation registries differ")
+        if not operations.capabilities:
+            raise ValueError("runtime operation registry cannot be empty")
+        try:
+            DEFAULT_OPERATION_REGISTRY.validate_capabilities(operations.capabilities)
+        except ProtocolError:
+            raise ValueError("runtime operation registry is not protocol registered") from None
         self._monotonic = monotonic
         self._events: queue.Queue[_RuntimeEvent] = queue.Queue(maxsize=_EVENT_QUEUE_SIZE)
         self._completion_lock = threading.Lock()
@@ -279,10 +283,12 @@ class WorkerHostRuntime:
             self._events.put(_Progress(active.token, progress))
 
         context = OperationContext(
-            operation_id,
-            payload.requested_limits,
-            active.cancel_requested,
-            report_progress,
+            operation_id=operation_id,
+            limits=payload.requested_limits,
+            cancel_requested=active.cancel_requested,
+            report_progress=report_progress,
+            inputs=payload.inputs,
+            parameters=payload.parameters,
         )
 
         def execute() -> None:
