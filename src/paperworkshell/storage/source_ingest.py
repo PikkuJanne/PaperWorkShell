@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 import os
 import re
 from collections.abc import Callable
@@ -25,6 +24,10 @@ from paperworkshell.domain.import_precheck import (
     DetectedMediaType,
     ImportPrecheckError,
     ImportPrecheckErrorCode,
+)
+from paperworkshell.domain.manifest_repository import (
+    ManifestRepositoryError,
+    ManifestRepositoryErrorCode,
 )
 from paperworkshell.domain.source_ingest import (
     MAX_SOURCE_PAGES,
@@ -47,27 +50,39 @@ from paperworkshell.domain.source_ingest import (
 from paperworkshell.storage._windows import (
     MAXIMUM_STREAM_CHUNK_BYTES,
     FileIdentity,
-    ManifestReplaceState,
     WindowsHandle,
     WindowsPendingSourceFile,
     create_pending_source_file,
     open_handle,
     publish_new_original,
-    replace_manifest_atomically,
     require_expected_handle,
     require_no_alternate_streams,
     verify_private_acl,
-    write_new_file,
-)
-from paperworkshell.storage.case_lifecycle import (
-    MAX_MANIFEST_BYTES,
-    MAX_MANIFEST_COLLECTION_ITEMS,
-    _decode_manifest,
-    _parse_utc_timestamp,
-    _render_utc_timestamp,
-    _summary_from_manifest,
 )
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
+from paperworkshell.storage.manifest_codec import (
+    MAX_MANIFEST_BYTES,
+    MAX_MANIFEST_COLLECTION_ITEMS,
+)
+from paperworkshell.storage.manifest_codec import (
+    decode_manifest as _decode_manifest,
+)
+from paperworkshell.storage.manifest_codec import (
+    parse_utc_timestamp as _parse_utc_timestamp,
+)
+from paperworkshell.storage.manifest_codec import (
+    render_utc_timestamp as _render_utc_timestamp,
+)
+from paperworkshell.storage.manifest_codec import (
+    summary_from_manifest as _summary_from_manifest,
+)
+from paperworkshell.storage.manifest_repository import (
+    WindowsManifestRepository,
+    _ManifestTransactionInterruption,
+    canonical_manifest_bytes,
+    commit_manifest_transaction,
+    validate_manifest_payload,
+)
 from paperworkshell.storage.prepared_source_registry import (
     PreparedSourceReadLease,
     PreparedSourceReadRegistry,
@@ -102,22 +117,6 @@ _SOURCE_RECORD_KEYS: Final = frozenset(
     }
 )
 _PAGE_RECORD_KEYS: Final = frozenset({"page_id", "source_id", "source_page_index"})
-_EMPTY_IMPORT_COLLECTIONS: Final = (
-    "page_operations",
-    "assets",
-    "overlays",
-    "assignments",
-    "confirmations",
-)
-_INITIAL_CONSTRAINTS: Final[dict[str, object]] = {
-    "constraints_version": 1,
-    "allowed_output_modes": ["combined_pdf"],
-    "encryption_policy": "must_be_unencrypted",
-}
-_INITIAL_EXPORT_HISTORY: Final[dict[str, object]] = {
-    "storage_name": "export-history.json",
-    "entries": [],
-}
 _PDF_SIGNATURE_STATES: Final = frozenset(
     {
         SourceSignatureState.NONE_DETECTED.value,
@@ -171,6 +170,8 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         "_authority",
         "_closed",
         "_display_name",
+        "_journal_reservation",
+        "_journal_stage_path",
         "_manifest_reservation",
         "_manifest_stage_path",
         "_pending",
@@ -192,7 +193,9 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         pending: WindowsPendingSourceFile,
         source_reservation: WorkspaceCapacityReservation,
         manifest_reservation: WorkspaceCapacityReservation,
+        journal_reservation: WorkspaceCapacityReservation,
         manifest_stage_path: Path,
+        journal_stage_path: Path,
         registration: PreparedSourceRegistration | None = None,
     ) -> None:
         self._store = store
@@ -204,7 +207,9 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
         self._registration = registration
         self._source_reservation = source_reservation
         self._manifest_reservation = manifest_reservation
+        self._journal_reservation = journal_reservation
         self._manifest_stage_path = manifest_stage_path
+        self._journal_stage_path = journal_stage_path
         self._closed = False
 
     @property
@@ -278,6 +283,10 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
             self._registration = None
 
     def _release(self) -> None:
+        try:
+            self._journal_reservation.release()
+        except BaseException:
+            pass
         try:
             self._manifest_reservation.release()
         except BaseException:
@@ -367,10 +376,22 @@ class WindowsSourceIngestStore:
                 timeout_context="source.prepare_timeout",
             )
 
+        # Resolve a retained journal checkpoint before copying from a new external
+        # source. The transaction itself repeats the pending-checkpoint check while
+        # holding the cross-process case mutex, closing the race after this load.
+        try:
+            WindowsManifestRepository(self._manager).load(
+                selected_case,
+                coordination_checkpoint=coordination_checkpoint,
+            )
+        except ManifestRepositoryError as error:
+            _map_repository_error(error)
+
         authority: AuthenticatedCase | None = None
         pending: WindowsPendingSourceFile | None = None
         source_reservation: WorkspaceCapacityReservation | None = None
         manifest_reservation: WorkspaceCapacityReservation | None = None
+        journal_reservation: WorkspaceCapacityReservation | None = None
         prepared = False
         registration: PreparedSourceRegistration | None = None
         try:
@@ -397,6 +418,11 @@ class WindowsSourceIngestStore:
                     used_ids,
                     context="source.manifest_stage_id",
                 )
+                journal_stage_id = _allocate_identifier(
+                    self._temp_id_factory,
+                    used_ids,
+                    context="source.journal_stage_id",
+                )
 
             with self._prechecker.open(source_path) as source:
                 result = source.result
@@ -419,6 +445,7 @@ class WindowsSourceIngestStore:
                 )
                 source_stage_path = authority.layout.temp / f"{pending_id}.tmp"
                 manifest_stage_path = authority.layout.temp / f"{manifest_stage_id}.tmp"
+                journal_stage_path = authority.layout.temp / f"{journal_stage_id}.tmp"
                 source_reservation = self._manager.reserve_capacity(
                     selected_case,
                     QuotaArea.TEMP,
@@ -431,6 +458,14 @@ class WindowsSourceIngestStore:
                     selected_case,
                     QuotaArea.TEMP,
                     relative_path=f"temp/{manifest_stage_id}.tmp",
+                    is_directory=False,
+                    byte_count=manifest_upper_bound,
+                    coordination_checkpoint=coordination_checkpoint,
+                )
+                journal_reservation = self._manager.reserve_capacity(
+                    selected_case,
+                    QuotaArea.TEMP,
+                    relative_path=f"temp/{journal_stage_id}.tmp",
                     is_directory=False,
                     byte_count=manifest_upper_bound,
                     coordination_checkpoint=coordination_checkpoint,
@@ -475,6 +510,7 @@ class WindowsSourceIngestStore:
                 or pending is None
                 or source_reservation is None
                 or manifest_reservation is None
+                or journal_reservation is None
             ):
                 reject_source_ingest(
                     SourceIngestErrorCode.PREPARE_FAILED,
@@ -489,7 +525,9 @@ class WindowsSourceIngestStore:
                 pending=pending,
                 source_reservation=source_reservation,
                 manifest_reservation=manifest_reservation,
+                journal_reservation=journal_reservation,
                 manifest_stage_path=manifest_stage_path,
+                journal_stage_path=journal_stage_path,
                 registration=registration,
             )
         except SourceIngestError:
@@ -510,6 +548,8 @@ class WindowsSourceIngestStore:
                     _delete_pending_no_raise(pending)
                 if manifest_reservation is not None:
                     manifest_reservation.release()
+                if journal_reservation is not None:
+                    journal_reservation.release()
                 if source_reservation is not None:
                     source_reservation.release()
                 if authority is not None:
@@ -547,6 +587,10 @@ class WindowsSourceIngestStore:
             )
 
         try:
+            WindowsManifestRepository(self._manager).load(
+                selected_case,
+                coordination_checkpoint=coordination_checkpoint,
+            )
             with self._manager.authenticate_case(
                 selected_case,
                 coordination_checkpoint=coordination_checkpoint,
@@ -635,6 +679,8 @@ class WindowsSourceIngestStore:
                 )
         except SourceIngestError:
             raise
+        except ManifestRepositoryError as error:
+            _map_repository_error(error)
         except CaseLifecycleError as error:
             _map_manifest_error(error)
         except WorkspaceError:
@@ -677,217 +723,155 @@ class WindowsSourceIngestStore:
                 timeout_context="source.commit_timeout",
             )
 
-        manifest_handle: WindowsHandle | None = None
-        source_published = False
-        preserve_source = False
-        preserve_manifest_candidate = False
-        committed_result: SourceImportResult | None = None
-        replace_state: ManifestReplaceState | None = None
-        replace_failure: BaseException | None = None
-        failure: BaseException | None = None
-        page_ids: tuple[UUID, ...] = ()
-        duplicates: tuple[UUID, ...] = ()
-        try:
-            page_ids = _allocate_page_ids(
+        page_ids = _allocate_page_ids(
+            self._id_factory,
+            prepared._snapshot.identifiers | {summary.source_id},
+            inspection.page_count,
+        )
+        used_ids = set(prepared._snapshot.identifiers)
+        used_ids.update(page_ids)
+        used_ids.add(summary.source_id)
+        raw_operations = prepared._snapshot.document["page_operations"]
+        if type(raw_operations) is not list:
+            reject_source_ingest(SourceIngestErrorCode.COMMIT_FAILED, "source.operations")
+        import_operation_id = (
+            _allocate_identifier(
                 self._id_factory,
-                prepared._snapshot.identifiers | {summary.source_id},
-                inspection.page_count,
+                used_ids,
+                context="source.import_operation_id",
             )
-            candidate, duplicates = _build_candidate_manifest(
-                prepared._snapshot,
-                summary=summary,
-                display_name=prepared._display_name,
-                inspection=inspection,
-                page_ids=page_ids,
-                timestamp=self._clock(),
+            if raw_operations
+            else None
+        )
+        candidate, duplicates = _build_candidate_manifest(
+            prepared._snapshot,
+            summary=summary,
+            display_name=prepared._display_name,
+            inspection=inspection,
+            page_ids=page_ids,
+            import_operation_id=import_operation_id,
+            timestamp=self._clock(),
+        )
+        if (
+            len(candidate) > prepared._manifest_reservation.byte_count
+            or len(candidate) > prepared._journal_reservation.byte_count
+        ):
+            reject_source_ingest(
+                SourceIngestErrorCode.CAPACITY_EXCEEDED,
+                "source.manifest_reservation",
             )
-            if len(candidate) > prepared._manifest_reservation.byte_count:
-                reject_source_ingest(
-                    SourceIngestErrorCode.CAPACITY_EXCEEDED,
-                    "source.manifest_reservation",
-                )
-            _require_active(
-                cancellation,
-                deadline,
-                cancel_context="source.commit_cancel",
-                timeout_context="source.commit_timeout",
-            )
-            _report_progress(
-                progress,
-                SourceImportProgress(
-                    summary.pending_id,
-                    SourceProgressPhase.COMMITTING,
-                    0,
-                    1,
-                ),
-            )
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.commit_cancel",
+            timeout_context="source.commit_timeout",
+        )
+        _report_progress(
+            progress,
+            SourceImportProgress(
+                summary.pending_id,
+                SourceProgressPhase.COMMITTING,
+                0,
+                1,
+            ),
+        )
+
+        source_published = False
+
+        def publish_source() -> None:
+            nonlocal source_published
             authority = prepared._authority
-            source_parts = prepared._source_reservation.relative_parts
-            manifest_parts = prepared._manifest_reservation.relative_parts
             with prepared._source_reservation.publication_guard(
                 case_identity=authority.identity,
-                relative_parts=source_parts,
+                relative_parts=prepared._source_reservation.relative_parts,
                 is_directory=False,
                 byte_count=summary.byte_size,
                 entry_count=1,
                 coordination_checkpoint=coordination_checkpoint,
             ):
-                with prepared._manifest_reservation.publication_guard(
-                    case_identity=authority.identity,
-                    relative_parts=manifest_parts,
-                    is_directory=False,
-                    byte_count=len(candidate),
-                    entry_count=1,
-                    coordination_checkpoint=coordination_checkpoint,
-                ):
-                    temp_root = open_handle(authority.layout.temp)
-                    try:
-                        require_expected_handle(temp_root, authority.layout.temp, directory=True)
-                        verify_private_acl(temp_root)
-                        require_no_alternate_streams(authority.layout.temp)
-                        require_expected_handle(
-                            prepared._pending.handle,
-                            authority.layout.temp / f"{summary.pending_id}.tmp",
-                            directory=False,
-                        )
-                        old_snapshot, expected_manifest = _read_retained_manifest_snapshot(
-                            authority,
-                            share_delete=True,
-                            delete=True,
-                        )
-                        try:
-                            if (
-                                old_snapshot.identity != prepared._snapshot.identity
-                                or old_snapshot.payload != prepared._snapshot.payload
-                            ):
-                                reject_source_ingest(
-                                    SourceIngestErrorCode.MANIFEST_CONFLICT,
-                                    "source.manifest_cas",
-                                )
-                            _require_active(
-                                cancellation,
-                                deadline,
-                                cancel_context="source.commit_cancel",
-                                timeout_context="source.commit_timeout",
-                            )
-                            manifest_handle = write_new_file(
-                                prepared._manifest_stage_path,
-                                candidate,
-                            )
-                            require_no_alternate_streams(prepared._manifest_stage_path)
-                            _require_active(
-                                cancellation,
-                                deadline,
-                                cancel_context="source.commit_cancel",
-                                timeout_context="source.commit_timeout",
-                            )
-                            originals_root = open_handle(authority.layout.originals)
-                            try:
-                                require_expected_handle(
-                                    originals_root,
-                                    authority.layout.originals,
-                                    directory=True,
-                                )
-                                verify_private_acl(originals_root)
-                                require_no_alternate_streams(authority.layout.originals)
-                                publish_new_original(
-                                    prepared._pending,
-                                    originals_root,
-                                    storage_name=f"{summary.source_id}.bin",
-                                )
-                                source_published = True
-                                replace_result = replace_manifest_atomically(
-                                    manifest_handle,
-                                    authority.handle,
-                                    expected_manifest,
-                                )
-                                replace_state = replace_result.state
-                                replace_failure = replace_result.delayed_exception
-                            finally:
-                                _close_handle_no_raise(originals_root)
-                        finally:
-                            _close_handle_no_raise(expected_manifest)
-                    finally:
-                        _close_handle_no_raise(temp_root)
-                    if replace_state is ManifestReplaceState.COMMITTED:
-                        preserve_source = True
-                        committed_result = SourceImportResult(
-                            case_id=summary.case_id,
-                            source_id=summary.source_id,
-                            page_ids=page_ids,
-                            media_type=summary.media_type,
-                            byte_size=summary.byte_size,
-                            sha256=summary.sha256,
-                            manifest_revision=prepared._snapshot.revision + 1,
-                            duplicate=DuplicateContentSignal(duplicates),
-                        )
-                    elif replace_state is ManifestReplaceState.UNKNOWN:
-                        preserve_source = True
-                        preserve_manifest_candidate = True
-                        if replace_failure is not None:
-                            raise replace_failure
-                        reject_source_ingest(
-                            SourceIngestErrorCode.COMMIT_FAILED,
-                            "source.commit_uncertain",
-                        )
-                    else:
-                        reject_source_ingest(
-                            SourceIngestErrorCode.COMMIT_FAILED,
-                            "source.manifest_replace",
-                        )
+                with open_handle(authority.layout.originals) as originals_root:
+                    require_expected_handle(
+                        originals_root,
+                        authority.layout.originals,
+                        directory=True,
+                    )
+                    verify_private_acl(originals_root)
+                    require_no_alternate_streams(authority.layout.originals)
+                    require_expected_handle(
+                        prepared._pending.handle,
+                        authority.layout.temp / f"{summary.pending_id}.tmp",
+                        directory=False,
+                    )
+                    publish_new_original(
+                        prepared._pending,
+                        originals_root,
+                        storage_name=f"{summary.source_id}.bin",
+                    )
+                    source_published = True
+
+        preserve_source = False
+        failure: BaseException | None = None
+        committed_revision: int | None = None
+        try:
+            saved = commit_manifest_transaction(
+                authority=prepared._authority,
+                expected_payload=prepared._snapshot.payload,
+                expected_sha256=hashlib.sha256(prepared._snapshot.payload).hexdigest(),
+                expected_cas_token=None,
+                candidate_payload=candidate,
+                manifest_stage_path=prepared._manifest_stage_path,
+                journal_stage_path=prepared._journal_stage_path,
+                manifest_reservation=prepared._manifest_reservation,
+                journal_reservation=prepared._journal_reservation,
+                before_checkpoint=publish_source,
+                coordination_checkpoint=coordination_checkpoint,
+            )
+            committed_revision = saved.revision
+            preserve_source = True
+        except _ManifestTransactionInterruption as interruption:
+            failure = interruption.cause
+            preserve_source = source_published and interruption.preserve_recovery
         except BaseException as error:
             failure = error
-        finally:
-            if replace_state is ManifestReplaceState.COMMITTED and committed_result is None:
+            if isinstance(error, ManifestRepositoryError):
+                preserve_source = source_published and error.context in {
+                    "manifest.checkpoint_uncertain",
+                    "manifest.commit_uncertain",
+                    "manifest.commit_replace",
+                    "manifest.transaction_verify",
+                }
+            elif source_published:
+                # A process-control interruption has no safe user-facing settlement. Once
+                # publication occurred, preserve the exact source so a committed or uncertain
+                # checkpoint can recover without leaving a manifest that names missing bytes.
                 preserve_source = True
-                preserve_manifest_candidate = True
-                committed_result = SourceImportResult(
-                    case_id=summary.case_id,
-                    source_id=summary.source_id,
-                    page_ids=page_ids,
-                    media_type=summary.media_type,
-                    byte_size=summary.byte_size,
-                    sha256=summary.sha256,
-                    manifest_revision=prepared._snapshot.revision + 1,
-                    duplicate=DuplicateContentSignal(duplicates),
-                )
-            elif source_published and manifest_handle is not None and committed_result is None:
-                try:
-                    resolved = _resolve_manifest_destination(
-                        prepared._authority,
-                        candidate_identity=manifest_handle.info.identity,
-                        expected_identity=prepared._snapshot.identity,
-                    )
-                except BaseException:
-                    resolved = ManifestReplaceState.UNKNOWN
-                if resolved is ManifestReplaceState.COMMITTED:
-                    preserve_source = True
-                    preserve_manifest_candidate = True
-                    committed_result = SourceImportResult(
-                        case_id=summary.case_id,
-                        source_id=summary.source_id,
-                        page_ids=page_ids,
-                        media_type=summary.media_type,
-                        byte_size=summary.byte_size,
-                        sha256=summary.sha256,
-                        manifest_revision=prepared._snapshot.revision + 1,
-                        duplicate=DuplicateContentSignal(duplicates),
-                    )
-                elif resolved is ManifestReplaceState.UNKNOWN:
-                    preserve_source = True
-                    preserve_manifest_candidate = True
-            if manifest_handle is not None:
-                if committed_result is None and not preserve_manifest_candidate:
-                    _delete_handle_no_raise(manifest_handle)
-                else:
-                    _close_handle_no_raise(manifest_handle)
-            prepared._complete(
-                preserve_source=committed_result is not None or preserve_source,
+        finally:
+            prepared._complete(preserve_source=preserve_source)
+
+        if committed_revision is not None:
+            _report_progress(
+                progress,
+                SourceImportProgress(
+                    summary.pending_id,
+                    SourceProgressPhase.COMMITTING,
+                    1,
+                    1,
+                ),
             )
-        if committed_result is not None:
-            return committed_result
+            return SourceImportResult(
+                case_id=summary.case_id,
+                source_id=summary.source_id,
+                page_ids=page_ids,
+                media_type=summary.media_type,
+                byte_size=summary.byte_size,
+                sha256=summary.sha256,
+                manifest_revision=committed_revision,
+                duplicate=DuplicateContentSignal(duplicates),
+            )
         if isinstance(failure, SourceIngestError):
             raise failure
+        if isinstance(failure, ManifestRepositoryError):
+            _map_repository_error(failure)
         if isinstance(failure, CaseLifecycleError):
             _map_manifest_error(failure)
         if isinstance(failure, WorkspaceError):
@@ -941,60 +925,25 @@ def _read_retained_manifest_snapshot(
         raise
 
 
-def _resolve_manifest_destination(
-    authority: AuthenticatedCase,
-    *,
-    candidate_identity: FileIdentity,
-    expected_identity: FileIdentity,
-) -> ManifestReplaceState:
-    """Resolve the manifest name after any interruption at the replacement boundary."""
-
-    try:
-        with open_handle(authority.layout.manifest, share_delete=True) as current:
-            require_expected_handle(
-                current,
-                authority.layout.manifest,
-                directory=False,
-            )
-            if current.info.is_reparse_point or current.info.link_count != 1:
-                return ManifestReplaceState.UNKNOWN
-            require_no_alternate_streams(authority.layout.manifest)
-            if current.info.identity == candidate_identity:
-                return ManifestReplaceState.COMMITTED
-            if current.info.identity == expected_identity:
-                return ManifestReplaceState.NOT_COMMITTED
-    except Exception:
-        return ManifestReplaceState.UNKNOWN
-    return ManifestReplaceState.UNKNOWN
-
-
 def _validate_ingest_manifest(
     payload: bytes,
     identity: FileIdentity,
     expected_case_id: UUID,
 ) -> _ManifestSnapshot:
     try:
+        validate_manifest_payload(payload, expected_case_id)
         document = _decode_manifest(payload)
         summary = _summary_from_manifest(document, expected_case_id)
     except CaseLifecycleError:
         raise
-    if document["template_ref"] is not None:
-        _reject_manifest("source.manifest_template")
-    if any(document[key] != [] for key in _EMPTY_IMPORT_COLLECTIONS):
-        _reject_manifest("source.manifest_scope")
-    if document["constraints"] != _INITIAL_CONSTRAINTS:
-        _reject_manifest("source.manifest_constraints")
-    if document["export_history"] != _INITIAL_EXPORT_HISTORY:
-        _reject_manifest("source.manifest_export_history")
+    except ManifestRepositoryError as error:
+        _map_repository_error(error)
 
     raw_sources = cast(list[object], document["sources"])
     raw_pages = cast(list[object], document["pages"])
-    raw_base = cast(list[object], document["page_sequence_base"])
-    raw_current = cast(list[object], document["page_sequence"])
     sources: list[_StoredSource] = []
-    identifiers: set[UUID] = {expected_case_id}
+    identifiers = _manifest_identifiers(document, expected_case_id)
     expected_page_pairs: list[tuple[UUID, int]] = []
-    previous_imported_at = summary.created_at
     for raw in raw_sources:
         if type(raw) is not dict:
             _reject_manifest("source.manifest_source")
@@ -1002,9 +951,6 @@ def _validate_ingest_manifest(
         if frozenset(record) != _SOURCE_RECORD_KEYS:
             _reject_manifest("source.manifest_source")
         source_id = _manifest_uuid(record["source_id"])
-        if source_id in identifiers:
-            _reject_manifest("source.manifest_identifier")
-        identifiers.add(source_id)
         display_name = record["display_name"]
         try:
             require_source_display_name(display_name)
@@ -1050,9 +996,6 @@ def _validate_ingest_manifest(
             imported_at = _parse_utc_timestamp(record["imported_at"])
         except CaseLifecycleError:
             _reject_manifest("source.manifest_imported_at")
-        if not previous_imported_at <= imported_at <= summary.updated_at:
-            _reject_manifest("source.manifest_imported_at")
-        previous_imported_at = imported_at
         sources.append(
             _StoredSource(
                 source_id,
@@ -1081,21 +1024,10 @@ def _validate_ingest_manifest(
         index = record["source_page_index"]
         if type(index) is not int or not 0 <= index <= MAX_SAFE_MANIFEST_INTEGER:
             _reject_manifest("source.manifest_page_index")
-        if page_id in identifiers:
-            _reject_manifest("source.manifest_identifier")
-        identifiers.add(page_id)
         page_ids.append(page_id)
         actual_page_pairs.append((source_id, index))
     if actual_page_pairs != expected_page_pairs:
         _reject_manifest("source.manifest_page_catalogue")
-    rendered_page_ids = [str(item) for item in page_ids]
-    if raw_base != rendered_page_ids or raw_current != rendered_page_ids:
-        _reject_manifest("source.manifest_sequence")
-    if summary.revision != len(sources):
-        _reject_manifest("source.manifest_revision")
-    expected_updated = sources[-1].imported_at if sources else summary.created_at
-    if summary.updated_at != expected_updated:
-        _reject_manifest("source.manifest_updated_at")
     return _ManifestSnapshot(
         payload,
         identity,
@@ -1107,6 +1039,35 @@ def _validate_ingest_manifest(
         tuple(page_ids),
         frozenset(identifiers),
     )
+
+
+def _manifest_identifiers(
+    document: dict[str, object],
+    expected_case_id: UUID,
+) -> set[UUID]:
+    """Collect every identity-defining UUID from one fully validated manifest."""
+
+    identifiers = {expected_case_id}
+    for collection_name, field_name in (
+        ("sources", "source_id"),
+        ("pages", "page_id"),
+        ("page_operations", "operation_id"),
+        ("assets", "asset_id"),
+        ("overlays", "overlay_id"),
+        ("assignments", "assignment_id"),
+        ("confirmations", "confirmation_id"),
+    ):
+        collection = cast(list[dict[str, object]], document[collection_name])
+        identifiers.update(_manifest_uuid(record[field_name]) for record in collection)
+    operations = cast(list[dict[str, object]], document["page_operations"])
+    for operation in operations:
+        payload = cast(dict[str, object], operation["payload"])
+        if payload["kind"] == "set_group":
+            identifiers.add(_manifest_uuid(payload["group_id"]))
+    export_history = cast(dict[str, object], document["export_history"])
+    entries = cast(list[dict[str, object]], export_history["entries"])
+    identifiers.update(_manifest_uuid(record["export_id"]) for record in entries)
+    return identifiers
 
 
 def _candidate_manifest_upper_bound(
@@ -1123,6 +1084,7 @@ def _candidate_manifest_upper_bound(
     pages = cast(list[dict[str, object]], candidate["pages"])
     base = cast(list[str], candidate["page_sequence_base"])
     current = cast(list[str], candidate["page_sequence"])
+    operations = cast(list[dict[str, object]], candidate["page_operations"])
     sources.append(
         {
             "source_id": str(source_id),
@@ -1147,8 +1109,30 @@ def _candidate_manifest_upper_bound(
         }
         for index, page_id in enumerate(new_page_ids)
     )
-    base.extend(new_page_ids)
-    current.extend(new_page_ids)
+    if operations:
+        if len(operations) >= MAX_MANIFEST_COLLECTION_ITEMS:
+            reject_source_ingest(
+                SourceIngestErrorCode.CAPACITY_EXCEEDED,
+                "source.manifest_operations",
+            )
+        before = list(current)
+        current.extend(new_page_ids)
+        operations.append(
+            {
+                "operation_id": _PLACEHOLDER_PAGE_ID,
+                "operation_version": 1,
+                "sequence": len(operations) + 1,
+                "payload": {
+                    "kind": "change_sequence",
+                    "reason": "import",
+                    "before_page_ids": before,
+                    "after_page_ids": list(current),
+                },
+            }
+        )
+    else:
+        base.extend(new_page_ids)
+        current.extend(new_page_ids)
     candidate["revision"] = MAX_SAFE_MANIFEST_INTEGER
     candidate["updated_at"] = _CONSERVATIVE_TIMESTAMP
     size = len(_serialize_manifest(candidate))
@@ -1168,6 +1152,7 @@ def _build_candidate_manifest(
     inspection: CompletedSourceInspection,
     page_ids: tuple[UUID, ...],
     timestamp: datetime,
+    import_operation_id: UUID | None = None,
 ) -> tuple[bytes, tuple[UUID, ...]]:
     if snapshot.revision >= MAX_SAFE_MANIFEST_INTEGER:
         reject_source_ingest(SourceIngestErrorCode.CAPACITY_EXCEEDED, "source.revision")
@@ -1191,6 +1176,7 @@ def _build_candidate_manifest(
     pages = cast(list[dict[str, object]], candidate["pages"])
     base = cast(list[str], candidate["page_sequence_base"])
     current = cast(list[str], candidate["page_sequence"])
+    operations = cast(list[dict[str, object]], candidate["page_operations"])
     sources.append(
         {
             "source_id": str(summary.source_id),
@@ -1215,8 +1201,32 @@ def _build_candidate_manifest(
         }
         for index, page_id in enumerate(page_ids)
     )
-    base.extend(rendered_pages)
-    current.extend(rendered_pages)
+    if operations:
+        if import_operation_id is None or len(operations) >= MAX_MANIFEST_COLLECTION_ITEMS:
+            reject_source_ingest(
+                SourceIngestErrorCode.CAPACITY_EXCEEDED,
+                "source.manifest_operations",
+            )
+        before = list(current)
+        current.extend(rendered_pages)
+        operations.append(
+            {
+                "operation_id": str(import_operation_id),
+                "operation_version": 1,
+                "sequence": len(operations) + 1,
+                "payload": {
+                    "kind": "change_sequence",
+                    "reason": "import",
+                    "before_page_ids": before,
+                    "after_page_ids": list(current),
+                },
+            }
+        )
+    else:
+        if import_operation_id is not None:
+            reject_source_ingest(SourceIngestErrorCode.COMMIT_FAILED, "source.operations")
+        base.extend(rendered_pages)
+        current.extend(rendered_pages)
     candidate["revision"] = snapshot.revision + 1
     candidate["updated_at"] = rendered_at
     payload = _serialize_manifest(candidate)
@@ -1237,16 +1247,10 @@ def _build_candidate_manifest(
 
 
 def _serialize_manifest(document: dict[str, object]) -> bytes:
-    return (
-        json.dumps(
-            document,
-            ensure_ascii=False,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-        + b"\n"
-    )
+    try:
+        return canonical_manifest_bytes(document)
+    except ManifestRepositoryError as error:
+        _map_repository_error(error)
 
 
 def _copy_and_verify_source(
@@ -1455,6 +1459,24 @@ def _map_manifest_error(error: CaseLifecycleError) -> Never:
             "source.manifest_version",
         )
     reject_source_ingest(SourceIngestErrorCode.MANIFEST_INVALID, "source.manifest")
+
+
+def _map_repository_error(error: ManifestRepositoryError) -> Never:
+    if error.code is ManifestRepositoryErrorCode.VERSION_UNSUPPORTED:
+        reject_source_ingest(
+            SourceIngestErrorCode.MANIFEST_VERSION_UNSUPPORTED,
+            "source.manifest_version",
+        )
+    if error.code is ManifestRepositoryErrorCode.REVISION_CONFLICT:
+        reject_source_ingest(SourceIngestErrorCode.MANIFEST_CONFLICT, "source.manifest_cas")
+    if error.code is ManifestRepositoryErrorCode.CAPACITY_EXCEEDED:
+        reject_source_ingest(SourceIngestErrorCode.CAPACITY_EXCEEDED, "source.capacity")
+    if error.code in {
+        ManifestRepositoryErrorCode.MANIFEST_INVALID,
+        ManifestRepositoryErrorCode.CASE_MISMATCH,
+    }:
+        reject_source_ingest(SourceIngestErrorCode.MANIFEST_INVALID, "source.manifest")
+    reject_source_ingest(SourceIngestErrorCode.COMMIT_FAILED, "source.commit_storage")
 
 
 def _map_workspace_error(error: WorkspaceError, *, preparing: bool) -> Never:

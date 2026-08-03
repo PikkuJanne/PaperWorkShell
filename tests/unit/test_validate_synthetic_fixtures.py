@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
@@ -14,6 +15,10 @@ from tools.generate_synthetic_fixtures import (
     INDEX_PATH,
     PROJECT_ROOT,
     SCHEMA_PATH,
+)
+from tools.reviewed_synthetic_history import (
+    REVIEWED_CROSS_BRANCH_DOCUMENTS,
+    reviewed_cross_branch_document_digests,
 )
 from tools.validate_synthetic_fixtures import (
     EXPECTED_NEGATIVE_CODES,
@@ -44,6 +49,34 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
         )
         self.assertEqual([], corpus_issues)
         self.assertEqual(19, corpus_summary.fixture_count if corpus_summary else 0)
+
+    def test_cross_branch_document_ledger_is_closed_and_authenticated(self) -> None:
+        digests = reviewed_cross_branch_document_digests()
+
+        self.assertEqual(22, len(REVIEWED_CROSS_BRANCH_DOCUMENTS))
+        self.assertEqual(22, len(digests))
+        self.assertEqual(
+            {"PWS-D035"},
+            {entry.decision_ref for entry in REVIEWED_CROSS_BRANCH_DOCUMENTS},
+        )
+        self.assertEqual(
+            {"closed-algorithmic-no-input"},
+            {entry.provenance for entry in REVIEWED_CROSS_BRANCH_DOCUMENTS},
+        )
+
+    def test_cross_branch_document_ledger_rejects_changed_provenance(self) -> None:
+        changed = (
+            replace(REVIEWED_CROSS_BRANCH_DOCUMENTS[0], byte_count=922),
+            *REVIEWED_CROSS_BRANCH_DOCUMENTS[1:],
+        )
+        with (
+            patch(
+                "tools.reviewed_synthetic_history.REVIEWED_CROSS_BRANCH_DOCUMENTS",
+                changed,
+            ),
+            self.assertRaisesRegex(RuntimeError, "not authenticated"),
+        ):
+            reviewed_cross_branch_document_digests()
 
     def test_mutated_missing_and_extra_artifacts_fail_closed(self) -> None:
         mutations = ("mutated", "missing", "extra")

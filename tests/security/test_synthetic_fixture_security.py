@@ -206,6 +206,16 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
         self.assertNotIn(canary.decode("ascii"), rendered)
 
+    def test_repository_document_approval_is_exact_digest_only(self) -> None:
+        approved = b"%PDF-1.4\n% PWS-SYNTHETIC-FIXTURE\n% exact digest test\n"
+        inspect = _repository_inspector(frozenset({hashlib.sha256(approved).digest()}))
+
+        inspect(approved)
+        with self.assertRaises(RepositoryPrivacyFinding) as raised:
+            inspect(approved + b"x")
+
+        self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
+
     def test_deleted_historical_document_blob_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

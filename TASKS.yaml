@@ -1012,7 +1012,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0102
@@ -1044,17 +1044,24 @@ tasks:
   - migration
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "c6bad8a"
+    commands:
+    - "GitHub Actions run 30817047647 at c6bad8a - passed; formatting, lint, 12-layer import boundaries over 58 source files, strict typing over 149 files, 948 unit tests, 186 hosted integration tests, 193 hosted security tests, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run python tools/dev.py check at c6bad8a - passed; 948 unit tests, 184 integration tests with 2 disclosed local link-capability skips, 190 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, exact fixture validation, schemas, task graph, docs, reference profile, secret scan, and all 5 deliberate quality violations"
+    - "uv run pytest -q tests/unit/test_validate_synthetic_fixtures.py tests/security/test_synthetic_fixture_security.py at c6bad8a - passed; 31 tests and 77 subtests with 2 disclosed local directory-link skips, including authenticated sibling-branch provenance and exact-digest rejection evidence"
+    notes:
+    - Validated manifests are saved under a named per-case Windows mutex with revision, digest, case-identity, and storage-identity compare-and-swap checks; two independently reopened staged copies, a fixed latest-checkpoint journal, atomic replacement, and post-commit reopen verification preserve the last known-good revision across ordinary failures and simulated interruption.
+    - Open and recovery fail before mutation on unknown future current or checkpoint versions, reject corrupt or noncontiguous journal state, restore a valid published checkpoint deterministically, and return only stable sanitized diagnostics; the shared transaction also prevents immutable source publication from bypassing pending recovery.
+    - The autosave coordinator coalesces rapid edits without losing the final state, owns exact in-flight revision transitions through completion notifications, rejects stale external rebases, preserves caller documents, and keeps revision and timestamp advancement inside the service.
+    - A fingerprinted PWS-D035 provenance ledger admits only the 22 exact synthetic renderer blobs already reviewed on the sibling PWS-0106 branch, retaining full-reference repository privacy scanning without importing unfinished renderer work or accepting marker-only documents; independent persistence, concurrency, schema, privacy, and final acceptance audits found no remaining P0-P2 finding.
 - id: PWS-0110
   milestone: M1
   title: Implement page sequence, operations, undo, and redo domain model
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0006

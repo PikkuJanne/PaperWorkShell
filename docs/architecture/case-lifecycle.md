@@ -1,10 +1,11 @@
 # Local case-lifecycle contract
 
-- Status: Implemented PWS-0102 contract with PWS-0104 immutable-ingest extension
-- Tasks: PWS-0102, PWS-0104
-- Decisions: PWS-D005, PWS-D010, PWS-D028
+- Status: Implemented PWS-0102 contract with PWS-0104 and PWS-0109 extensions
+- Tasks: PWS-0102, PWS-0104, PWS-0109
+- Decisions: PWS-D005, PWS-D010, PWS-D011, PWS-D028, PWS-D036
 - Depends on: PWS-0101 secure case workspace; PWS-0006 case manifest v1
 - Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
+- Persistence: [Atomic manifest repository and autosave contract](manifest-repository.md)
 
 ## Scope and layers
 
@@ -15,12 +16,10 @@ use case through a structural storage protocol and holds at most one active leas
 `storage.case_lifecycle` adapter authenticates Windows filesystem objects through
 `CaseWorkspaceManager`; it never imports the application layer.
 
-The lifecycle service has no UI, network operation, document engine, new runtime dependency,
-migration, or general manifest transaction API. PWS-0104 adds a separate narrow import-only
-manifest appender after the initial record; it does not turn lifecycle storage into a general
-repository. PWS-0111 owns the first accessible desktop workflow, PWS-0109 owns general
-schema/semantic persistence, autosave, and later revisions, and PWS-0113 owns restart-time orphan
-recovery.
+The lifecycle service has no UI, network operation, or document engine. PWS-0109 supplies the
+general manifest repository used by lifecycle list/open and by PWS-0104 import commits, while case
+creation keeps its create-only initial publication boundary. PWS-0111 owns the first accessible
+desktop workflow, PWS-0110 owns page-operation state, and PWS-0113 owns restart-time orphan cleanup.
 
 ## Public lifecycle behavior
 
@@ -62,21 +61,19 @@ case cannot appear in the valid index. Interruption after it leaves one complete
 A failed pre-publication cleanup may conservatively leave a random incomplete skeleton; PWS-0113
 owns bounded restart cleanup, and listing continues to classify it as unavailable.
 
-## Narrow source-import revisions
+## Source-import revisions
 
-PWS-0104 publishes the first post-creation revision through its own import-only transaction. It
-requires a supported fully validated current manifest with no page operations and matching base and
-final page sequences. One transaction adds a complete source record, every source page record, and
-the new page IDs to both sequences without creating an operation. It preserves unrelated state,
-increments the revision once, and validates the complete target before atomic replacement.
+PWS-0104 prepares the immutable copy and source/page records; PWS-0109 now publishes them through
+the shared journal transaction. Before page-operation history exists, import adds new page IDs to
+both base and final sequences. With existing history, import preserves the base and records a typed
+`change_sequence` import transition. Both forms preserve unrelated valid state, increment the
+revision once, and fully validate the complete target before publication.
 
-The manifest replacement is the import commit point and follows publication of the exact verified
-randomly named case copy. Interruption before replacement leaves the prior manifest authoritative;
-an unreferenced random original may require PWS-0113 cleanup. Interruption after replacement leaves
-a complete source/page graph that a fresh lifecycle service can list and open. An unknown
-replacement outcome preserves the source until that fresh open resolves whether the manifest
-references it. PWS-0109 later absorbs this narrow behavior into the general repository, and
-PWS-0110 owns subsequent operation replay.
+The source is published immediately before the recovery checkpoint, and `manifest.json` is replaced
+last. Interruption after checkpoint publication is recovered to the exact complete source/page
+graph on fresh open. An uncertain checkpoint or replacement preserves the source and recovery
+evidence. An interruption before either authoritative record may leave an unreferenced random
+original for PWS-0113 cleanup.
 
 ## Bounded manifest dispatch
 
@@ -92,11 +89,10 @@ matching UUIDv4, a bounded integer revision, schema-shaped top-level collection/
 valid ordered UTC timestamps. The fixed directory skeleton is reauthenticated before a summary is
 accepted.
 
-Lifecycle list/open/delete still perform envelope validation rather than reimplementing the complete
-manifest schema and semantic validator. The PWS-0104 appender separately validates its complete
-current and target import-only manifests before publication. PWS-0109 must consolidate canonical
-full validation in the general runtime persistence boundary before it publishes arbitrary later
-revisions.
+Lifecycle list/open and deletion now use the shared runtime boundary for complete fingerprint-bound
+schema and semantic validation. List/open may promote the one fully validated recovery checkpoint;
+a parseable future version fails before any mutation. Creation also passes its generated record
+through the same complete validator before publication.
 
 ## Active leases and concurrency
 
@@ -109,10 +105,11 @@ Application transitions hold one service lock through their storage call. A fail
 does not replace prior active state. Delete obtains delete access before mutation, rejects active
 leases/reservations, and prevents new leases or capacity claims until its authority closes.
 
-PWS-0104 source preparation and commit use the same per-case coordination identity. A publisher
-cannot commit against an older manifest snapshot while deletion or another import owns the case
-publication boundary; concurrent imports serialize or return a stable conflict rather than losing a
-revision.
+Manifest saves, source commits, and lifecycle recovery use the same per-case coordination identity,
+process lock, and identity-derived Windows mutex. A publisher cannot commit against an older exact
+manifest snapshot while another cooperating broker transaction in the same desktop session owns the
+case boundary; retained-handle CAS rejects stale writers rather than losing a revision. Case-root
+sharing rules continue to exclude deletion while transaction authority is retained.
 
 ## Authenticated deletion
 
@@ -155,6 +152,7 @@ interrupted publication, version safety without mutation, active-lease and capac
 exclusion, resilient candidate listing, manifest-first partial deletion, whole-tree pre-inventory,
 alias/stream rejection, sibling/external preservation, and prohibited-value sanitization.
 
-PWS-0104 adds source-bearing reopen, complete source/page graph, serialized revision, atomic
-replacement, pre/post-commit interruption, and unreferenced-orphan evidence. The detailed ingest
-matrix is owned by the [immutable source-ingest contract](immutable-ingest.md).
+PWS-0104 adds source-bearing reopen and integrity evidence. PWS-0109 adds complete validation,
+checkpoint recovery, partial-write/capacity failure, stale-writer, and autosave evidence. Detailed
+persistence and ingest matrices are owned by the [manifest repository](manifest-repository.md) and
+[immutable source-ingest](immutable-ingest.md) contracts.

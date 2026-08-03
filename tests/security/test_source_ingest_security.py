@@ -29,12 +29,9 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
     reject_source_ingest,
 )
-from paperworkshell.storage._windows import (
-    MAXIMUM_STREAM_CHUNK_BYTES,
-    ManifestReplaceResult,
-    WindowsHandle,
-)
+from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES, WindowsHandle
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
@@ -329,11 +326,11 @@ def test_post_publication_failure_cleans_only_new_case_objects_and_preserves_sen
         _candidate_handle: WindowsHandle,
         _case_root: WindowsHandle,
         _expected_manifest_handle: WindowsHandle,
-    ) -> ManifestReplaceResult:
+    ) -> object:
         raise OSError(raw_failure_token)
 
     monkeypatch.setattr(
-        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        "paperworkshell.storage.manifest_repository.replace_manifest_atomically",
         fail_after_source_publication,
     )
 
@@ -346,11 +343,27 @@ def test_post_publication_failure_cleans_only_new_case_objects_and_preserves_sen
     assert raw_failure_token not in repr(raised.value)
     assert str(outside) not in str(raised.value)
     assert stack.layout.manifest.read_bytes() == manifest_before
-    assert list(stack.layout.originals.iterdir()) == []
+    checkpoint = json.loads((stack.layout.journal / "latest.json").read_bytes())
+    assert type(checkpoint) is dict
+    sources = checkpoint["sources"]
+    assert type(sources) is list and len(sources) == 1
+    source_record = sources[0]
+    assert type(source_record) is dict
+    storage_name = source_record["storage_name"]
+    assert type(storage_name) is str
+    case_copy = stack.layout.originals / storage_name
+    assert case_copy.read_bytes() == source.read_bytes()
     assert list(stack.layout.temp.iterdir()) == []
     assert _external_snapshot(source) == source_before
     assert _external_snapshot(sibling) == sibling_before
     assert _external_snapshot(outside) == outside_before
+
+    monkeypatch.undo()
+    recovered = WindowsManifestRepository(
+        CaseWorkspaceManager(profile_root=tmp_path / "profile", quota=_quota())
+    ).load(CASE_ID)
+    assert recovered.snapshot.document == checkpoint
+    assert stack.layout.manifest.read_bytes() == (stack.layout.journal / "latest.json").read_bytes()
 
 
 def _qualified_name(node: ast.expr) -> str | None:
