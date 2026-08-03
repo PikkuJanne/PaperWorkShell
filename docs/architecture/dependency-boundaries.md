@@ -120,6 +120,11 @@ application code. Later operations must repeat this pattern with their own exact
 PWS-0105 is not approval for a general directory capability, a path in RPC, or arbitrary handle
 parameters. See the [PDF structural-inspection contract](pdf-structural-inspection.md).
 
-A new external engine is not admitted by editing code alone: the dependency policy and licensing review in PWS-0005 and the engine-specific roadmap task must approve it first. Renderer ownership remains intentionally unspecified until PWS-0106 records its evidence-based ADR.
+A new external engine is not admitted by editing code alone: the dependency policy and licensing
+review in PWS-0005 and the engine-specific roadmap task must approve it first. PWS-0106 now assigns
+worker-only renderer ownership through the
+[PDF page-rendering contract](pdf-page-rendering.md) and records pypdfium2/PDFium as a conditional
+target in [ADR 0005](../adr/0005-pdf-renderer-selection.md); final admission still waits for the
+ADR's live capability, benchmark, fidelity, and packaging evidence.
 
 If a future task needs a new cross-package edge, that task must show why the edge preserves the frozen architecture, update this document and the executable policy together, and add a positive and negative boundary test. It must not suppress an individual import violation.
