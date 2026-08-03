@@ -1012,7 +1012,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: review
   critical_path: false
   depends_on:
   - PWS-0102

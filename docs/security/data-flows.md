@@ -224,19 +224,21 @@ sequenceDiagram
 5. The trusted broker validates the complete metadata and serializes duplicate detection against
    committed SHA-256 values. A match is advisory: each accepted import retains a distinct random
    source ID, immutable case copy, display name, and page identity.
-6. The broker publishes the exact verified pending identity beneath `originals/`, then uses the
-   PWS-0104 import-only appender to add the source, its complete zero-based page catalogue, and the
-   new page IDs to both base and final sequences without an operation. The complete target manifest
-   validates before atomic replacement; replacement is the commit point. PWS-0109 later owns the
-   general repository and PWS-0110 owns page-operation replay.
-7. Cancellation before that commit point retains the previous valid manifest and removes only an
-   exact object still owned by the operation. A post-copy/pre-manifest crash can leave a random
-   unreferenced case orphan for PWS-0113; it is not a source record. A manifest replacement reported
-   as unknown preserves the random source until fresh-open recovery determines whether it is
-   referenced. Confirmed commit wins over late cancellation. The external source is never opened
-   for writing. Later read-only size, SHA-256, link, stream, reparse, and containment checks detect
-   application-model mutation; they do not authenticate against malware able to rewrite both case
-   files and manifests.
+6. The broker first resolves any valid pending PWS-0109 checkpoint, then publishes the exact
+   verified pending identity beneath `originals/` inside the shared per-case manifest transaction.
+   The full candidate is schema- and semantic-validated, written to two authenticated stages, and
+   recorded at `journal/latest.json` before `manifest.json` is replaced. Before operation history
+   exists, import extends both base and final sequences. With history present, it preserves the
+   base and appends a replayable `change_sequence` operation with reason `import`. A direct
+   transaction refuses to displace a different recoverable next-revision checkpoint.
+7. Cancellation or interruption before checkpoint publication retains the previous valid manifest
+   and removes only the exact source still owned by the operation. Once a checkpoint is committed
+   or its publication is uncertain, the random source and exact candidate are preserved until a
+   fresh load settles recovery. Confirmed manifest commit wins over late cancellation. A
+   post-source/pre-checkpoint process crash can still leave a random unreferenced case orphan for
+   PWS-0113; it is not a source record. The external source is never opened for writing. Later
+   read-only size, SHA-256, link, stream, reparse, and containment checks detect application-model
+   mutation; they do not authenticate against malware able to rewrite both case files and manifests.
 
 Primary threats: TM-001, TM-002, TM-003, TM-005, TM-006, TM-007, TM-011, TM-012, TM-022,
 TM-023, TM-026.

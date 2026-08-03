@@ -1,8 +1,8 @@
 # Immutable source-ingest contract
 
-- Status: Implemented PWS-0104 contract
-- Task: PWS-0104
-- Decisions: PWS-D009, PWS-D010, PWS-D028
+- Status: Implemented PWS-0104 contract with PWS-0109 transaction integration
+- Tasks: PWS-0104, PWS-0109
+- Decisions: PWS-D009, PWS-D010, PWS-D011, PWS-D028, PWS-D036
 - Depends on: PWS-0102 local case lifecycle; PWS-0103 bounded import prechecks
 - Data flow: [DF-IMPORT](../security/data-flows.md#df-import--select-precheck-copy-inspect-and-commit-source)
 
@@ -17,14 +17,14 @@ committed case copy.
 signals, integrity status, progress, cooperative monotonic deadlines, and closed sanitized errors.
 Application orchestration depends on structural preparation, commit, and integrity protocols. The
 concrete storage adapter owns the authenticated Windows handles, bounded streaming I/O, case
-publication, and the narrow import-only manifest append. Storage does not import the application
-layer or parse PDF/image structure, and no package initializer re-exports an implementation.
+publication, and construction of the complete next manifest. The shared PWS-0109 repository owns
+checkpoint and manifest publication. Storage does not import the application layer or parse
+PDF/image structure, and no package initializer re-exports an implementation.
 
-PWS-0104 itself does not add a document engine, general manifest repository, autosave journal,
-page-edit operation, UI, network behavior, or runtime dependency. PWS-0105 now supplies complex PDF
-inspection through the restricted worker without moving parsing into storage. Later image adapters
-retain their own inspection work. PWS-0109 owns general manifest transactions, autosave, and
-recovery; PWS-0110 owns page operations and replay after the initial import catalogue exists.
+PWS-0104 itself does not add a document engine, page-edit command model, UI, network behavior, or
+runtime dependency. PWS-0105 supplies complex PDF inspection through the restricted worker without
+moving parsing into storage. PWS-0109 now supplies general manifest transactions, autosave, and
+recovery; PWS-0110 owns page-operation construction and replay.
 
 ## Two-phase prepare and commit
 
@@ -96,8 +96,8 @@ journal, source record, or page record.
 
 After complete metadata validates:
 
-The commit holds both source-byte and manifest-growth reservations under the shared per-case
-publication guard through the following ordered publications.
+The commit holds the source-byte reservation plus complete manifest and checkpoint reservations
+under the shared per-case transaction guard through the following ordered publications.
 
 1. The prepared source ID determines the only storage name, `<source-id>.bin`. Identifier
    collisions against the validated manifest are retried within a fixed bound; any destination
@@ -109,23 +109,20 @@ publication guard through the following ordered publications.
    same serialized commit authority. Matching source IDs are returned as an advisory signal.
    Duplicates still receive distinct source IDs, case copies, display names, and page identities;
    PWS-0104 performs no silent deduplication.
-4. The narrow manifest appender adds one complete source record and exactly `page_count` new page
-   records in zero-based source-page order. It appends the new page IDs in the same order to both
-   `page_sequence_base` and `page_sequence` and creates no page operation.
-5. The appender requires the import-only replay shape: the current manifest is supported and fully
-   valid, `page_operations` is empty, and its base and final page sequences match before the append.
-   It preserves the other members accepted by the narrow import-only validator, increments the
-   revision once, uses ordered UTC timestamps, and revalidates the complete target manifest before
-   publication.
-6. A random staged manifest is written and flushed, then atomically replaces `manifest.json`.
-   `ManifestReplaceResult` distinguishes `committed`, `not_committed`, and `unknown`; a confirmed
-   replacement is the import commit point. The committed manifest and published source together are
-   authoritative.
+4. The ingest adapter adds one complete source record and exactly `page_count` new page records in
+   zero-based source-page order. With no operation history, it appends the IDs to both base and
+   final sequences. With history, it preserves the base and appends one `change_sequence` operation
+   whose reason is `import`, before/after states are exact, and sequence number is contiguous.
+5. The complete current and target manifests pass the fingerprint-bound runtime schema and semantic
+   validator. The target preserves unrelated state, increments the revision once, and uses an
+   ordered UTC timestamp.
+6. The shared transaction writes and handle-revalidates random manifest and checkpoint stages,
+   publishes the exact source through its authenticated pre-checkpoint callback, publishes or
+   replaces `journal/latest.json`, then atomically replaces `manifest.json`.
 
-The appender is intentionally narrower than the PWS-0109 repository. It cannot save arbitrary UI
-state, coalesce edits, migrate schemas, publish a journal, or append imports after PWS-0110 page
-operations exist. PWS-0109 must absorb this validated append behavior into the general transaction
-boundary without weakening its version, identity, schema, or semantic checks.
+The fixed complete checkpoint makes interruption after source publication recoverable. The ingest
+adapter still cannot save arbitrary UI state or coalesce edits itself; those operations use the
+same repository through its public save/autosave contracts. Schema migration remains out of scope.
 
 ## Cancellation, deadlines, failure, and restart boundary
 
@@ -149,18 +146,18 @@ unresolved manifest failure in that interval can therefore leave a random case-s
 handling may remove the exact retained object; PWS-0113 owns bounded restart discovery and cleanup
 when immediate proof or cleanup is unavailable.
 
-Lease cleanup is one-shot and attempts the pending handle, both quota reservations, and retained
-case authority independently. Cleanup faults cannot replace the original precommit failure. After
-an authoritative manifest commit, cleanup faults likewise cannot turn the committed import into a
-failure response; any unreleased process-local bookkeeping remains fail-safe capacity until process
-restart rather than permitting an unsafe second write.
+Lease cleanup is one-shot and attempts the pending handle, source/manifest/checkpoint reservations,
+and retained case authority independently. Cleanup faults cannot replace the original precommit
+failure. After an authoritative manifest commit, cleanup faults likewise cannot turn the committed
+import into a failure response; any unreleased process-local bookkeeping remains fail-safe capacity
+until process restart rather than permitting an unsafe second write.
 
-`not_committed` permits exact cleanup of the new source. An `unknown` replacement report
-conservatively preserves the random published bytes and staged manifest; the store does not downgrade
-that uncertainty to permission to delete. It returns a stable failure and makes no new valid-record
-claim. A delayed process-control interruption is propagated only after those recovery artifacts are
-preserved. A fresh lifecycle open reports only what the current valid manifest names; PWS-0113 owns
-explicit orphan resolution and may remove a copy only if recovery proves it remains unreferenced.
+A confirmed failure before checkpoint publication permits exact cleanup of the new source. An
+unknown checkpoint or manifest outcome conservatively preserves the random published bytes and its
+recovery evidence; the store does not downgrade uncertainty to permission to delete. A delayed
+process-control interruption is propagated only after those artifacts are preserved. Fresh open
+fully validates current and checkpoint state, promotes an exact next revision when possible, and
+otherwise makes no new valid-record claim. PWS-0113 owns explicit orphan resolution.
 
 After source publication begins, commit code stops consulting cancellation and deadline probes and
 settles the manifest outcome by exact destination identity. Once manifest replacement is confirmed,
@@ -228,15 +225,15 @@ original, or manifest itself.
 
 Unit tests cover boundary-sized streaming, independent source/staged hashes, short reads, staged
 readback mismatch, cooperative cancellation/deadline phase checks, ID collisions, duplicate
-advisories, complete source/page manifest construction, the import-only replay precondition,
-immutable results, and sanitized errors.
+advisories, complete source/page manifest construction, imports before and after page-operation
+history, recoverable-checkpoint conflicts, immutable results, and sanitized errors.
 
 Windows integration and security tests cover the real single source lease, unchanged external
 content/size/modification time/file identity, a link-count source change during copy, quota
 rejection, atomic manifest outcome states, fresh-service reopen, simultaneous stale commits,
-post-publication cancellation/interruption settlement, random-name privacy, stored-copy hard links,
+pending-checkpoint recovery before the next import, post-publication cancellation/interruption
+settlement before and after checkpoint publication, random-name privacy, stored-copy hard links,
 sibling/outside preservation, and later missing/size/digest mutation. All document fixtures are
-synthetic and boundary carriers are generated on demand. Operating-system disk-full and Win32
-write/flush fault injection, end-to-end alternate-stream/reparse identity races, power-loss, and
-restart orphan cleanup are not claimed by PWS-0104 evidence; their mapped later/adjacent owners
-retain those scenarios.
+synthetic and boundary carriers are generated on demand. Physical-volume exhaustion,
+end-to-end alternate-stream/reparse identity races, power-loss durability, and restart orphan
+cleanup are not claimed; their mapped later/adjacent owners retain those scenarios.
