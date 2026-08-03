@@ -42,15 +42,18 @@
     },
     {
       "category": "cmyk",
-      "status": "scheduled",
-      "scheduled_task": "PWS-0201",
-      "reason_code": "cmyk-image-engine-required"
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-render-cmyk"
+      ]
     },
     {
       "category": "crop",
       "status": "committed",
       "fixture_ids": [
-        "pdf-page-geometry"
+        "pdf-page-geometry",
+        "pdf-render-calibration",
+        "png-render-calibration-crop-rotate"
       ]
     },
     {
@@ -98,7 +101,8 @@
       "category": "malformed",
       "status": "committed",
       "fixture_ids": [
-        "pdf-malformed"
+        "pdf-malformed",
+        "pdf-render-malformed-page-tree"
       ]
     },
     {
@@ -118,7 +122,11 @@
       "category": "page-size",
       "status": "committed",
       "fixture_ids": [
-        "pdf-page-geometry"
+        "pdf-page-geometry",
+        "pdf-render-calibration",
+        "pdf-render-high-dimension",
+        "png-render-calibration-crop-rotate",
+        "png-render-calibration-media-box"
       ]
     },
     {
@@ -132,7 +140,9 @@
       "category": "rotated",
       "status": "committed",
       "fixture_ids": [
-        "pdf-page-geometry"
+        "pdf-page-geometry",
+        "pdf-render-calibration",
+        "png-render-calibration-crop-rotate"
       ]
     },
     {
@@ -160,6 +170,8 @@
       "category": "transparency",
       "status": "committed",
       "fixture_ids": [
+        "pdf-render-transparency",
+        "png-render-transparency",
         "png-transparent"
       ]
     },
@@ -457,6 +469,126 @@
       }
     },
     {
+      "id": "pdf-render-calibration",
+      "path": "pdf/render-calibration.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1050,
+      "sha256": "a0b937f3cf2fd2e4653d4fc067aae459f8dd17c5ad88edc9a3a5482b6f94dbc0",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "render-calibration-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "font_resource_count": 0,
+        "page_one_crop_box": "10 10 70 50",
+        "page_one_rotation_degrees": 90,
+        "page_two_media_box": "0 0 72 96"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-cmyk",
+      "path": "pdf/render-cmyk.pdf",
+      "media_type": "application/pdf",
+      "bytes": 984,
+      "sha256": "b51ac42dff2d2a21014123d8e133d1049de0b8dd12726e4540bc12d58370d69f",
+      "categories": [
+        "cmyk"
+      ],
+      "recipe": "render-cmyk-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_resource_count": 0,
+        "device_cmyk_vector_swatches": 4,
+        "device_cmyk_image_pixels": 4,
+        "image_interpolation": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-high-dimension",
+      "path": "pdf/render-high-dimension.pdf",
+      "media_type": "application/pdf",
+      "bytes": 595,
+      "sha256": "5200af06d81559aef0c48c42b190ac7edbd5a5ab07456d6ac86b7e02a90c4409",
+      "categories": [
+        "page-size"
+      ],
+      "recipe": "render-high-dimension-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "media_box_width_points": 14400,
+        "media_box_height_points": 14400,
+        "pixels_at_96_dpi": 368640000
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-malformed-page-tree",
+      "path": "pdf/render-malformed-page-tree.pdf",
+      "media_type": "application/pdf",
+      "bytes": 305,
+      "sha256": "2cefb2633b0f639f8b914e078ef9dd32ae58fb68bc5e571d487d7efe0b098458",
+      "categories": [
+        "malformed"
+      ],
+      "recipe": "render-malformed-page-tree-pdf-v1",
+      "construction_assertions": {
+        "parse_expected": false,
+        "header_complete": true,
+        "xref_complete": true,
+        "missing_pages_object": 99
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-transparency",
+      "path": "pdf/render-transparency.pdf",
+      "media_type": "application/pdf",
+      "bytes": 750,
+      "sha256": "28fe792cf1083f331d72fab162df7f1099fb86324704ba87de1cc7db9a42bc05",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "render-transparency-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_resource_count": 0,
+        "ext_gstate_count": 1,
+        "fill_alpha_numerator": 1,
+        "fill_alpha_denominator": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
       "id": "pdf-script-marker",
       "path": "pdf/script-marker.pdf",
       "media_type": "application/pdf",
@@ -558,6 +690,81 @@
         "width": 8,
         "height": 8,
         "color_type": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-calibration-crop-rotate",
+      "path": "image/render-calibration-crop-rotate.png",
+      "media_type": "image/png",
+      "bytes": 7416,
+      "sha256": "90648e4c601382ca3b96f7282cd2f33a6ef577a223ef185584b088372738ccf3",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "render-calibration-crop-rotate-png-v1",
+      "construction_assertions": {
+        "width": 40,
+        "height": 60,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-calibration",
+        "page_index": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-calibration-media-box",
+      "path": "image/render-calibration-media-box.png",
+      "media_type": "image/png",
+      "bytes": 20969,
+      "sha256": "412a3a6068b87271bcff388cead2a00a9bd6ee83bc3568f244a50aa439662b67",
+      "categories": [
+        "page-size"
+      ],
+      "recipe": "render-calibration-media-box-png-v1",
+      "construction_assertions": {
+        "width": 72,
+        "height": 96,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-calibration",
+        "page_index": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-transparency",
+      "path": "image/render-transparency.png",
+      "media_type": "image/png",
+      "bytes": 12502,
+      "sha256": "48b14820387a1343d2910cc8bf8b9a283a68b9dcf862d55392df18cb352753c4",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "render-transparency-png-v1",
+      "construction_assertions": {
+        "width": 64,
+        "height": 64,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-transparency",
+        "page_index": 0,
+        "maximum_channel_delta": 1
       },
       "provenance": {
         "kind": "algorithmic",

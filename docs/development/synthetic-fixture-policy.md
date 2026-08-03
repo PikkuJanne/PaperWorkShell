@@ -33,13 +33,17 @@ they do not claim that a future PDF/image engine has parsed, rendered, decrypted
 visually verified the artifact.
 
 The index covers each roadmap corpus class as `committed`, `on-demand`, or `scheduled`. PWS-0105
-adds a deterministic password-required PDF and a separate catalog-reachable action-only PDF to the
-committed version-1 corpus. A `scheduled` entry names the later task that can honestly construct and
-verify the remaining class:
+adds a deterministic password-required PDF and a separate catalog-reachable action-only PDF.
+PWS-0106 adds font-free PDF renderer calibration, PDF transparency, PDF DeviceCMYK, high page
+dimensions, complete framing with a broken page tree, and analytical RGB reference images. A
+`scheduled` entry names a later task that can honestly construct and verify a remaining class:
 
-- CMYK image behavior: PWS-0201;
 - rendered multilingual and complex-script text: PWS-0303;
 - right-to-left layout behavior: PWS-0704.
+
+The committed `cmyk` category is deliberately limited to PDF rendering: it contains DeviceCMYK
+vector swatches and a tiny algorithmic DeviceCMYK image XObject. Predictable CMYK behavior for
+standalone JPEG/PNG intake remains part of PWS-0201 and is not claimed by this fixture.
 
 The Unicode category is committed as an NFC Unicode-named PDF path, which needs no font or feature
 engine. It does not claim rendered Unicode page content; that distinct behavior remains with the
@@ -52,6 +56,16 @@ credential. The action-only fixture contains one catalog action and no JavaScrip
 script-marker fixture contains an orphaned structural token unreachable from the document catalog.
 Their shared index category preserves the released schema vocabulary; adapter tests distinguish the
 two construction assertions.
+
+The renderer references indexed by
+[`tests/golden/renderer-v1/index.json`](../../tests/golden/renderer-v1/index.json) are not
+captured renderer output. They are independently calculated, font-free RGB8 top-down oracles at one
+pixel per PDF point. Each PNG is byte-identical to an indexed public synthetic image, so the
+repository privacy scanner authorizes it by the same reviewed digest. The golden index binds the
+PDF fixture digest, page index, dimensions, pixel layout, comparison mode, and reference digest.
+Geometry references compare exactly; the half-alpha reference permits only a one-channel-value
+rounding difference. CMYK is intentionally checked by documented swatch relationships rather than
+an invented device-independent RGB value.
 
 The signed-marker fixture contains an unsigned PDF signature field only. It is not a digital
 signature, does not contain a signature image, and carries no validity claim. The handwriting
@@ -67,18 +81,19 @@ py -3.14 tools/dev.py validate-fixtures
 ```
 
 `generate-fixtures` is intentionally mutating and is not part of `check`. It writes only the
-reviewed committed artifacts and canonical index and refuses an unexpected output inventory.
-Review every generator or byte change; do not refresh fixtures merely to make a test pass.
+reviewed committed corpus, canonical corpus index, and analytical renderer references, and refuses
+an unexpected output inventory. Review every generator or byte change; do not refresh fixtures or
+goldens merely to make a test pass.
 
 `validate-fixtures` is non-mutating. It authenticates the schema, validates current and rejected
-index examples, reconstructs the expected bytes in memory, compares the exact corpus, and applies
-the repository document-data policy to the hardened Git/index/working-tree snapshot shared with
-the secret-scanning boundary. Reachable historical, root/pseudo-ref, direct blob/tree, exact index,
-tracked, and nonignored untracked document/image bytes must either match an approved generated
-fixture digest or validation fails. High-confidence structured-data patterns are also rejected
-without echoing the matched path or value. Git author, committer, tagger, and folded-mergetag
-identity records are provenance rather than fixture content; Gitleaks still scans their raw bytes
-in the separate `scan-secrets` lane.
+index examples, reconstructs the expected bytes in memory, compares the exact corpus and renderer
+golden inventory, and applies the repository document-data policy to the hardened
+Git/index/working-tree snapshot shared with the secret-scanning boundary. Reachable historical,
+root/pseudo-ref, direct blob/tree, exact index, tracked, and nonignored untracked document/image
+bytes must either match an approved generated fixture digest or validation fails. High-confidence
+structured-data patterns are also rejected without echoing the matched path or value. Git author,
+committer, tagger, and folded-mergetag identity records are provenance rather than fixture content;
+Gitleaks still scans their raw bytes in the separate `scan-secrets` lane.
 
 IBAN detection uses the fixed country lengths in the
 [SWIFT IBAN Registry Release 102](https://www.swift.com/swift_resource/9606) (June 2026) and

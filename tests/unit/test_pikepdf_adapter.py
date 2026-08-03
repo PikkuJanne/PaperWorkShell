@@ -84,6 +84,11 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "mixed.pdf",
         "page-geometry.pdf",
         "password-required.pdf",
+        "render-calibration.pdf",
+        "render-cmyk.pdf",
+        "render-high-dimension.pdf",
+        "render-malformed-page-tree.pdf",
+        "render-transparency.pdf",
         "script-marker.pdf",
         "signed-marker.pdf",
     }
@@ -99,13 +104,17 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "incremental-update.pdf",
         "mixed.pdf",
         "page-geometry.pdf",
+        "render-calibration.pdf",
+        "render-cmyk.pdf",
+        "render-high-dimension.pdf",
+        "render-transparency.pdf",
         *unicode_names,
     }
     not_detected = (PdfFeatureState.NOT_DETECTED,) * 6
 
     for path in paths:
         result = _inspect(path)
-        if path.name == "malformed-truncated.pdf":
+        if path.name in {"malformed-truncated.pdf", "render-malformed-page-tree.pdf"}:
             assert result.open_state is PdfOpenState.MALFORMED
             assert result.encryption_state is PdfEncryptionState.UNKNOWN
             assert result.structural_state is PdfStructuralState.FAILED
@@ -121,7 +130,9 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         assert result.open_state is PdfOpenState.OPENED
         assert result.encryption_state is PdfEncryptionState.UNENCRYPTED
         assert result.structural_state is PdfStructuralState.CLEAN
-        assert result.page_count == (2 if path.name in {"mixed.pdf", "page-geometry.pdf"} else 1)
+        assert result.page_count == (
+            2 if path.name in {"mixed.pdf", "page-geometry.pdf", "render-calibration.pdf"} else 1
+        )
         assert result.object_count is not None and result.object_count > 0
         values = _feature_values(result.features)
         if path.name in ordinary_names:

@@ -18,6 +18,8 @@ from typing import IO, Final
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 CORPUS_DIRECTORY: Final = Path("tests/fixtures/synthetic/v1")
 INDEX_PATH: Final = CORPUS_DIRECTORY / "index.json"
+GOLDEN_DIRECTORY: Final = Path("tests/golden/renderer-v1")
+GOLDEN_INDEX_PATH: Final = GOLDEN_DIRECTORY / "index.json"
 SCHEMA_PATH: Final = Path("schemas/synthetic-fixture-index-v1.schema.json")
 SYNTHETIC_MARKER: Final = "PWS-SYNTHETIC-FIXTURE"
 CORPUS_ID: Final = "paperworkshell-public-synthetic-v1"
@@ -52,6 +54,22 @@ class GeneratedFixture:
     categories: tuple[str, ...]
     recipe: str
     expected: Mapping[str, JsonValue]
+    content: bytes
+
+
+@dataclass(frozen=True)
+class GeneratedGoldenReference:
+    """One deterministic analytical renderer oracle mirrored from the public corpus."""
+
+    reference_id: str
+    relative_path: PurePosixPath
+    source_fixture_id: str
+    reference_fixture_id: str
+    page_index: int
+    pixels_per_point: int
+    width: int
+    height: int
+    maximum_channel_delta: int
     content: bytes
 
 
@@ -236,6 +254,144 @@ def _geometry_pdf() -> bytes:
             b"<< /Producer (" + _pdf_literal(SYNTHETIC_MARKER) + b") >>",
         ),
         info_object=8,
+    )
+
+
+def _render_calibration_pdf() -> bytes:
+    page_one = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 80 60 re f",
+            b"1 0 0 rg 10 10 30 20 re f",
+            b"0 1 0 rg 40 10 30 20 re f",
+            b"0 0 1 rg 10 30 30 20 re f",
+            b"1 1 0 rg 40 30 30 20 re f",
+        )
+    )
+    page_two = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 72 96 re f",
+            b"0 0 0 rg 0 0 36 48 re f",
+            b"0 1 1 rg 36 0 36 48 re f",
+            b"1 0 1 rg 0 48 36 48 re f",
+            b"1 1 0 rg 36 48 36 48 re f",
+        )
+    )
+    marker = f"{SYNTHETIC_MARKER}: font-free analytical renderer calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 80 60] "
+                b"/CropBox [10 10 70 50] /Rotate 90 /Resources << >> /Contents 5 0 R >>"
+            ),
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 96] "
+                b"/Resources << >> /Contents 6 0 R >>"
+            ),
+            _pdf_stream(page_one),
+            _pdf_stream(page_two),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=7,
+    )
+
+
+def _render_transparency_pdf() -> bytes:
+    content = b"\n".join(
+        (
+            b"1 1 1 rg 0 0 64 64 re f",
+            b"0 0 1 rg 8 8 40 40 re f",
+            b"q /GS1 gs 1 0 0 rg 24 24 32 32 re f Q",
+        )
+    )
+    marker = f"{SYNTHETIC_MARKER}: font-free PDF transparency calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] "
+                b"/Resources << /ExtGState << /GS1 4 0 R >> >> /Contents 5 0 R >>"
+            ),
+            b"<< /Type /ExtGState /ca 0.5 /CA 0.5 >>",
+            _pdf_stream(content),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=6,
+    )
+
+
+def _render_cmyk_pdf() -> bytes:
+    image_pixels = bytes(
+        (
+            255,
+            0,
+            0,
+            0,
+            0,
+            255,
+            0,
+            0,
+            0,
+            0,
+            255,
+            0,
+            0,
+            0,
+            0,
+            255,
+        )
+    )
+    image = _pdf_stream(
+        _stored_zlib(image_pixels),
+        (
+            b"/Type /XObject /Subtype /Image /Width 4 /Height 1 "
+            b"/ColorSpace /DeviceCMYK /BitsPerComponent 8 /Interpolate false "
+            b"/Filter /FlateDecode"
+        ),
+    )
+    content = b"\n".join(
+        (
+            b"0 0 0 0 k 0 0 64 64 re f",
+            b"1 0 0 0 k 0 32 16 32 re f",
+            b"0 1 0 0 k 16 32 16 32 re f",
+            b"0 0 1 0 k 32 32 16 32 re f",
+            b"0 0 0 1 k 48 32 16 32 re f",
+            b"q 64 0 0 16 0 0 cm /Im0 Do Q",
+        )
+    )
+    marker = f"{SYNTHETIC_MARKER}: font-free DeviceCMYK renderer calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] "
+                b"/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>"
+            ),
+            image,
+            _pdf_stream(content),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=6,
+    )
+
+
+def _render_high_dimension_pdf() -> bytes:
+    marker = f"{SYNTHETIC_MARKER}: high-dimension renderer limit calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 14400 14400] "
+                b"/Resources << >> /Contents 4 0 R >>"
+            ),
+            _pdf_stream(b"0 0 0 rg 0 0 72 72 re f"),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=5,
     )
 
 
@@ -469,6 +625,17 @@ def _malformed_pdf() -> bytes:
     )
 
 
+def _malformed_page_tree_pdf() -> bytes:
+    marker = f"{SYNTHETIC_MARKER}: complete framing with a missing page-tree object"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 99 0 R >>",
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=2,
+    )
+
+
 def _png_chunk(kind: bytes, payload: bytes) -> bytes:
     checksum = zlib.crc32(kind + payload) & 0xFFFFFFFF
     return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", checksum)
@@ -510,6 +677,71 @@ def _transparent_png() -> bytes:
         color_type=6,
         rows=rows,
         description=f"{SYNTHETIC_MARKER}: algorithmic transparency",
+    )
+
+
+def _render_calibration_crop_rotate_png() -> bytes:
+    rows: list[bytes] = []
+    for y in range(60):
+        row = bytearray()
+        for x in range(40):
+            if y < 30:
+                color = (255, 0, 0) if x < 20 else (0, 0, 255)
+            else:
+                color = (0, 255, 0) if x < 20 else (255, 255, 0)
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        40,
+        60,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: analytical crop and clockwise-rotation oracle",
+    )
+
+
+def _render_calibration_media_box_png() -> bytes:
+    rows: list[bytes] = []
+    for y in range(96):
+        row = bytearray()
+        for x in range(72):
+            if y < 48:
+                color = (255, 0, 255) if x < 36 else (255, 255, 0)
+            else:
+                color = (0, 0, 0) if x < 36 else (0, 255, 255)
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        72,
+        96,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: analytical MediaBox oracle",
+    )
+
+
+def _render_transparency_png() -> bytes:
+    rows: list[bytes] = []
+    for y in range(64):
+        pdf_y = 63 - y
+        row = bytearray()
+        for x in range(64):
+            blue = 8 <= x < 48 and 8 <= pdf_y < 48
+            translucent_red = 24 <= x < 56 and 24 <= pdf_y < 56
+            if translucent_red:
+                color = (128, 0, 128) if blue else (255, 128, 128)
+            elif blue:
+                color = (0, 0, 255)
+            else:
+                color = (255, 255, 255)
+            row.extend(color)
+        rows.append(bytes(row))
+    return _png(
+        64,
+        64,
+        color_type=2,
+        rows=rows,
+        description=f"{SYNTHETIC_MARKER}: analytical PDF alpha-compositing oracle",
     )
 
 
@@ -645,6 +877,65 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _geometry_pdf,
         ),
         _fixture(
+            "pdf-render-calibration",
+            "pdf/render-calibration.pdf",
+            "application/pdf",
+            ("crop", "page-size", "rotated"),
+            "render-calibration-pdf-v1",
+            {
+                "page_count": 2,
+                "font_resource_count": 0,
+                "page_one_crop_box": "10 10 70 50",
+                "page_one_rotation_degrees": 90,
+                "page_two_media_box": "0 0 72 96",
+            },
+            _render_calibration_pdf,
+        ),
+        _fixture(
+            "pdf-render-transparency",
+            "pdf/render-transparency.pdf",
+            "application/pdf",
+            ("transparency",),
+            "render-transparency-pdf-v1",
+            {
+                "page_count": 1,
+                "font_resource_count": 0,
+                "ext_gstate_count": 1,
+                "fill_alpha_numerator": 1,
+                "fill_alpha_denominator": 2,
+            },
+            _render_transparency_pdf,
+        ),
+        _fixture(
+            "pdf-render-cmyk",
+            "pdf/render-cmyk.pdf",
+            "application/pdf",
+            ("cmyk",),
+            "render-cmyk-pdf-v1",
+            {
+                "page_count": 1,
+                "font_resource_count": 0,
+                "device_cmyk_vector_swatches": 4,
+                "device_cmyk_image_pixels": 4,
+                "image_interpolation": False,
+            },
+            _render_cmyk_pdf,
+        ),
+        _fixture(
+            "pdf-render-high-dimension",
+            "pdf/render-high-dimension.pdf",
+            "application/pdf",
+            ("page-size",),
+            "render-high-dimension-pdf-v1",
+            {
+                "page_count": 1,
+                "media_box_width_points": 14400,
+                "media_box_height_points": 14400,
+                "pixels_at_96_dpi": 368640000,
+            },
+            _render_high_dimension_pdf,
+        ),
+        _fixture(
             "pdf-blank",
             "pdf/blank.pdf",
             "application/pdf",
@@ -739,6 +1030,20 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _malformed_pdf,
         ),
         _fixture(
+            "pdf-render-malformed-page-tree",
+            "pdf/render-malformed-page-tree.pdf",
+            "application/pdf",
+            ("malformed",),
+            "render-malformed-page-tree-pdf-v1",
+            {
+                "parse_expected": False,
+                "header_complete": True,
+                "xref_complete": True,
+                "missing_pages_object": 99,
+            },
+            _malformed_page_tree_pdf,
+        ),
+        _fixture(
             "pdf-incremental",
             "pdf/incremental-update.pdf",
             "application/pdf",
@@ -755,6 +1060,52 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             "transparent-png-v1",
             {"width": 16, "height": 16, "color_type": 6},
             _transparent_png,
+        ),
+        _fixture(
+            "png-render-calibration-crop-rotate",
+            "image/render-calibration-crop-rotate.png",
+            "image/png",
+            ("crop", "page-size", "rotated"),
+            "render-calibration-crop-rotate-png-v1",
+            {
+                "width": 40,
+                "height": 60,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-calibration",
+                "page_index": 0,
+            },
+            _render_calibration_crop_rotate_png,
+        ),
+        _fixture(
+            "png-render-calibration-media-box",
+            "image/render-calibration-media-box.png",
+            "image/png",
+            ("page-size",),
+            "render-calibration-media-box-png-v1",
+            {
+                "width": 72,
+                "height": 96,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-calibration",
+                "page_index": 1,
+            },
+            _render_calibration_media_box_png,
+        ),
+        _fixture(
+            "png-render-transparency",
+            "image/render-transparency.png",
+            "image/png",
+            ("transparency",),
+            "render-transparency-png-v1",
+            {
+                "width": 64,
+                "height": 64,
+                "color_type": 2,
+                "golden_for_fixture": "pdf-render-transparency",
+                "page_index": 0,
+                "maximum_channel_delta": 1,
+            },
+            _render_transparency_png,
         ),
         _fixture(
             "png-low-resolution",
@@ -843,8 +1194,6 @@ def _coverage() -> list[JsonValue]:
                 }
             )
         else:
-            if category == "cmyk":
-                scheduled[category] = ("PWS-0201", "cmyk-image-engine-required")
             task_id, reason_code = scheduled[category]
             coverage.append(
                 {
@@ -916,6 +1265,137 @@ def canonical_index_bytes(fixtures: Sequence[GeneratedFixture] | None = None) ->
     """Serialize the index with one stable formatting profile."""
 
     return (json.dumps(build_index(fixtures), ensure_ascii=True, indent=2) + "\n").encode("utf-8")
+
+
+def build_renderer_golden_references(
+    fixtures: Sequence[GeneratedFixture] | None = None,
+) -> tuple[GeneratedGoldenReference, ...]:
+    """Build the exact renderer oracles mirrored beneath ``tests/golden``."""
+
+    selected = tuple(fixtures) if fixtures is not None else build_committed_fixtures()
+    by_id = {fixture.fixture_id: fixture for fixture in selected}
+    specifications = (
+        (
+            "render-calibration-crop-rotate",
+            "render-calibration-crop-rotate.png",
+            "pdf-render-calibration",
+            "png-render-calibration-crop-rotate",
+            0,
+            40,
+            60,
+            0,
+        ),
+        (
+            "render-calibration-media-box",
+            "render-calibration-media-box.png",
+            "pdf-render-calibration",
+            "png-render-calibration-media-box",
+            1,
+            72,
+            96,
+            0,
+        ),
+        (
+            "render-transparency",
+            "render-transparency.png",
+            "pdf-render-transparency",
+            "png-render-transparency",
+            0,
+            64,
+            64,
+            1,
+        ),
+    )
+    references: list[GeneratedGoldenReference] = []
+    for (
+        reference_id,
+        path,
+        source_fixture_id,
+        reference_fixture_id,
+        page_index,
+        width,
+        height,
+        maximum_channel_delta,
+    ) in specifications:
+        try:
+            source = by_id[source_fixture_id]
+            reference = by_id[reference_fixture_id]
+        except KeyError as error:
+            raise AssertionError("renderer golden source fixture is unavailable") from error
+        if source.media_type != "application/pdf" or reference.media_type != "image/png":
+            raise AssertionError("renderer golden media types are invalid")
+        references.append(
+            GeneratedGoldenReference(
+                reference_id=reference_id,
+                relative_path=PurePosixPath(path),
+                source_fixture_id=source_fixture_id,
+                reference_fixture_id=reference_fixture_id,
+                page_index=page_index,
+                pixels_per_point=1,
+                width=width,
+                height=height,
+                maximum_channel_delta=maximum_channel_delta,
+                content=reference.content,
+            )
+        )
+    return tuple(sorted(references, key=lambda item: item.reference_id))
+
+
+def build_renderer_golden_index(
+    fixtures: Sequence[GeneratedFixture] | None = None,
+) -> dict[str, JsonValue]:
+    """Return the closed metadata contract for analytical renderer references."""
+
+    selected = tuple(fixtures) if fixtures is not None else build_committed_fixtures()
+    by_id = {fixture.fixture_id: fixture for fixture in selected}
+    entries: list[JsonValue] = []
+    for reference in build_renderer_golden_references(selected):
+        source = by_id[reference.source_fixture_id]
+        image = by_id[reference.reference_fixture_id]
+        entries.append(
+            {
+                "id": reference.reference_id,
+                "path": reference.relative_path.as_posix(),
+                "source_fixture_id": reference.source_fixture_id,
+                "source_sha256": hashlib.sha256(source.content).hexdigest(),
+                "page_index": reference.page_index,
+                "pixels_per_point": reference.pixels_per_point,
+                "pixel_layout": "rgb8-top-down",
+                "background": "opaque-white",
+                "width": reference.width,
+                "height": reference.height,
+                "reference_fixture_id": reference.reference_fixture_id,
+                "reference_sha256": hashlib.sha256(image.content).hexdigest(),
+                "comparison": {
+                    "mode": (
+                        "exact" if reference.maximum_channel_delta == 0 else "bounded-channel-delta"
+                    ),
+                    "maximum_channel_delta": reference.maximum_channel_delta,
+                },
+            }
+        )
+    return {
+        "schema_version": 1,
+        "golden_set_id": "paperworkshell-pdf-renderer-analytical-v1",
+        "source_corpus_id": CORPUS_ID,
+        "policy": {
+            "classification": "public-synthetic-only",
+            "derivation": "stdlib-analytical-oracle",
+            "captured_from_renderer": False,
+            "decision_ref": "PWS-D035",
+        },
+        "references": entries,
+    }
+
+
+def canonical_renderer_golden_index_bytes(
+    fixtures: Sequence[GeneratedFixture] | None = None,
+) -> bytes:
+    """Serialize the analytical renderer-reference index deterministically."""
+
+    return (
+        json.dumps(build_renderer_golden_index(fixtures), ensure_ascii=True, indent=2) + "\n"
+    ).encode("utf-8")
 
 
 def _is_link_or_reparse(path: Path) -> bool:
@@ -1050,8 +1530,34 @@ def _write_exact(path: Path, content: bytes, output_root: Path) -> None:
             pass
 
 
+def _write_renderer_goldens(
+    repository_root: Path,
+    fixtures: Sequence[GeneratedFixture],
+) -> int:
+    references = build_renderer_golden_references(fixtures)
+    golden_root = _ensure_safe_directory_chain(repository_root, GOLDEN_DIRECTORY)
+    expected = {Path(*reference.relative_path.parts) for reference in references}
+    expected.add(Path("index.json"))
+    unexpected = _bounded_output_files(golden_root) - expected
+    if unexpected:
+        raise FixtureGenerationError(
+            "FIXTURE_GOLDEN_INVENTORY_MISMATCH",
+            "renderer golden output differs from its reviewed inventory",
+        )
+    for reference in references:
+        relative = Path(*reference.relative_path.parts)
+        _ensure_safe_directory_chain(repository_root, GOLDEN_DIRECTORY / relative.parent)
+        _write_exact(golden_root / relative, reference.content, golden_root)
+    _write_exact(
+        golden_root / "index.json",
+        canonical_renderer_golden_index_bytes(fixtures),
+        golden_root,
+    )
+    return len(references)
+
+
 def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
-    """Regenerate the reviewed committed corpus beneath one repository root."""
+    """Regenerate the reviewed corpus and its analytical renderer references."""
 
     fixtures = build_committed_fixtures()
     try:
@@ -1081,6 +1587,7 @@ def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
         _ensure_safe_directory_chain(repository_root, CORPUS_DIRECTORY / relative.parent)
         _write_exact(corpus_root / relative, fixture.content, corpus_root)
     _write_exact(corpus_root / "index.json", canonical_index_bytes(fixtures), corpus_root)
+    _write_renderer_goldens(repository_root, fixtures)
     return len(fixtures)
 
 
@@ -1300,7 +1807,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.command == "regenerate":
             count = write_committed_corpus(arguments.root)
-            print(f"OK: regenerated {count} deterministic public synthetic fixtures.")
+            golden_count = len(build_renderer_golden_references())
+            print(
+                f"OK: regenerated {count} deterministic public synthetic fixtures "
+                f"and {golden_count} analytical renderer references."
+            )
         elif arguments.recipe == "oversized-pdf":
             path = generate_oversized_pdf(
                 arguments.output_directory,

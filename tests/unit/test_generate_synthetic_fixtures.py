@@ -13,16 +13,47 @@ from unittest.mock import patch
 
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
+    GOLDEN_DIRECTORY,
     LONG_PATH_COMPONENT,
     SYNTHETIC_MARKER,
     FixtureGenerationError,
     build_committed_fixtures,
     build_index,
+    build_renderer_golden_index,
+    build_renderer_golden_references,
     canonical_index_bytes,
+    canonical_renderer_golden_index_bytes,
     generate_long_path_tree,
     generate_oversized_pdf,
     write_committed_corpus,
 )
+
+
+def _rgb_png_pixels(content: bytes) -> tuple[int, int, bytes]:
+    cursor = 8
+    width = 0
+    height = 0
+    payload = bytearray()
+    while cursor < len(content):
+        length = struct.unpack(">I", content[cursor : cursor + 4])[0]
+        kind = content[cursor + 4 : cursor + 8]
+        chunk = content[cursor + 8 : cursor + 8 + length]
+        if kind == b"IHDR":
+            width, height, bit_depth, color_type, _, _, _ = struct.unpack(">IIBBBBB", chunk)
+            if bit_depth != 8 or color_type != 2:
+                raise AssertionError("analytical golden must be RGB8")
+        elif kind == b"IDAT":
+            payload.extend(chunk)
+        cursor += 12 + length
+    decoded = zlib.decompress(payload)
+    stride = width * 3
+    rows = []
+    for row in range(height):
+        start = row * (stride + 1)
+        if decoded[start] != 0:
+            raise AssertionError("analytical golden must use the no-op PNG filter")
+        rows.append(decoded[start + 1 : start + 1 + stride])
+    return width, height, b"".join(rows)
 
 
 class SyntheticFixtureGeneratorTests(unittest.TestCase):
@@ -35,7 +66,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(19, len(self.fixtures))
+        self.assertEqual(27, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -80,6 +111,8 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
         self.assertEqual(["pdf-protected"], by_category["protected"]["fixture_ids"])
         self.assertEqual("committed", by_category["unicode"]["status"])
         self.assertEqual(["pdf-unicode-named"], by_category["unicode"]["fixture_ids"])
+        self.assertEqual("committed", by_category["cmyk"]["status"])
+        self.assertEqual(["pdf-render-cmyk"], by_category["cmyk"]["fixture_ids"])
         self.assertEqual("PWS-0704", by_category["rtl"]["scheduled_task"])
 
     def test_classic_pdfs_have_correct_xref_offsets_and_stream_lengths(self) -> None:
@@ -178,6 +211,70 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
             cast(bool, self.by_id["png-handwriting-demonstration"].expected["is_signature"])
         )
 
+    def test_renderer_fixtures_are_font_free_and_exercise_closed_features(self) -> None:
+        calibration = self.by_id["pdf-render-calibration"].content
+        transparency = self.by_id["pdf-render-transparency"].content
+        cmyk = self.by_id["pdf-render-cmyk"].content
+        high_dimension = self.by_id["pdf-render-high-dimension"].content
+        malformed = self.by_id["pdf-render-malformed-page-tree"].content
+
+        self.assertNotIn(b"/Font", calibration)
+        self.assertIn(b"/CropBox [10 10 70 50]", calibration)
+        self.assertIn(b"/Rotate 90", calibration)
+        self.assertIn(b"/ExtGState", transparency)
+        self.assertIn(b"/ca 0.5", transparency)
+        self.assertIn(b"/ColorSpace /DeviceCMYK", cmyk)
+        self.assertIn(b"/Interpolate false", cmyk)
+        self.assertIn(b"/MediaBox [0 0 14400 14400]", high_dimension)
+        self.assertIn(b"/Pages 99 0 R", malformed)
+        self.assertTrue(malformed.endswith(b"%%EOF\n"))
+
+    def test_renderer_golden_references_are_analytical_corpus_mirrors(self) -> None:
+        references = build_renderer_golden_references(self.fixtures)
+        index = build_renderer_golden_index(self.fixtures)
+        by_reference = {reference.reference_id: reference for reference in references}
+
+        self.assertEqual(3, len(references))
+        self.assertEqual(
+            self.by_id["png-render-calibration-crop-rotate"].content,
+            by_reference["render-calibration-crop-rotate"].content,
+        )
+        self.assertEqual(
+            self.by_id["png-render-calibration-media-box"].content,
+            by_reference["render-calibration-media-box"].content,
+        )
+        self.assertEqual(
+            self.by_id["png-render-transparency"].content,
+            by_reference["render-transparency"].content,
+        )
+        self.assertFalse(cast(dict[str, Any], index["policy"])["captured_from_renderer"])
+        self.assertEqual(
+            "bounded-channel-delta",
+            cast(list[dict[str, Any]], index["references"])[2]["comparison"]["mode"],
+        )
+        self.assertEqual(
+            canonical_renderer_golden_index_bytes(self.fixtures),
+            canonical_renderer_golden_index_bytes(tuple(reversed(self.fixtures))),
+        )
+
+    def test_renderer_golden_pixels_encode_orientation_and_alpha_oracles(self) -> None:
+        def pixel(fixture_id: str, x: int, y: int) -> tuple[int, int, int]:
+            width, _height, pixels = _rgb_png_pixels(self.by_id[fixture_id].content)
+            offset = (y * width + x) * 3
+            value = pixels[offset : offset + 3]
+            return value[0], value[1], value[2]
+
+        self.assertEqual((255, 0, 0), pixel("png-render-calibration-crop-rotate", 0, 0))
+        self.assertEqual((0, 0, 255), pixel("png-render-calibration-crop-rotate", 39, 0))
+        self.assertEqual((0, 255, 0), pixel("png-render-calibration-crop-rotate", 0, 59))
+        self.assertEqual((255, 255, 0), pixel("png-render-calibration-crop-rotate", 39, 59))
+        self.assertEqual((255, 0, 255), pixel("png-render-calibration-media-box", 0, 0))
+        self.assertEqual((0, 255, 255), pixel("png-render-calibration-media-box", 71, 95))
+        self.assertEqual((255, 255, 255), pixel("png-render-transparency", 0, 0))
+        self.assertEqual((0, 0, 255), pixel("png-render-transparency", 10, 40))
+        self.assertEqual((128, 0, 128), pixel("png-render-transparency", 30, 30))
+        self.assertEqual((255, 128, 128), pixel("png-render-transparency", 52, 30))
+
     def test_regeneration_writes_only_the_reviewed_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -194,13 +291,26 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 for path in (root / CORPUS_DIRECTORY).rglob("*")
                 if path.is_file()
             }
+            golden = {
+                path.relative_to(root / GOLDEN_DIRECTORY): path.read_bytes()
+                for path in (root / GOLDEN_DIRECTORY).rglob("*")
+                if path.is_file()
+            }
 
-        self.assertEqual(19, count)
+        self.assertEqual(27, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(20, len(first))
+        self.assertEqual(28, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
+
+        self.assertEqual(4, len(golden))
+        self.assertEqual(
+            canonical_renderer_golden_index_bytes(self.fixtures),
+            golden[Path("index.json")],
+        )
+        for reference in build_renderer_golden_references(self.fixtures):
+            self.assertEqual(reference.content, golden[Path(*reference.relative_path.parts)])
 
     def test_on_demand_recipes_are_bounded_external_and_non_overwriting(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

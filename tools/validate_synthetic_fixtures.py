@@ -22,13 +22,18 @@ from jsonschema.exceptions import SchemaError
 from tools.dev import SecretScanError, inspect_repository_contents
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
+    GOLDEN_DIRECTORY,
+    GOLDEN_INDEX_PATH,
     INDEX_PATH,
     PROJECT_ROOT,
     SCHEMA_PATH,
     SYNTHETIC_MARKER,
+    GeneratedFixture,
     build_committed_fixtures,
     build_index,
+    build_renderer_golden_references,
     canonical_index_bytes,
+    canonical_renderer_golden_index_bytes,
 )
 
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
@@ -202,6 +207,7 @@ class FixtureCorpusSummary:
     """Counts for a complete corpus and repository validation."""
 
     fixture_count: int
+    golden_reference_count: int
     total_fixture_bytes: int
     repository_history_blob_count: int
     repository_index_blob_count: int
@@ -785,13 +791,16 @@ def validate_fixture_index_set(
     return FixtureIndexSummary(len(fixtures), len(coverage), len(candidates)), []
 
 
-def _enumerate_corpus_files(corpus_root: Path) -> tuple[set[Path] | None, list[FixtureIssue]]:
-    document = CORPUS_DIRECTORY.as_posix()
+def _enumerate_committed_files(
+    directory_root: Path,
+    *,
+    document: str,
+) -> tuple[set[Path] | None, list[FixtureIssue]]:
     try:
-        if _path_is_link_or_reparse(corpus_root) or not corpus_root.is_dir():
-            raise OSError("corpus directory is unsafe")
+        if _path_is_link_or_reparse(directory_root) or not directory_root.is_dir():
+            raise OSError("committed directory is unsafe")
         files: set[Path] = set()
-        stack = [corpus_root]
+        stack = [directory_root]
         entry_count = 0
         while stack:
             directory = stack.pop()
@@ -804,22 +813,22 @@ def _enumerate_corpus_files(corpus_root: Path) -> tuple[set[Path] | None, list[F
                                 "FIXTURE_SET_LIMIT",
                                 document,
                                 "$",
-                                "corpus exceeds its entry-count limit",
+                                "committed asset set exceeds its entry-count limit",
                             )
                         ]
                     candidate = Path(entry.path)
-                    relative = candidate.relative_to(corpus_root)
+                    relative = candidate.relative_to(directory_root)
                     if _path_is_link_or_reparse(candidate):
-                        raise OSError("corpus path is unsafe")
+                        raise OSError("committed asset path is unsafe")
                     for component in relative.parts:
                         if unicodedata.normalize("NFC", component) != component:
-                            raise OSError("corpus path is not normalized")
+                            raise OSError("committed asset path is not normalized")
                     if entry.is_dir(follow_symlinks=False):
                         stack.append(candidate)
                     elif entry.is_file(follow_symlinks=False):
                         files.add(relative)
                     else:
-                        raise OSError("corpus path is not regular")
+                        raise OSError("committed asset path is not regular")
     except (OSError, RuntimeError, ValueError) as error:
         return None, [_issue("FIXTURE_PATH_UNSAFE", document, "$", type(error).__name__)]
     return files, []
@@ -1042,6 +1051,71 @@ def _repository_inspector(
     return inspect
 
 
+def _validate_renderer_goldens(
+    root: Path,
+    generated: Sequence[GeneratedFixture],
+) -> tuple[int | None, list[FixtureIssue]]:
+    references = build_renderer_golden_references(generated)
+    golden_root = root / GOLDEN_DIRECTORY
+    actual_files, inventory_issues = _enumerate_committed_files(
+        golden_root,
+        document=GOLDEN_DIRECTORY.as_posix(),
+    )
+    if actual_files is None:
+        return None, inventory_issues
+    expected_files = {Path("index.json")}
+    expected_files.update(Path(*reference.relative_path.parts) for reference in references)
+    if actual_files != expected_files:
+        return None, [
+            _issue(
+                "FIXTURE_GOLDEN_SET_MISMATCH",
+                GOLDEN_DIRECTORY.as_posix(),
+                "$",
+                "renderer golden inventory differs from the analytical generator",
+            )
+        ]
+    index_content, index_issues = _read_regular_bytes(
+        root / GOLDEN_INDEX_PATH,
+        trusted_root=root,
+        maximum_bytes=MAX_INDEX_BYTES,
+        document=GOLDEN_INDEX_PATH.as_posix(),
+        code_prefix="FIXTURE_GOLDEN_INDEX",
+    )
+    if index_content is None:
+        return None, index_issues
+    if index_content != canonical_renderer_golden_index_bytes(generated):
+        return None, [
+            _issue(
+                "FIXTURE_GOLDEN_INDEX_MISMATCH",
+                GOLDEN_INDEX_PATH.as_posix(),
+                "$",
+                "renderer golden index differs from the analytical generator",
+            )
+        ]
+    for reference in references:
+        relative = Path(*reference.relative_path.parts)
+        document = (GOLDEN_DIRECTORY / relative).as_posix()
+        content, content_issues = _read_regular_bytes(
+            golden_root / relative,
+            trusted_root=root,
+            maximum_bytes=MAX_FIXTURE_BYTES,
+            document=document,
+            code_prefix="FIXTURE_GOLDEN_CONTENT",
+        )
+        if content is None:
+            return None, content_issues
+        if content != reference.content:
+            return None, [
+                _issue(
+                    "FIXTURE_GOLDEN_CONTENT_MISMATCH",
+                    document,
+                    "$",
+                    "renderer golden bytes differ from their analytical corpus mirror",
+                )
+            ]
+    return len(references), []
+
+
 def validate_fixture_corpus(
     root: Path = PROJECT_ROOT,
     *,
@@ -1086,7 +1160,10 @@ def validate_fixture_corpus(
         ]
 
     corpus_root = root / CORPUS_DIRECTORY
-    actual_files, inventory_issues = _enumerate_corpus_files(corpus_root)
+    actual_files, inventory_issues = _enumerate_committed_files(
+        corpus_root,
+        document=CORPUS_DIRECTORY.as_posix(),
+    )
     if actual_files is None:
         return None, inventory_issues
     expected_files = {Path("index.json"), Path("invalid")}
@@ -1148,6 +1225,10 @@ def validate_fixture_corpus(
         total_bytes += len(content)
         approved_digests.add(hashlib.sha256(content).digest())
 
+    golden_reference_count, golden_issues = _validate_renderer_goldens(root, generated)
+    if golden_reference_count is None:
+        return None, golden_issues
+
     history_blob_count = 0
     index_blob_count = 0
     working_file_count = 0
@@ -1175,6 +1256,7 @@ def validate_fixture_corpus(
     return (
         FixtureCorpusSummary(
             fixture_count=len(generated),
+            golden_reference_count=golden_reference_count,
             total_fixture_bytes=total_bytes,
             repository_history_blob_count=history_blob_count,
             repository_index_blob_count=index_blob_count,
@@ -1222,7 +1304,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             "OK: validated "
             f"{summary.fixture_count} deterministic public synthetic fixtures "
-            f"({summary.total_fixture_bytes} bytes), "
+            f"and {summary.golden_reference_count} analytical renderer references "
+            f"({summary.total_fixture_bytes} corpus bytes), "
             f"{summary.repository_history_blob_count} historical blobs, "
             f"{summary.repository_index_blob_count} index blobs, and "
             f"{summary.repository_working_file_count} working files."

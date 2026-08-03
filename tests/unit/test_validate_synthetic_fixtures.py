@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
+    GOLDEN_DIRECTORY,
     INDEX_PATH,
     PROJECT_ROOT,
     SCHEMA_PATH,
@@ -30,6 +31,7 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
         (destination / SCHEMA_PATH).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(PROJECT_ROOT / SCHEMA_PATH, destination / SCHEMA_PATH)
         shutil.copytree(PROJECT_ROOT / CORPUS_DIRECTORY, destination / CORPUS_DIRECTORY)
+        shutil.copytree(PROJECT_ROOT / GOLDEN_DIRECTORY, destination / GOLDEN_DIRECTORY)
 
     def test_checked_in_index_and_corpus_pass(self) -> None:
         index_summary, index_issues = validate_fixture_index_set()
@@ -37,13 +39,37 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
 
         self.assertEqual([], index_issues)
         self.assertIsNotNone(index_summary)
-        self.assertEqual(19, index_summary.fixture_count if index_summary else 0)
+        self.assertEqual(27, index_summary.fixture_count if index_summary else 0)
         self.assertEqual(24, index_summary.coverage_count if index_summary else 0)
         self.assertEqual(
             len(EXPECTED_NEGATIVE_CODES), index_summary.negative_count if index_summary else 0
         )
         self.assertEqual([], corpus_issues)
-        self.assertEqual(19, corpus_summary.fixture_count if corpus_summary else 0)
+        self.assertEqual(27, corpus_summary.fixture_count if corpus_summary else 0)
+        self.assertEqual(3, corpus_summary.golden_reference_count if corpus_summary else 0)
+
+    def test_mutated_missing_and_extra_renderer_goldens_fail_closed(self) -> None:
+        cases = {
+            "mutated": "FIXTURE_GOLDEN_CONTENT_MISMATCH",
+            "missing": "FIXTURE_GOLDEN_SET_MISMATCH",
+            "extra": "FIXTURE_GOLDEN_SET_MISMATCH",
+        }
+        for mutation, expected_code in cases.items():
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                self._copy_fixture_root(root)
+                target = root / GOLDEN_DIRECTORY / "render-calibration-crop-rotate.png"
+                if mutation == "mutated":
+                    target.write_bytes(target.read_bytes() + b"x")
+                elif mutation == "missing":
+                    target.unlink()
+                else:
+                    (root / GOLDEN_DIRECTORY / "extra.png").write_bytes(b"not-an-image")
+
+                summary, issues = validate_fixture_corpus(root, inspect_repository=False)
+
+            self.assertIsNone(summary)
+            self.assertEqual({expected_code}, {issue.code for issue in issues})
 
     def test_mutated_missing_and_extra_artifacts_fail_closed(self) -> None:
         mutations = ("mutated", "missing", "extra")

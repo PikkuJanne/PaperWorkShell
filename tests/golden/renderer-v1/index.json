@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "golden_set_id": "paperworkshell-pdf-renderer-analytical-v1",
+  "source_corpus_id": "paperworkshell-public-synthetic-v1",
+  "policy": {
+    "classification": "public-synthetic-only",
+    "derivation": "stdlib-analytical-oracle",
+    "captured_from_renderer": false,
+    "decision_ref": "PWS-D035"
+  },
+  "references": [
+    {
+      "id": "render-calibration-crop-rotate",
+      "path": "render-calibration-crop-rotate.png",
+      "source_fixture_id": "pdf-render-calibration",
+      "source_sha256": "a0b937f3cf2fd2e4653d4fc067aae459f8dd17c5ad88edc9a3a5482b6f94dbc0",
+      "page_index": 0,
+      "pixels_per_point": 1,
+      "pixel_layout": "rgb8-top-down",
+      "background": "opaque-white",
+      "width": 40,
+      "height": 60,
+      "reference_fixture_id": "png-render-calibration-crop-rotate",
+      "reference_sha256": "90648e4c601382ca3b96f7282cd2f33a6ef577a223ef185584b088372738ccf3",
+      "comparison": {
+        "mode": "exact",
+        "maximum_channel_delta": 0
+      }
+    },
+    {
+      "id": "render-calibration-media-box",
+      "path": "render-calibration-media-box.png",
+      "source_fixture_id": "pdf-render-calibration",
+      "source_sha256": "a0b937f3cf2fd2e4653d4fc067aae459f8dd17c5ad88edc9a3a5482b6f94dbc0",
+      "page_index": 1,
+      "pixels_per_point": 1,
+      "pixel_layout": "rgb8-top-down",
+      "background": "opaque-white",
+      "width": 72,
+      "height": 96,
+      "reference_fixture_id": "png-render-calibration-media-box",
+      "reference_sha256": "412a3a6068b87271bcff388cead2a00a9bd6ee83bc3568f244a50aa439662b67",
+      "comparison": {
+        "mode": "exact",
+        "maximum_channel_delta": 0
+      }
+    },
+    {
+      "id": "render-transparency",
+      "path": "render-transparency.png",
+      "source_fixture_id": "pdf-render-transparency",
+      "source_sha256": "28fe792cf1083f331d72fab162df7f1099fb86324704ba87de1cc7db9a42bc05",
+      "page_index": 0,
+      "pixels_per_point": 1,
+      "pixel_layout": "rgb8-top-down",
+      "background": "opaque-white",
+      "width": 64,
+      "height": 64,
+      "reference_fixture_id": "png-render-transparency",
+      "reference_sha256": "48b14820387a1343d2910cc8bf8b9a283a68b9dcf862d55392df18cb352753c4",
+      "comparison": {
+        "mode": "bounded-channel-delta",
+        "maximum_channel_delta": 1
+      }
+    }
+  ]
+}
