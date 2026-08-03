@@ -871,7 +871,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: blocked
   critical_path: false
   depends_on:
   - PWS-0005
@@ -900,7 +900,13 @@ tasks:
   - licensing
   - security
   - performance
-  blocker: null
+  blocker:
+    reason: The conditionally selected pypdfium2 5.12.1 renderer runtime is not installed or locked on the reference development machine, so live adapter, native-closure, fidelity, timeout, packaging, and benchmark evidence cannot be produced without maintainer action. PWS-D012, PWS-D017, and PWS-D034 remain unchanged.
+    evidence:
+    - "uv run --locked --no-sync python -c importlib.util.find_spec('pypdfium2') at 529a6da returned None, and neither pyproject.toml nor uv.lock contains pypdfium2"
+    - "Dependency-independent implementation, bounded geometry, 41-fixture/15-reference corpus, full local quality suite, and GitHub Actions push/pull_request runs 30791783428 and 30791786232 passed at 529a6da"
+    - "No alternate renderer, unpinned package, manual wheel, or other workaround was attempted because the maintainer requires missing tools and dependencies to be installed explicitly"
+    requested_action: "From C:\\projects\\PaperWorkShell, run uv add \"pypdfium2==5.12.1\" and confirm completion; then resume PWS-0106 on its existing branch and draft PR"
   evidence:
     completed_at: null
     revision: null
