@@ -69,6 +69,10 @@ candidate closure before running the comparison:
 uv sync --locked --group renderer-evaluation
 ```
 
+The Windows CI job also synchronizes this non-default group solely so the PWS-0106 comparison
+tests can exercise both live adapters. Installing that group for tests does not grant Qt PDF a
+source-import boundary, product runtime scope, or enabled shipment relationship.
+
 The comparison requires a clean repository revision and a Windows process constrained to the
 profile's two logical processors. It also requires truthful 4096 MiB worker-envelope and integrated
 graphics attestations. On a host with more processors, set the invoking PowerShell process affinity
@@ -132,3 +136,18 @@ cancellation at the documented between-render checkpoint, idle-worker Job-tree t
 stable malformed/high-dimension outcomes. It contains no source path, filename, page pixels,
 document content, user or machine identity, or native exception text. The benchmark does not claim
 that cooperative cancellation interrupts an in-flight native render.
+
+### Accepted PWS-0106 selection run
+
+The accepted record-only local-smoke run used clean revision
+`74c1c7aae799195a87608a797d7136b88e80cc87`. Its authenticated 1,015-file stage had closure digest
+`f78dffe61e4b86e6596f1080097a7a23aed90cc0ca6eca9023d67fb2521e3da8`. Both candidates matched all
+15 analytical goldens and all three malformed/high-dimension outcomes. pypdfium2 also passed both
+semantic cases; Qt PDF passed the missing-font case but its public API could not perform the
+required distinct MediaBox mode.
+
+The complete sanitized JSON result was reviewed locally and is intentionally not committed.
+[ADR 0005](../docs/adr/0005-pdf-renderer-selection.md) records the exact warm, cold, memory,
+cancellation, and Job-termination measurements and the functional, packaging, and license
+rationale for selecting pypdfium2/PDFium. This local smoke remains selection evidence only; it is
+not a product target or a prepared limited-storage/HDD qualification.

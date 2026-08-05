@@ -126,8 +126,8 @@ A new external engine is not admitted by editing code alone: the dependency poli
 review in PWS-0005 and the engine-specific roadmap task must approve it first. PWS-0106 now assigns
 worker-only renderer ownership through the
 [PDF page-rendering contract](pdf-page-rendering.md), implements the renderer-neutral adapter with
-pypdfium2/PDFium, and records the exact conditional selection in
-[ADR 0005](../adr/0005-pdf-renderer-selection.md). The exact Qt PDF fallback remains evaluation-only;
-final renderer admission waits for the ADR's same-corpus Windows comparison.
+pypdfium2/PDFium, and records the accepted evidence-based selection in
+[ADR 0005](../adr/0005-pdf-renderer-selection.md). The exact Qt PDF fallback remains evaluation-only
+with no source-import boundary, product scope, or enabled shipment relationship.
 
 If a future task needs a new cross-package edge, that task must show why the edge preserves the frozen architecture, update this document and the executable policy together, and add a positive and negative boundary test. It must not suppress an individual import violation.

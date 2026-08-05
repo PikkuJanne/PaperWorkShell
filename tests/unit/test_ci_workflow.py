@@ -39,6 +39,10 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
 
     def test_ci_invokes_repository_dispatcher(self) -> None:
         self.assertIn("run: python tools/dev.py bootstrap", self.text)
+        self.assertIn(
+            "run: uv sync --locked --group renderer-evaluation",
+            self.text,
+        )
         self.assertIn("run: python tools/dev.py check", self.text)
 
     def test_gitleaks_download_is_versioned_and_hash_verified(self) -> None:

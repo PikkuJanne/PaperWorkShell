@@ -240,12 +240,18 @@ matched, mismatched, or unknown requirement. The generated-byte algorithm and ex
 are pinned so the version-1 workload cannot drift silently. Measurements are record-only;
 version 1 contains no guessed product thresholds.
 
-PWS-0106 adds `benchmarks/pdf-renderer-windows-v1.json`. The ordinary suite validates its exact
-profile, corpus, golden, artifact, and outcome bindings but does not install the non-default Qt
-candidate or run native measurements. `benchmark-pdf-renderers` is an explicit Windows-only,
-clean-revision operation using the `renderer-evaluation` dependency group and truthful reference
-attestations. Its isolation, affinity, staging, and invocation contract is documented in
-`benchmarks/README.md`.
+PWS-0106 adds `benchmarks/pdf-renderer-windows-v1.json`. The ordinary non-mutating command validates
+its exact profile, corpus, golden, artifact, and outcome bindings; it does not itself synchronize
+the non-default Qt group or execute the complete benchmark command/report.
+`benchmark-pdf-renderers` is an explicit Windows-only, clean-revision operation using the
+`renderer-evaluation` dependency group and truthful reference attestations. Its isolation,
+affinity, staging, and invocation contract is documented in `benchmarks/README.md`.
+
+The Windows CI workflow separately synchronizes the non-default `renderer-evaluation` group so the
+PWS-0106 unit/integration comparison tests can exercise both live renderer adapters. This is a
+test-only installation: Qt PDF and its Addons/Essentials closure retain no product runtime scope,
+source-import authorization, or enabled shipment relationship. CI does not run or upload the
+mutable-host benchmark report.
 
 ## CI supply-chain controls
 

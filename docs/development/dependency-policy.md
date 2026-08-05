@@ -344,6 +344,16 @@ values are not selection evidence. The selecting ADR records exact benchmark art
 After selection, update the inventory, lock data, relationships, packaged-file expectations, and
 SBOM inputs together. Renderer-specific types remain inside the worker adapter.
 
+PWS-0106 selects pypdfium2 5.12.1 with default PDFium 152.0.7947.0 for the worker renderer. The
+accepted [ADR 0005](../adr/0005-pdf-renderer-selection.md) binds the exact clean revision, installed
+`RECORD` checks, 1,015-file staged-closure digest, analytical goldens, stable hostile outcomes, and
+same-corpus pypdfium2/Qt measurements. pypdfium2 passed both required semantic modes; Qt PDF's
+public API could not satisfy the distinct MediaBox mode. The choice also avoids making the broad
+PySide6-Addons/Essentials closure and unresolved Qt redistribution route part of the product
+renderer. Qt PDF remains evaluated, non-default, scope-free, and disabled. Selection admits the
+exact pypdfium2/PDFium worker dependency but does not complete the release-package notice, file,
+redistribution, or SBOM reconciliation owned by PWS-0801.
+
 ## SBOM and notice generation
 
 The inventory is designed to feed CycloneDX JSON and SPDX JSON, but the baseline JSON is not itself

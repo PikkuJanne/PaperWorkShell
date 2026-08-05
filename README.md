@@ -46,8 +46,10 @@ renderer benchmark:
 uv sync --locked --group renderer-evaluation
 ```
 
-This evaluation group is intentionally excluded from ordinary bootstrap and CI because the broad
-Addons/Essentials wheel set is not the selected renderer or UI dependency.
+This evaluation group is intentionally excluded from ordinary bootstrap because the broad
+Addons/Essentials wheel set is not the selected renderer or UI dependency. Windows CI installs it
+only for the PWS-0106 live comparison tests; that test installation does not activate Qt PDF in the
+product runtime or shipment graph.
 
 `pyproject.toml` restricts development to CPython 3.14 and requires the exact supported `uv` release. `uv.lock` is committed and must change only as part of an intentional dependency update.
 
@@ -94,7 +96,10 @@ record in [`docs/adr/0002-local-quality-gates.md`](docs/adr/0002-local-quality-g
 
 ## Architecture baseline
 
-The source tree separates pure domain rules, toolkit-free application orchestration, worker lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized diagnostics. Product modules currently use only the Python standard library; optional UI and document engines are not installed or imported by package initializers.
+The source tree separates pure domain rules, toolkit-free application orchestration, worker
+lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized
+diagnostics. Admitted document engines are confined to worker-side PDF adapters, while package
+initializers remain passive and UI-facing layers do not import those implementations.
 
 `tools/check_import_boundaries.py` statically validates the required package layout, rejects unapproved third-party imports, prevents domain and reverse-UI dependencies, and stops application code from reaching PDF, imaging, or OCR adapters directly. The binding policy and its evolution procedure are documented in [`docs/architecture/dependency-boundaries.md`](docs/architecture/dependency-boundaries.md).
 
@@ -132,6 +137,12 @@ Third-party admission, exact pin/hash evidence, Windows redistribution, renderer
 SBOM inputs are governed by
 [`docs/development/dependency-policy.md`](docs/development/dependency-policy.md). The checked-in
 inventory is a policy baseline, not evidence of the exact files in a release package.
+
+The accepted renderer selection is pypdfium2 5.12.1 with default PDFium 152.0.7947.0 behind the
+worker-only renderer-neutral adapter. The exact same-corpus Windows evidence, limits, functional
+comparison with Qt PDF, and residual staging-cleanup behavior are recorded in
+[`docs/adr/0005-pdf-renderer-selection.md`](docs/adr/0005-pdf-renderer-selection.md). Qt PDF remains
+an evaluation-only test candidate and is not a product dependency.
 
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in

@@ -29,6 +29,8 @@ MAX_SECRET_SCAN_WORK_BYTES: Final = 512 * 1024 * 1024
 MAX_SECRET_SCAN_SECONDS: Final = 5 * 60
 MAX_SCANNER_DIAGNOSTIC_BYTES: Final = 1024 * 1024
 SCANNER_SUBPROCESS_TIMEOUT_SECONDS: Final = 120
+# Job teardown has its own bounded deadline after the operation deadline fires.
+SCANNER_CLEANUP_TIMEOUT_MILLISECONDS: Final = 5_000
 TOOL_VERSION_OUTPUT_BYTES: Final = 4096
 TOOL_VERSION_TIMEOUT_SECONDS: Final = 10
 RAW_SCAN_SENTINEL: Final = b"PaperWorkShell raw-byte scan\n"
@@ -511,15 +513,41 @@ def _resume_windows_process(process: subprocess.Popen[bytes]) -> None:
         raise OSError("could not start isolated scanner subprocess")
 
 
-def _close_windows_job(job_handle: int) -> None:
+def _terminate_and_close_windows_job(job_handle: int) -> None:
     import ctypes
     from ctypes import wintypes
 
-    close_handle = ctypes.WinDLL("kernel32").CloseHandle
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    terminate_job = kernel32.TerminateJobObject
+    terminate_job.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    terminate_job.restype = wintypes.BOOL
+    wait_for_single_object = kernel32.WaitForSingleObject
+    wait_for_single_object.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    wait_for_single_object.restype = wintypes.DWORD
+    close_handle = kernel32.CloseHandle
     close_handle.argtypes = (wintypes.HANDLE,)
     close_handle.restype = wintypes.BOOL
-    if not close_handle(wintypes.HANDLE(job_handle)):
-        raise OSError("could not close scanner job")
+    wait_object_0 = 0
+    wait_timeout = 0x00000102
+    wait_failed = 0xFFFFFFFF
+    job = wintypes.HANDLE(job_handle)
+    error: OSError | None = None
+    try:
+        if not terminate_job(job, 1):
+            error = OSError(ctypes.get_last_error(), "could not terminate scanner job")
+        else:
+            wait_result = wait_for_single_object(job, SCANNER_CLEANUP_TIMEOUT_MILLISECONDS)
+            if wait_result == wait_timeout:
+                error = OSError("scanner job cleanup exceeded its bounded deadline")
+            elif wait_result == wait_failed:
+                error = OSError(ctypes.get_last_error(), "could not wait for scanner job")
+            elif wait_result != wait_object_0:
+                error = OSError("scanner job returned an unexpected wait result")
+    finally:
+        if not close_handle(job) and error is None:
+            error = OSError(ctypes.get_last_error(), "could not close scanner job")
+    if error is not None:
+        raise error
 
 
 def _scanner_environment() -> dict[str, str]:
@@ -578,7 +606,9 @@ def _capture_bytes(
     read_failed = threading.Event()
     read_complete = threading.Event()
     overflowed = threading.Event()
+    cleanup_failed = threading.Event()
     output = bytearray()
+    caught_exception: BaseException | None = None
 
     def terminate_process_tree() -> None:
         nonlocal windows_job
@@ -590,9 +620,9 @@ def _capture_bytes(
                 job_handle = windows_job
                 windows_job = None
                 try:
-                    _close_windows_job(job_handle)
+                    _terminate_and_close_windows_job(job_handle)
                 except OSError:
-                    pass
+                    cleanup_failed.set()
             elif not windows:
                 kill_process_group = os.__dict__.get("killpg")
                 try:
@@ -671,7 +701,8 @@ def _capture_bytes(
             raise SecretScanError(
                 "SECRET_SCAN_TOOL_FAILED", "A scanner subprocess exceeded its time limit."
             )
-    except BaseException:
+    except BaseException as error:
+        caught_exception = error
         terminate_process_tree()
         if windows and process.poll() is None:
             try:
@@ -685,7 +716,7 @@ def _capture_bytes(
             try:
                 process.wait(timeout=1)
             except subprocess.TimeoutExpired:
-                pass
+                cleanup_failed.set()
         if read_complete.is_set() and process.stdout is not None:
             process.stdout.close()
         if write_complete.is_set() and process.stdin is not None:
@@ -693,6 +724,16 @@ def _capture_bytes(
                 process.stdin.close()
             except OSError:
                 pass
+        if cleanup_failed.is_set() and (
+            caught_exception is None or isinstance(caught_exception, Exception)
+        ):
+            cleanup_error = SecretScanError(
+                "SECRET_SCAN_TOOL_FAILED",
+                "A scanner subprocess could not be cleaned up safely.",
+            )
+            if caught_exception is None:
+                raise cleanup_error
+            raise cleanup_error from caught_exception
     if write_failed.is_set():
         raise SecretScanError("SECRET_SCAN_TOOL_FAILED", "Scanner input could not be delivered.")
     if read_failed.is_set():

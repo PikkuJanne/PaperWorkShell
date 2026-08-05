@@ -115,10 +115,12 @@ REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
     "PWS-D017": RENDERER_COMPONENT_IDS,
 }
 ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
+    "pdfium": frozenset({"PWS-0106"}),
     "ocrmypdf": frozenset({"PWS-0204"}),
     "lxml": frozenset({"PWS-0105"}),
     "pikepdf": frozenset({"PWS-0105"}),
     "pillow": frozenset({"PWS-0105"}),
+    "pypdfium2": frozenset({"PWS-0106"}),
     "pyside6": frozenset({"PWS-0111"}),
     "pyside6-addons": frozenset({"PWS-0106"}),
     "pyside6-essentials": frozenset({"PWS-0106"}),
@@ -130,6 +132,7 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
 REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
     {
         ("pikepdf", "contains", "qpdf", True),
+        ("pypdfium2", "contains", "pdfium", True),
         ("pyside6", "contains", "qt-pdf", False),
         ("pyside6-addons", "contains", "qt-pdf", False),
     }
@@ -706,9 +709,9 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "pdfium": (
         "native-library",
         "transitive",
-        "evaluated",
-        (),
-        "candidate",
+        "approved",
+        ("runtime", "worker"),
+        "planned",
         True,
         False,
         True,
@@ -784,9 +787,9 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "pypdfium2": (
         "python-package",
         "direct",
-        "evaluated",
-        (),
-        "candidate",
+        "approved",
+        ("runtime", "worker"),
+        "planned",
         True,
         True,
         True,
@@ -3507,10 +3510,13 @@ def _workflow_reconciliation_issues(
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
         and quality_job.get("timeout-minutes") == 20
-        and len(quality_steps) == 7
+        and len(quality_steps) == 8
     )
     expected_command_steps = {
         "Bootstrap locked environment": "python tools/dev.py bootstrap",
+        "Install renderer comparison dependencies": (
+            "uv sync --locked --group renderer-evaluation"
+        ),
         "Run local-equivalent quality suite": "python tools/dev.py check",
     }
     for step_name, command in expected_command_steps.items():

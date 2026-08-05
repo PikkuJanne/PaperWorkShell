@@ -871,7 +871,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0005
@@ -902,10 +902,24 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-05'
+    revision: "74c1c7aae799195a87608a797d7136b88e80cc87"
+    commands:
+    - '$process = [System.Diagnostics.Process]::GetCurrentProcess(); $previousAffinity = $process.ProcessorAffinity; try { $process.ProcessorAffinity = [IntPtr]3; uv run --locked --no-sync --group renderer-evaluation python -m tools.pdf_renderer_benchmark benchmark --scenario local-smoke --attest-memory-mib 4096 --attest-graphics integrated } finally { $process.ProcessorAffinity = $previousAffinity } at clean 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; both candidate reports completed under the exact two-core/4,096-MiB Job profile and authenticated the 1,015-file closure SHA-256 f78dffe61e4b86e6596f1080097a7a23aed90cc0ca6eca9023d67fb2521e3da8'
+    - "uv run --locked --no-sync pytest -q tests/unit/test_pdf_renderer_benchmark.py at 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; 64 tests and 349 subtests in 73.99 seconds covered strict result oracles, exact affinity, installed RECORD and staged-closure authentication, AppContainer launch, cancellation, Job termination, cleanup authority, and report privacy"
+    - "uv run --locked --no-sync pytest -q tests/unit/test_pdf_renderer_contract.py tests/integration/test_pdfium_renderer.py tests/security/test_pdfium_renderer_security.py - passed; 47 renderer contract, integration, malformed-input, destination, cancellation, timeout, geometry, color, and log-sanitization tests"
+    - "uv run python tools/dev.py format-check; uv run python tools/dev.py lint; uv run python tools/dev.py typecheck; uv lock --check at 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; Ruff formatting/lint and strict mypy covered 155 files, and the 29-package lock was current"
+    - "uv run python tools/dev.py check-import-boundaries; uv run python tools/dev.py validate-dependencies; uv run python tools/dev.py validate-docs; uv run python tools/dev.py validate-fixtures; uv run python tools/dev.py validate-schemas; uv run python tools/dev.py validate-task-graph; uv run python tools/dev.py validate-pdf-renderer-benchmark; uv run python tools/dev.py scan-secrets at 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; 12 layers/58 source files, exact dependency records, 42 synthetic plus 15 analytical fixtures, 15 golden plus 2 semantic plus 3 outcome cases across 2 candidates, 80 tasks/238 edges/9 milestones/40 decisions, and 814 historical blobs/136 commit-tag objects/842 path-blob pairs/309 index blobs/331 tracked files/8 nonignored untracked files"
+    - "uv run python tools/dev.py check on the final PWS-0106 working tree - passed in 752.5 seconds; formatting, lint, and strict mypy covered 155 files; 1,081 unit tests, 192 integration tests with 2 disclosed capability skips, 193 security tests with 3 disclosed capability skips, and 2 accessibility tests passed; 42 synthetic plus 15 analytical fixtures, every schema/task/document/reference-profile/renderer-benchmark/dependency validator, and all 5 quality negative self-tests passed; secret scanning covered 840 historical blobs, 137 commit/tag objects, 868 historical path/blob pairs, 317 index blobs, 339 tracked working-tree files, and 0 nonignored untracked files"
+    notes:
+    - pypdfium2 5.12.1 with default PDFium 152.0.7947.0 was selected behind the renderer-neutral worker adapter. It matched 15/15 analytical goldens, 2/2 semantic cases, and all 3 malformed/high-dimension outcomes; cold import/open/first-page times were 375,281,700/1,873,900/5,025,600 ns, and 119 warm samples measured p50/p95/max 518,800/4,152,500/6,255,300 ns.
+    - pypdfium2 peak process/Job private bytes were 50,356,224/51,597,312; output/temp high-water bytes were 32,768/0; cooperative cancellation and hard Job termination were 1,230,400/188,100 ns. The run was record-only selection evidence, not a product latency or low-storage/HDD target.
+    - Qt PDF matched 15/15 goldens, the missing-font semantic case, all 3 stable outcomes, and the expected PDF_RENDER_PAGE_BOX_UNSUPPORTED result for distinct MediaBox rendering; cold import/open/first-page times were 283,393,700/9,078,200/7,794,900 ns, and warm p50/p95/max were 683,300/6,484,400/9,441,700 ns.
+    - Qt PDF peak process/Job private bytes were 49,643,520/50,884,608; output/temp high-water bytes were 32,768/0; cooperative cancellation and hard Job termination were 1,315,600/191,000 ns. Its missing MediaBox mode, broader closure, and unresolved redistribution work kept it evaluation-only.
+    - Installed RECORD SHA-256 values were ff272f40a71c74019f169edc8b3b6bb446616bd18c928932e639166b02971c00 for pypdfium2, bd0e0c69ea4adc61f8f6fcfe33a03a4840b735479187d676d64df785383343c9 for PySide6-Addons, 859898b05309b1ec139e12377c9ad0490260e10cbb7f18138002c3844ae3cb58 for PySide6-Essentials, and c4a6c7643da99ac93e8f5eb9a32ea90863993f87e76fe136cc6b11045b67badb for shiboken6; the selected dependency, native closure, licenses/notices, lock edges, and later SBOM inputs are inventoried separately from published-wheel hashes.
+    - The worker-only adapter exposes immutable typed results rather than third-party objects, renders caller-owned sources to caller-owned opaque-white RGBA8 sinks, and enforces page, geometry, pixel, output, destination, timeout, cancellation, memory, process, and temporary-storage limits with stable sanitized failures. Rotation, direct/inherited CropBox and MediaBox, UserUnit, transparency, CMYK, annotations, malformed input, and extreme dimensions have explicit tests and documented behavior.
+    - Independent security reviews found no remaining P0-P2 issue. Authenticated handle-based staging and cleanup fail closed on replacement or uncertain authority; abrupt parent or machine termination may leave at most 768 MiB of sealed public runtime/project/synthetic stage data, which a later process preserves rather than trusting a self-asserted deletion token.
+    - The final aggregate gate exposed and closed a Windows secret-scanner Job cleanup race. Process-tree teardown now calls TerminateJobObject, obtains bounded WAIT_OBJECT_0 confirmation, and only then closes the Job handle; temp-working-directory overflow, descendant-process, timeout, and injected-failure regressions plus repeated live cycles passed, and independent review found no remaining P0-P2 issue.
 - id: PWS-0107
   milestone: M1
   title: Implement worker host, client, and cancellation lifecycle
@@ -968,7 +982,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0104

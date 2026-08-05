@@ -343,6 +343,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
     def test_selected_families_reference_their_actual_implementation_tasks(self) -> None:
         data = _load_inventory()
         expected = {
+            "pdfium": "PWS-0106",
             "pyside6": "PWS-0111",
             "pyside6-addons": "PWS-0106",
             "pyside6-essentials": "PWS-0106",
@@ -351,6 +352,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             "lxml": "PWS-0105",
             "pikepdf": "PWS-0105",
             "pillow": "PWS-0105",
+            "pypdfium2": "PWS-0106",
             "qpdf": "PWS-0105",
             "ocrmypdf": "PWS-0204",
             "tesseract": "PWS-0204",
@@ -383,6 +385,15 @@ class DependencyInventoryValidationTests(unittest.TestCase):
                     expected_code,
                     self._codes(data, repository_checks=True),
                 )
+
+    def test_selected_pdfium_containment_relationship_fails_closed(self) -> None:
+        data = _load_inventory()
+        _relationship(data, "pypdfium2", "pdfium")["enabled"] = False
+
+        self.assertIn(
+            "DEPENDENCY_RELATIONSHIP_PROFILE_INVALID",
+            self._codes(data, repository_checks=True),
+        )
 
     def test_lock_versions_hashes_and_dependency_edges_are_reconciled(self) -> None:
         cases: tuple[tuple[str, str], ...] = (
@@ -486,7 +497,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
 
     def test_project_declarations_and_tool_pins_are_reconciled(self) -> None:
         data = _load_inventory()
-        self.assertEqual("evaluated", _component(data, "pypdfium2")["admission_status"])
+        self.assertEqual("approved", _component(data, "pypdfium2")["admission_status"])
         self.assertNotIn(
             "DEPENDENCY_DECLARATION_MISMATCH",
             self._codes(data, repository_checks=True),
@@ -506,7 +517,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             self._codes(data, repository_checks=True),
         )
 
-    def test_evaluated_pdfium_artifact_uses_the_reviewed_binary_origin(self) -> None:
+    def test_selected_pdfium_artifact_uses_the_reviewed_binary_origin(self) -> None:
         data = _load_inventory()
         _component(data, "pdfium")["artifact_evidence"]["url"] = (
             "https://github.com/example/pdfium-binaries/releases/download/"

@@ -3,7 +3,7 @@
   "schema_version": 1,
   "inventory_id": "paperworkshell-dependencies",
   "inventory_profile": "policy-baseline",
-  "inventory_revision": 4,
+  "inventory_revision": 5,
   "reviewed_on": "2026-08-05",
   "target": {"os": "Windows", "architecture": "x86_64", "python_minor": "3.14"},
   "policy": {
@@ -254,26 +254,26 @@
       "name": "PDFium",
       "ecosystem": "native-library",
       "relationship": "transitive",
-      "admission_status": "evaluated",
-      "active_scopes": [],
+      "admission_status": "approved",
+      "active_scopes": ["runtime", "worker"],
       "decision_refs": ["PWS-D017", "PWS-D034"],
       "task_refs": ["PWS-0005", "PWS-0106", "PWS-0801"],
       "version": {"constraint": "==152.0.7947.0", "selected": "152.0.7947.0", "pin_kind": "exact", "pin_source": "pypdfium2 5.12.1 version metadata and PDFium build 7947 release"},
       "source": {"project_url": "https://pdfium.googlesource.com/pdfium/", "release_url": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947", "license_url": "https://pdfium.googlesource.com/pdfium/+/d3e62278db7489af9e0b686835d1c8aca218c3d7/LICENSE"},
       "integrity": {"verification": "sha256", "revision": null, "hashes": [{"algorithm": "SHA-256", "value": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f", "artifact": "pdfium-win-x64.tgz"}]},
       "artifact_evidence": {"artifact": "pdfium-win-x64.tgz", "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7947/pdfium-win-x64.tgz", "target_platform": "windows-x64", "size_bytes": 3741225, "sha256": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f"},
-      "license": {"expression": "MIT AND BSD-3-Clause AND LicenseRef-PDFium-Third-Party", "distribution_note": "The evaluated PDFium DLL comes from the MIT-licensed pdfium-binaries build 7947 archive and carries PDFium's BSD-3-Clause terms plus the archive's exact third-party notice closure. All license files must remain staged together for release review.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
+      "license": {"expression": "MIT AND BSD-3-Clause AND LicenseRef-PDFium-Third-Party", "distribution_note": "The selected PDFium DLL comes from the MIT-licensed pdfium-binaries build 7947 archive and carries PDFium's BSD-3-Clause terms plus the archive's exact third-party notice closure. All license files remain required release inputs.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
       "binary": {"contains_native_code": true, "installs_executable": false, "processes_untrusted_documents": true},
-      "maintenance": {"status": "active", "checked_on": "2026-08-05", "evidence_url": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947", "note": "PDFium changes frequently. Build 7947 is pinned to the attested Windows x64 archive, whose DLL exactly matches the evaluated wheel."},
+      "maintenance": {"status": "active", "checked_on": "2026-08-05", "evidence_url": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947", "note": "PDFium changes frequently. Build 7947 is pinned to the attested Windows x64 archive, whose DLL exactly matches the selected pypdfium2 wheel."},
       "security": {"boundary": "worker-process", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
       "renderer_assessment": {
-        "security": {"status": "concern", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The evaluated x64 build has V8 and XFA disabled and imports only reviewed Windows system DLLs; native hostile-input and hard-timeout evidence remains required."},
+        "security": {"status": "acceptable", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The selected non-V8/non-XFA x64 build runs only behind the bounded restricted-worker adapter. Malformed-input, limit, cancellation, timeout, and process-tree tests passed at clean revision 74c1c7aae799195a87608a797d7136b88e80cc87."},
         "license": {"status": "acceptable", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The exact archive, PDFium license, pdfium-binaries license, and 15 third-party license files were matched byte-for-byte to the wheel."},
-        "fidelity": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record synthetic corpus results before selection."},
-        "performance": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record bounded Windows benchmark results before selection."},
-        "windows_packaging": {"status": "acceptable", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The 3,741,225-byte attested Windows x64 archive is hash-pinned; its unsigned 7,217,664-byte DLL and license closure exactly match the installed wheel."}
+        "fidelity": {"status": "acceptable", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The selected pypdfium2/PDFium path matched 15 of 15 synthetic analytical goldens, 2 of 2 semantic checks, and 3 of 3 stable outcome checks in the clean PWS-0106 run."},
+        "performance": {"status": "acceptable", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The clean reference run measured warm p50/p95/max of 518800/4152500/6255300 ns and peak process/job memory of 50356224/51597312 bytes, within the bounded workload."},
+        "windows_packaging": {"status": "acceptable", "evidence_urls": ["https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947"], "note": "The hash-pinned archive's 7,217,664-byte DLL and license closure match the selected wheel. The clean 1,015-file stage manifest/closure SHA-256 was f78dffe61e4b86e6596f1080097a7a23aed90cc0ca6eca9023d67fb2521e3da8."}
       },
-      "packaging": {"ship_state": "candidate", "windows_impact": "The evaluated archive is unsigned but SLSA-attested and hash-pinned. Its non-V8/non-XFA x64 DLL imports only ADVAPI32, GDI32, KERNEL32, and USER32; the DLL and all exact BUILD_LICENSES inputs remain PWS-0801 package and notice inputs.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom", "third-party-notices"]},
+      "packaging": {"ship_state": "planned", "windows_impact": "The selected archive is unsigned but SLSA-attested and hash-pinned. Its non-V8/non-XFA x64 DLL imports only ADVAPI32, GDI32, KERNEL32, and USER32. PWS-0801 must assemble and verify the DLL, BUILD_LICENSES closure, notices, and SBOM before shipment.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom", "third-party-notices"]},
       "sbom": {"component_type": "library", "purl": "pkg:generic/pdfium@152.0.7947.0", "supplier": "PDFium Authors", "transitive_components_from": "upstream-release-inventory"}
     },
     {
@@ -359,11 +359,11 @@
       "maintenance": {"status": "active", "checked_on": "2026-08-05", "evidence_url": "https://doc.qt.io/qtforpython-6/release_notes/pyside6_release_notes.html", "note": "Qt for Python 6.11.1 is maintained and publishes a CPython 3.10 stable-ABI Windows x64 wheel compatible with the locked CPython 3.14 target."},
       "security": {"boundary": "worker-process", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
       "renderer_assessment": {
-        "security": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qtforpython-6/package_details.html"], "note": "The evaluated wheel contains Qt PDF plus unrelated WebEngine, multimedia, 3D, and tool surfaces. Only the Qt PDF path may be measured, under the restricted worker; no product scope is active."},
+        "security": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qtforpython-6/package_details.html"], "note": "The restricted-worker run passed the three stable outcome checks, but the evaluated wheel contains Qt PDF plus unrelated WebEngine, multimedia, 3D, and tool surfaces. No product scope is active."},
         "license": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qt-6/qtpdf-licensing.html", "https://doc.qt.io/qtforpython-6/licenses.html"], "note": "No Qt license route is selected. Qt, binding, PDFium, third-party notice, corresponding-source, and relinking obligations remain release blockers until reconciled."},
-        "fidelity": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record synthetic corpus results before selection."},
-        "performance": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record bounded Windows benchmark results before selection."},
-        "windows_packaging": {"status": "concern", "evidence_urls": ["https://pypi.org/project/PySide6-Addons/6.11.1/"], "note": "The exact 168,816,308-byte Windows x64 wheel is hash-bound, but it is not a QtPdf-only distribution and brings a broad native module and executable closure."}
+        "fidelity": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qt-6/qpdfdocumentrenderoptions.html"], "note": "The clean run matched 15 of 15 analytical goldens and all three stable outcomes, but only 1 of 2 semantic checks: the required distinct MediaBox render path is unsupported."},
+        "performance": {"status": "acceptable", "evidence_urls": ["https://doc.qt.io/qt-6/qpdfdocument.html"], "note": "The clean reference run measured warm p50/p95/max of 683300/6484400/9441700 ns and peak process/job memory of 49643520/50884608 bytes, within the evaluation workload."},
+        "windows_packaging": {"status": "concern", "evidence_urls": ["https://pypi.org/project/PySide6-Addons/6.11.1/"], "note": "The broad evaluation closure was RECORD-verified: Addons bd0e0c69ea4adc61f8f6fcfe33a03a4840b735479187d676d64df785383343c9, Essentials 859898b05309b1ec139e12377c9ad0490260e10cbb7f18138002c3844ae3cb58, shiboken6 c4a6c7643da99ac93e8f5eb9a32ea90863993f87e76fe136cc6b11045b67badb."}
       },
       "packaging": {"ship_state": "candidate", "windows_impact": "The 168,816,308-byte Addons wheel is locked only in the non-default renderer-evaluation group. It contains Qt PDF bindings and libraries plus unrelated native modules and executables; none is admitted to the product package, GUI, runtime, or worker scope.", "redistribution_assets": ["corresponding-source", "hashes", "license-text", "notice", "relinkable-library", "sbom", "third-party-notices"]},
       "sbom": {"component_type": "library", "purl": "pkg:pypi/pyside6-addons@6.11.1", "supplier": "The Qt Company and Qt Project contributors", "transitive_components_from": "upstream-release-inventory"}
@@ -373,26 +373,26 @@
       "name": "pypdfium2",
       "ecosystem": "python-package",
       "relationship": "direct",
-      "admission_status": "evaluated",
-      "active_scopes": [],
+      "admission_status": "approved",
+      "active_scopes": ["runtime", "worker"],
       "decision_refs": ["PWS-D016", "PWS-D017", "PWS-D034"],
       "task_refs": ["PWS-0005", "PWS-0106", "PWS-0204", "PWS-0801"],
       "version": {"constraint": "==5.12.1", "selected": "5.12.1", "pin_kind": "lockfile", "pin_source": "pyproject.toml and uv.lock"},
       "source": {"project_url": "https://github.com/pypdfium2-team/pypdfium2", "release_url": "https://pypi.org/project/pypdfium2/5.12.1/", "license_url": "https://github.com/pypdfium2-team/pypdfium2/blob/5.12.1/LICENSES/Apache-2.0.txt"},
       "integrity": {"verification": "uv-lock", "revision": null, "hashes": [{"algorithm": "SHA-256", "value": "d0e0648fb2e28f50efcd1ec0a5a18ced9f4d66b2c227fae9b603f0a883b2d13f", "artifact": "pypdfium2-5.12.1.tar.gz"}, {"algorithm": "SHA-256", "value": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca", "artifact": "pypdfium2-5.12.1-py3-none-win_amd64.whl"}]},
       "artifact_evidence": {"artifact": "pypdfium2-5.12.1-py3-none-win_amd64.whl", "url": "https://files.pythonhosted.org/packages/a9/c3/08b62718faf2f6b6aa49207626e3113ff3ec1b3cd076c0ef8fd852f0e57c/pypdfium2-5.12.1-py3-none-win_amd64.whl", "target_platform": "windows-x64", "size_bytes": 3859845, "sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca"},
-      "license": {"expression": "(Apache-2.0 OR BSD-3-Clause) AND CC-BY-4.0 AND LicenseRef-PDFium-Third-Party", "selected_route": "Apache-2.0", "distribution_note": "PaperWorkShell selects Apache-2.0 for the bindings. The installed metadata also carries CC-BY-4.0 documentation, and the wheel embeds the exact PDFium/pdfium-binaries license and third-party notice closure recorded by the evaluated PDFium component.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
+      "license": {"expression": "(Apache-2.0 OR BSD-3-Clause) AND CC-BY-4.0 AND LicenseRef-PDFium-Third-Party", "selected_route": "Apache-2.0", "distribution_note": "PaperWorkShell selects Apache-2.0 for the bindings. The installed metadata also carries CC-BY-4.0 documentation, and the wheel embeds the exact PDFium/pdfium-binaries license and third-party notice closure recorded by the selected PDFium component.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
       "binary": {"contains_native_code": true, "installs_executable": true, "processes_untrusted_documents": true},
       "maintenance": {"status": "active", "checked_on": "2026-08-05", "evidence_url": "https://github.com/pypdfium2-team/pypdfium2/releases/tag/5.12.1", "note": "Release 5.12.1 is production-stable upstream and the selected interpreter-independent Windows x64 wheel imports on CPython 3.14."},
       "security": {"boundary": "worker-process", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
       "renderer_assessment": {
-        "security": {"status": "concern", "evidence_urls": ["https://github.com/pypdfium2-team/pypdfium2/releases/tag/5.12.1"], "note": "The exact wheel has no mandatory Python dependency and reports no PDFium feature flags; worker-only malformed-input, cancellation, and timeout evidence remains required."},
+        "security": {"status": "acceptable", "evidence_urls": ["https://github.com/pypdfium2-team/pypdfium2/releases/tag/5.12.1"], "note": "The exact wheel has no mandatory Python dependency or PDFium feature flags and runs only behind the bounded restricted-worker adapter. Malformed-input, limit, cancellation, timeout, and process-tree tests passed at clean revision 74c1c7aae799195a87608a797d7136b88e80cc87."},
         "license": {"status": "acceptable", "evidence_urls": ["https://github.com/pypdfium2-team/pypdfium2/blob/5.12.1/LICENSES/Apache-2.0.txt"], "note": "The Apache-2.0 binding route, CC-BY-4.0 metadata, and exact PDFium BUILD_LICENSES closure are recorded and regression-tested."},
-        "fidelity": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record synthetic corpus results before selection."},
-        "performance": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record bounded Windows benchmark results before selection."},
-        "windows_packaging": {"status": "acceptable", "evidence_urls": ["https://pypi.org/project/pypdfium2/5.12.1/"], "note": "The 3,859,845-byte py3-none-win_amd64 wheel is hash-pinned, imports on CPython 3.14, and contains the exact attested PDFium 152.0.7947.0 DLL and license closure."}
+        "fidelity": {"status": "acceptable", "evidence_urls": ["https://pypi.org/project/pypdfium2/5.12.1/"], "note": "The clean reference run matched 15 of 15 synthetic analytical goldens, 2 of 2 semantic checks, and 3 of 3 stable malformed/limit outcomes."},
+        "performance": {"status": "acceptable", "evidence_urls": ["https://pypi.org/project/pypdfium2/5.12.1/"], "note": "The clean reference run measured warm p50/p95/max of 518800/4152500/6255300 ns and peak process/job memory of 50356224/51597312 bytes, outperforming the measured Qt fallback."},
+        "windows_packaging": {"status": "acceptable", "evidence_urls": ["https://pypi.org/project/pypdfium2/5.12.1/"], "note": "The 3,859,845-byte wheel is hash-pinned and contains PDFium 152.0.7947.0. Its installed RECORD SHA-256 was ff272f40a71c74019f169edc8b3b6bb446616bd18c928932e639166b02971c00; the clean 1,015-file staged closure SHA-256 was f78dffe61e4b86e6596f1080097a7a23aed90cc0ca6eca9023d67fb2521e3da8."}
       },
-      "packaging": {"ship_state": "candidate", "windows_impact": "The wheel installs pure-Python bindings, a console-script launcher that must be excluded from the application package, one hash-bound x64 PDFium DLL, and 19 exact license files. PWS-0801 must preserve the selected binding license, CC-BY attribution, and complete PDFium notice bundle.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom", "third-party-notices"]},
+      "packaging": {"ship_state": "planned", "windows_impact": "The selected worker/runtime wheel installs pure-Python bindings, a console-script launcher that must be excluded from the application package, one hash-bound x64 PDFium DLL, and 19 exact license files. PWS-0801 must assemble and verify the binding license, CC-BY attribution, PDFium notices, hashes, and SBOM before shipment.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom", "third-party-notices"]},
       "sbom": {"component_type": "library", "purl": "pkg:pypi/pypdfium2@5.12.1", "supplier": "pypdfium2 contributors", "transitive_components_from": "upstream-release-inventory"}
     },
     {
@@ -471,11 +471,11 @@
       "maintenance": {"status": "active", "checked_on": "2026-08-05", "evidence_url": "https://doc.qt.io/qt-6/qtpdf-index.html", "note": "Qt PDF 6.11.1 is the concrete measured fallback candidate; no renderer or license channel is selected for product use."},
       "security": {"boundary": "worker-process", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
       "renderer_assessment": {
-        "security": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qt-6/qtpdf-index.html"], "note": "The embedded PDFium parser must remain worker-only and pass hostile-input, limit, cancellation, and hard-timeout tests; evaluation does not activate a product edge."},
+        "security": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qt-6/qtpdf-index.html"], "note": "The restricted-worker run passed the three stable outcome checks, but the broad Qt Addons parser/runtime closure remains candidate-only and no product edge is active."},
         "license": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qt-6/qtpdf-licensing.html", "https://doc.qt.io/qt-6/licenses-used-in-qt.html"], "note": "No Qt route is selected. The exact Qt PDF PDFium snapshot, listed third-party components, notices, corresponding source, and relinking delivery remain unresolved for shipment."},
-        "fidelity": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record synthetic corpus results before selection."},
-        "performance": {"status": "not-measured", "evidence_urls": [], "note": "PWS-0106 must record bounded Windows benchmark results before selection."},
-        "windows_packaging": {"status": "concern", "evidence_urls": ["https://pypi.org/project/PySide6-Addons/6.11.1/"], "note": "Qt PDF has no separate Python wheel; the exact 168,816,308-byte Addons wheel is hash-bound and pulls the 77,549,267-byte Essentials and 1,223,647-byte shiboken6 wheels."}
+        "fidelity": {"status": "concern", "evidence_urls": ["https://doc.qt.io/qt-6/qpdfdocumentrenderoptions.html"], "note": "The clean run matched 15 of 15 analytical goldens and all three stable outcomes, but only 1 of 2 semantic checks because the required distinct MediaBox render path is unsupported."},
+        "performance": {"status": "acceptable", "evidence_urls": ["https://doc.qt.io/qt-6/qpdfdocument.html"], "note": "The clean reference run measured warm p50/p95/max of 683300/6484400/9441700 ns and peak process/job memory of 49643520/50884608 bytes, within the evaluation workload but slower than pypdfium2."},
+        "windows_packaging": {"status": "concern", "evidence_urls": ["https://pypi.org/project/PySide6-Addons/6.11.1/"], "note": "Qt PDF has no separate Python wheel. The RECORD-verified Addons/Essentials/shiboken6 closure remains candidate-only; its staged files were included in clean closure f78dffe61e4b86e6596f1080097a7a23aed90cc0ca6eca9023d67fb2521e3da8."}
       },
       "packaging": {"ship_state": "candidate", "windows_impact": "The evaluated Qt PDF module is contained in the locked Addons wheel, not in a standalone artifact. Its broad Qt closure remains excluded from product packaging and all active scopes; PWS-0801 must inspect exact DLL, plugin, executable, license, notice, source, and relinking inputs before any shipment decision.", "redistribution_assets": ["corresponding-source", "hashes", "license-text", "notice", "relinkable-library", "sbom", "third-party-notices"]},
       "sbom": {"component_type": "framework", "purl": "pkg:generic/qt-pdf@6.11.1", "supplier": "The Qt Company and Qt Project contributors", "transitive_components_from": "upstream-release-inventory"}
@@ -981,7 +981,7 @@
     {"from": "pikepdf", "type": "depends-on", "to": "lxml", "enabled": true},
     {"from": "pikepdf", "type": "depends-on", "to": "packaging", "enabled": true},
     {"from": "pikepdf", "type": "depends-on", "to": "pillow", "enabled": true},
-    {"from": "pypdfium2", "type": "contains", "to": "pdfium", "enabled": false},
+    {"from": "pypdfium2", "type": "contains", "to": "pdfium", "enabled": true},
     {"from": "pyside6", "type": "contains", "to": "qt-pdf", "enabled": false},
     {"from": "pyside6-addons", "type": "depends-on", "to": "pyside6-essentials", "enabled": false},
     {"from": "pyside6-addons", "type": "depends-on", "to": "shiboken6", "enabled": false},

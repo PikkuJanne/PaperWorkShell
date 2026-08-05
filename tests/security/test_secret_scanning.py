@@ -14,6 +14,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from tools import dev as dev_tools
 from tools.dev import (
     SecretScanError,
     ToolRequirementError,
@@ -580,12 +581,13 @@ class SecretScanningSecurityTests(unittest.TestCase):
             "stdout=sys.stdout, stderr=subprocess.DEVNULL)"
         )
         started = time.monotonic()
-        completed = _capture_bytes(
-            (sys.executable, "-c", descendant),
-            cwd=PROJECT_ROOT,
-            stdout_limit=10,
-            timeout_seconds=2,
-        )
+        with tempfile.TemporaryDirectory() as temporary:
+            completed = _capture_bytes(
+                (sys.executable, "-c", descendant),
+                cwd=Path(temporary),
+                stdout_limit=10,
+                timeout_seconds=2,
+            )
         elapsed = time.monotonic() - started
 
         self.assertEqual(0, completed.returncode)
@@ -601,6 +603,44 @@ class SecretScanningSecurityTests(unittest.TestCase):
             )
 
         self.assertEqual("SECRET_SCAN_TOOL_FAILED", truncated.exception.code)
+
+    def test_bounded_capture_timeout_releases_temporary_working_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaises(SecretScanError) as timed_out:
+                _capture_bytes(
+                    (sys.executable, "-c", "import time; time.sleep(5)"),
+                    cwd=Path(temporary),
+                    stdout_limit=10,
+                    timeout_seconds=0.05,
+                )
+
+        self.assertEqual("SECRET_SCAN_TOOL_FAILED", timed_out.exception.code)
+
+    @unittest.skipUnless(os.name == "nt", "Windows Job cleanup test")
+    def test_windows_job_cleanup_failure_is_sanitized_and_fails_closed(self) -> None:
+        terminate_job = dev_tools._terminate_and_close_windows_job
+
+        def report_failure_after_cleanup(job_handle: int) -> None:
+            terminate_job(job_handle)
+            raise OSError("synthetic private cleanup detail")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with (
+                patch(
+                    "tools.dev._terminate_and_close_windows_job",
+                    side_effect=report_failure_after_cleanup,
+                ),
+                self.assertRaises(SecretScanError) as cleanup_failed,
+            ):
+                _capture_bytes(
+                    (sys.executable, "-c", "raise SystemExit(0)"),
+                    cwd=Path(temporary),
+                    stdout_limit=10,
+                    timeout_seconds=2,
+                )
+
+        self.assertEqual("SECRET_SCAN_TOOL_FAILED", cleanup_failed.exception.code)
+        self.assertNotIn("synthetic", str(cleanup_failed.exception))
 
     def test_commit_and_nested_annotated_tag_messages_are_scanned(self) -> None:
         for location, marker in (("commit", "E"), ("nested annotated tag", "F")):

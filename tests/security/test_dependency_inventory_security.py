@@ -839,6 +839,8 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         document = copy.deepcopy(self.baseline)
         component = _component(document, "pypdfium2")
         component["admission_status"] = "evaluated"
+        component["active_scopes"] = []
+        cast(dict[str, Any], component["packaging"])["ship_state"] = "candidate"
         component["version"] = {
             "constraint": ">=1.0.0",
             "selected": "1.0.0",
@@ -858,6 +860,8 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         document = copy.deepcopy(self.baseline)
         component = _component(document, "pypdfium2")
         component["admission_status"] = "evaluated"
+        component["active_scopes"] = []
+        cast(dict[str, Any], component["packaging"])["ship_state"] = "candidate"
         component["version"] = {
             "constraint": "==1.0.0",
             "selected": "1.0.0",

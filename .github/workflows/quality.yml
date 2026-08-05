@@ -85,5 +85,8 @@ jobs:
       - name: Bootstrap locked environment
         run: python tools/dev.py bootstrap
 
+      - name: Install renderer comparison dependencies
+        run: uv sync --locked --group renderer-evaluation
+
       - name: Run local-equivalent quality suite
         run: python tools/dev.py check
