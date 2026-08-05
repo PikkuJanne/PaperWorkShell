@@ -2569,6 +2569,7 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE
             ),
             BrokeredHandlePurpose.WRITE_RESULT_PIPE: _FILE_WRITE_DATA | _SYNCHRONIZE,
+            BrokeredHandlePurpose.WRITE_OPERATION_CACHE: _FILE_WRITE_DATA | _SYNCHRONIZE,
         }[purpose]
         kernel32 = _kernel32()
         current_process = kernel32.GetCurrentProcess

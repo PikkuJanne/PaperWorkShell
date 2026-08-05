@@ -357,9 +357,15 @@ def build_pdf_runtime_registry() -> RuntimeOperationRegistry:
     return RuntimeOperationRegistry(
         (
             NoopOperationHandler(),
-            PdfInspectionOperationHandler(
-                WindowsPdfInspectionAdapter(),
-                WindowsPdfInspectionResultWriter(),
-            ),
+            build_pdf_inspection_operation_handler(),
         )
+    )
+
+
+def build_pdf_inspection_operation_handler() -> PdfInspectionOperationHandler[PdfInspectionResult]:
+    """Compose only structural inspection so optional render loading is independent."""
+
+    return PdfInspectionOperationHandler(
+        WindowsPdfInspectionAdapter(),
+        WindowsPdfInspectionResultWriter(),
     )

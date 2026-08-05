@@ -171,8 +171,10 @@ attacker exclusion provide the supported boundary without adding an undocumented
   the threat model's exclusion of unrestricted same-account and administrator compromise is
   therefore material.
 - Capacity reservations are process-local and do not stop another process from consuming disk
-  space. Worker restrictions and operation lifecycle remain PWS-0107 work; broker-enforced import,
-  cache, persistence, and export writes remain PWS-0104, PWS-0108, PWS-0109, and PWS-0112 work.
+  space. PWS-0107 later supplied worker restriction/lifecycle, PWS-0104 supplied immutable import,
+  and PWS-0108 supplied exact quota-reserved thumbnail staging/publication. General persistence and
+  export writes remain PWS-0109 and PWS-0112 work; none of those extensions weakens this ADR into a
+  general case-tree mutation API.
 - Cleanup accurately reports partial completion but does not promise transactionality, recoverable
   deletion, secure erasure, or full-case deletion. Lifecycle cleanup, retention, and assisted
   deletion remain PWS-0102, PWS-0113, PWS-0705, and PWS-0706 work.

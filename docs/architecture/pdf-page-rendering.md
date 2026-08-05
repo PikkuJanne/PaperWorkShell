@@ -1,12 +1,13 @@
 # PDF page-rendering contract
 
-- Status: PWS-0106 adapter and renderer selection accepted
-- Task: PWS-0106
+- Status: PWS-0106 adapter accepted with PWS-0108 thumbnail-service integration
+- Tasks: PWS-0106, PWS-0108
 - Decisions: PWS-D012, PWS-D013, PWS-D017, PWS-D019, PWS-D034
 - ADR: [ADR 0005 renderer selection](../adr/0005-pdf-renderer-selection.md)
 - Worker boundary: [Restricted worker lifecycle contract](worker-lifecycle.md)
 - Structure boundary: [PDF structural-inspection contract](pdf-structural-inspection.md)
 - Preview data flow: [DF-PREVIEW](../security/data-flows.md#df-preview--render-bounded-thumbnailspreviews)
+- Thumbnail integration: [Bounded PDF-thumbnail service contract](pdf-thumbnails.md)
 
 ## Scope and ownership
 
@@ -14,8 +15,8 @@ PWS-0106 owns a worker-local, replaceable PDF page-renderer interface, its reque
 the selected adapter, a typed inherited-page-geometry resolver over the same verified source,
 stable failure mapping, per-render bounds, and renderer contract tests. It does not own a UI
 widget, thumbnail scheduling, a new RPC operation, result-pipe framing, cache keys, cache
-publication, cache invalidation, or cache eviction. Those integration and persistence concerns
-remain PWS-0108 work.
+publication, cache invalidation, or cache cleanup. PWS-0108 now owns those concerns through the
+[bounded PDF-thumbnail service](pdf-thumbnails.md); they do not become renderer-adapter behavior.
 
 Rendering is hostile document processing. Only the restricted document worker may import the
 selected renderer or open a full PDF for rendering. The GUI, application, domain, storage, and UI
@@ -63,8 +64,8 @@ Conceptually, one render proceeds as follows:
    where required.
 
 This document defines the in-worker adapter stream, geometry-resolver contract, and metadata
-result. PWS-0108 must separately define how a validated request and correlated typed geometry reach
-the worker, how source/output handles are brokered, and how one completed sink becomes a trusted,
+result. The PWS-0108 contract separately defines how a validated request reaches the worker, how
+source/output handles and correlations are brokered, and how one completed sink becomes a trusted,
 atomic cache snapshot.
 
 ## Renderer-neutral request contract
@@ -113,8 +114,8 @@ is continued until the row is complete. A zero, negative, non-integer, or excess
 an exception, surplus raster byte, or flush failure is `PDF_RENDER_DESTINATION_FAILED` or
 `PDF_RENDER_RESULT_INVALID`; it is never partial success. The caller creates a fresh
 operation-scoped sink and must discard or quarantine it on every failure or indeterminate outcome.
-Only PWS-0108 may define atomic promotion into the cache after validating the complete metadata,
-correlations, artifact header, identity, exact length, and digest.
+The PWS-0108 service performs atomic promotion only after validating the complete metadata,
+correlations, artifact header, identity, exact length, and digests.
 
 `PdfPageRenderResult` contains metadata only: result version, page index, width, height, stride,
 exact bytes written, a pixel SHA-256 hidden from `repr`, selected page box, intrinsic and additional
@@ -133,8 +134,9 @@ documents that its page `get_*box()` helpers, other than its intersection helper
 inherit parent values. PWS-0106 therefore requires a typed geometry resolver behind the
 pikepdf/qpdf adapter boundary that reads the same verified bytes. This requirement does not claim
 that the current PWS-0105 structural-inspection result emits page geometry. Renderer helper values
-may be used only as cross-check evidence, never as the sole source of truth. PWS-0108 later owns
-carrying and correlating the resolved geometry with its exact brokered source/render operation.
+may be used only as cross-check evidence, never as the sole source of truth. PWS-0108 owns carrying
+and correlating the selected page/index and requested geometry with its exact brokered
+source/render operation.
 
 The resolver opens the caller-owned authenticated stream without repair or automatic page-attribute
 materialization. Before selecting a page, it iteratively walks the catalog's exact root page tree in
@@ -260,7 +262,7 @@ arithmetic and fails before expensive work or allocation where possible:
 7. Validate returned width, height, stride, format, bytes written, digest, annotation profile, and
    correlations before accepting the metadata result. Partial or surplus bytes are failure.
 
-The adapter does not resize an already excessive bitmap after allocation. PWS-0108 will own the
+The adapter does not resize an already excessive bitmap after allocation. PWS-0108 owns the
 least-privilege destination handle, exact cache artifact cap, and publication lifecycle; the
 PWS-0106 destination limit bounds the raw RGBA bytes the adapter may write to that future sink.
 
@@ -339,23 +341,25 @@ PWS-0106 verification includes:
 Golden files remain synthetic, small, and visually inspected. A refresh cannot be accepted solely
 because the selected renderer produced new bytes.
 
-## Explicit PWS-0108 deferral
+## PWS-0108 integration boundary
 
-| PWS-0106 owns now | PWS-0108 must define later |
+| PWS-0106 renderer ownership | PWS-0108 service ownership |
 |---|---|
 | Worker-local renderer protocol/interface and selected adapter | Registered worker RPC operation name/version and capability negotiation |
 | Typed inherited-page-geometry resolver over the verified source | Transport/correlation of resolved geometry with the exact brokered source operation |
 | Renderer-neutral request, raw-sink, and metadata-result semantics | Wire codec, correlation IDs, framing, source/output-handle brokerage, and trusted-client validation |
 | RGBA8 white-background raw byte contract | Versioned canonical cache artifact/header and bounded snapshot transport |
 | Page-box/rotation/color/feature behavior | Exact cache key inputs, namespace/layout, engine/profile-version invalidation, and migration |
-| Per-render pixel/memory/time/destination-capacity checks | Operation-scoped cache handle rights, atomic publication, partial cleanup, eviction, and stale-result rejection |
-| Adapter cancellation probes and synchronous render/resource cleanup | Page scheduling, progress aggregation, cancellation UX, request coalescing, and thumbnail lifecycle |
+| Per-render pixel/memory/time/destination-capacity checks | Operation-scoped cache handle rights, atomic publication, bounded invalidation/cleanup, and stale-result rejection |
+| Adapter cancellation probes and synchronous render/resource cleanup | Serial page scheduling, progress aggregation, cancellation propagation, and thumbnail lifecycle; PWS-0111 owns UI behavior |
 
-PWS-0108 may frame and atomically publish the completed raw raster only behind its own versioned,
-fixed-layout, bounded contract consistent with DF-PREVIEW. It must discard partial output on every
-non-success path and validate the exact metadata/length/digest before publication. It must not
-expose arbitrary worker-produced PNG/JPEG/PDF decoding to the GUI, grant a cache-directory path to
-the worker, or treat a cache key as filesystem authority.
+PWS-0108 frames and atomically publishes a completed raw raster only behind its own versioned,
+fixed-layout, bounded contract consistent with DF-PREVIEW. It discards trusted partial output on
+non-success and quarantines output when worker termination or publication state is uncertain. It
+validates exact metadata, correlations, length, and digests before publication. It does not expose
+arbitrary worker-produced PNG/JPEG/PDF decoding to the GUI, grant a cache-directory path to the
+worker, or treat a cache key as filesystem authority. See the
+[bounded PDF-thumbnail service contract](pdf-thumbnails.md) for the complete integration rules.
 
 ## Primary implementation references
 

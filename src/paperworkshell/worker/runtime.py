@@ -225,7 +225,7 @@ class WorkerHostRuntime:
                 raise ProtocolError("RPC_PAYLOAD_MISMATCH", "payload", "hello is invalid")
             self._send(
                 MessageType.SESSION_READY,
-                SessionReadyPayload(1, self._operations.capabilities, MAX_MESSAGE_BYTES),
+                SessionReadyPayload(1, payload.required_capabilities, MAX_MESSAGE_BYTES),
                 request_id=message.request_id,
                 operation_id=None,
             )
@@ -282,11 +282,16 @@ class WorkerHostRuntime:
         def report_progress(progress: OperationProgressPayload) -> None:
             self._events.put(_Progress(active.token, progress))
 
+        def deadline_expired() -> bool:
+            return self._monotonic() >= active.deadline
+
         context = OperationContext(
             operation_id=operation_id,
+            case_id=self._peer.binding.case_id,
             limits=payload.requested_limits,
             cancel_requested=active.cancel_requested,
             report_progress=report_progress,
+            deadline_expired=deadline_expired,
             inputs=payload.inputs,
             parameters=payload.parameters,
         )

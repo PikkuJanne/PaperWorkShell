@@ -75,6 +75,13 @@ _PENDING_SOURCE_NAME: Final = re.compile(
 _ORIGINAL_STORAGE_NAME: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.bin\Z"
 )
+_PENDING_THUMBNAIL_NAME: Final = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp\Z"
+)
+_THUMBNAIL_CACHE_NAME: Final = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    r"\.[0-9a-f]{64}\.pwsthumb\Z"
+)
 
 _EXPECTED_PRIVATE_TRUSTEES: Final = frozenset(
     {
@@ -216,6 +223,27 @@ class ManifestReplaceResult:
     """Sanitized commit state; callers preserve source bytes whenever state is unknown."""
 
     state: ManifestReplaceState
+    delayed_exception: BaseException | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
+
+class CachePublishState(StrEnum):
+    """Identity-resolved outcome of one no-replace thumbnail publication."""
+
+    PUBLISHED = "published"
+    DESTINATION_EXISTS = "destination_exists"
+    NOT_PUBLISHED = "not_published"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class CachePublishResult:
+    """Sanitized cache publication state with a delayed interruption kept private."""
+
+    state: CachePublishState
     delayed_exception: BaseException | None = field(
         default=None,
         repr=False,
@@ -913,6 +941,119 @@ class WindowsPendingSourceFile(AbstractContextManager["WindowsPendingSourceFile"
         self._handle.close()
 
 
+class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnailFile"]):
+    """One random cache stage writable only through its retained exact handle."""
+
+    __slots__ = (
+        "_handle",
+        "_initial_identity",
+        "_initial_path",
+        "_maximum_bytes",
+        "_sealed",
+    )
+
+    def __init__(self, handle: WindowsHandle, *, maximum_bytes: int) -> None:
+        self._handle = handle
+        self._initial_identity = handle.info.identity
+        self._initial_path = handle.info.final_path
+        self._maximum_bytes = maximum_bytes
+        self._sealed = False
+
+    @property
+    def handle(self) -> WindowsHandle:
+        """Return the retained exact read/write handle for brokered duplication."""
+
+        return self._handle
+
+    @property
+    def info(self) -> OpenedFileInfo:
+        return self._handle.info
+
+    @property
+    def is_sealed(self) -> bool:
+        return self._sealed
+
+    @property
+    def maximum_bytes(self) -> int:
+        return self._maximum_bytes
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def seal(self) -> OpenedFileInfo:
+        """Flush and authenticate worker-written bytes before bounded readback."""
+
+        if self._sealed or self._handle.value == 0:
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "thumbnail_stage.state",
+                "The thumbnail cache stage is not writable.",
+            )
+        kernel32, _, _ = _libraries()
+        flush = kernel32.FlushFileBuffers
+        flush.argtypes = (wintypes.HANDLE,)
+        flush.restype = wintypes.BOOL
+        if not flush(wintypes.HANDLE(self._handle.value)):
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "thumbnail_stage.flush",
+                "PaperWorkShell could not commit the thumbnail cache stage.",
+            )
+        current = self._handle.refresh_info()
+        if (
+            current.identity != self._initial_identity
+            or _normalized_path(current.final_path) != _normalized_path(self._initial_path)
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+            or not 1 <= current.logical_size <= self._maximum_bytes
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "thumbnail_stage.identity",
+                "The thumbnail cache stage changed before validation.",
+            )
+        require_no_alternate_streams(current.final_path)
+        self._sealed = True
+        return current
+
+    def read_bytes(self) -> bytes:
+        """Return the exact sealed stage through a bounded retained-handle read."""
+
+        if not self._sealed:
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "thumbnail_stage.read_state",
+                "The thumbnail cache stage is not ready for validation.",
+            )
+        self._handle.rewind()
+        payload = self._handle.read_bytes(maximum_bytes=self._maximum_bytes)
+        current = self._handle.info
+        if (
+            current.identity != self._initial_identity
+            or current.is_sparse
+            or current.link_count != 1
+            or len(payload) != current.logical_size
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "thumbnail_stage.readback",
+                "The thumbnail cache stage changed during validation.",
+            )
+        require_no_alternate_streams(current.final_path)
+        return payload
+
+    def mark_for_deletion(self) -> None:
+        self._handle.mark_for_deletion()
+
+    def close(self) -> None:
+        self._handle.close()
+
+
 def create_pending_source_file(
     path: Path,
     *,
@@ -988,6 +1129,108 @@ def create_pending_source_file(
             )
         require_no_alternate_streams(path)
         return WindowsPendingSourceFile(handle)
+    except BaseException:
+        if handle is not None:
+            try:
+                handle.mark_for_deletion()
+            except BaseException:
+                pass
+            try:
+                handle.close()
+            except BaseException:
+                pass
+        else:
+            close_handle = kernel32.CloseHandle
+            close_handle.argtypes = (wintypes.HANDLE,)
+            close_handle.restype = wintypes.BOOL
+            close_handle(wintypes.HANDLE(handle_value))
+        raise
+
+
+def create_pending_thumbnail_file(
+    path: Path,
+    *,
+    thumbnails_root: WindowsHandle,
+    maximum_bytes: int,
+) -> WindowsPendingThumbnailFile:
+    """Create one opaque, bounded stage beneath an authenticated thumbnail directory."""
+
+    if type(maximum_bytes) is not int or not 1 <= maximum_bytes <= _MAXIMUM_SAFE_FILE_BYTES:
+        reject(
+            WorkspaceErrorCode.QUOTA_INVALID,
+            "thumbnail_stage.limit",
+            "A valid thumbnail cache-stage limit is required.",
+        )
+    root_before = thumbnails_root.info
+    root_current = thumbnails_root.refresh_info()
+    if (
+        root_current.identity != root_before.identity
+        or not root_current.is_directory
+        or root_current.is_reparse_point
+        or root_current.final_path.name.casefold() != "thumbnails"
+        or root_current.final_path.parent.name.casefold() != "cache"
+        or _normalized_path(path.parent) != _normalized_path(root_current.final_path)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "thumbnail_stage.root",
+            "The authenticated thumbnail directory changed before staging.",
+        )
+    verify_private_acl(thumbnails_root)
+    require_no_alternate_streams(root_current.final_path)
+    if _PENDING_THUMBNAIL_NAME.fullmatch(path.name) is None:
+        reject(
+            WorkspaceErrorCode.NAME_INVALID,
+            "thumbnail_stage.name",
+            "A thumbnail stage requires a random internal name.",
+        )
+
+    kernel32, _, _ = _libraries()
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    raw_handle = create_file(
+        str(path),
+        _GENERIC_READ | _GENERIC_WRITE | _DELETE | _READ_CONTROL | _FILE_READ_ATTRIBUTES,
+        _FILE_SHARE_READ,
+        None,
+        _CREATE_NEW,
+        _FILE_ATTRIBUTE_NORMAL,
+        None,
+    )
+    handle_value = int(raw_handle) if raw_handle else 0
+    if not handle_value or handle_value == _INVALID_HANDLE_VALUE:
+        code = (
+            WorkspaceErrorCode.ALREADY_EXISTS
+            if ctypes.get_last_error() in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+            else WorkspaceErrorCode.CREATE_FAILED
+        )
+        reject(
+            code,
+            "thumbnail_stage.create",
+            "PaperWorkShell could not create the thumbnail cache stage safely.",
+        )
+
+    handle: WindowsHandle | None = None
+    try:
+        handle = WindowsHandle(handle_value, _query_opened_info(handle_value))
+        require_expected_handle(handle, path, directory=False)
+        if handle.info.is_sparse or handle.info.link_count != 1:
+            reject(
+                WorkspaceErrorCode.ALIAS_DETECTED,
+                "thumbnail_stage.create",
+                "The thumbnail cache stage unexpectedly aliases another object.",
+            )
+        require_no_alternate_streams(path)
+        return WindowsPendingThumbnailFile(handle, maximum_bytes=maximum_bytes)
     except BaseException:
         if handle is not None:
             try:
@@ -1254,6 +1497,154 @@ def publish_new_original(
         )
     require_no_alternate_streams(destination)
     return published
+
+
+def publish_new_thumbnail_file(
+    source: WindowsPendingThumbnailFile,
+    thumbnails_root: WindowsHandle,
+    *,
+    storage_name: str,
+) -> CachePublishResult:
+    """Atomically publish one validated stage without replacing an existing key."""
+
+    if (
+        not isinstance(source, WindowsPendingThumbnailFile)
+        or not source.is_sealed
+        or type(storage_name) is not str
+        or _THUMBNAIL_CACHE_NAME.fullmatch(storage_name) is None
+    ):
+        reject(
+            WorkspaceErrorCode.NAME_INVALID,
+            "thumbnail_publish.name",
+            "A thumbnail cache entry requires a valid opaque internal name.",
+        )
+    root_before = thumbnails_root.info
+    root_current = thumbnails_root.refresh_info()
+    if (
+        root_current.identity != root_before.identity
+        or not root_current.is_directory
+        or root_current.is_reparse_point
+        or root_current.final_path.name.casefold() != "thumbnails"
+        or root_current.final_path.parent.name.casefold() != "cache"
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "thumbnail_publish.root",
+            "The authenticated thumbnail directory changed before publication.",
+        )
+    verify_private_acl(thumbnails_root)
+    require_no_alternate_streams(root_current.final_path)
+
+    staged_before = source.info
+    staged = source.handle.refresh_info()
+    if (
+        staged.identity != staged_before.identity
+        or staged.is_directory
+        or staged.is_reparse_point
+        or staged.is_sparse
+        or staged.link_count != 1
+        or staged.logical_size > source.maximum_bytes
+        or _normalized_path(staged.final_path.parent) != _normalized_path(root_current.final_path)
+        or _PENDING_THUMBNAIL_NAME.fullmatch(staged.final_path.name) is None
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "thumbnail_publish.stage",
+            "The thumbnail cache stage changed before publication.",
+        )
+    require_no_alternate_streams(staged.final_path)
+    destination = root_current.final_path / storage_name
+    initial = _resolve_cache_publish_state(
+        source.handle,
+        initial_path=staged.final_path,
+        initial_identity=staged.identity,
+        destination=destination,
+    )
+    if initial is not CachePublishState.NOT_PUBLISHED:
+        return CachePublishResult(initial)
+
+    delayed_exception: BaseException | None = None
+    try:
+        renamed, error_number = _rename_open_file(
+            source.handle,
+            destination=destination,
+            replace=False,
+        )
+    except BaseException as error:
+        delayed_exception = error
+        renamed = False
+        error_number = 0
+
+    resolved = _resolve_cache_publish_state(
+        source.handle,
+        initial_path=staged.final_path,
+        initial_identity=staged.identity,
+        destination=destination,
+    )
+    if (
+        resolved is CachePublishState.NOT_PUBLISHED
+        and error_number in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}
+        and os.path.lexists(destination)
+    ):
+        resolved = CachePublishState.DESTINATION_EXISTS
+    if resolved is CachePublishState.PUBLISHED:
+        published = source.handle.refresh_info()
+        if (
+            published.identity != staged.identity
+            or published.logical_size != staged.logical_size
+            or published.is_directory
+            or published.is_reparse_point
+            or published.is_sparse
+            or published.link_count != 1
+            or _normalized_path(published.final_path) != _normalized_path(destination)
+        ):
+            return CachePublishResult(
+                CachePublishState.UNKNOWN,
+                delayed_exception=delayed_exception,
+            )
+        require_no_alternate_streams(destination)
+        return CachePublishResult(
+            CachePublishState.PUBLISHED,
+            delayed_exception=delayed_exception,
+        )
+    if delayed_exception is not None and resolved is CachePublishState.NOT_PUBLISHED:
+        raise delayed_exception
+    if delayed_exception is not None:
+        return CachePublishResult(resolved, delayed_exception=delayed_exception)
+    if not renamed:
+        return CachePublishResult(resolved)
+    return CachePublishResult(CachePublishState.UNKNOWN)
+
+
+def _resolve_cache_publish_state(
+    source_handle: WindowsHandle,
+    *,
+    initial_path: Path,
+    initial_identity: FileIdentity,
+    destination: Path,
+) -> CachePublishState:
+    """Resolve a no-replace rename solely through the retained source identity."""
+
+    try:
+        current = source_handle.refresh_info()
+        if (
+            current.identity != initial_identity
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+        ):
+            return CachePublishState.UNKNOWN
+        current_path = _normalized_path(current.final_path)
+        if current_path == _normalized_path(destination):
+            return CachePublishState.PUBLISHED
+        if current_path != _normalized_path(initial_path):
+            return CachePublishState.UNKNOWN
+        if os.path.lexists(destination):
+            return CachePublishState.DESTINATION_EXISTS
+        return CachePublishState.NOT_PUBLISHED
+    except BaseException:
+        return CachePublishState.UNKNOWN
 
 
 def replace_manifest_atomically(

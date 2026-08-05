@@ -9,7 +9,11 @@ from paperworkshell.worker._windows_runtime import (
     read_bootstrap_from_standard_error,
     verify_runtime_isolation,
 )
-from paperworkshell.worker.operations import NoopOperationHandler, RuntimeOperationRegistry
+from paperworkshell.worker.operations import (
+    NoopOperationHandler,
+    OperationHandler,
+    RuntimeOperationRegistry,
+)
 from paperworkshell.worker.protocol.bootstrap import BootstrapError, decode_bootstrap_grant
 from paperworkshell.worker.runtime import HostExitCode, WorkerHostRuntime
 
@@ -28,17 +32,29 @@ def main() -> int:
         return int(HostExitCode.ISOLATION_FAILED)
     reader = getattr(sys.stdin.buffer, "raw", sys.stdin.buffer)
     writer = getattr(sys.stdout.buffer, "raw", sys.stdout.buffer)
+    # Delay optional native-engine imports until bootstrap and isolation succeed.
+    # Each capability is loaded independently, so one unavailable adapter cannot
+    # cause a different, working document capability to be advertised or hidden.
+    handlers: list[OperationHandler] = [NoopOperationHandler()]
     try:
-        # Delay the optional native engine import until bootstrap/isolation have
-        # succeeded.  A staged noop-only test runtime still fails closed if the
-        # PDF engine is unavailable, without emitting an import traceback.
-        from paperworkshell.worker.pdf_operation import build_pdf_runtime_registry
+        from paperworkshell.worker.pdf_operation import (
+            build_pdf_inspection_operation_handler,
+        )
 
-        operations = build_pdf_runtime_registry()
+        handlers.append(build_pdf_inspection_operation_handler())
     except Exception:
-        # Never advertise a document capability whose native adapter failed to
-        # load. The client will reject its required-capability negotiation.
-        operations = RuntimeOperationRegistry((NoopOperationHandler(),))
+        pass
+    try:
+        from paperworkshell.worker.pdf_thumbnail_operation import (
+            build_pdf_thumbnail_operation_handler,
+        )
+
+        handlers.append(build_pdf_thumbnail_operation_handler())
+    except Exception:
+        pass
+    # Never advertise a document capability whose adapter failed to load. The
+    # client rejects negotiation when its required capability is unavailable.
+    operations = RuntimeOperationRegistry(tuple(handlers))
     runtime = WorkerHostRuntime(grant, reader, writer, operations=operations)
     return int(runtime.run())
 

@@ -108,6 +108,7 @@ def _context(
 ) -> OperationContext:
     return OperationContext(
         operation_id=_uuid(106),
+        case_id=_uuid(107),
         limits=ResourceLimits(
             wall_time_ms=wall_time_ms,
             cpu_time_ms=5_000,
@@ -119,6 +120,7 @@ def _context(
         ),
         cancel_requested=Event() if cancel_requested is None else cancel_requested,
         report_progress=lambda _progress: None,
+        deadline_expired=lambda: False,
         inputs=(source,),
         parameters=parameters,
     )

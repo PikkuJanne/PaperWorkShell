@@ -3,7 +3,8 @@
 - Status: Binding implementation policy
 - Task: PWS-0002
 - Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
-  structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle
+  structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle;
+  PWS-0108 bounded PDF thumbnails
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -27,7 +28,7 @@ worker host -> domain
 |---|---|
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
-| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, progress, cancellation, and limits |
+| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; thumbnail integration is documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md) |
 | `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations; implemented and in-progress contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md) and [PDF page-rendering contract](pdf-page-rendering.md) |
 | `imaging` | Image inspection and transformation interfaces/implementations |
 | `ocr` | OCR interfaces and worker-side OCRmyPDF/Tesseract implementations |
@@ -35,7 +36,7 @@ worker host -> domain
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Output planning, verification, and derivative commit behavior |
 | `templates` | Declarative, versioned template loading and validation |
-| `storage` | Authenticated case workspaces, local lifecycle, bounded external-source leases, immutable ingest/integrity, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), and [Immutable source-ingest contract](immutable-ingest.md) |
+| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source leases, immutable ingest/integrity, disposable thumbnail caching, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), and [Bounded PDF-thumbnail contract](pdf-thumbnails.md) |
 | `diagnostics` | Sanitized logging and previewable diagnostic data |
 
 ## Enforced import rules
@@ -129,5 +130,27 @@ worker-only renderer ownership through the
 pypdfium2/PDFium, and records the accepted evidence-based selection in
 [ADR 0005](../adr/0005-pdf-renderer-selection.md). The exact Qt PDF fallback remains evaluation-only
 with no source-import boundary, product scope, or enabled shipment relationship.
+
+PWS-0108 adds pure cache-key/artifact/snapshot/progress contracts in `domain.pdf_thumbnails` and
+serial, toolkit-free batch orchestration in `app.pdf_thumbnails`. The application depends only on a
+structural one-page generator protocol; it does not import concrete storage, Windows, worker-host,
+PDF-engine, or cache implementations. UI-facing snapshots contain validated fixed RGBA8 bytes but
+no engine object, path, filename, source digest, or arbitrary encoded image.
+
+The concrete thumbnail broker is worker-side trusted composition over structural committed-source,
+cache-stage, worker-client, and process-lifecycle ports. `storage.source_ingest` authenticates and
+lends one current manifest-bound PDF handle; `storage.thumbnail_cache` owns quota reservation,
+exact stage handles, fixed artifact readback, no-replace publication, invalidation, and cleanup.
+Storage does not import a worker implementation, and the worker broker does not acquire a general
+storage manager or case path. The host operation invokes the existing renderer-neutral PDF adapter
+through an exact source handle and exact write-only stage handle; the `pdf` package remains
+independent of worker/storage code and is still the only layer that imports pikepdf/pypdfium2.
+
+`worker.protocol` knows only the additive `pdf.thumbnail` capability, closed scalar/reference
+contract, and output correlation. The GUI-safe profile-identity module contains only fixed project
+metadata and SHA-256 computation; it imports no native engine. Concrete stage creation, Windows
+handle reduction, worker-private source copying, rendering, and publication stay behind their
+existing private/platform boundaries. The full split is specified in the
+[bounded PDF-thumbnail service contract](pdf-thumbnails.md).
 
 If a future task needs a new cross-package edge, that task must show why the edge preserves the frozen architecture, update this document and the executable policy together, and add a positive and negative boundary test. It must not suppress an individual import violation.

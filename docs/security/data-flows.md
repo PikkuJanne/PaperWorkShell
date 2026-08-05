@@ -245,29 +245,54 @@ TM-023, TM-026.
 
 ```mermaid
 flowchart LR
-    UI["UI requests internal page ID"] --> Broker["Worker client validates request"]
-    Broker ==> Worker["Restricted worker"]
-    Case["Immutable case source"] ==> Worker
+    UI["UI requests internal page ID"] --> App["Serial thumbnail service"]
+    App --> Broker["Trusted source/cache broker"]
+    Manifest["Current manifest"] ==> Broker
+    Source["Immutable case source"] ==> Broker
+    Broker ==> Worker["One-shot restricted worker"]
     Worker ==> Renderer["Renderer adapter"]
-    Renderer ==> Cache["Operation-scoped canonical preview buffer"]
-    Cache ==> Broker["Open, validate, and consume one snapshot"]
-    Broker --> UI["Fixed-layout bounded pixels"]
+    Renderer ==> Stage["Exact operation-cache stage"]
+    Worker --> Stop["Confirm complete Job-tree termination"]
+    Stop --> Validate["Read back, validate, publish atomically"]
+    Stage ==> Validate
+    Validate --> App
+    App --> UI["Fixed-layout bounded RGBA8 pixels"]
 ```
 
-1. The UI names an internal source/page ID, desired bounded dimensions, and cancellation token; it
-   never opens the source document.
-2. TB-02/TB-03: the trusted broker resolves the logical ID, authenticates exact read/output
-   handles for the case and operation, and only then transfers those handles. The worker applies
-   page/pixel/time/memory limits and writes only through the brokered operation-cache handle. A
-   path or case UUID alone never authorizes access.
-3. Output uses a versioned canonical preview contract: fixed pixel layout, bounded dimensions and
-   exact byte length, not a general-purpose encoded image. The trusted client opens one snapshot,
-   validates file identity, case/operation/correlation, header, dimensions, stride, and length,
-   then consumes that same snapshot. The UI never decodes arbitrary PNG/JPEG/PDF bytes from a
-   worker or raced cache path.
-4. Cancellation, parser fault, or invalid output leaves the manifest unchanged. Partial cache data
-   is removed or ignored and can be regenerated.
-5. Paths, original names, rendered bytes, thumbnails, and content never enter routine logs.
+1. The UI names internal case/page IDs, desired bounded dimensions/quarter-turn, and cancellation
+   intent; it never opens the source document. A multi-page request is scheduled serially as one
+   bounded worker operation per page. Aggregate progress contains only phase and page counts.
+2. TB-02/TB-03: before a cache hit or render, the trusted broker resolves the page through the
+   current manifest and authenticates one exact committed PDF handle, including file identity,
+   containment, type, size, SHA-256, link/reparse/sparse/stream state, and retained lifetime. A
+   cache key, path, case/page UUID, or existing filename alone never authorizes access.
+3. The versioned cache key covers internal case/source/page IDs, source index/size/SHA-256,
+   dimensions/rotation, fixed RGBA8/white/CropBox/annotation choices, and renderer-profile digest.
+   Final and staging names contain only random internal IDs and a full key digest. Source
+   authentication precedes lookup, so cached state cannot conceal a changed source.
+4. On a miss, storage reserves the worst-case artifact size against the case-cache quota, creates
+   one random exact stage, and retains it through final disposition. The broker duplicates only
+   source-read and stage-write rights into a fresh worker. The worker receives no case/cache path,
+   directory, manifest, delete, rename, or publication authority.
+5. The worker verifies/copies/hashes the source, closes the case handle, renders one page under
+   page/pixel/output/temp/memory/CPU/wall limits, and writes a fixed binary header plus exact raw
+   RGBA8 payload. Its success references the exact operation/cache-object IDs, artifact size,
+   whole-artifact SHA-256, and content kind; other outcomes reference no output.
+6. RPC success is untrusted. The broker first confirms complete one-shot Job-tree termination,
+   then seals and reads the same retained stage and validates file identity, RPC correlation,
+   key/header versions, reserved fields, IDs, dimensions, stride, profile, exact lengths, digests,
+   and opaque alpha. Only then may storage no-replace rename the stage to its final internal name.
+   The UI never decodes arbitrary worker-produced PNG/JPEG/PDF bytes or follows a raced cache path.
+7. Cancellation, parser fault, invalid output, or quota failure leaves the manifest unchanged.
+   Confirmed trusted partial stages are deleted through exact retained identity. Unconfirmed worker
+   termination or publication state quarantines the random stage without parse, publish, delete, or
+   reuse; earlier complete page entries remain safely reusable.
+8. Paths, filenames, source/cache/pixel digests, text, metadata, rendered bytes, thumbnails, raw
+   RPC, handles, and third-party exceptions never enter routine logs. Fixed pixels reach only the
+   requested UI snapshot after complete validation.
+
+The complete implementation contract is the
+[bounded PDF-thumbnail service](../architecture/pdf-thumbnails.md).
 
 Primary threats: TM-001, TM-002, TM-003, TM-006, TM-011, TM-012, TM-022, TM-023.
 

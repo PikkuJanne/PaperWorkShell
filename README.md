@@ -144,6 +144,13 @@ comparison with Qt PDF, and residual staging-cleanup behavior are recorded in
 [`docs/adr/0005-pdf-renderer-selection.md`](docs/adr/0005-pdf-renderer-selection.md). Qt PDF remains
 an evaluation-only test candidate and is not a product dependency.
 
+The bounded PDF-thumbnail service resolves current internal page IDs, authenticates immutable
+sources even on cache hits, renders one page per restricted worker generation, and publishes only
+fully validated fixed-layout RGBA8 artifacts under case-scoped internal cache names. Its cache key,
+RPC/handle correlation, atomic publication, cancellation/quarantine, cleanup, progress, limits, and
+privacy contracts are documented in
+[`docs/architecture/pdf-thumbnails.md`](docs/architecture/pdf-thumbnails.md).
+
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in
 [`docs/schemas/case-manifest-v1.md`](docs/schemas/case-manifest-v1.md). The authoritative manifest
@@ -164,8 +171,9 @@ reject unknown versions, unregistered operations, path-bearing messages, and raw
 The PWS-0107 Windows worker boundary launches a fresh zero-capability AppContainer inside a retained
 Job Object, inherits only two RPC handles plus a fixed 92-byte bootstrap handle, constructs a
 minimal per-launch environment, and supports bounded negotiation, progress, cancellation, timeout,
-shutdown, forced tree termination, and fresh restart. Its current no-op operation receives no
-document handles and does not claim case filesystem access. The implementation contract and live
+shutdown, forced tree termination, and fresh restart. Registered document operations receive only
+their exact reduced-right source/result or source/cache-stage handles after ready; they never
+receive a case or directory path. The implementation contract and live
 egress/job/environment/filesystem evidence requirements are documented in
 [`docs/architecture/worker-lifecycle.md`](docs/architecture/worker-lifecycle.md), with the operating
 system decision in

@@ -2,7 +2,7 @@
 
 - Status: Binding foundation model
 - Task: PWS-0004
-- Last reviewed: 2026-08-03
+- Last reviewed: 2026-08-05
 
 This directory defines the security and privacy assumptions that must be preserved before
 PaperWorkShell parses untrusted documents. It is split into four artifacts so later tasks can

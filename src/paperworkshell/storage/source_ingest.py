@@ -8,7 +8,7 @@ import json
 import os
 import re
 from collections.abc import Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -292,6 +292,117 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
             pass
 
 
+class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLease"]):
+    """Retain one manifest-bound immutable PDF source through an exact read handle."""
+
+    __slots__ = (
+        "_case_id",
+        "_closed",
+        "_page_id",
+        "_source_byte_size",
+        "_source_handle",
+        "_source_id",
+        "_source_page_count",
+        "_source_page_index",
+        "_source_sha256",
+        "_stack",
+    )
+
+    def __init__(
+        self,
+        *,
+        stack: ExitStack,
+        source_handle: WindowsHandle,
+        case_id: UUID,
+        source_id: UUID,
+        page_id: UUID,
+        source_page_index: int,
+        source_page_count: int,
+        source_byte_size: int,
+        source_sha256: str,
+    ) -> None:
+        self._stack = stack
+        self._source_handle = source_handle
+        self._case_id = case_id
+        self._source_id = source_id
+        self._page_id = page_id
+        self._source_page_index = source_page_index
+        self._source_page_count = source_page_count
+        self._source_byte_size = source_byte_size
+        self._source_sha256 = source_sha256
+        self._closed = False
+
+    def __repr__(self) -> str:
+        return "CommittedPdfPageReadLease(<redacted>)"
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_lease")
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    @property
+    def handle(self) -> WindowsHandle:
+        """Return the exact read-only source handle retained by this lease."""
+
+        if self._closed:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_lease")
+        previous = self._source_handle.info
+        try:
+            current = self._source_handle.refresh_info()
+            if (
+                current.identity != previous.identity
+                or current.logical_size != self._source_byte_size
+                or current.is_directory
+                or current.is_reparse_point
+                or current.is_sparse
+                or current.link_count != 1
+            ):
+                reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_handle")
+            require_no_alternate_streams(current.final_path)
+        except SourceIngestError:
+            raise
+        except WorkspaceError:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_handle")
+        return self._source_handle
+
+    @property
+    def case_id(self) -> UUID:
+        return self._case_id
+
+    @property
+    def source_id(self) -> UUID:
+        return self._source_id
+
+    @property
+    def page_id(self) -> UUID:
+        return self._page_id
+
+    @property
+    def source_page_index(self) -> int:
+        return self._source_page_index
+
+    @property
+    def source_page_count(self) -> int:
+        return self._source_page_count
+
+    @property
+    def source_byte_size(self) -> int:
+        return self._source_byte_size
+
+    @property
+    def source_sha256(self) -> str:
+        return self._source_sha256
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._stack.close()
+
+
 class WindowsSourceIngestStore:
     """Prepare, atomically commit, and later verify immutable case sources."""
 
@@ -335,6 +446,118 @@ class WindowsSourceIngestStore:
         """Borrow the exact sealed pending source through its complete path-free summary."""
 
         return self._prepared_registry.borrow(summary)
+
+    def borrow_committed_pdf_page(
+        self,
+        case_id: UUID,
+        page_id: UUID,
+        *,
+        cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
+    ) -> CommittedPdfPageReadLease:
+        """Retain a current manifest mapping and integrity-checked PDF source handle."""
+
+        selected_case = require_internal_id(case_id, context="source.page_case")
+        selected_page = require_internal_id(page_id, context="source.page_id")
+        if selected_case == selected_page:
+            reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.page_ids")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.page_cancel",
+            timeout_context="source.page_timeout",
+        )
+
+        def coordination_checkpoint() -> None:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.page_cancel",
+                timeout_context="source.page_timeout",
+            )
+
+        stack = ExitStack()
+        borrowed = False
+        try:
+            authority = stack.enter_context(
+                self._manager.authenticate_case(
+                    selected_case,
+                    retain_lease=True,
+                    coordination_checkpoint=coordination_checkpoint,
+                )
+            )
+            snapshot, manifest_handle = _read_retained_manifest_snapshot(authority)
+            stack.enter_context(manifest_handle)
+            record, source_page_index = _resolve_pdf_page(snapshot, selected_page)
+
+            originals_root = stack.enter_context(open_handle(authority.layout.originals))
+            require_expected_handle(
+                originals_root,
+                authority.layout.originals,
+                directory=True,
+            )
+            verify_private_acl(originals_root)
+            require_no_alternate_streams(authority.layout.originals)
+
+            source_path = authority.layout.originals / record.storage_name
+            source_handle = stack.enter_context(open_handle(source_path, read=True))
+            require_expected_handle(source_handle, source_path, directory=False)
+            info = source_handle.info
+            if info.is_sparse or info.link_count != 1 or info.logical_size != record.byte_size:
+                reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_identity")
+            require_no_alternate_streams(source_path)
+            source_handle.rewind()
+            digest = hashlib.sha256()
+            completed = 0
+            while completed < record.byte_size:
+                _require_active(
+                    cancellation,
+                    deadline,
+                    cancel_context="source.page_cancel",
+                    timeout_context="source.page_timeout",
+                )
+                count = min(MAXIMUM_STREAM_CHUNK_BYTES, record.byte_size - completed)
+                digest.update(source_handle.read_exact(count))
+                completed += count
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.page_cancel",
+                timeout_context="source.page_timeout",
+            )
+            current = source_handle.require_eof()
+            if (
+                current.identity != info.identity
+                or current.logical_size != record.byte_size
+                or digest.hexdigest() != record.sha256
+            ):
+                reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_integrity")
+            source_handle.rewind()
+
+            lease = CommittedPdfPageReadLease(
+                stack=stack,
+                source_handle=source_handle,
+                case_id=selected_case,
+                source_id=record.source_id,
+                page_id=selected_page,
+                source_page_index=source_page_index,
+                source_page_count=record.page_count,
+                source_byte_size=record.byte_size,
+                source_sha256=record.sha256,
+            )
+            borrowed = True
+            return lease
+        except SourceIngestError:
+            raise
+        except CaseLifecycleError as error:
+            _map_manifest_error(error)
+        except WorkspaceError:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_storage")
+        except Exception:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_storage")
+        finally:
+            if not borrowed:
+                stack.close()
 
     def prepare(
         self,
@@ -916,6 +1139,27 @@ class _RetainedManifestSnapshot(AbstractContextManager[tuple[_ManifestSnapshot, 
 def _open_manifest_snapshot(authority: AuthenticatedCase) -> _RetainedManifestSnapshot:
     snapshot, handle = _read_retained_manifest_snapshot(authority)
     return _RetainedManifestSnapshot(snapshot, handle)
+
+
+def _resolve_pdf_page(
+    snapshot: _ManifestSnapshot,
+    page_id: UUID,
+) -> tuple[_StoredSource, int]:
+    """Resolve one page through the strict current manifest without exposing display data."""
+
+    try:
+        catalogue_index = snapshot.page_ids.index(page_id)
+    except ValueError:
+        reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_missing")
+    first_page = 0
+    for source in snapshot.sources:
+        next_page = first_page + source.page_count
+        if catalogue_index < next_page:
+            if source.media_type is not DetectedMediaType.PDF:
+                reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_media")
+            return source, catalogue_index - first_page
+        first_page = next_page
+    reject_source_ingest(SourceIngestErrorCode.MANIFEST_INVALID, "source.page_catalogue")
 
 
 def _read_retained_manifest_snapshot(

@@ -66,6 +66,10 @@ def _worker_process() -> WindowsWorkerProcess:
             BrokeredHandlePurpose.WRITE_RESULT_PIPE,
             windows_module._FILE_WRITE_DATA | windows_module._SYNCHRONIZE,
         ),
+        (
+            BrokeredHandlePurpose.WRITE_OPERATION_CACHE,
+            windows_module._FILE_WRITE_DATA | windows_module._SYNCHRONIZE,
+        ),
     ),
 )
 def test_duplicate_handle_uses_reduced_access_without_inheritance_or_same_access(
@@ -158,3 +162,79 @@ def test_real_read_source_duplicate_cannot_write_and_is_not_inheritable(tmp_path
         os.close(source_fd)
 
     assert source_path.read_bytes() == b"%PDF-1.7\n%%EOF\n"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows kernel handles")
+def test_real_write_cache_duplicate_cannot_read_and_is_not_inheritable(tmp_path: Path) -> None:
+    import msvcrt
+
+    cache_path = tmp_path / "thumbnail.rgba"
+    source_fd = os.open(cache_path, os.O_RDWR | os.O_CREAT | os.O_BINARY)
+    source_handle = msvcrt.get_osfhandle(source_fd)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_process = kernel32.OpenProcess
+    open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    open_process.restype = wintypes.HANDLE
+    process_handle = int(open_process(0x0040, False, os.getpid()) or 0)
+    assert process_handle > 0
+    worker = cast(Any, WindowsWorkerProcess.__new__(WindowsWorkerProcess))
+    worker._process = _OwnedHandle(process_handle)
+    worker._closed = False
+    worker._containment_closed = False
+    target_handle = 0
+    try:
+        target_handle = worker.duplicate_handle(
+            source_handle,
+            BrokeredHandlePurpose.WRITE_OPERATION_CACHE,
+        )
+        flags = wintypes.DWORD()
+        get_handle_information = kernel32.GetHandleInformation
+        get_handle_information.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        get_handle_information.restype = wintypes.BOOL
+        assert get_handle_information(wintypes.HANDLE(target_handle), ctypes.byref(flags))
+        assert flags.value & windows_module._HANDLE_FLAG_INHERIT == 0
+
+        written = wintypes.DWORD()
+        byte = ctypes.create_string_buffer(b"x")
+        write_file = kernel32.WriteFile
+        write_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        write_file.restype = wintypes.BOOL
+        assert write_file(
+            wintypes.HANDLE(target_handle),
+            byte,
+            1,
+            ctypes.byref(written),
+            None,
+        )
+        assert written.value == 1
+
+        read = wintypes.DWORD()
+        read_file = kernel32.ReadFile
+        read_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        read_file.restype = wintypes.BOOL
+        assert not read_file(
+            wintypes.HANDLE(target_handle),
+            byte,
+            1,
+            ctypes.byref(read),
+            None,
+        )
+    finally:
+        if target_handle:
+            assert windows_module._close_raw_handle(target_handle)
+        worker._process.close()
+        os.close(source_fd)
+
+    assert cache_path.read_bytes() == b"x"

@@ -1,11 +1,12 @@
 # Secure case-workspace contract
 
-- Status: Implemented PWS-0101 contract with PWS-0102 lifecycle and PWS-0104 ingest extensions
-- Tasks: PWS-0101, PWS-0102, PWS-0104
+- Status: Implemented PWS-0101 contract with PWS-0102 lifecycle, PWS-0104 ingest, and PWS-0108 thumbnail extensions
+- Tasks: PWS-0101, PWS-0102, PWS-0104, PWS-0108
 - Decisions: PWS-D009, PWS-D010, PWS-D028, PWS-D029
 - ADR: [ADR 0003](../adr/0003-secure-case-workspace.md)
 - Lifecycle: [Local case-lifecycle contract](case-lifecycle.md)
 - Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
+- Thumbnails: [Bounded PDF-thumbnail service contract](pdf-thumbnails.md)
 
 ## Scope
 
@@ -27,7 +28,7 @@ namespace does not re-export implementations.
 | `journal/` | yes | no general cleanup | PWS-0109 atomic persistence and recovery |
 | `originals/` | yes | no general cleanup | PWS-0104 authenticated immutable source publication and integrity checks |
 | `cache/thumbnails/` | yes | authenticated child cleanup; root preserved | PWS-0108 bounded thumbnail service |
-| `cache/previews/` | yes | authenticated child cleanup; root preserved | PWS-0106/PWS-0108 rendering work |
+| `cache/previews/` | yes | authenticated child cleanup; root preserved | reserved for later non-thumbnail preview derivatives |
 | `temp/` | yes | authenticated child cleanup; root preserved | PWS-0104 source preparation; PWS-0107/PWS-0112 operations; PWS-0113 orphan cleanup |
 | `export-history.json` | reserved only | none | PWS-0112 verified export records with PWS-0109 persistence integration |
 
@@ -80,6 +81,35 @@ page operation, and atomically replaces the manifest as the final commit point. 
 is supplied as typed metadata; storage never calls a PDF or image engine. Exact phases, duplicate
 behavior, cancellation, and integrity checks are defined by the
 [immutable source-ingest contract](immutable-ingest.md).
+
+### PWS-0108 thumbnail-cache extension
+
+The thumbnail boundary adds no general cache writer. For each request, storage first authenticates
+the current manifest page-to-PDF mapping and exact immutable source identity, size, SHA-256,
+single-link/non-sparse state, and alternate-stream state. That same retained read handle can then
+be duplicated with reduced rights into one worker generation. Cache hits are attempted only after
+this source authentication, so disposable state cannot conceal a changed or missing original.
+
+`storage.thumbnail_cache` derives a final entry name only from the validated internal page UUID and
+canonical cache-key digest. A miss creates one distinct random UUID-named `.tmp` stage after
+reserving its maximum header-plus-pixel size against the cache quota. The returned stage exposes
+only its exact opened write handle to the broker; it retains authenticated case, directory,
+reservation, and publication coordination through validation and disposition. It never exposes a
+cache path or directory handle to the worker.
+
+After confirmed worker-tree termination, the stage is sealed and read back. Storage validates the
+fixed artifact against the expected key, operation UUID, cache-object UUID, dimensions, layout,
+profile, length, and digests before an atomic no-replace rename to the final internal name. A valid
+publication collision is reused; a corrupt exact entry is removed and rebuilt. An indeterminate
+publication or unconfirmed worker termination quarantines the random stage rather than guessing
+that it is trusted or safely disposable.
+
+The store supports exact-key invalidation, bounded page-ID invalidation, corrupt-entry removal, and
+bounded stale-stage cleanup. Every deletion authenticates the thumbnail root and exact regular-file
+identity before marking it for deletion and returns only content-free counts/status. The cache is
+never referenced by the manifest and remains safe to lose or regenerate. The complete key,
+artifact, brokerage, termination, privacy, and cleanup rules are defined by the
+[bounded PDF-thumbnail service contract](pdf-thumbnails.md).
 
 ### `storage.permissions`
 
@@ -170,11 +200,17 @@ outcome preserves the random source until a fresh open resolves whether it is re
 confirmed manifest replacement wins over late cancellation rather than attempting an unsafe
 rollback.
 
+PWS-0108 cache publication is independent of the manifest. A cancelled/failed render after
+confirmed worker termination removes only its exact trusted random stage; an unconfirmed worker
+tree or indeterminate rename quarantines the stage as non-authoritative. A final cache name appears
+only through no-replace publication of a completely validated stage. Cleanup may honestly report a
+partial result and retain an unsafe/changed entry; it never widens deletion merely to reclaim
+space. Earlier valid cache entries and all authoritative case state remain unchanged.
+
 ## Explicit deferrals
 
 - PWS-0107: worker host/client lifecycle, active-case capability, cancellation, limits, and initial
   filesystem/network restrictions.
-- PWS-0108: bounded thumbnail writes, cache keys, cancellation, invalidation, and cache cleanup.
 - PWS-0109: general authoritative manifest transactions, autosave journal, migration, and recovery
   beyond the PWS-0104 import-only append.
 - PWS-0110: deterministic page operations and undo/redo history.

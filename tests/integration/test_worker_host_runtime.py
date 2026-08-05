@@ -42,6 +42,7 @@ from paperworkshell.worker.protocol.models import (
     ScalarValueType,
     SessionCapability,
     SessionHelloPayload,
+    SessionReadyPayload,
     SessionShutdownPayload,
     ShutdownReason,
     TaggedScalar,
@@ -148,7 +149,10 @@ class _Harness:
             request_id=request_id,
             operation_id=None,
         )
-        assert self.receive().message_type is MessageType.SESSION_READY
+        ready = self.receive()
+        assert ready.message_type is MessageType.SESSION_READY
+        assert type(ready.payload) is SessionReadyPayload
+        assert ready.payload.capabilities == (NOOP_CAPABILITY,)
 
     def wait_for_exit(self) -> HostExitCode:
         self.thread.join(timeout=2)
@@ -277,6 +281,8 @@ def test_pdf_inspection_runtime_passes_validated_inputs_and_writes_before_succes
     assert ready.message_type is MessageType.SESSION_READY
     assert adapter.context is not None
     assert adapter.context.operation_id == operation_id
+    assert adapter.context.case_id == _uuid(3)
+    assert not adapter.context.deadline_expired()
     assert adapter.context.inputs == (source,)
     assert adapter.context.parameters == parameters
     assert adapter.source_handle == 701
@@ -376,14 +382,17 @@ def _take_frames(writer: io.BytesIO, count: int) -> tuple[bytes, ...]:
 class _BlockingSuccessHandler:
     def __init__(self) -> None:
         self.release = threading.Event()
+        self.entered = threading.Event()
         self.finished = threading.Event()
+        self.context: OperationContext | None = None
 
     @property
     def descriptor(self) -> CapabilityDescriptor:
         return NOOP_CAPABILITY
 
     def execute(self, context: OperationContext) -> OperationResultPayload:
-        del context
+        self.context = context
+        self.entered.set()
         self.release.wait()
         self.finished.set()
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (), None)
@@ -479,6 +488,26 @@ def _record_direct_completion(
     )
     with runtime._completion_lock:
         runtime._recorded_completion = completion
+
+
+def test_operation_context_uses_host_case_binding_and_deadline_clock() -> None:
+    clock = _FakeClock(10.0)
+    handler = _BlockingSuccessHandler()
+    runtime, client, writer = _direct_runtime(
+        clock,
+        operations=RuntimeOperationRegistry((handler,)),
+    )
+    _start_direct_operation(runtime, client, writer)
+    assert handler.entered.wait(1.0)
+    assert handler.context is not None
+
+    assert handler.context.case_id == _uuid(43)
+    assert not handler.context.deadline_expired()
+    clock.value = 11.0
+    assert handler.context.deadline_expired()
+
+    handler.release.set()
+    assert handler.finished.wait(1.0)
 
 
 def test_expired_host_deadline_preempts_queued_cancellation_traffic() -> None:

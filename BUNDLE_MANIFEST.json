@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.48",
+  "bundle_version": "0.1.49",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 151568,
-      "sha256": "e984fd1c8f9d394ff3de2f698fc10b6ac8bf5540b3d09215b41a33db73161ecf"
+      "bytes": 151574,
+      "sha256": "2101fe2f0e7452f2a194dac56d0d84cabcfe6beb9f92c79703c9fb1356ab9a6b"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 19168,
-      "sha256": "a15886d63d2ff0a709b7d9746d8218d9097edf427e6e727ab5c032023cf827b7"
+      "bytes": 19747,
+      "sha256": "47a38089574d0072f26392a33470fba546de217687d8ca53f40b552f0a87c65f"
     }
   ],
   "validation": {
@@ -55,13 +55,11 @@
     "dependency_edge_count": 238,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0108"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for final PWS-0106 quality-gate evidence; PWS-0108 is dependency-ready.",
+    "Regenerated for the first PWS-0108 implementation checkpoint; live worker integration and final gate evidence remain in progress.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

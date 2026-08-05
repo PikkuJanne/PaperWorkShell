@@ -243,9 +243,21 @@ class CapabilityDescriptor:
 
 NOOP_CAPABILITY: Final = CapabilityDescriptor("protocol.noop", 1)
 PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
+PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 
 PDF_INSPECT_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 PDF_INSPECT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
+
+PDF_THUMBNAIL_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
+PDF_THUMBNAIL_CACHE_HANDLE_PARAMETER: Final = "cache_handle"
+PDF_THUMBNAIL_CACHE_OBJECT_ID_PARAMETER: Final = "cache_object_id"
+PDF_THUMBNAIL_PAGE_ID_PARAMETER: Final = "page_id"
+PDF_THUMBNAIL_SOURCE_PAGE_INDEX_PARAMETER: Final = "source_page_index"
+PDF_THUMBNAIL_MAXIMUM_WIDTH_PARAMETER: Final = "maximum_width_pixels"
+PDF_THUMBNAIL_MAXIMUM_HEIGHT_PARAMETER: Final = "maximum_height_pixels"
+PDF_THUMBNAIL_PAGE_BOX_PARAMETER: Final = "page_box"
+PDF_THUMBNAIL_ADDITIONAL_ROTATION_PARAMETER: Final = "additional_rotation"
+PDF_THUMBNAIL_CONTENT_KIND: Final = "pdf-thumbnail-rgba"
 
 
 @dataclass(frozen=True, slots=True)
@@ -564,6 +576,228 @@ def validate_pdf_inspect_start(payload: OperationStartPayload) -> None:
             "RPC_INVALID_OPERATION",
             "payload.parameters",
             "pdf.inspect brokered handles must be distinct positive integers",
+        )
+
+
+def validate_pdf_thumbnail_start(payload: OperationStartPayload) -> None:
+    """Validate the exact, path-free ``pdf.thumbnail`` version-1 input contract."""
+
+    if len(payload.inputs) != 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.thumbnail version 1 requires exactly one source reference",
+        )
+    source = payload.inputs[0]
+    if (
+        source.area is not ReferenceArea.SOURCE_READ
+        or source.content_kind != "pdf"
+        or source.expected_byte_size is None
+        or source.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.thumbnail version 1 requires one authenticated PDF source reference",
+        )
+
+    expected_names = {
+        PDF_THUMBNAIL_SOURCE_HANDLE_PARAMETER,
+        PDF_THUMBNAIL_CACHE_HANDLE_PARAMETER,
+        PDF_THUMBNAIL_CACHE_OBJECT_ID_PARAMETER,
+        PDF_THUMBNAIL_PAGE_ID_PARAMETER,
+        PDF_THUMBNAIL_SOURCE_PAGE_INDEX_PARAMETER,
+        PDF_THUMBNAIL_MAXIMUM_WIDTH_PARAMETER,
+        PDF_THUMBNAIL_MAXIMUM_HEIGHT_PARAMETER,
+        PDF_THUMBNAIL_PAGE_BOX_PARAMETER,
+        PDF_THUMBNAIL_ADDITIONAL_ROTATION_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail version 1 requires its exact closed parameter set",
+        )
+
+    source_handle = parameters[PDF_THUMBNAIL_SOURCE_HANDLE_PARAMETER]
+    cache_handle = parameters[PDF_THUMBNAIL_CACHE_HANDLE_PARAMETER]
+    if (
+        source_handle.value_type is not ScalarValueType.INTEGER
+        or type(source_handle.value) is not int
+        or source_handle.value <= 0
+        or cache_handle.value_type is not ScalarValueType.INTEGER
+        or type(cache_handle.value) is not int
+        or cache_handle.value <= 0
+        or source_handle.value == cache_handle.value
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail brokered handles must be distinct positive integers",
+        )
+
+    for name in (
+        PDF_THUMBNAIL_CACHE_OBJECT_ID_PARAMETER,
+        PDF_THUMBNAIL_PAGE_ID_PARAMETER,
+    ):
+        parameter = parameters[name]
+        if parameter.value_type is not ScalarValueType.UUID or type(parameter.value) is not UUID:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.parameters",
+                "pdf.thumbnail object identifiers must be UUID values",
+            )
+
+    bound_object_ids = (
+        source.object_id,
+        cast(UUID, parameters[PDF_THUMBNAIL_PAGE_ID_PARAMETER].value),
+        cast(UUID, parameters[PDF_THUMBNAIL_CACHE_OBJECT_ID_PARAMETER].value),
+    )
+    if len(set(bound_object_ids)) != len(bound_object_ids):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail source, page, and cache identifiers must be distinct",
+        )
+
+    page_index = parameters[PDF_THUMBNAIL_SOURCE_PAGE_INDEX_PARAMETER]
+    if (
+        page_index.value_type is not ScalarValueType.INTEGER
+        or type(page_index.value) is not int
+        or page_index.value < 0
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail page index must be non-negative",
+        )
+
+    for name in (
+        PDF_THUMBNAIL_MAXIMUM_WIDTH_PARAMETER,
+        PDF_THUMBNAIL_MAXIMUM_HEIGHT_PARAMETER,
+    ):
+        parameter = parameters[name]
+        if (
+            parameter.value_type is not ScalarValueType.INTEGER
+            or type(parameter.value) is not int
+            or parameter.value <= 0
+        ):
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.parameters",
+                "pdf.thumbnail dimensions must be positive integers",
+            )
+    maximum_width = cast(int, parameters[PDF_THUMBNAIL_MAXIMUM_WIDTH_PARAMETER].value)
+    maximum_height = cast(int, parameters[PDF_THUMBNAIL_MAXIMUM_HEIGHT_PARAMETER].value)
+    if maximum_width > payload.requested_limits.pixel_count // maximum_height:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail dimensions exceed the requested pixel limit",
+        )
+
+    page_box = parameters[PDF_THUMBNAIL_PAGE_BOX_PARAMETER]
+    if (
+        page_box.value_type is not ScalarValueType.TOKEN
+        or type(page_box.value) is not str
+        or page_box.value not in {"crop", "media"}
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail page box must be crop or media",
+        )
+
+    rotation = parameters[PDF_THUMBNAIL_ADDITIONAL_ROTATION_PARAMETER]
+    if (
+        rotation.value_type is not ScalarValueType.INTEGER
+        or type(rotation.value) is not int
+        or rotation.value not in {0, 90, 180, 270}
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.thumbnail rotation must be a clockwise quarter-turn",
+        )
+
+
+def pdf_thumbnail_cache_object_id(payload: OperationStartPayload) -> UUID:
+    """Return the cache object UUID from an already validated thumbnail start."""
+
+    for parameter in payload.parameters:
+        if parameter.name == PDF_THUMBNAIL_CACHE_OBJECT_ID_PARAMETER:
+            value = parameter.value
+            if parameter.value_type is ScalarValueType.UUID and type(value) is UUID:
+                return value
+            break
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "pdf.thumbnail cache object identifier is unavailable",
+    )
+
+
+def pdf_thumbnail_bound_object_ids(payload: OperationStartPayload) -> tuple[UUID, UUID, UUID]:
+    """Return source, page, and cache UUIDs from an already validated start."""
+
+    source_object_id = payload.inputs[0].object_id
+    page_object_id: UUID | None = None
+    cache_object_id: UUID | None = None
+    for parameter in payload.parameters:
+        if parameter.value_type is not ScalarValueType.UUID or type(parameter.value) is not UUID:
+            continue
+        if parameter.name == PDF_THUMBNAIL_PAGE_ID_PARAMETER:
+            page_object_id = parameter.value
+        elif parameter.name == PDF_THUMBNAIL_CACHE_OBJECT_ID_PARAMETER:
+            cache_object_id = parameter.value
+    if page_object_id is not None and cache_object_id is not None:
+        return source_object_id, page_object_id, cache_object_id
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "pdf.thumbnail bound object identifiers are unavailable",
+    )
+
+
+def validate_pdf_thumbnail_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    cache_object_id: UUID,
+    maximum_output_bytes: int,
+) -> None:
+    """Bind a thumbnail terminal result to its exact staging object and budget."""
+
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful pdf.thumbnail results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 1:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful pdf.thumbnail results require exactly one staging output",
+        )
+    output = payload.outputs[0]
+    if (
+        cache_object_id == operation_id
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != cache_object_id
+        or output.operation_id != operation_id
+        or output.content_kind != PDF_THUMBNAIL_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "pdf.thumbnail output is not bound to its requested staging object and limit",
         )
 
 

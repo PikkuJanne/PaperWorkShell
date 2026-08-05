@@ -13,6 +13,7 @@ from paperworkshell.worker.protocol.models import (
     MAX_MESSAGE_BYTES,
     NOOP_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
+    PDF_THUMBNAIL_CAPABILITY,
     CaseObjectReference,
     Direction,
     MessageType,
@@ -91,7 +92,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
         MessageType.SESSION_READY,
         SessionReadyPayload(
             1,
-            (NOOP_CAPABILITY, PDF_INSPECT_CAPABILITY),
+            (PDF_INSPECT_CAPABILITY,),
             MAX_MESSAGE_BYTES,
         ),
         request_id=accepted_hello.request_id,
@@ -111,6 +112,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
     assert DEFAULT_OPERATION_REGISTRY.capabilities == (
         NOOP_CAPABILITY,
         PDF_INSPECT_CAPABILITY,
+        PDF_THUMBNAIL_CAPABILITY,
     )
     assert accepted_start.payload == payload
 

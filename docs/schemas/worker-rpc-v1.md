@@ -8,10 +8,12 @@ self-contained JSON Schema Draft 2020-12 resource and is always evaluated offlin
 This is a message contract, not a transport or sandbox implementation. PWS-0107 implements
 framing, worker creation, capability provisioning, network denial, process limits, termination, and
 cleanup without changing the released v1 envelope. PWS-0105 adds the first exact opened-handle
-operation through the existing typed operation registry. Neither extension adds paths or shell
-command text to messages. See the
+operation through the existing typed operation registry. PWS-0108 adds the exact one-page
+`pdf.thumbnail` operation and staging-output reference under the same additive-operation rules.
+None of these extensions adds paths or shell command text to messages. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
-[PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
+[PDF structural-inspection contract](../architecture/pdf-structural-inspection.md), and
+[bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md).
 
 ## Common envelope
 
@@ -73,6 +75,15 @@ handles carry reduced read-source and write-result-pipe access. They are not pat
 object identifiers, or a general handle namespace. The operation reports only the existing
 `processing` stage and returns no protocol output reference.
 
+PWS-0108 adds `pdf.thumbnail` version 1. Its start has exactly one authenticated PDF
+`source_read` input; two distinct positive worker-local handle parameters; source-page index,
+bounded maximum width/height, CropBox/media test-profile token, and quarter-turn rotation
+parameters; plus distinct internal page and cache-object UUIDs. A succeeded result has exactly one
+bounded `operation_staging` output with content kind `pdf-thumbnail-rgba`, exact operation/cache
+correlation, byte size, and SHA-256. Other outcomes have no outputs. The worker reports this
+capability only when the hello requested it, so adding it does not break an older peer's ready
+allowlist.
+
 ## Messages and lifecycle
 
 | Message | Direction | Payload |
@@ -124,9 +135,10 @@ Validation is intentionally split:
    its input, parameter, output, limit, and state rules before dispatch.
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
-registered pairs are now `protocol.noop` version 1 and `pdf.inspect` version 1. The latter's exact
-source reference, handle parameters, and limits are validated before host dispatch; any missing,
-extra, mistyped, nonpositive, or equal handle value fails closed.
+registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, and `pdf.thumbnail`
+version 1. Each document operation's exact source reference, handle parameters, correlations, and
+limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
+out-of-policy value fails closed.
 
 Adding an operation does not loosen generic dictionaries: it requires a named capability, a
 versioned typed codec, semantic validation, positive and negative fixtures, and bounded adapter
@@ -150,7 +162,10 @@ Schema validity does not authorize a file. PWS-0105's trusted prepared-source br
 implementation: it matches the complete sealed-source summary, reopens the retained exact object
 without a path lookup, revalidates identity/type/size/link/reparse/sparse/alternate-stream state,
 and duplicates only reduced read rights into the worker. Its separate result pipe grants only
-write rights. Future reference areas still require their own trusted resolution, containment,
+write rights. PWS-0108 resolves a current committed-page mapping and exact source handle, and
+creates one quota-reserved random operation-cache stage before it emits the corresponding logical
+references. No reference, identifier, key, or integer substitutes for those retained opened-handle
+authorities. Future reference areas still require their own trusted resolution, containment,
 object type, size/digest, alias/race, quota, lifetime, and access checks before use.
 
 ### `pdf.inspect` out-of-band result
@@ -166,6 +181,37 @@ The bounded frame contains no path or native object. Its two UUID correlations p
 structural report are carried over the exact anonymous result-pipe handle created for this
 operation. This specialized result channel does not change the released protocol-v1 message schema
 and is not permission for another operation to invent an unregistered side channel.
+
+### `pdf.thumbnail` cache-stage result
+
+`pdf.thumbnail` version 1 uses the generic protocol output reference rather than the inspection
+result pipe. Its exact start contains one authenticated PDF `source_read` reference and this closed
+parameter set:
+
+- positive distinct integer `source_handle` and `cache_handle`;
+- UUID `cache_object_id` and `page_id`;
+- non-negative integer `source_page_index`;
+- positive `maximum_width_pixels` and `maximum_height_pixels` whose product fits
+  `requested_limits.pixel_count`;
+- token `page_box` equal to `crop` or explicit adapter/test profile `media`; and
+- integer `additional_rotation` equal to 0, 90, 180, or 270.
+
+The source-object, page, cache-object, and operation UUIDs are pairwise distinct. The source input
+supplies expected size and SHA-256; handle values are assigned only by the trusted broker after
+ready and carry reduced source-read or cache-write rights. They are not persistent IDs and never
+appear in a result or routine log.
+
+On success, the sole output has area `operation_staging`, object ID equal to the requested cache
+object, operation ID equal to the envelope operation, content kind `pdf-thumbnail-rgba`, and a
+non-null exact size/SHA-256 within the operation output limit. The digest covers the complete fixed
+header plus raw RGBA8 payload. Cancelled, failed, and timed-out results have no output.
+
+The ordinary terminal result establishes only the worker's claim that it closed a complete stage.
+The broker first confirms whole-tree termination, then reads the same retained stage, verifies the
+output-reference size/digest and every header/key/pixel correlation, and only then asks storage for
+no-replace publication. An unconfirmed worker tree quarantines the stage without parsing,
+publication, deletion, or reuse. This uses existing protocol-v1 message and reference semantics;
+it does not add a result-byte field or authorize the worker to choose a path.
 
 ## Limits and bounded decoding
 

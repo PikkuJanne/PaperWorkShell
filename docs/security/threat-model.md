@@ -174,11 +174,20 @@ and validates frame length/version plus operation/source UUIDs before accepting 
 
 Cancellation, deadline, protocol/worker failure, invalid frame, and success all terminate the
 generation before the source borrow and pipe are released. The broker never remotely closes a
-worker handle number because the target can reuse it. This is evidence for only one pending-source
-reader and one result writer; committed originals, directories, cache/staging, manifests,
-journals, exports, and destinations remain inaccessible until their owners prove separate profiles.
-See [DF-PDF-INSPECTION](data-flows.md#df-pdf-inspection--broker-inspect-correlate-and-revoke) and
-the [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
+worker handle number because the target can reuse it. This PWS-0105 evidence is limited to one
+pending-source reader and one result writer. See
+[DF-PDF-INSPECTION](data-flows.md#df-pdf-inspection--broker-inspect-correlate-and-revoke) and the
+[PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
+
+PWS-0108 separately proves one current committed-PDF reader and one random operation-cache-stage
+writer. The broker authenticates source and cache authority, duplicates only exact reduced rights,
+confirms one-shot worker-tree termination, validates the fixed raw-RGBA artifact, and alone
+publishes the cache entry. The worker still cannot access an originals/cache directory, manifest,
+journal, export, destination, or path. Unconfirmed termination quarantines the random stage rather
+than accepting or deleting it. See
+[DF-PREVIEW](data-flows.md#df-preview--render-bounded-thumbnailspreviews) and the
+[bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md). Other authority
+profiles remain inaccessible until their owning tasks provide separate evidence.
 
 ## Mandatory mitigation principles
 

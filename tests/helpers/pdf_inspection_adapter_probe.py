@@ -61,6 +61,7 @@ def main() -> int:
         )
         context = OperationContext(
             UUID("11000000-0000-4000-8000-000000000105"),
+            UUID("11000000-0000-4000-8000-000000000106"),
             ResourceLimits(
                 wall_time_ms=10_000,
                 cpu_time_ms=5_000,
@@ -72,6 +73,7 @@ def main() -> int:
             ),
             Event(),
             lambda _progress: None,
+            lambda: False,
             (source,),
         )
         result = WindowsPdfInspectionAdapter().inspect(context, source_handle)
