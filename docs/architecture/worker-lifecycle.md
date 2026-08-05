@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection and PWS-0108 thumbnail extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, and PWS-0111 desktop-composition extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111
 - Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -56,9 +56,28 @@ handlers, or future document adapters.
 ### Trusted configuration
 
 The composition root supplies absolute, local, approved paths for the Python executable,
-bootstrap script, runtime roots, code roots, and working directory. The executable must be inside
-an approved runtime root; the bootstrap must be inside an approved code root. Remote, device, and
-relative locations fail before process creation.
+bootstrap script, runtime roots, code roots, and working directory. A source-tree virtual
+environment may additionally supply its fixed launcher path as a startup identity hint. The
+executable and optional launcher must be files inside approved runtime roots; the launcher must be
+distinct from the executable, and the bootstrap must be inside an approved code root. Remote,
+device, relative, missing, and reparse-point locations fail before process creation.
+
+Before the first ACL mutation, the launcher retains an authenticated `GENERIC_READ` handle that
+denies delete sharing for every approved object and every lexical ancestor. It identifies each
+object from the handle, rejects reparse points and delete-pending objects, and requires every
+enumerated file's Windows link count to be exactly one. A hardlink shares one security descriptor
+across every name, including names outside the approved roots, so changing that descriptor would
+silently expand the grant's authority. An aliased file therefore fails with a sanitized
+configuration error; the launcher never repairs it by granting the individual file. The retained
+handles block rename, replacement, ancestor-junction substitution, and alias removal. For the full
+lease, every retained file also receives one direct current-user deny entry for
+`FILE_WRITE_ATTRIBUTES`, the right NTFS requires to create another hardlink. Link count is checked
+before and after that guard and the AppContainer grant, and again before resume. If an alias wins
+the narrow pre-guard window, no AppContainer entry is applied; cleanup still removes its exact deny
+entry through the authenticated handle despite the changed link count, avoiding a stranded user
+policy or profile.
+The repository configures uv's install mode as `copy` so a locked development environment creates
+independently owned runtime files.
 
 The command is a fixed structured argument array, never a shell string:
 
@@ -67,6 +86,15 @@ The command is a fixed structured argument array, never a shell string:
 ```
 
 No filename, template value, OCR/document text, case path, or RPC value can alter that array.
+
+The PWS-0111 desktop composition launches the approved base CPython executable directly. A Windows
+virtual-environment `python.exe` is itself a launcher that would create a second process, which the
+product's `maximum_processes=1` Job policy intentionally denies. When the active runtime is a
+virtual environment, the broker places its separately validated launcher path in the constructed
+child environment as CPython's `__PYVENV_LAUNCHER__` startup hint. CPython consumes and removes the
+hint while initializing the single base-interpreter process, before PaperWorkShell imports or runs
+the worker isolation audit. The audit allowlist is unchanged, and an installed/global runtime
+omits the hint entirely.
 
 `WindowsProcessLauncher` is the sole process-creation broker in the GUI process. Every future
 GUI-side process launch must use the same broker and creation lock. That lock spans creation of
@@ -83,9 +111,16 @@ One generation is created in this order:
 1. Generate a fresh generation number, session UUIDv4, worker-instance UUIDv4, and 256-bit
    capability; bind them to one logical case UUIDv4.
 2. Create an ephemeral AppContainer profile with zero capability SIDs.
-3. Grant its SID read/execute access to only the approved runtime and code roots.
-4. Construct an environment containing only the approved Windows/Python names. Construct
-   `LOCALAPPDATA`, `TEMP`, and `TMP` beneath that per-launch profile rather than inheriting them.
+3. Preflight the complete bounded runtime/code inventory, retaining authenticated no-delete handles
+   for every ancestor and object while rejecting reparse points and any enumerated file whose
+   opened-handle link count is not one. Through those exact handles, grant a direct, non-inheritable
+   SID read/execute entry to every enumerated object, then verify every fixed startup resource,
+   including an optional virtual-environment launcher hint. A child created after the scan receives
+   no worker SID entry.
+4. Construct an environment containing only the approved Windows/Python names and, when required,
+   the fixed CPython virtual-environment startup hint. Construct `LOCALAPPDATA`, `TEMP`, and `TMP`
+   beneath that per-launch profile rather than inheriting them. CPython consumes the startup hint
+   before the unchanged worker-side environment audit.
 5. Create three anonymous pipes and make only the worker ends inheritable.
 6. Build an explicit process-attribute handle list and zero-capability security descriptor.
 7. Create the fixed process suspended, with no window and no shell.
@@ -101,7 +136,13 @@ mutex. Its owner is the current user, its DACL grants only that user and LocalSy
 non-inheritable, and an existing object's owner/DACL must match exactly. An abandoned mutex retains
 ownership in an in-process quarantine and is not intentionally released before exit because the
 interrupted ACL state is unknown. The broker preflights the complete bounded resource tree before
-mutation, rejects an absent or NULL DACL, and removes only the launch SID's entries during cleanup.
+mutation, rejects an absent or NULL DACL, and applies and removes only the launch SID's direct entry
+with handle-based `GetSecurityInfo`/`SetSecurityInfo`. The authenticated handles remain live until
+revocation and auto-inheritance verification succeed, so cleanup never re-resolves a removable path.
+Each lease appends its own non-inheritable current-user hardlink deny ACE rather than merging it;
+cleanup removes exactly one matching ACE only after the AppContainer SID is absent. Overlapping
+leases therefore keep hardlink creation denied until their final guard closes, and a pre-existing
+matching deny survives unchanged.
 Overlapping profiles therefore retain one another's access; cleanup proves the temporary SID absent
 and restores each observed object's original auto-inheritance state without replaying a stale whole
 descriptor. Numeric Job Object limits are range-checked before conversion to the Windows ABI.
@@ -317,6 +358,14 @@ No later task may substitute a case path, general directory capability, or broad
 PWS-0107 is complete only with real supported-Windows evidence for:
 
 - fixed executable, arguments, working directory, no shell, and constructed minimal environment;
+- product-like virtual-environment startup through the direct base interpreter, with the fixed
+  hint consumed before audit and a one-process Job limit preserved;
+- rejection of a hardlinked runtime file before ACL mutation, with no path or alias disclosed in
+  the stable failure;
+- retained-handle rejection of an after-scan hardlink replacement and ancestor-junction pivot, plus
+  verified handle-based cleanup while path alias removal is blocked;
+- an outward `CreateHardLink` race before guard application fails the launch without receiving an
+  AppContainer entry and still permits exact-handle guard/profile cleanup; and
 - exact three-handle inheritance, child-side de-inheritance, descendant non-propagation verified by
   kernel-object identity rather than reusable process-local `HANDLE` numbers, and the exact 92-byte
   one-shot grant;

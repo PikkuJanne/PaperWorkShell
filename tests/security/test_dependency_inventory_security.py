@@ -1006,7 +1006,7 @@ class DependencyInventorySecurityTests(unittest.TestCase):
             lock_path.write_text(
                 lock.replace(
                     package_header,
-                    package_header + 'dependencies = [{ name = "pyside6-essentials" }]\n',
+                    package_header + 'dependencies = [{ name = "pyside6-addons" }]\n',
                     1,
                 ),
                 encoding="utf-8",
@@ -1015,7 +1015,7 @@ class DependencyInventorySecurityTests(unittest.TestCase):
             synthetic_edge = {
                 "from": "pypdfium2",
                 "type": "depends-on",
-                "to": "pyside6-essentials",
+                "to": "pyside6-addons",
                 "enabled": False,
             }
             _relationships(document).append(synthetic_edge)
@@ -1058,7 +1058,7 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 for relationship in _relationships(enabled)
                 if relationship["from"] == "pypdfium2"
                 and relationship["type"] == "depends-on"
-                and relationship["to"] == "pyside6-essentials"
+                and relationship["to"] == "pyside6-addons"
             )["enabled"] = True
             _, first_enabled = validate_dependency_data(
                 enabled,

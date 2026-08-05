@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Task: PWS-0107
-- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output
+- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output; PWS-0111 desktop composition startup
 - Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
 
 ## Context
@@ -30,18 +30,35 @@ checks its own token before protocol negotiation and refuses to send `session.re
 an AppContainer, its capability count is zero, it is in a job, and its environment matches the
 closed allowlist.
 
-The profile SID receives inherited read/execute access only to the approved Python runtime and
-PaperWorkShell code roots needed to start the fixed host. No AppContainer access-control entry is
-added to a cases root, an external source, a destination, or another user path.
+The profile SID receives direct, non-inheritable read/execute entries only on the enumerated Python
+runtime and PaperWorkShell code objects needed to start the fixed host. A child created after the
+inventory scan receives no worker SID entry. No AppContainer access-control entry is added to a
+cases root, an external source, a destination, or another user path.
 
 The launcher preflights a bounded resource inventory before the first ACL mutation and rejects an
-absent or NULL DACL. SID-specific grant/revoke operations use a protected Global mutex across
-Windows sessions and do not restore a stale whole descriptor over another launch. The mutex owner
-is the current user; its protected DACL grants only that user and LocalSystem; the handle is
-non-inheritable; and an existing object's owner/DACL must match exactly. Concurrent profiles
-therefore preserve one another's entries; after the final lease closes, the temporary profile SID
-is absent and each observed object's original auto-inheritance state is restored without writing a
-stale retained descriptor over concurrent entries.
+absent or NULL DACL. It retains an authenticated `GENERIC_READ` handle without delete sharing for
+every approved object and lexical ancestor, rejects reparse/delete-pending objects, and requires
+every enumerated file's Windows link count to be exactly one. Those handles prevent an after-scan
+replacement, ancestor-junction pivot, rename, or alias removal through verified cleanup. Because a
+share-read handle does not itself stop an outward `CreateHardLink`, every retained file also gets
+one direct, non-inheritable current-user deny ACE for `FILE_WRITE_ATTRIBUTES` before any
+AppContainer grant. The launcher rechecks handle link count after the deny, after grant, before
+resume, and before accepting each fixed startup resource. If the narrow pre-guard race detects a
+new alias, grant fails; exact-handle cleanup intentionally revokes/removes PaperWorkShell's entries
+despite that link-count mismatch so it does not strand the profile or user policy.
+Because a hardlink shares its security descriptor with names outside the approved tree, a
+pre-existing aliased file is rejected rather than receiving a SID entry. A new object created after
+the scan receives no entry because grants are direct and non-inheritable.
+
+SID-specific grant/revoke operations use handle-based `GetSecurityInfo`/`SetSecurityInfo` under a
+protected Global mutex across Windows sessions and do not re-resolve paths or restore a stale whole
+descriptor over another launch. The mutex owner is the current user; its protected DACL grants only
+that user and LocalSystem; the handle is non-inheritable; and an existing object's owner/DACL must
+match exactly. Concurrent profiles therefore preserve one another's entries; after the final lease
+closes, the temporary profile SID is absent and each observed object's original auto-inheritance
+state is restored through its retained exact-object handle. Identical hardlink deny ACEs are
+deliberately duplicated per lease and removed one at a time, preserving both overlapping guards and
+any matching ACE that predated PaperWorkShell.
 
 `WAIT_ABANDONED` means a prior GUI may have died during an ACL mutation. The detecting process puts
 the acquired mutex and ownership in a fail-closed in-process quarantine, does not intentionally
@@ -61,10 +78,17 @@ the fixed Python encoding controls `PYTHONIOENCODING` and `PYTHONUTF8`. User `PA
 `PYTHONPATH`, proxy variables, cloud credentials, command-processor variables, and other inherited
 state do not cross the launch boundary.
 
+For source-tree execution from a Windows virtual environment, the constructed child environment
+also carries one trusted CPython startup input: `__PYVENV_LAUNCHER__` names the separately
+validated, absolute virtual-environment launcher inside an approved runtime root. This value is not
+copied from the parent environment. CPython consumes and removes it during interpreter
+initialization, before PaperWorkShell worker code runs, so the worker-side environment allowlist
+above remains unchanged. A non-virtual-environment runtime omits the input.
+
 ### Create suspended, contain, then resume
 
-The trusted launcher uses an absolute approved Python executable, an absolute approved bootstrap
-script, an approved working directory, and this fixed argument vector:
+The trusted launcher uses an absolute approved base Python executable, an absolute approved
+bootstrap script, an approved working directory, and this fixed argument vector:
 
 ```text
 <python.exe> -I -S -B -X utf8 <host_bootstrap.py>
@@ -76,6 +100,13 @@ Object. The job applies per-process and whole-job memory limits, process and job
 an active-process limit, and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. The launcher does not enable a
 breakaway policy. It retains the process and job handles so timeout, fault, forced termination, and
 cleanup address the complete descendant tree rather than only the first Python process.
+
+PWS-0111 preserves the product's active-process limit of one by launching the base interpreter
+directly. It does not execute the virtual-environment `python.exe`, because that launcher would
+need to create a second process before the Job could run the host. The consumed startup input gives
+the one base-interpreter process the approved virtual-environment identity without weakening the
+Job limit. Access preflight and post-grant verification include both the base executable and the
+optional launcher file.
 
 Only after job assignment succeeds does the broker provision the one-shot grant and resume the
 primary thread. A failure before resume removes the profile/grants only after the broker proves the
@@ -246,6 +277,13 @@ turning uncertain worker termination into authority over a cache file.
 
 Task completion requires live Windows evidence, not launcher flags or this ADR alone:
 
+- product-like virtual-environment startup through the direct base interpreter, with the fixed
+  startup input consumed before audit and the active-process limit still set to one;
+- fail-closed rejection of a hardlinked approved-runtime file before any ACL grant;
+- fail-closed blocking of an after-scan hardlink replacement, an ancestor-junction pivot, and alias
+  removal before exact-handle ACL cleanup;
+- fail-closed detection and complete exact-handle cleanup when an outward hardlink wins the narrow
+  pre-guard window, with no AppContainer ACE applied;
 - a real Python host negotiates inside a zero-capability AppContainer;
 - independent IPv4 and IPv6 TCP and UDP probes from the worker and a descendant cannot reach a
   controlled listener that a non-isolated control process can reach;
@@ -332,8 +370,9 @@ controls on the supported Windows target.
 - The production worker launcher is Windows-specific and uses a narrow standard-library `ctypes`
   adapter. Pure protocol, host, and client state remain testable with injected adapters.
 - Starting source-tree Python requires temporary read/execute ACL entries on approved runtime/code
-  roots. Their exact scope and revocation are security evidence. Packaged builds should narrow this
-  to app-owned immutable runtime resources.
+  roots. Their exact scope and revocation are security evidence. Runtime files must be independent
+  objects rather than hardlinks; the development environment uses uv copy mode, and packaged builds
+  should narrow this further to app-owned immutable runtime resources.
 - The AppContainer profile has intentionally writable ephemeral storage needed by Python. It is not
   a guarantee of a write-free process, secure erasure, or crash-artifact absence.
 - The PWS-0108 section is volatile and page-rounded. The adapter and broker enforce the exact

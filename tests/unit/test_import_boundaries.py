@@ -22,6 +22,7 @@ from tools.check_import_boundaries import (
 EXPECTED_PACKAGES = (
     "app",
     "domain",
+    "ui",
     "worker",
     "pdf",
     "imaging",
@@ -347,6 +348,8 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
         inspect_source(
             "from paperworkshell import app\n"
             "import paperworkshell.worker.client\n"
+            "import paperworkshell.worker.desktop_composition\n"
+            "from paperworkshell.worker import desktop_composition\n"
             "import paperworkshell.export\n",
             module="paperworkshell.__main__",
             package="paperworkshell",
@@ -364,6 +367,117 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
         )
         == ()
     )
+
+
+@pytest.mark.parametrize(
+    ("module", "package", "source"),
+    [
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "import paperworkshell.worker.desktop_composition\n",
+        ),
+        (
+            "paperworkshell.ui.example",
+            "paperworkshell.ui",
+            "import paperworkshell.worker.desktop_composition\n",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "import paperworkshell.worker.host\n",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "import paperworkshell.worker.desktop_composition.internal\n",
+        ),
+    ],
+)
+def test_desktop_worker_composition_exception_is_exact(
+    module: str,
+    package: str,
+    source: str,
+) -> None:
+    violations = inspect_source(
+        source,
+        module=module,
+        package=package,
+        path="desktop_composition_violation.py",
+    )
+
+    assert {violation.code for violation in violations} == {"ARCH_UI_WORKER_HOST"}
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import PySide6\n",
+        "from PySide6 import QtCore\n",
+        "import PySide6.QtPdf\n",
+        "import PySide6.QtPdfWidgets\n",
+        "import PySide6.QtNetwork\n",
+        "import PySide6.QtQml\n",
+        "import PySide6.QtQuick\n",
+        "import PySide6.QtWebEngineCore\n",
+    ),
+)
+def test_ui_rejects_unapproved_pyside_surfaces(source: str) -> None:
+    violations = inspect_source(
+        source,
+        module="paperworkshell.ui.example",
+        package="paperworkshell.ui",
+        path="ui_toolkit_violation.py",
+    )
+
+    assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import PySide6.QtCore\n",
+        "from PySide6.QtGui import QImage\n",
+        "from PySide6.QtWidgets import QApplication\n",
+    ),
+)
+def test_ui_may_import_only_selected_pyside_modules(source: str) -> None:
+    assert (
+        inspect_source(
+            source,
+            module="paperworkshell.ui.example",
+            package="paperworkshell.ui",
+            path="ui_toolkit_allowed.py",
+        )
+        == ()
+    )
+
+
+@pytest.mark.parametrize(
+    ("module", "package"),
+    (
+        ("paperworkshell.domain.example", "paperworkshell.domain"),
+        ("paperworkshell.app.example", "paperworkshell.app"),
+        ("paperworkshell.__main__", "paperworkshell"),
+        ("paperworkshell.worker.host", "paperworkshell.worker"),
+        ("paperworkshell.pdf.renderer", "paperworkshell.pdf"),
+        ("paperworkshell.storage.cache", "paperworkshell.storage"),
+    ),
+)
+def test_selected_pyside_modules_remain_ui_only(module: str, package: str) -> None:
+    violations = inspect_source(
+        "import PySide6.QtCore\n",
+        module=module,
+        package=package,
+        path="non_ui_toolkit_violation.py",
+    )
+
+    expected_code = (
+        "ARCH_DOMAIN_EXTERNAL"
+        if module.startswith("paperworkshell.domain")
+        else "ARCH_EXTERNAL_IMPORT"
+    )
+    assert {violation.code for violation in violations} == {expected_code}
 
 
 @pytest.mark.parametrize("engine", ("pikepdf", "pypdfium2"))

@@ -4,7 +4,8 @@
 - Task: PWS-0002
 - Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
   structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle;
-  PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations
+  PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
+  PWS-0111 accessible organizer and desktop composition
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -28,6 +29,7 @@ worker host -> domain
 |---|---|
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
+| `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
 | `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; thumbnail integration is documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md) |
 | `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations; implemented and in-progress contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md) and [PDF page-rendering contract](pdf-page-rendering.md) |
 | `imaging` | Image inspection and transformation interfaces/implementations |
@@ -44,17 +46,20 @@ worker host -> domain
 `tools/check_import_boundaries.py` parses source files without importing them and applies these rules:
 
 1. `domain` may import only Python standard-library modules, the root identity package, and `paperworkshell.domain` modules. All other first- and third-party imports are rejected.
-2. UI direction is `paperworkshell.__main__` → future `ui` → `app`; `app` cannot import either higher tier, and `ui` cannot import the composition entrypoint. All three must not directly import `paperworkshell.pdf`, `paperworkshell.imaging`, or `paperworkshell.ocr`. They may import the passive `worker` namespace and explicit `worker.client` or `worker.protocol` modules, but not worker-host modules.
-3. Worker, adapter, and service packages must not import `paperworkshell.app` or a future `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
+2. UI direction is `paperworkshell.__main__` → `ui` → `app`; `app` cannot import either higher tier, and `ui` cannot import the composition entrypoint. All three must not directly import `paperworkshell.pdf`, `paperworkshell.imaging`, or `paperworkshell.ocr`. They may import the passive `worker` namespace and explicit `worker.client` or `worker.protocol` modules, but not worker-host modules. One exact composition exception permits only `paperworkshell.__main__` to import `paperworkshell.worker.desktop_composition`; it does not grant application or UI modules general worker-host access.
+3. Worker, adapter, and service packages must not import `paperworkshell.app` or `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
 4. Only the declared package layers are accepted. Adding another top-level layer requires updating this document, the checker, and positive/negative tests in the task that introduces it.
 5. Third-party imports remain denied unless the owning task admits one exact package and the
    executable boundary names it. PWS-0105 admits `pikepdf` only in the `pdf` layer. PWS-0106 reuses
    that boundary for inherited page geometry and confines `pypdfium2` to the same worker-side
    `pdf` layer; `domain`, application/UI, GUI-safe worker client/protocol, storage, and every other
-   adapter layer reject both engines. The alternative standard-library GUI roots `tkinter`,
-   `_tkinter`, and `turtle` are also rejected. Future ownership is reserved—but not approved—for
-   PySide6 in a dedicated UI layer and OCRmyPDF/Tesseract integration in `ocr`. The non-default
-   PySide6-Addons renderer-evaluation group grants no source import boundary or product scope.
+   adapter layer reject both engines. PWS-0111 admits only fully qualified `PySide6.QtCore`,
+   `PySide6.QtGui`, and `PySide6.QtWidgets` imports in the `ui` layer; the root `PySide6` import,
+   every other PySide6 module, and every non-UI PySide6 import remain rejected. The alternative
+   standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected. Future
+   ownership is reserved—but not approved—for OCRmyPDF/Tesseract integration in `ocr`. The
+   non-default PySide6-Addons renderer-evaluation group grants no source import boundary or product
+   scope.
 6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. A later adapter task may add a narrow, tested exception only when an admitted dependency requires one.
 7. Every package initializer is a passive namespace: it must not import or re-export product layers or implementation modules. Consequently, every package namespace remains importable without optional UI or document engines.
 
@@ -141,6 +146,14 @@ worker-only renderer ownership through the
 pypdfium2/PDFium, and records the accepted evidence-based selection in
 [ADR 0005](../adr/0005-pdf-renderer-selection.md). The exact Qt PDF fallback remains evaluation-only
 with no source-import boundary, product scope, or enabled shipment relationship.
+
+PWS-0111 adds the first concrete `ui` layer and admits only PySide6-Essentials' QtCore, QtGui, and
+QtWidgets modules there. Toolkit objects do not cross into `app`, `domain`, worker, storage, or
+document adapters. The UI receives only typed application state and the PWS-0108 validated RGBA8
+display contract; it does not parse PDFs, open arbitrary paths, or import Qt PDF. The exact
+`__main__` → `worker.desktop_composition` exception is the desktop composition root, not a new
+application/UI dependency direction. Artifact, LGPL, source, and Windows packaging consequences are
+recorded in [ADR 0006](../adr/0006-pyside6-ui-runtime.md).
 
 PWS-0108 adds pure cache-key/artifact/snapshot/progress contracts in `domain.pdf_thumbnails` and
 serial, toolkit-free batch orchestration in `app.pdf_thumbnails`. The application depends only on a

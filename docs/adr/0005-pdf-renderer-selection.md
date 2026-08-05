@@ -38,8 +38,10 @@ cancellation, and failure behavior is defined in the
 The exact selected Python and native closure is admitted for the worker-side integration and
 remains subject to the release inventory, notice, packaged-file, and SBOM reconciliation owned by
 PWS-0801. Qt PDF stays locked only as a non-default, evaluation-only comparison candidate with no
-product scope or enabled shipment relationship. A later fallback selection requires an amended
-ADR and the same worker, corpus, limits, and output contract rather than an adapter-specific leak.
+product scope or enabled shipment relationship. PWS-0111 later admits the already reviewed
+Essentials/shiboken portion as the desktop UI runtime without admitting Addons or Qt PDF. A later
+renderer fallback selection still requires an amended ADR and the same worker, corpus, limits, and
+output contract rather than an adapter-specific leak.
 
 ## Published-artifact and implementation evidence
 
@@ -66,8 +68,10 @@ closure evidence.
   `63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40`), and
   `shiboken6-6.11.1-cp310-abi3-win_amd64.whl` (1,223,647 bytes; SHA-256
   `c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7`). These
-  releases publish no source distributions. The three resolved edges and artifacts are inventory
-  evidence only: all endpoints remain `evaluated`, scope-free, candidate-only, and disabled.
+  releases publish no PyPI source distributions. At PWS-0106 selection time, all three artifacts
+  were evaluation evidence only. PWS-0111 later admits Essentials and shiboken6 for the distinct
+  desktop UI purpose while leaving Addons and Qt PDF evaluated, scope-free, candidate-only, and
+  disabled. That later admission does not change this renderer decision.
 - Qt PDF 6.11.1 has no standalone Python wheel. Its evaluated artifact is therefore the exact
   Addons wheel. The Qt PDF PDFium snapshot is not equated with pypdfium2's independently pinned
   PDFium 152.0.7947.0 build; exact embedded revision, DLL, SBOM, and notice reconciliation remains

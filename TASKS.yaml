@@ -1140,7 +1140,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: blocked
   critical_path: true
   depends_on:
   - PWS-0108
@@ -1173,12 +1173,42 @@ tasks:
   - ui
   - accessibility
   - state-management
-  blocker: null
+  blocker:
+    reason: The required human keyboard-only organizer scenario and initial NVDA smoke cannot be
+      completed on the current machine because NVDA is not installed, and the desktop automation
+      bridge cannot type into the separate native Windows file chooser.
+    evidence:
+    - On 2026-08-05, Get-Command and the standard NVDA installation locations found no NVDA
+      executable; the maintainer was asked to install it and no substitute screen reader was used.
+    - An automation-assisted synthetic scenario verified organizer shortcuts, focus, cancellation,
+      guarded shutdown, autosave, and revision-8 restart persistence, but could only open and cancel
+      the native file chooser; it did not complete keyboard-only path selection.
+    - Automated constrained-viewport, accessibility, UI lifecycle, privacy, real PDF composition,
+      worker-containment, hardlink-race, and restart tests pass; these do not replace the two manual
+      verification requirements in this task.
+    requested_action: Install NVDA, then perform and record the human keyboard-only and NVDA smoke
+      procedures in docs/accessibility/pws-0111-nvda-smoke.md with the repository synthetic PDF at
+      normal and 200-percent scaling.
   evidence:
     completed_at: null
     revision: null
-    commands: []
-    notes: []
+    commands:
+    - uv run --no-sync pytest on the focused organizer/UI/accessibility/privacy matrix - passed; 39 tests
+    - uv run --no-sync python tools/dev.py test-accessibility - passed; 11 tests
+    - uv run --no-sync pytest tests/integration/test_organizer_ui_windows.py - passed; 2 live Windows tests
+    - uv run --no-sync pytest on retained-handle ACL, hardlink-race, overlap, and cleanup cases - passed; 27 tests with 1 environment-dependent junction skip
+    - uv run --no-sync ruff format --check . and ruff check . - passed
+    - uv run --no-sync python -m mypy src tools tests - passed; 206 source files
+    - uv run --no-sync python tools/dev.py validate-docs and check-import-boundaries - passed
+    notes:
+    - The desktop vertical slice, bounded previews, import reconciliation, and fail-closed Windows
+      worker resource lease are implemented and independently reviewed with no remaining P0-P2 code
+      finding.
+    - Dependency and schema admission validation intentionally remains closed while PWS-0111 is not
+      done; PySide6-Essentials and shiboken6 cannot become an accepted canonical baseline until the
+      required manual evidence is recorded.
+    - PWS-0112 is dependency-ready independently of PWS-0111 and may proceed while this blocker is
+      outstanding.
 - id: PWS-0112
   milestone: M1
   title: Implement deterministic PDF assembly, export, reopen, and verification

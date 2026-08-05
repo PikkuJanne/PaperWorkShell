@@ -110,7 +110,10 @@ The model does not assume an unprivileged input can break Windows kernel securit
 a parser can be compromised and therefore treats worker output and child-process output as
 untrusted. A same-user peer without arbitrary account-file or memory access is addressed by
 capability-bound IPC and handle-based path checks; malware with unrestricted access to the current
-account remains outside the confidentiality/integrity guarantee.
+account remains outside the confidentiality/integrity guarantee. In particular, the Windows worker
+runtime guard denies the ordinary same-user path-race peer the file right required to create a new
+hardlink during a lease. Malware able to rewrite account-owned DACLs and remove that guard is the
+unrestricted same-account case outside this guarantee.
 
 ## Trust boundaries
 

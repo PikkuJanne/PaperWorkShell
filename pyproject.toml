@@ -11,6 +11,7 @@ requires-python = ">=3.14,<3.15"
 dependencies = [
     "pikepdf==10.10.0",
     "pypdfium2==5.12.1",
+    "pyside6-essentials==6.11.1",
 ]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -23,6 +24,7 @@ classifiers = [
 Repository = "https://github.com/PikkuJanne/PaperWorkShell"
 
 [project.scripts]
+paperworkshell = "paperworkshell.__main__:main"
 paperworkshell-worker = "paperworkshell.worker.host:main"
 
 [dependency-groups]
@@ -51,6 +53,7 @@ validation = [
 [tool.uv]
 required-version = "==0.11.32"
 default-groups = ["dev"]
+link-mode = "copy"
 
 [tool.ruff]
 line-length = 100

@@ -72,9 +72,14 @@ explicit frozen-decision change.
 
 ## Family-specific packaging gates
 
-- Prefer the smallest reviewed PySide6 wheel set needed by the UI. Do not admit the convenience
-  meta-package or Addons without inspecting whether QtPdf/PDFium and other native payloads enter
-  the package. Qt PDF remains a renderer candidate until `PWS-0106` selects it.
+- PWS-0111 admits exact PySide6-Essentials 6.11.1 plus transitive shiboken6 6.11.1 for the initial
+  QtCore/QtGui/QtWidgets UI. The convenience meta-package is deferred, and the non-default Addons/
+  Qt PDF renderer candidate remains scope-free and disabled. PWS-0801 must not copy the complete
+  Essentials wheel blindly: construct a reviewed dynamic file subset with `qwindows`, only needed
+  plugins and native dependencies, exact corresponding source, notices, hashes, SBOM entries, and
+  preserved replacement or relinking ability. Addons and Essentials declare 64 identical shared
+  namespace/type-support paths, so uninstalling Addons is not an acceptable packaging-pruning
+  method; the release inventory must assign and stage every selected file explicitly.
 - PWS-0105 selects pikepdf 10.10.0 with Pillow 12.3.0, lxml 6.1.1, packaging 26.2, and qpdf
   12.3.2. Keep pikepdf, Pillow, lxml, and packaging at `planned` shipment state until PWS-0801
   reconciles their native files, licenses, notices, source obligations, and final SBOM. In

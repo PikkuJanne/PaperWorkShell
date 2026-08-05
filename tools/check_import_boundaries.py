@@ -19,6 +19,7 @@ PROJECT_PACKAGE: Final = "paperworkshell"
 REQUIRED_PACKAGES: Final = (
     "app",
     "domain",
+    "ui",
     "worker",
     "pdf",
     "imaging",
@@ -30,13 +31,21 @@ REQUIRED_PACKAGES: Final = (
     "storage",
     "diagnostics",
 )
-KNOWN_LAYERS: Final = frozenset((*REQUIRED_PACKAGES, "ui"))
+KNOWN_LAYERS: Final = frozenset(REQUIRED_PACKAGES)
 DESKTOP_ENTRYPOINT: Final = f"{PROJECT_PACKAGE}.__main__"
+DESKTOP_WORKER_COMPOSITION_MODULE: Final = f"{PROJECT_PACKAGE}.worker.desktop_composition"
 ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
 UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
-APPROVED_EXTERNAL_IMPORTS: Final = {
+APPROVED_EXTERNAL_IMPORT_PREFIXES: Final = {
     "pdf": frozenset({"pikepdf", "pypdfium2"}),
+    "ui": frozenset(
+        {
+            "PySide6.QtCore",
+            "PySide6.QtGui",
+            "PySide6.QtWidgets",
+        }
+    ),
 }
 FORBIDDEN_UI_TOOLKIT_ROOTS: Final = frozenset(("_tkinter", "tkinter", "turtle"))
 WORKER_PACKAGE: Final = f"{PROJECT_PACKAGE}.worker"
@@ -143,10 +152,10 @@ def _target_violation(
     if _is_standard_library(target):
         return None
 
-    approved_external_roots = (
-        frozenset() if owner is None else APPROVED_EXTERNAL_IMPORTS.get(owner, frozenset())
+    approved_external_prefixes = (
+        frozenset() if owner is None else APPROVED_EXTERNAL_IMPORT_PREFIXES.get(owner, frozenset())
     )
-    if target_root in approved_external_roots:
+    if any(_is_within(target, prefix) for prefix in approved_external_prefixes):
         return None
 
     if _is_within(target, PROJECT_PACKAGE):
@@ -220,11 +229,16 @@ def _target_violation(
                 f"UI-facing layer {owner!r} must not import adapter {target!r}",
             )
 
+        is_desktop_worker_composition = (
+            importer == DESKTOP_ENTRYPOINT and target == DESKTOP_WORKER_COMPOSITION_MODULE
+        )
+
         if (
             owner in UI_FACING_LAYERS
             and _is_within(target, WORKER_PACKAGE)
             and target != WORKER_PACKAGE
             and not any(_is_within(target, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES)
+            and not is_desktop_worker_composition
         ):
             return BoundaryViolation(
                 path,
