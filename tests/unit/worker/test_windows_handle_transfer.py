@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import pytest
 
+from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
 from paperworkshell.worker.client import _windows as windows_module
 from paperworkshell.worker.client._windows import (
     WindowsLaunchError,
@@ -67,8 +68,8 @@ def _worker_process() -> WindowsWorkerProcess:
             windows_module._FILE_WRITE_DATA | windows_module._SYNCHRONIZE,
         ),
         (
-            BrokeredHandlePurpose.WRITE_OPERATION_CACHE,
-            windows_module._FILE_WRITE_DATA | windows_module._SYNCHRONIZE,
+            BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION,
+            windows_module._SECTION_MAP_WRITE,
         ),
     ),
 )
@@ -165,12 +166,8 @@ def test_real_read_source_duplicate_cannot_write_and_is_not_inheritable(tmp_path
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows kernel handles")
-def test_real_write_cache_duplicate_cannot_read_and_is_not_inheritable(tmp_path: Path) -> None:
-    import msvcrt
-
-    cache_path = tmp_path / "thumbnail.rgba"
-    source_fd = os.open(cache_path, os.O_RDWR | os.O_CREAT | os.O_BINARY)
-    source_handle = msvcrt.get_osfhandle(source_fd)
+def test_real_output_section_duplicate_maps_only_within_capacity() -> None:
+    capacity = 4_096
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     open_process = kernel32.OpenProcess
     open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
@@ -182,59 +179,85 @@ def test_real_write_cache_duplicate_cannot_read_and_is_not_inheritable(tmp_path:
     worker._closed = False
     worker._containment_closed = False
     target_handle = 0
-    try:
-        target_handle = worker.duplicate_handle(
-            source_handle,
-            BrokeredHandlePurpose.WRITE_OPERATION_CACHE,
-        )
-        flags = wintypes.DWORD()
-        get_handle_information = kernel32.GetHandleInformation
-        get_handle_information.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
-        get_handle_information.restype = wintypes.BOOL
-        assert get_handle_information(wintypes.HANDLE(target_handle), ctypes.byref(flags))
-        assert flags.value & windows_module._HANDLE_FLAG_INHERIT == 0
+    write_view = 0
+    with WindowsBoundedOutputBuffer.create(capacity) as output:
+        try:
+            target_handle = worker.duplicate_handle(
+                output.write_handle_value,
+                BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION,
+            )
+            flags = wintypes.DWORD()
+            get_handle_information = kernel32.GetHandleInformation
+            get_handle_information.argtypes = (
+                wintypes.HANDLE,
+                ctypes.POINTER(wintypes.DWORD),
+            )
+            get_handle_information.restype = wintypes.BOOL
+            assert get_handle_information(wintypes.HANDLE(target_handle), ctypes.byref(flags))
+            assert flags.value & windows_module._HANDLE_FLAG_INHERIT == 0
 
-        written = wintypes.DWORD()
-        byte = ctypes.create_string_buffer(b"x")
-        write_file = kernel32.WriteFile
-        write_file.argtypes = (
-            wintypes.HANDLE,
-            ctypes.c_void_p,
-            wintypes.DWORD,
-            ctypes.POINTER(wintypes.DWORD),
-            ctypes.c_void_p,
-        )
-        write_file.restype = wintypes.BOOL
-        assert write_file(
-            wintypes.HANDLE(target_handle),
-            byte,
-            1,
-            ctypes.byref(written),
-            None,
-        )
-        assert written.value == 1
+            map_view = kernel32.MapViewOfFile
+            map_view.argtypes = (
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.c_size_t,
+            )
+            map_view.restype = ctypes.c_void_p
+            write_view = int(
+                map_view(
+                    wintypes.HANDLE(target_handle),
+                    windows_module._SECTION_MAP_WRITE,
+                    0,
+                    0,
+                    capacity,
+                )
+                or 0
+            )
+            assert write_view > 0
+            ctypes.memmove(write_view, b"rgba", 4)
 
-        read = wintypes.DWORD()
-        read_file = kernel32.ReadFile
-        read_file.argtypes = (
-            wintypes.HANDLE,
-            ctypes.c_void_p,
-            wintypes.DWORD,
-            ctypes.POINTER(wintypes.DWORD),
-            ctypes.c_void_p,
-        )
-        read_file.restype = wintypes.BOOL
-        assert not read_file(
-            wintypes.HANDLE(target_handle),
-            byte,
-            1,
-            ctypes.byref(read),
-            None,
-        )
-    finally:
-        if target_handle:
-            assert windows_module._close_raw_handle(target_handle)
-        worker._process.close()
-        os.close(source_fd)
+            assert not map_view(
+                wintypes.HANDLE(target_handle),
+                windows_module._SECTION_MAP_WRITE,
+                0,
+                0,
+                capacity + 1,
+            )
+            assert not map_view(
+                wintypes.HANDLE(target_handle),
+                0x0000_0004,
+                0,
+                0,
+                capacity,
+            )
 
-    assert cache_path.read_bytes() == b"x"
+            received = wintypes.DWORD()
+            byte = ctypes.create_string_buffer(1)
+            read_file = kernel32.ReadFile
+            read_file.argtypes = (
+                wintypes.HANDLE,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.POINTER(wintypes.DWORD),
+                ctypes.c_void_p,
+            )
+            read_file.restype = wintypes.BOOL
+            assert not read_file(
+                wintypes.HANDLE(target_handle),
+                byte,
+                1,
+                ctypes.byref(received),
+                None,
+            )
+            assert output.read_exact(4) == b"rgba"
+        finally:
+            if write_view:
+                unmap_view = kernel32.UnmapViewOfFile
+                unmap_view.argtypes = (ctypes.c_void_p,)
+                unmap_view.restype = wintypes.BOOL
+                assert unmap_view(ctypes.c_void_p(write_view))
+            if target_handle:
+                assert windows_module._close_raw_handle(target_handle)
+            worker._process.close()

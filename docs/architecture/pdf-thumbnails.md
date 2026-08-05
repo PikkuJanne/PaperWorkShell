@@ -123,7 +123,7 @@ UUID, expected byte size, and expected SHA-256. Its closed parameter set is:
 | Parameter | Version-1 rule |
 |---|---|
 | `source_handle` | distinct positive worker-local integer for the exact read-only PDF handle |
-| `cache_handle` | distinct positive worker-local integer for the exact write-only cache stage |
+| `cache_handle` | distinct positive worker-local integer for the fixed-size volatile output section; the released parameter name does not grant cache-file authority |
 | `cache_object_id` | random UUIDv4 bound to that stage |
 | `page_id` | current manifest page UUIDv4 |
 | `source_page_index` | non-negative zero-based index |
@@ -139,11 +139,16 @@ or out-of-policy values fail before the handler runs.
 After ready, the trusted Windows broker duplicates only these exact non-inheritable rights:
 
 - source: file read-data/read-attributes plus synchronization; and
-- cache stage: file write-data plus synchronization.
+- volatile output section: map-write only, with no file I/O authority or separate
+  read-only mapping right.
 
 The worker receives no case, originals, cache-directory, manifest, journal, path, filename, delete,
 rename, create-child, read-cache, or general directory authority. Handle integers are useful only
-inside that target process and are never remotely closed by number.
+inside that target process and are never remotely closed by number. The pagefile-backed section is
+created from the operation's exact logical header-plus-requested-pixels bound. Windows may round its
+volatile backing to the containing memory page, but growth remains OS-bounded to less than one page
+beyond that logical cap; a compromised worker cannot write or extend persistent cache bytes before
+termination. The production adapter enforces the exact logical byte limit.
 
 ## Worker-side generation
 
@@ -153,8 +158,9 @@ and closes the case-source handle before native parsing. The PWS-0106 adapter th
 resolved page into canonical raw RGBA8 under the operation's page, pixel, memory, temporary-storage,
 output, CPU, and wall-time limits.
 
-The worker writes one fixed artifact header followed immediately by the renderer's raw rows through
-the exact cache-stage handle. It flushes and closes that writer before reporting success. The
+The worker maps the fixed-size volatile output section for the exact logical byte limit and writes one fixed
+artifact header followed immediately by the renderer's raw rows. The adapter rejects any write
+beyond that mapping, flushes/unmaps it, and closes the section handle before reporting success. The
 successful `operation.result` contains exactly one `operation_staging` reference with:
 
 - the requested cache-object UUID;
@@ -163,8 +169,10 @@ successful `operation.result` contains exactly one `operation_staging` reference
 - the exact complete artifact byte count; and
 - SHA-256 of the complete header-plus-payload artifact.
 
-The RPC carries no raster bytes. Cancelled, failed, or timed-out results carry no output reference.
-RPC success alone never makes the cache bytes trusted.
+The RPC carries no raster bytes. `operation_staging` is the released logical reference area; at this
+boundary it identifies bytes in the volatile section, not a worker-writable cache file. Cancelled,
+failed, or timed-out results carry no output reference. RPC success alone never makes the output
+bytes trusted or persistent.
 
 ## Fixed raw RGBA artifact
 
@@ -186,10 +194,10 @@ image stream, metadata segment, color-profile claim, filename, path, text, or va
 area. The complete artifact length must equal header length plus declared payload length and remain
 within the requested/output/cache limits.
 
-Before pixels can reach a UI-facing `PdfThumbnailSnapshot`, the trusted side validates the opened
-file identity and stable size, whole-artifact RPC digest, magic/version/reserved fields, operation,
-cache-object, case/source/page/key correlations, key digest, dimensions, stride, rotations, profile,
-exact length, pixel digest, and opaque alpha. The snapshot contains only internal case/page IDs,
+Before pixels can reach a UI-facing `PdfThumbnailSnapshot`, the trusted side validates the bounded
+section length, whole-artifact RPC digest, magic/version/reserved fields, operation, cache-object,
+case/source/page/key correlations, key digest, dimensions, stride, rotations, profile, exact length,
+pixel digest, and opaque alpha. The snapshot contains only internal case/page IDs,
 bounded layout metadata, rotations/profile, and the validated RGBA8 bytes. Pixel fields and digests
 are excluded from ordinary object representations.
 
@@ -198,13 +206,14 @@ are excluded from ordinary object representations.
 Storage reserves the maximum possible header-plus-requested-pixels capacity against the case cache
 quota before it creates a stage. It retains the authenticated case, thumbnail-directory handle,
 exact pending-file handle, and publication coordination through validation and final disposition.
-The stage is regular, single-link, non-sparse, bounded, randomly named, and opened without granting
-the worker a directory capability.
+The stage is regular, single-link, non-sparse, bounded, randomly named, and broker-only. No handle
+to this persistent stage is duplicated into the worker.
 
-After confirmed worker termination, the trusted broker seals the exact stage and reads it back
-through retained authority. Publication requires all artifact checks plus agreement with the
-terminal output reference. Storage then renames that exact opened stage to the derived final name
-using no-replace semantics while holding its publication guard.
+After confirmed worker termination, the trusted broker reads only the terminal reference's bounded
+byte count from its read-only section view. It verifies the reference digest and every artifact
+correlation before calling the stage's one-shot bounded writer. Storage then seals and reads back
+that exact stage, repeats artifact validation, and renames it to the derived final name using
+no-replace semantics while holding its publication guard.
 
 - A new successful rename publishes one complete entry atomically.
 - If the final name exists, storage opens and fully validates that exact entry. A valid equivalent
@@ -229,15 +238,15 @@ termination and requires positive termination confirmation before it trusts outp
 source authority. A returned result, exited primary process, closed pipe, or reusable process-local
 handle number is not that confirmation.
 
-If whole-tree termination cannot be confirmed, the broker must not parse, publish, delete, or reuse
-the stage. It marks the random stage quarantined, preserves it as non-authoritative, and keeps the
-worker client in its sticky cleanup-failure state so another generation cannot be mistaken for a
-clean continuation. Later bounded recovery may remove such a stage only after no live worker or
-broker authority can still write it. It never promotes an abandoned stage.
+If whole-tree termination cannot be confirmed, the broker does not read the section or write the
+cache stage. The worker can retain only its fixed-capacity volatile section handle; it has no
+persistent writer. The empty broker-only stage is safely discarded through retained identity, and
+the worker client remains in its sticky cleanup-failure state so another generation cannot be
+mistaken for a clean continuation.
 
-If termination is confirmed, a cancelled/failed/invalid partial stage is deleted only through its
-still-authenticated exact identity. If deletion cannot be proven, the random stage remains an
-unreferenced cache orphan; it is not a final entry and cannot corrupt the manifest.
+If termination is confirmed, cancellation, failure, or invalid volatile output likewise leaves the
+persistent stage empty and disposable. Quarantine remains necessary only after a genuinely
+indeterminate persistent publication operation; such a random stage is never promoted by recovery.
 
 ## Progress and UI handoff
 
@@ -316,8 +325,9 @@ PWS-0108 evidence covers:
   aliasing, truncation, surplus data, stride/length/profile mismatch, digest mismatch, and
   non-opaque pixels;
 - current-manifest page resolution and exact source identity/size/SHA checks on hit and miss;
-- reduced-right source/stage handles, denied path/sibling/case access, one-shot termination, and
-  unconfirmed-termination quarantine;
+- reduced-right source/output-section handles, denied separate read-map/file/unbounded-map access, denied
+  path/sibling/case access, no persistent worker writer, one-shot termination, and safe
+  unconfirmed-termination disposal;
 - no-replace publication, valid collision reuse, corrupt-entry removal/rebuild, indeterminate
   publication, exact-key/page invalidation, bounded stale-stage cleanup, quota failure, and partial
   cleanup reporting; and

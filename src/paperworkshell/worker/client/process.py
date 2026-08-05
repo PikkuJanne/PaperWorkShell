@@ -168,7 +168,7 @@ class BrokeredHandlePurpose(StrEnum):
 
     READ_SOURCE = "read_source"
     WRITE_RESULT_PIPE = "write_result_pipe"
-    WRITE_OPERATION_CACHE = "write_operation_cache"
+    WRITE_BOUNDED_OUTPUT_SECTION = "write_bounded_output_section"
 
 
 @dataclass(frozen=True, slots=True)

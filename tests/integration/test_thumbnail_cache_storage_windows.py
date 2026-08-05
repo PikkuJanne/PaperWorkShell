@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import os
 from collections.abc import Callable
-from ctypes import wintypes
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -159,68 +157,46 @@ def _artifact_bytes(
     return encode_pdf_thumbnail_artifact(header, pixels)
 
 
-def _write_handle(handle: WindowsHandle, payload: bytes) -> None:
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    write_file = kernel32.WriteFile
-    write_file.argtypes = (
-        wintypes.HANDLE,
-        ctypes.c_void_p,
-        wintypes.DWORD,
-        ctypes.POINTER(wintypes.DWORD),
-        ctypes.c_void_p,
-    )
-    write_file.restype = wintypes.BOOL
-    buffer = ctypes.create_string_buffer(payload)
-    written = wintypes.DWORD()
-    assert write_file(
-        wintypes.HANDLE(handle.value),
-        buffer,
-        len(payload),
-        ctypes.byref(written),
-        None,
-    )
-    assert written.value == len(payload)
-
-
-def _duplicate_handle(handle: WindowsHandle) -> int:
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    current_process = kernel32.GetCurrentProcess
-    current_process.restype = wintypes.HANDLE
-    duplicate = kernel32.DuplicateHandle
-    duplicate.argtypes = (
-        wintypes.HANDLE,
-        wintypes.HANDLE,
-        wintypes.HANDLE,
-        ctypes.POINTER(wintypes.HANDLE),
-        wintypes.DWORD,
-        wintypes.BOOL,
-        wintypes.DWORD,
-    )
-    duplicate.restype = wintypes.BOOL
-    process = current_process()
-    copied = wintypes.HANDLE()
-    assert duplicate(process, handle.value, process, ctypes.byref(copied), 0, False, 2)
-    assert copied.value is not None
-    return int(copied.value)
-
-
-def _close_raw_handle(handle: int) -> None:
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    close_handle = kernel32.CloseHandle
-    close_handle.argtypes = (wintypes.HANDLE,)
-    close_handle.restype = wintypes.BOOL
-    assert close_handle(wintypes.HANDLE(handle))
-
-
 def _publish(store: WindowsThumbnailCacheStore, key: PdfThumbnailCacheKey) -> None:
     with store.create_stage(key) as stage:
-        _write_handle(
-            stage.write_handle,
-            _artifact_bytes(key, cache_object_id=stage.cache_object_id),
-        )
+        stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
         stage.validate(expected_operation_id=OPERATION_ID)
         publication = stage.publish()
         assert publication.artifact.header.cache_key == key
+
+
+def test_trusted_stage_writer_enforces_exact_bound_and_one_shot_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager(tmp_path)
+    layout = manager.layout(CASE_ID)
+    store = WindowsThumbnailCacheStore(manager, id_factory=_SequentialIds(0x6F000000))
+    key = _key()
+    monkeypatch.setattr(windows_module, "MAXIMUM_STREAM_CHUNK_BYTES", 7)
+
+    with store.create_stage(key) as stage:
+        stage_path = layout.thumbnails / f"{stage.cache_object_id}.tmp"
+        assert not hasattr(stage, "write_handle")
+        assert stage.maximum_bytes > 0
+
+        with pytest.raises(PdfThumbnailError) as oversized:
+            stage.write_artifact(b"x" * (stage.maximum_bytes + 1))
+        assert oversized.value.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
+        assert oversized.value.context == "thumbnail.stage_size"
+        assert stage_path.stat().st_size == 0
+
+        payload = _artifact_bytes(key, cache_object_id=stage.cache_object_id)
+        stage.write_artifact(payload)
+        with pytest.raises(PdfThumbnailError) as repeated:
+            stage.write_artifact(payload)
+        assert repeated.value.code is PdfThumbnailErrorCode.DESTINATION_FAILED
+        assert repeated.value.context == "thumbnail.stage_write"
+
+        stage.validate(expected_operation_id=OPERATION_ID)
+        assert stage.publish().published
+
+    assert layout.thumbnails.joinpath(key.internal_name).read_bytes() == payload
 
 
 def test_stage_publish_lookup_corruption_rebuild_and_manifest_independence(
@@ -291,10 +267,7 @@ def test_no_replace_publication_reuses_valid_collision_and_rebuilds_corrupt_coll
     first_cache_object_id = first.artifact.header.cache_object_id
 
     with store.create_stage(key) as stage:
-        _write_handle(
-            stage.write_handle,
-            _artifact_bytes(key, cache_object_id=stage.cache_object_id),
-        )
+        stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
         stage.validate(expected_operation_id=OPERATION_ID)
         collision = stage.publish()
 
@@ -304,10 +277,7 @@ def test_no_replace_publication_reuses_valid_collision_and_rebuilds_corrupt_coll
 
     (layout.thumbnails / key.internal_name).write_bytes(b"corrupt collision")
     with store.create_stage(key) as stage:
-        _write_handle(
-            stage.write_handle,
-            _artifact_bytes(key, cache_object_id=stage.cache_object_id),
-        )
+        stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
         stage.validate(expected_operation_id=OPERATION_ID)
         rebuilt = stage.publish()
 
@@ -339,10 +309,7 @@ def test_interruption_after_native_rename_resolves_as_published(
 
     monkeypatch.setattr(windows_module, "_rename_open_file", rename_then_interrupt)
     with store.create_stage(key) as stage:
-        _write_handle(
-            stage.write_handle,
-            _artifact_bytes(key, cache_object_id=stage.cache_object_id),
-        )
+        stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
         stage.validate(expected_operation_id=OPERATION_ID)
         publication = stage.publish()
 
@@ -374,10 +341,7 @@ def test_interruption_before_native_rename_discards_only_unpublished_stage(
     monkeypatch.setattr(windows_module, "_rename_open_file", interrupt_before_rename)
     with pytest.raises(KeyboardInterrupt) as raised:
         with store.create_stage(key) as stage:
-            _write_handle(
-                stage.write_handle,
-                _artifact_bytes(key, cache_object_id=stage.cache_object_id),
-            )
+            stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
             stage.validate(expected_operation_id=OPERATION_ID)
             stage.publish()
 
@@ -398,10 +362,7 @@ def test_stage_rejects_wrong_cache_object_correlation_before_publication(
     with pytest.raises(PdfThumbnailError):
         with store.create_stage(key) as stage:
             stage_name = f"{stage.cache_object_id}.tmp"
-            _write_handle(
-                stage.write_handle,
-                _artifact_bytes(key, cache_object_id=wrong_cache_object),
-            )
+            stage.write_artifact(_artifact_bytes(key, cache_object_id=wrong_cache_object))
             stage.validate(expected_operation_id=OPERATION_ID)
 
     assert not (layout.thumbnails / stage_name).exists()
@@ -455,10 +416,7 @@ def test_unknown_publication_state_quarantines_instead_of_deleting_stage(
     with pytest.raises(PdfThumbnailError):
         with store.create_stage(key) as stage:
             stage_name = f"{stage.cache_object_id}.tmp"
-            _write_handle(
-                stage.write_handle,
-                _artifact_bytes(key, cache_object_id=stage.cache_object_id),
-            )
+            stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
             stage.validate(expected_operation_id=OPERATION_ID)
             stage.publish()
 
@@ -468,33 +426,24 @@ def test_unknown_publication_state_quarantines_instead_of_deleting_stage(
     assert retained.retained_entries == 1
 
 
-def test_live_and_quarantined_stages_are_retained_until_worker_authority_closes(
+def test_live_and_quarantined_stages_are_registry_scoped_without_worker_handle(
     tmp_path: Path,
 ) -> None:
     manager = _manager(tmp_path)
     store = WindowsThumbnailCacheStore(manager, id_factory=_SequentialIds(0x72000000))
     stage = store.create_stage(_key())
-    duplicate = _duplicate_handle(stage.write_handle)
-    try:
-        live = store.cleanup_stale_stages(CASE_ID)
-        assert live.status is ThumbnailCleanupStatus.COMPLETE
-        assert live.removed_entries == 0
-        assert live.retained_entries == 1
+    assert not hasattr(stage, "write_handle")
+    live = store.cleanup_stale_stages(CASE_ID)
+    assert live.status is ThumbnailCleanupStatus.COMPLETE
+    assert live.removed_entries == 0
+    assert live.retained_entries == 1
 
-        stage.retain_untrusted()
-        stage.close()
-        quarantined = store.cleanup_stale_stages(CASE_ID)
-        assert quarantined.status is ThumbnailCleanupStatus.COMPLETE
-        assert quarantined.removed_entries == 0
-        assert quarantined.retained_entries == 1
-
-        fresh_store = WindowsThumbnailCacheStore(manager)
-        still_writable = fresh_store.cleanup_stale_stages(CASE_ID)
-        assert still_writable.status is ThumbnailCleanupStatus.PARTIAL
-        assert still_writable.removed_entries == 0
-        assert still_writable.retained_entries == 1
-    finally:
-        _close_raw_handle(duplicate)
+    stage.quarantine()
+    stage.close()
+    quarantined = store.cleanup_stale_stages(CASE_ID)
+    assert quarantined.status is ThumbnailCleanupStatus.COMPLETE
+    assert quarantined.removed_entries == 0
+    assert quarantined.retained_entries == 1
 
     cleaned = WindowsThumbnailCacheStore(manager).cleanup_stale_stages(CASE_ID)
     assert cleaned.status is ThumbnailCleanupStatus.COMPLETE
@@ -513,7 +462,7 @@ def test_context_cancellation_discards_only_the_exact_unpublished_stage(
 
     with store.create_stage(_key()) as stage:
         stage_name = f"{stage.cache_object_id}.tmp"
-        _write_handle(stage.write_handle, b"partial worker bytes")
+        stage.write_artifact(b"partial bounded output bytes")
 
     assert not (layout.thumbnails / stage_name).exists()
     assert sibling.read_bytes() == b"unrelated stale stage"

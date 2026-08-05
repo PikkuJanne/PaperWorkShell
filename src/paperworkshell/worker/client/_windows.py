@@ -82,6 +82,7 @@ _FILE_APPEND_DATA: Final = 0x0000_0004
 _FILE_DELETE_CHILD: Final = 0x0000_0040
 _FILE_READ_ATTRIBUTES: Final = 0x0000_0080
 _FILE_WRITE_ATTRIBUTES: Final = 0x0000_0100
+_SECTION_MAP_WRITE: Final = 0x0000_0002
 _DELETE: Final = 0x0001_0000
 _READ_CONTROL: Final = 0x0002_0000
 _SYNCHRONIZE: Final = 0x0010_0000
@@ -2569,7 +2570,7 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE
             ),
             BrokeredHandlePurpose.WRITE_RESULT_PIPE: _FILE_WRITE_DATA | _SYNCHRONIZE,
-            BrokeredHandlePurpose.WRITE_OPERATION_CACHE: _FILE_WRITE_DATA | _SYNCHRONIZE,
+            BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION: _SECTION_MAP_WRITE,
         }[purpose]
         kernel32 = _kernel32()
         current_process = kernel32.GetCurrentProcess

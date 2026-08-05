@@ -942,9 +942,10 @@ class WindowsPendingSourceFile(AbstractContextManager["WindowsPendingSourceFile"
 
 
 class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnailFile"]):
-    """One random cache stage writable only through its retained exact handle."""
+    """One random cache stage writable only by the trusted storage adapter."""
 
     __slots__ = (
+        "_bytes_written",
         "_handle",
         "_initial_identity",
         "_initial_path",
@@ -957,11 +958,12 @@ class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnai
         self._initial_identity = handle.info.identity
         self._initial_path = handle.info.final_path
         self._maximum_bytes = maximum_bytes
+        self._bytes_written = 0
         self._sealed = False
 
     @property
     def handle(self) -> WindowsHandle:
-        """Return the retained exact read/write handle for brokered duplication."""
+        """Return the exact handle only to trusted storage publication helpers."""
 
         return self._handle
 
@@ -977,6 +979,65 @@ class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnai
     def maximum_bytes(self) -> int:
         return self._maximum_bytes
 
+    def write_artifact(self, payload: bytes) -> None:
+        """Write one complete bounded artifact through the retained trusted handle."""
+
+        if type(payload) is not bytes or not payload or len(payload) > self._maximum_bytes:
+            reject(
+                WorkspaceErrorCode.QUOTA_EXCEEDED,
+                "thumbnail_stage.write_limit",
+                "The thumbnail cache artifact exceeds its reserved storage bound.",
+            )
+        if self._bytes_written != 0 or self._sealed or self._handle.value == 0:
+            reject(
+                WorkspaceErrorCode.CREATE_FAILED,
+                "thumbnail_stage.write_state",
+                "The thumbnail cache stage is not writable.",
+            )
+        kernel32, _, _ = _libraries()
+        write_file = kernel32.WriteFile
+        write_file.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        )
+        write_file.restype = wintypes.BOOL
+        buffer = ctypes.create_string_buffer(payload)
+        completed = 0
+        while completed < len(payload):
+            remaining = len(payload) - completed
+            chunk_size = min(remaining, MAXIMUM_STREAM_CHUNK_BYTES)
+            if self._bytes_written > self._maximum_bytes - chunk_size:
+                reject(
+                    WorkspaceErrorCode.QUOTA_EXCEEDED,
+                    "thumbnail_stage.write_limit",
+                    "The thumbnail cache artifact exceeds its reserved storage bound.",
+                )
+            written = wintypes.DWORD()
+            if not write_file(
+                wintypes.HANDLE(self._handle.value),
+                ctypes.byref(buffer, completed),
+                chunk_size,
+                ctypes.byref(written),
+                None,
+            ):
+                reject(
+                    WorkspaceErrorCode.CREATE_FAILED,
+                    "thumbnail_stage.write",
+                    "PaperWorkShell could not write the thumbnail cache artifact safely.",
+                )
+            amount = int(written.value)
+            if amount <= 0 or amount > chunk_size:
+                reject(
+                    WorkspaceErrorCode.CREATE_FAILED,
+                    "thumbnail_stage.write",
+                    "PaperWorkShell could not write the thumbnail cache artifact safely.",
+                )
+            completed += amount
+            self._bytes_written += amount
+
     def __enter__(self) -> Self:
         return self
 
@@ -984,9 +1045,9 @@ class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnai
         self.close()
 
     def seal(self) -> OpenedFileInfo:
-        """Flush and authenticate worker-written bytes before bounded readback."""
+        """Flush and authenticate trusted staged bytes before bounded readback."""
 
-        if self._sealed or self._handle.value == 0:
+        if self._sealed or self._handle.value == 0 or self._bytes_written == 0:
             reject(
                 WorkspaceErrorCode.CREATE_FAILED,
                 "thumbnail_stage.state",
@@ -1010,6 +1071,7 @@ class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnai
             or current.is_reparse_point
             or current.is_sparse
             or current.link_count != 1
+            or current.logical_size != self._bytes_written
             or not 1 <= current.logical_size <= self._maximum_bytes
         ):
             reject(
@@ -1037,7 +1099,8 @@ class WindowsPendingThumbnailFile(AbstractContextManager["WindowsPendingThumbnai
             current.identity != self._initial_identity
             or current.is_sparse
             or current.link_count != 1
-            or len(payload) != current.logical_size
+            or len(payload) != self._bytes_written
+            or current.logical_size != self._bytes_written
         ):
             reject(
                 WorkspaceErrorCode.IDENTITY_CHANGED,

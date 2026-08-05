@@ -40,6 +40,7 @@ from paperworkshell.worker.client.process import BrokeredHandlePurpose
 from paperworkshell.worker.pdf_thumbnail_broker import (
     BrokeredPdfThumbnailGenerator,
     CancellationProbe,
+    DeadlineProbe,
     PdfThumbnailBrokerPolicy,
 )
 from paperworkshell.worker.pdf_thumbnail_profile import (
@@ -184,11 +185,14 @@ class _Stage:
         self.key = key
         self.events = events
         self.cache_object_id = _uuid(20)
-        self.write_handle = _Handle(202)
+        self.maximum_bytes = (
+            PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES
+            + key.maximum_width_pixels * key.maximum_height_pixels * 4
+        )
         self.operation_id: UUID | None = None
+        self.written: bytes | None = None
         self.validated = False
         self.published = False
-        self.quarantined = False
         self.closed = False
 
     def __enter__(self) -> Self:
@@ -212,8 +216,18 @@ class _Stage:
     def validate(self, *, expected_operation_id: UUID) -> PdfThumbnailArtifact:
         self.events.append("stage.validate")
         assert self.operation_id == expected_operation_id
+        assert self.written == encode_pdf_thumbnail_artifact(
+            self.current_artifact().header,
+            self.current_artifact().payload,
+        )
         self.validated = True
         return self.current_artifact()
+
+    def write_artifact(self, payload: bytes) -> None:
+        self.events.append("stage.write")
+        assert self.written is None
+        assert 0 < len(payload) <= self.maximum_bytes
+        self.written = payload
 
     def publish(self) -> _Publication:
         self.events.append("stage.publish")
@@ -221,16 +235,13 @@ class _Stage:
         self.published = True
         return _Publication(self.current_artifact())
 
-    def retain_untrusted(self) -> None:
-        self.events.append("stage.quarantine")
-        self.quarantined = True
-
 
 class _Cache:
     def __init__(self, events: list[str]) -> None:
         self.events = events
         self.lookup_result = _Lookup(False, False, None)
         self.stage: _Stage | None = None
+        self.output_buffer: _OutputBuffer | None = None
 
     def lookup(self, key: PdfThumbnailCacheKey) -> _Lookup:
         self.events.append("cache.lookup")
@@ -240,6 +251,38 @@ class _Cache:
         self.events.append("cache.stage")
         self.stage = _Stage(key, self.events)
         return self.stage
+
+
+class _OutputBuffer:
+    def __init__(self, capacity: int, cache: _Cache, events: list[str]) -> None:
+        self.capacity = capacity
+        self.write_handle_value = 202
+        self.cache = cache
+        self.events = events
+        self.closed = False
+
+    def __enter__(self) -> Self:
+        self.events.append("buffer.enter")
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exception_type, exception, traceback
+        self.closed = True
+        self.events.append("buffer.exit")
+
+    def read_exact(self, byte_count: int) -> bytes:
+        self.events.append("buffer.read")
+        stage = self.cache.stage
+        assert stage is not None
+        artifact = stage.current_artifact()
+        encoded = encode_pdf_thumbnail_artifact(artifact.header, artifact.payload)
+        assert len(encoded) == byte_count
+        return encoded
 
 
 def _snapshot(
@@ -272,6 +315,8 @@ class _Worker:
         self.termination_error: WorkerClientError | None = None
         self.bad_digest = False
         self.outcome = OperationOutcome.SUCCEEDED
+        self.withhold_result_until_cancel = False
+        self.fault_after_start = False
 
     def start(self, case_id: UUID) -> int:
         assert case_id == _uuid(1)
@@ -282,7 +327,13 @@ class _Worker:
         self.events.append("worker.query")
         return _snapshot(
             phase=(
-                WorkerLifecyclePhase.READY if self.payload is None else WorkerLifecyclePhase.BUSY
+                WorkerLifecyclePhase.READY
+                if self.payload is None
+                else (
+                    WorkerLifecyclePhase.FAULTED
+                    if self.fault_after_start
+                    else WorkerLifecyclePhase.BUSY
+                )
             ),
             result=self.result,
         )
@@ -301,6 +352,7 @@ class _Worker:
         if purpose is BrokeredHandlePurpose.READ_SOURCE:
             assert source_handle == 101
             return 1_001
+        assert purpose is BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION
         assert source_handle == 202
         return 1_002
 
@@ -336,13 +388,15 @@ class _Worker:
             outputs = (output,)
         else:
             outputs = ()
-        self.result = WorkerOperationResultSnapshot(
+        completed = WorkerOperationResultSnapshot(
             1,
             operation_id,
             self.outcome,
             outputs,
             None,
         )
+        if not self.withhold_result_until_cancel:
+            self.result = completed
         return operation_id
 
     def cancel(self, reason: CancelReason = CancelReason.USER_REQUESTED) -> UUID:
@@ -375,12 +429,19 @@ def _system() -> tuple[
     sources = _SourceStore(events)
     cache = _Cache(events)
     worker = _Worker(events, cache)
+
+    def output_buffer_factory(capacity: int) -> _OutputBuffer:
+        buffer = _OutputBuffer(capacity, cache, events)
+        cache.output_buffer = buffer
+        return buffer
+
     generator = BrokeredPdfThumbnailGenerator(
         worker,
         sources,
         cache,
         _policy(),
         id_factory=lambda: _uuid(10),
+        output_buffer_factory=output_buffer_factory,
     )
     return generator, sources, cache, worker, events
 
@@ -408,6 +469,8 @@ def test_cache_miss_runs_one_exact_worker_then_validates_and_publishes() -> None
     assert worker.payload.requested_limits.page_count == 2
     assert cache.stage is not None and cache.stage.published and cache.stage.closed
     assert events.index("worker.terminate") < events.index("stage.validate")
+    assert events.index("buffer.read") < events.index("stage.write")
+    assert events.index("stage.write") < events.index("stage.validate")
     assert events.index("stage.validate") < events.index("stage.publish")
 
 
@@ -467,6 +530,7 @@ class _CancellationSequence:
 
 def test_cancellation_sends_worker_cancel_and_never_validates_stage() -> None:
     generator, _, cache, worker, events = _system()
+    worker.withhold_result_until_cancel = True
     cancellation = _CancellationSequence(False, False, False, True)
 
     with pytest.raises(PdfThumbnailError) as raised:
@@ -483,7 +547,64 @@ def test_cancellation_sends_worker_cancel_and_never_validates_stage() -> None:
     assert cache.stage is not None and not cache.stage.validated and not cache.stage.published
 
 
-def test_unconfirmed_termination_quarantines_stage_before_authorities_close() -> None:
+def test_terminal_result_is_observed_before_late_cancellation_is_sent() -> None:
+    generator, _, cache, worker, events = _system()
+    cancellation = _CancellationSequence(False, False, False, True)
+
+    with pytest.raises(PdfThumbnailError) as raised:
+        generator.get_or_generate(
+            _request(),
+            deadline=lambda: False,
+            cancellation=cast(CancellationProbe, cancellation),
+            progress=lambda _phase: None,
+        )
+
+    assert raised.value.code is PdfThumbnailErrorCode.CANCELLED
+    assert not worker.cancelled
+    assert not any(event.startswith("worker.cancel") for event in events)
+    assert cache.stage is not None and not cache.stage.validated and not cache.stage.published
+
+
+def test_operation_deadline_requests_shutdown_cancel_and_persists_nothing() -> None:
+    generator, _, cache, worker, events = _system()
+    worker.withhold_result_until_cancel = True
+    deadline = _CancellationSequence(False, False, False, True)
+
+    with pytest.raises(PdfThumbnailError) as raised:
+        generator.get_or_generate(
+            _request(),
+            deadline=cast(DeadlineProbe, deadline),
+            cancellation=lambda: False,
+            progress=lambda _phase: None,
+        )
+
+    assert raised.value.code is PdfThumbnailErrorCode.TIMED_OUT
+    assert "worker.cancel.shutdown" in events
+    assert "worker.terminate" in events
+    assert cache.stage is not None and cache.stage.written is None
+    assert not cache.stage.validated and not cache.stage.published
+
+
+def test_worker_fault_discards_volatile_output_and_persists_nothing() -> None:
+    generator, _, cache, worker, events = _system()
+    worker.withhold_result_until_cancel = True
+    worker.fault_after_start = True
+
+    with pytest.raises(PdfThumbnailError) as raised:
+        generator.get_or_generate(
+            _request(),
+            deadline=lambda: False,
+            cancellation=lambda: False,
+            progress=lambda _phase: None,
+        )
+
+    assert raised.value.code is PdfThumbnailErrorCode.WORKER_FAILED
+    assert "worker.terminate" in events
+    assert cache.stage is not None and cache.stage.written is None
+    assert not cache.stage.validated and not cache.stage.published
+
+
+def test_unconfirmed_termination_discards_empty_stage_and_volatile_buffer() -> None:
     generator, _, cache, worker, events = _system()
     worker.termination_error = WorkerClientError(
         WorkerClientErrorCode.TERMINATION_FAILED,
@@ -499,12 +620,13 @@ def test_unconfirmed_termination_quarantines_stage_before_authorities_close() ->
         )
 
     assert raised.value.code is PdfThumbnailErrorCode.WORKER_FAILED
-    assert cache.stage is not None and cache.stage.quarantined and cache.stage.closed
+    assert cache.stage is not None and cache.stage.closed and cache.stage.written is None
     assert not cache.stage.validated and not cache.stage.published
-    assert events.index("worker.terminate") < events.index("stage.quarantine")
+    assert cache.output_buffer is not None and cache.output_buffer.closed
+    assert "buffer.read" not in events
 
 
-def test_worker_reference_must_match_validated_artifact_before_publish() -> None:
+def test_worker_reference_must_match_before_persistent_stage_write() -> None:
     generator, _, cache, worker, _ = _system()
     worker.bad_digest = True
 
@@ -517,7 +639,8 @@ def test_worker_reference_must_match_validated_artifact_before_publish() -> None
         )
 
     assert raised.value.code is PdfThumbnailErrorCode.RESULT_INVALID
-    assert cache.stage is not None and cache.stage.validated and not cache.stage.published
+    assert cache.stage is not None and cache.stage.written is None
+    assert not cache.stage.validated and not cache.stage.published
 
 
 def test_request_bounds_fail_before_stage_or_worker() -> None:

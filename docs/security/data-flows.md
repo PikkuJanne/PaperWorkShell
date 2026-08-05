@@ -27,8 +27,10 @@ flowchart LR
     Source["External source (read only)"] ==> Import["Narrow import/storage adapter"]
     Import ==> Case["Active case workspace"]
     Case ==> Handles["Trusted case-object handle broker"]
-    Handles == "exact authenticated handles only" ==> Worker
-    Worker ==> Stage["Brokered operation cache/temp/staging handles only"]
+    Handles == "source/result-pipe/bounded-section handles" ==> Worker
+    Worker ==> Result["Typed result plus purpose-limited output"]
+    Result ==> Broker
+    Broker ==> Stage["Broker-only verified staging/publication"]
     Stage ==> Destination["External export destination"]
     App --> Diagnostics["Sanitized diagnostics collector"]
     Diagnostics ==> Destination
@@ -46,7 +48,9 @@ staging to a user-selected external destination. Templates enter as validated da
 use a separate allowlisted flow. A future updater is separate from document processing and sends
 no case data. The `protocol.noop` operation receives no document handles. PWS-0105's separate
 one-shot `pdf.inspect` generation receives only one deliberately brokered
-prepared-source read handle and one write-only result-pipe handle.
+prepared-source read handle and one write-only result-pipe handle. PWS-0108 receives one committed
+source reader and one fixed-size volatile section mapping; only the broker can write persistent
+cache staging.
 
 ## Boundary inventory
 
@@ -55,7 +59,7 @@ prepared-source read handle and one write-only result-pipe handle.
 | TB-01 | Person/Windows shell → UI | Paths, typed values, drag/clipboard data, confirmation | Length/type/state validation; no trust from extension or familiar display |
 | TB-02 | Application → worker | Versioned request, per-launch capability, internal IDs, logical case-object references, limits | Fresh AppContainer/job generation; explicit inherited pipes and fixed bootstrap grant; bind worker, case, operation, sequence, and request; schema/type/version/size/state validation; replay rejection |
 | TB-02 | Worker → application | Progress, typed result, capability, stable error | Validate explicit transport/session binding, envelope, IDs, sequence/state transition, size, references, counts, and sanitized parameters |
-| TB-03 | Trusted broker → worker | Exact opened read-only input or operation-scoped cache/temp/staging handle | Authenticate file identity, case/area/operation scope, access, containment, links/reparse/hardlink/ADS state, size/digest, quota, and lifetime before transfer; broker-only authoritative publication |
+| TB-03 | Trusted broker → worker | Exact opened read-only input, bounded result-pipe writer, or fixed-size volatile output-section handle | Authenticate object type, identity, case/operation scope, access, containment where applicable, size/digest/logical cap, and lifetime before transfer; no persistent cache writer; broker-only authoritative publication |
 | TB-04 | Worker adapter → local tool/resource | Executable, arguments, input/output handles, controlled environment/search paths | Approved path/version/identity, fixed working directory, no shell, bounded I/O/time/resources/descendants, network denial |
 | TB-05 | Import adapter → external source | One read-only handle and bounded byte stream | Classify local/device/network location before open; supported regular-file identity; never request write access |
 | TB-06 | Verified staging → export destination | Exact verified PDF/ZIP/summary bytes, size/digest, and safe name | Classify destination; reject original/prior-output aliases; destination-local temporary file, collision policy, terminal identity/digest recheck, per-artifact atomic commit |
@@ -251,11 +255,12 @@ flowchart LR
     Source["Immutable case source"] ==> Broker
     Broker ==> Worker["One-shot restricted worker"]
     Worker ==> Renderer["Renderer adapter"]
-    Renderer ==> Stage["Exact operation-cache stage"]
+    Renderer ==> Buffer["Fixed-size volatile output section"]
     Worker --> Stop["Confirm complete Job-tree termination"]
-    Stop --> Validate["Read back, validate, publish atomically"]
-    Stage ==> Validate
-    Validate --> App
+    Stop --> Validate["Read section, validate exact bytes"]
+    Buffer ==> Validate
+    Validate ==> Stage["Broker-only cache stage"]
+    Stage --> App["Validate again, publish atomically"]
     App --> UI["Fixed-layout bounded RGBA8 pixels"]
 ```
 
@@ -270,23 +275,28 @@ flowchart LR
    dimensions/rotation, fixed RGBA8/white/CropBox/annotation choices, and renderer-profile digest.
    Final and staging names contain only random internal IDs and a full key digest. Source
    authentication precedes lookup, so cached state cannot conceal a changed source.
-4. On a miss, storage reserves the worst-case artifact size against the case-cache quota, creates
-   one random exact stage, and retains it through final disposition. The broker duplicates only
-   source-read and stage-write rights into a fresh worker. The worker receives no case/cache path,
-   directory, manifest, delete, rename, or publication authority.
+4. On a miss, storage reserves the worst-case artifact size against the case-cache quota and creates
+   one random broker-only stage. The broker also creates an unnamed pagefile-backed section from
+   the exact logical operation output limit; its volatile backing may be rounded by less than one
+   memory page, while the adapter enforces the logical cap. It duplicates only source-read and
+   section map-write rights into a fresh worker. The worker receives no persistent cache-file
+   handle, case/cache path, directory, manifest, delete, rename, or publication authority.
 5. The worker verifies/copies/hashes the source, closes the case handle, renders one page under
    page/pixel/output/temp/memory/CPU/wall limits, and writes a fixed binary header plus exact raw
    RGBA8 payload. Its success references the exact operation/cache-object IDs, artifact size,
    whole-artifact SHA-256, and content kind; other outcomes reference no output.
 6. RPC success is untrusted. The broker first confirms complete one-shot Job-tree termination,
-   then seals and reads the same retained stage and validates file identity, RPC correlation,
-   key/header versions, reserved fields, IDs, dimensions, stride, profile, exact lengths, digests,
-   and opaque alpha. Only then may storage no-replace rename the stage to its final internal name.
-   The UI never decodes arbitrary worker-produced PNG/JPEG/PDF bytes or follows a raced cache path.
+   then reads only the claimed bounded byte count through its read-only section view and validates
+   RPC correlation, key/header versions, reserved fields, IDs, dimensions, stride, profile, exact
+   lengths, digests, and opaque alpha. Only then may the trusted broker write the bytes to the
+   persistent stage; storage seals, reads back, validates again, and no-replace renames it to the
+   final internal name. The UI never decodes arbitrary worker-produced PNG/JPEG/PDF bytes or
+   follows a raced cache path.
 7. Cancellation, parser fault, invalid output, or quota failure leaves the manifest unchanged.
-   Confirmed trusted partial stages are deleted through exact retained identity. Unconfirmed worker
-   termination or publication state quarantines the random stage without parse, publish, delete, or
-   reuse; earlier complete page entries remain safely reusable.
+   Before validation, the only worker-writable object is volatile and OS-capped; the persistent
+   stage remains empty and broker-only. Unconfirmed worker termination therefore cannot leave a
+   live persistent writer. Only an indeterminate publication state quarantines a random stage;
+   earlier complete page entries remain safely reusable.
 8. Paths, filenames, source/cache/pixel digests, text, metadata, rendered bytes, thumbnails, raw
    RPC, handles, and third-party exceptions never enter routine logs. Fixed pixels reach only the
    requested UI snapshot after complete validation.

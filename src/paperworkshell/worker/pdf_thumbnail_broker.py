@@ -29,11 +29,13 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailRequest,
     PdfThumbnailResult,
     ResolvedPdfThumbnailRequest,
+    decode_pdf_thumbnail_artifact,
     encode_pdf_thumbnail_artifact,
     pdf_thumbnail_result_from_artifact,
     reject_pdf_thumbnail,
 )
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
+from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -177,13 +179,13 @@ class ThumbnailCacheStage(Protocol):
     def cache_object_id(self) -> UUID: ...
 
     @property
-    def write_handle(self) -> HandleValue: ...
+    def maximum_bytes(self) -> int: ...
+
+    def write_artifact(self, payload: bytes) -> None: ...
 
     def validate(self, *, expected_operation_id: UUID) -> PdfThumbnailArtifact: ...
 
     def publish(self) -> ThumbnailCachePublication: ...
-
-    def retain_untrusted(self) -> None: ...
 
     def __enter__(self) -> Self: ...
 
@@ -201,6 +203,27 @@ class ThumbnailCacheStore(Protocol):
     def lookup(self, key: PdfThumbnailCacheKey) -> ThumbnailCacheLookup: ...
 
     def create_stage(self, key: PdfThumbnailCacheKey) -> ThumbnailCacheStage: ...
+
+
+class BoundedThumbnailOutput(Protocol):
+    """Exact-capacity volatile worker output with broker-only read authority."""
+
+    @property
+    def capacity(self) -> int: ...
+
+    @property
+    def write_handle_value(self) -> int: ...
+
+    def read_exact(self, byte_count: int) -> bytes: ...
+
+    def __enter__(self) -> Self: ...
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
 
 
 class PdfThumbnailWorkerCoordinator(Protocol):
@@ -262,6 +285,7 @@ class BrokeredPdfThumbnailGenerator:
     __slots__ = (
         "_cache",
         "_id_factory",
+        "_output_buffer_factory",
         "_policy",
         "_sources",
         "_worker",
@@ -275,14 +299,22 @@ class BrokeredPdfThumbnailGenerator:
         policy: PdfThumbnailBrokerPolicy,
         *,
         id_factory: Callable[[], UUID] = uuid4,
+        output_buffer_factory: Callable[[int], BoundedThumbnailOutput] = (
+            WindowsBoundedOutputBuffer.create
+        ),
     ) -> None:
-        if type(policy) is not PdfThumbnailBrokerPolicy or not callable(id_factory):
+        if (
+            type(policy) is not PdfThumbnailBrokerPolicy
+            or not callable(id_factory)
+            or not callable(output_buffer_factory)
+        ):
             reject_pdf_thumbnail(PdfThumbnailErrorCode.MODEL_INVALID, "thumbnail.broker_config")
         self._worker = worker
         self._sources = sources
         self._cache = cache
         self._policy = policy
         self._id_factory = id_factory
+        self._output_buffer_factory = output_buffer_factory
 
     def get_or_generate(
         self,
@@ -366,6 +398,14 @@ class BrokeredPdfThumbnailGenerator:
                     stage.cache_object_id,
                     context="thumbnail.stage_object",
                 )
+                if (
+                    type(stage.maximum_bytes) is not int
+                    or stage.maximum_bytes != operation_limits.output_bytes
+                ):
+                    reject_pdf_thumbnail(
+                        PdfThumbnailErrorCode.RESULT_INVALID,
+                        "thumbnail.stage_capacity",
+                    )
                 operation_id = self._new_id(
                     {
                         request.case_id,
@@ -374,23 +414,19 @@ class BrokeredPdfThumbnailGenerator:
                         cache_object_id,
                     }
                 )
-                operation_result = self._run_worker(
+                output, worker_artifact = self._run_worker(
                     resolved,
                     operation_limits,
-                    stage,
                     source_handle_value=source.handle.value,
+                    cache_object_id=cache_object_id,
                     operation_id=operation_id,
                     deadline=deadline,
                     cancellation=cancellation,
                     progress=progress,
                 )
-                output = _require_successful_output(
-                    operation_result,
-                    operation_id=operation_id,
-                    cache_object_id=cache_object_id,
-                )
                 _report_phase(progress, PdfThumbnailProgressPhase.VALIDATING)
                 _require_active(deadline, cancellation)
+                stage.write_artifact(worker_artifact)
                 artifact = stage.validate(expected_operation_id=operation_id)
                 _require_worker_reference(output, artifact, key)
                 _require_active(deadline, cancellation)
@@ -423,57 +459,89 @@ class BrokeredPdfThumbnailGenerator:
         self,
         resolved: ResolvedPdfThumbnailRequest,
         limits: ResourceLimits,
-        stage: ThumbnailCacheStage,
         *,
         source_handle_value: int,
+        cache_object_id: UUID,
         operation_id: UUID,
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ThumbnailPhaseSink,
-    ) -> WorkerOperationResultSnapshot:
+    ) -> tuple[CaseObjectReference, bytes]:
         result: WorkerOperationResultSnapshot | None = None
         start_attempted = False
-        try:
-            _require_active(deadline, cancellation)
-            start_attempted = True
-            self._worker.start(resolved.request.case_id)
-            ready = self._wait_ready(deadline, cancellation)
-            if PDF_THUMBNAIL_CAPABILITY not in ready.capabilities:
-                reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.capability")
-            source_handle = self._worker.duplicate_handle(
-                source_handle_value,
-                BrokeredHandlePurpose.READ_SOURCE,
-            )
-            cache_handle = self._worker.duplicate_handle(
-                stage.write_handle.value,
-                BrokeredHandlePurpose.WRITE_OPERATION_CACHE,
-            )
-            payload = _operation_payload(
-                resolved,
-                source_handle=source_handle,
-                cache_handle=cache_handle,
-                cache_object_id=stage.cache_object_id,
-                limits=limits,
-            )
-            _report_phase(progress, PdfThumbnailProgressPhase.RENDERING)
-            selected = self._worker.start_operation(payload, operation_id=operation_id)
-            if selected != operation_id:
-                reject_pdf_thumbnail(PdfThumbnailErrorCode.RESULT_INVALID, "thumbnail.operation_id")
-            result = self._wait_result(
-                operation_id,
-                deadline=deadline,
-                cancellation=cancellation,
-            )
-        finally:
-            if start_attempted:
-                try:
+        with self._output_buffer_factory(limits.output_bytes) as output_buffer:
+            if (
+                type(output_buffer.capacity) is not int
+                or output_buffer.capacity != limits.output_bytes
+                or type(output_buffer.write_handle_value) is not int
+                or output_buffer.write_handle_value <= 0
+            ):
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.RESULT_INVALID,
+                    "thumbnail.output_buffer",
+                )
+            try:
+                _require_active(deadline, cancellation)
+                start_attempted = True
+                self._worker.start(resolved.request.case_id)
+                ready = self._wait_ready(deadline, cancellation)
+                if PDF_THUMBNAIL_CAPABILITY not in ready.capabilities:
+                    reject_pdf_thumbnail(
+                        PdfThumbnailErrorCode.WORKER_FAILED,
+                        "thumbnail.capability",
+                    )
+                source_handle = self._worker.duplicate_handle(
+                    source_handle_value,
+                    BrokeredHandlePurpose.READ_SOURCE,
+                )
+                cache_handle = self._worker.duplicate_handle(
+                    output_buffer.write_handle_value,
+                    BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION,
+                )
+                payload = _operation_payload(
+                    resolved,
+                    source_handle=source_handle,
+                    cache_handle=cache_handle,
+                    cache_object_id=cache_object_id,
+                    limits=limits,
+                )
+                _report_phase(progress, PdfThumbnailProgressPhase.RENDERING)
+                selected = self._worker.start_operation(payload, operation_id=operation_id)
+                if selected != operation_id:
+                    reject_pdf_thumbnail(
+                        PdfThumbnailErrorCode.RESULT_INVALID,
+                        "thumbnail.operation_id",
+                    )
+                result = self._wait_result(
+                    operation_id,
+                    deadline=deadline,
+                    cancellation=cancellation,
+                )
+            finally:
+                if start_attempted:
                     self._worker.terminate()
-                except BaseException:
-                    stage.retain_untrusted()
-                    raise
-        if result is None:
-            reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.no_result")
-        return result
+            if result is None:
+                reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.no_result")
+            output = _require_successful_output(
+                result,
+                operation_id=operation_id,
+                cache_object_id=cache_object_id,
+            )
+            byte_count = output.expected_byte_size
+            if type(byte_count) is not int or not 1 <= byte_count <= limits.output_bytes:
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.RESULT_INVALID,
+                    "thumbnail.output_size",
+                )
+            worker_artifact = output_buffer.read_exact(byte_count)
+            _validate_worker_artifact(
+                worker_artifact,
+                output,
+                key=resolved.cache_key,
+                operation_id=operation_id,
+                cache_object_id=cache_object_id,
+            )
+            return output, worker_artifact
 
     def _wait_ready(
         self,
@@ -498,13 +566,6 @@ class BrokeredPdfThumbnailGenerator:
     ) -> WorkerOperationResultSnapshot:
         cancellation_sent = False
         while True:
-            if _deadline_expired(deadline):
-                if not cancellation_sent:
-                    self._worker.cancel(CancelReason.SHUTDOWN)
-                reject_pdf_thumbnail(PdfThumbnailErrorCode.TIMED_OUT, "thumbnail.deadline")
-            if _cancellation_requested(cancellation) and not cancellation_sent:
-                self._worker.cancel(CancelReason.USER_REQUESTED)
-                cancellation_sent = True
             snapshot = self._worker.query()
             result = snapshot.last_result
             if result is not None:
@@ -515,8 +576,19 @@ class BrokeredPdfThumbnailGenerator:
                 if cancellation_sent and result.outcome is OperationOutcome.SUCCEEDED:
                     reject_pdf_thumbnail(PdfThumbnailErrorCode.CANCELLED, "thumbnail.cancelled")
                 return result
-            if snapshot.phase in {WorkerLifecyclePhase.STOPPED, WorkerLifecyclePhase.FAULTED}:
+            if snapshot.phase in {
+                WorkerLifecyclePhase.READY,
+                WorkerLifecyclePhase.STOPPED,
+                WorkerLifecyclePhase.FAULTED,
+            }:
                 reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.worker_exit")
+            if _deadline_expired(deadline):
+                if not cancellation_sent:
+                    self._worker.cancel(CancelReason.SHUTDOWN)
+                reject_pdf_thumbnail(PdfThumbnailErrorCode.TIMED_OUT, "thumbnail.deadline")
+            if _cancellation_requested(cancellation) and not cancellation_sent:
+                self._worker.cancel(CancelReason.USER_REQUESTED)
+                cancellation_sent = True
             self._worker.pump(self._policy.pump_interval_seconds)
 
     def _new_id(self, forbidden: set[UUID]) -> UUID:
@@ -572,9 +644,9 @@ def _operation_limits(
         cpu_time_ms=policy.cpu_time_ms,
         memory_bytes=policy.memory_bytes,
         temporary_storage_bytes=policy.temporary_storage_bytes,
-        output_bytes=policy.output_bytes,
+        output_bytes=PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES + maximum_raster_bytes,
         page_count=resolved.source_page_count,
-        pixel_count=policy.pixel_count,
+        pixel_count=maximum_pixels,
     )
 
 
@@ -694,6 +766,38 @@ def _require_worker_reference(
         or not hmac.compare_digest(output.expected_sha256, digest)
     ):
         reject_pdf_thumbnail(PdfThumbnailErrorCode.RESULT_INVALID, "thumbnail.output_digest")
+
+
+def _validate_worker_artifact(
+    payload: bytes,
+    output: CaseObjectReference,
+    *,
+    key: PdfThumbnailCacheKey,
+    operation_id: UUID,
+    cache_object_id: UUID,
+) -> None:
+    """Authenticate volatile worker bytes before granting persistent storage authority."""
+
+    if (
+        type(payload) is not bytes
+        or output.expected_byte_size != len(payload)
+        or output.expected_sha256 is None
+        or not hmac.compare_digest(
+            output.expected_sha256,
+            hashlib.sha256(payload).hexdigest(),
+        )
+    ):
+        reject_pdf_thumbnail(PdfThumbnailErrorCode.RESULT_INVALID, "thumbnail.output_digest")
+    try:
+        artifact = decode_pdf_thumbnail_artifact(
+            payload,
+            expected_key=key,
+            expected_operation_id=operation_id,
+            expected_cache_object_id=cache_object_id,
+        )
+    except PdfThumbnailError:
+        reject_pdf_thumbnail(PdfThumbnailErrorCode.RESULT_INVALID, "thumbnail.output_artifact")
+    _require_worker_reference(output, artifact, key)
 
 
 def _report_phase(sink: ThumbnailPhaseSink, phase: PdfThumbnailProgressPhase) -> None:

@@ -20,8 +20,9 @@ The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, an
 version 1. The no-op still proves process/protocol lifecycle without document authority. PWS-0105
 proves exact prepared-source read-handle transfer, a write-only bounded result pipe, worker-private
 copy verification, pikepdf/libqpdf structural inspection, and one-shot worker revocation. PWS-0108
-adds one committed-source read handle and one write-only operation-cache stage for a bounded
-one-page render. Neither operation grants a case/directory path or general filesystem access. See
+adds one committed-source read handle and one fixed-size writable volatile output section for
+a bounded one-page render. Neither operation grants a case/directory path, persistent cache writer,
+or general filesystem access. See
 the [PDF structural-inspection contract](pdf-structural-inspection.md) and
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md).
 
@@ -39,9 +40,9 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md) and
 | `worker.operations` | Immutable exact operation-handler registry | Only registered descriptors dispatch; raw handler exceptions are mapped |
 | `worker.pdf_source_inspector` | One-shot GUI-process orchestration, handle transfer, cancellation/deadline checks, termination, and result validation | Structural broker protocols only; storage and worker implementations are injected |
 | `worker.pdf_operation` | Adopt one brokered source, verify/copy/hash it, invoke the PDF adapter, and write one correlated result | Host-side only; closes the case handle before native parsing |
-| `worker.pdf_thumbnail_broker` | Resolve one committed page, authenticate cache hits, broker exact source/stage handles, terminate one-shot generation, and validate/publish output | Structural ports only; never treats a key, UUID, or path as authority |
-| `worker.pdf_thumbnail_operation` | Adopt exact source/stage handles, verify/copy/hash source, render one page, and write one fixed correlated artifact | Host-side only; receives no case or cache-directory capability |
-| `worker._windows_broker` | Non-inheritable bounded anonymous result pipe | GUI-process-side private primitive; no path or document value |
+| `worker.pdf_thumbnail_broker` | Resolve one committed page, authenticate cache hits, broker exact source/output-section handles, terminate one-shot generation, validate volatile output, and persist/publish through storage | Structural ports only; never treats a key, UUID, or path as authority |
+| `worker.pdf_thumbnail_operation` | Adopt one source and fixed-size output-section handle, enforce its exact logical limit, verify/copy/hash source, render one page, and write one fixed correlated artifact | Host-side only; receives no persistent cache-file or directory capability |
+| `worker._windows_broker` | Non-inheritable bounded anonymous result pipe and fixed-size pagefile-backed output section | GUI-process-side private primitives; no path or document value |
 | `storage.prepared_source_registry` | Register/revoke one sealed pending source and lend an exact independently positioned read handle | Storage owns source identity and publication; no worker-host import |
 | `storage.source_ingest` / `storage.thumbnail_cache` | Lend one manifest-bound committed PDF handle; authenticate, stage, validate, publish, invalidate, and clean disposable thumbnails | Storage owns handle identity and cache publication; no worker implementation import |
 | `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
@@ -207,11 +208,11 @@ operation or frame failure leaves the prepared source non-authoritative.
 
 For `pdf.thumbnail`, RPC success additionally binds one `operation_staging` output reference to the
 requested operation/cache-object IDs, content kind, exact artifact byte count, whole-artifact
-SHA-256, and output limit. It still does not make the stage trusted. The GUI-side broker must
-terminate and confirm the one-shot job tree before it seals and reads the exact retained stage,
-validates the reference plus fixed header/key/pixel contract, and permits no-replace cache
-publication. If tree termination is unconfirmed, the broker quarantines the random stage without
-parsing, publication, deletion, or reuse.
+SHA-256, and output limit. It still does not make the volatile output trusted. The GUI-side broker
+must terminate and confirm the one-shot job tree before it reads the bounded section, validates the
+reference plus fixed header/key/pixel contract, and writes the broker-only persistent stage for
+no-replace cache publication. If tree termination is unconfirmed, no persistent writer exists and
+the empty stage is safely discarded without parsing or publication.
 
 Graceful shutdown during active work first requests cancellation, waits for the terminal result and
 any pending acknowledgement correlation, then sends `session.shutdown`. Only the correlated,
@@ -278,20 +279,23 @@ and closed JSON report, then closes the result writer. The broker terminates the
 before releasing either local authority and validates the frame only after EOF. It never remotely
 closes a target-process handle number because Windows can reuse that number for another object.
 
-PWS-0108 adds a second narrow profile for one current committed PDF page and one new random cache
-stage. Storage authenticates the current manifest mapping, exact immutable-source identity, size,
-SHA-256, containment, and retained lifetime before lookup or generation. On generation it reserves
-the worst-case artifact capacity, creates an exact regular stage beneath `cache/thumbnails/`, and
-retains source/stage authority through worker-tree termination and final disposition. The Windows
-client duplicates only read-data/read-attributes/synchronize for the source and
-write-data/synchronize for the stage. The worker receives neither directory handle and cannot
-read, rename, delete, or publish the stage.
+PWS-0108 adds a second narrow profile for one current committed PDF page and one fixed-size
+volatile output section. Storage authenticates the current manifest mapping, exact immutable-source
+identity, size, SHA-256, containment, and retained lifetime before lookup or generation. On
+generation it reserves the worst-case artifact capacity and creates an exact regular broker-only
+stage beneath `cache/thumbnails/`; the broker separately creates an unnamed pagefile-backed section
+from the exact logical operation output limit. Windows may page-round the volatile backing by less
+than one page, while the adapter enforces the exact logical cap. The Windows client duplicates only
+read-data/read-attributes/synchronize for the source and section map-write for the output.
+The worker receives no cache-file or directory handle and cannot read, extend, rename, delete, or
+publish persistent cache state.
 
 The worker copies and rehashes the exact source into AppContainer-private temporary storage,
 closes the case-source handle, renders one page, writes one fixed-layout header plus raw RGBA8
-payload, flushes, and closes the writer. Only after confirmed whole-tree termination may the
-trusted broker read back and validate the exact stage and atomically publish it. Unconfirmed
-termination quarantines the random stage. The complete rules are in the
+payload to the bounded section, flushes/unmaps it, and closes its handle. Only after confirmed
+whole-tree termination may the trusted broker read and validate the section, write the persistent
+stage, validate it again, and atomically publish it. Unconfirmed termination leaves the persistent
+stage empty; only indeterminate publication quarantines it. The complete rules are in the
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md).
 
 These are operation-specific handle claims only. The worker still has no general access to an
@@ -336,12 +340,13 @@ the one-shot tree before storage revokes the borrow. This evidence belongs to th
 operation and does not retroactively change PWS-0107's no-document completion claim.
 
 PWS-0108 adds required supported-Windows evidence that one current committed PDF read handle and
-one random cache-stage write handle work with their exact reduced rights while directory, sibling,
-manifest, source-write, cache-read/delete/rename, and path-based case access remain denied. The
-worker output must bind operation/source/page/cache IDs, fixed layout, size, and digests; every
-success/failure/cancel/timeout path must confirm one-shot tree termination before trusted readback
-or authority release. An unconfirmed tree must leave the stage quarantined and block another
-generation rather than manufacture cleanup evidence.
+one fixed-size section map-write handle work with their exact reduced rights while a separate
+read-only mapping right, unbounded/oversized mapping, file I/O, directory, sibling, manifest,
+source-write, cache-file access, and
+path-based case access remain denied. The worker output must bind operation/source/page/cache IDs,
+fixed layout, size, and digests; every success/failure/cancel/timeout path must confirm one-shot tree
+termination before trusted section readback or persistent stage write. An unconfirmed tree must
+leave no persistent writer and block another generation rather than manufacture cleanup evidence.
 
 Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
 probes into a temporary physical tree at the root of CPython's fixed drive before launch. The

@@ -182,20 +182,38 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
         return self._cache_object_id
 
     @property
-    def write_handle(self) -> WindowsHandle:
-        """Return only the exact stage handle for reduced-right broker duplication."""
+    def maximum_bytes(self) -> int:
+        """Return the exact reserved upper bound for this artifact stage."""
 
-        self._require_open(context="thumbnail.stage_handle")
-        if self._quarantined:
-            reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.stage_trust")
-        return self._pending.handle
+        self._require_open(context="thumbnail.stage_limit")
+        return self._pending.maximum_bytes
+
+    def write_artifact(self, payload: bytes) -> None:
+        """Persist one already-bounded broker-validated artifact in trusted storage."""
+
+        self._require_open(context="thumbnail.stage_write")
+        if self._quarantined or self._artifact is not None:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.stage_state")
+        if type(payload) is not bytes or not payload or len(payload) > self._pending.maximum_bytes:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.LIMIT_EXCEEDED, "thumbnail.stage_size")
+        try:
+            self._pending.write_artifact(payload)
+        except WorkspaceError as error:
+            code = (
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED
+                if error.code is WorkspaceErrorCode.QUOTA_EXCEEDED
+                else PdfThumbnailErrorCode.DESTINATION_FAILED
+            )
+            reject_pdf_thumbnail(code, "thumbnail.stage_write")
+        except Exception:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.stage_write")
 
     @property
     def is_quarantined(self) -> bool:
         return self._quarantined
 
     def validate(self, *, expected_operation_id: UUID) -> PdfThumbnailArtifact:
-        """Seal and fully validate exact worker output before it can be published."""
+        """Seal and fully validate exact broker-staged output before publication."""
 
         self._require_open(context="thumbnail.stage_validate")
         if self._quarantined or self._artifact is not None:
@@ -271,16 +289,11 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
             reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.publish")
 
     def quarantine(self) -> None:
-        """Retain untrusted bytes when worker termination or publication is uncertain."""
+        """Retain the stage only when persistent publication state is uncertain."""
 
         self._require_open(context="thumbnail.stage_quarantine")
         self._quarantined = True
         self._store._quarantine_stage(self._cache_object_id)
-
-    def retain_untrusted(self) -> None:
-        """Alias used by brokers when whole-tree worker termination is unconfirmed."""
-
-        self.quarantine()
 
     def discard(self) -> None:
         """Delete only a trusted unpublished stage; quarantined stages are preserved."""

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import hmac
 import os
 import stat
 import tempfile
 from contextlib import ExitStack
+from ctypes import wintypes
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Final, Never, cast
+from types import TracebackType
+from typing import Any, BinaryIO, Final, Literal, Never, Self, cast
 
 from paperworkshell.domain.pdf_rendering import (
     MAX_PDF_RENDER_BYTES,
@@ -56,6 +59,154 @@ if os.name == "nt":
 
 _COPY_CHUNK_BYTES: Final = 1024 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
+_FILE_MAP_WRITE: Final = 0x0000_0002
+_MAX_WINDOWS_SIZE_T: Final = (1 << (ctypes.sizeof(ctypes.c_size_t) * 8)) - 1
+
+
+@dataclass(slots=True, repr=False)
+class _MappedOutputSection:
+    """Own one fixed-capacity worker view of a broker-created pagefile section."""
+
+    _handle: int
+    capacity: int
+    _view: int
+    _position: int = 0
+    _closed: bool = False
+
+    @classmethod
+    def adopt(cls, handle: int, capacity: int) -> Self:
+        """Consume ``handle`` and map exactly ``capacity`` writable bytes."""
+
+        if type(handle) is not int or handle <= 0:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_handle",
+            )
+        if type(capacity) is not int or capacity <= 0 or capacity > _MAX_WINDOWS_SIZE_T:
+            _close_native_handle_no_raise(handle)
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                "thumbnail.output_capacity",
+            )
+        try:
+            view = _map_output_section(handle, capacity)
+        except Exception:
+            _close_native_handle_no_raise(handle)
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_map",
+            )
+        if view <= 0:
+            _close_native_handle_no_raise(handle)
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_map",
+            )
+        try:
+            return cls(handle, capacity, view)
+        except BaseException:
+            try:
+                _unmap_output_view(view)
+            except BaseException:
+                pass
+            _close_native_handle_no_raise(handle)
+            raise
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_closed",
+            )
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Literal[False]:
+        try:
+            self.close()
+        except PdfThumbnailError:
+            if exc_type is None:
+                raise
+        return False
+
+    def write(self, payload: bytes, /) -> int:
+        """Copy bytes into the mapped view without exceeding its exact logical cap."""
+
+        if self._closed or type(payload) is not bytes:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_write",
+            )
+        remaining = self.capacity - self._position
+        if len(payload) > remaining:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                "thumbnail.output_capacity",
+            )
+        if payload:
+            try:
+                _copy_to_output_view(self._view, self._position, payload)
+            except Exception:
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.DESTINATION_FAILED,
+                    "thumbnail.output_write",
+                )
+            self._position += len(payload)
+        return len(payload)
+
+    def tell(self) -> int:
+        if self._closed:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_state",
+            )
+        return self._position
+
+    def flush(self) -> None:
+        if self._closed:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_flush",
+            )
+        if self._position == 0:
+            return
+        try:
+            flushed = _flush_output_view(self._view, self._position)
+        except Exception:
+            flushed = False
+        if not flushed:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_flush",
+            )
+
+    def close(self) -> None:
+        """Attempt both cleanup steps and fail closed if either one fails."""
+
+        if self._closed:
+            return
+        view = self._view
+        handle = self._handle
+        self._view = 0
+        self._handle = 0
+        self._closed = True
+        try:
+            unmapped = _unmap_output_view(view)
+        except Exception:
+            unmapped = False
+        try:
+            handle_closed = _close_native_handle(handle)
+        except Exception:
+            handle_closed = False
+        if not unmapped or not handle_closed:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_cleanup",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,19 +249,22 @@ class WindowsPdfThumbnailAdapter:
         context: OperationContext,
         request: PdfThumbnailRenderRequest,
     ) -> CaseObjectReference:
-        """Consume both handles and return only after exact bytes are durable and closed."""
+        """Consume both handles and return after the bounded section is flushed and closed."""
 
         source_owned = request.source_handle
         cache_owned = request.cache_handle
         source_descriptor: int | None = None
-        cache_descriptor: int | None = None
         try:
             if os.name != "nt":
                 reject_pdf_thumbnail(
                     PdfThumbnailErrorCode.WORKER_FAILED,
                     "thumbnail.platform",
                 )
-            _require_non_inheritable(source_owned, context="thumbnail.source_handle")
+            _require_non_inheritable(
+                source_owned,
+                context="thumbnail.source_handle",
+                code=PdfThumbnailErrorCode.SOURCE_INVALID,
+            )
             _require_non_inheritable(cache_owned, context="thumbnail.cache_handle")
             try:
                 source_descriptor = msvcrt.open_osfhandle(
@@ -118,15 +272,10 @@ class WindowsPdfThumbnailAdapter:
                     os.O_RDONLY | os.O_BINARY,
                 )
                 source_owned = 0
-                cache_descriptor = msvcrt.open_osfhandle(
-                    cache_owned,
-                    os.O_WRONLY | os.O_BINARY,
-                )
-                cache_owned = 0
             except OSError, OverflowError, ValueError:
                 reject_pdf_thumbnail(
-                    PdfThumbnailErrorCode.DESTINATION_FAILED,
-                    "thumbnail.handle_open",
+                    PdfThumbnailErrorCode.SOURCE_INVALID,
+                    "thumbnail.source_handle_open",
                 )
 
             with ExitStack() as stack:
@@ -134,15 +283,19 @@ class WindowsPdfThumbnailAdapter:
                     os.fdopen(source_descriptor, "rb", buffering=0, closefd=True)
                 )
                 source_descriptor = None
+                output_handle = cache_owned
+                cache_owned = 0
                 destination = stack.enter_context(
-                    os.fdopen(cache_descriptor, "wb", buffering=0, closefd=True)
+                    _MappedOutputSection.adopt(
+                        output_handle,
+                        context.limits.output_bytes,
+                    )
                 )
-                cache_descriptor = None
                 return self._render_open_handles(
                     context,
                     request,
                     cast(BinaryIO, source),
-                    cast(BinaryIO, destination),
+                    destination,
                 )
         except PdfThumbnailError:
             raise
@@ -157,9 +310,7 @@ class WindowsPdfThumbnailAdapter:
                 _close_descriptor_no_raise(source_descriptor)
             elif source_owned > 0:
                 _close_native_handle_no_raise(source_owned)
-            if cache_descriptor is not None:
-                _close_descriptor_no_raise(cache_descriptor)
-            elif cache_owned > 0:
+            if cache_owned > 0:
                 _close_native_handle_no_raise(cache_owned)
 
     def _render_open_handles(
@@ -167,7 +318,7 @@ class WindowsPdfThumbnailAdapter:
         context: OperationContext,
         request: PdfThumbnailRenderRequest,
         source: BinaryIO,
-        destination: BinaryIO,
+        destination: _MappedOutputSection,
     ) -> CaseObjectReference:
         reference = context.inputs[0]
         expected_size = reference.expected_byte_size
@@ -179,16 +330,15 @@ class WindowsPdfThumbnailAdapter:
 
         try:
             source_info = os.fstat(source.fileno())
-            cache_position = destination.tell()
         except OSError, OverflowError, ValueError:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.SOURCE_INVALID, "thumbnail.handle_identity")
-        if (
-            not stat.S_ISREG(source_info.st_mode)
-            or source_info.st_size != expected_size
-            or type(cache_position) is not int
-            or cache_position != 0
-        ):
+        if not stat.S_ISREG(source_info.st_mode) or source_info.st_size != expected_size:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.SOURCE_INVALID, "thumbnail.handle_identity")
+        if destination.capacity != context.limits.output_bytes or destination.tell() != 0:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "thumbnail.output_identity",
+            )
 
         limits = _render_limits(context, request, expected_size)
         cache_key = PdfThumbnailCacheKey(
@@ -206,13 +356,19 @@ class WindowsPdfThumbnailAdapter:
         control = _RenderControl(context)
         _require_active(control)
         temp_root = _materialize_worker_private_temp()
-        try:
-            staged_source_context = tempfile.TemporaryFile(mode="w+b", dir=temp_root)
-            raster_context = tempfile.TemporaryFile(mode="w+b", dir=temp_root)
-        except OSError:
-            reject_pdf_thumbnail(PdfThumbnailErrorCode.LIMIT_EXCEEDED, "thumbnail.temp_create")
-
-        with staged_source_context as staged_source, raster_context as raster:
+        with ExitStack() as temporary_files:
+            try:
+                staged_source = temporary_files.enter_context(
+                    tempfile.TemporaryFile(mode="w+b", dir=temp_root)
+                )
+                raster = temporary_files.enter_context(
+                    tempfile.TemporaryFile(mode="w+b", dir=temp_root)
+                )
+            except OSError:
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                    "thumbnail.temp_create",
+                )
             source_copy = cast(BinaryIO, staged_source)
             raster_copy = cast(BinaryIO, raster)
             _copy_verified_source(
@@ -222,6 +378,13 @@ class WindowsPdfThumbnailAdapter:
                 expected_digest=expected_digest,
                 control=control,
             )
+            try:
+                source.close()
+            except OSError:
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.SOURCE_INVALID,
+                    "thumbnail.source_close",
+                )
             source_copy.flush()
             source_copy.seek(0)
             result = self.renderer.render(
@@ -356,7 +519,7 @@ def _require_render_result(
 
 
 def _write_artifact(
-    destination: BinaryIO,
+    destination: _MappedOutputSection,
     raster: BinaryIO,
     result: PdfPageRenderResult,
     *,
@@ -408,9 +571,10 @@ def _write_artifact(
     _require_active(control)
     try:
         destination.flush()
-        os.fsync(destination.fileno())
         final_position = destination.tell()
-    except OSError:
+    except PdfThumbnailError:
+        raise
+    except Exception:
         reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.cache_flush")
     if type(final_position) is not int or final_position != total_bytes:
         reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.cache_size")
@@ -418,7 +582,12 @@ def _write_artifact(
     return total_bytes, artifact_digest.hexdigest()
 
 
-def _write_exact(destination: BinaryIO, payload: bytes, *, context: str) -> None:
+def _write_exact(
+    destination: BinaryIO | _MappedOutputSection,
+    payload: bytes,
+    *,
+    context: str,
+) -> None:
     offset = 0
     try:
         while offset < len(payload):
@@ -460,27 +629,80 @@ def _raise_thumbnail_render_error(error: PdfRenderError) -> Never:
     reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.render")
 
 
-def _require_non_inheritable(handle: int, *, context: str) -> None:
+def _require_non_inheritable(
+    handle: int,
+    *,
+    context: str,
+    code: PdfThumbnailErrorCode = PdfThumbnailErrorCode.DESTINATION_FAILED,
+) -> None:
     try:
         inheritable = os.get_handle_inheritable(handle)
     except OSError, OverflowError, ValueError:
-        reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, context)
+        reject_pdf_thumbnail(code, context)
     if inheritable:
-        reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, context)
+        reject_pdf_thumbnail(code, context)
+
+
+def _kernel32() -> Any:
+    if os.name != "nt":
+        reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.platform")
+    return ctypes.WinDLL("kernel32", use_last_error=True)
+
+
+def _map_output_section(handle: int, capacity: int) -> int:
+    kernel32 = _kernel32()
+    map_view = kernel32.MapViewOfFile
+    map_view.argtypes = (
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_size_t,
+    )
+    map_view.restype = ctypes.c_void_p
+    mapped = map_view(
+        wintypes.HANDLE(handle),
+        _FILE_MAP_WRITE,
+        0,
+        0,
+        capacity,
+    )
+    return int(mapped or 0)
+
+
+def _copy_to_output_view(view: int, offset: int, payload: bytes) -> None:
+    ctypes.memmove(ctypes.c_void_p(view + offset), payload, len(payload))
+
+
+def _flush_output_view(view: int, byte_count: int) -> bool:
+    kernel32 = _kernel32()
+    flush_view = kernel32.FlushViewOfFile
+    flush_view.argtypes = (ctypes.c_void_p, ctypes.c_size_t)
+    flush_view.restype = wintypes.BOOL
+    return bool(flush_view(ctypes.c_void_p(view), byte_count))
+
+
+def _unmap_output_view(view: int) -> bool:
+    kernel32 = _kernel32()
+    unmap_view = kernel32.UnmapViewOfFile
+    unmap_view.argtypes = (ctypes.c_void_p,)
+    unmap_view.restype = wintypes.BOOL
+    return bool(unmap_view(ctypes.c_void_p(view)))
+
+
+def _close_native_handle(handle: int) -> bool:
+    kernel32 = _kernel32()
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    return bool(close_handle(wintypes.HANDLE(handle)))
 
 
 def _close_native_handle_no_raise(handle: int) -> None:
     if handle <= 0 or os.name != "nt":
         return
     try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        close_handle = kernel32.CloseHandle
-        close_handle.argtypes = (wintypes.HANDLE,)
-        close_handle.restype = wintypes.BOOL
-        close_handle(wintypes.HANDLE(handle))
+        _close_native_handle(handle)
     except BaseException:
         pass
 

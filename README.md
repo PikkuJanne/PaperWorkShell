@@ -172,8 +172,9 @@ The PWS-0107 Windows worker boundary launches a fresh zero-capability AppContain
 Job Object, inherits only two RPC handles plus a fixed 92-byte bootstrap handle, constructs a
 minimal per-launch environment, and supports bounded negotiation, progress, cancellation, timeout,
 shutdown, forced tree termination, and fresh restart. Registered document operations receive only
-their exact reduced-right source/result or source/cache-stage handles after ready; they never
-receive a case or directory path. The implementation contract and live
+their exact reduced-right source/result-pipe or source/bounded-output-section handles after ready;
+thumbnail workers receive no persistent cache-file handle, and no worker receives a case or
+directory path. The implementation contract and live
 egress/job/environment/filesystem evidence requirements are documented in
 [`docs/architecture/worker-lifecycle.md`](docs/architecture/worker-lifecycle.md), with the operating
 system decision in

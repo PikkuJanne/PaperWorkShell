@@ -13,11 +13,20 @@ from paperworkshell.domain.pdf_inspection import (
     PdfInspectionErrorCode,
     reject_pdf_inspection,
 )
+from paperworkshell.domain.pdf_thumbnails import (
+    PdfThumbnailErrorCode,
+    reject_pdf_thumbnail,
+)
 
 _ERROR_BROKEN_PIPE: Final = 109
+_FILE_MAP_READ: Final = 0x0000_0004
 _HANDLE_FLAG_INHERIT: Final = 0x0000_0001
+_INVALID_HANDLE_VALUE: Final = ctypes.c_void_p(-1).value
+_MAX_WINDOWS_SIZE_T: Final = (1 << (ctypes.sizeof(ctypes.c_size_t) * 8)) - 1
+_PAGE_READWRITE: Final = 0x0000_0004
 _PIPE_BUFFER_BYTES: Final = 8_192
 _READ_CHUNK_BYTES: Final = 1_024
+_OUTPUT_CLEANUP_QUARANTINE: list[Any] = []
 
 
 class _SecurityAttributes(ctypes.Structure):
@@ -34,17 +43,257 @@ def _kernel32() -> Any:
     return ctypes.WinDLL("kernel32", use_last_error=True)
 
 
-def _close_no_raise(handle: int) -> None:
+def _close_handle(handle: int) -> bool:
     if handle == 0:
-        return
+        return True
     try:
         kernel32 = _kernel32()
         close_handle = kernel32.CloseHandle
         close_handle.argtypes = (wintypes.HANDLE,)
         close_handle.restype = wintypes.BOOL
-        close_handle(wintypes.HANDLE(handle))
+        return bool(close_handle(wintypes.HANDLE(handle)))
     except BaseException:
-        pass
+        return False
+
+
+def _close_no_raise(handle: int) -> None:
+    _close_handle(handle)
+
+
+def _unmap_view(view: int) -> bool:
+    if view == 0:
+        return True
+    try:
+        kernel32 = _kernel32()
+        unmap_view = kernel32.UnmapViewOfFile
+        unmap_view.argtypes = (ctypes.c_void_p,)
+        unmap_view.restype = wintypes.BOOL
+        return bool(unmap_view(ctypes.c_void_p(view)))
+    except BaseException:
+        return False
+
+
+def _retain_output_cleanup(value: Any) -> None:
+    if all(candidate is not value for candidate in _OUTPUT_CLEANUP_QUARANTINE):
+        _OUTPUT_CLEANUP_QUARANTINE.append(value)
+
+
+def _release_output_cleanup(value: Any) -> None:
+    _OUTPUT_CLEANUP_QUARANTINE[:] = [
+        candidate for candidate in _OUTPUT_CLEANUP_QUARANTINE if candidate is not value
+    ]
+
+
+def _drain_output_cleanup() -> None:
+    for candidate in tuple(_OUTPUT_CLEANUP_QUARANTINE):
+        try:
+            candidate.close()
+        except BaseException:
+            pass
+
+
+class WindowsBoundedOutputBuffer(AbstractContextManager["WindowsBoundedOutputBuffer"]):
+    """One fixed-size pagefile section with an exact logical capacity."""
+
+    __slots__ = ("_capacity", "_closed", "_mapping_handle", "_read_view")
+
+    def __init__(self, mapping_handle: int, read_view: int, capacity: int) -> None:
+        self._mapping_handle = mapping_handle
+        self._read_view = read_view
+        self._capacity = capacity
+        self._closed = False
+
+    def __repr__(self) -> str:
+        return "WindowsBoundedOutputBuffer(<redacted>)"
+
+    @classmethod
+    def create(cls, capacity: int) -> WindowsBoundedOutputBuffer:
+        """Create an unnamed section from an exact logical, page-rounded size."""
+
+        if type(capacity) is not int or capacity <= 0:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.MODEL_INVALID,
+                "broker.output_capacity",
+            )
+        if capacity > _MAX_WINDOWS_SIZE_T:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                "broker.output_capacity",
+            )
+        if os.name != "nt":
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.WORKER_FAILED,
+                "broker.platform",
+            )
+        _drain_output_cleanup()
+        if _OUTPUT_CLEANUP_QUARANTINE:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "broker.output_cleanup_pending",
+            )
+
+        kernel32 = _kernel32()
+        create_mapping = kernel32.CreateFileMappingW
+        create_mapping.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.LPCWSTR,
+        )
+        create_mapping.restype = wintypes.HANDLE
+        maximum_high = capacity >> 32
+        maximum_low = capacity & 0xFFFF_FFFF
+        mapping = create_mapping(
+            wintypes.HANDLE(_INVALID_HANDLE_VALUE),
+            None,
+            _PAGE_READWRITE,
+            maximum_high,
+            maximum_low,
+            None,
+        )
+        mapping_handle = int(mapping or 0)
+        read_view = 0
+        try:
+            if mapping_handle == 0 or mapping_handle == _INVALID_HANDLE_VALUE:
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.DESTINATION_FAILED,
+                    "broker.output_create",
+                )
+
+            set_handle_information = kernel32.SetHandleInformation
+            set_handle_information.argtypes = (
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.DWORD,
+            )
+            set_handle_information.restype = wintypes.BOOL
+            if not set_handle_information(
+                wintypes.HANDLE(mapping_handle),
+                _HANDLE_FLAG_INHERIT,
+                0,
+            ):
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.INTERNAL_ERROR,
+                    "broker.output_inheritance",
+                )
+
+            map_view = kernel32.MapViewOfFile
+            map_view.argtypes = (
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.c_size_t,
+            )
+            map_view.restype = ctypes.c_void_p
+            mapped = map_view(
+                wintypes.HANDLE(mapping_handle),
+                _FILE_MAP_READ,
+                0,
+                0,
+                capacity,
+            )
+            read_view = int(mapped or 0)
+            if read_view == 0:
+                reject_pdf_thumbnail(
+                    PdfThumbnailErrorCode.DESTINATION_FAILED,
+                    "broker.output_map",
+                )
+            return cls(mapping_handle, read_view, capacity)
+        except BaseException:
+            cleanup_handle = (
+                mapping_handle if mapping_handle not in {0, _INVALID_HANDLE_VALUE} else 0
+            )
+            if cleanup_handle != 0 or read_view != 0:
+                partial = cls(cleanup_handle, read_view, capacity)
+                partial.close()
+            raise
+
+    @property
+    def capacity(self) -> int:
+        """Return the exact logical cap enforced by the broker and worker adapter."""
+
+        return self._capacity
+
+    @property
+    def write_handle_value(self) -> int:
+        """Return the local section handle for reduced-right worker duplication."""
+
+        if self._closed or self._mapping_handle == 0:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.INTERNAL_ERROR,
+                "broker.output_handle",
+            )
+        return self._mapping_handle
+
+    def read_exact(self, byte_count: int) -> bytes:
+        """Copy exactly the trusted post-termination byte count from the broker view."""
+
+        if self._closed or self._read_view == 0:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.INTERNAL_ERROR,
+                "broker.output_reader",
+            )
+        if type(byte_count) is not int or not 0 <= byte_count <= self._capacity:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.RESULT_INVALID,
+                "broker.output_byte_count",
+            )
+        try:
+            return ctypes.string_at(self._read_view, byte_count)
+        except MemoryError:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                "broker.output_read",
+            )
+        except OSError, OverflowError, ValueError:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.RESULT_INVALID,
+                "broker.output_read",
+            )
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.INTERNAL_ERROR,
+                "broker.output_closed",
+            )
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: object,
+    ) -> None:
+        del exception, traceback
+        del exception_type
+        self.close()
+
+    def close(self) -> None:
+        """Unmap the broker view before releasing the section handle."""
+
+        if self._closed:
+            _release_output_cleanup(self)
+            return
+        read_view = self._read_view
+        mapping_handle = self._mapping_handle
+        unmapped = _unmap_view(read_view)
+        handle_closed = _close_handle(mapping_handle)
+        if unmapped:
+            self._read_view = 0
+        if handle_closed:
+            self._mapping_handle = 0
+        self._closed = unmapped and handle_closed
+        if not self._closed:
+            _retain_output_cleanup(self)
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.DESTINATION_FAILED,
+                "broker.output_cleanup",
+            )
+        _release_output_cleanup(self)
 
 
 class WindowsResultPipe(AbstractContextManager["WindowsResultPipe"]):

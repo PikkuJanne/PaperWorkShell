@@ -179,12 +179,15 @@ pending-source reader and one result writer. See
 [DF-PDF-INSPECTION](data-flows.md#df-pdf-inspection--broker-inspect-correlate-and-revoke) and the
 [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md).
 
-PWS-0108 separately proves one current committed-PDF reader and one random operation-cache-stage
-writer. The broker authenticates source and cache authority, duplicates only exact reduced rights,
-confirms one-shot worker-tree termination, validates the fixed raw-RGBA artifact, and alone
+PWS-0108 separately proves one current committed-PDF reader and one fixed-size volatile-output
+section writer. The broker authenticates source and cache authority, but duplicates only source
+read plus section map-write rights. The worker receives no persistent cache-file handle; its
+logical output is exact-capped by the adapter and its page-rounded volatile backing remains bounded
+to less than one memory page of slack. After confirmed one-shot
+worker-tree termination, the broker validates the fixed raw-RGBA artifact and alone writes and
 publishes the cache entry. The worker still cannot access an originals/cache directory, manifest,
-journal, export, destination, or path. Unconfirmed termination quarantines the random stage rather
-than accepting or deleting it. See
+journal, export, destination, or path. Unconfirmed termination leaves the broker-only persistent
+stage empty and safely disposable; quarantine remains reserved for indeterminate publication. See
 [DF-PREVIEW](data-flows.md#df-preview--render-bounded-thumbnailspreviews) and the
 [bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md). Other authority
 profiles remain inaccessible until their owning tasks provide separate evidence.

@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Task: PWS-0107
-- Extension: PWS-0105 first exact document-handle operation
+- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output
 - Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
 
 ## Context
@@ -212,6 +212,36 @@ destination authority. Future document operations must repeat the trusted resolu
 authentication, least-privilege transfer, correlation, termination, and denial evidence for their
 own object types; they cannot generalize PWS-0105's handle parameters into arbitrary authority.
 
+### Keep PWS-0108 thumbnail output volatile until worker revocation
+
+PWS-0108 selects an unnamed pagefile-backed Windows file-mapping object as the one-page thumbnail
+output primitive. The trusted broker calls `CreateFileMappingW` with `INVALID_HANDLE_VALUE`,
+`PAGE_READWRITE`, no name, and the exact logical header-plus-requested-pixels limit. It retains one
+read view and duplicates only `SECTION_MAP_WRITE` into the ready worker with inheritance disabled.
+The released RPC parameter remains named `cache_handle`, but it carries no cache-file, path,
+directory, synchronization, query, delete, rename, or publication authority.
+
+`FILE_MAP_WRITE` produces a read/write view under the Windows API. That does not expose another
+object: a new paging-file mapping starts zeroed and contains only bytes this operation writes. The
+production adapter maps the exact logical output limit and bounds every copy against it. Windows
+may round the volatile section backing to the containing memory page; live tests prove a view past
+that page-rounded bound fails, while the broker refuses to read even one byte past the logical
+limit. The residual slack is less than one page and can never extend a file or consume persistent
+cache storage.
+
+The worker writes the fixed artifact, flushes and unmaps its view, closes the section handle, and
+reports only exact size, SHA-256, operation/cache-object correlation, and content kind over RPC.
+The broker treats that claim and the shared bytes as untrusted. It first confirms complete Job-tree
+termination, then reads only the claimed byte count, verifies the whole-artifact digest and every
+header/key/pixel correlation, and only then calls the trusted storage stage's one-shot bounded
+writer. Storage seals, reads back, validates again, and alone performs no-replace publication.
+
+The persistent random stage is quota-reserved before launch but never opened to the worker. A
+cancelled, failed, malformed, or unconfirmed worker therefore cannot retain a persistent writer;
+the empty broker-only stage is safely disposable. Quarantine remains only for an indeterminate
+persistent publication operation. This preserves the PWS-0107 sticky cleanup-failure rule without
+turning uncertain worker termination into authority over a cache file.
+
 ### Require real containment evidence
 
 Task completion requires live Windows evidence, not launcher flags or this ADR alone:
@@ -233,7 +263,10 @@ Successful case-object handle brokerage is not PWS-0107 evidence because `protoc
 such handle. PWS-0105 is the first consuming operation and separately proves that only its
 deliberately brokered source and result handles work. Its source-rights tests prove writes are
 denied; the unchanged PWS-0107 live containment evidence continues to prove path-based case access
-is denied.
+is denied. PWS-0108 separately proves that its `SECTION_MAP_WRITE` duplicate maps in the
+AppContainer, file APIs and a separate read-only mapping right fail, the page-rounded section stays
+bounded, and persistent cache bytes appear only after worker-tree termination and trusted
+validation.
 
 A skipped or simulated required probe is not passing evidence. Failure of any required property
 leaves PWS-0107 or its consuming milestone gate open.
@@ -268,6 +301,25 @@ Rejected. Process inspection, inherited state, crash reporting, and command cons
 create unnecessary disclosure and injection channels. A fixed-size inherited pipe provisions only
 the launch binding; document authority remains handle-only.
 
+### Give the thumbnail worker a persistent cache-stage file handle
+
+Rejected. Post-termination size and quota checks do not prevent a compromised live worker from
+extending the file, consuming disk, or retaining a writer after cleanup becomes uncertain. A
+broker-only persistent stage populated only after revocation removes that authority.
+
+### Carry the complete thumbnail through the anonymous result pipe
+
+Rejected for version 1. The existing result pipe is intentionally small. A multi-megabyte raster
+can fill a bounded pipe before terminal worker-tree shutdown, forcing the broker either to read
+untrusted content concurrently or risk deadlock. The fixed-size pagefile section permits bounded
+production followed by revocation-before-read without a path or persistent file.
+
+### Use a named mapping or worker-private temporary output path
+
+Rejected. A named kernel object adds namespace and ACL discovery risk, while a path requires
+filesystem authorization and leaves cleanup tied to worker-controlled persistent state. The
+selected section is unnamed, handle-only, volatile, and bounded by its page-rounded allocation.
+
 ### Experimental process-sandbox API
 
 Rejected for the stable implementation. An experimental API with an unpublished/unstable policy
@@ -284,6 +336,9 @@ controls on the supported Windows target.
   to app-owned immutable runtime resources.
 - The AppContainer profile has intentionally writable ephemeral storage needed by Python. It is not
   a guarantee of a write-free process, secure erasure, or crash-artifact absence.
+- The PWS-0108 section is volatile and page-rounded. The adapter and broker enforce the exact
+  logical byte limit; the remaining sub-page slack is a bounded memory cost, not persistent cache
+  authority or byte-for-byte secure erasure.
 - Zero network capability is an OS policy claim whose supported behavior must be rechecked on the
   packaged Windows build and representative descendants. It is not inferred solely from a Boolean
   launch record.
@@ -294,7 +349,8 @@ controls on the supported Windows target.
   administrators, SYSTEM, or unrestricted malware in the launching account.
 - PWS-0107 itself added no document parser, renderer, OCR engine, UI, case mutation, or publish
   operation. The PWS-0105 extension adds only worker-side structural inspection of one prepared PDF
-  and cannot publish case state. Later adapters must preserve this boundary and add their own
+  and cannot publish case state. PWS-0108 adds bounded one-page rendering, but trusted storage alone
+  publishes its disposable cache. Later adapters must preserve this boundary and add their own
   handle-broker contract tests.
 - Stable plain-language client failures support later accessible announcements and recovery
   actions. PWS-0111 still owns the UI focus and announcement behavior.
@@ -302,7 +358,11 @@ controls on the supported Windows target.
 ## Implementation references
 
 - [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md)
+- [Bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md)
 - [Microsoft: Implementing an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)
+- [Microsoft: CreateFileMappingW](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw)
+- [Microsoft: MapViewOfFile](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile)
+- [Microsoft: File-mapping security and access rights](https://learn.microsoft.com/en-us/windows/win32/memory/file-mapping-security-and-access-rights)
 - [Microsoft: Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 - [Microsoft: Creating Processes](https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes)
 - [Microsoft: UpdateProcThreadAttribute](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)

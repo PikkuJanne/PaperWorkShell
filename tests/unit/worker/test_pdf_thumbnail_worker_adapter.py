@@ -5,6 +5,8 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import os
+import tempfile
+from collections.abc import Callable, Iterator
 from ctypes import wintypes
 from pathlib import Path
 from threading import Event
@@ -13,6 +15,7 @@ from uuid import UUID
 
 import pytest
 
+import paperworkshell.worker.pdf_thumbnail_operation as thumbnail_operation
 from paperworkshell.domain.pdf_rendering import (
     PdfAnnotationMode,
     PdfPageBox,
@@ -30,6 +33,7 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
     PdfThumbnailErrorCode,
     decode_pdf_thumbnail_artifact,
+    decode_pdf_thumbnail_artifact_header,
 )
 from paperworkshell.pdf.pdfium_renderer import (
     EXPECTED_PDFIUM_BUILD,
@@ -38,6 +42,7 @@ from paperworkshell.pdf.pdfium_renderer import (
     PDFIUM_RENDERER_VERSION,
 )
 from paperworkshell.pdf.renderer import PdfPageRenderer, PdfRenderControl
+from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
 from paperworkshell.worker.operations import OperationContext, PdfThumbnailRenderRequest
 from paperworkshell.worker.pdf_thumbnail_operation import WindowsPdfThumbnailAdapter
 from paperworkshell.worker.pdf_thumbnail_profile import (
@@ -62,9 +67,12 @@ _CREATE_ALWAYS = 2
 _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_NORMAL = 0x0000_0080
 _DUPLICATE_SAME_ACCESS = 0x0000_0002
+_SECTION_MAP_WRITE = 0x0000_0002
+_DEFAULT_OUTPUT_CAPACITY = 4 * 1024 * 1024
 
 _SOURCE_PAYLOAD = b"%PDF-1.4\nsynthetic worker-adapter bytes\n%%EOF\n"
 _OPAQUE_PIXELS = bytes((0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60, 0xFF))
+_ACTIVE_OUTPUTS: list[WindowsBoundedOutputBuffer] = []
 
 
 def _uuid(value: int) -> UUID:
@@ -75,12 +83,16 @@ def _uuid(value: int) -> UUID:
 def _worker_private_temp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+) -> Iterator[None]:
     local_root = tmp_path / "worker-profile"
     temp_root = local_root / "Temp"
     monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
     monkeypatch.setenv("TEMP", os.fspath(temp_root))
     monkeypatch.setenv("TMP", os.fspath(temp_root))
+    yield
+    for output in reversed(_ACTIVE_OUTPUTS):
+        output.close()
+    _ACTIVE_OUTPUTS.clear()
 
 
 def _kernel32() -> Any:
@@ -115,7 +127,7 @@ def _open_file_handle(path: Path, *, access: int, creation: int) -> int:
     return value
 
 
-def _duplicate_local_handle(handle: int) -> int:
+def _duplicate_local_handle(handle: int, *, access: int | None = None) -> int:
     kernel32 = _kernel32()
     current_process = kernel32.GetCurrentProcess
     current_process.argtypes = ()
@@ -138,9 +150,9 @@ def _duplicate_local_handle(handle: int) -> int:
         wintypes.HANDLE(handle),
         process,
         ctypes.byref(duplicate),
-        0,
+        0 if access is None else access,
         False,
-        _DUPLICATE_SAME_ACCESS,
+        _DUPLICATE_SAME_ACCESS if access is None else 0,
     )
     value = int(duplicate.value) if duplicate.value else 0
     assert value > 0
@@ -170,29 +182,37 @@ def _close_if_open(handle: int) -> None:
     assert close_handle(wintypes.HANDLE(handle))
 
 
-def _brokered_handles(tmp_path: Path, payload: bytes = _SOURCE_PAYLOAD) -> tuple[Path, int, int]:
+def _brokered_handles(
+    tmp_path: Path,
+    payload: bytes = _SOURCE_PAYLOAD,
+    *,
+    output_capacity: int = _DEFAULT_OUTPUT_CAPACITY,
+) -> tuple[WindowsBoundedOutputBuffer, int, int]:
     source_path = tmp_path / "source.pws"
-    cache_path = tmp_path / "cache.pws"
     source_path.write_bytes(payload)
     source_authority = _open_file_handle(
         source_path,
         access=_GENERIC_READ,
         creation=_OPEN_EXISTING,
     )
-    cache_authority = _open_file_handle(
-        cache_path,
-        access=_GENERIC_WRITE,
-        creation=_CREATE_ALWAYS,
-    )
+    output = WindowsBoundedOutputBuffer.create(output_capacity)
+    source_handle = 0
+    output_handle = 0
     try:
-        return (
-            cache_path,
-            _duplicate_local_handle(source_authority),
-            _duplicate_local_handle(cache_authority),
+        source_handle = _duplicate_local_handle(source_authority)
+        output_handle = _duplicate_local_handle(
+            output.write_handle_value,
+            access=_SECTION_MAP_WRITE,
         )
+        _ACTIVE_OUTPUTS.append(output)
+        return output, source_handle, output_handle
+    except BaseException:
+        _close_if_open(source_handle)
+        _close_if_open(output_handle)
+        output.close()
+        raise
     finally:
         _close_if_open(source_authority)
-        _close_if_open(cache_authority)
 
 
 def _source_reference(
@@ -269,6 +289,7 @@ class _SyntheticRenderer:
         bytes_to_write: bytes | None = None,
         failure: PdfRenderError | None = None,
         nonresult: object | None = None,
+        render_probe: Callable[[], None] | None = None,
     ) -> None:
         self.pixels = pixels
         self.width_pixels = width_pixels
@@ -278,6 +299,7 @@ class _SyntheticRenderer:
         self.bytes_to_write = pixels if bytes_to_write is None else bytes_to_write
         self.failure = failure
         self.nonresult = nonresult
+        self.render_probe = render_probe
         self.calls = 0
         self.source_payloads: list[bytes] = []
         self.requests: list[PdfPageRenderRequest] = []
@@ -293,6 +315,8 @@ class _SyntheticRenderer:
         control: PdfRenderControl,
     ) -> PdfPageRenderResult:
         self.calls += 1
+        if self.render_probe is not None:
+            self.render_probe()
         self.source_payloads.append(source.read())
         self.requests.append(request)
         self.limits.append(limits)
@@ -344,14 +368,20 @@ def test_adapter_discard_consumes_both_brokered_handles(tmp_path: Path) -> None:
 
 def test_adapter_writes_one_fixed_authenticated_artifact_and_reference(tmp_path: Path) -> None:
     cache_path, source_handle, cache_handle = _brokered_handles(tmp_path)
-    renderer = _SyntheticRenderer()
+    native_authority_state: list[tuple[bool, bool]] = []
+    renderer = _SyntheticRenderer(
+        render_probe=lambda: native_authority_state.append(
+            (_handle_is_open(source_handle), _handle_is_open(cache_handle))
+        )
+    )
     context = _context(_source_reference())
     request = _request(source_handle, cache_handle)
 
     try:
         reference = _adapter(renderer).render_to_cache(context, request)
         _assert_consumed(source_handle, cache_handle)
-        encoded = cache_path.read_bytes()
+        assert reference.expected_byte_size is not None
+        encoded = cache_path.read_exact(reference.expected_byte_size)
     finally:
         _close_if_open(source_handle)
         _close_if_open(cache_handle)
@@ -379,6 +409,7 @@ def test_adapter_writes_one_fixed_authenticated_artifact_and_reference(tmp_path:
     assert artifact.header.width_pixels == 2
     assert artifact.header.height_pixels == 1
     assert artifact.header.intrinsic_rotation is PdfRenderRotation.DEGREES_90
+    assert native_authority_state == [(False, True)]
     assert renderer.source_payloads == [_SOURCE_PAYLOAD]
     assert renderer.requests == [
         PdfPageRenderRequest(
@@ -395,6 +426,172 @@ def test_adapter_writes_one_fixed_authenticated_artifact_and_reference(tmp_path:
     assert limits.maximum_destination_bytes == (
         context.limits.output_bytes - PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES
     )
+
+
+def test_adapter_maps_exact_declared_output_capacity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_capacity = PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES + 64
+    output, source_handle, cache_handle = _brokered_handles(
+        tmp_path,
+        output_capacity=output_capacity,
+    )
+    original_map = thumbnail_operation._map_output_section
+    mapped_capacities: list[int] = []
+
+    def map_probe(handle: int, capacity: int) -> int:
+        mapped_capacities.append(capacity)
+        return original_map(handle, capacity)
+
+    monkeypatch.setattr(thumbnail_operation, "_map_output_section", map_probe)
+    context = _context(_source_reference(), output_bytes=output_capacity)
+    request = _request(source_handle, cache_handle)
+    try:
+        reference = _adapter(_SyntheticRenderer()).render_to_cache(context, request)
+        _assert_consumed(source_handle, cache_handle)
+    finally:
+        _close_if_open(source_handle)
+        _close_if_open(cache_handle)
+
+    assert mapped_capacities == [output_capacity]
+    assert reference.expected_byte_size is not None
+    decode_pdf_thumbnail_artifact(output.read_exact(reference.expected_byte_size))
+
+
+def test_adapter_cannot_map_beyond_os_enforced_section_capacity(tmp_path: Path) -> None:
+    section_capacity = 4_096
+    _output, source_handle, cache_handle = _brokered_handles(
+        tmp_path,
+        output_capacity=section_capacity,
+    )
+    renderer = _SyntheticRenderer()
+
+    try:
+        with pytest.raises(PdfThumbnailError) as raised:
+            _adapter(renderer).render_to_cache(
+                _context(_source_reference(), output_bytes=section_capacity + 1),
+                _request(source_handle, cache_handle),
+            )
+        _assert_consumed(source_handle, cache_handle)
+    finally:
+        _close_if_open(source_handle)
+        _close_if_open(cache_handle)
+
+    assert raised.value.code is PdfThumbnailErrorCode.DESTINATION_FAILED
+    assert raised.value.context == "thumbnail.output_map"
+    assert renderer.calls == 0
+
+
+def test_adapter_rejects_file_handle_instead_of_output_section(tmp_path: Path) -> None:
+    output, source_handle, section_handle = _brokered_handles(tmp_path)
+    _close_if_open(section_handle)
+    file_path = tmp_path / "not-a-section.pws"
+    cache_handle = _open_file_handle(
+        file_path,
+        access=_GENERIC_WRITE,
+        creation=_CREATE_ALWAYS,
+    )
+
+    try:
+        with pytest.raises(PdfThumbnailError) as raised:
+            _adapter(_SyntheticRenderer()).render_to_cache(
+                _context(_source_reference()),
+                _request(source_handle, cache_handle),
+            )
+        _assert_consumed(source_handle, cache_handle)
+    finally:
+        _close_if_open(source_handle)
+        _close_if_open(cache_handle)
+
+    assert raised.value.code is PdfThumbnailErrorCode.DESTINATION_FAILED
+    assert raised.value.context == "thumbnail.output_map"
+    assert file_path.read_bytes() == b""
+    assert _output_is_empty(output)
+
+
+def test_adapter_sanitizes_output_mapping_failure_and_consumes_handles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output, source_handle, cache_handle = _brokered_handles(tmp_path)
+    monkeypatch.setattr(thumbnail_operation, "_map_output_section", lambda *_args: 0)
+
+    try:
+        with pytest.raises(PdfThumbnailError) as raised:
+            _adapter(_SyntheticRenderer()).render_to_cache(
+                _context(_source_reference()),
+                _request(source_handle, cache_handle),
+            )
+        _assert_consumed(source_handle, cache_handle)
+    finally:
+        _close_if_open(source_handle)
+        _close_if_open(cache_handle)
+
+    assert raised.value.code is PdfThumbnailErrorCode.DESTINATION_FAILED
+    assert raised.value.context == "thumbnail.output_map"
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert _output_is_empty(output)
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_context"),
+    (
+        ("write", "thumbnail.output_write"),
+        ("flush", "thumbnail.output_flush"),
+        ("unmap", "thumbnail.output_cleanup"),
+        ("close", "thumbnail.output_cleanup"),
+    ),
+)
+def test_adapter_fails_closed_on_sanitized_output_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+    expected_context: str,
+) -> None:
+    _output, source_handle, cache_handle = _brokered_handles(tmp_path)
+    if fault == "write":
+
+        def fail_write(_view: int, _offset: int, _payload: bytes) -> None:
+            raise OSError("sensitive-output-write-detail")
+
+        monkeypatch.setattr(thumbnail_operation, "_copy_to_output_view", fail_write)
+    elif fault == "flush":
+        monkeypatch.setattr(thumbnail_operation, "_flush_output_view", lambda *_args: False)
+    elif fault == "unmap":
+        original_unmap = thumbnail_operation._unmap_output_view
+
+        def fail_after_unmap(view: int) -> bool:
+            original_unmap(view)
+            return False
+
+        monkeypatch.setattr(thumbnail_operation, "_unmap_output_view", fail_after_unmap)
+    else:
+        original_close = thumbnail_operation._close_native_handle
+
+        def fail_after_close(handle: int) -> bool:
+            original_close(handle)
+            return False
+
+        monkeypatch.setattr(thumbnail_operation, "_close_native_handle", fail_after_close)
+
+    try:
+        with pytest.raises(PdfThumbnailError) as raised:
+            _adapter(_SyntheticRenderer()).render_to_cache(
+                _context(_source_reference()),
+                _request(source_handle, cache_handle),
+            )
+        _assert_consumed(source_handle, cache_handle)
+    finally:
+        _close_if_open(source_handle)
+        _close_if_open(cache_handle)
+
+    assert raised.value.code is PdfThumbnailErrorCode.DESTINATION_FAILED
+    assert raised.value.context == expected_context
+    assert "sensitive-output-write-detail" not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
 
 
 @pytest.mark.parametrize(
@@ -430,7 +627,7 @@ def test_adapter_rejects_source_size_or_digest_misbinding_and_consumes_both_hand
 
     assert raised.value.code is PdfThumbnailErrorCode.SOURCE_INVALID
     assert renderer.calls == 0
-    assert cache_path.read_bytes() == b""
+    assert _output_is_empty(cache_path)
 
 
 @pytest.mark.parametrize(
@@ -469,7 +666,7 @@ def test_adapter_checks_terminal_state_before_render_and_consumes_both_handles(
 
     assert raised.value.code is expected_code
     assert renderer.calls == 0
-    assert cache_path.read_bytes() == b""
+    assert _output_is_empty(cache_path)
 
 
 @pytest.mark.parametrize(
@@ -484,7 +681,10 @@ def test_adapter_rejects_exhausted_output_or_temporary_capacity_before_render(
     output_bytes: int,
     temporary_storage_bytes: int,
 ) -> None:
-    cache_path, source_handle, cache_handle = _brokered_handles(tmp_path)
+    cache_path, source_handle, cache_handle = _brokered_handles(
+        tmp_path,
+        output_capacity=output_bytes,
+    )
     renderer = _SyntheticRenderer()
 
     try:
@@ -504,7 +704,46 @@ def test_adapter_rejects_exhausted_output_or_temporary_capacity_before_render(
 
     assert raised.value.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
     assert renderer.calls == 0
-    assert cache_path.read_bytes() == b""
+    assert _output_is_empty(cache_path)
+
+
+def test_second_temporary_file_failure_closes_the_first_and_both_handles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path, source_handle, cache_handle = _brokered_handles(tmp_path)
+    renderer = _SyntheticRenderer()
+    original = cast(Callable[..., BinaryIO], tempfile.TemporaryFile)
+    opened: list[BinaryIO] = []
+
+    def fail_second(*args: object, **kwargs: object) -> BinaryIO:
+        if opened:
+            raise OSError("private temporary-file failure")
+        temporary = original(*args, **kwargs)
+        opened.append(temporary)
+        return temporary
+
+    monkeypatch.setattr(
+        "paperworkshell.worker.pdf_thumbnail_operation.tempfile.TemporaryFile",
+        fail_second,
+    )
+    try:
+        with pytest.raises(PdfThumbnailError) as raised:
+            WindowsPdfThumbnailAdapter(cast(PdfPageRenderer, renderer)).render_to_cache(
+                _context(_source_reference()),
+                _request(source_handle, cache_handle),
+            )
+        assert raised.value.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
+        assert "private" not in str(raised.value)
+        assert len(opened) == 1 and opened[0].closed
+        assert not _handle_is_open(source_handle)
+        assert not _handle_is_open(cache_handle)
+        assert _output_is_empty(cache_path)
+        assert renderer.calls == 0
+    finally:
+        _close_if_open(source_handle)
+        _close_if_open(cache_handle)
+    assert _output_is_empty(cache_path)
 
 
 @pytest.mark.parametrize(
@@ -537,7 +776,10 @@ def test_adapter_revalidates_renderer_output_against_operation_limits(
     pixel_count: int,
     renderer: _SyntheticRenderer,
 ) -> None:
-    cache_path, source_handle, cache_handle = _brokered_handles(tmp_path)
+    cache_path, source_handle, cache_handle = _brokered_handles(
+        tmp_path,
+        output_capacity=output_bytes,
+    )
 
     try:
         with pytest.raises(PdfThumbnailError) as raised:
@@ -560,13 +802,21 @@ def test_adapter_revalidates_renderer_output_against_operation_limits(
     assert _reference_was_not_published(cache_path)
 
 
-def _reference_was_not_published(cache_path: Path) -> bool:
-    """The staging file may contain untrusted bytes, but no valid artifact may escape."""
+def _output_is_empty(output: WindowsBoundedOutputBuffer) -> bool:
+    return output.read_exact(PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES) == bytes(
+        PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES
+    )
 
-    payload = cache_path.read_bytes()
-    if not payload:
+
+def _reference_was_not_published(output: WindowsBoundedOutputBuffer) -> bool:
+    """The section may contain untrusted bytes, but no valid artifact may escape."""
+
+    header_bytes = output.read_exact(PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES)
+    if header_bytes == bytes(PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES):
         return True
     try:
+        header = decode_pdf_thumbnail_artifact_header(header_bytes)
+        payload = output.read_exact(PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES + header.payload_bytes)
         decode_pdf_thumbnail_artifact(payload)
     except PdfThumbnailError:
         return True
@@ -613,7 +863,7 @@ def test_adapter_maps_renderer_failures_and_consumes_both_handles(
     assert raised.value.code is thumbnail_code
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
-    assert cache_path.read_bytes() == b""
+    assert _output_is_empty(cache_path)
 
 
 @pytest.mark.parametrize(

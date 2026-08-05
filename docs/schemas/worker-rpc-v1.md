@@ -162,10 +162,11 @@ Schema validity does not authorize a file. PWS-0105's trusted prepared-source br
 implementation: it matches the complete sealed-source summary, reopens the retained exact object
 without a path lookup, revalidates identity/type/size/link/reparse/sparse/alternate-stream state,
 and duplicates only reduced read rights into the worker. Its separate result pipe grants only
-write rights. PWS-0108 resolves a current committed-page mapping and exact source handle, and
-creates one quota-reserved random operation-cache stage before it emits the corresponding logical
-references. No reference, identifier, key, or integer substitutes for those retained opened-handle
-authorities. Future reference areas still require their own trusted resolution, containment,
+write rights. PWS-0108 resolves a current committed-page mapping and exact source handle, reserves
+one broker-only random cache stage, and creates a fixed-size pagefile-backed output section
+before it emits the corresponding logical references. No reference, identifier, key, or integer
+substitutes for those retained kernel-object authorities. Future reference areas still require
+their own trusted resolution, containment,
 object type, size/digest, alias/race, quota, lifetime, and access checks before use.
 
 ### `pdf.inspect` out-of-band result
@@ -198,20 +199,25 @@ parameter set:
 
 The source-object, page, cache-object, and operation UUIDs are pairwise distinct. The source input
 supplies expected size and SHA-256; handle values are assigned only by the trusted broker after
-ready and carry reduced source-read or cache-write rights. They are not persistent IDs and never
-appear in a result or routine log.
+ready. `source_handle` carries reduced file-read rights. Despite its released compatibility name,
+`cache_handle` carries only section map-write rights to an unnamed volatile section
+created from `requested_limits.output_bytes`; the adapter enforces that exact logical cap, while
+Windows may page-round volatile backing by less than one page. It is not a cache-file handle. These values are not
+persistent IDs and never appear in a result or routine log.
 
 On success, the sole output has area `operation_staging`, object ID equal to the requested cache
 object, operation ID equal to the envelope operation, content kind `pdf-thumbnail-rgba`, and a
 non-null exact size/SHA-256 within the operation output limit. The digest covers the complete fixed
 header plus raw RGBA8 payload. Cancelled, failed, and timed-out results have no output.
 
-The ordinary terminal result establishes only the worker's claim that it closed a complete stage.
-The broker first confirms whole-tree termination, then reads the same retained stage, verifies the
-output-reference size/digest and every header/key/pixel correlation, and only then asks storage for
-no-replace publication. An unconfirmed worker tree quarantines the stage without parsing,
-publication, deletion, or reuse. This uses existing protocol-v1 message and reference semantics;
-it does not add a result-byte field or authorize the worker to choose a path.
+The ordinary terminal result establishes only the worker's claim that it closed a complete
+volatile output. The broker first confirms whole-tree termination, then copies only the claimed
+bounded byte count through its read-only section view and verifies the output-reference digest and
+every header/key/pixel correlation. Only then does the broker write those validated bytes to the
+broker-only cache stage and ask storage for no-replace publication. An unconfirmed worker tree is
+never allowed to populate persistent staging; its section remains volatile and fixed-size.
+This uses existing protocol-v1 message and reference semantics; it does not add a result-byte field
+or authorize the worker to choose a path.
 
 ## Limits and bounded decoding
 

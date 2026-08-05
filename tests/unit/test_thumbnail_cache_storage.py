@@ -58,9 +58,14 @@ class _FakeStack:
 class _FakePending:
     def __init__(self) -> None:
         self.deletions = 0
+        self.maximum_bytes = 64
+        self.payloads: list[bytes] = []
 
     def mark_for_deletion(self) -> None:
         self.deletions += 1
+
+    def write_artifact(self, payload: bytes) -> None:
+        self.payloads.append(payload)
 
 
 def _stage(
@@ -114,6 +119,20 @@ def test_lookup_result_requires_artifact_only_for_a_hit() -> None:
     assert raised.value.code is PdfThumbnailErrorCode.INTERNAL_ERROR
 
 
+def test_stage_exposes_only_bounded_trusted_artifact_write() -> None:
+    store = WindowsThumbnailCacheStore(cast(Any, object()))
+    stack = _FakeStack()
+    pending = _FakePending()
+    stage = _stage(store, stack, pending)
+
+    assert stage.maximum_bytes == 64
+    assert not hasattr(stage, "write_handle")
+
+    stage.write_artifact(b"bounded artifact")
+
+    assert pending.payloads == [b"bounded artifact"]
+
+
 def test_trusted_close_deletes_stage_and_releases_live_registry() -> None:
     store = WindowsThumbnailCacheStore(cast(Any, object()))
     stack = _FakeStack()
@@ -137,7 +156,7 @@ def test_quarantine_preserves_stage_and_registry_across_context_cleanup() -> Non
     stage = _stage(store, stack, pending)
     store._live_stage_ids.add(CACHE_OBJECT_ID)
 
-    stage.retain_untrusted()
+    stage.quarantine()
     stage.close()
 
     assert stage.is_quarantined

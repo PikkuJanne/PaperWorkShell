@@ -168,6 +168,25 @@ def test_stale_cleanup_retains_hard_linked_stage_and_reports_partial(
     assert alias.exists()
 
 
+def test_worker_cannot_receive_persistent_cache_handle_and_stage_write_is_bounded(
+    tmp_path: Path,
+) -> None:
+    manager, store = _stack(tmp_path)
+    key = _key()
+
+    with store.create_stage(key) as stage:
+        stage_path = manager.layout(CASE_ID).thumbnails / f"{stage.cache_object_id}.tmp"
+        assert not hasattr(stage, "write_handle")
+        with pytest.raises(PdfThumbnailError) as raised:
+            stage.write_artifact(b"x" * (stage.maximum_bytes + 1))
+
+        assert raised.value.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
+        assert raised.value.context == "thumbnail.stage_size"
+        assert stage_path.stat().st_size == 0
+
+    assert not stage_path.exists()
+
+
 def test_storage_slice_imports_no_worker_shell_or_network_capability() -> None:
     product_files = (
         PROJECT_ROOT / "src/paperworkshell/storage/thumbnail_cache.py",

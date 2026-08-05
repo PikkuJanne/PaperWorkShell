@@ -92,17 +92,19 @@ this source authentication, so disposable state cannot conceal a changed or miss
 
 `storage.thumbnail_cache` derives a final entry name only from the validated internal page UUID and
 canonical cache-key digest. A miss creates one distinct random UUID-named `.tmp` stage after
-reserving its maximum header-plus-pixel size against the cache quota. The returned stage exposes
-only its exact opened write handle to the broker; it retains authenticated case, directory,
-reservation, and publication coordination through validation and disposition. It never exposes a
-cache path or directory handle to the worker.
+reserving its maximum header-plus-pixel size against the cache quota. The returned stage exposes a
+one-shot bounded write method only to the trusted broker; it retains authenticated case, directory,
+reservation, and publication coordination through validation and disposition. The broker gives the
+worker only a separate fixed-size volatile section and never exposes a persistent cache-file,
+cache-path, or directory handle.
 
-After confirmed worker-tree termination, the stage is sealed and read back. Storage validates the
-fixed artifact against the expected key, operation UUID, cache-object UUID, dimensions, layout,
-profile, length, and digests before an atomic no-replace rename to the final internal name. A valid
-publication collision is reused; a corrupt exact entry is removed and rebuilt. An indeterminate
-publication or unconfirmed worker termination quarantines the random stage rather than guessing
-that it is trusted or safely disposable.
+After confirmed worker-tree termination, the broker validates the volatile bytes before writing the
+stage. The stage is then sealed and read back. Storage validates the fixed artifact against the
+expected key, operation UUID, cache-object UUID, dimensions, layout, profile, length, and digests
+before an atomic no-replace rename to the final internal name. A valid publication collision is
+reused; a corrupt exact entry is removed and rebuilt. Unconfirmed worker termination leaves the
+broker-only stage empty and disposable; only an indeterminate persistent publication quarantines a
+random stage rather than guessing that it is trusted or safely disposable.
 
 The store supports exact-key invalidation, bounded page-ID invalidation, corrupt-entry removal, and
 bounded stale-stage cleanup. Every deletion authenticates the thumbnail root and exact regular-file
@@ -201,11 +203,12 @@ confirmed manifest replacement wins over late cancellation rather than attemptin
 rollback.
 
 PWS-0108 cache publication is independent of the manifest. A cancelled/failed render after
-confirmed worker termination removes only its exact trusted random stage; an unconfirmed worker
-tree or indeterminate rename quarantines the stage as non-authoritative. A final cache name appears
-only through no-replace publication of a completely validated stage. Cleanup may honestly report a
-partial result and retain an unsafe/changed entry; it never widens deletion merely to reclaim
-space. Earlier valid cache entries and all authoritative case state remain unchanged.
+confirmed worker termination removes only its exact trusted random stage. An unconfirmed worker
+has no handle to that persistent stage, so the empty broker-only stage is safely discarded; only an
+indeterminate persistent rename quarantines it as non-authoritative. A final cache name appears only
+through no-replace publication of a completely validated stage. Cleanup may honestly report a
+partial result and retain an unsafe/changed entry; it never widens deletion merely to reclaim space.
+Earlier valid cache entries and all authoritative case state remain unchanged.
 
 ## Explicit deferrals
 
