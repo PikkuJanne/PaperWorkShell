@@ -70,7 +70,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(41, len(self.fixtures))
+        self.assertEqual(42, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -498,10 +498,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(41, count)
+        self.assertEqual(42, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(42, len(first))
+        self.assertEqual(43, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 
