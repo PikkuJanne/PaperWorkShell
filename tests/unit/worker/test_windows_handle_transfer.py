@@ -71,6 +71,10 @@ def _worker_process() -> WindowsWorkerProcess:
             BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION,
             windows_module._SECTION_MAP_WRITE,
         ),
+        (
+            BrokeredHandlePurpose.READ_BOUNDED_INPUT_SECTION,
+            windows_module._SECTION_MAP_READ,
+        ),
     ),
 )
 def test_duplicate_handle_uses_reduced_access_without_inheritance_or_same_access(

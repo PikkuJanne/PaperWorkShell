@@ -13,6 +13,7 @@ from paperworkshell.worker.protocol.models import (
     MAX_MESSAGE_BYTES,
     MAX_SAFE_INTEGER,
     NOOP_CAPABILITY,
+    PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_ADDITIONAL_ROTATION_PARAMETER,
     PDF_THUMBNAIL_CACHE_HANDLE_PARAMETER,
@@ -196,6 +197,7 @@ def test_pdf_thumbnail_is_registered_and_round_trips_its_exact_contract() -> Non
         NOOP_CAPABILITY,
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
+        PDF_EXPORT_CAPABILITY,
     )
     assert accepted_start.payload == payload
 

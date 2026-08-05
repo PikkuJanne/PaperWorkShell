@@ -83,6 +83,7 @@ _FILE_DELETE_CHILD: Final = 0x0000_0040
 _FILE_READ_ATTRIBUTES: Final = 0x0000_0080
 _FILE_WRITE_ATTRIBUTES: Final = 0x0000_0100
 _SECTION_MAP_WRITE: Final = 0x0000_0002
+_SECTION_MAP_READ: Final = 0x0000_0004
 _DELETE: Final = 0x0001_0000
 _READ_CONTROL: Final = 0x0002_0000
 _SYNCHRONIZE: Final = 0x0010_0000
@@ -2569,6 +2570,7 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
             BrokeredHandlePurpose.READ_SOURCE: (
                 _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE
             ),
+            BrokeredHandlePurpose.READ_BOUNDED_INPUT_SECTION: _SECTION_MAP_READ,
             BrokeredHandlePurpose.WRITE_RESULT_PIPE: _FILE_WRITE_DATA | _SYNCHRONIZE,
             BrokeredHandlePurpose.WRITE_BOUNDED_OUTPUT_SECTION: _SECTION_MAP_WRITE,
         }[purpose]

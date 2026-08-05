@@ -12,6 +12,7 @@ from paperworkshell.worker.protocol.errors import ProtocolError
 from paperworkshell.worker.protocol.models import (
     MAX_MESSAGE_BYTES,
     NOOP_CAPABILITY,
+    PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     CaseObjectReference,
@@ -113,6 +114,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
         NOOP_CAPABILITY,
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
+        PDF_EXPORT_CAPABILITY,
     )
     assert accepted_start.payload == payload
 
