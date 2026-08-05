@@ -190,6 +190,16 @@ class WindowsLaunchError(RuntimeError):
         return f"{self.code.value} at {self.context}: {self.safe_message}"
 
 
+@dataclass(frozen=True, slots=True)
+class WindowsWorkerResourceSnapshot:
+    """Safe numeric resource accounting from one retained Windows Job."""
+
+    process_memory_limit_bytes: int
+    job_memory_limit_bytes: int
+    peak_process_memory_used_bytes: int
+    peak_job_memory_used_bytes: int
+
+
 def _reject(
     code: WindowsLaunchErrorCode,
     context: str,
@@ -2030,6 +2040,54 @@ class _Job(AbstractContextManager["_Job"]):
                 "Windows could not atomically contain the suspended worker.",
             )
 
+    def resource_snapshot(self) -> WindowsWorkerResourceSnapshot:
+        """Query authoritative memory limits and peaks without exposing Job authority."""
+
+        query = _kernel32().QueryInformationJobObject
+        query.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+        )
+        query.restype = wintypes.BOOL
+        information = _JobObjectExtendedLimitInformation()
+        returned_length = wintypes.DWORD()
+        if not query(
+            wintypes.HANDLE(self.handle.value),
+            _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+            ctypes.byref(returned_length),
+        ):
+            _reject(
+                WindowsLaunchErrorCode.JOB_FAILED,
+                "job.resource_snapshot",
+                "Windows could not query the worker resource state.",
+            )
+        required_flags = _JOB_OBJECT_LIMIT_PROCESS_MEMORY | _JOB_OBJECT_LIMIT_JOB_MEMORY
+        limit_flags = int(information.basic_limit_information.limit_flags)
+        process_memory_limit = int(information.process_memory_limit)
+        job_memory_limit = int(information.job_memory_limit)
+        if (
+            returned_length.value != ctypes.sizeof(information)
+            or limit_flags & required_flags != required_flags
+            or process_memory_limit < 1
+            or job_memory_limit < process_memory_limit
+        ):
+            _reject(
+                WindowsLaunchErrorCode.JOB_FAILED,
+                "job.resource_snapshot",
+                "Windows returned an invalid worker resource state.",
+            )
+        return WindowsWorkerResourceSnapshot(
+            process_memory_limit_bytes=process_memory_limit,
+            job_memory_limit_bytes=job_memory_limit,
+            peak_process_memory_used_bytes=int(information.peak_process_memory_used),
+            peak_job_memory_used_bytes=int(information.peak_job_memory_used),
+        )
+
     def active_processes(self) -> int:
         query = _kernel32().QueryInformationJobObject
         query.argtypes = (
@@ -2412,6 +2470,22 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
     @property
     def isolation(self) -> IsolationEvidence:
         return self._isolation
+
+    def resource_snapshot(self) -> WindowsWorkerResourceSnapshot:
+        """Return safe Job accounting while process and containment authority remain open."""
+
+        if (
+            self._closed
+            or self._containment_closed
+            or not self._process.is_open
+            or not self._job.handle.is_open
+        ):
+            _reject(
+                WindowsLaunchErrorCode.PROCESS_FAILED,
+                "resource_snapshot.closed",
+                "Worker resource data is unavailable after containment authority closes.",
+            )
+        return self._job.resource_snapshot()
 
     def poll(self) -> int | None:
         if self._returncode is not None:

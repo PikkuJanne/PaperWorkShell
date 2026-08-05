@@ -3,7 +3,7 @@
 - Status: Binding implementation policy
 - Task: PWS-0002
 - Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
-  structural inspection; PWS-0107 restricted worker lifecycle
+  structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -47,13 +47,13 @@ worker host -> domain
 3. Worker, adapter, and service packages must not import `paperworkshell.app` or a future `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
 4. Only the declared package layers are accepted. Adding another top-level layer requires updating this document, the checker, and positive/negative tests in the task that introduces it.
 5. Third-party imports remain denied unless the owning task admits one exact package and the
-   executable boundary names it. PWS-0105 admits `pikepdf` only in the `pdf` layer, and PWS-0106
-   reuses that admitted boundary for inherited page-geometry resolution; `domain`, application/UI,
-   GUI-safe worker client/protocol, storage, and every other adapter layer still reject it. The
-   alternative standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected.
-   Future ownership is reserved—but not approved—for PySide6 in a dedicated UI layer and
-   OCRmyPDF/Tesseract integration in `ocr`. The PDFium renderer selection remains conditional until
-   its exact binding and native closure pass PWS-0106 admission evidence.
+   executable boundary names it. PWS-0105 admits `pikepdf` only in the `pdf` layer. PWS-0106 reuses
+   that boundary for inherited page geometry and confines `pypdfium2` to the same worker-side
+   `pdf` layer; `domain`, application/UI, GUI-safe worker client/protocol, storage, and every other
+   adapter layer reject both engines. The alternative standard-library GUI roots `tkinter`,
+   `_tkinter`, and `turtle` are also rejected. Future ownership is reserved—but not approved—for
+   PySide6 in a dedicated UI layer and OCRmyPDF/Tesseract integration in `ocr`. The non-default
+   PySide6-Addons renderer-evaluation group grants no source import boundary or product scope.
 6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. A later adapter task may add a narrow, tested exception only when an admitted dependency requires one.
 7. Every package initializer is a passive namespace: it must not import or re-export product layers or implementation modules. Consequently, every package namespace remains importable without optional UI or document engines.
 
@@ -125,8 +125,9 @@ parameters. See the [PDF structural-inspection contract](pdf-structural-inspecti
 A new external engine is not admitted by editing code alone: the dependency policy and licensing
 review in PWS-0005 and the engine-specific roadmap task must approve it first. PWS-0106 now assigns
 worker-only renderer ownership through the
-[PDF page-rendering contract](pdf-page-rendering.md) and records pypdfium2/PDFium as a conditional
-target in [ADR 0005](../adr/0005-pdf-renderer-selection.md); final admission still waits for the
-ADR's live capability, benchmark, fidelity, and packaging evidence.
+[PDF page-rendering contract](pdf-page-rendering.md), implements the renderer-neutral adapter with
+pypdfium2/PDFium, and records the exact conditional selection in
+[ADR 0005](../adr/0005-pdf-renderer-selection.md). The exact Qt PDF fallback remains evaluation-only;
+final renderer admission waits for the ADR's same-corpus Windows comparison.
 
 If a future task needs a new cross-package edge, that task must show why the edge preserves the frozen architecture, update this document and the executable policy together, and add a positive and negative boundary test. It must not suppress an individual import violation.

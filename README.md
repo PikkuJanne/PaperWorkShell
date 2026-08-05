@@ -7,8 +7,10 @@ PaperWorkShell is a local-first desktop application that converts mixed PDFs and
 ## Development bootstrap
 
 The repository has completed its foundation gate and is implementing the Milestone 1 architecture
-proof. It does not yet contain the PySide6 UI or any PDF, image, OCR, renderer, installer, cloud,
-or signing dependency.
+proof. It now contains the restricted worker, immutable PDF ingest/inspection boundaries, and the
+worker-only pikepdf and pypdfium2 adapters. It does not yet contain the PySide6 UI or any image,
+OCR, installer, cloud, or signing integration. PySide6-Addons is locked only in a non-default
+renderer-evaluation group and is not a product runtime dependency.
 
 Prerequisites:
 
@@ -37,6 +39,16 @@ Create the locked development environment from a clean checkout:
 uv sync --locked
 ```
 
+Install the exact, non-default Qt PDF comparison candidate only when reproducing the PWS-0106
+renderer benchmark:
+
+```powershell
+uv sync --locked --group renderer-evaluation
+```
+
+This evaluation group is intentionally excluded from ordinary bootstrap and CI because the broad
+Addons/Essentials wheel set is not the selected renderer or UI dependency.
+
 `pyproject.toml` restricts development to CPython 3.14 and requires the exact supported `uv` release. `uv.lock` is committed and must change only as part of an intentional dependency update.
 
 Stable developer commands use a standard-library dispatcher and structured subprocess arguments:
@@ -63,9 +75,11 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
 | `py -3.14 tools/dev.py validate-reference-profile` | Validate the low-spec Windows environment/workload profile |
+| `py -3.14 tools/dev.py validate-pdf-renderer-benchmark` | Validate the bound synthetic renderer-comparison workload |
 | `py -3.14 tools/dev.py scan-secrets` | Scan reachable Git/index blobs and nonignored local source bytes with Gitleaks |
 | `py -3.14 tools/dev.py quality-self-test` | Prove deliberate format/type/schema/cycle/secret violations are rejected |
 | `py -3.14 tools/dev.py benchmark-reference` | Run the record-only generated-I/O baseline workload |
+| `py -3.14 tools/dev.py benchmark-pdf-renderers` | Compare the pinned PDFium and Qt PDF candidates on Windows |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
 On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).

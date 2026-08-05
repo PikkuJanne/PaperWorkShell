@@ -344,6 +344,10 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         data = _load_inventory()
         expected = {
             "pyside6": "PWS-0111",
+            "pyside6-addons": "PWS-0106",
+            "pyside6-essentials": "PWS-0106",
+            "shiboken6": "PWS-0106",
+            "qt-pdf": "PWS-0106",
             "lxml": "PWS-0105",
             "pikepdf": "PWS-0105",
             "pillow": "PWS-0105",
@@ -400,6 +404,86 @@ class DependencyInventoryValidationTests(unittest.TestCase):
                     self._codes(data, repository_checks=True),
                 )
 
+    def test_qt_evaluation_lock_edges_are_recorded_but_remain_disabled(self) -> None:
+        expected_edges = {
+            ("pyside6-addons", "pyside6-essentials"),
+            ("pyside6-addons", "shiboken6"),
+            ("pyside6-essentials", "shiboken6"),
+        }
+        data = _load_inventory()
+        actual_edges = {
+            (relationship["from"], relationship["to"])
+            for relationship in cast(list[dict[str, Any]], data["relationships"])
+            if relationship["type"] == "depends-on"
+            and relationship["from"] in {"pyside6-addons", "pyside6-essentials"}
+        }
+
+        self.assertEqual(expected_edges, actual_edges)
+        for source, target in expected_edges:
+            self.assertFalse(_relationship(data, source, target)["enabled"])
+
+        data = _load_inventory()
+        relationships = cast(list[dict[str, Any]], data["relationships"])
+        relationships.remove(_relationship(data, "pyside6-addons", "pyside6-essentials"))
+        self.assertIn(
+            "DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH",
+            self._codes(data, repository_checks=True),
+        )
+
+        data = _load_inventory()
+        _relationship(data, "pyside6-addons", "pyside6-essentials")["enabled"] = True
+        codes = self._codes(data, repository_checks=True)
+        self.assertIn("DEPENDENCY_RELATIONSHIP_ADMISSION_INVALID", codes)
+        self.assertIn("DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH", codes)
+
+    def test_qt_evaluation_artifacts_are_exact_and_scope_free(self) -> None:
+        expected = {
+            "pyside6-addons": (
+                168816308,
+                "0d13c4dfd671b050a48e4f8d8ddc724b7248f9c0437e7fc47fdf316278572923",
+            ),
+            "pyside6-essentials": (
+                77549267,
+                "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+            ),
+            "shiboken6": (
+                1223647,
+                "c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7",
+            ),
+        }
+        data = _load_inventory()
+        for component_id, (size_bytes, sha256) in expected.items():
+            with self.subTest(component_id=component_id):
+                component = _component(data, component_id)
+                self.assertEqual("evaluated", component["admission_status"])
+                self.assertEqual([], component["active_scopes"])
+                self.assertEqual("candidate", component["packaging"]["ship_state"])
+                self.assertEqual("6.11.1", component["version"]["selected"])
+                self.assertEqual(size_bytes, component["artifact_evidence"]["size_bytes"])
+                self.assertEqual(sha256, component["artifact_evidence"]["sha256"])
+
+        qt_pdf = _component(data, "qt-pdf")
+        addons = _component(data, "pyside6-addons")
+        self.assertEqual("evaluated", qt_pdf["admission_status"])
+        self.assertEqual([], qt_pdf["active_scopes"])
+        self.assertEqual("candidate", qt_pdf["packaging"]["ship_state"])
+        self.assertEqual(addons["artifact_evidence"], qt_pdf["artifact_evidence"])
+        self.assertFalse(
+            any(
+                relationship["from"] == "qt-pdf"
+                and relationship["type"] == "contains"
+                and relationship["to"] == "pdfium"
+                for relationship in cast(list[dict[str, Any]], data["relationships"])
+            )
+        )
+
+        data = _load_inventory()
+        _component(data, "pyside6-addons")["integrity"]["hashes"][0]["value"] = "0" * 64
+        self.assertIn(
+            "DEPENDENCY_LOCK_HASH_MISMATCH",
+            self._codes(data, repository_checks=True),
+        )
+
     def test_project_declarations_and_tool_pins_are_reconciled(self) -> None:
         data = _load_inventory()
         self.assertEqual("evaluated", _component(data, "pypdfium2")["admission_status"])
@@ -439,8 +523,24 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             self._codes(data, repository_checks=True),
         )
 
+        for source in ("pyside6", "pyside6-addons"):
+            with self.subTest(source=source):
+                data = _load_inventory()
+                _relationship(data, source, "qt-pdf")["enabled"] = True
+                self.assertIn(
+                    "DEPENDENCY_PYSIDE_VARIANT_POLICY_INVALID",
+                    self._codes(data, repository_checks=True),
+                )
+
         data = _load_inventory()
-        _relationship(data, "pyside6", "qt-pdf")["enabled"] = True
+        cast(list[dict[str, Any]], data["relationships"]).append(
+            {
+                "from": "qt-pdf",
+                "type": "contains",
+                "to": "pdfium",
+                "enabled": False,
+            }
+        )
         self.assertIn(
             "DEPENDENCY_PYSIDE_VARIANT_POLICY_INVALID",
             self._codes(data, repository_checks=True),

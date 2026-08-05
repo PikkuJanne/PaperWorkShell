@@ -35,6 +35,9 @@ quality = [
   "mypy==2.3.0",
   "ruff==0.15.22",
 ]
+renderer-evaluation = [
+    "pyside6-addons==6.11.1",
+]
 test = [
   "pytest==9.1.1",
 ]

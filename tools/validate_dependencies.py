@@ -44,7 +44,9 @@ MAX_FIXTURE_FILES: Final = 256
 MAX_REPORTED_ISSUES: Final = 512
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
 
-RENDERER_COMPONENT_IDS: Final = frozenset({"mupdf", "pdfium", "poppler", "pypdfium2", "qt-pdf"})
+RENDERER_COMPONENT_IDS: Final = frozenset(
+    {"mupdf", "pdfium", "poppler", "pypdfium2", "pyside6-addons", "qt-pdf"}
+)
 HARD_GATED_COMPONENT_IDS: Final = frozenset({"ghostscript", "mupdf", "poppler"})
 KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
     {
@@ -57,6 +59,7 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
         "pillow",
         "poppler",
         "pypdfium2",
+        "pyside6-addons",
         "qpdf",
         "qt-pdf",
         "tesseract",
@@ -72,6 +75,7 @@ EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "pillow": "python-package",
     "poppler": "native-library",
     "pypdfium2": "python-package",
+    "pyside6-addons": "python-package",
     "qpdf": "native-library",
     "qt-pdf": "framework",
     "tesseract": "native-tool",
@@ -91,7 +95,10 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
         "pikepdf",
         "pillow",
         "pyside6",
+        "pyside6-addons",
+        "pyside6-essentials",
         "qpdf",
+        "shiboken6",
         "tesseract",
         "tesseract-language-data",
         "uv",
@@ -100,7 +107,9 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
     }
 )
 REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
-    "PWS-D014": frozenset({"cpython", "pyside6"}),
+    "PWS-D014": frozenset(
+        {"cpython", "pyside6", "pyside6-addons", "pyside6-essentials", "shiboken6"}
+    ),
     "PWS-D015": frozenset({"lxml", "pikepdf", "pillow", "qpdf"}),
     "PWS-D016": frozenset({"ocrmypdf", "tesseract", "tesseract-language-data"}),
     "PWS-D017": RENDERER_COMPONENT_IDS,
@@ -111,11 +120,20 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "pikepdf": frozenset({"PWS-0105"}),
     "pillow": frozenset({"PWS-0105"}),
     "pyside6": frozenset({"PWS-0111"}),
+    "pyside6-addons": frozenset({"PWS-0106"}),
+    "pyside6-essentials": frozenset({"PWS-0106"}),
     "qpdf": frozenset({"PWS-0105"}),
+    "shiboken6": frozenset({"PWS-0106"}),
     "tesseract": frozenset({"PWS-0204"}),
     "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
 }
-REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset({("pikepdf", "contains", "qpdf", True)})
+REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
+    {
+        ("pikepdf", "contains", "qpdf", True),
+        ("pyside6", "contains", "qt-pdf", False),
+        ("pyside6-addons", "contains", "qt-pdf", False),
+    }
+)
 EXPECTED_NEGATIVE_CODES: Final[dict[str, str]] = {
     "distribution-decision-bypass.json": "DEPENDENCY_DISTRIBUTION_DECISION_REQUIRED",
     "duplicate-key.json": "DEPENDENCY_JSON_DUPLICATE_KEY",
@@ -164,6 +182,7 @@ EXPECTED_LICENSE_REF_IDENTITIES: Final[dict[str, tuple[str, str, str]]] = {
 EXPECTED_TOOL_ARTIFACTS: Final[dict[str, str]] = {
     "gitleaks": "gitleaks_8.30.1_windows_x64.zip",
     "pdfium": "pdfium-win-x64.tgz",
+    "qt-pdf": "pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl",
     "uv": "uv-x86_64-pc-windows-msvc.zip",
 }
 EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
@@ -171,9 +190,15 @@ EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
         "https://github.com/bblanchon/pdfium-binaries/releases/download/"
         "chromium/7947/pdfium-win-x64.tgz"
     ),
+    "qt-pdf": (
+        "https://files.pythonhosted.org/packages/9a/bd/"
+        "8adc4d350b3b363f3dfc8fccdcf5bfed25f7e36c2fff30c64e106f4f1572/"
+        "pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl"
+    ),
 }
 EXPECTED_RELEASE_URLS: Final[dict[str, str]] = {
     "pdfium": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947",
+    "qt-pdf": "https://pypi.org/project/PySide6-Addons/6.11.1/",
 }
 EXPECTED_PIN_VERIFICATION: Final[dict[str, str]] = {
     "exact": "sha256",
@@ -223,6 +248,8 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "pygments": "https://github.com/pygments/pygments",
     "pypdfium2": "https://github.com/pypdfium2-team/pypdfium2",
     "pyside6": "https://doc.qt.io/qtforpython-6/",
+    "pyside6-addons": "https://doc.qt.io/qtforpython-6/",
+    "pyside6-essentials": "https://doc.qt.io/qtforpython-6/",
     "pytest": "https://github.com/pytest-dev/pytest",
     "pyyaml": "https://github.com/yaml/pyyaml",
     "qpdf": "https://github.com/qpdf/qpdf",
@@ -230,6 +257,7 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "referencing": "https://github.com/python-jsonschema/referencing",
     "rpds-py": "https://github.com/crate-py/rpds",
     "ruff": "https://github.com/astral-sh/ruff",
+    "shiboken6": "https://doc.qt.io/qtforpython-6/shiboken6/",
     "tesseract": "https://github.com/tesseract-ocr/tesseract",
     "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata",
     "types-jsonschema": "https://github.com/python/typeshed",
@@ -272,6 +300,8 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
         "https://github.com/pypdfium2-team/pypdfium2/blob/5.12.1/LICENSES/Apache-2.0.txt"
     ),
     "pyside6": "https://doc.qt.io/qtforpython-6/licenses.html",
+    "pyside6-addons": "https://doc.qt.io/qtforpython-6/licenses.html",
+    "pyside6-essentials": "https://doc.qt.io/qtforpython-6/licenses.html",
     "pytest": "https://github.com/pytest-dev/pytest/blob/9.1.1/LICENSE",
     "pyyaml": "https://github.com/yaml/pyyaml/blob/6.0.3/LICENSE",
     "qpdf": "https://github.com/qpdf/qpdf/blob/v12.3.2/LICENSE.txt",
@@ -279,6 +309,7 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "referencing": "https://github.com/python-jsonschema/referencing/blob/v0.37.0/COPYING",
     "rpds-py": "https://github.com/crate-py/rpds/blob/v2026.6.3/LICENSE",
     "ruff": "https://github.com/astral-sh/ruff/blob/0.15.22/LICENSE",
+    "shiboken6": "https://doc.qt.io/qtforpython-6/licenses.html",
     "tesseract": "https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE",
     "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
     "types-jsonschema": "https://github.com/python/typeshed/blob/main/LICENSE",
@@ -345,6 +376,22 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
         True,
         False,
     ),
+    "pyside6-addons": (
+        "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
+    "pyside6-essentials": (
+        "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
     "pytest": ("MIT", None, True, False, False, False),
     "pyyaml": ("MIT", None, True, False, False, False),
     "qpdf": ("Apache-2.0 OR Artistic-2.0", "Apache-2.0", True, False, False, False),
@@ -359,6 +406,14 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "referencing": ("MIT", None, True, False, False, False),
     "rpds-py": ("MIT", None, True, False, False, False),
     "ruff": ("MIT", None, True, False, False, False),
+    "shiboken6": (
+        "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
     "tesseract": ("Apache-2.0", None, True, False, False, False),
     "tesseract-language-data": ("Apache-2.0", None, True, False, False, False),
     "types-jsonschema": ("Apache-2.0", None, True, False, False, False),
@@ -752,6 +807,32 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         True,
     ),
+    "pyside6-addons": (
+        "python-package",
+        "direct",
+        "evaluated",
+        (),
+        "candidate",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "pyside6-essentials": (
+        "python-package",
+        "transitive",
+        "evaluated",
+        (),
+        "candidate",
+        True,
+        True,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
     "pytest": (
         "python-package",
         "direct",
@@ -794,7 +875,7 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "qt-pdf": (
         "framework",
         "candidate",
-        "candidate",
+        "evaluated",
         (),
         "candidate",
         True,
@@ -840,6 +921,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         False,
         "developer-host",
+        False,
+        False,
+    ),
+    "shiboken6": (
+        "python-package",
+        "transitive",
+        "evaluated",
+        (),
+        "candidate",
+        True,
+        False,
+        False,
+        "worker-process",
         False,
         False,
     ),
@@ -996,6 +1090,18 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
         "The Qt Company and Qt Project contributors",
         "upstream-release-inventory",
     ),
+    "pyside6-addons": (
+        "PySide6 Addons",
+        "library",
+        "The Qt Company and Qt Project contributors",
+        "upstream-release-inventory",
+    ),
+    "pyside6-essentials": (
+        "PySide6 Essentials",
+        "library",
+        "The Qt Company and Qt Project contributors",
+        "upstream-release-inventory",
+    ),
     "pytest": ("pytest", "application", "pytest contributors", "uv.lock"),
     "pyyaml": ("PyYAML", "library", "PyYAML contributors", "uv.lock"),
     "qpdf": ("qpdf", "library", "qpdf contributors", "upstream-release-inventory"),
@@ -1008,6 +1114,12 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     "referencing": ("referencing", "library", "jsonschema contributors", "uv.lock"),
     "rpds-py": ("rpds-py", "library", "rpds-py contributors", "uv.lock"),
     "ruff": ("Ruff", "application", "Astral Software Inc.", "uv.lock"),
+    "shiboken6": (
+        "shiboken6",
+        "library",
+        "The Qt Company and Qt Project contributors",
+        "upstream-release-inventory",
+    ),
     "tesseract": (
         "Tesseract OCR",
         "application",
@@ -2287,11 +2399,7 @@ def _component_semantic_issues(
                     ),
                 )
 
-        is_renderer = (
-            component_id in RENDERER_COMPONENT_IDS
-            or "PWS-D017" in decision_refs
-            or "PWS-0106" in task_refs
-        )
+        is_renderer = component_id in RENDERER_COMPONENT_IDS or "PWS-D017" in decision_refs
         if is_renderer:
             if renderer is None:
                 _add_issue(
@@ -2514,7 +2622,7 @@ def _relationship_semantic_issues(
                 "DEPENDENCY_RELATIONSHIP_PROFILE_INVALID",
                 document,
                 "$.relationships",
-                "reviewed embedded dependency relationships must remain present and enabled",
+                "reviewed embedded dependency relationships must retain their recorded activation",
             ),
         )
 
@@ -2605,11 +2713,7 @@ def _authority_reference_issues(
                     "every dependency record must retain baseline governance references",
                 ),
             )
-        is_renderer = (
-            component_id in RENDERER_COMPONENT_IDS
-            or "PWS-D017" in component_decisions
-            or "PWS-0106" in component_tasks
-        )
+        is_renderer = component_id in RENDERER_COMPONENT_IDS or "PWS-D017" in component_decisions
         if is_renderer and (
             "PWS-D017" not in component_decisions or "PWS-0106" not in component_tasks
         ):
@@ -2768,7 +2872,7 @@ def _lock_reconciliation_issues(
                 "DEPENDENCY_LOCK_COMPONENT_MISMATCH",
                 document,
                 "$.components",
-                "approved Python component set must exactly match the resolved lock",
+                "reviewed concrete Python component set must exactly match the resolved lock",
             ),
         )
     lock_claims = {
@@ -2824,7 +2928,7 @@ def _lock_reconciliation_issues(
             rf"{re.escape(lock_version.casefold().replace('_', '-'))}(?:[.-]|$)"
         )
         artifact_records = ([sdist] if sdist is not None else []) + wheels
-        artifact_records_valid = sdist is not None and wheel_records_valid and bool(wheels)
+        artifact_records_valid = wheel_records_valid and bool(wheels)
         for artifact_record in artifact_records:
             artifact_url = artifact_record.get("url")
             artifact_hash = artifact_record.get("hash")
@@ -2891,7 +2995,7 @@ def _lock_reconciliation_issues(
                 )
             )
         ]
-        reviewed_artifacts = [sdist, *compatible_windows_wheels] if sdist is not None else []
+        reviewed_artifacts = ([sdist] if sdist is not None else []) + compatible_windows_wheels
         expected_hashes = {
             (
                 cast(str, artifact_record["hash"]).removeprefix("sha256:"),
@@ -2916,7 +3020,30 @@ def _lock_reconciliation_issues(
             target = _normalize_package_name(cast(str, dependency["name"]))
             if target in locked:
                 expected_edges.add((component_id, target))
-    actual_edges = {
+    recorded_edges = {
+        (cast(str, relationship["from"]), cast(str, relationship["to"]))
+        for relationship in cast(list[Mapping[str, Any]], data["relationships"])
+        if relationship["type"] == "depends-on"
+        and relationship["from"] in locked
+        and relationship["to"] in locked
+    }
+    if recorded_edges != expected_edges:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH",
+                document,
+                "$.relationships",
+                "recorded Python dependency edges must exactly match the resolved lock",
+            ),
+        )
+    expected_enabled_edges = {
+        edge
+        for edge in expected_edges
+        if components[edge[0]]["admission_status"] == "approved"
+        and components[edge[1]]["admission_status"] == "approved"
+    }
+    actual_enabled_edges = {
         (cast(str, relationship["from"]), cast(str, relationship["to"]))
         for relationship in cast(list[Mapping[str, Any]], data["relationships"])
         if relationship["enabled"]
@@ -2924,14 +3051,14 @@ def _lock_reconciliation_issues(
         and relationship["from"] in locked
         and relationship["to"] in locked
     }
-    if actual_edges != expected_edges:
+    if actual_enabled_edges != expected_enabled_edges:
         _add_issue(
             issues,
             _issue(
                 "DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH",
                 document,
                 "$.relationships",
-                "enabled Python dependency edges must match the resolved lock",
+                "locked Python dependency edges may be enabled only between admitted endpoints",
             ),
         )
     if root_package is None:
@@ -3799,13 +3926,18 @@ def _repository_semantic_issues(
         ),
         None,
     )
-    qt_pdf_edge = next(
-        (
-            relationship
-            for relationship in relationships
-            if relationship["from"] == "pyside6" and relationship["to"] == "qt-pdf"
-        ),
-        None,
+    qt_pdf_edges = {
+        cast(str, relationship["from"]): relationship
+        for relationship in relationships
+        if relationship["from"] in {"pyside6", "pyside6-addons"}
+        and relationship["type"] == "contains"
+        and relationship["to"] == "qt-pdf"
+    }
+    conflated_pdfium_edge = any(
+        relationship["from"] == "qt-pdf"
+        and relationship["type"] == "contains"
+        and relationship["to"] == "pdfium"
+        for relationship in relationships
     )
     if ghostscript_edge is None or ghostscript_edge["enabled"]:
         _add_issue(
@@ -3818,9 +3950,12 @@ def _repository_semantic_issues(
             ),
         )
     if (
-        qt_pdf_edge is None
-        or qt_pdf_edge["enabled"]
-        or components["pyside6"]["admission_status"] == "approved"
+        set(qt_pdf_edges) != {"pyside6", "pyside6-addons"}
+        or any(edge["enabled"] for edge in qt_pdf_edges.values())
+        or conflated_pdfium_edge
+        or components.get("pyside6", {}).get("admission_status") == "approved"
+        or components.get("pyside6-addons", {}).get("admission_status") == "approved"
+        or components.get("qt-pdf", {}).get("admission_status") == "approved"
     ):
         _add_issue(
             issues,
@@ -3828,7 +3963,7 @@ def _repository_semantic_issues(
                 "DEPENDENCY_PYSIDE_VARIANT_POLICY_INVALID",
                 document,
                 "$.relationships",
-                "PySide6 meta-package and Qt PDF containment must remain unadmitted",
+                "PySide6 meta-package, Addons, and Qt PDF product containment must remain disabled without conflating PDFium builds",
             ),
         )
     return _sorted_issues(issues)

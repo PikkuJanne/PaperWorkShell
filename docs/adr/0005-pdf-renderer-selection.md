@@ -62,6 +62,19 @@ for a live render, benchmark, hostile-input run, or packaged-file inspection.
   plausible. Actual import and render compatibility remains a pending local probe.
 - Upstream lists Windows x86-64 as a tier-1, host-tested platform. This is upstream support
   evidence, not proof of PaperWorkShell's packaged runtime.
+- The non-default `renderer-evaluation` group resolves Qt PDF through
+  `pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl` (168,816,308 bytes; SHA-256
+  `0d13c4dfd671b050a48e4f8d8ddc724b7248f9c0437e7fc47fdf316278572923`),
+  `pyside6_essentials-6.11.1-cp310-abi3-win_amd64.whl` (77,549,267 bytes; SHA-256
+  `63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40`), and
+  `shiboken6-6.11.1-cp310-abi3-win_amd64.whl` (1,223,647 bytes; SHA-256
+  `c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7`). These
+  releases publish no source distributions. The three resolved edges and artifacts are inventory
+  evidence only: all endpoints remain `evaluated`, scope-free, candidate-only, and disabled.
+- Qt PDF 6.11.1 has no standalone Python wheel. Its evaluated artifact is therefore the exact
+  Addons wheel. The Qt PDF PDFium snapshot is not equated with pypdfium2's independently pinned
+  PDFium 152.0.7947.0 build; exact embedded revision, DLL, SBOM, and notice reconciliation remains
+  pending.
 
 ### Security and feature surface
 
@@ -100,7 +113,7 @@ deliberately marked pending where PaperWorkShell has not run a comparable worklo
 | Candidate | Security and feature surface | License route | Fidelity/API evidence | Performance evidence | Windows packaging evidence | Outcome |
 |---|---|---|---|---|---|---|
 | **pypdfium2 5.12.1 / PDFium 152.0.7947.0** | Direct PDFium binding; default build has no V8/XFA; native parser remains worker-only; progressive API and closed adapter are available | pypdfium2 Apache-2.0 OR BSD-3-Clause; PDFium BSD-style plus exact third-party notices still to reconcile | Rotation, MediaBox/CropBox queries, clipping, alpha output, DeviceCMYK/ICCBased input, and deterministic bitmap formats are exposed; inherited-box and UserUnit helper limitations plus CMYK/RGB conversion require contract handling | Same-corpus cold/warm latency, memory, cancellation, and temporary-storage measurements pending | 3.9 MB published `py3-none-win_amd64` wheel with hash and attestation; CPython 3.14 import and exact DLL/license closure pending | **Conditional target** |
-| **Qt PDF through PySide6-Addons 6.11.1** | Qt PDF wraps PDFium, but the Python wheel also exposes WebEngine, multimedia, 3D, and other unrelated Addons surfaces; still worker-only if selected | Commercial OR LGPL-3.0 OR GPL-2.0; Qt/PDFium notices and LGPL replacement/relinking design would be required for the community route | Page size, rotation, scaled clipping, annotations, grayscale, and transparent images are exposed; public API does not provide the same explicit page-box or CMYK-output controls | Same-corpus measurement pending; similar PDFium core performance is only an inference | Python 3.10 through 3.14 supported by the 168,816,308-byte Windows x64 Addons wheel; no QtPdf-only Python wheel | Measure first fallback; not selected |
+| **Qt PDF through PySide6-Addons 6.11.1** | Qt PDF wraps its own PDFium snapshot, but the Python wheel also exposes WebEngine, multimedia, 3D, and other unrelated Addons surfaces; evaluation remains worker-only and inactive | No route selected; commercial OR LGPL-3.0 OR GPL-2.0 at the Qt PDF module, plus Qt/PDFium notices and LGPL source/replacement/relinking obligations for a community route | Page size, rotation, scaled clipping, annotations, grayscale, and transparent images are exposed; public API does not provide the same explicit page-box or CMYK-output controls | Same-corpus measurement pending; similar PDFium core performance is only an inference | Exact 168,816,308-byte Addons wheel plus 77,549,267-byte Essentials and 1,223,647-byte shiboken6 wheels are locked and hash-recorded; no QtPdf-only Python wheel | Measure first fallback; not selected |
 | **PyMuPDF 1.28.0 / MuPDF** | Mature direct native API and strong page/pixmap controls; still a hostile native parser requiring the worker boundary | AGPL-3.0 or Artifex commercial terms; current route is distribution-altering or unreviewed | Explicit rotation, MediaBox/CropBox, clipping, alpha, and Gray/RGB/CMYK pixmaps | Vendor benchmark exists, but its corpus and methodology are not comparable to the PWS reference workload | Published 19.8 MB Windows x64 CPython `abi3` wheel | Blocked without a decision change or approved commercial terms |
 | **Poppler 26.08.0** | Mature native renderer; a Python integration would add a custom bridge or executable boundary and its own update surface | GPL route is distribution-altering under current policy | Mature page-box/rotation behavior and transparent-paper support; exact CMYK and output behavior still need a chosen backend and goldens | No comparable PWS measurement | Upstream publishes source archives, not an official Python 3.14 Windows wheel; project-controlled build and closure would be required | Blocked by license and packaging |
 
@@ -147,6 +160,34 @@ targets. The renderer benchmark must add its own versioned corpus/workload recor
 profile's bounded Windows envelope; it must not silently reinterpret the existing I/O workload.
 No applicant document, rendered page, path, filename, OCR text, or machine identifier enters the
 report.
+
+The report must label a PyPI/wheel hash as declared published-artifact evidence unless the run
+directly observes that downloaded wheel. Installed evidence is separate: the harness validates the
+SHA-256 and size of every selected installed file against that distribution's `RECORD`, records the
+observed `RECORD` digest, and binds the complete staged closure with the stage-manifest digest. It
+stages tracked project/data bytes directly from the exact reported Git commit and includes that
+revision inside the hashed manifest. It also requires the same clean Git `HEAD` before staging,
+after staging, and immediately before the complete report. The fixed child bootstrap and minimal
+isolation/protocol imports necessarily load
+before the child receives the manifest digest; no benchmark adapter or native renderer imports
+until the child has verified the full manifest.
+
+All child, cold-segment, and warm-sample timings must be strictly positive. The parent measures a
+separate monotonic envelope from before process launch through verified child exit and rejects a
+child total outside that envelope. The report retains both sources so a malformed child cannot
+manufacture the only timing evidence.
+
+In-process cleanup uses retained Windows identities and fails closed on any unknown or replaced
+object. An authority-setup failure deletes an authenticated empty root by its exact retained
+identity, but preserves and reports any root for which that authority was never established. A
+sandbox launch, process-close, or post-revocation verification failure irreversibly withdraws the
+in-process stage cleanup capability. No later path may restore its namespace DACLs, release them
+through normal stage cleanup, or invoke exact-tree deletion; the sealed public-only residue is
+retained for the process lifetime and may remain after exit. A sudden parent or machine termination
+can leave a bounded stage of at most 768 MiB. That
+stage contains only copied runtime/project code and public synthetic fixtures. Because a later
+process has no trustworthy inherited handle authority, it preserves such residue for explicit
+maintenance instead of accepting a self-asserted marker or token as permission to delete it.
 
 ### Fidelity and hostile-input suite
 
@@ -200,7 +241,11 @@ without a versioned PWS-0108 migration/invalidation rule.
 - [PDFium progressive-render API](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_progressive.h)
 - [PDFium bitmap and page-render API](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdfview.h)
 - [PySide6-Addons 6.11.1 PyPI JSON](https://pypi.org/pypi/PySide6-Addons/6.11.1/json)
+- [PySide6-Essentials 6.11.1 PyPI JSON](https://pypi.org/pypi/PySide6-Essentials/6.11.1/json)
+- [shiboken6 6.11.1 PyPI JSON](https://pypi.org/pypi/shiboken6/6.11.1/json)
+- [Qt for Python package and dependency layout](https://doc.qt.io/qtforpython-6/package_details.html)
 - [Qt PDF licensing](https://doc.qt.io/qt-6/qtpdf-licensing.html)
+- [Qt 6.11.1 third-party component inventory](https://doc.qt.io/qt-6/licenses-used-in-qt.html)
 - [Qt for Python PDF API](https://doc.qt.io/qtforpython-6/PySide6/QtPdf/index.html)
 - [PyMuPDF 1.28.0 PyPI JSON](https://pypi.org/pypi/PyMuPDF/1.28.0/json)
 - [MuPDF releases and licensing](https://mupdf.com/releases/)

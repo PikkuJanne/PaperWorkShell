@@ -42,9 +42,11 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "validate-task-graph",
             "validate-docs",
             "validate-reference-profile",
+            "validate-pdf-renderer-benchmark",
             "scan-secrets",
             "quality-self-test",
             "benchmark-reference",
+            "benchmark-pdf-renderers",
         }
 
         self.assertLessEqual(required, set(COMMANDS))
@@ -57,10 +59,12 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertEqual(expected, CHECK_COMMANDS)
         self.assertNotIn("format", CHECK_COMMANDS)
         self.assertNotIn("benchmark-reference", CHECK_COMMANDS)
+        self.assertNotIn("benchmark-pdf-renderers", CHECK_COMMANDS)
         self.assertNotIn("generate-fixtures", CHECK_COMMANDS)
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)
         self.assertIn("format-check", CHECK_COMMANDS)
         self.assertIn("validate-fixtures", CHECK_COMMANDS)
+        self.assertIn("validate-pdf-renderer-benchmark", CHECK_COMMANDS)
         self.assertIn("quality-self-test", CHECK_COMMANDS)
         self.assertEqual(
             ("python", "-m", "mypy", "src", "tools", "tests"),

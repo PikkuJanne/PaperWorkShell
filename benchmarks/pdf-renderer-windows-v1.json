@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "workload_id": "paperworkshell-pdf-renderer-windows-v1",
+  "task_id": "PWS-0106",
+  "reference_profile": {
+    "id": "windows-low-spec-v1",
+    "path": "benchmarks/reference-windows-v1.json",
+    "sha256": "0f89f728b18015276c19cb5439757823c02cd19db32c415be76d9d3e632f21a1"
+  },
+  "corpus": {
+    "id": "paperworkshell-public-synthetic-v1",
+    "fixture_index": {
+      "path": "tests/fixtures/synthetic/v1/index.json",
+      "sha256": "124f2a959e8d01da912c3f2b9ffc20989f3bc97daf58f124b1f854adb33471b2"
+    },
+    "golden_index": {
+      "path": "tests/golden/renderer-v1/index.json",
+      "sha256": "823b07b8202222e39d994bcde9068b6f018448d8b6b8c46596fd8c2102a3723b"
+    },
+    "fidelity_case_ids": [
+      "render-annotation-appearance",
+      "render-calibration-crop-rotate",
+      "render-calibration-media-box",
+      "render-embedded-type3-font",
+      "render-geometry-additional-rotate-180",
+      "render-geometry-additional-rotate-270",
+      "render-geometry-additional-rotate-90",
+      "render-geometry-direct-box",
+      "render-geometry-inherited-rotate-0",
+      "render-geometry-inherited-rotate-180",
+      "render-geometry-inherited-rotate-270",
+      "render-geometry-inherited-rotate-90",
+      "render-geometry-user-unit",
+      "render-soft-mask-blend",
+      "render-transparency"
+    ],
+    "semantic_cases": [
+      {
+        "id": "missing-font-fallback",
+        "fixture_id": "pdf-render-missing-font-fallback",
+        "page_index": 0,
+        "page_box": "crop",
+        "page_box_relation": "default-equivalent",
+        "additional_rotation_degrees": 0,
+        "oriented_width_units": 128,
+        "oriented_height_units": 64,
+        "maximum_width_pixels": 128,
+        "maximum_height_pixels": 64,
+        "expected_width_pixels": 128,
+        "expected_height_pixels": 64,
+        "expected_code": "PDF_RENDER_OK",
+        "oracle": "bounded-opaque-rgba8"
+      },
+      {
+        "id": "media-box-aspect-fit",
+        "fixture_id": "pdf-render-calibration",
+        "page_index": 0,
+        "page_box": "media",
+        "page_box_relation": "distinct-from-crop",
+        "additional_rotation_degrees": 0,
+        "oriented_width_units": 60,
+        "oriented_height_units": 80,
+        "maximum_width_pixels": 101,
+        "maximum_height_pixels": 101,
+        "expected_width_pixels": 76,
+        "expected_height_pixels": 101,
+        "expected_code": "PDF_RENDER_OK",
+        "oracle": "bounded-opaque-rgba8-aspect-fit"
+      }
+    ],
+    "outcome_cases": [
+      {
+        "id": "malformed-truncated",
+        "fixture_id": "pdf-malformed",
+        "page_index": 0,
+        "maximum_width_pixels": 64,
+        "maximum_height_pixels": 64,
+        "expected_code": "PDF_RENDER_MALFORMED"
+      },
+      {
+        "id": "malformed-page-tree",
+        "fixture_id": "pdf-render-malformed-page-tree",
+        "page_index": 0,
+        "maximum_width_pixels": 64,
+        "maximum_height_pixels": 64,
+        "expected_code": "PDF_RENDER_MALFORMED"
+      },
+      {
+        "id": "declared-high-dimension",
+        "fixture_id": "pdf-render-high-dimension",
+        "page_index": 0,
+        "maximum_width_pixels": 16384,
+        "maximum_height_pixels": 16384,
+        "expected_code": "PDF_RENDER_LIMIT_EXCEEDED"
+      }
+    ]
+  },
+  "render_profile": {
+    "id": "paperworkshell-pdf-renderer-rgba8-white-v1",
+    "adapter_version": 1,
+    "pixel_layout": "rgba8-top-down-packed",
+    "background": "opaque-white",
+    "annotations": "stored-appearances",
+    "forms": "disabled",
+    "scripts": "disabled",
+    "maximum_width_pixels": 4096,
+    "maximum_height_pixels": 4096,
+    "maximum_pixels": 16777216,
+    "maximum_output_bytes": 67108864
+  },
+  "renderers": [
+    {
+      "id": "pypdfium2",
+      "package": "pypdfium2",
+      "package_version": "5.12.1",
+      "artifact": "pypdfium2-5.12.1-py3-none-win_amd64.whl",
+      "artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+      "engine": "PDFium",
+      "engine_version": "152.0.7947.0",
+      "engine_feature_flags": []
+    },
+    {
+      "id": "qt-pdf",
+      "package": "PySide6-Addons",
+      "package_version": "6.11.1",
+      "artifact": "pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl",
+      "artifact_sha256": "0d13c4dfd671b050a48e4f8d8ddc724b7248f9c0437e7fc47fdf316278572923",
+      "engine": "Qt PDF",
+      "engine_version": "6.11.1",
+      "engine_feature_flags": "not-exposed-by-public-api"
+    }
+  ],
+  "measurement": {
+    "warm_iterations": 7,
+    "child_timeout_milliseconds": 30000,
+    "cooperative_cancel_timeout_milliseconds": 5000,
+    "hard_termination_timeout_milliseconds": 5000,
+    "private_bytes_poll_milliseconds": 5,
+    "percentile_method": "nearest-rank"
+  },
+  "report_policy": {
+    "classification": "public-synthetic-identifiers-and-measurements-only",
+    "include_paths": false,
+    "include_filenames": false,
+    "include_machine_identifiers": false,
+    "include_document_or_pixel_content": false
+  }
+}

@@ -44,10 +44,13 @@ levels must not be confused.
 
 In this profile, a supported minor line, a minimum external-tool version, or an environment
 version check can describe contributor prerequisites. For each locked Python release, the baseline
-duplicates the source-distribution digest and every universal or compatible Windows x64 wheel
-digest from `uv.lock`; validation requires those reviewed records to agree exactly. `uv.lock`
-remains the complete cross-platform resolution authority. These development records are not proof
-of the files eventually staged in a Windows release.
+duplicates the source-distribution digest when one is published and every universal or compatible
+Windows x64 wheel digest from `uv.lock`; validation requires those reviewed records to agree
+exactly. Every resolved Python dependency edge is also recorded. An edge between `evaluated` or
+otherwise non-admitted components remains disabled even though its lock provenance is complete;
+lock completeness does not activate product use. `uv.lock` remains the complete cross-platform
+resolution authority. These development records are not proof of the files eventually staged in a
+Windows release.
 
 `approved` means only "admitted for every listed active scope." It does not approve another
 scope, select an unmeasured renderer, or prove that a component is shipped. `candidate` names an
@@ -232,6 +235,25 @@ renderer candidate under `PWS-D017`; it cannot enter the GUI or release package 
 UI dependency. Addons, Qt PDF, or their PDFium closure require an explicit capability need,
 `PWS-0106` renderer evidence where applicable, worker-only document parsing, exact binary
 inventory, and license review.
+
+PWS-0106 locks PySide6-Addons 6.11.1 in the non-default `renderer-evaluation` group solely to
+measure that fallback. Its resolved Windows x64 closure is PySide6-Addons 6.11.1
+(168,816,308 bytes, SHA-256
+`0d13c4dfd671b050a48e4f8d8ddc724b7248f9c0437e7fc47fdf316278572923`),
+PySide6-Essentials 6.11.1 (77,549,267 bytes, SHA-256
+`63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40`), and shiboken6 6.11.1
+(1,223,647 bytes, SHA-256
+`c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7`). PyPI publishes wheels,
+not source distributions, for these three releases. All three inventory records are `evaluated`,
+have no active scope, retain `candidate` shipment state, and keep their resolved dependency edges
+disabled. The generic PySide6 UI family remains `planned`, and neither Qt PDF nor Addons is the
+selected product renderer.
+
+Qt PDF 6.11.1 is bound to the exact Addons wheel because Qt does not publish a QtPdf-only Python
+artifact. Its embedded PDFium snapshot is not the same inventory identity as the PDFium build
+bundled by pypdfium2 5.12.1; the inventory therefore does not connect Qt PDF to that exact PDFium
+component. The wheel hash binds evaluation bytes, while exact Qt PDF DLL, embedded-source, SBOM,
+license, and third-party-notice reconciliation remains required before any admission or shipment.
 
 The selected Qt license route must be recorded. A community LGPL route requires the applicable
 notices, corresponding library source, and a packaging design that preserves the required

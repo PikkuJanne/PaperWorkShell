@@ -31,8 +31,9 @@ py -3.14 tools/dev.py check
 
 `check` runs every non-mutating command marked `[check]` by `list`, in registry order. It covers
 formatting, linting, architecture boundaries, strict typing, unit/integration/security/
-accessibility lanes, public synthetic fixture regeneration/provenance, repository schemas, the task graph, the reference profile, secret scanning,
-offline documentation links/anchors/security references, and deliberate negative self-tests. Use
+accessibility lanes, public synthetic fixture regeneration/provenance, repository schemas, the task
+graph, the reference profile, the bound PDF-renderer comparison workload, secret scanning, offline
+documentation links/anchors/security references, and deliberate negative self-tests. Use
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
 
@@ -238,6 +239,13 @@ nonzero and prints a sanitized structured evaluation showing each
 matched, mismatched, or unknown requirement. The generated-byte algorithm and expected checksum
 are pinned so the version-1 workload cannot drift silently. Measurements are record-only;
 version 1 contains no guessed product thresholds.
+
+PWS-0106 adds `benchmarks/pdf-renderer-windows-v1.json`. The ordinary suite validates its exact
+profile, corpus, golden, artifact, and outcome bindings but does not install the non-default Qt
+candidate or run native measurements. `benchmark-pdf-renderers` is an explicit Windows-only,
+clean-revision operation using the `renderer-evaluation` dependency group and truthful reference
+attestations. Its isolation, affinity, staging, and invocation contract is documented in
+`benchmarks/README.md`.
 
 ## CI supply-chain controls
 

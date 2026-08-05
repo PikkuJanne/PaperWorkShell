@@ -174,6 +174,10 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.reference_profile", "validate"),
         "Validate the reference Windows environment and workload profile.",
     ),
+    "validate-pdf-renderer-benchmark": CommandSpec(
+        ("python", "-m", "tools.pdf_renderer_benchmark", "validate"),
+        "Validate the versioned PWS-0106 renderer comparison workload.",
+    ),
     "scan-secrets": CommandSpec(
         (),
         "Scan Git history and the local tree for secrets without uploading content.",
@@ -186,6 +190,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
     "benchmark-reference": CommandSpec(
         ("python", "-m", "tools.reference_profile", "benchmark"),
         "Measure the baseline workload without applying guessed targets.",
+        include_in_check=False,
+    ),
+    "benchmark-pdf-renderers": CommandSpec(
+        ("python", "-m", "tools.pdf_renderer_benchmark", "benchmark"),
+        "Compare the pinned PDF renderers on the versioned synthetic corpus.",
         include_in_check=False,
     ),
 }

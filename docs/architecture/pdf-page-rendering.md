@@ -1,6 +1,6 @@
 # PDF page-rendering contract
 
-- Status: PWS-0106 implementation in progress; live PDFium adapter and evidence pending
+- Status: PWS-0106 adapter implemented; final comparison and admission evidence in progress
 - Task: PWS-0106
 - Decisions: PWS-D012, PWS-D013, PWS-D017, PWS-D019, PWS-D034
 - ADR: [ADR 0005 renderer selection](../adr/0005-pdf-renderer-selection.md)
@@ -22,10 +22,11 @@ selected renderer or open a full PDF for rendering. The GUI, application, domain
 layers receive renderer-neutral typed state; they never receive a pypdfium2 document/page/bitmap,
 PDFium handle, third-party exception, document path, or encoded renderer output.
 
-The conditional implementation target is pypdfium2 5.12.1 with default PDFium
-152.0.7947.0. The [selection ADR](../adr/0005-pdf-renderer-selection.md) keeps admission conditional
-until the exact CPython 3.14 capability, native/license closure, benchmark, golden, and hostile
-evidence is recorded.
+The implemented selection target is pypdfium2 5.12.1 with default PDFium 152.0.7947.0. Its exact
+CPython 3.14 import, engine identity, empty feature-flag set, native/license closure, live adapter,
+golden, limit, malformed-input, cancellation, and hostile-input evidence are recorded. The
+[selection ADR](../adr/0005-pdf-renderer-selection.md) keeps final admission conditional only until
+the same-corpus Windows comparison is recorded and reviewed.
 
 ## Boundary and data flow
 

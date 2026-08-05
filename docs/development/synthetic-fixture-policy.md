@@ -38,9 +38,10 @@ PWS-0106 adds font-free PDF renderer calibration, inherited and direct page boxe
 quarter-turn rotations, non-default `UserUnit` observation, ordinary alpha, a soft mask and
 multiply blend mode,
 PDF DeviceCMYK and ICCBased structures, a stored annotation appearance, a synthetic embedded Type3
-font, high page dimensions, complete framing with a broken page tree, and analytical RGB reference
-images. These are construction assertions and independent analytical oracles, not evidence that a
-selected renderer has executed them. A `scheduled` entry names a later task that can honestly
+font, an unembedded synthetic Type1 missing-font fallback case, high page dimensions, complete
+framing with a broken page tree, and analytical RGB reference images. These are construction
+assertions and independent analytical oracles, not evidence that a selected renderer has executed
+them. A `scheduled` entry names a later task that can honestly
 construct and verify a remaining class:
 
 - rendered multilingual and complex-script text: PWS-0303;
@@ -71,6 +72,13 @@ The embedded-font case uses a PDF Type3 font whose one geometric glyph procedure
 fixed operators. It contains no copied font program, system font, text sample, or third-party font
 asset. It proves only that an embedded PDF font resource and glyph program are present; broader
 Unicode shaping and product font selection remain separately gated.
+
+The missing-font case names a repository-owned synthetic BaseFont but deliberately embeds no font
+program. Its selected-renderer oracle is semantic rather than a captured bitmap: rendering must
+produce a bounded, non-empty, opaque fallback glyph region inside the declared page. Exact pixels
+or a warm-process digest are not stable evidence because fallback-font selection and renderer font
+caches may vary across otherwise supported Windows environments. The case therefore documents
+fallback behavior without adding or claiming a product font strategy before PWS-0303.
 
 The renderer references indexed by
 [`tests/golden/renderer-v1/index.json`](../../tests/golden/renderer-v1/index.json) are not

@@ -343,6 +343,39 @@ def _negotiate(process: WorkerProcess, request: WorkerLaunchRequest) -> Protocol
     return peer
 
 
+def test_live_worker_resource_snapshot_reports_applied_limits_and_closes_cleanly(
+    worker_test_resources: WorkerTestResources,
+) -> None:
+    request = _launch_request()
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(request)
+    profile_folder = process._profile.local_app_data
+    try:
+        deadline = time.monotonic() + 5.0
+        snapshot = process.resource_snapshot()
+        while snapshot.peak_job_memory_used_bytes == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+            snapshot = process.resource_snapshot()
+
+        assert snapshot.process_memory_limit_bytes == request.resource_policy.process_memory_bytes
+        assert snapshot.job_memory_limit_bytes == request.resource_policy.job_memory_bytes
+        assert snapshot.peak_process_memory_used_bytes > 0
+        assert snapshot.peak_job_memory_used_bytes >= snapshot.peak_process_memory_used_bytes
+
+        process.terminate_tree()
+        terminated_snapshot = process.resource_snapshot()
+        assert terminated_snapshot.process_memory_limit_bytes == snapshot.process_memory_limit_bytes
+        assert terminated_snapshot.job_memory_limit_bytes == snapshot.job_memory_limit_bytes
+        assert terminated_snapshot.peak_job_memory_used_bytes >= snapshot.peak_job_memory_used_bytes
+    finally:
+        process.close()
+
+    _assert_profile_removed(profile_folder)
+    with pytest.raises(WindowsLaunchError) as raised:
+        process.resource_snapshot()
+    assert raised.value.code is WindowsLaunchErrorCode.PROCESS_FAILED
+    assert raised.value.context == "resource_snapshot.closed"
+
+
 def test_actual_python_host_negotiates_and_closes_inside_app_container(
     worker_test_resources: WorkerTestResources,
 ) -> None:

@@ -955,6 +955,129 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 self.assertIn("DEPENDENCY_CONFIG_PIN_MISMATCH", _codes(issues))
                 self.assertIsNone(validated)
 
+    def test_lock_package_without_sdist_accepts_exact_windows_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _copy_repository_policy_inputs(root)
+            lock_path = root / "uv.lock"
+            lock = lock_path.read_text(encoding="utf-8")
+            sdist_line = next(
+                line
+                for line in lock.splitlines()
+                if line.startswith("sdist = ") and "attrs-26.1.0.tar.gz" in line
+            )
+            lock_path.write_text(lock.replace(f"{sdist_line}\n", "", 1), encoding="utf-8")
+            document = copy.deepcopy(self.baseline)
+            attrs_hashes = cast(
+                list[dict[str, Any]],
+                cast(dict[str, Any], _component(document, "attrs")["integrity"])["hashes"],
+            )
+            attrs_hashes[:] = [
+                record for record in attrs_hashes if record["artifact"] != "attrs-26.1.0.tar.gz"
+            ]
+
+            validated, issues = validate_dependency_data(
+                document,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+
+        self.assertEqual([], issues)
+        self.assertIsNotNone(validated)
+
+    def test_synthetic_evaluated_lock_edge_is_required_and_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _copy_repository_policy_inputs(root)
+            lock_path = root / "uv.lock"
+            lock = lock_path.read_text(encoding="utf-8")
+            package_header = (
+                'name = "pypdfium2"\n'
+                'version = "5.12.1"\n'
+                'source = { registry = "https://pypi.org/simple" }\n'
+            )
+            self.assertIn(package_header, lock)
+            lock_path.write_text(
+                lock.replace(
+                    package_header,
+                    package_header + 'dependencies = [{ name = "pyside6-essentials" }]\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            document = copy.deepcopy(self.baseline)
+            synthetic_edge = {
+                "from": "pypdfium2",
+                "type": "depends-on",
+                "to": "pyside6-essentials",
+                "enabled": False,
+            }
+            _relationships(document).append(synthetic_edge)
+
+            validated, issues = validate_dependency_data(
+                document,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+            self.assertEqual([], issues)
+            self.assertIsNotNone(validated)
+
+            missing = copy.deepcopy(document)
+            _relationships(missing).remove(synthetic_edge)
+            _, first_missing = validate_dependency_data(
+                missing,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+            _, second_missing = validate_dependency_data(
+                missing,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+            self.assertIn("DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH", _codes(first_missing))
+            self.assertEqual(
+                [issue.render() for issue in first_missing],
+                [issue.render() for issue in second_missing],
+            )
+
+            enabled = copy.deepcopy(document)
+            next(
+                relationship
+                for relationship in _relationships(enabled)
+                if relationship["from"] == "pypdfium2"
+                and relationship["type"] == "depends-on"
+                and relationship["to"] == "pyside6-essentials"
+            )["enabled"] = True
+            _, first_enabled = validate_dependency_data(
+                enabled,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+            _, second_enabled = validate_dependency_data(
+                enabled,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+
+        self.assertIn("DEPENDENCY_RELATIONSHIP_ADMISSION_INVALID", _codes(first_enabled))
+        self.assertIn("DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH", _codes(first_enabled))
+        self.assertEqual(
+            [issue.render() for issue in first_enabled],
+            [issue.render() for issue in second_enabled],
+        )
+
     def test_repository_rejects_lock_origin_duplicates_and_optional_declarations(self) -> None:
         def duplicate_attrs(root: Path) -> None:
             path = root / "uv.lock"
