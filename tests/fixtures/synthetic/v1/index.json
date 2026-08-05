@@ -41,6 +41,7 @@
       "fixture_ids": [
         "pdf-born-digital",
         "pdf-render-embedded-type3-font",
+        "pdf-render-missing-font-fallback",
         "png-render-embedded-type3-font"
       ]
     },
@@ -681,6 +682,32 @@
         "header_complete": true,
         "xref_complete": true,
         "missing_pages_object": 99
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-missing-font-fallback",
+      "path": "pdf/render-missing-font-fallback.pdf",
+      "media_type": "application/pdf",
+      "bytes": 788,
+      "sha256": "cd8fa826ee31bbd41a19055db1909516af6b636a29aa9a0e10426053306bfcc8",
+      "categories": [
+        "born-digital"
+      ],
+      "recipe": "render-missing-font-fallback-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_subtype": "Type1",
+        "base_font": "PWSSyntheticMissingFont",
+        "embedded_font_program": false,
+        "base14_font": false,
+        "fallback_rendering_expected": true,
+        "analytical_pixel_reference": false
       },
       "provenance": {
         "kind": "algorithmic",

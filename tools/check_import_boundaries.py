@@ -36,7 +36,7 @@ ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
 UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
 APPROVED_EXTERNAL_IMPORTS: Final = {
-    "pdf": frozenset({"pikepdf"}),
+    "pdf": frozenset({"pikepdf", "pypdfium2"}),
 }
 FORBIDDEN_UI_TOOLKIT_ROOTS: Final = frozenset(("_tkinter", "tkinter", "turtle"))
 WORKER_PACKAGE: Final = f"{PROJECT_PACKAGE}.worker"

@@ -125,7 +125,16 @@ class PdfRenderError(ValueError):
 def reject_pdf_rendering(code: PdfRenderErrorCode, context: str) -> Never:
     """Raise one closed, sanitized page-rendering failure."""
 
-    raise PdfRenderError(code=code, context=context)
+    error = PdfRenderError(code=code, context=context)
+    try:
+        raise error from None
+    finally:
+        # ``from None`` suppresses display of an active parser/source exception,
+        # but Python still retains that object in ``__context__``.  Clear both
+        # links during unwinding so later diagnostics cannot recover document
+        # values, paths, or native exception text from an otherwise safe error.
+        error.__context__ = None
+        error.__cause__ = None
 
 
 @dataclass(frozen=True, slots=True)

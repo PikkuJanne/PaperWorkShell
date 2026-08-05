@@ -206,7 +206,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 data = _load_inventory()
                 if mutation == "component-review-after-inventory":
-                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-04"
+                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-06"
                 elif mutation == "future-inventory-review":
                     data["reviewed_on"] = "9999-12-31"
                 else:
@@ -402,6 +402,13 @@ class DependencyInventoryValidationTests(unittest.TestCase):
 
     def test_project_declarations_and_tool_pins_are_reconciled(self) -> None:
         data = _load_inventory()
+        self.assertEqual("evaluated", _component(data, "pypdfium2")["admission_status"])
+        self.assertNotIn(
+            "DEPENDENCY_DECLARATION_MISMATCH",
+            self._codes(data, repository_checks=True),
+        )
+
+        data = _load_inventory()
         _component(data, "jsonschema")["relationship"] = "transitive"
         self.assertIn(
             "DEPENDENCY_DECLARATION_MISMATCH",
@@ -414,6 +421,15 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             "DEPENDENCY_CONFIG_PIN_MISMATCH",
             self._codes(data, repository_checks=True),
         )
+
+    def test_evaluated_pdfium_artifact_uses_the_reviewed_binary_origin(self) -> None:
+        data = _load_inventory()
+        _component(data, "pdfium")["artifact_evidence"]["url"] = (
+            "https://github.com/example/pdfium-binaries/releases/download/"
+            "chromium/7947/pdfium-win-x64.tgz"
+        )
+
+        self.assertIn("DEPENDENCY_RELEASE_PIN_INVALID", self._codes(data))
 
     def test_optional_ghostscript_and_qt_pdf_edges_remain_disabled(self) -> None:
         data = _load_inventory()

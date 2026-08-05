@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from dataclasses import replace
 from typing import Any, cast
 
@@ -24,6 +25,7 @@ from paperworkshell.domain.pdf_rendering import (
     PdfRenderErrorCode,
     PdfRenderRotation,
     checked_pdf_raster_layout,
+    reject_pdf_rendering,
     validate_pdf_render_request,
 )
 
@@ -234,3 +236,18 @@ def test_error_sanitizes_invalid_code_context_and_never_includes_document_values
     assert error.context == "pdf.rendering"
     assert secret not in repr(error)
     assert secret not in str(error)
+
+
+def test_rejection_discards_active_raw_exception_chain_and_traceback_values() -> None:
+    secret = "PRIVATE-PDF-PATH-CANARY C:\\private\\applicant.pdf"
+
+    try:
+        raise OSError(secret)
+    except OSError:
+        with pytest.raises(PdfRenderError) as raised:
+            reject_pdf_rendering(PdfRenderErrorCode.SOURCE_INVALID, "render.source")
+
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert raised.value.__context__ is None
+    assert raised.value.__cause__ is None
+    assert secret not in rendered

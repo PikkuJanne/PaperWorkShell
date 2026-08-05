@@ -660,6 +660,29 @@ def _render_embedded_type3_font_pdf() -> bytes:
     )
 
 
+def _render_missing_font_fallback_pdf() -> bytes:
+    """Build a font-resource fixture with no embedded program or Base-14 name."""
+
+    marker = f"{SYNTHETIC_MARKER}: synthetic missing-font fallback calibration"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 128 64] "
+                b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+            ),
+            (
+                b"<< /Type /Font /Subtype /Type1 /BaseFont /PWSSyntheticMissingFont "
+                b"/Encoding /WinAnsiEncoding >>"
+            ),
+            _pdf_stream(b"1 1 1 rg 0 0 128 64 re f 0 0 0 rg BT /F1 24 Tf 8 20 Td (PWS) Tj ET"),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=6,
+    )
+
+
 def _render_high_dimension_pdf() -> bytes:
     marker = f"{SYNTHETIC_MARKER}: high-dimension renderer limit calibration"
     return _serialize_pdf(
@@ -1420,6 +1443,23 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
                 "glyph_instances": 4,
             },
             _render_embedded_type3_font_pdf,
+        ),
+        _fixture(
+            "pdf-render-missing-font-fallback",
+            "pdf/render-missing-font-fallback.pdf",
+            "application/pdf",
+            ("born-digital",),
+            "render-missing-font-fallback-pdf-v1",
+            {
+                "page_count": 1,
+                "font_subtype": "Type1",
+                "base_font": "PWSSyntheticMissingFont",
+                "embedded_font_program": False,
+                "base14_font": False,
+                "fallback_rendering_expected": True,
+                "analytical_pixel_reference": False,
+            },
+            _render_missing_font_fallback_pdf,
         ),
         _fixture(
             "pdf-render-high-dimension",

@@ -366,10 +366,11 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
     )
 
 
-def test_only_pdf_adapter_may_import_the_pinned_pikepdf_engine() -> None:
+@pytest.mark.parametrize("engine", ("pikepdf", "pypdfium2"))
+def test_only_pdf_adapter_may_import_pinned_pdf_engines(engine: str) -> None:
     assert (
         inspect_source(
-            "import pikepdf\nfrom pikepdf import Pdf\n",
+            f"import {engine}\nfrom {engine} import Pdf\n",
             module="paperworkshell.pdf.pikepdf_adapter",
             package="paperworkshell.pdf",
             path="pikepdf_adapter.py",
@@ -377,7 +378,7 @@ def test_only_pdf_adapter_may_import_the_pinned_pikepdf_engine() -> None:
         == ()
     )
     violations = inspect_source(
-        "import pikepdf\n",
+        f"import {engine}\n",
         module="paperworkshell.worker.operations",
         package="paperworkshell.worker",
         path="operations.py",

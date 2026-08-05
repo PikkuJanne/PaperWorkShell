@@ -129,6 +129,7 @@ KNOWN_LICENSE_IDS: Final = frozenset(
         "Artistic-2.0",
         "BSD-2-Clause",
         "BSD-3-Clause",
+        "CC-BY-4.0",
         "GPL-2.0-only",
         "GPL-3.0-only",
         "LGPL-3.0-only",
@@ -162,7 +163,17 @@ EXPECTED_LICENSE_REF_IDENTITIES: Final[dict[str, tuple[str, str, str]]] = {
 }
 EXPECTED_TOOL_ARTIFACTS: Final[dict[str, str]] = {
     "gitleaks": "gitleaks_8.30.1_windows_x64.zip",
+    "pdfium": "pdfium-win-x64.tgz",
     "uv": "uv-x86_64-pc-windows-msvc.zip",
+}
+EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
+    "pdfium": (
+        "https://github.com/bblanchon/pdfium-binaries/releases/download/"
+        "chromium/7947/pdfium-win-x64.tgz"
+    ),
+}
+EXPECTED_RELEASE_URLS: Final[dict[str, str]] = {
+    "pdfium": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947",
 }
 EXPECTED_PIN_VERIFICATION: Final[dict[str, str]] = {
     "exact": "sha256",
@@ -249,13 +260,17 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF/blob/main/LICENSE",
     "packaging": "https://github.com/pypa/packaging/blob/26.2/LICENSE",
     "pathspec": "https://github.com/cpburnz/python-pathspec/blob/v1.1.1/LICENSE",
-    "pdfium": "https://pdfium.googlesource.com/pdfium/+/refs/heads/main/LICENSE",
+    "pdfium": (
+        "https://pdfium.googlesource.com/pdfium/+/d3e62278db7489af9e0b686835d1c8aca218c3d7/LICENSE"
+    ),
     "pikepdf": "https://github.com/pikepdf/pikepdf/blob/v10.10.0/LICENSE.txt",
     "pillow": "https://github.com/python-pillow/Pillow/blob/12.3.0/LICENSE",
     "pluggy": "https://github.com/pytest-dev/pluggy/blob/1.6.0/LICENSE",
     "poppler": "https://cgit.freedesktop.org/poppler/poppler/tree/README-XPDF",
     "pygments": "https://github.com/pygments/pygments/blob/2.20.0/LICENSE",
-    "pypdfium2": "https://github.com/pypdfium2-team/pypdfium2#licensing",
+    "pypdfium2": (
+        "https://github.com/pypdfium2-team/pypdfium2/blob/5.12.1/LICENSES/Apache-2.0.txt"
+    ),
     "pyside6": "https://doc.qt.io/qtforpython-6/licenses.html",
     "pytest": "https://github.com/pytest-dev/pytest/blob/9.1.1/LICENSE",
     "pyyaml": "https://github.com/yaml/pyyaml/blob/6.0.3/LICENSE",
@@ -301,15 +316,22 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "ocrmypdf": ("MPL-2.0", None, True, True, False, False),
     "packaging": ("Apache-2.0 OR BSD-2-Clause", "Apache-2.0", True, False, False, False),
     "pathspec": ("MPL-2.0", None, True, True, False, False),
-    "pdfium": ("BSD-3-Clause AND LicenseRef-PDFium-Third-Party", None, True, False, False, False),
+    "pdfium": (
+        "MIT AND BSD-3-Clause AND LicenseRef-PDFium-Third-Party",
+        None,
+        True,
+        False,
+        False,
+        False,
+    ),
     "pikepdf": ("MPL-2.0", None, True, True, False, False),
     "pillow": ("MIT-CMU", None, True, False, False, False),
     "pluggy": ("MIT", None, True, False, False, False),
     "poppler": ("GPL-2.0-only OR GPL-3.0-only", None, True, True, False, True),
     "pygments": ("BSD-2-Clause", None, True, False, False, False),
     "pypdfium2": (
-        "(Apache-2.0 OR BSD-3-Clause) AND LicenseRef-PDFium-Third-Party",
-        None,
+        "(Apache-2.0 OR BSD-3-Clause) AND CC-BY-4.0 AND LicenseRef-PDFium-Third-Party",
+        "Apache-2.0",
         True,
         False,
         False,
@@ -628,8 +650,8 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "pdfium": (
         "native-library",
-        "candidate",
-        "candidate",
+        "transitive",
+        "evaluated",
         (),
         "candidate",
         True,
@@ -706,12 +728,12 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "pypdfium2": (
         "python-package",
-        "candidate",
-        "candidate",
+        "direct",
+        "evaluated",
         (),
         "candidate",
         True,
-        False,
+        True,
         True,
         "worker-process",
         True,
@@ -2226,7 +2248,10 @@ def _component_semantic_issues(
             evidence_parts = [
                 part for part in unquote(urlsplit(evidence_url).path).split("/") if part
             ]
-            if component["ecosystem"] == "python-package":
+            expected_artifact_url = EXPECTED_ARTIFACT_URLS.get(component_id)
+            if expected_artifact_url is not None:
+                evidence_origin_valid = evidence_url == expected_artifact_url
+            elif component["ecosystem"] == "python-package":
                 evidence_origin_valid = evidence_host == "files.pythonhosted.org"
             elif urlsplit(project_url).hostname == "github.com":
                 evidence_origin_valid = (
@@ -2348,7 +2373,10 @@ def _component_semantic_issues(
             ]
             selected_release_segments = {selected.casefold(), f"v{selected.casefold()}"}
             release_identity_valid = False
-            if component["ecosystem"] == "python-package":
+            expected_release_url = EXPECTED_RELEASE_URLS.get(component_id)
+            if expected_release_url is not None:
+                release_identity_valid = release_url == expected_release_url
+            elif component["ecosystem"] == "python-package":
                 release_identity_valid = (
                     parsed_release.hostname == "pypi.org"
                     and len(release_parts) == 3
@@ -3245,21 +3273,21 @@ def _declaration_reconciliation_issues(
     else:
         for requirement in build_requirements:
             record_requirement(requirement)
-    approved_direct = {
+    concrete_direct = {
         component_id
         for component_id, component in components.items()
         if component["ecosystem"] == "python-package"
         and component["relationship"] == "direct"
-        and component["admission_status"] == "approved"
+        and component["admission_status"] in {"approved", "evaluated"}
     }
-    if set(declarations) != approved_direct:
+    if set(declarations) != concrete_direct:
         _add_issue(
             issues,
             _issue(
                 "DEPENDENCY_DECLARATION_MISMATCH",
                 document,
                 "$.components",
-                "approved direct Python components must match project declarations",
+                "approved and evaluated direct Python components must match project declarations",
             ),
         )
     for component_id, version in declarations.items():
