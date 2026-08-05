@@ -445,7 +445,10 @@ class SecretScanningSecurityTests(unittest.TestCase):
         self.assertEqual("SECRET_SCAN_INPUT_TOO_LARGE", oversized.exception.code)
 
         budget = _SecretScanEnumerationBudget()
-        with patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 2):
+        with (
+            patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 1),
+            patch("tools.dev.MAX_SECRET_SCAN_METADATA_RECORDS", 2),
+        ):
             budget.consume_records(b"duplicate\0duplicate\0", b"\0")
             with self.assertRaises(SecretScanError) as excessive_records:
                 budget.consume_records(b"third\n", b"\n")

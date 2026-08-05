@@ -24,6 +24,7 @@ MINIMUM_GIT_VERSION: Final = (2, 45)
 MAX_SECRET_SCAN_BYTES: Final = 50 * 1024 * 1024
 MAX_REPOSITORY_PATH_BYTES: Final = 32_767
 MAX_SECRET_SCAN_ITEMS: Final = 10_000
+MAX_SECRET_SCAN_METADATA_RECORDS: Final = 50_000
 MAX_SECRET_SCAN_METADATA_BYTES: Final = 16 * 1024 * 1024
 MAX_SECRET_SCAN_WORK_BYTES: Final = 512 * 1024 * 1024
 MAX_SECRET_SCAN_SECONDS: Final = 5 * 60
@@ -327,10 +328,11 @@ class _SecretScanEnumerationBudget:
         record_count = content.count(separator)
         if content and not content.endswith(separator):
             record_count += 1
-        if self.records + record_count > MAX_SECRET_SCAN_ITEMS:
+        if self.records + record_count > MAX_SECRET_SCAN_METADATA_RECORDS:
             raise SecretScanError(
                 "SECRET_SCAN_INPUT_TOO_LARGE",
-                f"repository enumeration exceeds the {MAX_SECRET_SCAN_ITEMS:,}-item scanner limit.",
+                "Git metadata enumeration exceeds the "
+                f"{MAX_SECRET_SCAN_METADATA_RECORDS:,}-record scanner limit.",
             )
         self.records += record_count
 

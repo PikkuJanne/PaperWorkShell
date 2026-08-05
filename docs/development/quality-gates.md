@@ -186,9 +186,12 @@ Gitleaks starts, every selected working file is size/digest-preflighted and the 
 scanning. Every scan forces a scanner-created empty ignore file and ignores inline
 `gitleaks:allow` annotations; source-controlled `.gitleaksignore` files are rejected. Git metadata
 is streamed through one scanner budget: the subprocess is terminated at 16 MiB, and each raw
-record—including duplicate history records before deduplication—counts toward a 10,000-record
-limit shared by initial capture and final verification. A second aggregate check limits selected
-refs, historical path/blob pairs, Git objects, index entries, and current paths to 10,000 items.
+record—including duplicate history records before deduplication and repeated integrity
+snapshots—counts toward an independent 50,000-record limit shared by initial capture and final
+verification. A separate aggregate check limits selected refs, historical path/blob pairs, Git
+objects, index entries, and current paths to 10,000 logical items. Keeping the raw-record budget
+independent prevents the scanner's own consistency passes from consuming the logical-source
+allowance while both dimensions remain fail-closed and bounded.
 One 512 MiB logical-work budget also covers source/configuration reads, Git-object reads, bounded
 scanner batches, mirror writes, and repeated path associations; anticipated historical/index work
 plus known ref/path inputs and framing overhead are combined with completed preflight work and

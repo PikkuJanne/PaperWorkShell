@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-01
+- Amended: 2026-08-05 by PWS-0108 quality-gate maintenance
 - Task: PWS-0003
 - Decisions: PWS-D003, PWS-D034, PWS-D035
 
@@ -57,11 +58,13 @@ description without inventing performance promises before feature workloads exis
    scanner-owned immutable input and its digest is rechecked after scanning. Every scan uses a
    scanner-created empty ignore file, disregards inline allow annotations, and rejects
    source-controlled `.gitleaksignore` files. A shared streaming budget terminates Git enumeration
-   at 16 MiB of metadata or 10,000 raw records across initial capture and final verification;
-   duplicate history records consume the budget before parsing or deduplication. A second
-   aggregate 10,000-item check bounds selected refs, historical path/blob pairs, Git objects,
-   index entries, and current paths. A 512 MiB logical-work budget covers source/configuration and
-   Git-object reads, scanner inputs, mirror writes, and repeated path associations; anticipated
+   at 16 MiB of metadata or 50,000 raw records across initial capture and final verification;
+   duplicate history records and repeated integrity snapshots consume that budget before parsing
+   or deduplication. An independent aggregate 10,000-item check bounds selected refs, historical
+   path/blob pairs, Git objects, index entries, and current paths. Separating the raw transport
+   ceiling from the logical-source ceiling permits the scanner's consistency rechecks without
+   weakening either bound. A 512 MiB logical-work budget covers source/configuration and Git-object
+   reads, scanner inputs, mirror writes, and repeated path associations; anticipated
    historical/index work, known ref/path inputs, and framing overhead are combined with completed
    preflight work and rejected before Gitleaks starts. One five-minute scan-wide deadline covers
    enumeration, filesystem work, tool probes, and scanning, and each subprocess receives only the

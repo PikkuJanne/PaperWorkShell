@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.49",
+  "bundle_version": "0.1.50",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 151574,
-      "sha256": "2101fe2f0e7452f2a194dac56d0d84cabcfe6beb9f92c79703c9fb1356ab9a6b"
+      "bytes": 157059,
+      "sha256": "efd530dc812ca9588946cd4784638b1f6bea2c56e9bb02bf389edebf1abea29f"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 19747,
-      "sha256": "47a38089574d0072f26392a33470fba546de217687d8ca53f40b552f0a87c65f"
+      "bytes": 19826,
+      "sha256": "7e66ccef515100f758290da21cce53f3360386670fb298b898ff325065a31754"
     }
   ],
   "validation": {
@@ -55,11 +55,13 @@
     "dependency_edge_count": 238,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0109"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for the first PWS-0108 implementation checkpoint; live worker integration and final gate evidence remain in progress.",
+    "Regenerated after PWS-0108 completed and its bounded secret-scanner finalization regression was verified; PWS-0109 is the next dependency-ready task.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

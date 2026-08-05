@@ -982,7 +982,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0104
@@ -1016,17 +1016,36 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-05'
+    revision: "e0563821a344c46dd0f456c3a1e56733d257dd5c"
+    commands:
+    - "uv run python -c \"from pypdfium2.version import PYPDFIUM_INFO, PDFIUM_INFO; print(PYPDFIUM_INFO.version); print(PDFIUM_INFO.version)\" - passed; the locked environment reported pypdfium2 5.12.1 and PDFium 152.0.7947.0"
+    - "uv run pytest tests -q -k \"thumbnail or windows_handle_transfer or windows_bounded_output_buffer or pdf_renderer_contract or pdf_rendering_domain\" - passed; 297 focused domain, service, RPC, renderer, broker, Win32-handle, storage, AppContainer, corruption, cancellation, and privacy tests"
+    - "uv run pytest tests/unit/worker/test_windows_bounded_output_buffer.py -q - passed; 14 real-Windows section bounds, rights, page-rounding, close-failure, partial-construction, cleanup-retention, and retry tests"
+    - "uv run pytest tests/unit/worker/test_pdf_thumbnail_broker.py -q - passed; 12 cache-hit/miss, terminal/cancel race, deadline, worker-fault, termination-uncertainty, output-validation, and no-persistent-write tests"
+    - "uv run pytest tests/integration/test_pdf_thumbnail_worker_windows.py::test_live_large_page_renders_inside_exact_requested_bound -q - passed; the restricted worker rendered the 14,400-point synthetic page to exact bounded 128 by 128 opaque RGBA8 output"
+    - "uv run python tools/dev.py check on the final PWS-0108 implementation tree - passed in 755 seconds; formatting, lint, import boundaries, and strict mypy covered 173 files; 1,292 unit tests, 210 integration tests with 2 disclosed link-capability skips, 201 security tests with 3 disclosed link-capability skips, and 2 accessibility tests passed; every fixture/schema/task/document/reference/renderer validator, secret scan, and all 5 quality negative self-tests passed"
+    - "Independent adversarial and acceptance reviews of the final tree found no remaining P0-P2 defect; focused review reruns included 83 boundary tests, 5 live AppContainer thumbnail tests, strict typing, documentation validation, and exact cleanup/authority checks"
+    - "uv run pytest tests/security/test_secret_scanning.py -q after the final local-history boundary regression - passed; 39 tests and 26 subtests preserve separate fail-closed raw-metadata and logical-source limits"
+    - "uv run python tools/dev.py scan-secrets on the final working tree - passed in 186 seconds; 928 historical blobs, 140 commit/tag objects, 956 historical path/blob pairs, 336 index blobs, 358 tracked files, and 0 nonignored untracked files were covered"
+    - "uv run python tools/dev.py test-security after the quality-gate maintenance - passed; 201 security tests with 3 disclosed Windows link-capability skips"
+    - "uv run python tools/dev.py quality-self-test after the quality-gate maintenance - passed; all 5 deliberate formatting, typing, schema, graph, and secret violations were detected"
+    notes:
+    - The toolkit-free application service resolves and renders thumbnails one page at a time, reports only bounded aggregate phase/count progress, checks cancellation/deadlines between pages and worker phases, and returns fixed-layout opaque RGBA8 snapshots only after complete validation.
+    - Cache keys bind case/source/page IDs, source index/size/SHA-256, requested dimensions/rotation, fixed rendering choices, artifact/key versions, and the renderer-profile digest. Final names contain only internal page IDs and the full key digest; corrupt entries are removed and rebuilt, and bounded invalidation/stale-stage cleanup remains disposable and manifest-independent.
+    - The worker receives one authenticated committed-source reader and one unnamed pagefile-backed output section with only SECTION_MAP_WRITE. The adapter enforces the exact logical artifact cap; Windows backing may add less than one page of volatile slack, but the worker has no persistent cache-file, directory, path, rename, delete, or publication authority.
+    - Whole-tree termination is confirmed before the broker reads volatile output. The broker validates result size/digest and every operation/cache/key/header/pixel correlation before trusted storage performs a one-shot bounded stage write, readback validation, and atomic no-replace publication.
+    - Section cleanup failures retain exact handle/view authority in a fail-closed quarantine, block new output sections, and retry deterministically. Partial-construction and close failures are covered; unconfirmed worker termination leaves the broker-only persistent stage empty and safely disposable, while quarantine is reserved for indeterminate persistent publication.
+    - Live zero-capability AppContainer evidence covers multi-page and rotated golden output, cache hits, corruption rebuild, malformed input, policy rejection before launch, bounded rendering of the high-dimension fixture, cancellation with unchanged source/manifest and empty cache, and routine-output privacy canaries.
+    - ADR 0004 records the volatile section selection, reduced rights, page-rounding consequence, rejected persistent-file/pipe/named-mapping alternatives, and revocation-before-persistence rule. No new UI control was added; the accessible UI handoff remains owned by PWS-0111.
+    - Finalization exposed that the quality scanner's 10,000 logical-item limit also counted repeated raw Git integrity records. ADR 0002 and the quality-gate documentation now retain that logical limit while bounding raw metadata independently at 50,000 records; the existing 16 MiB metadata, 512 MiB work, and five-minute ceilings remain unchanged.
 - id: PWS-0109
   milestone: M1
   title: Implement atomic manifest repository and autosave journal
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0102
