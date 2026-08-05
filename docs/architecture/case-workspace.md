@@ -1,11 +1,12 @@
 # Secure case-workspace contract
 
-- Status: Implemented PWS-0101 contract with PWS-0102 lifecycle, PWS-0104 ingest, and PWS-0108 thumbnail extensions
-- Tasks: PWS-0101, PWS-0102, PWS-0104, PWS-0108
-- Decisions: PWS-D009, PWS-D010, PWS-D028, PWS-D029
+- Status: Implemented PWS-0101 contract with lifecycle, ingest, manifest-repository, and thumbnail extensions
+- Tasks: PWS-0101, PWS-0102, PWS-0104, PWS-0108, PWS-0109
+- Decisions: PWS-D009, PWS-D010, PWS-D011, PWS-D028, PWS-D029, PWS-D036
 - ADR: [ADR 0003](../adr/0003-secure-case-workspace.md)
 - Lifecycle: [Local case-lifecycle contract](case-lifecycle.md)
 - Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
+- Persistence: [Atomic manifest repository and autosave contract](manifest-repository.md)
 - Thumbnails: [Bounded PDF-thumbnail service contract](pdf-thumbnails.md)
 
 ## Scope
@@ -24,7 +25,7 @@ namespace does not re-export implementations.
 | Area | Provisioned by PWS-0101 | PWS-0101 mutation | Owning task/boundary |
 |---|---:|---|---|
 | case root | yes | private creation and verification | PWS-0102 active lease and full removal |
-| `manifest.json` | reserved only | none | PWS-0102 initial record; PWS-0104 narrow import append; PWS-0109 general transactions |
+| `manifest.json` | reserved only | none | PWS-0102 initial record; PWS-0109 validated general transactions and ingest integration |
 | `journal/` | yes | no general cleanup | PWS-0109 atomic persistence and recovery |
 | `originals/` | yes | no general cleanup | PWS-0104 authenticated immutable source publication and integrity checks |
 | `cache/thumbnails/` | yes | authenticated child cleanup; root preserved | PWS-0108 bounded thumbnail service |
@@ -67,20 +68,21 @@ directories created by the failed call, in reverse order, after identity revalid
 Callers must not perform security-sensitive I/O merely because `resolve_case_relative()` returned a
 path. An owning broker operation must authenticate the opened handle immediately before use.
 
-### PWS-0104 immutable-ingest extension
+### PWS-0104/PWS-0109 publication extensions
 
-The immutable-ingest storage boundary adds no general original or manifest writer. It accepts one
-live PWS-0103 source lease, streams to a random authenticated pending file, verifies the staged bytes,
-and publishes only the exact retained identity under the derived `<source-id>.bin` name. It holds
-shared case coordination through source publication and the narrow manifest commit, so deletion or
-a second publisher cannot operate on an older case snapshot.
+The immutable-ingest storage boundary accepts one live PWS-0103 source lease, streams to a random
+authenticated pending file, verifies the staged bytes, and publishes only the exact retained
+identity under the derived `<source-id>.bin` name. The PWS-0109 repository holds shared case
+coordination through source, checkpoint, and manifest publication, so deletion or a second
+publisher cannot operate on an older exact case snapshot.
 
-The manifest operation is restricted to a fully validated import-only state. It adds one source and
-its complete page catalogue, appends those page IDs to matching base/final sequences, creates no
-page operation, and atomically replaces the manifest as the final commit point. Content inspection
-is supplied as typed metadata; storage never calls a PDF or image engine. Exact phases, duplicate
-behavior, cancellation, and integrity checks are defined by the
-[immutable source-ingest contract](immutable-ingest.md).
+The general repository validates complete current and candidate manifests, publishes the one-snapshot
+checkpoint, atomically replaces the manifest, and recovers an interrupted next revision. Import
+adds a complete source/page catalogue and either extends an untouched base/final sequence or records
+a typed import transition after existing operations. Content inspection is supplied as typed
+metadata; storage never calls a PDF or image engine. Exact behavior is defined by the
+[immutable source-ingest](immutable-ingest.md) and
+[manifest-repository](manifest-repository.md) contracts.
 
 ### PWS-0108 thumbnail-cache extension
 
@@ -194,13 +196,12 @@ sibling cases and external objects are never in the inventory. This is applicati
 not a forensic-erasure claim. The full sequence is specified in the
 [local case-lifecycle contract](case-lifecycle.md).
 
-PWS-0104 cleanup is similarly identity-scoped. Failure before manifest commit leaves the previous
-manifest authoritative and removes only a pending or published source whose retained identity still
-matches. If immediate proof is unavailable, a random unreferenced case object may remain; it is not
-a valid source record and PWS-0113 owns bounded restart cleanup. An unknown manifest-replacement
-outcome preserves the random source until a fresh open resolves whether it is referenced. A
-confirmed manifest replacement wins over late cancellation rather than attempting an unsafe
-rollback.
+PWS-0104/PWS-0109 cleanup is similarly identity-scoped. A confirmed failure before checkpoint
+publication leaves the previous manifest authoritative and removes only a pending or published
+source whose retained identity still matches. A committed checkpoint preserves the source for
+fresh-open recovery. Unknown outcomes preserve recovery evidence; PWS-0113 owns bounded cleanup of
+objects that no valid current or checkpoint state references. Confirmed publication wins over late
+cancellation rather than attempting an unsafe rollback.
 
 PWS-0108 cache publication is independent of the manifest. A cancelled/failed render after
 confirmed worker termination removes only its exact trusted random stage. An unconfirmed worker
@@ -212,11 +213,8 @@ Earlier valid cache entries and all authoritative case state remain unchanged.
 
 ## Explicit deferrals
 
-- PWS-0107: worker host/client lifecycle, active-case capability, cancellation, limits, and initial
-  filesystem/network restrictions.
-- PWS-0109: general authoritative manifest transactions, autosave journal, migration, and recovery
-  beyond the PWS-0104 import-only append.
-- PWS-0110: deterministic page operations and undo/redo history.
+- Manifest schema migration remains deferred to its later versioned task; PWS-0109 implements
+  current-version authoritative transactions, autosave, and checkpoint recovery.
 - PWS-0112: export staging, assembly, reopen, verification, record, and destination commit.
 - PWS-0113: crash recovery, orphan-temp cleanup, sanitized logs, and diagnostic baseline.
 - PWS-0705/PWS-0706: retention consent, expiry, lock, inventory review, and assisted deletion.

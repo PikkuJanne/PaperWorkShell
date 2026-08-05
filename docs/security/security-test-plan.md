@@ -71,14 +71,15 @@ honest partial reporting. Error/result checks prohibit paths, canaries, raw exce
 forensic-erasure claim. PWS-0706 retains the later human inventory/retention workflow, and PWS-0113
 retains restart orphan cleanup and diagnostics.
 
-## PWS-0104 immutable-ingest evidence
+## PWS-0104/PWS-0109 immutable-ingest and manifest evidence
 
-The immutable-ingest suites implement the PWS-0104 portions of ST-004 through ST-006, ST-011, and
-ST-018 to the extent listed here. Unit tests cover the narrow import-only manifest validator and
-candidate, independent streaming/readback digests, one short-read oracle, one corrupted-readback
-oracle, cooperative cancellation before the next copy/readback step, bounded identifier collision
-handling, callback sanitization, and path-free result/error models. They do not simulate an
-operating-system disk-full condition or injected Win32 write/flush failures.
+The immutable-ingest and shared repository suites implement the PWS-0104/PWS-0109 portions of
+ST-004 through ST-006, ST-011, and ST-018 to the extent listed here. Unit tests cover complete
+schema and semantic validation, exact lexical tokens, canonical serialization, source/page
+candidate construction with and without existing operation history, independent
+streaming/readback digests, short-read and corrupted-readback oracles, cooperative cancellation,
+bounded identifier collision handling, callback sanitization, autosave base-revision conflicts,
+and path-free result/error models.
 
 Windows end-to-end tests hold the real PWS-0103 source lease while importing generated JPEG carriers
 immediately below, at, and above the copy-chunk boundary. They compare the external, committed-copy,
@@ -90,22 +91,31 @@ deadline expiry while case coordination is contended, sequential stale commit re
 commits released concurrently from the same snapshot. Workspace races also prove the deadline
 checkpoint uses 50-millisecond timed lock waits, never enters the protected section after expiry,
 releases a just-acquired lock when the terminal checkpoint fails, and remains reentrant.
-The manifest primitive and store-level suites distinguish `committed`, `not_committed`, and
-`unknown`; a confirmed replacement wins over a cancellation arriving after replacement and over a
-late injected interruption, an interruption before replacement propagates after proving the old
-manifest remains authoritative, and uncertain publication retains non-authoritative random
+The per-case guard is also exercised across separate broker processes through the identity-derived
+Windows mutex. The manifest primitive and store-level suites distinguish `committed`,
+`not_committed`, and `unknown`; reject a different recoverable checkpoint before source
+publication; recover before a subsequent import; and settle cancellation or process-control
+interruption from the observed checkpoint/manifest state. A confirmed replacement wins over a
+late cancellation or interruption, while uncertain publication retains the exact random recovery
 artifacts. Unit fault injection also proves every lease cleanup target is attempted once, an
 uncommitted primary error is preserved, and cleanup faults cannot mask a confirmed commit.
+
+Repository integration tests exercise rapid autosave coalescing against the real Windows adapter,
+a representative source/page/operation/asset/overlay/assignment/confirmation save-load graph,
+partial staged bytes, an injected storage-write failure representing disk-full/write failure at
+the adapter seam, configured quota exhaustion, malformed and future checkpoints, corrupt-current
+recovery, and same-snapshot concurrency. Power-loss durability and a physical volume exhaustion
+test are not claimed.
 
 Security cases prove random internal naming and manifest-only display-name persistence, sanitized
 results/errors for the exercised success and raw post-publication failure paths, stored-copy
 hard-link mismatch, absence of shell/network imports in the ingest layers, and an exercised
 post-publication cleanup path that leaves explicit sibling/outside sentinels and the external source
-unchanged. Current PWS-0104 tests do not claim end-to-end parent/original/temp/manifest reparse or
-alternate-stream race coverage, power-loss behavior, operating-system disk-full injection, or
-restart orphan cleanup. Those remain with the broader ST-004/ST-005/ST-011 owners, including
-PWS-0103 and PWS-0113. Required Windows filesystem controls are evidence only when the real
-supported volume exercises them; a mocked or skipped required race is not a pass.
+unchanged. Current tests do not claim end-to-end parent/original/temp/manifest reparse races,
+physical-volume exhaustion, power-loss durability, or bounded restart orphan cleanup. Those remain
+with the broader ST-004/ST-005/ST-011 owners, including PWS-0103 and PWS-0113. Required Windows
+filesystem controls are evidence only when the real supported volume exercises them; a mocked or
+skipped required race is not a pass.
 
 ## PWS-0105 PDF structural-inspection evidence
 
@@ -198,8 +208,9 @@ evidence.
 
 - Implement ST-001 through ST-008, the M1 portions of ST-010 through ST-012, and source hash/log
   audits.
-- Retain PWS-0104 source/pending/committed hash equality, unchanged external-original, atomic
-  import-only append, cancellation commit-point, orphan, duplicate, and later-integrity evidence.
+- Retain PWS-0104/PWS-0109 source/pending/committed hash equality, unchanged external-original,
+  full validated manifest+journal transaction, operation-aware import append, cancellation and
+  interruption settlement, recovery, orphan, duplicate, autosave, and later-integrity evidence.
 - Force worker crash, timeout, cancellation, malformed message, disk-full, permission failure,
   destination failure, and recovery.
 - For PWS-0107 specifically, retain the live AppContainer/egress/job/environment/handle/filesystem

@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, Never, cast
 from uuid import UUID, uuid4
 
 from paperworkshell.domain.case_lifecycle import (
     CURRENT_CASE_MANIFEST_VERSION,
-    MAX_SAFE_MANIFEST_INTEGER,
     CaseDeletionConfirmation,
     CaseDeletionResult,
     CaseDeletionStatus,
@@ -26,6 +23,10 @@ from paperworkshell.domain.case_lifecycle import (
     reject_case_lifecycle,
     require_case_id,
 )
+from paperworkshell.domain.manifest_repository import (
+    ManifestRepositoryError,
+    ManifestRepositoryErrorCode,
+)
 from paperworkshell.storage._windows import (
     WindowsHandle,
     open_handle,
@@ -36,6 +37,25 @@ from paperworkshell.storage._windows import (
     write_new_file,
 )
 from paperworkshell.storage.errors import WorkspaceError
+from paperworkshell.storage.manifest_codec import (
+    MAX_JSON_DEPTH as MAX_JSON_DEPTH,
+)
+from paperworkshell.storage.manifest_codec import (
+    MAX_JSON_NODES as MAX_JSON_NODES,
+)
+from paperworkshell.storage.manifest_codec import (
+    MAX_MANIFEST_BYTES,
+    decode_manifest,
+    render_utc_timestamp,
+    summary_from_manifest,
+)
+from paperworkshell.storage.manifest_codec import (
+    MAX_MANIFEST_COLLECTION_ITEMS as MAX_MANIFEST_COLLECTION_ITEMS,
+)
+from paperworkshell.storage.manifest_repository import (
+    WindowsManifestRepository,
+    validate_manifest_payload,
+)
 from paperworkshell.storage.quotas import QuotaArea
 from paperworkshell.storage.workspace import (
     AuthenticatedCase,
@@ -43,59 +63,20 @@ from paperworkshell.storage.workspace import (
     CaseWorkspaceManager,
 )
 
-MAX_MANIFEST_BYTES: Final = 8 * 1024 * 1024
-MAX_JSON_DEPTH: Final = 64
-MAX_JSON_NODES: Final = 100_000
-MAX_JSON_STRING_CODEPOINTS: Final = 1_048_576
-MAX_MANIFEST_COLLECTION_ITEMS: Final = 4096
 
-_CASE_ID_RE: Final = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z"
-)
-_UTC_TIMESTAMP_RE: Final = re.compile(
-    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-    r"(?:\.[0-9]{1,6})?Z\Z"
-)
-_MANIFEST_KEYS: Final = frozenset(
-    {
-        "schema_version",
-        "case_id",
-        "revision",
-        "created_at",
-        "updated_at",
-        "template_ref",
-        "sources",
-        "pages",
-        "page_sequence_base",
-        "page_sequence",
-        "page_operations",
-        "assets",
-        "overlays",
-        "assignments",
-        "constraints",
-        "confirmations",
-        "export_history",
-    }
-)
-_COLLECTION_KEYS: Final = (
-    "sources",
-    "pages",
-    "page_sequence_base",
-    "page_sequence",
-    "page_operations",
-    "assets",
-    "overlays",
-    "assignments",
-    "confirmations",
-)
+def _decode_manifest(payload: bytes) -> dict[str, object]:
+    return decode_manifest(payload)
 
 
-class _DuplicateJsonKey(ValueError):
-    pass
+def _render_utc_timestamp(value: datetime) -> str:
+    return render_utc_timestamp(value)
 
 
-class _UnsupportedJsonNumber(ValueError):
-    pass
+def _summary_from_manifest(
+    document: dict[str, object],
+    expected_case_id: UUID,
+) -> CaseSummary:
+    return summary_from_manifest(document, expected_case_id)
 
 
 @dataclass(slots=True)
@@ -125,7 +106,7 @@ class WindowsOpenCaseLease:
 class WindowsCaseLifecycleStore:
     """Create, enumerate, open, and remove cases through one secure workspace manager."""
 
-    __slots__ = ("_clock", "_manager")
+    __slots__ = ("_clock", "_manager", "_manifests")
 
     def __init__(
         self,
@@ -135,6 +116,7 @@ class WindowsCaseLifecycleStore:
     ) -> None:
         self._manager = manager
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._manifests = WindowsManifestRepository(manager)
 
     def create_case(self) -> WindowsOpenCaseLease:
         """Publish a schema-valid empty manifest last, then retain the new case lease."""
@@ -198,8 +180,11 @@ class WindowsCaseLifecycleStore:
         unavailable: list[CaseIndexIssue] = []
         for case_id in case_ids:
             try:
+                self._manifests.load(case_id)
                 with self._manager.authenticate_case(case_id) as authority:
                     cases.append(_read_case_summary(authority))
+            except ManifestRepositoryError as error:
+                unavailable.append(CaseIndexIssue(case_id, _repository_lifecycle_code(error)))
             except CaseLifecycleError as error:
                 unavailable.append(CaseIndexIssue(case_id, error.code))
             except WorkspaceError:
@@ -215,9 +200,14 @@ class WindowsCaseLifecycleStore:
             reject_case_lifecycle(CaseLifecycleErrorCode.CASE_NOT_FOUND, "case.open_missing")
         authority: AuthenticatedCase | None = None
         try:
+            self._manifests.load(selected)
             authority = self._manager.authenticate_case(selected, retain_lease=True)
             summary = _read_case_summary(authority)
             return WindowsOpenCaseLease(summary, authority)
+        except ManifestRepositoryError as error:
+            if authority is not None:
+                _close_authority_safely(authority)
+            reject_case_lifecycle(_repository_lifecycle_code(error), "case.open_manifest")
         except CaseLifecycleError:
             if authority is not None:
                 _close_authority_safely(authority)
@@ -365,6 +355,10 @@ def _read_case_summary(authority: AuthenticatedCase) -> CaseSummary:
     except WorkspaceError:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_read")
     document = _decode_manifest(payload)
+    try:
+        validate_manifest_payload(payload, authority.case_id)
+    except ManifestRepositoryError as error:
+        reject_case_lifecycle(_repository_lifecycle_code(error), "case.manifest")
     return _summary_from_manifest(document, authority.case_id)
 
 
@@ -423,158 +417,30 @@ def _close_authority_safely(authority: AuthenticatedCase) -> None:
         return
 
 
-def _decode_manifest(payload: bytes) -> dict[str, object]:
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_utf8")
-    if text.startswith("\ufeff"):
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_bom")
-    try:
-        loaded = json.loads(
-            text,
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
-            parse_float=_reject_float,
-        )
-    except (
-        _DuplicateJsonKey,
-        _UnsupportedJsonNumber,
-        json.JSONDecodeError,
-        RecursionError,
-        ValueError,
-    ):
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_json")
-    if type(loaded) is not dict:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_object")
-    document = cast(dict[str, object], loaded)
-    _validate_json_resources(document)
-    return document
-
-
 def _validate_case_manifest_payload(payload: bytes, expected_case_id: UUID) -> None:
-    _summary_from_manifest(_decode_manifest(payload), expected_case_id)
+    """Require the complete current schema and semantic contract before deletion."""
 
-
-def _summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -> CaseSummary:
-    version = document.get("schema_version")
-    if type(version) is not int:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_version")
-    if version != CURRENT_CASE_MANIFEST_VERSION:
-        reject_case_lifecycle(
-            CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,
-            "case.manifest_version",
-        )
-    if frozenset(document) != _MANIFEST_KEYS:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_members")
-    raw_case_id = document["case_id"]
-    if type(raw_case_id) is not str or _CASE_ID_RE.fullmatch(raw_case_id) is None:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_id")
-    parsed_case_id = UUID(raw_case_id)
-    if parsed_case_id != expected_case_id:
-        reject_case_lifecycle(
-            CaseLifecycleErrorCode.MANIFEST_CASE_ID_MISMATCH,
-            "case.manifest_id",
-        )
-    revision = document["revision"]
-    if type(revision) is not int or not 0 <= revision <= MAX_SAFE_MANIFEST_INTEGER:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_revision")
-    for key in _COLLECTION_KEYS:
-        value = document[key]
-        if type(value) is not list or len(value) > MAX_MANIFEST_COLLECTION_ITEMS:
-            reject_case_lifecycle(
-                CaseLifecycleErrorCode.MANIFEST_INVALID,
-                "case.manifest_collections",
-            )
-    if document["template_ref"] is not None and type(document["template_ref"]) is not dict:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_template")
-    if type(document["constraints"]) is not dict or type(document["export_history"]) is not dict:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_records")
-    return CaseSummary(
-        case_id=parsed_case_id,
-        manifest_version=version,
-        revision=revision,
-        created_at=_parse_utc_timestamp(document["created_at"]),
-        updated_at=_parse_utc_timestamp(document["updated_at"]),
-    )
-
-
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise _DuplicateJsonKey
-        result[key] = value
-    return result
-
-
-def _reject_constant(_value: str) -> Never:
-    raise _UnsupportedJsonNumber
-
-
-def _reject_float(_value: str) -> Never:
-    raise _UnsupportedJsonNumber
-
-
-def _validate_json_resources(root: object) -> None:
-    stack: list[tuple[object, int]] = [(root, 1)]
-    nodes = 0
-    while stack:
-        value, depth = stack.pop()
-        nodes += 1
-        if nodes > MAX_JSON_NODES or depth > MAX_JSON_DEPTH:
-            reject_case_lifecycle(
-                CaseLifecycleErrorCode.MANIFEST_INVALID,
-                "case.manifest_resources",
-            )
-        if type(value) is dict:
-            mapping = cast(dict[str, object], value)
-            if len(mapping) > MAX_JSON_NODES - nodes - len(stack):
-                reject_case_lifecycle(
-                    CaseLifecycleErrorCode.MANIFEST_INVALID,
-                    "case.manifest_resources",
-                )
-            for key, child in mapping.items():
-                if len(key) > MAX_JSON_STRING_CODEPOINTS:
-                    reject_case_lifecycle(
-                        CaseLifecycleErrorCode.MANIFEST_INVALID,
-                        "case.manifest_resources",
-                    )
-                stack.append((child, depth + 1))
-        elif type(value) is list:
-            items = cast(list[object], value)
-            if len(items) > MAX_JSON_NODES - nodes - len(stack):
-                reject_case_lifecycle(
-                    CaseLifecycleErrorCode.MANIFEST_INVALID,
-                    "case.manifest_resources",
-                )
-            stack.extend((child, depth + 1) for child in items)
-        elif type(value) is str and len(value) > MAX_JSON_STRING_CODEPOINTS:
-            reject_case_lifecycle(
-                CaseLifecycleErrorCode.MANIFEST_INVALID,
-                "case.manifest_resources",
-            )
-
-
-def _parse_utc_timestamp(value: object) -> datetime:
-    if type(value) is not str or _UTC_TIMESTAMP_RE.fullmatch(value) is None:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_timestamp")
     try:
-        parsed = datetime.fromisoformat(f"{value[:-1]}+00:00")
-    except ValueError:
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_timestamp")
-    if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
-        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_timestamp")
-    return parsed
+        validate_manifest_payload(payload, expected_case_id)
+    except ManifestRepositoryError as error:
+        if error.code is ManifestRepositoryErrorCode.VERSION_UNSUPPORTED:
+            reject_case_lifecycle(
+                CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,
+                "case.manifest_version",
+            )
+        if error.code is ManifestRepositoryErrorCode.CASE_MISMATCH:
+            reject_case_lifecycle(
+                CaseLifecycleErrorCode.MANIFEST_CASE_ID_MISMATCH,
+                "case.manifest_id",
+            )
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest")
 
 
-def _render_utc_timestamp(value: datetime) -> str:
-    if (
-        type(value) is not datetime
-        or value.tzinfo is None
-        or value.utcoffset() != UTC.utcoffset(value)
-    ):
-        reject_case_lifecycle(CaseLifecycleErrorCode.CREATE_FAILED, "case.initial_timestamp")
-    normalized = value.astimezone(UTC)
-    timespec = "seconds" if normalized.microsecond == 0 else "microseconds"
-    return normalized.isoformat(timespec=timespec).replace("+00:00", "Z")
+def _repository_lifecycle_code(error: ManifestRepositoryError) -> CaseLifecycleErrorCode:
+    if error.context == "manifest.current_missing":
+        return CaseLifecycleErrorCode.CASE_INCOMPLETE
+    if error.code is ManifestRepositoryErrorCode.VERSION_UNSUPPORTED:
+        return CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED
+    if error.code is ManifestRepositoryErrorCode.CASE_MISMATCH:
+        return CaseLifecycleErrorCode.MANIFEST_CASE_ID_MISMATCH
+    return CaseLifecycleErrorCode.MANIFEST_INVALID

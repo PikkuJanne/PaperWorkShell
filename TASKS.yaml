@@ -1045,7 +1045,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: ready
+  status: done
   critical_path: false
   depends_on:
   - PWS-0102
@@ -1077,17 +1077,24 @@ tasks:
   - migration
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "c6bad8a"
+    commands:
+    - "GitHub Actions run 30817047647 at c6bad8a - passed; formatting, lint, 12-layer import boundaries over 58 source files, strict typing over 149 files, 948 unit tests, 186 hosted integration tests, 193 hosted security tests, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run python tools/dev.py check at c6bad8a - passed; 948 unit tests, 184 integration tests with 2 disclosed local link-capability skips, 190 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, exact fixture validation, schemas, task graph, docs, reference profile, secret scan, and all 5 deliberate quality violations"
+    - "uv run pytest -q tests/unit/test_validate_synthetic_fixtures.py tests/security/test_synthetic_fixture_security.py at c6bad8a - passed; 31 tests and 77 subtests with 2 disclosed local directory-link skips, including authenticated sibling-branch provenance and exact-digest rejection evidence"
+    notes:
+    - Validated manifests are saved under a named per-case Windows mutex with revision, digest, case-identity, and storage-identity compare-and-swap checks; two independently reopened staged copies, a fixed latest-checkpoint journal, atomic replacement, and post-commit reopen verification preserve the last known-good revision across ordinary failures and simulated interruption.
+    - Open and recovery fail before mutation on unknown future current or checkpoint versions, reject corrupt or noncontiguous journal state, restore a valid published checkpoint deterministically, and return only stable sanitized diagnostics; the shared transaction also prevents immutable source publication from bypassing pending recovery.
+    - The autosave coordinator coalesces rapid edits without losing the final state, owns exact in-flight revision transitions through completion notifications, rejects stale external rebases, preserves caller documents, and keeps revision and timestamp advancement inside the service.
+    - At c6bad8a, a fingerprinted PWS-D035 provenance ledger admitted only the 22 exact synthetic renderer blobs already reviewed on the then-sibling PWS-0106 branch. PWS-0111 integration retired that branch-only ledger after the renderer fixtures became part of the active validated ancestry; independent persistence, concurrency, schema, privacy, and final acceptance audits found no remaining P0-P2 finding.
 - id: PWS-0110
   milestone: M1
   title: Implement page sequence, operations, undo, and redo domain model
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0006
@@ -1116,17 +1123,24 @@ tasks:
   - data-integrity
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "a78dfb7"
+    commands:
+    - "GitHub Actions run 30820309807 at a78dfb7 - passed; formatting and lint over 152 files, 12-layer import boundaries over 59 source files, strict typing over 152 files, 987 unit tests, 187 hosted integration tests, 196 hosted security tests, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run python tools/dev.py check at a78dfb7 - passed; 987 unit tests, 185 integration tests with 2 disclosed local link-capability skips, 193 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, exact fixture validation, schemas, task graph, docs, reference profile, secret scan, and all 5 deliberate quality violations"
+    - "uv run pytest -q tests/unit/test_page_operations.py tests/integration/test_manifest_repository_windows.py tests/security/test_page_operations_security.py at a78dfb7 - passed; 55 deterministic replay, generated sequence, undo/redo, save/reload, concurrency, bounded-work, and diagnostic-privacy tests"
+    notes:
+    - Exact manifest-v1 page references and rotate, crop, sequence-change, and grouping intent replay deterministically under page, operation, aggregate-work, normalized-coordinate, contiguous-sequence, and global identifier-namespace limits without importing UI, renderer, PDF, worker, or storage implementations.
+    - Immutable session histories treat loaded operations as a non-undoable durable baseline; undo and redo restore exact operation identities and projections, branching clears redo without reusing discarded identifiers, and fixed-seed plus exhaustive permutation/subset grids prove equivalent replay and serialization.
+    - Candidate construction replaces only page operations and sequence in a defensive copy, accepts only exact history-owned autosave states, rejects stale or concurrent page changes and namespace collisions, and round-trips through the real atomic repository with equivalent state after reopen.
+    - Closed errors disclose no manifest values or raw exceptions, distinguish unsupported versions, invalid group cardinality, capacity, and recovery actions, and bound adversarial identifier generation; independent replay, concurrency, privacy, boundary, integration, and final-delta reviews found no remaining P0-P2 issue.
 - id: PWS-0111
   milestone: M1
   title: Build accessible page organizer vertical-slice UI
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0108
@@ -1171,7 +1185,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0105

@@ -5,7 +5,8 @@ from __future__ import annotations
 import ctypes
 import os
 import re
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from ctypes import wintypes
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -61,6 +62,11 @@ _TOKEN_OWNER_CLASS: Final = 4
 _ERROR_INSUFFICIENT_BUFFER: Final = 122
 _ERROR_FILE_EXISTS: Final = 80
 _ERROR_ALREADY_EXISTS: Final = 183
+_WAIT_OBJECT_0: Final = 0x0000_0000
+_WAIT_ABANDONED: Final = 0x0000_0080
+_WAIT_TIMEOUT: Final = 0x0000_0102
+_WAIT_FAILED: Final = 0xFFFF_FFFF
+_TRANSACTION_MUTEX_POLL_MILLISECONDS: Final = 50
 
 _DRIVE_FIXED: Final = 3
 _FILE_PERSISTENT_ACLS: Final = 0x0000_0008
@@ -82,6 +88,7 @@ _THUMBNAIL_CACHE_NAME: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
     r"\.[0-9a-f]{64}\.pwsthumb\Z"
 )
+_JOURNAL_CHECKPOINT_NAME: Final = "latest.json"
 
 _EXPECTED_PRIVATE_TRUSTEES: Final = frozenset(
     {
@@ -666,6 +673,94 @@ def open_handle(
         close_handle(wintypes.HANDLE(handle_value))
         raise
     return WindowsHandle(handle_value, info)
+
+
+@contextmanager
+def case_transaction_mutex(
+    case_root: WindowsHandle,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> Iterator[None]:
+    """Serialize cooperating case writers across processes in this Windows session."""
+
+    if type(case_root) is not WindowsHandle or (
+        checkpoint is not None and not callable(checkpoint)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "case.transaction_mutex",
+            "PaperWorkShell could not coordinate the case transaction safely.",
+        )
+    before = case_root.info
+    current = case_root.refresh_info()
+    if current.identity != before.identity or not current.is_directory or current.is_reparse_point:
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "case.transaction_mutex",
+            "PaperWorkShell could not coordinate the case transaction safely.",
+        )
+    identity = current.identity
+    mutex_name = (
+        f"Local\\PaperWorkShell-Case-{identity.volume_serial_number:016x}-{identity.file_id.hex()}"
+    )
+    kernel32, _, _ = _libraries()
+    create_mutex = kernel32.CreateMutexW
+    create_mutex.argtypes = (ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR)
+    create_mutex.restype = wintypes.HANDLE
+    raw_handle = create_mutex(None, False, mutex_name)
+    handle_value = int(raw_handle) if raw_handle else 0
+    if not handle_value or handle_value == _INVALID_HANDLE_VALUE:
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "case.transaction_mutex",
+            "PaperWorkShell could not coordinate the case transaction safely.",
+        )
+
+    wait = kernel32.WaitForSingleObject
+    wait.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    wait.restype = wintypes.DWORD
+    release = kernel32.ReleaseMutex
+    release.argtypes = (wintypes.HANDLE,)
+    release.restype = wintypes.BOOL
+    close = kernel32.CloseHandle
+    close.argtypes = (wintypes.HANDLE,)
+    close.restype = wintypes.BOOL
+    acquired = False
+    try:
+        if checkpoint is not None:
+            checkpoint()
+        while True:
+            outcome = int(
+                wait(
+                    wintypes.HANDLE(handle_value),
+                    _TRANSACTION_MUTEX_POLL_MILLISECONDS,
+                )
+            )
+            if outcome in {_WAIT_OBJECT_0, _WAIT_ABANDONED}:
+                acquired = True
+                break
+            if outcome == _WAIT_TIMEOUT:
+                if checkpoint is not None:
+                    checkpoint()
+                continue
+            if outcome == _WAIT_FAILED:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "case.transaction_mutex",
+                    "PaperWorkShell could not coordinate the case transaction safely.",
+                )
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "case.transaction_mutex",
+                "PaperWorkShell could not coordinate the case transaction safely.",
+            )
+        if checkpoint is not None:
+            checkpoint()
+        yield
+    finally:
+        if acquired:
+            release(wintypes.HANDLE(handle_value))
+        close(wintypes.HANDLE(handle_value))
 
 
 def reopen_read_only_file(handle: WindowsHandle) -> WindowsHandle:
@@ -1488,6 +1583,215 @@ def publish_new_file(
             "The authoritative case record changed during publication.",
         )
     require_no_alternate_streams(destination)
+
+
+def publish_new_journal_checkpoint(
+    candidate_handle: WindowsHandle,
+    case_root: WindowsHandle,
+    journal_root: WindowsHandle,
+) -> ManifestReplaceResult:
+    """Publish the first fixed journal checkpoint and resolve by destination identity."""
+
+    destination = _require_journal_publication_scope(
+        candidate_handle,
+        case_root,
+        journal_root,
+    )
+    candidate_identity = candidate_handle.info.identity
+    initial = _resolve_new_file_state(destination, candidate_identity=candidate_identity)
+    if initial is not ManifestReplaceState.NOT_COMMITTED:
+        return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+
+    delayed_exception: BaseException | None = None
+    try:
+        renamed, error_number = _rename_open_file(
+            candidate_handle,
+            destination=destination,
+            replace=False,
+        )
+    except BaseException as error:
+        delayed_exception = error
+        renamed = False
+        error_number = 0
+
+    resolved = _resolve_new_file_state(destination, candidate_identity=candidate_identity)
+    if resolved is ManifestReplaceState.COMMITTED:
+        try:
+            candidate_handle.refresh_info()
+            require_no_alternate_streams(destination)
+        except Exception:
+            return ManifestReplaceResult(
+                ManifestReplaceState.UNKNOWN,
+                delayed_exception=delayed_exception,
+            )
+        return ManifestReplaceResult(
+            ManifestReplaceState.COMMITTED,
+            delayed_exception=delayed_exception,
+        )
+    if delayed_exception is not None and resolved is ManifestReplaceState.NOT_COMMITTED:
+        raise delayed_exception
+    if error_number in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+        return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+    if not renamed and resolved is ManifestReplaceState.NOT_COMMITTED:
+        return ManifestReplaceResult(ManifestReplaceState.NOT_COMMITTED)
+    return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+
+
+def replace_journal_checkpoint_atomically(
+    candidate_handle: WindowsHandle,
+    case_root: WindowsHandle,
+    journal_root: WindowsHandle,
+    expected_checkpoint_handle: WindowsHandle,
+) -> ManifestReplaceResult:
+    """Replace the fixed journal checkpoint and resolve the commit by file identity."""
+
+    destination = _require_journal_publication_scope(
+        candidate_handle,
+        case_root,
+        journal_root,
+    )
+    expected_before = expected_checkpoint_handle.info
+    expected_current = expected_checkpoint_handle.refresh_info()
+    if (
+        expected_current.identity != expected_before.identity
+        or expected_current.is_directory
+        or expected_current.is_reparse_point
+        or expected_current.is_sparse
+        or expected_current.link_count != 1
+        or _normalized_path(expected_current.final_path) != _normalized_path(destination)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "journal_replace.expected",
+            "The recovery checkpoint changed before replacement.",
+        )
+    require_no_alternate_streams(destination)
+
+    candidate_identity = candidate_handle.info.identity
+    initial = _resolve_manifest_replace_state(
+        destination,
+        candidate_identity=candidate_identity,
+        expected_identity=expected_current.identity,
+    )
+    if initial is not ManifestReplaceState.NOT_COMMITTED:
+        return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+
+    delayed_exception: BaseException | None = None
+    try:
+        renamed, _error_number = _rename_open_file(
+            candidate_handle,
+            destination=destination,
+            replace=True,
+        )
+    except BaseException as error:
+        delayed_exception = error
+        renamed = False
+
+    resolved = _resolve_manifest_replace_state(
+        destination,
+        candidate_identity=candidate_identity,
+        expected_identity=expected_current.identity,
+    )
+    result = ManifestReplaceResult(resolved, delayed_exception=delayed_exception)
+    if resolved is ManifestReplaceState.COMMITTED:
+        try:
+            candidate_handle.refresh_info()
+        except Exception:
+            pass
+        return result
+    if delayed_exception is not None and resolved is ManifestReplaceState.NOT_COMMITTED:
+        raise delayed_exception
+    if delayed_exception is not None:
+        return result
+    if not renamed and resolved is ManifestReplaceState.NOT_COMMITTED:
+        return result
+    return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+
+
+def _require_journal_publication_scope(
+    candidate_handle: WindowsHandle,
+    case_root: WindowsHandle,
+    journal_root: WindowsHandle,
+) -> Path:
+    """Authenticate the fixed case/temp -> case/journal checkpoint publication scope."""
+
+    case_before = case_root.info
+    case_current = case_root.refresh_info()
+    if (
+        case_current.identity != case_before.identity
+        or not case_current.is_directory
+        or case_current.is_reparse_point
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "journal_publish.case",
+            "The authenticated case directory changed before checkpoint publication.",
+        )
+    verify_private_acl(case_root)
+    require_no_alternate_streams(case_current.final_path)
+
+    journal_before = journal_root.info
+    journal_current = journal_root.refresh_info()
+    expected_journal = case_current.final_path / "journal"
+    if (
+        journal_current.identity != journal_before.identity
+        or not journal_current.is_directory
+        or journal_current.is_reparse_point
+        or _normalized_path(journal_current.final_path) != _normalized_path(expected_journal)
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "journal_publish.root",
+            "The authenticated recovery directory changed before checkpoint publication.",
+        )
+    verify_private_acl(journal_root)
+    require_no_alternate_streams(journal_current.final_path)
+
+    candidate_before = candidate_handle.info
+    candidate_current = candidate_handle.refresh_info()
+    if (
+        candidate_current.identity != candidate_before.identity
+        or candidate_current.is_directory
+        or candidate_current.is_reparse_point
+        or candidate_current.is_sparse
+        or candidate_current.link_count != 1
+        or _normalized_path(candidate_current.final_path.parent)
+        != _normalized_path(case_current.final_path / "temp")
+        or _PENDING_SOURCE_NAME.fullmatch(candidate_current.final_path.name) is None
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "journal_publish.candidate",
+            "The staged recovery checkpoint changed before publication.",
+        )
+    require_no_alternate_streams(candidate_current.final_path)
+    return journal_current.final_path / _JOURNAL_CHECKPOINT_NAME
+
+
+def _resolve_new_file_state(
+    destination: Path,
+    *,
+    candidate_identity: FileIdentity,
+) -> ManifestReplaceState:
+    """Resolve a create-only publication without trusting a path-only observation."""
+
+    if not os.path.lexists(destination):
+        return ManifestReplaceState.NOT_COMMITTED
+    try:
+        with open_handle(destination, share_delete=True) as current:
+            require_expected_handle(current, destination, directory=False)
+            if (
+                current.info.is_reparse_point
+                or current.info.is_sparse
+                or current.info.link_count != 1
+            ):
+                return ManifestReplaceState.UNKNOWN
+            require_no_alternate_streams(destination)
+            if current.info.identity == candidate_identity:
+                return ManifestReplaceState.COMMITTED
+    except Exception:
+        return ManifestReplaceState.UNKNOWN
+    return ManifestReplaceState.UNKNOWN
 
 
 def publish_new_original(

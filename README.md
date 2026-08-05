@@ -128,10 +128,16 @@ and worker deferrals are documented in
 Immutable ingest streams that same live source handle into a random case-scoped pending copy,
 verifies independent SHA-256 values, waits for complete typed inspection metadata, and then commits
 a distinct random original plus its complete source/page manifest graph. Duplicate content is an
-advisory rather than silent deduplication; manifest replacement is the cancellation commit point;
-later integrity checks detect missing, changed, or unsafe case copies. The two-phase flow, privacy
-rules, orphan recovery handoff, and PWS-0109/PWS-0110 boundaries are documented in
+advisory rather than silent deduplication; source publication, checkpoint, and manifest replacement
+form one recoverable transaction; later integrity checks detect missing, changed, or unsafe case
+copies. The two-phase flow, privacy rules, orphan recovery handoff, and page-operation boundary are
+documented in
 [`docs/architecture/immutable-ingest.md`](docs/architecture/immutable-ingest.md).
+
+The current-version manifest repository performs complete fingerprint-bound validation before
+save/open, compare-and-swap atomic replacement, one-snapshot checkpoint recovery, and toolkit-free
+autosave coalescing. Its persistence and interruption contract is documented in
+[`docs/architecture/manifest-repository.md`](docs/architecture/manifest-repository.md).
 
 Third-party admission, exact pin/hash evidence, Windows redistribution, renderer comparison, and
 SBOM inputs are governed by

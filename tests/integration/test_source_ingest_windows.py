@@ -35,12 +35,16 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
     reject_source_ingest,
 )
+from paperworkshell.storage import manifest_repository as repository_storage
 from paperworkshell.storage._windows import (
     MAXIMUM_STREAM_CHUNK_BYTES,
     ManifestReplaceResult,
     ManifestReplaceState,
     WindowsHandle,
     replace_manifest_atomically,
+)
+from paperworkshell.storage._windows import (
+    open_handle as windows_open_handle,
 )
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.quotas import QuotaArea, WorkspaceQuota
@@ -611,7 +615,7 @@ def test_confirmed_manifest_replace_wins_over_late_cancellation_or_interruption(
         return outcome
 
     monkeypatch.setattr(
-        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        "paperworkshell.storage.manifest_repository.replace_manifest_atomically",
         replace_then_signal,
     )
 
@@ -635,19 +639,120 @@ def test_confirmed_manifest_replace_wins_over_late_cancellation_or_interruption(
     _assert_no_staged_files(stack)
 
 
+def test_interrupted_unpublished_checkpoint_removes_unreferenced_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "checkpoint-interrupt.jpg").resolve()
+    source.write_bytes(_jpeg_of_size(8_194, fill=b"checkpoint-interrupt-"))
+    manifest_before = stack.layout.manifest.read_bytes()
+    interruption = KeyboardInterrupt()
+
+    def interrupt_checkpoint(*_args: object, **_kwargs: object) -> object:
+        raise interruption
+
+    monkeypatch.setattr(
+        "paperworkshell.storage.manifest_repository.publish_new_journal_checkpoint",
+        interrupt_checkpoint,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        stack.service.import_source(CASE_ID, source, "Checkpoint interrupt synthetic.jpg")
+
+    assert raised.value is interruption
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.journal.iterdir()) == []
+    assert list(stack.layout.originals.iterdir()) == []
+    _assert_no_staged_files(stack)
+
+
+def test_interruption_during_journal_setup_removes_unreferenced_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "journal-setup-interrupt.jpg").resolve()
+    source.write_bytes(_jpeg_of_size(8_194, fill=b"journal-setup-interrupt-"))
+    manifest_before = stack.layout.manifest.read_bytes()
+    interruption = KeyboardInterrupt()
+    real_open_handle = windows_open_handle
+
+    def interrupt_journal(path: Path, *args: object, **kwargs: object) -> object:
+        if path == stack.layout.journal:
+            raise interruption
+        return real_open_handle(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(repository_storage, "open_handle", interrupt_journal)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        stack.service.import_source(CASE_ID, source, "Journal setup interrupt synthetic.jpg")
+
+    assert raised.value is interruption
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.journal.iterdir()) == []
+    assert list(stack.layout.originals.iterdir()) == []
+    _assert_no_staged_files(stack)
+
+
+def test_next_import_recovers_pending_source_checkpoint_before_appending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    first_source = (tmp_path / "pending-first.jpg").resolve()
+    second_source = (tmp_path / "pending-second.jpg").resolve()
+    first_source.write_bytes(_jpeg_of_size(8_194, fill=b"pending-first-"))
+    second_source.write_bytes(_jpeg_of_size(8_195, fill=b"pending-second-"))
+
+    monkeypatch.setattr(
+        repository_storage,
+        "replace_manifest_atomically",
+        lambda *_args, **_kwargs: ManifestReplaceResult(ManifestReplaceState.NOT_COMMITTED),
+    )
+    with pytest.raises(SourceIngestError):
+        stack.service.import_source(CASE_ID, first_source, "Pending first synthetic.jpg")
+
+    first_originals = tuple(stack.layout.originals.iterdir())
+    assert len(first_originals) == 1
+    assert (stack.layout.journal / "latest.json").is_file()
+    monkeypatch.undo()
+
+    second = stack.service.import_source(
+        CASE_ID,
+        second_source,
+        "Pending second synthetic.jpg",
+    )
+
+    document = _manifest(stack.layout)
+    sources = document["sources"]
+    assert isinstance(sources, list)
+    assert document["revision"] == 2
+    assert len(sources) == 2
+    assert {record["source_id"] for record in sources if isinstance(record, dict)} == {
+        first_originals[0].stem,
+        str(second.source_id),
+    }
+    assert {path.stem for path in stack.layout.originals.iterdir()} == {
+        first_originals[0].stem,
+        str(second.source_id),
+    }
+    assert stack.layout.manifest.read_bytes() == (stack.layout.journal / "latest.json").read_bytes()
+    _assert_no_staged_files(stack)
+
+
 @pytest.mark.parametrize(
-    ("replace_state", "preserves_uncertain_artifacts", "expected_context"),
+    ("replace_state", "expected_staged_files"),
     [
-        (ManifestReplaceState.NOT_COMMITTED, False, "source.manifest_replace"),
-        (ManifestReplaceState.UNKNOWN, True, "source.commit_uncertain"),
+        (ManifestReplaceState.NOT_COMMITTED, 0),
+        (ManifestReplaceState.UNKNOWN, 1),
     ],
 )
-def test_store_manifest_replace_outcome_controls_exact_cleanup_and_authority(
+def test_central_manifest_replace_outcome_controls_recoverable_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     replace_state: ManifestReplaceState,
-    preserves_uncertain_artifacts: bool,
-    expected_context: str,
+    expected_staged_files: int,
 ) -> None:
     stack = _stack(tmp_path)
     source = (tmp_path / "replace-outcome.jpg").resolve()
@@ -662,7 +767,7 @@ def test_store_manifest_replace_outcome_controls_exact_cleanup_and_authority(
         return ManifestReplaceResult(replace_state)
 
     monkeypatch.setattr(
-        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        "paperworkshell.storage.manifest_repository.replace_manifest_atomically",
         forced_replace_outcome,
     )
 
@@ -670,29 +775,36 @@ def test_store_manifest_replace_outcome_controls_exact_cleanup_and_authority(
         stack.service.import_source(CASE_ID, source, "Replace outcome synthetic.jpg")
 
     assert raised.value.code is SourceIngestErrorCode.COMMIT_FAILED
-    assert raised.value.context == expected_context
+    assert raised.value.context == "source.commit_storage"
     assert stack.layout.manifest.read_bytes() == manifest_before
     assert _manifest(stack.layout)["sources"] == []
     originals = list(stack.layout.originals.iterdir())
     staged = list(stack.layout.temp.iterdir())
-    if preserves_uncertain_artifacts:
-        assert len(originals) == len(staged) == 1
-        assert originals[0].suffix == ".bin"
-        assert UUID(originals[0].stem).version == 4
+    assert len(originals) == 1
+    assert originals[0].suffix == ".bin"
+    assert UUID(originals[0].stem).version == 4
+    assert len(staged) == expected_staged_files
+    if staged:
         assert staged[0].suffix == ".tmp"
         assert UUID(staged[0].stem).version == 4
-    else:
-        assert originals == []
-        assert staged == []
+    checkpoint = stack.layout.journal / "latest.json"
+    assert checkpoint.is_file()
 
+    monkeypatch.undo()
     fresh_manager = CaseWorkspaceManager(profile_root=stack.profile, quota=_quota())
     fresh_service = CaseLifecycleService(WindowsCaseLifecycleStore(fresh_manager))
     reopened = fresh_service.open_case(CASE_ID)
-    assert reopened.revision == 0
+    assert reopened.revision == 1
+    assert stack.layout.manifest.read_bytes() == checkpoint.read_bytes()
+    recovered_sources = _manifest(stack.layout)["sources"]
+    assert isinstance(recovered_sources, list)
+    assert [record["source_id"] for record in recovered_sources if isinstance(record, dict)] == [
+        originals[0].stem
+    ]
     fresh_service.close_case(CASE_ID)
 
 
-def test_unknown_manifest_outcome_preserves_artifacts_and_delayed_interrupt(
+def test_unknown_manifest_outcome_preserves_recovery_state_and_delayed_interrupt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -703,7 +815,7 @@ def test_unknown_manifest_outcome_preserves_artifacts_and_delayed_interrupt(
     interruption = KeyboardInterrupt()
 
     monkeypatch.setattr(
-        "paperworkshell.storage.source_ingest.replace_manifest_atomically",
+        "paperworkshell.storage.manifest_repository.replace_manifest_atomically",
         lambda *_args, **_kwargs: ManifestReplaceResult(
             ManifestReplaceState.UNKNOWN,
             delayed_exception=interruption,
@@ -721,6 +833,21 @@ def test_unknown_manifest_outcome_preserves_artifacts_and_delayed_interrupt(
     assert len(originals) == len(staged) == 1
     assert originals[0].suffix == ".bin"
     assert staged[0].suffix == ".tmp"
+    checkpoint = stack.layout.journal / "latest.json"
+    assert checkpoint.is_file()
+
+    monkeypatch.undo()
+    fresh_manager = CaseWorkspaceManager(profile_root=stack.profile, quota=_quota())
+    fresh_service = CaseLifecycleService(WindowsCaseLifecycleStore(fresh_manager))
+    reopened = fresh_service.open_case(CASE_ID)
+    assert reopened.revision == 1
+    assert stack.layout.manifest.read_bytes() == checkpoint.read_bytes()
+    recovered_sources = _manifest(stack.layout)["sources"]
+    assert isinstance(recovered_sources, list)
+    assert [record["source_id"] for record in recovered_sources if isinstance(record, dict)] == [
+        originals[0].stem
+    ]
+    fresh_service.close_case(CASE_ID)
 
 
 def test_concurrent_commits_from_one_snapshot_allow_exactly_one_winner(

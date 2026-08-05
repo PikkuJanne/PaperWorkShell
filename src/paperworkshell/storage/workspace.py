@@ -18,6 +18,7 @@ from weakref import WeakValueDictionary
 from paperworkshell.storage._windows import (
     FileIdentity,
     WindowsHandle,
+    case_transaction_mutex,
     current_profile_root,
     open_handle,
     require_expected_handle,
@@ -293,6 +294,38 @@ class AuthenticatedCase(AbstractContextManager["AuthenticatedCase"]):
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+    @contextmanager
+    def transaction_guard(
+        self,
+        *,
+        coordination_checkpoint: Callable[[], None] | None = None,
+    ) -> Iterator[None]:
+        """Serialize one authenticated case transaction in this broker process.
+
+        Cross-process safety still comes from retained handles and compare-and-swap checks. This
+        guard prevents local manifest, journal, import, cleanup, and deletion work from observing
+        one another halfway through a transaction.
+        """
+
+        if self._closed:
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "case.transaction",
+                "The authenticated case authority is no longer available.",
+            )
+        with _coordination_guard(self._state, coordination_checkpoint):
+            if self._closed or self._deletion_claim or self._state.deletion_in_progress:
+                reject(
+                    WorkspaceErrorCode.IDENTITY_CHANGED,
+                    "case.transaction",
+                    "The authenticated case is not available for a state transaction.",
+                )
+            with case_transaction_mutex(
+                self.handle,
+                checkpoint=coordination_checkpoint,
+            ):
+                yield
 
     def close(self) -> None:
         """Release retained handles and process-local lifecycle coordination idempotently."""
