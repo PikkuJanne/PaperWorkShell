@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Event
 from types import MappingProxyType
 from typing import Final, Protocol
 from uuid import UUID
 
+from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_inspection import PdfInspectionError, PdfInspectionErrorCode
 from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError, PdfThumbnailErrorCode
 from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
+    PDF_EXPORT_CAPABILITY,
+    PDF_EXPORT_OUTPUT_CONTENT_KIND,
+    PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+    PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+    PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+    PDF_EXPORT_RESULT_HANDLE_PARAMETER,
     PDF_INSPECT_CAPABILITY,
     PDF_INSPECT_RESULT_HANDLE_PARAMETER,
     PDF_INSPECT_SOURCE_HANDLE_PARAMETER,
@@ -188,6 +195,125 @@ class PdfThumbnailOperationHandler:
             OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
         )
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+@dataclass(frozen=True, slots=True)
+class PdfExportOperationRequest:
+    """Path-free authority transferred for one deterministic PDF export."""
+
+    plan_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    result_handle: int = field(repr=False)
+    output_object_id: UUID
+
+    def __post_init__(self) -> None:
+        handles = (self.plan_handle, self.output_handle, self.result_handle)
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+        ):
+            raise ValueError("validated PDF-export parameters are unavailable")
+
+
+class PdfExportAdapter(Protocol):
+    """Injected worker adapter that consumes every transferred export authority."""
+
+    def discard_handles(
+        self, context: OperationContext, request: PdfExportOperationRequest
+    ) -> None:
+        """Consume transfer handles when terminal state prevents dispatch."""
+
+    def export(
+        self,
+        context: OperationContext,
+        request: PdfExportOperationRequest,
+    ) -> CaseObjectReference:
+        """Assemble, verify, report, and copy one bounded output candidate."""
+
+
+@dataclass(frozen=True, slots=True)
+class PdfExportOperationHandler:
+    """Coordinate the closed ``pdf.export`` operation around one adapter."""
+
+    adapter: PdfExportAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return PDF_EXPORT_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _pdf_export_operation_request(context)
+        total_pages = context.limits.page_count
+        context.report_progress(
+            OperationProgressPayload(
+                ProgressStage.PROCESSING,
+                0,
+                total_pages,
+                ProgressUnit.PAGES,
+            )
+        )
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+
+        try:
+            output = self.adapter.export(context, request)
+        except PdfExportError as error:
+            if error.code is PdfExportErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is PdfExportErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            raise
+
+        # Successful adapters have already flushed and closed the result pipe and
+        # bounded output section. A late terminal request suppresses the reference;
+        # the trusted broker terminates the one-shot worker before reading either.
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_pdf_export_output(context, request, output)
+        context.report_progress(
+            OperationProgressPayload(
+                ProgressStage.PROCESSING,
+                total_pages,
+                total_pages,
+                ProgressUnit.PAGES,
+            )
+        )
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+def _pdf_export_operation_request(context: OperationContext) -> PdfExportOperationRequest:
+    return PdfExportOperationRequest(
+        plan_handle=_positive_integer_parameter(context, PDF_EXPORT_PLAN_HANDLE_PARAMETER),
+        output_handle=_positive_integer_parameter(context, PDF_EXPORT_OUTPUT_HANDLE_PARAMETER),
+        result_handle=_positive_integer_parameter(context, PDF_EXPORT_RESULT_HANDLE_PARAMETER),
+        output_object_id=_uuid_parameter(context, PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER),
+    )
+
+
+def _require_pdf_export_output(
+    context: OperationContext,
+    request: PdfExportOperationRequest,
+    output: CaseObjectReference,
+) -> None:
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != PDF_EXPORT_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+    ):
+        raise ValueError("PDF-export adapter returned an invalid staging reference")
 
 
 def _pdf_thumbnail_render_request(context: OperationContext) -> PdfThumbnailRenderRequest:
