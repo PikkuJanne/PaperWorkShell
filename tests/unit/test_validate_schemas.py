@@ -19,7 +19,11 @@ from tools.validate_dependencies import (
     INVENTORY_PATH,
     INVENTORY_SCHEMA_PATH,
 )
-from tools.validate_schemas import validation_messages
+from tools.validate_schemas import (
+    EXPORT_HISTORY_PACKAGED_SCHEMA_PATH,
+    EXPORT_HISTORY_SCHEMA_PATH,
+    validation_messages,
+)
 from tools.validate_synthetic_fixtures import (
     NEGATIVE_FIXTURE_DIRECTORY as FIXTURE_NEGATIVE_DIRECTORY,
 )
@@ -47,6 +51,8 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             TEMPLATE_SCHEMA_PATH,
             INVENTORY_SCHEMA_PATH,
             Path("schemas/worker-rpc-v1.schema.json"),
+            EXPORT_HISTORY_SCHEMA_PATH,
+            EXPORT_HISTORY_PACKAGED_SCHEMA_PATH,
             Path("tools/dev.py"),
             Path("uv.lock"),
             FIXTURE_INDEX_PATH,

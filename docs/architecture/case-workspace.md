@@ -31,7 +31,7 @@ namespace does not re-export implementations.
 | `cache/thumbnails/` | yes | authenticated child cleanup; root preserved | PWS-0108 bounded thumbnail service |
 | `cache/previews/` | yes | authenticated child cleanup; root preserved | reserved for later non-thumbnail preview derivatives |
 | `temp/` | yes | authenticated child cleanup; root preserved | PWS-0104 source preparation; PWS-0107/PWS-0112 operations; PWS-0113 orphan cleanup |
-| `export-history.json` | reserved only | none | PWS-0112 verified export records with PWS-0109 persistence integration |
+| `export-history.json` | reserved only | none | PWS-0112 canonical path-free records, authenticated atomic create/replace, and manifest-CAS references |
 
 Case roots use canonical lowercase UUIDv4 names. Provisioning retries generated collisions up to a
 bounded limit; an explicit existing identifier fails without mutation. Rollback removes only empty
@@ -215,7 +215,6 @@ Earlier valid cache entries and all authoritative case state remain unchanged.
 
 - Manifest schema migration remains deferred to its later versioned task; PWS-0109 implements
   current-version authoritative transactions, autosave, and checkpoint recovery.
-- PWS-0112: export staging, assembly, reopen, verification, record, and destination commit.
 - PWS-0113: crash recovery, orphan-temp cleanup, sanitized logs, and diagnostic baseline.
 - PWS-0705/PWS-0706: retention consent, expiry, lock, inventory review, and assisted deletion.
 

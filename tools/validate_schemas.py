@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
 
 from tools.generate_synthetic_fixtures import SCHEMA_PATH as FIXTURE_INDEX_SCHEMA_PATH
 from tools.reference_profile import PROFILE_PATH, SCHEMA_PATH, validate_profile
@@ -21,6 +25,11 @@ from tools.validate_templates import TEMPLATE_SCHEMA_PATH, validate_template_fix
 from tools.validate_worker_rpc import RPC_SCHEMA_PATH, validate_worker_rpc_fixture_set
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
+EXPORT_HISTORY_SCHEMA_PATH: Final = Path("schemas/export-history-v1.schema.json")
+EXPORT_HISTORY_PACKAGED_SCHEMA_PATH: Final = Path(
+    "src/paperworkshell/storage/export-history-v1.schema.json"
+)
+_MAX_EXPORT_HISTORY_SCHEMA_BYTES: Final = 256 * 1024
 
 
 def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
@@ -41,6 +50,7 @@ def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
         + [issue.render() for issue in template_issues]
         + [issue.render() for issue in rpc_issues]
         + [issue.render() for issue in dependency_issues]
+        + _validate_export_history_schema(root)
     )
 
 
@@ -67,7 +77,78 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"OK: validated declarative-template v1 with {TEMPLATE_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated worker-RPC v1 with {RPC_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated dependency inventory v1 with {INVENTORY_SCHEMA_PATH.as_posix()}.")
+    print(f"OK: validated export-history v1 with {EXPORT_HISTORY_SCHEMA_PATH.as_posix()}.")
     return 0
+
+
+def _validate_export_history_schema(root: Path) -> list[str]:
+    """Validate the closed path-free contract and its packaged runtime copy."""
+
+    schema_path = root / EXPORT_HISTORY_SCHEMA_PATH
+    packaged_path = root / EXPORT_HISTORY_PACKAGED_SCHEMA_PATH
+    try:
+        schema_payload = schema_path.read_bytes()
+        packaged_payload = packaged_path.read_bytes()
+    except OSError:
+        return ["EXPORT_HISTORY_SCHEMA_MISSING: required schema copy is unavailable"]
+    if (
+        not 1 <= len(schema_payload) <= _MAX_EXPORT_HISTORY_SCHEMA_BYTES
+        or schema_payload != packaged_payload
+    ):
+        return ["EXPORT_HISTORY_SCHEMA_IDENTITY_INVALID: canonical and packaged copies differ"]
+    try:
+        loaded = json.loads(schema_payload.decode("utf-8"))
+    except UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError:
+        return ["EXPORT_HISTORY_SCHEMA_JSON_INVALID: schema is not strict UTF-8 JSON"]
+    if type(loaded) is not dict:
+        return ["EXPORT_HISTORY_SCHEMA_OBJECT_INVALID: schema root must be an object"]
+    try:
+        Draft202012Validator.check_schema(loaded)
+        validator = Draft202012Validator(loaded)
+    except SchemaError:
+        return ["EXPORT_HISTORY_SCHEMA_INVALID: Draft 2020-12 schema validation failed"]
+    positive = _export_history_positive_example()
+    if list(validator.iter_errors(positive)):
+        return ["EXPORT_HISTORY_POSITIVE_INVALID: canonical path-free record was rejected"]
+    future = dict(positive)
+    future["schema_version"] = 2
+    if not list(validator.iter_errors(future)):
+        return ["EXPORT_HISTORY_FUTURE_ACCEPTED: unknown future version was accepted"]
+    path_bearing = json.loads(json.dumps(positive))
+    record = path_bearing["records"][0]
+    record["destination_path"] = "C:/private/final-name.pdf"
+    if not list(validator.iter_errors(path_bearing)):
+        return ["EXPORT_HISTORY_PATH_ACCEPTED: destination path field was accepted"]
+    return []
+
+
+def _export_history_positive_example() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "records": [
+            {
+                "export_id": "50000000-0000-4000-8000-000000000001",
+                "record_version": 1,
+                "recorded_at": "2026-08-06T12:00:00.000000Z",
+                "manifest_revision": 1,
+                "manifest_sha256": "a" * 64,
+                "semantic_fingerprint": "b" * 64,
+                "output_sha256": "c" * 64,
+                "output_byte_size": 1,
+                "page_count": 1,
+                "check_codes": [
+                    "PDF_REOPENED",
+                    "STRUCTURE_CLEAN",
+                    "PAGE_COUNT_MATCHED",
+                    "UNENCRYPTED",
+                    "ALL_PAGES_RENDERED",
+                    "ORDER_ROTATION_MATCHED",
+                    "OUTPUT_COMMIT_REOPENED",
+                ],
+                "unsigned_derivative": False,
+            }
+        ],
+    }
 
 
 if __name__ == "__main__":
