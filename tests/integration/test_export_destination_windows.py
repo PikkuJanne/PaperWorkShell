@@ -419,6 +419,44 @@ def test_interrupt_after_native_rename_is_resolved_as_committed(tmp_path: Path) 
     assert _stages(tmp_path) == ()
 
 
+def test_base_exception_during_post_rename_resolution_preserves_final(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "post-rename-resolution-interrupted.pdf"
+    payload = b"indeterminate-resolution-must-preserve-commit"
+    renamed = False
+    real_refresh = WindowsHandle.refresh_info
+
+    def rename_and_arm_interrupt(
+        stage: WindowsHandle,
+        parent: WindowsHandle,
+        name: str,
+    ) -> tuple[bool, int]:
+        nonlocal renamed
+        outcome = rename_open_file_no_replace_at(stage, parent, destination_name=name)
+        renamed = outcome[0]
+        return outcome
+
+    def interrupt_after_rename(handle: WindowsHandle) -> object:
+        if renamed:
+            raise KeyboardInterrupt
+        return real_refresh(handle)
+
+    monkeypatch.setattr(WindowsHandle, "refresh_info", interrupt_after_rename)
+    result = _commit(
+        destination,
+        payload,
+        dependencies=ExportDestinationDependencies(rename_stage=rename_and_arm_interrupt),
+    )
+
+    assert renamed
+    assert result.state is ExportCommitState.UNKNOWN
+    assert result.recovered_outcome
+    assert destination.read_bytes() == payload
+    assert _stages(tmp_path) == ()
+
+
 def test_late_cancellation_after_native_commit_is_not_observed(tmp_path: Path) -> None:
     destination = tmp_path / "late-cancel.pdf"
     payload = b"late-cancellation-cannot-delete-commit"

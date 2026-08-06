@@ -29,7 +29,8 @@ from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryError,
     PdfExportHistoryErrorCode,
     PdfExportHistoryRecord,
-    build_pdf_export_history_record,
+    build_pdf_export_history_record_for_commit,
+    build_pdf_export_history_retry_receipt,
     canonical_pdf_export_history_bytes,
 )
 from paperworkshell.storage._windows import (
@@ -123,13 +124,21 @@ def _record(
         output_sha256=hashlib.sha256(export_id.bytes).hexdigest(),
         output_byte_size=1234,
     )
-    outcome = PdfExportOutcome(
-        export_id,
-        PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING,
-        report,
-        True,
+    record = build_pdf_export_history_record_for_commit(
+        plan,
+        export_id=export_id,
+        report=report,
+        recorded_at=recorded_at,
     )
-    return plan, build_pdf_export_history_record(plan, outcome, recorded_at=recorded_at), outcome
+    receipt = build_pdf_export_history_retry_receipt(plan, record, report)
+    outcome = PdfExportOutcome(
+        export_id=export_id,
+        status=PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING,
+        report=report,
+        destination_reopened=True,
+        history_retry=receipt,
+    )
+    return plan, record, outcome
 
 
 def test_record_first_manifest_link_reload_replace_and_exact_retry(tmp_path: Path) -> None:

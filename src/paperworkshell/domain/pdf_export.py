@@ -38,6 +38,8 @@ PDF_EXPORT_SEMANTIC_FINGERPRINT_VERSION: Final = 1
 MAX_PDF_EXPORT_SOURCES: Final = 255
 MAX_PDF_EXPORT_PAGES: Final = MAX_PAGE_COUNT
 MAX_PDF_EXPORT_CHECKS: Final = 8
+MAX_PDF_EXPORT_HISTORY_RETRY_RECORD_BYTES: Final = 4 * 1024
+PDF_EXPORT_HISTORY_RETRY_RECEIPT_VERSION: Final = 1
 
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
@@ -629,6 +631,39 @@ class PdfExportOutcomeStatus(StrEnum):
     COMMITTED_HISTORY_PENDING = "committed_history_pending"
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class PdfExportHistoryRetryReceipt:
+    """Bounded canonical record retained for a history-only retry."""
+
+    case_id: UUID = field(repr=False)
+    export_id: UUID = field(repr=False)
+    report: PdfExportVerificationReport = field(repr=False)
+    record_sha256: str = field(repr=False)
+    record_payload: bytes = field(repr=False)
+    receipt_version: int = PDF_EXPORT_HISTORY_RETRY_RECEIPT_VERSION
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_uuid4(self.case_id)
+            or not _is_uuid4(self.export_id)
+            or type(self.report) is not PdfExportVerificationReport
+            or type(self.record_sha256) is not str
+            or _SHA256.fullmatch(self.record_sha256) is None
+            or type(self.record_payload) is not bytes
+            or not 1 <= len(self.record_payload) <= MAX_PDF_EXPORT_HISTORY_RETRY_RECORD_BYTES
+            or hashlib.sha256(self.record_payload).hexdigest() != self.record_sha256
+            or type(self.receipt_version) is not int
+            or self.receipt_version != PDF_EXPORT_HISTORY_RETRY_RECEIPT_VERSION
+        ):
+            reject_pdf_export(PdfExportErrorCode.OUTCOME_INVALID, "outcome.history_retry")
+
+    def __repr__(self) -> str:
+        return (
+            "PdfExportHistoryRetryReceipt("
+            f"receipt_version={self.receipt_version}, byte_size={len(self.record_payload)})"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class PdfExportOutcome:
     """Final save result created only after the destination was reopened."""
@@ -637,6 +672,7 @@ class PdfExportOutcome:
     status: PdfExportOutcomeStatus
     report: PdfExportVerificationReport
     destination_reopened: bool = field(repr=False)
+    history_retry: PdfExportHistoryRetryReceipt = field(repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -644,6 +680,9 @@ class PdfExportOutcome:
             or type(self.status) is not PdfExportOutcomeStatus
             or type(self.report) is not PdfExportVerificationReport
             or self.destination_reopened is not True
+            or type(self.history_retry) is not PdfExportHistoryRetryReceipt
+            or self.history_retry.export_id != self.export_id
+            or self.history_retry.report != self.report
         ):
             reject_pdf_export(PdfExportErrorCode.OUTCOME_INVALID, "outcome.model")
 

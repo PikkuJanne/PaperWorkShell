@@ -20,10 +20,13 @@ from uuid import UUID
 
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
+    MAX_PDF_EXPORT_HISTORY_RETRY_RECORD_BYTES,
     MAX_PDF_EXPORT_PAGES,
     PdfExportCheckCode,
+    PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportPlan,
+    PdfExportVerificationReport,
 )
 
 PDF_EXPORT_HISTORY_SCHEMA_VERSION: Final = 1
@@ -404,33 +407,90 @@ def build_pdf_export_history_record(
 ) -> PdfExportHistoryRecord:
     """Bind a trusted UTC instant to one destination-reopened export outcome."""
 
-    utc_offset = recorded_at.utcoffset() if type(recorded_at) is datetime else None
-    if (
-        type(plan) is not PdfExportPlan
-        or type(outcome) is not PdfExportOutcome
-        or type(recorded_at) is not datetime
-        or recorded_at.tzinfo is None
-        or utc_offset is None
-        or utc_offset.total_seconds() != 0
-        or outcome.report.semantic_fingerprint != plan.semantic_fingerprint
-        or outcome.report.page_count != plan.page_count
-        or outcome.report.unsigned_derivative != plan.contains_signature_markers
-    ):
+    if type(plan) is not PdfExportPlan or type(outcome) is not PdfExportOutcome:
         reject_pdf_export_history(
             PdfExportHistoryErrorCode.MODEL_INVALID,
             "export_history.verified_outcome",
         )
-    return PdfExportHistoryRecord(
+    return build_pdf_export_history_record_for_commit(
+        plan,
         export_id=outcome.export_id,
+        report=outcome.report,
+        recorded_at=recorded_at,
+    )
+
+
+def build_pdf_export_history_record_for_commit(
+    plan: PdfExportPlan,
+    *,
+    export_id: UUID,
+    report: PdfExportVerificationReport,
+    recorded_at: datetime,
+) -> PdfExportHistoryRecord:
+    """Prepare the exact record before the no-replace destination commit."""
+
+    utc_offset = recorded_at.utcoffset() if type(recorded_at) is datetime else None
+    if (
+        type(plan) is not PdfExportPlan
+        or not _is_uuid4(export_id)
+        or type(report) is not PdfExportVerificationReport
+        or type(recorded_at) is not datetime
+        or recorded_at.tzinfo is None
+        or utc_offset is None
+        or utc_offset.total_seconds() != 0
+        or report.semantic_fingerprint != plan.semantic_fingerprint
+        or report.page_count != plan.page_count
+        or report.unsigned_derivative != plan.contains_signature_markers
+    ):
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MODEL_INVALID,
+            "export_history.verified_commit",
+        )
+    return PdfExportHistoryRecord(
+        export_id=export_id,
         recorded_at=_render_utc_timestamp(recorded_at),
         manifest_revision=plan.manifest_revision,
         manifest_sha256=plan.manifest_sha256,
         semantic_fingerprint=plan.semantic_fingerprint,
-        output_sha256=outcome.report.output_sha256,
-        output_byte_size=outcome.report.output_byte_size,
-        page_count=outcome.report.page_count,
-        check_codes=tuple(check.code for check in outcome.checks),
-        unsigned_derivative=outcome.report.unsigned_derivative,
+        output_sha256=report.output_sha256,
+        output_byte_size=report.output_byte_size,
+        page_count=report.page_count,
+        check_codes=tuple(check.code for check in report.checks)
+        + (PdfExportCheckCode.OUTPUT_COMMIT_REOPENED,),
+        unsigned_derivative=report.unsigned_derivative,
+    )
+
+
+def build_pdf_export_history_retry_receipt(
+    plan: PdfExportPlan,
+    record: PdfExportHistoryRecord,
+    report: PdfExportVerificationReport,
+) -> PdfExportHistoryRetryReceipt:
+    """Return one path-free receipt that can append this exact record later."""
+
+    if (
+        type(plan) is not PdfExportPlan
+        or type(record) is not PdfExportHistoryRecord
+        or type(report) is not PdfExportVerificationReport
+        or record.manifest_revision != plan.manifest_revision
+        or record.manifest_sha256 != plan.manifest_sha256
+        or record.semantic_fingerprint != report.semantic_fingerprint
+        or record.output_sha256 != report.output_sha256
+        or record.output_byte_size != report.output_byte_size
+        or record.page_count != report.page_count
+        or record.unsigned_derivative != report.unsigned_derivative
+    ):
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MODEL_INVALID,
+            "export_history.retry_receipt",
+        )
+    payload = canonical_pdf_export_history_record_bytes(record)
+    return PdfExportHistoryRetryReceipt(
+        case_id=plan.case_id,
+        export_id=record.export_id,
+        report=report,
+        record_sha256=record.sha256,
+        record_payload=payload,
     )
 
 
@@ -442,7 +502,13 @@ def canonical_pdf_export_history_record_bytes(record: PdfExportHistoryRecord) ->
             PdfExportHistoryErrorCode.MODEL_INVALID,
             "export_history.canonical_record",
         )
-    return _canonical_json_bytes(record.to_document())
+    payload = _canonical_json_bytes(record.to_document())
+    if len(payload) > MAX_PDF_EXPORT_HISTORY_RETRY_RECORD_BYTES:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.CAPACITY_EXCEEDED,
+            "export_history.record_bytes",
+        )
+    return payload
 
 
 def canonical_pdf_export_history_bytes(document: PdfExportHistoryDocument) -> bytes:
@@ -515,6 +581,40 @@ def decode_pdf_export_history(payload: bytes) -> PdfExportHistoryDocument:
             "export_history.canonical",
         )
     return result
+
+
+def decode_pdf_export_history_record(payload: bytes) -> PdfExportHistoryRecord:
+    """Decode one exact canonical record from a bounded retry receipt."""
+
+    if (
+        type(payload) is not bytes
+        or not 1 <= len(payload) <= MAX_PDF_EXPORT_HISTORY_RETRY_RECORD_BYTES
+    ):
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.record_payload",
+        )
+    _require_bounded_json_shape(payload)
+    try:
+        loaded = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_json_constant,
+        )
+    except PdfExportHistoryError:
+        raise
+    except Exception:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.record_json",
+        )
+    record = _record_from_document(loaded)
+    if canonical_pdf_export_history_record_bytes(record) != payload:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.record_canonical",
+        )
+    return record
 
 
 def _require_bounded_json_shape(payload: bytes) -> None:

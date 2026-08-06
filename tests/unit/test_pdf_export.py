@@ -20,10 +20,13 @@ from paperworkshell.domain.pdf_export import (
     PdfExportCheckCode,
     PdfExportError,
     PdfExportErrorCode,
+    PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportOutcomeStatus,
     PdfExportPage,
     PdfExportPlan,
+    PdfExportProgress,
+    PdfExportProgressPhase,
     PdfExportRotation,
     PdfExportSource,
     PdfExportVerificationReport,
@@ -44,6 +47,17 @@ OPERATION_IDS = (
     UUID("40000000-0000-4000-8000-000000000115"),
 )
 EXPORT_ID = UUID("50000000-0000-4000-8000-000000000111")
+
+
+def _history_retry(report: PdfExportVerificationReport) -> PdfExportHistoryRetryReceipt:
+    payload = b'{"synthetic":"path-free retry record"}\n'
+    return PdfExportHistoryRetryReceipt(
+        case_id=CASE_ID,
+        export_id=EXPORT_ID,
+        report=report,
+        record_sha256=hashlib.sha256(payload).hexdigest(),
+        record_payload=payload,
+    )
 
 
 def _source(
@@ -719,6 +733,7 @@ def test_committed_outcomes_never_request_reexport(
         status=status,
         report=report,
         destination_reopened=True,
+        history_retry=_history_retry(report),
     )
 
     assert outcome.history_retry_required is history_retry
@@ -731,6 +746,39 @@ def test_committed_outcomes_never_request_reexport(
     else:
         assert "recorded in case history" in outcome.safe_message
     assert str(EXPORT_ID) not in repr(outcome)
+    assert str(CASE_ID) not in repr(outcome.history_retry)
+    assert str(EXPORT_ID) not in repr(outcome.history_retry)
+    assert "path-free retry record" not in repr(outcome.history_retry)
+
+
+def test_history_retry_receipt_rejects_wrong_digest_and_future_version() -> None:
+    report = PdfExportVerificationReport.for_verified_plan(
+        build_pdf_export_plan(_snapshot()),
+        output_sha256="f" * 64,
+        output_byte_size=1,
+    )
+    payload = b'{"synthetic":"retry"}\n'
+    _assert_error(
+        PdfExportErrorCode.OUTCOME_INVALID,
+        lambda: PdfExportHistoryRetryReceipt(
+            case_id=CASE_ID,
+            export_id=EXPORT_ID,
+            report=report,
+            record_sha256="0" * 64,
+            record_payload=payload,
+        ),
+    )
+    _assert_error(
+        PdfExportErrorCode.OUTCOME_INVALID,
+        lambda: PdfExportHistoryRetryReceipt(
+            case_id=CASE_ID,
+            export_id=EXPORT_ID,
+            report=report,
+            record_sha256=hashlib.sha256(payload).hexdigest(),
+            record_payload=payload,
+            receipt_version=2,
+        ),
+    )
 
 
 def test_committed_outcome_requires_explicit_destination_reopen_fact() -> None:
@@ -746,6 +794,7 @@ def test_committed_outcome_requires_explicit_destination_reopen_fact() -> None:
             status=PdfExportOutcomeStatus.COMMITTED_RECORDED,
             report=report,
             destination_reopened=False,
+            history_retry=_history_retry(report),
         ),
     )
 
@@ -776,4 +825,55 @@ def test_model_constructors_reject_wrong_enums_collections_and_report_counts() -
     _assert_error(
         PdfExportErrorCode.REPORT_INVALID,
         lambda: PdfExportCheck(PdfExportCheckCode.ALL_PAGES_RENDERED, None),
+    )
+
+
+@pytest.mark.parametrize(
+    ("phase", "completed"),
+    (
+        (PdfExportProgressPhase.PREPARING, 0),
+        (PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING, 0),
+        (PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING, 2),
+        (PdfExportProgressPhase.SAVING, 2),
+        (PdfExportProgressPhase.RECORDING, 2),
+        (PdfExportProgressPhase.COMPLETE, 2),
+    ),
+)
+def test_export_progress_accepts_only_phase_consistent_page_counts(
+    phase: PdfExportProgressPhase,
+    completed: int,
+) -> None:
+    progress = PdfExportProgress(phase, completed, 2)
+
+    assert progress.phase is phase
+    assert progress.completed_pages == completed
+    assert progress.total_pages == 2
+
+
+@pytest.mark.parametrize(
+    ("phase", "completed", "total"),
+    (
+        ("preparing", 0, 1),
+        (PdfExportProgressPhase.PREPARING, 1, 1),
+        (PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING, -1, 1),
+        (PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING, 2, 1),
+        (PdfExportProgressPhase.SAVING, 0, 1),
+        (PdfExportProgressPhase.RECORDING, 0, 1),
+        (PdfExportProgressPhase.COMPLETE, 0, 1),
+        (PdfExportProgressPhase.COMPLETE, 1, 0),
+        (PdfExportProgressPhase.COMPLETE, True, 1),
+    ),
+)
+def test_export_progress_rejects_hostile_or_phase_inconsistent_values(
+    phase: object,
+    completed: object,
+    total: object,
+) -> None:
+    _assert_error(
+        PdfExportErrorCode.MODEL_INVALID,
+        lambda: PdfExportProgress(
+            cast(PdfExportProgressPhase, phase),
+            cast(int, completed),
+            cast(int, total),
+        ),
     )

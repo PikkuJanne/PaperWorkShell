@@ -16,6 +16,7 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSaveStatus,
 )
 from paperworkshell.domain.pdf_export import (
+    PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportOutcomeStatus,
     PdfExportPlan,
@@ -26,6 +27,9 @@ from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryErrorCode,
     PdfExportHistoryRecord,
     PdfExportHistoryRepository,
+    PdfExportHistorySnapshot,
+    canonical_pdf_export_history_record_bytes,
+    decode_pdf_export_history_record,
     reject_pdf_export_history,
 )
 
@@ -51,6 +55,22 @@ class PdfExportHistoryService:
             )
         self._history = history
         self._manifests = manifests
+
+    def reserved_export_ids(self, case_id: UUID) -> frozenset[UUID]:
+        """Return every durable history ID before a new destination commit."""
+
+        if type(case_id) is not UUID or case_id.version != 4:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.reserved_ids",
+            )
+        snapshot = self._history.load(case_id)
+        if type(snapshot) is not PdfExportHistorySnapshot:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+                "export_history.reserved_ids",
+            )
+        return frozenset(record.export_id for record in snapshot.document.records)
 
     def record_and_link(
         self,
@@ -80,6 +100,52 @@ class PdfExportHistoryService:
             )
         case_id = plan.case_id
         self._require_outcome_correlation(record, outcome)
+        self._require_receipt_correlation(case_id, record, outcome.history_retry)
+        return self._append_and_link(case_id, record, outcome)
+
+    def retry_record_and_link(
+        self,
+        case_id: UUID,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> PdfExportOutcome:
+        """Append and link one exact receipt without recreating its PDF."""
+
+        if (
+            type(case_id) is not UUID
+            or case_id.version != 4
+            or type(receipt) is not PdfExportHistoryRetryReceipt
+            or receipt.case_id != case_id
+        ):
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.receipt_retry",
+            )
+        try:
+            record = decode_pdf_export_history_record(receipt.record_payload)
+        except PdfExportHistoryError:
+            raise
+        except Exception:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+                "export_history.receipt_decode",
+            )
+        outcome = PdfExportOutcome(
+            export_id=receipt.export_id,
+            status=PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING,
+            report=receipt.report,
+            destination_reopened=True,
+            history_retry=receipt,
+        )
+        self._require_outcome_correlation(record, outcome)
+        self._require_receipt_correlation(case_id, record, receipt)
+        return self._append_and_link(case_id, record, outcome)
+
+    def _append_and_link(
+        self,
+        case_id: UUID,
+        record: PdfExportHistoryRecord,
+        outcome: PdfExportOutcome,
+    ) -> PdfExportOutcome:
         try:
             self._history.append(case_id, record)
         except PdfExportHistoryError as error:
@@ -129,6 +195,7 @@ class PdfExportHistoryService:
         except Exception:
             return _with_history_status(outcome, recorded=False)
         self._require_outcome_correlation(record, outcome)
+        self._require_receipt_correlation(case_id, record, outcome.history_retry)
         return self._link_record(case_id, record, outcome)
 
     def _link_record(
@@ -190,6 +257,27 @@ class PdfExportHistoryService:
             reject_pdf_export_history(
                 PdfExportHistoryErrorCode.RECORD_MISMATCH,
                 "export_history.outcome_correlation",
+            )
+
+    @staticmethod
+    def _require_receipt_correlation(
+        case_id: UUID,
+        record: PdfExportHistoryRecord,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> None:
+        if (
+            type(case_id) is not UUID
+            or case_id.version != 4
+            or type(record) is not PdfExportHistoryRecord
+            or type(receipt) is not PdfExportHistoryRetryReceipt
+            or receipt.case_id != case_id
+            or receipt.export_id != record.export_id
+            or receipt.record_sha256 != record.sha256
+            or receipt.record_payload != canonical_pdf_export_history_record_bytes(record)
+        ):
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.RECORD_MISMATCH,
+                "export_history.receipt_correlation",
             )
 
 
@@ -273,6 +361,7 @@ def _with_history_status(outcome: PdfExportOutcome, *, recorded: bool) -> PdfExp
         ),
         report=outcome.report,
         destination_reopened=True,
+        history_retry=outcome.history_retry,
     )
 
 

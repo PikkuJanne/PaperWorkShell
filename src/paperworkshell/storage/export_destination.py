@@ -22,6 +22,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Final, Never, Protocol
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.pdf_export import PdfExportError
 from paperworkshell.storage._windows import (
     FileIdentity,
     WindowsHandle,
@@ -101,6 +102,7 @@ class ExportDestinationErrorCode(StrEnum):
     SOURCE_INVALID = "EXPORT_DESTINATION_SOURCE_INVALID"
     SOURCE_MISMATCH = "EXPORT_DESTINATION_SOURCE_MISMATCH"
     CANCELLED = "EXPORT_DESTINATION_CANCELLED"
+    TIMED_OUT = "EXPORT_DESTINATION_TIMED_OUT"
     STAGE_CREATE_FAILED = "EXPORT_DESTINATION_STAGE_CREATE_FAILED"
     STAGE_CLEANUP_FAILED = "EXPORT_DESTINATION_STAGE_CLEANUP_FAILED"
     DESTINATION_DENIED = "EXPORT_DESTINATION_DENIED"
@@ -142,6 +144,9 @@ _SAFE_ERROR_MESSAGES: Final[dict[ExportDestinationErrorCode, str]] = {
     ),
     ExportDestinationErrorCode.CANCELLED: (
         "Export destination publication was cancelled before commit."
+    ),
+    ExportDestinationErrorCode.TIMED_OUT: (
+        "Export destination publication exceeded its deadline before commit."
     ),
     ExportDestinationErrorCode.STAGE_CREATE_FAILED: (
         "PaperWorkShell could not create a private export stage in the destination folder."
@@ -296,6 +301,10 @@ def _no_checkpoint(_phase: ExportDestinationPhase) -> None:
     return
 
 
+def _never_expired() -> bool:
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class ExportDestinationDependencies:
     """Narrow injectable Win32 seams used to prove destructive failure paths."""
@@ -355,6 +364,7 @@ class WindowsExportDestination:
         expected_byte_size: int,
         expected_sha256: str,
         cancellation: Callable[[], bool],
+        deadline: Callable[[], bool] = _never_expired,
     ) -> ExportDestinationResult:
         """Stage, verify, and atomically publish without replacing an existing target."""
 
@@ -364,6 +374,7 @@ class WindowsExportDestination:
             expected_byte_size=expected_byte_size,
             expected_sha256=expected_sha256,
             cancellation=cancellation,
+            deadline=deadline,
         )
         if os.name != "nt":
             reject_export_destination(
@@ -372,9 +383,11 @@ class WindowsExportDestination:
             )
 
         try:
+            _require_active(cancellation, deadline)
             self._checkpoint(ExportDestinationPhase.BEFORE_PARENT_OPEN)
             require_local_acl_volume(selected.parent)
             with open_handle(selected.parent, traverse=True) as parent:
+                _require_active(cancellation, deadline)
                 _authenticate_parent(parent, selected.parent)
                 existing = _existing_destination_state(selected)
                 if existing is not None:
@@ -386,7 +399,10 @@ class WindowsExportDestination:
                     expected_byte_size=expected_byte_size,
                     expected_sha256=expected_sha256,
                     cancellation=cancellation,
+                    deadline=deadline,
                 )
+        except PdfExportError:
+            raise
         except ExportDestinationError:
             raise
         except WorkspaceError as error:
@@ -398,7 +414,7 @@ class WindowsExportDestination:
             )
         except OSError as error:
             _map_os_error(error, context="export.storage")
-        except Exception:
+        except BaseException:
             reject_export_destination(
                 ExportDestinationErrorCode.INTERNAL_ERROR,
                 "export.storage",
@@ -413,12 +429,18 @@ class WindowsExportDestination:
         expected_byte_size: int,
         expected_sha256: str,
         cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
     ) -> ExportDestinationResult:
         stage: WindowsHandle | None = None
         stage_path: Path | None = None
         cleanup_stage = True
         try:
-            stage, stage_path = self._create_unique_stage(parent, destination.parent)
+            stage, stage_path = self._create_unique_stage(
+                parent,
+                destination.parent,
+                cancellation=cancellation,
+                deadline=deadline,
+            )
             initial = stage.info
             _stream_and_verify(
                 stage,
@@ -427,20 +449,33 @@ class WindowsExportDestination:
                 expected_byte_size=expected_byte_size,
                 expected_sha256=expected_sha256,
                 cancellation=cancellation,
+                deadline=deadline,
                 checkpoint=self._checkpoint,
                 write_stage=self._dependencies.write_stage or _write_stage_once,
                 flush_stage=self._dependencies.flush_stage or _flush_stage,
             )
-            _require_not_cancelled(cancellation)
+            _require_active(cancellation, deadline)
             _authenticate_parent(parent, destination.parent)
             self._checkpoint(ExportDestinationPhase.BEFORE_RENAME)
+            _require_active(cancellation, deadline)
             rename_stage = self._dependencies.rename_stage or _rename_stage_no_replace
             delayed = False
             try:
-                renamed, _error_number = rename_stage(stage, parent, destination.name)
+                rename_result = rename_stage(stage, parent, destination.name)
             except BaseException:
                 renamed = False
                 delayed = True
+            else:
+                if (
+                    type(rename_result) is not tuple
+                    or len(rename_result) != 2
+                    or type(rename_result[0]) is not bool
+                    or type(rename_result[1]) is not int
+                ):
+                    renamed = False
+                    delayed = True
+                else:
+                    renamed = rename_result[0]
 
             try:
                 _authenticate_parent(parent, destination.parent)
@@ -516,12 +551,20 @@ class WindowsExportDestination:
         self,
         parent: WindowsHandle,
         parent_path: Path,
+        *,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
     ) -> tuple[WindowsHandle, Path]:
         creator = self._dependencies.create_stage or _create_exclusive_stage
         for _ in range(MAX_EXPORT_STAGE_ATTEMPTS):
+            _require_active(cancellation, deadline)
             self._checkpoint(ExportDestinationPhase.BEFORE_STAGE_CREATE)
             try:
                 identifier = self._dependencies.id_factory()
+            except PdfExportError:
+                raise
+            except ExportDestinationError:
+                raise
             except BaseException:
                 reject_export_destination(
                     ExportDestinationErrorCode.STAGE_CREATE_FAILED,
@@ -535,6 +578,10 @@ class WindowsExportDestination:
             stage_path = parent_path / f".{identifier}.pws-export.tmp"
             try:
                 stage = creator(stage_path)
+            except PdfExportError:
+                raise
+            except ExportDestinationError:
+                raise
             except PermissionError:
                 reject_export_destination(
                     ExportDestinationErrorCode.DESTINATION_DENIED,
@@ -544,9 +591,12 @@ class WindowsExportDestination:
                 if _error_number(error) in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
                     continue
                 _map_os_error(error, context="export.stage_create")
-            except ExportDestinationError:
-                raise
-            except Exception:
+            except BaseException:
+                reject_export_destination(
+                    ExportDestinationErrorCode.STAGE_CREATE_FAILED,
+                    "export.stage_create",
+                )
+            if type(stage) is not WindowsHandle:
                 reject_export_destination(
                     ExportDestinationErrorCode.STAGE_CREATE_FAILED,
                     "export.stage_create",
@@ -570,6 +620,8 @@ class WindowsExportDestination:
     def _checkpoint(self, phase: ExportDestinationPhase) -> None:
         try:
             self._dependencies.checkpoint(phase)
+        except PdfExportError:
+            raise
         except ExportDestinationError:
             raise
         except PermissionError:
@@ -579,7 +631,7 @@ class WindowsExportDestination:
             )
         except OSError as error:
             _map_os_error(error, context="export.checkpoint")
-        except Exception:
+        except BaseException:
             reject_export_destination(
                 ExportDestinationErrorCode.INTERNAL_ERROR,
                 "export.checkpoint",
@@ -656,14 +708,24 @@ def _validate_source_contract(
     expected_byte_size: int,
     expected_sha256: str,
     cancellation: Callable[[], bool],
+    deadline: Callable[[], bool],
 ) -> None:
+    try:
+        reader = source.read
+    except PdfExportError:
+        raise
+    except ExportDestinationError:
+        raise
+    except BaseException:
+        reject_export_destination(ExportDestinationErrorCode.MODEL_INVALID, "export.source")
     if (
-        not callable(getattr(source, "read", None))
+        not callable(reader)
         or type(expected_byte_size) is not int
         or not 1 <= expected_byte_size <= MAX_EXPORT_DESTINATION_BYTES
         or type(expected_sha256) is not str
         or _SHA256_RE.fullmatch(expected_sha256) is None
         or not callable(cancellation)
+        or not callable(deadline)
     ):
         reject_export_destination(ExportDestinationErrorCode.MODEL_INVALID, "export.source")
 
@@ -744,6 +806,7 @@ def _stream_and_verify(
     expected_byte_size: int,
     expected_sha256: str,
     cancellation: Callable[[], bool],
+    deadline: Callable[[], bool],
     checkpoint: Checkpoint,
     write_stage: StageWriter,
     flush_stage: StageFlusher,
@@ -751,12 +814,17 @@ def _stream_and_verify(
     digest = hashlib.sha256()
     completed = 0
     while completed < expected_byte_size:
-        _require_not_cancelled(cancellation)
+        _require_active(cancellation, deadline)
         checkpoint(ExportDestinationPhase.BEFORE_WRITE)
+        _require_active(cancellation, deadline)
         requested = min(MAX_EXPORT_DESTINATION_CHUNK_BYTES, expected_byte_size - completed)
         try:
             chunk = source.read(requested)
-        except Exception:
+        except PdfExportError:
+            raise
+        except ExportDestinationError:
+            raise
+        except BaseException:
             reject_export_destination(
                 ExportDestinationErrorCode.SOURCE_INVALID,
                 "export.source_read",
@@ -769,14 +837,16 @@ def _stream_and_verify(
         digest.update(chunk)
         offset = 0
         while offset < len(chunk):
-            _require_not_cancelled(cancellation)
+            _require_active(cancellation, deadline)
             try:
                 written = write_stage(stage, chunk[offset:])
-            except OSError as error:
-                _map_os_error(error, context="export.write")
+            except PdfExportError:
+                raise
             except ExportDestinationError:
                 raise
-            except Exception:
+            except OSError as error:
+                _map_os_error(error, context="export.write")
+            except BaseException:
                 reject_export_destination(
                     ExportDestinationErrorCode.WRITE_FAILED,
                     "export.write",
@@ -789,9 +859,14 @@ def _stream_and_verify(
             offset += written
         completed += len(chunk)
 
+    _require_active(cancellation, deadline)
     try:
         surplus = source.read(1)
-    except Exception:
+    except PdfExportError:
+        raise
+    except ExportDestinationError:
+        raise
+    except BaseException:
         reject_export_destination(
             ExportDestinationErrorCode.SOURCE_INVALID,
             "export.source_eof",
@@ -802,26 +877,32 @@ def _stream_and_verify(
             "export.source_verify",
         )
 
-    _require_not_cancelled(cancellation)
+    _require_active(cancellation, deadline)
     checkpoint(ExportDestinationPhase.BEFORE_FLUSH)
+    _require_active(cancellation, deadline)
     try:
         flush_stage(stage)
-    except OSError as error:
-        _map_os_error(error, context="export.flush")
+    except PdfExportError:
+        raise
     except ExportDestinationError:
         raise
-    except Exception:
+    except OSError as error:
+        _map_os_error(error, context="export.flush")
+    except BaseException:
         reject_export_destination(
             ExportDestinationErrorCode.FLUSH_FAILED,
             "export.flush",
         )
 
     checkpoint(ExportDestinationPhase.BEFORE_READBACK)
+    _require_active(cancellation, deadline)
     _verify_stage_readback(
         stage,
         stage_path,
         expected_byte_size=expected_byte_size,
         expected_sha256=expected_sha256,
+        cancellation=cancellation,
+        deadline=deadline,
     )
 
 
@@ -831,6 +912,8 @@ def _verify_stage_readback(
     *,
     expected_byte_size: int,
     expected_sha256: str,
+    cancellation: Callable[[], bool],
+    deadline: Callable[[], bool],
 ) -> None:
     initial = stage.info
     try:
@@ -853,9 +936,11 @@ def _verify_stage_readback(
         digest = hashlib.sha256()
         completed = 0
         while completed < expected_byte_size:
+            _require_active(cancellation, deadline)
             count = min(MAX_EXPORT_DESTINATION_CHUNK_BYTES, expected_byte_size - completed)
             digest.update(stage.read_exact(count))
             completed += count
+        _require_active(cancellation, deadline)
         final = stage.require_eof()
         if (
             final.identity != initial.identity
@@ -878,7 +963,11 @@ def _verify_stage_readback(
 def _require_not_cancelled(cancellation: Callable[[], bool]) -> None:
     try:
         cancelled = cancellation()
-    except Exception:
+    except PdfExportError:
+        raise
+    except ExportDestinationError:
+        raise
+    except BaseException:
         reject_export_destination(
             ExportDestinationErrorCode.INTERNAL_ERROR,
             "export.cancel_probe",
@@ -893,6 +982,40 @@ def _require_not_cancelled(cancellation: Callable[[], bool]) -> None:
             ExportDestinationErrorCode.CANCELLED,
             "export.cancelled",
         )
+
+
+def _require_not_expired(deadline: Callable[[], bool]) -> None:
+    try:
+        expired = deadline()
+    except PdfExportError:
+        raise
+    except ExportDestinationError:
+        raise
+    except BaseException:
+        reject_export_destination(
+            ExportDestinationErrorCode.INTERNAL_ERROR,
+            "export.deadline_probe",
+        )
+    if type(expired) is not bool:
+        reject_export_destination(
+            ExportDestinationErrorCode.INTERNAL_ERROR,
+            "export.deadline_probe",
+        )
+    if expired:
+        reject_export_destination(
+            ExportDestinationErrorCode.TIMED_OUT,
+            "export.deadline",
+        )
+
+
+def _require_active(
+    cancellation: Callable[[], bool],
+    deadline: Callable[[], bool],
+) -> None:
+    # Retain cancellation precedence from the original storage contract while
+    # enforcing the independent operation deadline at the same checkpoints.
+    _require_not_cancelled(cancellation)
+    _require_not_expired(deadline)
 
 
 def _resolve_commit_state(
@@ -917,8 +1040,12 @@ def _resolve_commit_state(
                 return _different_destination_state(destination, expected_identity)
             return ExportCommitState.NOT_COMMITTED
         return ExportCommitState.UNKNOWN
-    except Exception:
-        if os.path.lexists(destination):
+    except BaseException:
+        try:
+            destination_exists = os.path.lexists(destination)
+        except BaseException:
+            return ExportCommitState.UNKNOWN
+        if destination_exists:
             return _different_destination_state(destination, expected_identity)
         return ExportCommitState.UNKNOWN
 
@@ -935,7 +1062,7 @@ def _different_destination_state(
             if current.identity == stage_identity:
                 return ExportCommitState.COMMITTED
             return ExportCommitState.DESTINATION_EXISTS
-    except Exception:
+    except BaseException:
         return ExportCommitState.UNKNOWN
 
 

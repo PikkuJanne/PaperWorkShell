@@ -23,6 +23,7 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSnapshot,
 )
 from paperworkshell.domain.pdf_export import (
+    PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportOutcomeStatus,
     PdfExportPage,
@@ -43,6 +44,8 @@ from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryRecord,
     PdfExportHistorySnapshot,
     build_pdf_export_history_record,
+    build_pdf_export_history_record_for_commit,
+    build_pdf_export_history_retry_receipt,
     canonical_pdf_export_history_bytes,
     canonical_pdf_export_history_record_bytes,
     decode_pdf_export_history,
@@ -97,11 +100,19 @@ def _outcome(plan: PdfExportPlan | None = None) -> PdfExportOutcome:
         output_sha256="c" * 64,
         output_byte_size=1234,
     )
+    record = build_pdf_export_history_record_for_commit(
+        selected,
+        export_id=EXPORT_ID,
+        report=report,
+        recorded_at=RECORDED_AT,
+    )
+    receipt = build_pdf_export_history_retry_receipt(selected, record, report)
     return PdfExportOutcome(
         export_id=EXPORT_ID,
         status=PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING,
         report=report,
         destination_reopened=True,
+        history_retry=receipt,
     )
 
 
@@ -450,6 +461,20 @@ def test_service_appends_record_before_manifest_reference_and_returns_recorded()
     assert entries[0]["sha256"] == record.sha256
 
 
+def test_reserved_export_ids_include_durable_unlinked_records() -> None:
+    events: list[str] = []
+    history = _MemoryHistory(events)
+    history.document = PdfExportHistoryDocument((_record(),))
+
+    identifiers = PdfExportHistoryService(
+        history,
+        _MemoryManifests(events),
+    ).reserved_export_ids(CASE_ID)
+
+    assert identifiers == frozenset({EXPORT_ID})
+    assert events == ["history.load"]
+
+
 def test_service_rejects_record_from_a_different_manifest_before_history_write() -> None:
     events: list[str] = []
     history = _MemoryHistory(events)
@@ -554,6 +579,75 @@ def test_record_write_failure_does_not_attempt_manifest_link() -> None:
     assert result.status is PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING
     assert events == ["history.append"]
     assert manifests.save_calls == 0
+
+
+def test_exact_receipt_retries_failed_append_after_manifest_changes() -> None:
+    events: list[str] = []
+    history = _MemoryHistory(events)
+    history.fail_append = True
+    manifests = _MemoryManifests(events)
+    first = PdfExportHistoryService(history, manifests).record_and_link(
+        _plan(),
+        _record(),
+        _outcome(),
+    )
+    assert first.status is PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING
+
+    changed = _manifest_document(
+        revision=8,
+        updated_at="2026-08-06T12:00:00.000000Z",
+    )
+    manifests.snapshot = _manifest_snapshot(changed)
+    history.fail_append = False
+    events.clear()
+
+    recovered = PdfExportHistoryService(history, manifests).retry_record_and_link(
+        CASE_ID,
+        first.history_retry,
+    )
+
+    assert recovered.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert recovered.history_retry == first.history_retry
+    assert history.document.records == (_record(),)
+    assert events == ["history.append", "manifest.load", "manifest.save"]
+    assert manifests.snapshot.revision == 9
+
+
+def test_retry_receipt_rejects_nonrecord_payload_before_mutation() -> None:
+    outcome = _outcome()
+    payload = b'{"destination_path":"C:/private/final.pdf"}\n'
+    hostile = PdfExportHistoryRetryReceipt(
+        case_id=CASE_ID,
+        export_id=outcome.export_id,
+        report=outcome.report,
+        record_sha256=hashlib.sha256(payload).hexdigest(),
+        record_payload=payload,
+    )
+    events: list[str] = []
+
+    with pytest.raises(PdfExportHistoryError) as raised:
+        PdfExportHistoryService(
+            _MemoryHistory(events),
+            _MemoryManifests(events),
+        ).retry_record_and_link(CASE_ID, hostile)
+
+    assert raised.value.code is PdfExportHistoryErrorCode.DOCUMENT_INVALID
+    assert events == []
+    assert "private" not in str(raised.value).casefold()
+
+
+def test_retry_receipt_rejects_a_different_selected_case_before_mutation() -> None:
+    events: list[str] = []
+    other_case = UUID("10000000-0000-4000-8000-000000000799")
+
+    with pytest.raises(PdfExportHistoryError) as raised:
+        PdfExportHistoryService(
+            _MemoryHistory(events),
+            _MemoryManifests(events),
+        ).retry_record_and_link(other_case, _outcome().history_retry)
+
+    assert raised.value.code is PdfExportHistoryErrorCode.MODEL_INVALID
+    assert events == []
 
 
 def test_manifest_conflict_reloads_and_retries_with_monotonic_timestamp() -> None:
