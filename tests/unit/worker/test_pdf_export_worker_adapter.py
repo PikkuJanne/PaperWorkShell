@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import os
+import shutil
 from collections.abc import Mapping
 from ctypes import wintypes
 from pathlib import Path
@@ -39,6 +40,7 @@ from paperworkshell.worker.pdf_export_buffers import (
 )
 from paperworkshell.worker.pdf_export_operation import (
     WindowsPdfExportOperationAdapter,
+    _worker_private_operation_temp,
     build_pdf_export_operation_handler,
 )
 from paperworkshell.worker.pdf_export_plan import encode_pdf_export_worker_plan
@@ -520,3 +522,78 @@ def test_build_function_composes_the_fixed_export_handler() -> None:
 
     assert type(handler) is PdfExportOperationHandler
     assert type(handler.adapter) is WindowsPdfExportOperationAdapter
+
+
+def test_worker_private_operation_temp_removes_nested_content(tmp_path: Path) -> None:
+    temp_root = tmp_path / "Temp"
+    temp_root.mkdir()
+
+    with _worker_private_operation_temp(temp_root) as operation_temp:
+        assert operation_temp.parent == temp_root
+        nested = operation_temp / "candidate.pdf"
+        nested.write_bytes(b"synthetic-export-candidate")
+        assert nested.read_bytes() == b"synthetic-export-candidate"
+
+    assert not operation_temp.exists()
+
+
+def test_worker_private_operation_temp_blocks_success_when_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    temp_root = tmp_path / "Temp"
+    temp_root.mkdir()
+    created: Path | None = None
+    real_rmtree = shutil.rmtree
+
+    def fail_cleanup(_path: Path) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(
+        "paperworkshell.worker.pdf_export_operation.shutil.rmtree",
+        fail_cleanup,
+    )
+    try:
+        with pytest.raises(PdfExportError) as caught:
+            with _worker_private_operation_temp(temp_root) as operation_temp:
+                created = operation_temp
+
+        assert caught.value.code is PdfExportErrorCode.WORKER_FAILED
+        assert caught.value.context == "export.temp_cleanup"
+        assert created is not None
+        assert created.exists()
+    finally:
+        if created is not None:
+            real_rmtree(created, ignore_errors=True)
+
+
+def test_worker_private_operation_temp_preserves_body_failure_when_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    temp_root = tmp_path / "Temp"
+    temp_root.mkdir()
+    created: Path | None = None
+    real_rmtree = shutil.rmtree
+
+    class SyntheticBodyFailure(Exception):
+        pass
+
+    def fail_cleanup(_path: Path) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(
+        "paperworkshell.worker.pdf_export_operation.shutil.rmtree",
+        fail_cleanup,
+    )
+    try:
+        with pytest.raises(SyntheticBodyFailure):
+            with _worker_private_operation_temp(temp_root) as operation_temp:
+                created = operation_temp
+                raise SyntheticBodyFailure
+
+        assert created is not None
+        assert created.exists()
+    finally:
+        if created is not None:
+            real_rmtree(created, ignore_errors=True)

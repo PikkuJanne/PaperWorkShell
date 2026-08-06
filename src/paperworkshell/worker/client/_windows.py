@@ -75,7 +75,16 @@ _REVOKE_ACCESS: Final = 4
 _TRUSTEE_IS_SID: Final = 0
 _TRUSTEE_IS_UNKNOWN: Final = 0
 _SUB_CONTAINERS_AND_OBJECTS_INHERIT: Final = 0x3
-_FILE_GENERIC_READ_EXECUTE: Final = 0x0012_00A9
+_FILE_GENERIC_READ: Final = 0x0012_0089
+_FILE_GENERIC_WRITE: Final = 0x0012_0116
+_FILE_GENERIC_EXECUTE: Final = 0x0012_00A0
+_FILE_ALL_ACCESS: Final = 0x001F_01FF
+_FILE_GENERIC_READ_EXECUTE: Final = _FILE_GENERIC_READ | _FILE_GENERIC_EXECUTE
+_GENERIC_READ: Final = 0x8000_0000
+_GENERIC_WRITE: Final = 0x4000_0000
+_GENERIC_EXECUTE: Final = 0x2000_0000
+_GENERIC_ALL: Final = 0x1000_0000
+_GENERIC_RIGHTS: Final = _GENERIC_READ | _GENERIC_WRITE | _GENERIC_EXECUTE | _GENERIC_ALL
 _FILE_READ_DATA: Final = 0x0000_0001
 _FILE_WRITE_DATA: Final = 0x0000_0002
 _FILE_APPEND_DATA: Final = 0x0000_0004
@@ -99,6 +108,19 @@ _PRIVATE_TEMP_ACCESS: Final = (
     | _SYNCHRONIZE
 )
 _ACCESS_ALLOWED_ACE_TYPE: Final = 0
+_ACCESS_DENIED_ACE_TYPE: Final = 1
+_ACCESS_DENIED_OBJECT_ACE_TYPE: Final = 6
+_ACCESS_DENIED_CALLBACK_ACE_TYPE: Final = 10
+_ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE: Final = 12
+_ACCESS_DENIED_ACE_TYPES: Final = frozenset(
+    {
+        _ACCESS_DENIED_ACE_TYPE,
+        _ACCESS_DENIED_OBJECT_ACE_TYPE,
+        _ACCESS_DENIED_CALLBACK_ACE_TYPE,
+        _ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE,
+    }
+)
+_INHERIT_ONLY_ACE: Final = 0x08
 _ACL_SIZE_INFORMATION_CLASS: Final = 2
 _MUTEX_ALL_ACCESS: Final = 0x001F_0001
 _SE_DACL_PRESENT: Final = 0x0004
@@ -109,6 +131,8 @@ _ERROR_INSUFFICIENT_BUFFER: Final = 122
 _ERROR_ALREADY_EXISTS: Final = 183
 _ERROR_BROKEN_PIPE: Final = 109
 _ERROR_SUCCESS: Final = 0
+_WIN_BUILTIN_ANY_PACKAGE_SID: Final = 84
+_SECURITY_MAX_SID_SIZE: Final = 68
 _INVALID_FILE_ATTRIBUTES: Final = 0xFFFF_FFFF
 _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
 _DRIVE_FIXED: Final = 3
@@ -366,6 +390,13 @@ class _AccessAllowedAce(ctypes.Structure):
         ("header", _AceHeader),
         ("mask", wintypes.DWORD),
         ("sid_start", wintypes.DWORD),
+    ]
+
+
+class _AccessMaskAce(ctypes.Structure):
+    _fields_ = [
+        ("header", _AceHeader),
+        ("mask", wintypes.DWORD),
     ]
 
 
@@ -910,14 +941,17 @@ class WindowsLaunchConfig:
     runtime_roots: tuple[Path, ...]
     code_roots: tuple[Path, ...]
     working_directory: Path
+    qpdf_executable: Path | None = None
 
     def __post_init__(self) -> None:
+        qpdf_paths = () if self.qpdf_executable is None else (self.qpdf_executable,)
         paths = (
             self.python_executable,
             self.bootstrap_script,
             self.working_directory,
             *self.runtime_roots,
             *self.code_roots,
+            *qpdf_paths,
         )
         if (
             not self.runtime_roots
@@ -942,6 +976,7 @@ class WindowsLaunchConfig:
                 and self.bootstrap_script.is_file()
                 and self.working_directory.is_dir()
                 and all(path.is_dir() for path in (*self.runtime_roots, *self.code_roots))
+                and (self.qpdf_executable is None or self.qpdf_executable.is_file())
             )
         except OSError:
             valid_types = False
@@ -977,7 +1012,16 @@ class WindowsLaunchConfig:
 
     @property
     def access_roots(self) -> tuple[Path, ...]:
-        return self.runtime_roots + self.code_roots
+        roots = self.runtime_roots + self.code_roots
+        if self.qpdf_executable is None or self.qpdf_executable.parent in roots:
+            return roots
+        return (*roots, self.qpdf_executable.parent)
+
+    @property
+    def qpdf_access_resources(self) -> tuple[Path, ...]:
+        if self.qpdf_executable is None:
+            return ()
+        return _approved_resource_tree(self.qpdf_executable.parent)
 
     @property
     def fixed_argv(self) -> tuple[str, ...]:
@@ -1101,6 +1145,25 @@ class _AccessGrantLease:
                 )
             if path not in self.observed_objects:
                 self.observed_objects.append(path)
+
+    def ensure_read_execute(
+        self,
+        grant_roots: tuple[Path, ...],
+        required_paths: tuple[Path, ...],
+    ) -> None:
+        if all(
+            _has_effective_app_container_read_execute(path, self.sid) for path in required_paths
+        ):
+            return
+        self.grant_all(grant_roots)
+        if not all(
+            _has_effective_app_container_read_execute(path, self.sid) for path in required_paths
+        ):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.verify",
+                "Windows could not verify worker access to an approved resource.",
+            )
 
     def close_no_raise(self) -> bool:
         success = True
@@ -1377,7 +1440,25 @@ def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
         _local_free(descriptor)
 
 
-def _sid_access_mask(path: Path, sid: ctypes.c_void_p) -> int:
+def _classify_access_ace(
+    ace_type: int,
+    ace_flags: int,
+    mask: int,
+    *,
+    trustee_matches: bool,
+) -> tuple[int, int]:
+    if ace_flags & _INHERIT_ONLY_ACE:
+        return 0, 0
+    if ace_type in _ACCESS_DENIED_ACE_TYPES:
+        # A deny for any enabled token SID can defeat the package grant. Treat
+        # every applicable deny conservatively rather than overstating access.
+        return 0, mask
+    if ace_type == _ACCESS_ALLOWED_ACE_TYPE and trustee_matches:
+        return mask, 0
+    return 0, 0
+
+
+def _sid_access_masks(path: Path, sid: ctypes.c_void_p) -> tuple[int, int]:
     advapi32 = _advapi32()
     get_security_info = advapi32.GetNamedSecurityInfoW
     get_security_info.argtypes = (
@@ -1442,7 +1523,8 @@ def _sid_access_mask(path: Path, sid: ctypes.c_void_p) -> int:
                 "access.inspect",
                 "Windows could not inspect an approved worker resource policy.",
             )
-        mask = 0
+        allowed_mask = 0
+        denied_mask = 0
         for index in range(int(information.ace_count)):
             pointer = ctypes.c_void_p()
             if not get_ace(dacl, index, ctypes.byref(pointer)) or not pointer.value:
@@ -1458,15 +1540,107 @@ def _sid_access_mask(path: Path, sid: ctypes.c_void_p) -> int:
                     "access.inspect",
                     "Windows could not inspect an approved worker resource policy.",
                 )
-            ace = _AccessAllowedAce.from_address(address)
-            if int(ace.header.ace_type) != _ACCESS_ALLOWED_ACE_TYPE:
+            ace = _AccessMaskAce.from_address(address)
+            if int(ace.header.ace_size) < ctypes.sizeof(_AccessMaskAce):
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.inspect",
+                    "Windows could not inspect an approved worker resource policy.",
+                )
+            ace_type = int(ace.header.ace_type)
+            ace_flags = int(ace.header.ace_flags)
+            ace_mask = int(ace.mask)
+            if ace_flags & _INHERIT_ONLY_ACE:
                 continue
+            if ace_type in _ACCESS_DENIED_ACE_TYPES:
+                _classified_allowed, classified_denied = _classify_access_ace(
+                    ace_type,
+                    ace_flags,
+                    ace_mask,
+                    trustee_matches=False,
+                )
+                denied_mask |= classified_denied
+                continue
+            if ace_type != _ACCESS_ALLOWED_ACE_TYPE:
+                continue
+            if int(ace.header.ace_size) <= _AccessAllowedAce.sid_start.offset:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.inspect",
+                    "Windows could not inspect an approved worker resource policy.",
+                )
             ace_sid = ctypes.c_void_p(address + _AccessAllowedAce.sid_start.offset)
-            if equal_sid(ace_sid, sid):
-                mask |= int(ace.mask)
-        return mask
+            classified_allowed, classified_denied = _classify_access_ace(
+                ace_type,
+                ace_flags,
+                ace_mask,
+                trustee_matches=bool(equal_sid(ace_sid, sid)),
+            )
+            allowed_mask |= classified_allowed
+            denied_mask |= classified_denied
+        return allowed_mask, denied_mask
     finally:
         _local_free(descriptor)
+
+
+def _sid_access_mask(path: Path, sid: ctypes.c_void_p) -> int:
+    allowed_mask, _denied_mask = _sid_access_masks(path, sid)
+    return allowed_mask
+
+
+def _masks_grant_app_container_read_execute(
+    package_masks: tuple[int, int],
+    any_package_masks: tuple[int, int],
+) -> bool:
+    allowed_mask = _map_file_generic_mask(package_masks[0] | any_package_masks[0])
+    denied_mask = _map_file_generic_mask(package_masks[1] | any_package_masks[1])
+    required = _FILE_GENERIC_READ_EXECUTE
+    return allowed_mask & required == required and denied_mask & required == 0
+
+
+def _map_file_generic_mask(mask: int) -> int:
+    mapped = mask & ~_GENERIC_RIGHTS
+    if mask & _GENERIC_READ:
+        mapped |= _FILE_GENERIC_READ
+    if mask & _GENERIC_WRITE:
+        mapped |= _FILE_GENERIC_WRITE
+    if mask & _GENERIC_EXECUTE:
+        mapped |= _FILE_GENERIC_EXECUTE
+    if mask & _GENERIC_ALL:
+        mapped |= _FILE_ALL_ACCESS
+    return mapped
+
+
+def _has_effective_app_container_read_execute(
+    path: Path,
+    sid: ctypes.c_void_p,
+) -> bool:
+    create_well_known_sid = _advapi32().CreateWellKnownSid
+    create_well_known_sid.argtypes = (
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    create_well_known_sid.restype = wintypes.BOOL
+    any_package_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
+    any_package_size = wintypes.DWORD(ctypes.sizeof(any_package_storage))
+    if not create_well_known_sid(
+        _WIN_BUILTIN_ANY_PACKAGE_SID,
+        None,
+        ctypes.cast(any_package_storage, ctypes.c_void_p),
+        ctypes.byref(any_package_size),
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.inspect",
+            "Windows could not inspect an approved worker resource policy.",
+        )
+    any_package_sid = ctypes.cast(any_package_storage, ctypes.c_void_p)
+    return _masks_grant_app_container_read_execute(
+        _sid_access_masks(path, sid),
+        _sid_access_masks(path, any_package_sid),
+    )
 
 
 @dataclass(slots=True, repr=False)
@@ -1537,6 +1711,13 @@ class _AppContainerProfile:
 
     def require_read_execute(self, paths: tuple[Path, ...]) -> None:
         self.access.require_read_execute(paths)
+
+    def ensure_read_execute(
+        self,
+        grant_roots: tuple[Path, ...],
+        required_paths: tuple[Path, ...],
+    ) -> None:
+        self.access.ensure_read_execute(grant_roots, required_paths)
 
     def close_no_raise(self) -> bool:
         if self._closed:
@@ -2823,15 +3004,22 @@ class WindowsProcessLauncher:
         pid = 0
         transport: WorkerTransport | None = None
         try:
-            profile.grant_read_execute(self._config.access_roots)
+            core_access_roots = self._config.runtime_roots + self._config.code_roots
+            profile.grant_read_execute(core_access_roots)
             profile.require_read_execute(
                 (
-                    *self._config.access_roots,
+                    *core_access_roots,
                     self._config.python_executable,
                     self._config.bootstrap_script,
                     self._config.working_directory,
                 )
             )
+            if self._config.qpdf_executable is not None:
+                qpdf_executable = self._config.qpdf_executable
+                profile.ensure_read_execute(
+                    (qpdf_executable.parent,),
+                    self._config.qpdf_access_resources,
+                )
             job = _Job(request.resource_policy)
             bootstrap = encode_bootstrap_grant(
                 BootstrapGrant(
@@ -3006,7 +3194,10 @@ class WindowsProcessLauncher:
         command_line = ctypes.create_unicode_buffer(
             subprocess.list2cmdline(self._config.fixed_argv)
         )
-        environment = _minimal_environment_block(local_app_data)
+        environment = _minimal_environment_block(
+            local_app_data,
+            self._config.qpdf_executable,
+        )
         create_process = _kernel32().CreateProcessW
         create_process.argtypes = (
             wintypes.LPCWSTR,
@@ -3073,7 +3264,10 @@ class WindowsProcessLauncher:
         return "WindowsProcessLauncher(<fixed restricted configuration>)"
 
 
-def _minimal_environment_block(local_app_data: Path) -> ctypes.Array[ctypes.c_wchar]:
+def _minimal_environment_block(
+    local_app_data: Path,
+    qpdf_executable: Path | None = None,
+) -> ctypes.Array[ctypes.c_wchar]:
     get_windows_directory = _kernel32().GetWindowsDirectoryW
     get_windows_directory.argtypes = (wintypes.LPWSTR, wintypes.UINT)
     get_windows_directory.restype = wintypes.UINT
@@ -3093,6 +3287,8 @@ def _minimal_environment_block(local_app_data: Path) -> ctypes.Array[ctypes.c_wc
         "TMP": os.fspath(temp),
         "WINDIR": buffer.value,
     }
+    if qpdf_executable is not None:
+        entries["PWS_QPDF_EXECUTABLE"] = os.fspath(qpdf_executable)
     if any("\x00" in entry for pair in entries.items() for entry in pair):
         _reject(
             WindowsLaunchErrorCode.ISOLATION_UNAVAILABLE,

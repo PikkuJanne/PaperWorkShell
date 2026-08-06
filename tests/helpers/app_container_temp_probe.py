@@ -52,6 +52,17 @@ def _write_read_delete(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+def _nested_write_read_delete(temp: Path) -> None:
+    directory = temp / "pws-app-container-nested-probe"
+    candidate = directory / "candidate.tmp"
+    directory.mkdir()
+    try:
+        _write_read_delete(candidate)
+    finally:
+        candidate.unlink(missing_ok=True)
+        directory.rmdir()
+
+
 def main() -> int:
     grant = decode_bootstrap_grant(read_bootstrap_from_standard_error())
     verify_runtime_isolation()
@@ -76,6 +87,7 @@ def main() -> int:
         "materialized_temp_stat": _attempt(lambda: _stat(temp)),
         "materialized_temp_list": _attempt(lambda: _list(temp)),
         "temp_round_trip": _attempt(lambda: _write_read_delete(candidate)),
+        "nested_temp_round_trip": _attempt(lambda: _nested_write_read_delete(temp)),
     }
     candidate.unlink(missing_ok=True)
     write_frame(

@@ -7,11 +7,12 @@ import hashlib
 import hmac
 import math
 import os
+import shutil
 import stat
 import tempfile
 import time
-from collections.abc import Callable, Mapping
-from contextlib import ExitStack
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from ctypes import wintypes
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,6 +44,7 @@ from paperworkshell.pdf.export_adapter import (
     PdfExportAdapterControl,
     PdfExportAdapterLimits,
 )
+from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.worker.operations import (
     OperationContext,
     PdfExportOperationHandler,
@@ -81,6 +83,8 @@ _OBJECTS_PER_PAGE_LIMIT: Final = 1_024
 _VERIFICATION_DIMENSION_PIXELS: Final = 1_024
 _VERIFICATION_PIXELS: Final = _VERIFICATION_DIMENSION_PIXELS * _VERIFICATION_DIMENSION_PIXELS
 _RGBA_BYTES_PER_PIXEL: Final = 4
+_QPDF_EXECUTABLE_ENVIRONMENT: Final = "PWS_QPDF_EXECUTABLE"
+_OPERATION_TEMP_CREATE_ATTEMPTS: Final = 4
 
 
 class PdfExportCandidateAssembler(Protocol):
@@ -216,16 +220,7 @@ class WindowsPdfExportOperationAdapter:
             )
 
             temp_root = _materialize_worker_private_temp()
-            try:
-                temporary_context = tempfile.TemporaryDirectory(
-                    prefix="pws-export-",
-                    dir=temp_root,
-                    ignore_cleanup_errors=False,
-                )
-            except OSError:
-                reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.temp_create")
-            with temporary_context as temporary_name:
-                operation_temp = Path(temporary_name)
+            with _worker_private_operation_temp(temp_root) as operation_temp:
                 staged_sources = _stage_sources(
                     context,
                     worker_plan,
@@ -823,7 +818,89 @@ def _materialize_worker_private_temp() -> Path:
         reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_unavailable")
 
 
+@contextmanager
+def _worker_private_operation_temp(temp_root: Path) -> Iterator[Path]:
+    """Create one inherited-ACL AppContainer directory and remove it exactly once."""
+
+    operation_temp = _create_worker_private_operation_temp(temp_root)
+    body_failed = True
+    try:
+        yield operation_temp
+        body_failed = False
+    finally:
+        cleanup_failed = False
+        try:
+            shutil.rmtree(operation_temp)
+        except BaseException:
+            cleanup_failed = True
+        if not cleanup_failed:
+            try:
+                os.lstat(operation_temp)
+            except FileNotFoundError:
+                pass
+            except BaseException:
+                cleanup_failed = True
+            else:
+                cleanup_failed = True
+        if cleanup_failed and not body_failed:
+            reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.temp_cleanup")
+
+
+def _create_worker_private_operation_temp(temp_root: Path) -> Path:
+    """Create a random child without CPython's package-inaccessible Windows ACL."""
+
+    for _attempt in range(_OPERATION_TEMP_CREATE_ATTEMPTS):
+        candidate = temp_root / f"pws-export-{uuid4().hex}"
+        try:
+            # On Windows, mode 0o700 creates a new restrictive ACL that excludes
+            # the AppContainer package SID. The default mode inherits the already
+            # authenticated profile-private TEMP policy instead.
+            candidate.mkdir()
+        except FileExistsError:
+            continue
+        except OSError:
+            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.temp_create")
+        try:
+            information = os.lstat(candidate)
+        except OSError:
+            _remove_untrusted_operation_temp_no_raise(candidate)
+            reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
+        attributes = int(getattr(information, "st_file_attributes", 0))
+        if (
+            candidate.parent != temp_root
+            or not stat.S_ISDIR(information.st_mode)
+            or attributes & _FILE_ATTRIBUTE_REPARSE_POINT
+        ):
+            _remove_untrusted_operation_temp_no_raise(candidate)
+            reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
+        return candidate
+    reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.temp_create")
+
+
+def _remove_untrusted_operation_temp_no_raise(candidate: Path) -> None:
+    try:
+        information = os.lstat(candidate)
+    except OSError:
+        return
+    attributes = int(getattr(information, "st_file_attributes", 0))
+    try:
+        if stat.S_ISDIR(information.st_mode) and not (attributes & _FILE_ATTRIBUTE_REPARSE_POINT):
+            shutil.rmtree(candidate)
+        else:
+            candidate.unlink(missing_ok=True)
+    except BaseException:
+        pass
+
+
 def build_pdf_export_operation_handler() -> PdfExportOperationHandler:
     """Compose the production pikepdf/PDFium/qpdf adapter behind the handler."""
 
-    return PdfExportOperationHandler(WindowsPdfExportOperationAdapter())
+    configured_qpdf = os.environ.get(_QPDF_EXECUTABLE_ENVIRONMENT)
+    if configured_qpdf is None:
+        return PdfExportOperationHandler(WindowsPdfExportOperationAdapter())
+    candidate_adapter = PdfCandidateAdapter(
+        qpdf_checker=QpdfCommandChecker(executable=Path(configured_qpdf)),
+    )
+    return PdfExportOperationHandler(
+        WindowsPdfExportOperationAdapter(candidate_adapter=candidate_adapter)
+    )
