@@ -324,30 +324,30 @@ class ConversationState:
         export_output_object_id: UUID | None = None
         if descriptor == PDF_THUMBNAIL_CAPABILITY:
             validate_pdf_thumbnail_start(payload)
-            bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
-            if message.operation_id in bound_object_ids:
+            thumbnail_bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
+            if message.operation_id in thumbnail_bound_object_ids:
                 reject(
                     "RPC_INVALID_OPERATION",
                     "operation_id",
                     "pdf.thumbnail operation and object identifiers must be distinct",
                 )
-            thumbnail_cache_object_id = bound_object_ids[2]
+            thumbnail_cache_object_id = thumbnail_bound_object_ids[2]
         if descriptor == PDF_EXPORT_CAPABILITY:
             validate_pdf_export_start(payload)
-            bound_object_ids = pdf_export_bound_object_ids(payload)
+            export_bound_object_ids = pdf_export_bound_object_ids(payload)
             if payload.inputs[0].operation_id != message.operation_id:
                 reject(
                     "RPC_INVALID_OPERATION",
                     "payload.inputs",
                     "pdf.export plan scope must match its operation",
                 )
-            if message.operation_id in bound_object_ids:
+            if message.operation_id in export_bound_object_ids:
                 reject(
                     "RPC_INVALID_OPERATION",
                     "operation_id",
                     "pdf.export operation and object identifiers must be distinct",
                 )
-            export_output_object_id = bound_object_ids[-1]
+            export_output_object_id = export_bound_object_ids[-1]
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",

@@ -255,6 +255,45 @@ class PdfExportRotation(IntEnum):
     DEGREES_270 = 270
 
 
+class PdfExportProgressPhase(StrEnum):
+    """Closed, path-free phases for one application-level export attempt."""
+
+    PREPARING = "preparing"
+    ASSEMBLING_AND_VERIFYING = "assembling_and_verifying"
+    SAVING = "saving"
+    RECORDING = "recording"
+    COMPLETE = "complete"
+
+
+@dataclass(frozen=True, slots=True)
+class PdfExportProgress:
+    """Bounded page progress suitable for UI announcements."""
+
+    phase: PdfExportProgressPhase
+    completed_pages: int
+    total_pages: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.phase) is not PdfExportProgressPhase
+            or type(self.completed_pages) is not int
+            or type(self.total_pages) is not int
+            or not 1 <= self.total_pages <= MAX_PDF_EXPORT_PAGES
+            or not 0 <= self.completed_pages <= self.total_pages
+            or (self.phase is PdfExportProgressPhase.PREPARING and self.completed_pages != 0)
+            or (
+                self.phase
+                in {
+                    PdfExportProgressPhase.SAVING,
+                    PdfExportProgressPhase.RECORDING,
+                    PdfExportProgressPhase.COMPLETE,
+                }
+                and self.completed_pages != self.total_pages
+            )
+        ):
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "progress.model")
+
+
 @dataclass(frozen=True, slots=True)
 class PdfExportProfile:
     """Closed, versioned execution and verification semantics."""
