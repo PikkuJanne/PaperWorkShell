@@ -68,9 +68,14 @@ _DUPLICATE_SAME_ACCESS = 0x0000_0002
 _FILE_MAP_READ = 0x0000_0004
 _FILE_MAP_WRITE = 0x0000_0002
 _FILE_SHARE_READ = 0x0000_0001
+_FILE_SHARE_WRITE = 0x0000_0002
+_FILE_SHARE_DELETE = 0x0000_0004
 _GENERIC_READ = 0x8000_0000
+_GENERIC_WRITE = 0x4000_0000
 _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_NORMAL = 0x0000_0080
+_FILE_FLAG_BACKUP_SEMANTICS = 0x0200_0000
+_INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
 
 def _uuid(value: int) -> UUID:
@@ -141,6 +146,33 @@ def _open_read_authority(path: Path) -> int:
     assert value > 0
     assert not os.get_handle_inheritable(value)
     return value
+
+
+def _try_open_directory_for_write(path: Path) -> tuple[int, int]:
+    kernel32 = _kernel32()
+    create_file = kernel32.CreateFileW  # type: ignore[attr-defined]
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    ctypes.set_last_error(0)
+    raw = create_file(
+        os.fspath(path),
+        _GENERIC_WRITE,
+        _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE,
+        None,
+        _OPEN_EXISTING,
+        _FILE_FLAG_BACKUP_SEMANTICS,
+        None,
+    )
+    value = int(raw) if raw else 0
+    return value, ctypes.get_last_error()
 
 
 def _handle_is_open(handle: int) -> bool:
@@ -537,6 +569,26 @@ def test_worker_private_operation_temp_removes_nested_content(tmp_path: Path) ->
     assert not operation_temp.exists()
 
 
+def test_worker_private_operation_temp_pin_blocks_root_replacement(tmp_path: Path) -> None:
+    temp_root = tmp_path / "Temp"
+    temp_root.mkdir()
+
+    with _worker_private_operation_temp(temp_root) as operation_temp:
+        replacement = temp_root / "replacement"
+        with pytest.raises(OSError):
+            operation_temp.rename(replacement)
+        write_handle, error = _try_open_directory_for_write(operation_temp)
+        if write_handle not in {0, _INVALID_HANDLE_VALUE}:
+            _close_if_open(write_handle)
+        assert write_handle in {0, _INVALID_HANDLE_VALUE}
+        assert error == 32
+        (operation_temp / "candidate.pdf").write_bytes(b"flat child remains writable")
+        assert operation_temp.exists()
+        assert not replacement.exists()
+
+    assert not operation_temp.exists()
+
+
 def test_worker_private_operation_temp_blocks_success_when_cleanup_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -546,17 +598,18 @@ def test_worker_private_operation_temp_blocks_success_when_cleanup_fails(
     created: Path | None = None
     real_rmtree = shutil.rmtree
 
-    def fail_cleanup(_path: Path) -> None:
-        raise PermissionError
+    def fail_cleanup(_path: Path) -> bool:
+        return False
 
     monkeypatch.setattr(
-        "paperworkshell.worker.pdf_export_operation.shutil.rmtree",
+        "paperworkshell.worker.pdf_export_operation._remove_operation_temp_contents",
         fail_cleanup,
     )
     try:
         with pytest.raises(PdfExportError) as caught:
             with _worker_private_operation_temp(temp_root) as operation_temp:
                 created = operation_temp
+                (operation_temp / "residue.bin").write_bytes(b"synthetic residue")
 
         assert caught.value.code is PdfExportErrorCode.WORKER_FAILED
         assert caught.value.context == "export.temp_cleanup"
@@ -579,17 +632,18 @@ def test_worker_private_operation_temp_preserves_body_failure_when_cleanup_fails
     class SyntheticBodyFailure(Exception):
         pass
 
-    def fail_cleanup(_path: Path) -> None:
-        raise PermissionError
+    def fail_cleanup(_path: Path) -> bool:
+        return False
 
     monkeypatch.setattr(
-        "paperworkshell.worker.pdf_export_operation.shutil.rmtree",
+        "paperworkshell.worker.pdf_export_operation._remove_operation_temp_contents",
         fail_cleanup,
     )
     try:
         with pytest.raises(SyntheticBodyFailure):
             with _worker_private_operation_temp(temp_root) as operation_temp:
                 created = operation_temp
+                (operation_temp / "residue.bin").write_bytes(b"synthetic residue")
                 raise SyntheticBodyFailure
 
         assert created is not None
@@ -597,3 +651,26 @@ def test_worker_private_operation_temp_preserves_body_failure_when_cleanup_fails
     finally:
         if created is not None:
             real_rmtree(created, ignore_errors=True)
+
+
+def test_worker_private_operation_temp_never_recurses_into_nested_directory(
+    tmp_path: Path,
+) -> None:
+    temp_root = tmp_path / "Temp"
+    temp_root.mkdir()
+    created: Path | None = None
+    marker: Path | None = None
+    try:
+        with pytest.raises(PdfExportError) as caught:
+            with _worker_private_operation_temp(temp_root) as operation_temp:
+                created = operation_temp
+                marker = operation_temp / "unexpected" / "preserve.bin"
+                marker.parent.mkdir()
+                marker.write_bytes(b"must not be traversed")
+
+        assert caught.value.code is PdfExportErrorCode.WORKER_FAILED
+        assert marker is not None
+        assert marker.read_bytes() == b"must not be traversed"
+    finally:
+        if created is not None:
+            shutil.rmtree(created, ignore_errors=True)

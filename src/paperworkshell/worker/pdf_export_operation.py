@@ -7,7 +7,6 @@ import hashlib
 import hmac
 import math
 import os
-import shutil
 import stat
 import tempfile
 import time
@@ -77,6 +76,14 @@ if os.name == "nt":
 
 _COPY_CHUNK_BYTES: Final = 1024 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
+_DELETE: Final = 0x0001_0000
+_FILE_READ_ATTRIBUTES: Final = 0x0000_0080
+_SYNCHRONIZE: Final = 0x0010_0000
+_FILE_SHARE_READ: Final = 0x0000_0001
+_OPEN_EXISTING: Final = 3
+_FILE_FLAG_OPEN_REPARSE_POINT: Final = 0x0020_0000
+_FILE_FLAG_BACKUP_SEMANTICS: Final = 0x0200_0000
+_INVALID_HANDLE_VALUE: Final = ctypes.c_void_p(-1).value
 _MAXIMUM_QPDF_OUTPUT_BYTES: Final = 1024 * 1024
 _MINIMUM_OBJECT_LIMIT: Final = 4_096
 _OBJECTS_PER_PAGE_LIMIT: Final = 1_024
@@ -822,31 +829,18 @@ def _materialize_worker_private_temp() -> Path:
 def _worker_private_operation_temp(temp_root: Path) -> Iterator[Path]:
     """Create one inherited-ACL AppContainer directory and remove it exactly once."""
 
-    operation_temp = _create_worker_private_operation_temp(temp_root)
+    operation_temp, pin_handle = _create_worker_private_operation_temp(temp_root)
     body_failed = True
     try:
         yield operation_temp
         body_failed = False
     finally:
-        cleanup_failed = False
-        try:
-            shutil.rmtree(operation_temp)
-        except BaseException:
-            cleanup_failed = True
-        if not cleanup_failed:
-            try:
-                os.lstat(operation_temp)
-            except FileNotFoundError:
-                pass
-            except BaseException:
-                cleanup_failed = True
-            else:
-                cleanup_failed = True
+        cleanup_failed = not _remove_pinned_operation_temp(operation_temp, pin_handle)
         if cleanup_failed and not body_failed:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.temp_cleanup")
 
 
-def _create_worker_private_operation_temp(temp_root: Path) -> Path:
+def _create_worker_private_operation_temp(temp_root: Path) -> tuple[Path, int]:
     """Create a random child without CPython's package-inaccessible Windows ACL."""
 
     for _attempt in range(_OPERATION_TEMP_CREATE_ATTEMPTS):
@@ -873,23 +867,135 @@ def _create_worker_private_operation_temp(temp_root: Path) -> Path:
         ):
             _remove_untrusted_operation_temp_no_raise(candidate)
             reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
-        return candidate
+        identity = (information.st_dev, information.st_ino)
+        pin_handle: int | None = None
+        try:
+            pin_handle = _open_operation_temp_pin(candidate)
+            refreshed = os.lstat(candidate)
+            inheritable = os.get_handle_inheritable(pin_handle)
+        except BaseException:
+            if pin_handle is not None:
+                _close_native_handle_no_raise(pin_handle)
+            _remove_untrusted_operation_temp_no_raise(candidate)
+            reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
+        refreshed_attributes = int(getattr(refreshed, "st_file_attributes", 0))
+        if (
+            (refreshed.st_dev, refreshed.st_ino) != identity
+            or not stat.S_ISDIR(refreshed.st_mode)
+            or refreshed_attributes & _FILE_ATTRIBUTE_REPARSE_POINT
+            or inheritable
+        ):
+            _close_native_handle_no_raise(pin_handle)
+            _remove_untrusted_operation_temp_no_raise(candidate)
+            reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
+        return candidate, pin_handle
     reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.temp_create")
 
 
-def _remove_untrusted_operation_temp_no_raise(candidate: Path) -> None:
-    try:
-        information = os.lstat(candidate)
-    except OSError:
-        return
-    attributes = int(getattr(information, "st_file_attributes", 0))
-    try:
-        if stat.S_ISDIR(information.st_mode) and not (attributes & _FILE_ATTRIBUTE_REPARSE_POINT):
-            shutil.rmtree(candidate)
+def _open_operation_temp_pin(candidate: Path) -> int:
+    kernel32 = _kernel32()
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    raw = create_file(
+        os.fspath(candidate),
+        _DELETE | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE,
+        _FILE_SHARE_READ,
+        None,
+        _OPEN_EXISTING,
+        _FILE_FLAG_OPEN_REPARSE_POINT | _FILE_FLAG_BACKUP_SEMANTICS,
+        None,
+    )
+    value = int(raw) if raw else 0
+    if not value or value == _INVALID_HANDLE_VALUE:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return value
+
+
+def _remove_pinned_operation_temp(candidate: Path, pin_handle: int) -> bool:
+    contents_removed = _remove_operation_temp_contents(candidate)
+    pin_closed = _close_native_handle_checked(pin_handle)
+    root_removed = False
+    if pin_closed:
+        try:
+            candidate.rmdir()
+        except BaseException:
+            pass
         else:
-            candidate.unlink(missing_ok=True)
+            root_removed = True
+    if root_removed:
+        try:
+            os.lstat(candidate)
+        except FileNotFoundError:
+            pass
+        except BaseException:
+            root_removed = False
+        else:
+            root_removed = False
+    return contents_removed and pin_closed and root_removed
+
+
+def _remove_operation_temp_contents(candidate: Path) -> bool:
+    """Delete only direct files while the exact root is pinned; never recurse."""
+
+    try:
+        with os.scandir(candidate) as iterator:
+            entries = tuple(iterator)
     except BaseException:
-        pass
+        return False
+    for entry in entries:
+        entry_path = Path(entry.path)
+        try:
+            information = os.lstat(entry_path)
+        except BaseException:
+            return False
+        attributes = int(getattr(information, "st_file_attributes", 0))
+        if stat.S_ISDIR(information.st_mode) and not (attributes & _FILE_ATTRIBUTE_REPARSE_POINT):
+            return False
+        try:
+            if stat.S_ISDIR(information.st_mode):
+                entry_path.rmdir()
+            else:
+                entry_path.unlink()
+        except BaseException:
+            return False
+    try:
+        with os.scandir(candidate) as iterator:
+            return next(iterator, None) is None
+    except BaseException:
+        return False
+
+
+def _close_native_handle_checked(handle: int) -> bool:
+    if type(handle) is not int or handle <= 0 or os.name != "nt":
+        return False
+    try:
+        kernel32 = _kernel32()
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        return bool(close_handle(wintypes.HANDLE(handle)))
+    except BaseException:
+        return False
+
+
+def _remove_untrusted_operation_temp_no_raise(candidate: Path) -> None:
+    # Identity validation failed, so cleanup must never enumerate or recurse.
+    try:
+        candidate.rmdir()
+    except BaseException:
+        try:
+            candidate.unlink(missing_ok=True)
+        except BaseException:
+            pass
 
 
 def build_pdf_export_operation_handler() -> PdfExportOperationHandler:
