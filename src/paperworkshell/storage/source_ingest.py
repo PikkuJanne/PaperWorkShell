@@ -29,6 +29,15 @@ from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryError,
     ManifestRepositoryErrorCode,
 )
+from paperworkshell.domain.pdf_export import (
+    MAX_PDF_EXPORT_SOURCES,
+    PdfExportPage,
+    PdfExportPlan,
+    PdfExportSource,
+    PdfExportSourceEncryptionState,
+    PdfExportSourceMediaType,
+    PdfExportSourceSignatureState,
+)
 from paperworkshell.domain.source_ingest import (
     MAX_SOURCE_PAGES,
     CompletedSourceInspection,
@@ -147,6 +156,9 @@ class _StoredSource:
     byte_size: int
     page_count: int
     sha256: str = field(repr=False)
+    signature_state: SourceSignatureState
+    encryption_state: SourceEncryptionState
+    import_state: str
     imported_at: datetime
 
 
@@ -156,6 +168,8 @@ class _ManifestSnapshot:
     identity: FileIdentity
     document: dict[str, object] = field(repr=False)
     revision: int
+    sha256: str = field(repr=False)
+    cas_token: str = field(repr=False)
     created_at: datetime
     updated_at: datetime
     sources: tuple[_StoredSource, ...] = field(repr=False)
@@ -412,6 +426,212 @@ class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLeas
         self._stack.close()
 
 
+class CommittedPdfSourceReadLease:
+    """One member of a manifest-bound batch, exposed without a path or raw object."""
+
+    __slots__ = (
+        "_close_batch",
+        "_expected_identity",
+        "_handle",
+        "_source",
+    )
+
+    def __init__(
+        self,
+        *,
+        source: PdfExportSource,
+        handle: WindowsHandle,
+        close_batch: Callable[[], None],
+    ) -> None:
+        self._source = source
+        self._handle = handle
+        self._expected_identity = handle.info.identity
+        self._close_batch = close_batch
+
+    def __repr__(self) -> str:
+        return "CommittedPdfSourceReadLease(<redacted>)"
+
+    @property
+    def source_id(self) -> UUID:
+        return self._source.source_id
+
+    @property
+    def media_type(self) -> PdfExportSourceMediaType:
+        return self._source.media_type
+
+    @property
+    def byte_size(self) -> int:
+        return self._source.byte_size
+
+    @property
+    def page_count(self) -> int:
+        return self._source.page_count
+
+    @property
+    def sha256(self) -> str:
+        return self._source.sha256
+
+    @property
+    def signature_state(self) -> PdfExportSourceSignatureState:
+        return self._source.signature_state
+
+    @property
+    def encryption_state(self) -> PdfExportSourceEncryptionState:
+        return self._source.encryption_state
+
+    @property
+    def handle_value(self) -> int:
+        """Return a currently authenticated value solely for worker duplication."""
+
+        try:
+            _require_retained_pdf_source_metadata(
+                self._handle,
+                expected_identity=self._expected_identity,
+                expected_size=self._source.byte_size,
+            )
+            value = self._handle.value
+            if type(value) is not int or value <= 0:
+                reject_source_ingest(
+                    SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+                    "source.batch_handle",
+                )
+            return value
+        except SourceIngestError:
+            _close_batch_no_raise(self._close_batch)
+            raise
+        except BaseException:
+            _close_batch_no_raise(self._close_batch)
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_CHANGED,
+                "source.batch_handle",
+            )
+
+    def _revalidate(
+        self,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> None:
+        _hash_retained_pdf_source(
+            self._handle,
+            self._source,
+            expected_identity=self._expected_identity,
+            deadline=deadline,
+            cancellation=cancellation,
+        )
+
+
+class CommittedPdfSourceBatchReadLease(AbstractContextManager["CommittedPdfSourceBatchReadLease"]):
+    """Own one retained manifest and all exact first-use-ordered export sources."""
+
+    __slots__ = (
+        "_case_id",
+        "_closed",
+        "_manifest_cas_token",
+        "_manifest_revision",
+        "_manifest_sha256",
+        "_sources",
+        "_stack",
+    )
+
+    def __init__(
+        self,
+        *,
+        stack: ExitStack,
+        case_id: UUID,
+        manifest_revision: int,
+        manifest_sha256: str,
+        manifest_cas_token: str,
+        retained_sources: tuple[tuple[PdfExportSource, WindowsHandle], ...],
+    ) -> None:
+        self._stack = stack
+        self._case_id = case_id
+        self._manifest_revision = manifest_revision
+        self._manifest_sha256 = manifest_sha256
+        self._manifest_cas_token = manifest_cas_token
+        self._closed = False
+        self._sources = tuple(
+            CommittedPdfSourceReadLease(
+                source=source,
+                handle=handle,
+                close_batch=self.close,
+            )
+            for source, handle in retained_sources
+        )
+
+    def __repr__(self) -> str:
+        return "CommittedPdfSourceBatchReadLease(<redacted>)"
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+                "source.batch_lease",
+            )
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    @property
+    def case_id(self) -> UUID:
+        return self._case_id
+
+    @property
+    def manifest_revision(self) -> int:
+        return self._manifest_revision
+
+    @property
+    def manifest_sha256(self) -> str:
+        return self._manifest_sha256
+
+    @property
+    def manifest_cas_token(self) -> str:
+        return self._manifest_cas_token
+
+    @property
+    def sources(self) -> tuple[CommittedPdfSourceReadLease, ...]:
+        return self._sources
+
+    def revalidate(
+        self,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> None:
+        """Re-hash the same retained sources after the worker has terminated."""
+
+        if self._closed:
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+                "source.batch_lease",
+            )
+        try:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.batch_cancel",
+                timeout_context="source.batch_timeout",
+            )
+            for source in self._sources:
+                source._revalidate(deadline=deadline, cancellation=cancellation)
+        except SourceIngestError:
+            _close_batch_no_raise(self.close)
+            raise
+        except BaseException:
+            _close_batch_no_raise(self.close)
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_CHANGED,
+                "source.batch_revalidate",
+            )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._stack.close()
+
+
 class WindowsSourceIngestStore:
     """Prepare, atomically commit, and later verify immutable case sources."""
 
@@ -564,6 +784,132 @@ class WindowsSourceIngestStore:
             reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_storage")
         except Exception:
             reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_storage")
+        finally:
+            if not borrowed:
+                stack.close()
+
+    def borrow_committed_pdf_sources(
+        self,
+        plan: PdfExportPlan,
+        *,
+        cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
+    ) -> CommittedPdfSourceBatchReadLease:
+        """Retain every exact PDF source bound to one authenticated export plan."""
+
+        selected_plan = _require_committed_pdf_export_plan(plan)
+        selected_case = selected_plan.case_id
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.batch_cancel",
+            timeout_context="source.batch_timeout",
+        )
+
+        def coordination_checkpoint() -> None:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.batch_cancel",
+                timeout_context="source.batch_timeout",
+            )
+
+        stack = ExitStack()
+        borrowed = False
+        try:
+            authority = stack.enter_context(
+                self._manager.authenticate_case(
+                    selected_case,
+                    retain_lease=True,
+                    coordination_checkpoint=coordination_checkpoint,
+                )
+            )
+            snapshot, manifest_handle = _read_retained_manifest_snapshot(authority)
+            stack.enter_context(manifest_handle)
+            if (
+                snapshot.revision != selected_plan.manifest_revision
+                or snapshot.sha256 != selected_plan.manifest_sha256
+                or snapshot.cas_token != selected_plan.manifest_cas_token
+            ):
+                reject_source_ingest(
+                    SourceIngestErrorCode.MANIFEST_CONFLICT,
+                    "source.batch_manifest",
+                )
+
+            records_by_id = {record.source_id: record for record in snapshot.sources}
+            if len(records_by_id) != len(snapshot.sources):
+                reject_source_ingest(
+                    SourceIngestErrorCode.MANIFEST_INVALID,
+                    "source.batch_catalogue",
+                )
+            selected_records: list[_StoredSource] = []
+            for source in selected_plan.sources:
+                record = records_by_id.get(source.source_id)
+                if record is None:
+                    reject_source_ingest(
+                        SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+                        "source.batch_missing",
+                    )
+                _require_matching_pdf_export_source(record, source)
+                selected_records.append(record)
+
+            originals_root = stack.enter_context(open_handle(authority.layout.originals))
+            require_expected_handle(
+                originals_root,
+                authority.layout.originals,
+                directory=True,
+            )
+            verify_private_acl(originals_root)
+            require_no_alternate_streams(authority.layout.originals)
+
+            retained_sources: list[tuple[PdfExportSource, WindowsHandle]] = []
+            for source, record in zip(
+                selected_plan.sources,
+                selected_records,
+                strict=True,
+            ):
+                _require_active(
+                    cancellation,
+                    deadline,
+                    cancel_context="source.batch_cancel",
+                    timeout_context="source.batch_timeout",
+                )
+                source_path = authority.layout.originals / record.storage_name
+                source_handle = stack.enter_context(open_handle(source_path, read=True))
+                require_expected_handle(source_handle, source_path, directory=False)
+                _hash_retained_pdf_source(
+                    source_handle,
+                    source,
+                    expected_identity=source_handle.info.identity,
+                    cancellation=cancellation,
+                    deadline=deadline,
+                )
+                retained_sources.append((source, source_handle))
+
+            lease = CommittedPdfSourceBatchReadLease(
+                stack=stack,
+                case_id=selected_case,
+                manifest_revision=snapshot.revision,
+                manifest_sha256=snapshot.sha256,
+                manifest_cas_token=snapshot.cas_token,
+                retained_sources=tuple(retained_sources),
+            )
+            borrowed = True
+            return lease
+        except SourceIngestError:
+            raise
+        except CaseLifecycleError as error:
+            _map_manifest_error(error)
+        except WorkspaceError:
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+                "source.batch_storage",
+            )
+        except BaseException:
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+                "source.batch_storage",
+            )
         finally:
             if not borrowed:
                 stack.close()
@@ -1125,6 +1471,213 @@ def _open_manifest_snapshot(authority: AuthenticatedCase) -> _RetainedManifestSn
     return _RetainedManifestSnapshot(snapshot, handle)
 
 
+def _require_committed_pdf_export_plan(value: object) -> PdfExportPlan:
+    """Defensively recheck the path-free plan at the untrusted storage boundary."""
+
+    if type(value) is not PdfExportPlan:
+        reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.batch_plan")
+    try:
+        plan = value
+        require_internal_id(plan.case_id, context="source.batch_case")
+        if (
+            type(plan.manifest_revision) is not int
+            or not 0 <= plan.manifest_revision <= MAX_SAFE_MANIFEST_INTEGER
+            or type(plan.manifest_sha256) is not str
+            or _SHA256_RE.fullmatch(plan.manifest_sha256) is None
+            or type(plan.manifest_cas_token) is not str
+            or not 16 <= len(plan.manifest_cas_token) <= 128
+            or any(
+                not (character.isascii() and (character.isalnum() or character in "_-"))
+                for character in plan.manifest_cas_token
+            )
+            or type(plan.sources) is not tuple
+            or not 1 <= len(plan.sources) <= MAX_PDF_EXPORT_SOURCES
+            or type(plan.pages) is not tuple
+            or not plan.pages
+        ):
+            reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.batch_plan")
+        for source in plan.sources:
+            if (
+                type(source) is not PdfExportSource
+                or type(source.source_id) is not UUID
+                or source.source_id.version != 4
+                or type(source.byte_size) is not int
+                or not 1 <= source.byte_size <= MAX_SAFE_MANIFEST_INTEGER
+                or type(source.page_count) is not int
+                or not 1 <= source.page_count <= MAX_SOURCE_PAGES
+                or type(source.sha256) is not str
+                or _SHA256_RE.fullmatch(source.sha256) is None
+                or type(source.signature_state) is not PdfExportSourceSignatureState
+                or source.media_type is not PdfExportSourceMediaType.PDF
+                or source.encryption_state is not PdfExportSourceEncryptionState.UNENCRYPTED
+            ):
+                reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.batch_source")
+        if any(type(page) is not PdfExportPage for page in plan.pages):
+            reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.batch_pages")
+        source_ids = tuple(source.source_id for source in plan.sources)
+        first_use_order = tuple(dict.fromkeys(page.source_id for page in plan.pages))
+        if len(set(source_ids)) != len(source_ids) or source_ids != first_use_order:
+            reject_source_ingest(
+                SourceIngestErrorCode.MODEL_INVALID,
+                "source.batch_source_order",
+            )
+    except SourceIngestError:
+        raise
+    except BaseException:
+        reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.batch_plan")
+    return plan
+
+
+def _require_matching_pdf_export_source(
+    record: _StoredSource,
+    source: PdfExportSource,
+) -> None:
+    if record.import_state != "complete":
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+            "source.batch_not_ready",
+        )
+    if record.media_type is not DetectedMediaType.PDF:
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+            "source.batch_media",
+        )
+    if record.encryption_state is not SourceEncryptionState.UNENCRYPTED:
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_UNAVAILABLE,
+            "source.batch_encryption",
+        )
+    try:
+        signature_state = PdfExportSourceSignatureState(record.signature_state.value)
+    except ValueError:
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_CHANGED,
+            "source.batch_signature",
+        )
+    if (
+        record.source_id != source.source_id
+        or record.byte_size != source.byte_size
+        or record.page_count != source.page_count
+        or record.sha256 != source.sha256
+        or signature_state is not source.signature_state
+    ):
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_CHANGED,
+            "source.batch_facts",
+        )
+
+
+def _require_retained_pdf_source_metadata(
+    handle: WindowsHandle,
+    *,
+    expected_identity: FileIdentity,
+    expected_size: int,
+) -> FileIdentity:
+    try:
+        current = handle.refresh_info()
+        if (
+            current.identity != expected_identity
+            or current.logical_size != expected_size
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+        ):
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_CHANGED,
+                "source.batch_identity",
+            )
+        require_no_alternate_streams(current.final_path)
+        return current.identity
+    except SourceIngestError:
+        raise
+    except BaseException:
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_CHANGED,
+            "source.batch_identity",
+        )
+
+
+def _hash_retained_pdf_source(
+    handle: WindowsHandle,
+    source: PdfExportSource,
+    *,
+    expected_identity: FileIdentity,
+    cancellation: CancellationProbe,
+    deadline: DeadlineProbe,
+) -> None:
+    try:
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.batch_cancel",
+            timeout_context="source.batch_timeout",
+        )
+        _require_retained_pdf_source_metadata(
+            handle,
+            expected_identity=expected_identity,
+            expected_size=source.byte_size,
+        )
+        handle.rewind()
+        digest = hashlib.sha256()
+        completed = 0
+        while completed < source.byte_size:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.batch_cancel",
+                timeout_context="source.batch_timeout",
+            )
+            count = min(MAXIMUM_STREAM_CHUNK_BYTES, source.byte_size - completed)
+            digest.update(handle.read_exact(count))
+            completed += count
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.batch_cancel",
+            timeout_context="source.batch_timeout",
+        )
+        current = handle.require_eof()
+        if (
+            current.identity != expected_identity
+            or current.logical_size != source.byte_size
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+            or digest.hexdigest() != source.sha256
+        ):
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_CHANGED,
+                "source.batch_integrity",
+            )
+        require_no_alternate_streams(current.final_path)
+        handle.rewind()
+    except SourceIngestError:
+        raise
+    except BaseException:
+        reject_source_ingest(
+            SourceIngestErrorCode.SOURCE_CHANGED,
+            "source.batch_integrity",
+        )
+
+
+def _manifest_cas_token(identity: FileIdentity, digest: str) -> str:
+    material = (
+        identity.volume_serial_number.to_bytes(8, byteorder="big", signed=False)
+        + identity.file_id
+        + bytes.fromhex(digest)
+    )
+    return hashlib.sha256(material).hexdigest()
+
+
+def _close_batch_no_raise(close: Callable[[], None]) -> None:
+    try:
+        close()
+    except BaseException:
+        pass
+
+
 def _resolve_pdf_page(
     snapshot: _ManifestSnapshot,
     page_id: UUID,
@@ -1224,6 +1777,11 @@ def _validate_ingest_manifest(
         encryption = record["encryption_state"]
         if type(signature) is not str or type(encryption) is not str:
             _reject_manifest("source.manifest_inspection")
+        try:
+            signature_state = SourceSignatureState(signature)
+            encryption_state = SourceEncryptionState(encryption)
+        except ValueError:
+            _reject_manifest("source.manifest_inspection")
         if media_type is DetectedMediaType.PDF:
             valid_states = signature in _PDF_SIGNATURE_STATES and encryption in (
                 _PDF_ENCRYPTION_STATES
@@ -1248,6 +1806,9 @@ def _validate_ingest_manifest(
                 byte_size,
                 page_count,
                 digest,
+                signature_state,
+                encryption_state,
+                "complete",
                 imported_at,
             )
         )
@@ -1272,11 +1833,14 @@ def _validate_ingest_manifest(
         actual_page_pairs.append((source_id, index))
     if actual_page_pairs != expected_page_pairs:
         _reject_manifest("source.manifest_page_catalogue")
+    manifest_sha256 = hashlib.sha256(payload).hexdigest()
     return _ManifestSnapshot(
         payload,
         identity,
         document,
         summary.revision,
+        manifest_sha256,
+        _manifest_cas_token(identity, manifest_sha256),
         summary.created_at,
         summary.updated_at,
         tuple(sources),
