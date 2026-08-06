@@ -19,6 +19,7 @@ from paperworkshell.domain.pdf_export import (
 )
 from paperworkshell.worker.pdf_export_report import (
     DEFAULT_PDF_EXPORT_ENGINE_PROFILE,
+    MAX_PDF_EXPORT_WORKER_REPORT_BYTES,
     PdfExportWorkerReport,
     decode_pdf_export_worker_report,
     encode_pdf_export_worker_report,
@@ -71,6 +72,7 @@ def test_worker_report_round_trip_is_canonical_typed_and_redacted() -> None:
     decoded = decode_pdf_export_worker_report(first)
 
     assert first == second
+    assert len(first) < MAX_PDF_EXPORT_WORKER_REPORT_BYTES
     assert decoded == report
     assert decoded.engine_profile == DEFAULT_PDF_EXPORT_ENGINE_PROFILE
     rendered = repr(decoded)
@@ -147,6 +149,6 @@ def test_worker_report_rejects_digest_checks_and_engine_tampering() -> None:
 
 def test_worker_report_size_is_bounded_before_json_parsing() -> None:
     with pytest.raises(PdfExportError) as raised:
-        decode_pdf_export_worker_report(b"x" * 65_537)
+        decode_pdf_export_worker_report(b"x" * (MAX_PDF_EXPORT_WORKER_REPORT_BYTES + 1))
 
     assert raised.value.code is PdfExportErrorCode.REPORT_INVALID

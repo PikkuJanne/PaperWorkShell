@@ -19,7 +19,10 @@ from paperworkshell.domain.pdf_export import (
 )
 
 PDF_EXPORT_WORKER_REPORT_VERSION: Final = 1
-MAX_PDF_EXPORT_WORKER_REPORT_BYTES: Final = 65_536
+# The broker intentionally does not read the result pipe until the one-shot
+# worker tree is confirmed terminated. Keep the complete closed report below
+# the pipe's 8 KiB kernel buffer so a worker can never block on its own result.
+MAX_PDF_EXPORT_WORKER_REPORT_BYTES: Final = 4_096
 PIKEPDF_EXPORT_ENGINE_VERSION: Final = "10.10.0"
 QPDF_EXPORT_ENGINE_VERSION: Final = "12.3.2"
 PYPDFIUM2_EXPORT_ENGINE_VERSION: Final = "5.12.1"
