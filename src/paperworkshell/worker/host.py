@@ -52,6 +52,14 @@ def main() -> int:
         handlers.append(build_pdf_thumbnail_operation_handler())
     except Exception:
         pass
+    try:
+        from paperworkshell.worker.pdf_export_operation import (
+            build_pdf_export_operation_handler,
+        )
+
+        handlers.append(build_pdf_export_operation_handler())
+    except Exception:
+        pass
     # Never advertise a document capability whose adapter failed to load. The
     # client rejects negotiation when its required capability is unavailable.
     operations = RuntimeOperationRegistry(tuple(handlers))
