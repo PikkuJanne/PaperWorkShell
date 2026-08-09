@@ -3,19 +3,32 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
+from paperworkshell.app.export_history import (
+    PdfExportHistoryService,
+    PdfExportRetryRecoveryService,
+)
 from paperworkshell.app.organizer import OrganizerBackend
 from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
+from paperworkshell.app.recovery import (
+    StartupRecoveryDiagnosticSink,
+    StartupRecoveryService,
+)
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_FRAME_BYTES
+from paperworkshell.domain.recovery import RecoveryErrorCode, reject_recovery
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
+from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
+from paperworkshell.storage.recovery import WindowsStartupRecoveryStore
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -39,10 +52,49 @@ _WORKER_MEMORY_BYTES = 768 * 1024 * 1024
 _WORKER_JOB_MEMORY_BYTES = 1024 * 1024 * 1024
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def build_windows_startup_recovery_service(
+    manager: CaseWorkspaceManager,
+    *,
+    diagnostics: StartupRecoveryDiagnosticSink | None = None,
+    clock: Callable[[], datetime] = _utc_now,
+) -> StartupRecoveryService:
+    """Compose complete Windows recovery at the desktop application root."""
+
+    if not isinstance(manager, CaseWorkspaceManager):
+        reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.composition")
+    manifests = WindowsManifestRepository(manager)
+    history = PdfExportHistoryService(
+        WindowsPdfExportHistoryRepository(manager),
+        manifests,
+    )
+    retries = WindowsPdfExportRetryRepository(manager)
+    exports = PdfExportRetryRecoveryService(history, retries)
+    store = WindowsStartupRecoveryStore(
+        manager,
+        settle_exports=exports.recover_case,
+    )
+    return StartupRecoveryService(
+        store,
+        diagnostics=diagnostics,
+        clock=clock,
+    )
+
+
 def build_backend() -> OrganizerBackend:
     """Construct the complete backend on the caller's permanent owner thread."""
 
     manager = CaseWorkspaceManager.for_current_user(quota=_workspace_quota())
+    return _build_backend(manager)
+
+
+def _build_backend(manager: CaseWorkspaceManager) -> OrganizerBackend:
+    """Recover local cases before constructing document-worker resources."""
+
+    startup_recovery = build_windows_startup_recovery_service(manager).recover_startup()
     lifecycle = CaseLifecycleService(WindowsCaseLifecycleStore(manager))
     repository = WindowsManifestRepository(manager)
     source_store = WindowsSourceIngestStore(
@@ -69,6 +121,7 @@ def build_backend() -> OrganizerBackend:
             source_ingest,
             thumbnails,
             close_resources=composition.close,
+            startup_recovery=startup_recovery,
         )
     except BaseException:
         composition.close()

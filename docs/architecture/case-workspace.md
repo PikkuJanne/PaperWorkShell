@@ -1,13 +1,14 @@
 # Secure case-workspace contract
 
-- Status: Implemented PWS-0101 contract with lifecycle, ingest, manifest-repository, and thumbnail extensions
-- Tasks: PWS-0101, PWS-0102, PWS-0104, PWS-0108, PWS-0109
-- Decisions: PWS-D009, PWS-D010, PWS-D011, PWS-D028, PWS-D029, PWS-D036
+- Status: Implemented PWS-0101 contract with lifecycle, ingest, manifest-repository, thumbnail, export, and recovery extensions
+- Tasks: PWS-0101, PWS-0102, PWS-0104, PWS-0108, PWS-0109, PWS-0112, PWS-0113
+- Decisions: PWS-D009, PWS-D010, PWS-D011, PWS-D027, PWS-D028, PWS-D029, PWS-D036, PWS-D039
 - ADR: [ADR 0003](../adr/0003-secure-case-workspace.md)
 - Lifecycle: [Local case-lifecycle contract](case-lifecycle.md)
 - Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
 - Persistence: [Atomic manifest repository and autosave contract](manifest-repository.md)
 - Thumbnails: [Bounded PDF-thumbnail service contract](pdf-thumbnails.md)
+- Recovery: [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md)
 
 ## Scope
 
@@ -26,12 +27,12 @@ namespace does not re-export implementations.
 |---|---:|---|---|
 | case root | yes | private creation and verification | PWS-0102 active lease and full removal |
 | `manifest.json` | reserved only | none | PWS-0102 initial record; PWS-0109 validated general transactions and ingest integration |
-| `journal/` | yes | no general cleanup | PWS-0109 atomic persistence and recovery |
+| `journal/` | yes | no general cleanup | PWS-0109 atomic persistence; PWS-0113 exact PDF export-retry markers |
 | `originals/` | yes | no general cleanup | PWS-0104 authenticated immutable source publication and integrity checks |
 | `cache/thumbnails/` | yes | authenticated child cleanup; root preserved | PWS-0108 bounded thumbnail service |
 | `cache/previews/` | yes | authenticated child cleanup; root preserved | reserved for later non-thumbnail preview derivatives |
-| `temp/` | yes | authenticated child cleanup; root preserved | PWS-0104 source preparation; PWS-0107/PWS-0112 operations; PWS-0113 orphan cleanup |
-| `export-history.json` | reserved only | none | PWS-0112 verified export records with PWS-0109 persistence integration |
+| `temp/` | yes | authenticated child cleanup; root preserved | PWS-0104 source preparation; PWS-0107/PWS-0112 operations; PWS-0113 ordered orphan cleanup after export-retry settlement |
+| `export-history.json` | reserved only | none | PWS-0112 canonical path-free records, authenticated atomic create/replace, and manifest-CAS references |
 
 Case roots use canonical lowercase UUIDv4 names. Provisioning retries generated collisions up to a
 bounded limit; an explicit existing identifier fails without mutation. Rollback removes only empty
@@ -114,6 +115,22 @@ identity before marking it for deletion and returns only content-free counts/sta
 never referenced by the manifest and remains safe to lose or regenerate. The complete key,
 artifact, brokerage, termination, privacy, and cleanup rules are defined by the
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md).
+
+### PWS-0113 startup-recovery extension
+
+Startup recovery first loads or recovers one complete current manifest, then settles exact durable
+PDF export retry receipts, and only then authorizes source-orphan, stale-thumbnail-stage, and
+general case-temp cleanup. Invalid or future-version cases are reported without cleanup. An exact
+manifest identity/digest/CAS recheck and the shared per-case transaction guard bind every cleanup
+decision; continued concurrent change stops cleanup with a sanitized attention result.
+
+The source scan removes only canonical random UUIDv4 `.bin` objects absent from the validated
+manifest. Unexpected names and any object with uncertain type, identity, links, streams, or
+permissions remain in place. Retry markers live below `journal/`, are not subject to general temp
+cleanup, contain no external destination path/name, and are removed only through their exact
+phase-bound adapter after idempotent history repair or independent commit proof. Detailed ordering,
+limits, states, and residual claims are defined by [Startup recovery and sanitized
+diagnostics](startup-recovery-and-diagnostics.md).
 
 ### `storage.permissions`
 
@@ -215,8 +232,6 @@ Earlier valid cache entries and all authoritative case state remain unchanged.
 
 - Manifest schema migration remains deferred to its later versioned task; PWS-0109 implements
   current-version authoritative transactions, autosave, and checkpoint recovery.
-- PWS-0112: export staging, assembly, reopen, verification, record, and destination commit.
-- PWS-0113: crash recovery, orphan-temp cleanup, sanitized logs, and diagnostic baseline.
 - PWS-0705/PWS-0706: retention consent, expiry, lock, inventory review, and assisted deletion.
 
 No caller may fill one of these gaps with direct broad filesystem access through the PWS-0101

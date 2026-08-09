@@ -99,3 +99,4 @@ def test_live_worker_can_traverse_list_and_write_its_profile_temp(
     assert response["materialized_temp_stat"] == success
     assert response["materialized_temp_list"] == success
     assert response["temp_round_trip"] == success
+    assert response["nested_temp_round_trip"] == success

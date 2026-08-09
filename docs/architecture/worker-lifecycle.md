@@ -1,10 +1,11 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, and PWS-0111 desktop-composition extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111
-- Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, and PWS-0113 ACL-recovery extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113
+- Decisions: PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
+- Startup recovery: [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md)
 
 ## Scope
 
@@ -16,15 +17,19 @@ standard-library-only and are injected behind process/transport interfaces for d
 tests. After bootstrap isolation succeeds, host composition may load the admitted worker-side PDF
 adapter from the exact staged runtime; third-party types still do not enter the core contracts.
 
-The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, and `pdf.thumbnail`
-version 1. The no-op still proves process/protocol lifecycle without document authority. PWS-0105
-proves exact prepared-source read-handle transfer, a write-only bounded result pipe, worker-private
-copy verification, pikepdf/libqpdf structural inspection, and one-shot worker revocation. PWS-0108
-adds one committed-source read handle and one fixed-size writable volatile output section for
-a bounded one-page render. Neither operation grants a case/directory path, persistent cache writer,
-or general filesystem access. See
+The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
+version 1, and `pdf.export` version 1. The no-op still proves process/protocol lifecycle without
+document authority. PWS-0105 proves exact prepared-source read-handle transfer, a write-only
+bounded result pipe, worker-private copy verification, pikepdf/libqpdf structural inspection, and
+one-shot worker revocation. PWS-0108 adds one committed-source read handle and one fixed-size
+writable volatile output section for a bounded one-page render. PWS-0112 adds a manifest-bound
+batch of committed-source read handles, one read-only plan section, one bounded writable candidate
+section, and one write-only report pipe for deterministic assembly and verification. No PDF
+operation grants a case/directory path, persistent cache or destination writer, or general
+filesystem access. See
 the [PDF structural-inspection contract](pdf-structural-inspection.md) and
-[bounded PDF-thumbnail service contract](pdf-thumbnails.md).
+[bounded PDF-thumbnail service contract](pdf-thumbnails.md), plus the
+[deterministic verified PDF-export contract](pdf-export.md).
 
 ## Component ownership
 
@@ -33,6 +38,7 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md) and
 | `worker.client.client` | Dedicated coordinator-thread lifecycle, local snapshots, deadlines, cancellation, shutdown, fault and restart | GUI-process-side; no host/platform/document-adapter import |
 | `worker.client.process` | Typed launcher/process/transport contracts and bounded framed transport | Hides payloads, paths, commands, and environment from representations |
 | `worker.client._windows` | AppContainer profile, ACL grant lease, pipes, suspended process, Job Object, termination and cleanup | Windows-only private launcher; no UI dependency |
+| `worker.client._acl_recovery` | Versioned bounded `PREPARED`/`ACTIVE`/`REVOKING` ACL ledger and atomic private journal | Legacy-v1/exact-object-v2 path-private launcher state; no case, protocol, UI, or routine-diagnostic surface |
 | `worker.protocol.bootstrap` | Exact 92-byte launch grant | Launch-only; secret redacted and never extensibly decoded |
 | `worker.protocol.framing` | Four-byte length framing and sanitized local transport errors | Returns bytes only; protocol decode always follows |
 | `worker.protocol.peer` | Outbound validation/encoding and inbound decode/authentication/state transition | Sole conversation owner on each side |
@@ -42,10 +48,13 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md) and
 | `worker.pdf_operation` | Adopt one brokered source, verify/copy/hash it, invoke the PDF adapter, and write one correlated result | Host-side only; closes the case handle before native parsing |
 | `worker.pdf_thumbnail_broker` | Resolve one committed page, authenticate cache hits, broker exact source/output-section handles, terminate one-shot generation, validate volatile output, and persist/publish through storage | Structural ports only; never treats a key, UUID, or path as authority |
 | `worker.pdf_thumbnail_operation` | Adopt one source and fixed-size output-section handle, enforce its exact logical limit, verify/copy/hash source, render one page, and write one fixed correlated artifact | Host-side only; receives no persistent cache-file or directory capability |
+| `worker.pdf_export_broker` | Authenticate one manifest-bound source batch, broker exact plan/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; never receives or publishes a destination path |
+| `worker.pdf_export_operation` | Adopt exact source/plan/output/report handles, copy and rehash sources in one private operation directory, assemble and verify, and write one correlated report | Host-side only; receives no case, manifest, history, or destination authority |
 | `worker._windows_broker` | Non-inheritable bounded anonymous result pipe and fixed-size pagefile-backed output section | GUI-process-side private primitives; no path or document value |
 | `storage.prepared_source_registry` | Register/revoke one sealed pending source and lend an exact independently positioned read handle | Storage owns source identity and publication; no worker-host import |
 | `storage.source_ingest` / `storage.thumbnail_cache` | Lend one manifest-bound committed PDF handle; authenticate, stage, validate, publish, invalidate, and clean disposable thumbnails | Storage owns handle identity and cache publication; no worker implementation import |
 | `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
+| `pdf.export_adapter` | Assemble, strictly reopen, qpdf-check, and PDFium-compare one worker-private candidate | Third-party objects, native output, and paths remain inside the restricted worker |
 
 Package initializers remain passive. Application/UI code may import explicit `worker.client` and
 `worker.protocol` modules but cannot import the host, Windows launcher implementation, operation
@@ -69,13 +78,13 @@ enumerated file's Windows link count to be exactly one. A hardlink shares one se
 across every name, including names outside the approved roots, so changing that descriptor would
 silently expand the grant's authority. An aliased file therefore fails with a sanitized
 configuration error; the launcher never repairs it by granting the individual file. The retained
-handles block rename, replacement, ancestor-junction substitution, and alias removal. For the full
-lease, every retained file also receives one direct current-user deny entry for
-`FILE_WRITE_ATTRIBUTES`, the right NTFS requires to create another hardlink. Link count is checked
-before and after that guard and the AppContainer grant, and again before resume. If an alias wins
-the narrow pre-guard window, no AppContainer entry is applied; cleanup still removes its exact deny
-entry through the authenticated handle despite the changed link count, avoiding a stranded user
-policy or profile.
+handles block rename, replacement, ancestor-junction substitution, and alias removal. Each retained
+file is protected by one direct current-user deny entry for `FILE_WRITE_ATTRIBUTES`, the right NTFS
+requires to create another hardlink. Authenticated overlapping v2 leases share that one guard and
+its recorded pre-PaperWorkShell baseline. Link count is checked before and after the guard and the
+AppContainer grant, and again before resume. If an alias wins the narrow pre-guard window, no
+AppContainer entry is applied; exact-handle cleanup still removes PaperWorkShell's entry despite
+the changed link count, avoiding a stranded user policy or profile.
 The repository configures uv's install mode as `copy` so a locked development environment creates
 independently owned runtime files.
 
@@ -110,42 +119,74 @@ One generation is created in this order:
 
 1. Generate a fresh generation number, session UUIDv4, worker-instance UUIDv4, and 256-bit
    capability; bind them to one logical case UUIDv4.
-2. Create an ephemeral AppContainer profile with zero capability SIDs.
-3. Preflight the complete bounded runtime/code inventory, retaining authenticated no-delete handles
-   for every ancestor and object while rejecting reparse points and any enumerated file whose
-   opened-handle link count is not one. Through those exact handles, grant a direct, non-inheritable
-   SID read/execute entry to every enumerated object, then verify every fixed startup resource,
-   including an optional virtual-environment launcher hint. A child created after the scan receives
-   no worker SID entry.
-4. Construct an environment containing only the approved Windows/Python names and, when required,
-   the fixed CPython virtual-environment startup hint. Construct `LOCALAPPDATA`, `TEMP`, and `TMP`
-   beneath that per-launch profile rather than inheriting them. CPython consumes the startup hint
-   before the unchanged worker-side environment audit.
-5. Create three anonymous pipes and make only the worker ends inheritable.
-6. Build an explicit process-attribute handle list and zero-capability security descriptor.
-7. Create the fixed process suspended, with no window and no shell.
-8. Configure and assign the Job Object before resume.
-9. Close broker duplicates of the worker-only pipe ends; write and close the exact bootstrap
-   grant; resume the primary thread.
-10. Before negotiation or descendant launch, clear and re-query `HANDLE_FLAG_INHERIT` on all
+2. Under the protected ACL mutex, authenticate the private recovery journal and repair every dead
+   or interrupted runtime/code grant whose recorded roots and objects remain inside the current
+   approved access-root allowlist. Any invalid or unprovable state blocks launch.
+3. Create an ephemeral AppContainer profile with zero capability SIDs.
+4. Open and authenticate the complete bounded runtime/code inventory through retained no-delete
+   handles; reject reparse points and hardlinked non-directory resources; capture each v2 Windows
+   object identity, auto-inheritance state, current-user peer SID, and shared-guard baseline; then
+   durably publish `PREPARED` before mutation.
+5. Establish or reuse one shared hardlink guard per file, add the profile SID's direct,
+   non-inheritable read/execute entry to every exact object, restore inheritance-control bits, and
+   verify every fixed startup resource before publishing `ACTIVE`. The optional virtual-environment
+   launcher hint and qpdf closure remain fixed, validated resources.
+6. Construct an environment containing only the approved Windows/Python names and the configured
+   fixed virtual-environment/qpdf hints. Construct `LOCALAPPDATA`, `TEMP`, and `TMP` beneath that
+   per-launch profile rather than inheriting them.
+7. Create three anonymous pipes and make only the worker ends inheritable.
+8. Build an explicit process-attribute handle list and zero-capability security descriptor.
+9. Create the fixed process suspended, with no window and no shell.
+10. Configure and assign the Job Object before resume.
+11. Close broker duplicates of the worker-only pipe ends; write and close the exact bootstrap
+    grant; resume the primary thread.
+12. Before negotiation or descendant launch, clear and re-query `HANDLE_FLAG_INHERIT` on all
     three worker endpoints.
-11. Retain the process, job, profile, and broker pipe ends for the full generation.
+13. Retain the process, job, profile, and broker pipe ends for the full generation.
 
 Runtime/code ACL changes are SID-specific and serialized across sessions by a protected Global
 mutex. Its owner is the current user, its DACL grants only that user and LocalSystem, its handle is
-non-inheritable, and an existing object's owner/DACL must match exactly. An abandoned mutex retains
-ownership in an in-process quarantine and is not intentionally released before exit because the
-interrupted ACL state is unknown. The broker preflights the complete bounded resource tree before
-mutation, rejects an absent or NULL DACL, and applies and removes only the launch SID's direct entry
-with handle-based `GetSecurityInfo`/`SetSecurityInfo`. The authenticated handles remain live until
-revocation and auto-inheritance verification succeed, so cleanup never re-resolves a removable path.
-Each lease appends its own non-inheritable current-user hardlink deny ACE rather than merging it;
-cleanup removes exactly one matching ACE only after the AppContainer SID is absent. Overlapping
-leases therefore keep hardlink creation denied until their final guard closes, and a pre-existing
-matching deny survives unchanged.
-Overlapping profiles therefore retain one another's access; cleanup proves the temporary SID absent
-and restores each observed object's original auto-inheritance state without replaying a stale whole
-descriptor. Numeric Job Object limits are range-checked before conversion to the Windows ABI.
+non-inheritable, and an existing object's owner/DACL must match exactly. The broker rejects an
+absent or NULL DACL and applies/removes only the launch SID's direct entry through retained object
+handles. Overlapping live profiles therefore preserve one another's SID entries and share one
+authenticated current-user hardlink guard per exact file. Cleanup proves the temporary SID absent,
+retains the guard while another authenticated `ACTIVE` v2 lease covers the same object/baseline,
+and otherwise removes exactly one guard to restore the recorded matching-deny count. It then
+restores and verifies each object's original auto-inheritance state without replaying a stale whole
+descriptor.
+
+PWS-0113 makes interruption recovery durable. Beneath the trusted Windows LocalAppData known
+folder, the launcher creates or authenticates one non-reparse recovery directory whose protected
+DACL grants full inherited access only to the current user and LocalSystem. Each new profile
+receives one bounded canonical v2 journal record containing the profile ID/name, exact AppContainer
+SID, owner PID plus process-creation time, current-user peer SID, fixed approved grant roots, and
+every resource's absolute trusted path, type, Windows volume serial/file ID, original
+auto-inheritance state, and nullable guard baseline. Directories have no guard baseline. Those
+paths are needed only to revoke an interrupted grant; they never enter RPC, routine diagnostics,
+UI results, or representations. Strictly decoded legacy v1 records remain recoverable with their
+original inherited-root behavior, but the launcher emits only v2.
+
+The launcher publishes `PREPARED` before the first shared-guard or AppContainer mutation, `ACTIVE`
+only after every direct grant and inheritance state is verified, and `REVOKING` before cleanup.
+Before creating a new profile it inventories the journal. A live exact owner with `ACTIVE` state is
+retained. A dead owner or interrupted phase is repaired only after the current allowlist and every
+recorded object identity are revalidated under the mutex. Exact-object v2 repair revokes and
+verifies the AppContainer SID on every retained object first. It then preserves a shared guard
+covered by another authenticated live v2 ledger or removes exactly one guard and proves the
+recorded baseline, restores/verifies inheritance state, deletes the exact record, and closes the
+retained handles. Legacy v1 repair revokes only its recorded inherited root entries and verifies
+their original bounded inventory.
+
+On `WAIT_ABANDONED`, recovery inventories and repairs all validated dead/interrupted entries while
+retaining mutex ownership; if it can repair none, launch blocks conservatively. Windows does not
+expose the prior mutex owner, so this is an aggregate cutpoint invariant rather than a claimed
+one-to-one abandonment/entry correlation: an abandonment before its record is pre-mutation, while
+one after mutation necessarily leaves that record. An insecure/corrupt/unknown-version entry,
+PID-identity uncertainty, peer-SID/allowlist mismatch, conflicting guard baseline, resource
+identity change, incomplete SID/guard/inheritance restoration, or journal cleanup failure blocks
+the new grant and launch. Abandonment is never converted into permission to remove an unrecorded
+ACE or restore an entire stale DACL. Numeric Job Object and recovery limits are range-checked before
+conversion to Windows ABI values.
 
 At launch the child receives exactly three handles: standard input for client-to-worker RPC,
 standard output for worker-to-client RPC, and standard error as a one-shot bootstrap reader. It
@@ -273,6 +314,12 @@ IDs, and sender sequences. Events tagged with any earlier generation are rejecte
 The concrete Windows adapter stops and confirms the live Job tree before joining transport-close
 threads, so a worker blocked in anonymous-pipe I/O cannot exhaust the bounded close deadline.
 
+After a whole desktop-process interruption, a later launcher instance may repair only the durable
+runtime/code ACL lease described above. That repair restores host resource access policy; it does
+not recover a process, reconnect a pipe, accept an old result, or replay the interrupted document
+operation. Case manifest/export/temp settlement remains the separate PWS-0113 startup-recovery
+boundary.
+
 Handle, ACL, mutex, profile, and partial-launch cleanup retain authority until Windows confirms the
 release. Bounded retries may physically release a resource, but an earlier unconfirmed lifecycle
 remains sticky to the client. Unresolved authorities are quarantined, and another launch is
@@ -353,6 +400,27 @@ rules:
 
 No later task may substitute a case path, general directory capability, or broad AppContainer ACL.
 
+### PWS-0112 verified PDF-export grant
+
+`pdf.export` is another one-shot consuming operation. The broker authenticates a manifest-bound
+batch of retained committed-source handles and transfers only source read-data/read-attributes/
+synchronize handles, one read-only bounded plan section, one write-only bounded candidate section,
+and one write-only bounded report pipe. The worker receives neither case nor destination paths.
+
+The worker copies and rehashes each source into generation-private temporary storage and closes all
+case-source handles before invoking pikepdf, qpdf, or PDFium. It assembles and verifies the private
+candidate, copies only the exact verified byte count into the output section, and writes one closed
+correlated report. After confirmed whole-tree termination, the broker revalidates every retained
+source before it reads either report or output. Only then can the trusted desktop destination
+adapter stream the candidate into an authenticated, no-replace external commit.
+
+The standalone qpdf executable is a fixed launcher resource, never a PATH-discovered command. An
+explicit packaged/test executable adds only its exact absolute path to the constructed worker
+environment. The launcher proves AppContainer read/execute access across the bounded non-reparse
+qpdf directory closure, including adjacent DLLs/resources, without weakening the existing runtime
+and code-root grant lifecycle. The worker still uses a fixed argument vector and no shell. See the
+[deterministic verified PDF-export contract](pdf-export.md).
+
 ## Required verification
 
 PWS-0107 is complete only with real supported-Windows evidence for:
@@ -397,6 +465,32 @@ fixed layout, size, and digests; every success/failure/cancel/timeout path must 
 termination before trusted section readback or persistent stage write. An unconfirmed tree must
 leave no persistent writer and block another generation rather than manufacture cleanup evidence.
 
+PWS-0113 adds required supported-Windows evidence for the persistent ACL-recovery boundary:
+
+- a canonical v2 `PREPARED` record with peer SID, exact Windows object identities, inheritance
+  state, and per-file guard baselines is flushed before the first guard/SID ACL mutation, while
+  phase updates are published atomically beneath the authenticated private LocalAppData directory;
+- a real helper process is forcibly terminated while retaining the protected mutex at `PREPARED`,
+  partial-grant, `ACTIVE`, and `REVOKING` cutpoints; separate-process recovery observes
+  `WAIT_ABANDONED`, authenticates the dead PID plus creation time, removes the exact SID from every
+  v2 object, restores the shared-guard baseline and auto-inheritance, clears the journal only after
+  complete verification, and permits a replacement grant;
+- overlapping live v2 leases authenticate and share one guard per object; recovery keeps it while
+  another `ACTIVE` ledger covers the object, and the final cleanup proves the recorded baseline;
+- canonical legacy v1 ledgers remain bounded and recover with inherited-root semantics rather than
+  being reinterpreted as v2 exact-object grants;
+- an insecure recovery-directory policy, corrupt/noncanonical record, unknown entry, current
+  configuration peer-SID/allowlist mismatch, conflicting baseline, hardlinked/special resource, or
+  resource identity mismatch blocks new ACL work without deleting evidence or widening authority;
+  and
+- the complete live worker/descendant containment suite still passes with pre-launch recovery in
+  the production launcher path.
+
+These tests prove cold-restart repair of recorded runtime/code AppContainer grants only. They do
+not prove replay of worker operations, general ACL repair, case-workspace access, recovery from an
+unrecorded mutation, or automatic cold deletion of an abandoned AppContainer profile and its local
+temporary tree.
+
 Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
 probes into a temporary physical tree at the root of CPython's fixed drive before launch. The
 fixed-drive location gives AppContainer descendants stable ancestor-traverse semantics even when a
@@ -425,6 +519,4 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 
 - PWS-0106: renderer operations behind a replaceable worker adapter.
 - PWS-0109: authoritative manifest/journal persistence and recovery.
-- PWS-0112: export staging handle brokerage, verification, and destination publication.
-- PWS-0113: startup recovery, orphan cleanup, routine logging, and diagnostics baseline.
 - PWS-0204: external OCR descendant/resource policy and cancellation integration.

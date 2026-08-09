@@ -189,12 +189,28 @@ def _target_violation(
                 f"domain code must not import {target!r}",
             )
 
+        if owner == "diagnostics" and target_layer not in (None, "diagnostics"):
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_DIAGNOSTICS_OUTBOUND",
+                f"diagnostics code must not import {target!r}",
+            )
+
         if owner == "app" and target_layer in ("ui", "desktop"):
             return BoundaryViolation(
                 path,
                 line,
                 "ARCH_UI_DIRECTION",
                 f"application layer must not import higher UI tier {target!r}",
+            )
+
+        if owner == "app" and target_layer == "storage":
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_APP_ADAPTER",
+                f"application layer must coordinate through ports, not import {target!r}",
             )
 
         if owner == "ui" and target_layer == "desktop":

@@ -1174,48 +1174,55 @@ tasks:
   - accessibility
   - state-management
   blocker:
-    reason: The required human keyboard-only organizer scenario and initial NVDA smoke cannot be
-      completed on the current machine because NVDA is not installed, and the desktop automation
-      bridge cannot type into the separate native Windows file chooser.
+    reason: Production worker verification and the required human keyboard-only organizer/NVDA
+      scenarios remain incomplete. NVDA is installed, but the current derived environment still
+      contains Administrator-owned native files that the non-elevated broker correctly rejects.
     evidence:
     - On 2026-08-05, Get-Command and the standard NVDA installation locations found no NVDA
       executable; the maintainer was asked to install it and no substitute screen reader was used.
     - An automation-assisted synthetic scenario verified organizer shortcuts, focus, cancellation,
       guarded shutdown, autosave, and revision-8 restart persistence, but could only open and cancel
       the native file chooser; it did not complete keyboard-only path selection.
+    - On 2026-08-09, NVDA 2026.1.1 was found at its standard Program Files location. A real organizer
+      worker launch then failed closed with config.resource_identity/Win32 access denied because the
+      attempted rebuild raced a live test and left the older Administrator-owned environment root.
     - Automated constrained-viewport, accessibility, UI lifecycle, privacy, real PDF composition,
       worker-containment, hardlink-race, and restart tests pass; these do not replace the two manual
       verification requirements in this task.
-    requested_action: Install NVDA, then perform and record the human keyboard-only and NVDA smoke
-      procedures in docs/accessibility/pws-0111-nvda-smoke.md with the repository synthetic PDF at
-      normal and 200-percent scaling.
+    requested_action: Recreate the derived .venv from a standard non-administrator PowerShell while
+      no test process is using it, pass the production worker composition, then perform and record
+      the human keyboard-only and NVDA smoke procedures in docs/accessibility/pws-0111-nvda-smoke.md
+      with the repository synthetic PDF at normal and 200-percent scaling.
   evidence:
     completed_at: null
     revision: null
     commands:
-    - uv run --no-sync pytest on the focused organizer/UI/accessibility/privacy matrix - passed; 39 tests
-    - uv run --no-sync python tools/dev.py test-accessibility - passed; 11 tests
-    - uv run --no-sync pytest tests/integration/test_organizer_ui_windows.py - passed; 2 live Windows tests
-    - uv run --no-sync pytest on retained-handle ACL, hardlink-race, overlap, and cleanup cases - passed; 27 tests with 1 environment-dependent junction skip
-    - uv run --no-sync ruff format --check . and ruff check . - passed
-    - uv run --no-sync python -m mypy src tools tests - passed; 206 source files
-    - uv run --no-sync python tools/dev.py validate-docs and check-import-boundaries - passed
+    - uv run --locked --no-sync pytest on the focused organizer, backend, lifecycle, accessibility,
+      and startup-recovery matrix - passed; 48 tests
+    - uv run --locked --no-sync python tools/dev.py test-accessibility - passed; 17 tests
+    - uv run --locked --no-sync pytest on journal-v2 recovery and exact-object ACL cut points -
+      passed; 31 tests
+    - uv run --locked --no-sync pytest on core worker recovery, containment, and security - passed;
+      59 tests with 1 reparse-privilege skip
+    - uv run --locked --no-sync pytest on installed, temporary, and overlapping qpdf profiles -
+      passed; 3 live tests
+    - Targeted Ruff format/check, strict mypy, import boundaries, docs, task graph, and diff checks -
+      passed on the blocked checkpoint
     notes:
-    - The desktop vertical slice, bounded previews, import reconciliation, and fail-closed Windows
-      worker resource lease are implemented and independently reviewed with no remaining P0-P2 code
-      finding.
+    - The desktop vertical slice, bounded previews, explicit preview/close recovery actions, startup
+      recovery notice, import reconciliation, and durable exact-object Windows resource lease are
+      implemented and independently reviewed with no remaining P0-P2 code finding.
     - Dependency and schema admission validation intentionally remains closed while PWS-0111 is not
       done; PySide6-Essentials and shiboken6 cannot become an accepted canonical baseline until the
       required manual evidence is recorded.
-    - PWS-0112 is dependency-ready independently of PWS-0111 and may proceed while this blocker is
-      outstanding.
+    - PWS-0112 and PWS-0113 are done; PWS-0114 remains dependency-blocked by PWS-0111.
 - id: PWS-0112
   milestone: M1
   title: Implement deterministic PDF assembly, export, reopen, and verification
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: done
   critical_path: true
   depends_on:
   - PWS-0105
@@ -1253,17 +1260,34 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-09'
+    revision: "77972df"
+    commands:
+    - "uv run --no-sync python tools/dev.py test-unit - passed; 1799 unit tests covered deterministic planning/assembly, strict reopen, qpdf/PDFium verification, destination publication, history settlement/retry, malformed output, encrypted output, cleanup failures, DOS 8.3 temp aliases, and temp-parent identity changes"
+    - "uv run --no-sync python tools/dev.py test-integration - passed; 267 tests with 2 disclosed Windows link-capability skips, including live restricted-worker PDF export with real pikepdf/libqpdf, qpdf, and PDFium"
+    - "uv run --no-sync python tools/dev.py test-security - passed; 228 tests with 5 disclosed Windows capability/privilege skips; export containment, limits, no-egress behavior, source preservation, and sanitized failures passed"
+    - "uv run --no-sync python tools/dev.py test-accessibility - passed; 2 baseline accessibility tests"
+    - "uv run --no-sync python -m pytest tests/integration/test_pdf_export_worker_windows.py tests/integration/test_pdf_export_adapter_appcontainer_windows.py tests/integration/test_worker_windows_temp_access.py -q - passed; 4 live Windows tests proved the restricted export worker accepts broker-provisioned temp paths while equivalent host aliases remain contained"
+    - "uv run --no-sync python -m pytest tests/unit/test_ci_workflow.py tests/unit/test_validate_dependencies.py -q; uv run --no-sync python -m pytest tests/integration/test_qpdf_worker_configuration_windows.py -q - passed; 31 workflow/dependency tests with 55 subtests and 2 live qpdf AppContainer tests"
+    - "uv run --no-sync python tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed; 224 files formatted/linted/typed and 12 layers across 83 source files remained valid"
+    - "uv run --no-sync python tools/dev.py validate-dependencies; validate-docs; validate-schemas; validate-task-graph - passed; locked dependency inventory, documentation references, 8 schema families, and the 80-task/238-edge DAG validated"
+    - "uv run --no-sync python tools/dev.py validate-fixtures after the approved tip rewrite - passed; 42 deterministic fixtures, 15 renderer references, 1075 historical blobs, 392 index blobs, and 416 working files"
+    - "uv run --no-sync python tools/dev.py scan-secrets after committed documentation/evidence - passed; 1075 historical blobs, 161 commit/tag objects, 1104 historical path/blob pairs, 392 index blobs, and 416 tracked files"
+    notes:
+    - The pure path-free plan preserves validated manifest order and accumulated rotations, rejects unsupported crop/overlay intent, and binds deterministic semantic fingerprints to exact immutable source facts and the closed export profile.
+    - A one-shot zero-capability worker receives only reduced source, plan, bounded output, and report handles; it copies and rehashes sources privately, assembles with pikepdf, strictly reopens, runs fixed qpdf checks, compares every page with PDFium, and returns only a correlated typed report after complete job-tree termination and source revalidation.
+    - The trusted desktop adapter authenticates a local destination, stages and readback-verifies bounded bytes, performs a same-directory no-replace rename, and verifies the exact final-name identity/digest without overwriting an original or prior export; post-commit uncertainty is preserved rather than mislabeled.
+    - Path-free canonical history receipts are prepared before destination commit, durable history identifiers are reserved before export, selected-case retries are independently bound, and history-only failures never recreate or relabel the verified derivative; durable pending-receipt recovery across application restart belongs to PWS-0113.
+    - Independent cleanup, application-boundary, documentation, and completion audits found no remaining P0-P2 issue after the encrypted-candidate regression and final wording corrections.
+    - GitHub-hosted Windows exposes TEMP/TMP through a DOS 8.3 user-profile alias while LOCALAPPDATA uses the long spelling; export temp authentication now compares validated lstat identities for differing spellings, rechecks them after creation, and preserves the query-free broker-provisioned AppContainer path.
+    - CI keeps the pinned qpdf archive in runner temporary storage but extracts the verified test installation under Program Files, preserving the live no-mutation installed-resource check while the temporary-copy test proves one bounded grant and complete restoration.
 - id: PWS-0113
   milestone: M1
   title: Implement crash recovery and sanitized diagnostic baseline
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0107
@@ -1298,10 +1322,21 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-09'
+    revision: "8a0b80c"
+    commands:
+    - "uv run --no-sync python tools/dev.py check at 8a0b80c - passed; 249 files formatted/linted/typed, 12 import layers across 94 source files, 1919 unit tests, 318 integration tests with 2 disclosed Windows link-capability skips, 240 security tests with 6 disclosed capability/privilege skips, 2 accessibility tests, all registered validators and scans, and all 5 deliberate quality violations"
+    - "uv run --locked --no-sync pytest -q tests/integration/test_startup_recovery_windows.py tests/integration/test_export_retry_storage_windows.py tests/integration/test_worker_acl_recovery_windows.py tests/integration/test_pdf_thumbnail_worker_windows.py::test_live_worker_termination_during_render_recovers_with_fresh_service tests/integration/test_pdf_export_worker_windows.py::test_live_worker_termination_never_publishes_destination 'tests/integration/test_manifest_repository_windows.py::test_stage_failure_never_replaces_last_valid_manifest[disk_full]' tests/security/test_startup_recovery_security.py tests/security/test_diagnostics_privacy.py - passed; 60 acceptance-focused tests with 1 disclosed local symlink-capability skip"
+    - "uv run --no-sync python tools/dev.py scan-secrets at 8a0b80c - passed; reachable Git history and source-path bytes, 1164 historical blobs, 168 commit/tag objects, 1193 historical path/blob pairs, 419 index blobs, and 443 tracked working-tree files contained no secret finding"
+    notes:
+    - Startup recovery loads or restores the last valid manifest before reconciling authenticated export-history retirements and exact durable export receipts, then removes only proven source orphans, inactive thumbnail stages, and bounded case temp inventory; unresolved authority preserves all recovery evidence and blocks generic cleanup.
+    - Export receipts are durably prepared before destination publication, distinguish inert commit-ambiguous state from destination-confirmed state, reserve identifiers, and replay only exact history/manifest work without recreating the PDF; interrupted history replacement restores only a unique authenticated retired prefix and never trusts a generic stage.
+    - The worker broker records bounded per-profile ACL mutation intent before every grant/revoke, validates current resource identity, hardlink count, profile-name/SID binding, and owner liveness, and repairs PREPARED, partial-grant, ACTIVE, and REVOKING cut points after real child-process termination and WAIT_ABANDONED observation.
+    - Diagnostics accept only closed typed records containing internal UUIDv4 identifiers, version components, numeric counts/resources, and stable codes; canonical JSONL, bounded logging, deterministic summaries, import boundaries, and prohibited-token tests exclude document content, paths, names, metadata, thumbnails, signatures, and raw exceptions.
+    - Live restricted-worker tests terminate an accepted thumbnail render and an active export, preserve imported sources and the byte-identical last valid manifest, run cold-composed application/storage recovery, and succeed through fresh worker/service composition without publishing an interrupted destination.
+    - Cleanup accounting preserves every confirmed deletion and released-byte count across later ordinary item or context-finalization failures, stops subsequent mutation when authority is uncertain, keeps process-control BaseException propagation, and emits only sanitized phase-specific plus generic failure codes.
+    - PWS-0113 does not claim a real PySide UI-process kill or automatic deletion of abandoned AppContainer profiles/temp trees; PWS-0111 owns desktop composition, while this task proves deterministic cold application-service restart and durable ACL repair.
+    - Independent recovery, privacy, cleanup-finalization, export-history, ACL, documentation, and completion audits found no remaining P0-P2 issue.
 - id: PWS-0114
   milestone: M1
   title: Run Milestone 1 vertical-slice gate

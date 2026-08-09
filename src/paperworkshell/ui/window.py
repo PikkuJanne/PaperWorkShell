@@ -58,10 +58,16 @@ from paperworkshell.app.organizer import (
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult
+from paperworkshell.domain.recovery import (
+    CaseRecoveryStatus,
+    StartupRecoveryResult,
+    StartupRecoveryStatus,
+)
 from paperworkshell.ui.backend import (
     OperationCancellation,
     OrganizerBackendCommands,
     OrganizerBackendWorker,
+    ShutdownRefusalKind,
     UiFailure,
     UiProgress,
 )
@@ -75,6 +81,15 @@ _PREVIEW_REQUEST_CAP: Final = MAX_ORGANIZER_PREVIEW_BATCH_PAGES
 _PREVIEW_PIXMAP_BUDGET: Final = 12
 _PREVIEW_REFRESH_DEBOUNCE_MS: Final = 75
 _MAX_OPERATION_ID: Final = 2_147_483_647
+_FOCUS_VISIBLE_TEXT_STYLE: Final = """
+QLabel {
+    border: 2px solid transparent;
+    padding: 2px;
+}
+QLabel:focus {
+    border-color: palette(highlight);
+}
+"""
 
 
 class _LongOperationKind(StrEnum):
@@ -129,6 +144,55 @@ def _bounded_preview_rows(
 
     chosen = sorted(candidates, key=priority)[:maximum_count]
     return tuple(sorted(chosen))
+
+
+def _startup_recovery_notice(
+    result: StartupRecoveryResult,
+    *,
+    additional_needs_review: int = 0,
+) -> tuple[str, bool]:
+    """Render bounded recovery counts without exposing case paths or content."""
+
+    checked = result.scanned_cases + additional_needs_review
+    recovered = result.recovered_cases
+    needs_review = (
+        sum(
+            case.status is CaseRecoveryStatus.UNAVAILABLE or bool(case.issues)
+            for case in result.cases
+        )
+        + additional_needs_review
+    )
+    removed_files = sum(
+        case.removed_source_orphans + case.removed_thumbnail_stages + case.removed_temp_files
+        for case in result.cases
+    )
+    removed_directories = sum(case.removed_temp_directories for case in result.cases)
+    checked_noun = "case" if checked == 1 else "cases"
+    review_verb = "needs" if needs_review == 1 else "need"
+    file_noun = "file" if removed_files == 1 else "files"
+    directory_noun = "directory" if removed_directories == 1 else "directories"
+    if result.status is StartupRecoveryStatus.ATTENTION_REQUIRED or additional_needs_review:
+        return (
+            "Startup recovery needs attention. "
+            f"Checked {checked} local {checked_noun}; {needs_review} {review_verb} review. "
+            "Uncertain leftover work data was preserved.",
+            True,
+        )
+    if recovered or removed_files or removed_directories:
+        return (
+            "Startup recovery complete. "
+            f"Checked {checked} local {checked_noun}; recovered {recovered}, removed "
+            f"{removed_files} leftover work {file_noun} and "
+            f"{removed_directories} {directory_noun}. "
+            "Ready. Create a case or open an existing case.",
+            False,
+        )
+    return (
+        "Startup recovery complete. "
+        f"Checked {checked} local {checked_noun}; no recovery action was needed. "
+        "Ready. Create a case or open an existing case.",
+        False,
+    )
 
 
 class PageOrderDialog(QDialog):
@@ -266,6 +330,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._closing_requested = False
         self._allow_close = False
         self._last_announced_progress: tuple[str, str, int] | None = None
+        self._pending_failure_focus: str | None = None
+        self._startup_recovery_announced = False
+        self._pending_startup_unavailable_case_ids: frozenset[UUID] = frozenset()
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
@@ -319,6 +386,7 @@ class PaperWorkShellWindow(QMainWindow):
             "Current PaperWorkShell status shown on every workflow page."
         )
         self._status_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._status_label.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         self._status_label.setWordWrap(True)
         self._error_label = QLabel()
         self._error_label.setObjectName("errorLabel")
@@ -327,6 +395,7 @@ class PaperWorkShellWindow(QMainWindow):
             "The latest safe error code and recovery message."
         )
         self._error_label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._error_label.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         self._error_label.setWordWrap(True)
         self._error_label.setVisible(False)
         self._progress = QProgressBar()
@@ -342,6 +411,13 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._cancel_button.clicked.connect(self._cancel_active_operation)
         self._cancel_button.setVisible(False)
+        self._retry_preview_button = QPushButton("Retry selected preview")
+        self._retry_preview_button.setObjectName("retryPreviewButton")
+        self._retry_preview_button.setAccessibleDescription(
+            "Retry thumbnail rendering for the selected failed page. Ctrl+Shift+R."
+        )
+        self._retry_preview_button.clicked.connect(self._retry_failed_preview)
+        self._retry_preview_button.setVisible(False)
         self._retry_save_button = QPushButton("Retry saving changes")
         self._retry_save_button.setObjectName("retrySaveButton")
         self._retry_save_button.setAccessibleDescription(
@@ -349,8 +425,17 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._retry_save_button.clicked.connect(self._request_retry_save)
         self._retry_save_button.setVisible(False)
+        self._retry_close_button = QPushButton("Retry closing PaperWorkShell")
+        self._retry_close_button.setObjectName("retryCloseButton")
+        self._retry_close_button.setAccessibleDescription(
+            "Retry secure shutdown cleanup after PaperWorkShell remains open."
+        )
+        self._retry_close_button.clicked.connect(self.request_shutdown)
+        self._retry_close_button.setVisible(False)
         status_actions.addWidget(self._cancel_button)
+        status_actions.addWidget(self._retry_preview_button)
         status_actions.addWidget(self._retry_save_button)
+        status_actions.addWidget(self._retry_close_button)
         status_actions.addStretch(1)
         status_layout.addWidget(self._status_label)
         status_layout.addWidget(self._error_label)
@@ -525,7 +610,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._undo_button,
             self._redo_button,
             self._cancel_button,
+            self._retry_preview_button,
             self._retry_save_button,
+            self._retry_close_button,
         )
         for current, following in pairwise(tab_chain):
             QWidget.setTabOrder(current, following)
@@ -551,6 +638,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+R", self._rotate_selected),
             ("Delete", self._remove_selected),
             ("Ctrl+Shift+O", self._change_full_order),
+            ("Ctrl+Shift+R", self._retry_failed_preview),
             ("Escape", self._cancel_active_operation),
         )
         self._shortcuts: list[QShortcut] = []
@@ -562,6 +650,7 @@ class PaperWorkShellWindow(QMainWindow):
 
     def _connect_backend(self) -> None:
         self._worker.initialized.connect(self._backend_initialized)
+        self._worker.startup_recovery_changed.connect(self._startup_recovery_changed)
         self._worker.cases_changed.connect(self._cases_changed)
         self._worker.state_changed.connect(self._state_changed)
         self._worker.thumbnails_ready.connect(self._thumbnails_ready)
@@ -609,7 +698,12 @@ class PaperWorkShellWindow(QMainWindow):
                 self._case_list.setCurrentItem(item)
         if self._case_list.currentRow() < 0 and self._case_list.count():
             self._case_list.setCurrentRow(0)
-        if case_index.unavailable:
+        if case_index.unavailable and not self._startup_recovery_announced:
+            self._pending_startup_unavailable_case_ids = (
+                self._pending_startup_unavailable_case_ids
+                | frozenset(issue.case_id for issue in case_index.unavailable)
+            )
+        elif case_index.unavailable:
             self._announce(
                 f"{len(case_index.unavailable)} case entries need recovery review and are unavailable.",
                 assertive=True,
@@ -634,6 +728,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._state = state
         self._model.set_organizer_state(state)
         self._update_import_availability()
+        self._update_preview_retry_action()
         if state.case_id is None:
             self._preview_refresh_timer.stop()
             self._autosave_timer.stop()
@@ -659,6 +754,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._hide_retry_save()
         self._restore_page_selection(selected_page)
         self._update_page_actions()
+        self._update_preview_retry_action()
         if not state.autosave_pending:
             self._schedule_preview_refresh()
         if preserve_focus:
@@ -677,17 +773,17 @@ class PaperWorkShellWindow(QMainWindow):
             or active.operation_id != operation_id
             or active.kind is not _LongOperationKind.PREVIEW
             or generation != self._thumbnail_generation
-            or type(results) is not tuple
         ):
+            return
+        if type(results) is not tuple:
+            self._reject_preview_result(operation_id)
             return
         expected = self._active_preview_page_ids
         received = tuple(
             result.snapshot.page_id for result in results if type(result) is PdfThumbnailResult
         )
         if len(received) != len(results) or received != expected:
-            for page_id in expected:
-                self._model.set_preview_failed(page_id)
-            self._preview_batch_complete = False
+            self._reject_preview_result(operation_id)
             return
         images_valid = True
         for result in results:
@@ -705,6 +801,9 @@ class PaperWorkShellWindow(QMainWindow):
                 images_valid = False
                 continue
             self._model.set_preview(snapshot.page_id, QPixmap.fromImage(image))
+        if not images_valid:
+            self._reject_preview_result(operation_id)
+            return
         self._preview_batch_complete = images_valid
         retained = self._current_preview_page_ids()
         self._model.touch_previews(retained)
@@ -749,14 +848,45 @@ class PaperWorkShellWindow(QMainWindow):
         self._hide_error()
         self._announce(message)
 
+    @Slot(object)
+    def _startup_recovery_changed(self, result: object) -> None:
+        if type(result) is not StartupRecoveryResult:
+            return
+        represented_attention = frozenset(
+            case.case_id
+            for case in result.cases
+            if case.status is CaseRecoveryStatus.UNAVAILABLE or bool(case.issues)
+        )
+        unmatched_unavailable = self._pending_startup_unavailable_case_ids - represented_attention
+        self._pending_startup_unavailable_case_ids = frozenset()
+        message, assertive = _startup_recovery_notice(
+            result,
+            additional_needs_review=len(unmatched_unavailable),
+        )
+        self._startup_recovery_announced = True
+        self._hide_error()
+        self._announce(message, assertive=assertive)
+
     @Slot(int, str)
     def _operation_status_changed(self, operation_id: int, message: str) -> None:
         active = self._active_operation
         if active is None or active.operation_id != operation_id or active.cancellation.cancelled():
             return
+        if active.kind is _LongOperationKind.PREVIEW and self._pending_failure_focus == "preview":
+            return
         if active.kind is _LongOperationKind.IMPORT:
             self._hide_error()
         self._announce(message)
+
+    def _reject_preview_result(self, operation_id: int) -> None:
+        self._failed(
+            UiFailure(
+                code="PWS_UI_PREVIEW_RESULT_INVALID",
+                message="PaperWorkShell could not display the preview safely. Retry the selected preview.",
+                retryable=True,
+                operation_id=operation_id,
+            )
+        )
 
     @Slot(int, str)
     def _reopen_required(self, operation_id: int, message: str) -> None:
@@ -776,6 +906,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._hide_retry_save()
         self._update_import_availability()
         self._update_page_actions()
+        self._update_preview_retry_action()
         self._announce(message, assertive=True)
         self._close_case_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._close_case_button)
@@ -811,9 +942,11 @@ class PaperWorkShellWindow(QMainWindow):
             self._model.finish_preview_loading(self._active_preview_page_ids)
         self._finish_active_operation()
         if self._closing_requested:
+            self._pending_failure_focus = None
             return
         deferred_import = self._deferred_import
         if deferred_import is not None:
+            self._pending_failure_focus = None
             self._deferred_import = None
             self._start_import(*deferred_import)
             return
@@ -823,6 +956,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._schedule_preview_refresh()
         elif finished_preview and preview_batch_complete:
             self._schedule_preview_refresh()
+        self._restore_failure_recovery_focus()
 
     @Slot(object)
     def _failed(self, failure: object) -> None:
@@ -833,7 +967,14 @@ class PaperWorkShellWindow(QMainWindow):
             active is None or active.operation_id != failure.operation_id
         ):
             return
-        if active is not None and active.kind is _LongOperationKind.PREVIEW:
+        correlated_kind = (
+            active.kind
+            if active is not None
+            and failure.operation_id is not None
+            and active.operation_id == failure.operation_id
+            else None
+        )
+        if correlated_kind is _LongOperationKind.PREVIEW:
             for page_id in self._active_preview_page_ids:
                 self._model.set_preview_failed(page_id)
             self._preview_batch_complete = False
@@ -844,10 +985,20 @@ class PaperWorkShellWindow(QMainWindow):
             self._retry_save_button.setVisible(True)
         else:
             self._hide_retry_save()
+        if correlated_kind is _LongOperationKind.PREVIEW and failure.retryable:
+            self._pending_failure_focus = "preview"
+        elif correlated_kind is _LongOperationKind.IMPORT and not self._case_reopen_required:
+            self._pending_failure_focus = "import"
+        else:
+            self._pending_failure_focus = None
+        self._update_preview_retry_action()
         self._announce(f"Action failed. {failure.message}", assertive=True)
         if self._retry_save_button.isVisible():
             self._retry_save_button.setFocus()
             self._ensure_widget_visible(self._retry_save_button)
+        elif self._pending_failure_focus is not None:
+            self._error_label.setFocus()
+            self._ensure_widget_visible(self._error_label)
         else:
             self._focus_safe_control()
 
@@ -856,10 +1007,25 @@ class PaperWorkShellWindow(QMainWindow):
         self._allow_close = True
         self.close()
 
-    @Slot()
-    def _shutdown_refused(self) -> None:
+    @Slot(object)
+    def _shutdown_refused(self, refusal: object) -> None:
+        if type(refusal) is not ShutdownRefusalKind:
+            return
         self._closing_requested = False
         self._set_controls_enabled(True)
+        if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
+            self._hide_retry_save()
+            self._retry_close_button.setVisible(True)
+            self._retry_close_button.setEnabled(True)
+            self._announce(
+                "The application remains open because secure cleanup could not finish. "
+                "Retry closing PaperWorkShell.",
+                assertive=True,
+            )
+            self._retry_close_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._retry_close_button)
+            return
+        self._hide_retry_close()
         self._announce(
             "The application remains open because queued changes could not be saved. Retry saving changes.",
             assertive=True,
@@ -1125,6 +1291,7 @@ class PaperWorkShellWindow(QMainWindow):
         _deselected: QItemSelection,
     ) -> None:
         self._update_page_actions()
+        self._update_preview_retry_action()
         self._schedule_preview_refresh()
 
     def _update_page_actions(self) -> None:
@@ -1221,6 +1388,20 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setEnabled(False)
         self._announce("Cancellation requested. Waiting for the operation to stop.", assertive=True)
 
+    def _retry_failed_preview(self) -> None:
+        if not self._retry_preview_button.isVisible() or not self._retry_preview_button.isEnabled():
+            return
+        page_id = self._selected_page_id()
+        if page_id is None or not self._model.reset_failed_preview(page_id):
+            self._update_preview_retry_action()
+            return
+        self._hide_error()
+        self._page_view.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._page_view)
+        self._update_preview_retry_action()
+        self._announce("Retrying the selected page preview.")
+        self._start_preview((page_id,))
+
     def _begin_long_operation(self, kind: _LongOperationKind) -> _LongOperation:
         if self._active_operation is not None:
             raise RuntimeError("long operation overlap")
@@ -1235,6 +1416,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setEnabled(True)
         self._update_import_availability()
         self._update_page_actions()
+        self._update_preview_retry_action()
         return operation
 
     def _cancel_active_preview(self) -> None:
@@ -1270,6 +1452,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._last_announced_progress = None
         self._update_import_availability()
         self._update_page_actions()
+        self._update_preview_retry_action()
 
     def _import_is_pending_or_running(self) -> bool:
         active = self._active_operation
@@ -1337,6 +1520,61 @@ class PaperWorkShellWindow(QMainWindow):
             self._focus_safe_control()
         self._retry_save_button.setVisible(False)
 
+    def _hide_retry_close(self) -> None:
+        if self._retry_close_button.hasFocus():
+            self._focus_safe_control()
+        self._retry_close_button.setVisible(False)
+
+    def _update_preview_retry_action(self) -> None:
+        state = self._state
+        page_id = self._selected_page_id()
+        failed = page_id is not None and self._model.preview_state(page_id) is PreviewState.FAILED
+        visible = (
+            self._controls_enabled
+            and state is not None
+            and state.case_id is not None
+            and not self._case_reopen_required
+            and failed
+        )
+        enabled = visible and self._active_operation is None and not self._closing_requested
+        if self._retry_preview_button.hasFocus() and not enabled:
+            self._focus_safe_control()
+        self._retry_preview_button.setVisible(visible)
+        self._retry_preview_button.setEnabled(enabled)
+
+    def _restore_failure_recovery_focus(self) -> None:
+        target = self._pending_failure_focus
+        self._pending_failure_focus = None
+        if self._closing_requested:
+            return
+        if (
+            self._case_reopen_required
+            and self._close_case_button.isVisible()
+            and self._close_case_button.isEnabled()
+        ):
+            self._close_case_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._close_case_button)
+            return
+        if target == "preview":
+            self._update_preview_retry_action()
+            if self._retry_preview_button.isVisible() and self._retry_preview_button.isEnabled():
+                self._retry_preview_button.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._ensure_widget_visible(self._retry_preview_button)
+                return
+        elif (
+            target == "import"
+            and self._import_button.isVisible()
+            and self._import_button.isEnabled()
+        ):
+            self._import_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._import_button)
+            return
+        if self._error_label.isVisible():
+            self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._error_label)
+        else:
+            self._focus_safe_control()
+
     def _update_import_availability(self) -> None:
         state = self._state
         self._import_button.setEnabled(
@@ -1367,6 +1605,7 @@ class PaperWorkShellWindow(QMainWindow):
             widget.setEnabled(enabled)
         self._update_import_availability()
         self._update_page_actions()
+        self._update_preview_retry_action()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Keep the window open until autosave and worker cleanup complete."""
@@ -1382,7 +1621,9 @@ class PaperWorkShellWindow(QMainWindow):
 
         if self._closing_requested:
             return
+        retrying_cleanup = self._retry_close_button.isVisible()
         self._closing_requested = True
+        self._hide_retry_close()
         self._autosave_timer.stop()
         self._deferred_import = None
         self._deferred_preview_state = None
@@ -1390,5 +1631,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._focus_safe_control()
         self._cancel_active_operation_silently()
         self._set_controls_enabled(False)
-        self._announce("Closing PaperWorkShell after saving queued changes.")
+        self._announce(
+            "Retrying secure cleanup before closing PaperWorkShell."
+            if retrying_cleanup
+            else "Closing PaperWorkShell after saving queued changes."
+        )
         self._commands.shutdown_requested.emit()

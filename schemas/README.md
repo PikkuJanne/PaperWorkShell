@@ -33,6 +33,18 @@ The schema is self-contained Draft 2020-12. Repository validation combines struc
 with deterministic semantic checks for IDs, references, page bounds, operation replay, normalized
 boxes, storage names, confirmations, and export-history references.
 
+## Export history v1
+
+- Contract: [`export-history-v1.schema.json`](export-history-v1.schema.json)
+- Record semantics and persistence boundary:
+  [`docs/schemas/export-history-v1.md`](../docs/schemas/export-history-v1.md)
+
+The closed record stores only an internal export ID, trusted UTC record time, exact source-manifest
+revision and digest, semantic fingerprint, verified output digest/size/page count, performed check
+codes, and the unsigned-derivative fact. It has no destination path or filename field. The digest
+in each case-manifest `export_history` entry is the SHA-256 of that individual canonical record,
+not the digest of the complete append-only history file.
+
 ## Declarative template v1
 
 - Contract: [`template-v1.schema.json`](template-v1.schema.json)

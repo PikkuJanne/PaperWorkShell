@@ -16,7 +16,7 @@ jobs:
   windows-quality:
     name: Windows quality suite
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,7 +63,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $archive = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2-msvc64.zip"
-          $destination = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2"
+          $destination = Join-Path $env:ProgramFiles "PaperWorkShell-ci-qpdf-12.3.2"
           $uri = "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip"
           $expected = "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202"
           Invoke-WebRequest -Uri $uri -OutFile $archive

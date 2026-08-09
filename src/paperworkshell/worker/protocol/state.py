@@ -11,6 +11,7 @@ from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
     NOOP_CAPABILITY,
+    PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     CancelDisposition,
@@ -31,7 +32,10 @@ from paperworkshell.worker.protocol.models import (
     SessionHelloPayload,
     SessionReadyPayload,
     WorkerFaultPayload,
+    pdf_export_bound_object_ids,
     pdf_thumbnail_bound_object_ids,
+    validate_pdf_export_result,
+    validate_pdf_export_start,
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_result,
     validate_pdf_thumbnail_start,
@@ -60,6 +64,7 @@ class _ActiveOperation:
     operation_version: int
     requested_limits: ResourceLimits
     thumbnail_cache_object_id: UUID | None = None
+    export_output_object_id: UUID | None = None
     accepted: bool = False
     pending_cancel_request_ids: frozenset[UUID] = field(default_factory=frozenset)
     progress_seen: bool = False
@@ -316,16 +321,33 @@ class ConversationState:
         if descriptor == PDF_INSPECT_CAPABILITY:
             validate_pdf_inspect_start(payload)
         thumbnail_cache_object_id: UUID | None = None
+        export_output_object_id: UUID | None = None
         if descriptor == PDF_THUMBNAIL_CAPABILITY:
             validate_pdf_thumbnail_start(payload)
-            bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
-            if message.operation_id in bound_object_ids:
+            thumbnail_bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
+            if message.operation_id in thumbnail_bound_object_ids:
                 reject(
                     "RPC_INVALID_OPERATION",
                     "operation_id",
                     "pdf.thumbnail operation and object identifiers must be distinct",
                 )
-            thumbnail_cache_object_id = bound_object_ids[2]
+            thumbnail_cache_object_id = thumbnail_bound_object_ids[2]
+        if descriptor == PDF_EXPORT_CAPABILITY:
+            validate_pdf_export_start(payload)
+            export_bound_object_ids = pdf_export_bound_object_ids(payload)
+            if payload.inputs[0].operation_id != message.operation_id:
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "payload.inputs",
+                    "pdf.export plan scope must match its operation",
+                )
+            if message.operation_id in export_bound_object_ids:
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "pdf.export operation and object identifiers must be distinct",
+                )
+            export_output_object_id = export_bound_object_ids[-1]
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",
@@ -342,6 +364,7 @@ class ConversationState:
                 operation_version=payload.operation_version,
                 requested_limits=payload.requested_limits,
                 thumbnail_cache_object_id=thumbnail_cache_object_id,
+                export_output_object_id=export_output_object_id,
             ),
         )
 
@@ -560,6 +583,19 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 cache_object_id=active.thumbnail_cache_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if active.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:
+            if active.export_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "pdf.export result binding is unavailable",
+                )
+            validate_pdf_export_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.export_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         terminal = _TerminalOperation(

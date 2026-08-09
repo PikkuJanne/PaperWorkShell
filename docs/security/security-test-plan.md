@@ -41,7 +41,7 @@
 | ST-007 | TM-008 | PWS-0008, PWS-0107 | Unit/property/integration: wrong fixed bootstrap size/magic/version/identity/capability; zero/oversized/truncated/fragmented/coalesced frames; wrong session/worker/capability/case/operation/generation/direction/sequence/request; malformed, replayed, unknown, or out-of-order envelope | Bootstrap/frame/decoder/state rejects before work; grant from another launch fails; first protocol fault poisons generation and terminates when required; stale restart events do not mutate state; no raw values leak |
 | ST-008 | TM-009 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0108, PWS-0204 | Security: metacharacter/quote/newline input; qpdf argv separator; decoy executable/DLL/plugin/config/font/language resource in user PATH/PATHEXT/TEMP/cwd; proxy/cloud/command/Python environment canaries; inherited-handle inventory; child-spawn and excessive output | Fixed executable/resource identity, fixed argv/cwd, no shell or PATH discovery; only constructed allowlist with per-launch profile temp values; exactly RPC/bootstrap launch handles plus registered reduced operation handles; descendants inherit egress/limit/kill policy; stable sanitized result |
 | ST-009 | TM-010 | PWS-0007, PWS-0401 | Security/unit: script/import/expression/path-bearing executable field, duplicate keys, tamper, expiry, future version; schema-permitted inert provenance URL under network/file spy | No execution or dereference/file/network access; inert provenance stays data; trust state is visible; case unchanged; invalid template code and plain remediation |
-| ST-010 | TM-011, TM-018, TM-026 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Security: distinct context-specific canaries plus diagnostic entry mutation/addition/removal after preview and before write | No prohibited canary; produced entries/digests exactly match frozen approved snapshot; mutation fails closed; cancel writes nothing |
+| ST-010 | TM-011, TM-018, TM-026 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Security: distinct prohibited values at each typed diagnostic seam; PWS-0805 adds entry mutation/addition/removal after preview and before write | Baseline contains no prohibited value; later produced entries/digests exactly match the frozen approved snapshot, mutation fails closed, and cancel writes nothing |
 | ST-011 | TM-012, TM-013, TM-023 | PWS-0101, PWS-0104, PWS-0105, PWS-0108, PWS-0113, PWS-0705 | Integration/security: cancel/crash/power-loss, pre-manifest source orphan, stale/raced/aliased prepared source or cache, result/output-authority survival, fixed-section oversized map and logical overflow, unrelated case, lock/expiry/restart | Partial data stays operation/case scoped and non-authoritative; one-shot worker terminates before source/result authority release; an unconfirmed thumbnail worker retains at most page-rounded bounded volatile output and no persistent writer; indeterminate persistent publication quarantines and blocks reuse; wrong-case/raced state is rejected; unrelated case is not visible |
 | ST-012 | TM-014, TM-015 | PWS-0112, PWS-0406, PWS-0407 | Integration/security: truncated/wrong-page/encrypted/unrenderable output, collision/alias/UNC policy, ZIP names, destination-local temp digest mismatch, disk-full/permission/partial multi-file | Required verification failure blocks artifact/package success; each commit is atomic; partial set is inventoried for cleanup/retry; previous good output remains |
 | ST-013 | TM-016 | PWS-0105, PWS-0206, PWS-0208, PWS-0305 | Integration/accessibility: signed-marker source through modify/cancel/export and signature-image wording | Warning/confirmation precedes change; original preserved; output says unsigned derivative; visual mark makes no crypto claim |
@@ -68,8 +68,8 @@ mid-delete failures. A direct post-inventory leaf-identity swap proves that whol
 stops after manifest invalidation without touching the replacement's outside target; the inventory
 also reuses PWS-0101's live reparse and file-identity boundary. Together these prove scope and
 honest partial reporting. Error/result checks prohibit paths, canaries, raw exceptions, and any
-forensic-erasure claim. PWS-0706 retains the later human inventory/retention workflow, and PWS-0113
-retains restart orphan cleanup and diagnostics.
+forensic-erasure claim. PWS-0706 retains the later human inventory/retention workflow; PWS-0113
+adds the separate startup-recovery and sanitized-diagnostics evidence described below.
 
 ## PWS-0104/PWS-0109 immutable-ingest and manifest evidence
 
@@ -112,8 +112,9 @@ results/errors for the exercised success and raw post-publication failure paths,
 hard-link mismatch, absence of shell/network imports in the ingest layers, and an exercised
 post-publication cleanup path that leaves explicit sibling/outside sentinels and the external source
 unchanged. Current tests do not claim end-to-end parent/original/temp/manifest reparse races,
-physical-volume exhaustion, power-loss durability, or bounded restart orphan cleanup. Those remain
-with the broader ST-004/ST-005/ST-011 owners, including PWS-0103 and PWS-0113. Required Windows
+physical-volume exhaustion, power-loss durability, or bounded restart orphan cleanup from ingest
+behavior alone. Those claims remain with the broader ST-004/ST-005/ST-011 owners, including the
+dedicated PWS-0103 and PWS-0113 suites. Required Windows
 filesystem controls are evidence only when the real supported volume exercises them; a mocked or
 skipped required race is not a pass.
 
@@ -195,6 +196,83 @@ A socket monkeypatch, proxy setting, firewall-rule inference, launcher Boolean, 
 production RPC operation, path-only mock, or skipped required platform probe is not equivalent
 evidence.
 
+## PWS-0113 startup-recovery and diagnostic evidence
+
+PWS-0113 implements its M1 portions of ST-004, ST-005, ST-010, ST-011, and ST-020 through separate
+case-recovery, export-receipt, and diagnostics boundaries.
+
+Pure recovery tests require deterministic internal-UUID ordering; valid `current`, `recovered`, and
+`unavailable` combinations; bounded numeric cleanup/receipt counts; closed attention codes; and
+sanitized error behavior under raw adapter failure. Application tests prove startup emits only
+typed aggregate counts/resources and that an ordinary diagnostic sink failure cannot replace the
+recovery result; process-control exceptions remain process control.
+
+Windows startup integration first exercises PWS-0109 manifest recovery, independently validates or
+restores stable export history from one authenticated retirement, then settles durable PDF export
+receipts, and only afterward performs source-orphan, thumbnail-stage, and generic temp cleanup.
+It proves a valid checkpoint is authoritative before deletion, a corrupt case is reported without
+artifact mutation, an exact UUID-named unreferenced source can be removed, a concurrent manifest
+advance forces a reload before cleanup, and repeated stale-authority checks retain the candidate
+with an attention result. Injected ordinary cleanup and export-recovery failures receive their own
+closed attention codes rather than fabricated case-change or invalid-receipt facts. The
+security suite uses sibling/outside sentinels and hard-linked orphan candidates to prove cleanup
+cannot escape the selected authenticated case root.
+
+Receipt tests cover strict canonical version/phase binding; future, noncanonical, misbound, and
+forged payload rejection; conflicting phase rejection; invalid owned-entry isolation; ID
+reservation; and private exact-marker disposal. A
+fresh startup may replay `COMMITTED` through history append/manifest link only and clears it after
+exact success; no worker or destination port is present. A `PREPARED` receipt without exact
+downstream case proof remains inert and commit-ambiguous, while the same receipt with an exact
+history record or manifest reference may settle idempotently. Invalid entries never replay, their
+parseable IDs remain reserved, and their presence blocks a new export; an independently valid
+committed sibling may still settle. History or cleanup failure remains pending for the next
+startup. Missing or mismatched history with manifest references, multiple/malformed retirements,
+and linked retirement owners all require attention and preserve every temp artifact. An absent
+stable name may restore only one canonical, authenticated retirement; a generic `.tmp` file is
+never treated as transaction authority. A stable history permits generic cleanup of one retirement
+only when it is a strict record prefix. Generic temp cleanup does not run before history validation
+or receipt classification, and a retry inventory/service failure also preserves temp evidence.
+
+Diagnostic unit and security tests enumerate every closed event/field combination, reject invalid
+types, duplicates, event-inconsistent optional fields, unsafe integer/capacity values, and mutated
+objects, and compare the exact canonical JSON key set. Logger tests cover bounded displacement,
+copy-before-retain, concurrent emitters, short/failed sinks, and exception sanitization. Summary
+tests bind deterministic labels/order, typed-record aggregation, atomic logger snapshots, and the
+exact version, operation-ID, count, generic-code, and numeric-resource inventory. Distinct prohibited objects are presented at every public typed
+seam; failures, `repr`, canonical lines, and rendered summaries may neither stringify nor retain
+their values. Static checks reject diagnostics dependencies on paths, networking, processes,
+storage, workers, document adapters, or generic logging.
+
+This is the sanitized data baseline, not the PWS-0805 support-bundle gate. PWS-0805 still owns
+freezing an exact bundle snapshot/digests, accessible preview and opt-in confirmation, safe local
+bundle writing, and cancel/permission/partial-write/prohibited-token verification on the produced
+bundle.
+
+PWS-0113's persistent worker runtime/code ACL repair is separate from the case scan and does not
+replay a worker operation. Codec/journal tests must prove canonical bounded phase records, atomic
+update, exact-stage cleanup, corruption retention, path-private representations, strict legacy-v1
+decoding, and new v2 fields for the current-user peer SID plus each object's Windows volume
+serial/file ID, inheritance state, and nullable per-file guard baseline.
+
+A Windows helper process publishes v2 `PREPARED`, partial-grant, `ACTIVE`, and `REVOKING` cutpoints
+while retaining a test-isolated protected mutex and is then forcibly killed. Recovery in the
+separate parent process must observe `WAIT_ABANDONED`, authenticate the dead owner and
+profile/AppContainer/peer-SID binding, reopen every exact object by the recorded identity, revoke
+and verify the AppContainer SID per object, and restore the guard and inheritance baselines before
+deleting the ledger and permitting a replacement grant. Overlap tests must prove two authenticated
+live v2 leases share one guard, interrupted cleanup retains it while another `ACTIVE` ledger covers
+the object, and final cleanup removes exactly one PaperWorkShell guard without removing any matching
+ACE represented by the recorded baseline. Legacy v1 recovery must retain its original bounded
+inherited-root behavior rather than being reinterpreted as an exact-object grant.
+
+Separate tests must prove that an insecure directory, hardlinked resource, corrupt or unknown
+record, peer-SID/allowlist mismatch, conflicting guard baseline, or object-identity mismatch blocks
+new ACL work without mutating unproven state. The complete live worker/descendant containment suite
+remains required on the production pre-launch path. This does not claim general ACL repair,
+recovery from an unrecorded mutation, or automatic cold deletion of the abandoned AppContainer
+profile/local temporary tree.
+
 ## Milestone evidence progression
 
 ### M0 foundation
@@ -212,7 +290,8 @@ evidence.
   full validated manifest+journal transaction, operation-aware import append, cancellation and
   interruption settlement, recovery, orphan, duplicate, autosave, and later-integrity evidence.
 - Force worker crash, timeout, cancellation, malformed message, disk-full, permission failure,
-  destination failure, and recovery.
+  destination failure, and recovery. Retain PWS-0113 receipt-phase, invalid-case-isolation,
+  exact-scope cleanup, and prohibited-diagnostic-token evidence.
 - For PWS-0107 specifically, retain the live AppContainer/egress/job/environment/handle/filesystem
   evidence above; combine it with PWS-0105's real one-shot prepared-source/result-handle path rather
   than treating the no-op lifecycle by itself as case-access evidence.

@@ -18,6 +18,8 @@ Prerequisites:
 - Standard CPython 3.14 (not the experimental free-threaded build)
 - `uv` 0.11.32
 - Gitleaks 8.30.1
+- qpdf 12.3.2 for live verified-export tests, selected through the fixed
+  `PWS_QPDF_EXECUTABLE` path
 
 Install the pinned `uv` release with WinGet when it is not already available:
 
@@ -47,12 +49,28 @@ uv sync --locked --group renderer-evaluation
 ```
 
 The restricted worker rejects runtime files that are hardlinked outside the approved runtime
-roots. This repository therefore sets uv's install mode to `copy`. If an existing environment was
-created before that policy and the renderer-evaluation group is needed, rebuild the locked files
-with:
+roots. This repository therefore sets uv's install mode to `copy`. Run environment commands from a
+standard, non-administrator PowerShell so the desktop broker retains current-user ACL authority.
+Rebuild an existing default environment created before the copy-only policy with:
+
+```powershell
+uv sync --locked --link-mode copy --reinstall
+```
+
+If the non-default renderer-evaluation group is also needed, rebuild that locked closure with:
 
 ```powershell
 uv sync --locked --group renderer-evaluation --link-mode copy --reinstall
+```
+
+If the worker still reports `config.resource_identity` because an older/elevated environment kept
+Administrator-owned runtime files, recreate only the derived environment while no Python or test
+process is using it:
+
+```powershell
+Remove-Item -LiteralPath .venv -Recurse -Force
+if (Test-Path -LiteralPath .venv) { throw ".venv is still in use" }
+uv sync --locked --group renderer-evaluation --link-mode copy
 ```
 
 Ordinary bootstrap already installs the selected Essentials/shiboken UI runtime. This non-default
@@ -186,6 +204,21 @@ RPC/handle correlation, atomic publication, cancellation/quarantine, cleanup, pr
 privacy contracts are documented in
 [`docs/architecture/pdf-thumbnails.md`](docs/architecture/pdf-thumbnails.md).
 
+The deterministic PDF-export service turns validated manifest page order and rotation intent into
+a new derivative inside the restricted worker, strictly reopens it, runs pikepdf/qpdf structure
+checks, compares every planned page with a PDFium render, then publishes only the verified bytes
+through an authenticated no-replace destination commit. Its exact claims, handle boundary,
+resource limits, post-commit history state, and failure semantics are documented in
+[`docs/architecture/pdf-export.md`](docs/architecture/pdf-export.md).
+
+Desktop startup now runs bounded case recovery before worker composition, promotes only
+authenticated manifest checkpoints, reconciles exact export-history/retry evidence, cleans only
+proven disposable artifacts, and surfaces a path-free recovery result. The typed diagnostics
+baseline accepts only closed codes, internal IDs, versions, counts, and numeric resource values.
+The exact ordering, interruption behavior, privacy schema, and intentionally deferred diagnostic
+bundle are documented in
+[`docs/architecture/startup-recovery-and-diagnostics.md`](docs/architecture/startup-recovery-and-diagnostics.md).
+
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in
 [`docs/schemas/case-manifest-v1.md`](docs/schemas/case-manifest-v1.md). The authoritative manifest
@@ -206,10 +239,11 @@ reject unknown versions, unregistered operations, path-bearing messages, and raw
 The PWS-0107 Windows worker boundary launches a fresh zero-capability AppContainer inside a retained
 Job Object, inherits only two RPC handles plus a fixed 92-byte bootstrap handle, constructs a
 minimal per-launch environment, and supports bounded negotiation, progress, cancellation, timeout,
-shutdown, forced tree termination, and fresh restart. Registered document operations receive only
-their exact reduced-right source/result-pipe or source/bounded-output-section handles after ready;
-thumbnail workers receive no persistent cache-file handle, and no worker receives a case or
-directory path. The implementation contract and live
+shutdown, forced tree termination, and fresh restart. Document operations receive only the exact
+reduced-right handles they need after ready: prepared sources plus, as applicable, a read-only plan
+section, bounded writable output section, and write-only result pipe. Thumbnail and export workers
+receive no persistent cache/destination writer, and no worker receives a case or directory path.
+The implementation contract and live
 egress/job/environment/filesystem evidence requirements are documented in
 [`docs/architecture/worker-lifecycle.md`](docs/architecture/worker-lifecycle.md), with the operating
 system decision in

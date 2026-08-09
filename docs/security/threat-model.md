@@ -146,9 +146,13 @@ per-launch capability. It is not an argument, environment value, endpoint name, 
 
 The launch environment is constructed from a closed allowlist. `LOCALAPPDATA`, `TEMP`, and `TMP`
 point inside the per-launch AppContainer profile rather than inheriting user locations. That
-ephemeral sandbox storage is writable so Python can start; it is not case authority. Only approved
-runtime/code roots receive temporary read/execute access. The exact job tree exits before those
-grants and profile are removed. See the
+ephemeral sandbox storage is writable so Python can start; it is not case authority. The launcher
+authenticates a bounded runtime/code/fixed-tool inventory and grants the profile SID direct,
+non-inheritable read/execute access only on those exact objects. Each file has one current-user
+hardlink guard shared by authenticated overlapping v2 leases. A protected versioned journal
+supports legacy-v1 inherited-root cleanup and v2 exact-object/SID/guard-baseline recovery after a
+crash. The exact job tree exits before a live lease's grants, final shared guard, and profile are
+removed. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [Windows isolation ADR](../adr/0004-windows-worker-isolation.md).
 

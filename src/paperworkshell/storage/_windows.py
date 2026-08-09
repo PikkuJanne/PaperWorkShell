@@ -24,6 +24,7 @@ _GENERIC_READ: Final = 0x8000_0000
 _GENERIC_WRITE: Final = 0x4000_0000
 _SYNCHRONIZE: Final = 0x0010_0000
 _FILE_READ_ATTRIBUTES: Final = 0x0000_0080
+_FILE_TRAVERSE: Final = 0x0000_0020
 _FILE_SHARE_READ: Final = 0x0000_0001
 _FILE_SHARE_WRITE: Final = 0x0000_0002
 _FILE_SHARE_DELETE: Final = 0x0000_0004
@@ -40,6 +41,7 @@ _FILE_ATTRIBUTE_SPARSE_FILE: Final = 0x0000_0200
 _FILE_STANDARD_INFO_CLASS: Final = 1
 _FILE_RENAME_INFO_CLASS: Final = 3
 _FILE_RENAME_INFO_EX_CLASS: Final = 22
+_NATIVE_FILE_RENAME_INFORMATION_CLASS: Final = 10
 _FILE_ATTRIBUTE_TAG_INFO_CLASS: Final = 9
 _FILE_ID_INFO_CLASS: Final = 18
 _FILE_DISPOSITION_INFO_CLASS: Final = 4
@@ -618,10 +620,14 @@ def open_handle(
     delete: bool = False,
     read: bool = False,
     share_delete: bool = False,
+    share_write: bool = False,
+    traverse: bool = False,
 ) -> WindowsHandle:
-    """Open without following the final reparse point; deletion sharing is explicit."""
+    """Open without following the final reparse point; write/delete sharing is explicit."""
 
-    if any(type(value) is not bool for value in (delete, read, share_delete)):
+    if any(
+        type(value) is not bool for value in (delete, read, share_delete, share_write, traverse)
+    ):
         reject(
             WorkspaceErrorCode.PATH_INVALID,
             "filesystem.open_mode",
@@ -645,9 +651,13 @@ def open_handle(
         access |= _DELETE
     if read:
         access |= _GENERIC_READ
+    if traverse:
+        access |= _FILE_TRAVERSE
     share_mode = _FILE_SHARE_READ if read else _FILE_SHARE_READ | _FILE_SHARE_WRITE
     if share_delete:
         share_mode |= _FILE_SHARE_DELETE
+    if share_write:
+        share_mode |= _FILE_SHARE_WRITE
     raw_handle = create_file(
         str(path),
         access,
@@ -2202,6 +2212,122 @@ def _rename_open_file(
         )
     )
     return renamed, 0 if renamed else int(ctypes.get_last_error())
+
+
+def rename_open_file_no_replace_at(
+    source_handle: WindowsHandle,
+    destination_parent: WindowsHandle,
+    *,
+    destination_name: str,
+) -> tuple[bool, int]:
+    """Rename one exact handle beneath one already-authenticated directory handle.
+
+    The destination is intentionally a single relative component.  Supplying the
+    retained parent handle as ``FILE_RENAME_INFORMATION.RootDirectory`` avoids a second
+    absolute-path traversal at the publication boundary, while
+    ``ReplaceIfExists=FALSE`` preserves every pre-existing destination object.
+    """
+
+    if (
+        type(source_handle) is not WindowsHandle
+        or type(destination_parent) is not WindowsHandle
+        or source_handle.value == 0
+        or destination_parent.value == 0
+        or type(destination_name) is not str
+        or not destination_name
+        or destination_name in {".", ".."}
+        or any(character in destination_name for character in ("\x00", ":", "/", "\\"))
+    ):
+        reject(
+            WorkspaceErrorCode.PATH_INVALID,
+            "filesystem.rename_relative",
+            "The authenticated destination name is invalid.",
+        )
+    try:
+        destination_utf16 = destination_name.encode("utf-16-le")
+    except UnicodeEncodeError:
+        reject(
+            WorkspaceErrorCode.PATH_INVALID,
+            "filesystem.rename_relative",
+            "The authenticated destination name is invalid.",
+        )
+    destination_code_units = len(destination_utf16) // 2
+    if destination_code_units == 0 or destination_code_units > 255:
+        reject(
+            WorkspaceErrorCode.PATH_INVALID,
+            "filesystem.rename_relative",
+            "The authenticated destination name is invalid.",
+        )
+
+    source = source_handle.refresh_info()
+    parent_before = destination_parent.info
+    parent = destination_parent.refresh_info()
+    if (
+        source.is_directory
+        or source.is_reparse_point
+        or parent.identity != parent_before.identity
+        or not parent.is_directory
+        or parent.is_reparse_point
+    ):
+        reject(
+            WorkspaceErrorCode.IDENTITY_CHANGED,
+            "filesystem.rename_relative",
+            "The authenticated publication objects changed before commit.",
+        )
+
+    class _FileRenameInfo(ctypes.Structure):
+        _fields_ = [
+            ("replace_if_exists", wintypes.BOOLEAN),
+            ("root_directory", wintypes.HANDLE),
+            ("file_name_length", wintypes.DWORD),
+            ("file_name", wintypes.WCHAR * (destination_code_units + 1)),
+        ]
+
+    rename = _FileRenameInfo(
+        wintypes.BOOLEAN(0),
+        wintypes.HANDLE(destination_parent.value),
+        wintypes.DWORD(len(destination_utf16)),
+        destination_name,
+    )
+
+    class _IoStatusValue(ctypes.Union):
+        _fields_ = [
+            ("status", ctypes.c_long),
+            ("pointer", ctypes.c_void_p),
+        ]
+
+    class _IoStatusBlock(ctypes.Structure):
+        _fields_ = [
+            ("value", _IoStatusValue),
+            ("information", ctypes.c_size_t),
+        ]
+
+    ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+    set_information = ntdll.NtSetInformationFile
+    set_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_IoStatusBlock),
+        ctypes.c_void_p,
+        wintypes.ULONG,
+        ctypes.c_int,
+    )
+    set_information.restype = ctypes.c_long
+    status_block = _IoStatusBlock()
+    status = int(
+        set_information(
+            wintypes.HANDLE(source_handle.value),
+            ctypes.byref(status_block),
+            ctypes.byref(rename),
+            ctypes.sizeof(rename),
+            _NATIVE_FILE_RENAME_INFORMATION_CLASS,
+        )
+    )
+    if status >= 0:
+        return True, 0
+    to_dos_error = ntdll.RtlNtStatusToDosError
+    to_dos_error.argtypes = (ctypes.c_long,)
+    to_dos_error.restype = wintypes.ULONG
+    return False, int(to_dos_error(ctypes.c_long(status)))
 
 
 def _query_opened_info(handle: int) -> OpenedFileInfo:

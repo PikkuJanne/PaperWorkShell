@@ -133,3 +133,6 @@ def test_lru_eviction_and_terminal_loading_states_remain_truthful() -> None:
     model.set_preview_failed(pages[3].page_id)
     model.finish_preview_loading((pages[3].page_id,))
     assert model.preview_state(pages[3].page_id) is PreviewState.FAILED
+    assert model.reset_failed_preview(pages[3].page_id)
+    assert model.preview_state(pages[3].page_id) is PreviewState.NOT_LOADED
+    assert not model.reset_failed_preview(pages[3].page_id)

@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.52",
+  "bundle_version": "0.1.53",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 164188,
-      "sha256": "d2e28c39f5be11dc9f24032e9685541a1809db6fce356c744213013c28963b69"
+      "bytes": 173089,
+      "sha256": "a57bcfaae4be2ba23962b475af186e108c50406fe61e03c368fae0b8a94c6f28"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 21825,
-      "sha256": "51ddea407d0039f46fea7d7d717f13a9bc77a124721e4597903d88d0fe12aec6"
+      "bytes": 23814,
+      "sha256": "ff19c8f4c94bbbf5a086c0c1f22fb8d03c027a09ec8f2f843c472abc41890ef6"
     }
   ],
   "validation": {
@@ -55,13 +55,11 @@
     "dependency_edge_count": 238,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0112"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for the PWS-0111 automated implementation checkpoint; PWS-0111 is blocked on required human keyboard/NVDA evidence and PWS-0112 remains dependency-ready.",
+    "Regenerated for the converged PWS-0111/PWS-0112/PWS-0113 merge checkpoint; PWS-0111 remains blocked on current-user production-environment verification plus required live human keyboard and NVDA evidence, and PWS-0114 remains dependency-blocked.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

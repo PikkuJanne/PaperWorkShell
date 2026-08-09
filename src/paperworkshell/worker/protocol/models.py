@@ -244,6 +244,7 @@ class CapabilityDescriptor:
 NOOP_CAPABILITY: Final = CapabilityDescriptor("protocol.noop", 1)
 PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
+PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 
 PDF_INSPECT_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 PDF_INSPECT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
@@ -258,6 +259,16 @@ PDF_THUMBNAIL_MAXIMUM_HEIGHT_PARAMETER: Final = "maximum_height_pixels"
 PDF_THUMBNAIL_PAGE_BOX_PARAMETER: Final = "page_box"
 PDF_THUMBNAIL_ADDITIONAL_ROTATION_PARAMETER: Final = "additional_rotation"
 PDF_THUMBNAIL_CONTENT_KIND: Final = "pdf-thumbnail-rgba"
+
+PDF_EXPORT_PLAN_HANDLE_PARAMETER: Final = "plan_handle"
+PDF_EXPORT_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
+PDF_EXPORT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
+PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
+PDF_EXPORT_PLAN_CONTENT_KIND: Final = "pdf-export-plan-v1"
+PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "pdf-export-pdf"
+MAX_PDF_EXPORT_PLAN_BYTES: Final = 2 * 1024 * 1024
+MAX_PDF_EXPORT_PAGES: Final = 4_096
+MAX_PDF_EXPORT_SOURCES: Final = MAX_JSON_COLLECTION_ITEMS - 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -801,6 +812,193 @@ def validate_pdf_thumbnail_result(
         )
 
 
+def validate_pdf_export_start(payload: OperationStartPayload) -> None:
+    """Validate the exact, path-free ``pdf.export`` version-1 input contract."""
+
+    if not 2 <= len(payload.inputs) <= MAX_PDF_EXPORT_SOURCES + 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.export version 1 requires one plan and at least one PDF source",
+        )
+    plan = payload.inputs[0]
+    sources = payload.inputs[1:]
+    if (
+        plan.area is not ReferenceArea.OPERATION_TEMP
+        or plan.operation_id is None
+        or plan.content_kind != PDF_EXPORT_PLAN_CONTENT_KIND
+        or plan.expected_byte_size is None
+        or not 1 <= plan.expected_byte_size <= MAX_PDF_EXPORT_PLAN_BYTES
+        or plan.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.export version 1 requires one bounded operation-scoped plan",
+        )
+    if any(
+        source.area is not ReferenceArea.SOURCE_READ
+        or source.operation_id is not None
+        or source.content_kind != "pdf"
+        or source.expected_byte_size is None
+        or source.expected_byte_size < 1
+        or source.expected_sha256 is None
+        for source in sources
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.export version 1 requires authenticated PDF source references",
+        )
+    input_object_ids = tuple(reference.object_id for reference in payload.inputs)
+    if len(set(input_object_ids)) != len(input_object_ids):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "pdf.export input object identifiers must be distinct",
+        )
+
+    expected_names = {
+        PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+        PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+        PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.export version 1 requires its exact closed parameter set",
+        )
+    handles = tuple(
+        parameters[name]
+        for name in (
+            PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+            PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+            PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        )
+    )
+    if any(
+        parameter.value_type is not ScalarValueType.INTEGER
+        or type(parameter.value) is not int
+        or parameter.value <= 0
+        for parameter in handles
+    ) or len({parameter.value for parameter in handles}) != len(handles):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.export brokered handles must be distinct positive integers",
+        )
+    output_object = parameters[PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER]
+    if (
+        output_object.value_type is not ScalarValueType.UUID
+        or type(output_object.value) is not UUID
+        or output_object.value in set(input_object_ids)
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.export output identity must be a distinct UUID",
+        )
+
+    limits = payload.requested_limits
+    if limits.page_count > MAX_PDF_EXPORT_PAGES:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "pdf.export page limit exceeds the supported profile",
+        )
+    source_bytes = 0
+    for source in sources:
+        size = source.expected_byte_size
+        if size is None or source_bytes > MAX_SAFE_INTEGER - size:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.requested_limits",
+                "pdf.export source size total is invalid",
+            )
+        source_bytes += size
+    if (
+        source_bytes > limits.temporary_storage_bytes
+        or limits.output_bytes > limits.temporary_storage_bytes - source_bytes
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "pdf.export temporary storage cannot hold its sources and output",
+        )
+
+
+def pdf_export_bound_object_ids(payload: OperationStartPayload) -> tuple[UUID, ...]:
+    """Return plan, source, and output IDs from an already validated export start."""
+
+    validate_pdf_export_start(payload)
+    output_object_id: UUID | None = None
+    for parameter in payload.parameters:
+        if parameter.name == PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER:
+            if parameter.value_type is ScalarValueType.UUID and type(parameter.value) is UUID:
+                output_object_id = parameter.value
+            break
+    if output_object_id is None:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "pdf.export output object identifier is unavailable",
+        )
+    return (*tuple(reference.object_id for reference in payload.inputs), output_object_id)
+
+
+def pdf_export_output_object_id(payload: OperationStartPayload) -> UUID:
+    """Return the staging output UUID from an already validated export start."""
+
+    return pdf_export_bound_object_ids(payload)[-1]
+
+
+def validate_pdf_export_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    output_object_id: UUID,
+    maximum_output_bytes: int,
+) -> None:
+    """Bind a successful export result to its exact bounded staging output."""
+
+    _require_uuid4(operation_id, "operation_id")
+    _require_uuid4(output_object_id, "payload.outputs.object_id")
+    _require_int(maximum_output_bytes, "payload.requested_limits.output_bytes", minimum=1)
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful pdf.export results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 1:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful pdf.export results require exactly one staging output",
+        )
+    output = payload.outputs[0]
+    if (
+        output_object_id == operation_id
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != output_object_id
+        or output.operation_id != operation_id
+        or output.content_kind != PDF_EXPORT_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "pdf.export output is not bound to its requested staging object and limit",
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class OperationAcceptedPayload:
     operation_kind: str
@@ -1122,12 +1320,19 @@ class ProtocolEnvelope:
     def _validate_reference_scope(self, operation_id: UUID) -> None:
         if type(self.payload) is OperationStartPayload:
             for reference in self.payload.inputs:
-                if reference.area not in {ReferenceArea.SOURCE_READ, ReferenceArea.ASSET_READ}:
-                    reject(
-                        "RPC_REFERENCE_SCOPE",
-                        "payload.inputs",
-                        "operation inputs must be read-only source or asset references",
-                    )
+                if reference.area in {ReferenceArea.SOURCE_READ, ReferenceArea.ASSET_READ}:
+                    continue
+                if (
+                    self.payload.operation_kind == PDF_EXPORT_CAPABILITY.capability_id
+                    and reference.area is ReferenceArea.OPERATION_TEMP
+                    and reference.operation_id == operation_id
+                ):
+                    continue
+                reject(
+                    "RPC_REFERENCE_SCOPE",
+                    "payload.inputs",
+                    "operation inputs are outside their registered reference scope",
+                )
         elif type(self.payload) is OperationResultPayload:
             for reference in self.payload.outputs:
                 if (

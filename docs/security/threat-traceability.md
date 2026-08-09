@@ -25,18 +25,18 @@ A milestone gate reviews accumulated evidence; the gate itself is never a mitiga
 | TM-008 | PWS-D012, PWS-D013, PWS-D036, PWS-D038 | PWS-0008, PWS-0107 | Malformed/oversized/versioned RPC, replay/state, termination |
 | TM-009 | PWS-D038 | PWS-0008, PWS-0103, PWS-0105, PWS-0107, PWS-0204 | Injection strings, fixed qpdf argv and absolute identity, working directory, controlled search paths/environment, descendant limits |
 | TM-010 | PWS-D025, PWS-D033, PWS-D036 | PWS-0007, PWS-0401, PWS-0402 | Script/expression/path/network/future-version template rejection |
-| TM-011 | PWS-D027, PWS-D039 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Prohibited canaries across logs, errors, crashes, bundles |
-| TM-012 | PWS-D028, PWS-D039 | PWS-0101, PWS-0108, PWS-0113, PWS-0705, PWS-0706 | Cancel/crash cleanup, cache isolation, retention inventory |
+| TM-011 | PWS-D027, PWS-D039 | PWS-0113, PWS-0204, PWS-0305, PWS-0805 | Closed diagnostic schema and prohibited canaries across logs, errors, crashes, and later bundles |
+| TM-012 | PWS-D028, PWS-D039 | PWS-0101, PWS-0108, PWS-0113, PWS-0705, PWS-0706 | Ordered case-scoped crash cleanup, invalid-case isolation, cache isolation, persistent worker ACL-lease repair, retention inventory |
 | TM-013 | PWS-D028, PWS-D031 | PWS-0705, PWS-0706, PWS-0707 | Consent, lock, expiry, case isolation, handover/deletion |
 | TM-014 | PWS-D029, PWS-D037 | PWS-0112, PWS-0407, PWS-0114, PWS-0409 | Corrupt/partial/wrong-page output blocked before commit |
 | TM-015 | PWS-D008, PWS-D028, PWS-D029 | PWS-0101, PWS-0112, PWS-0406, PWS-0407 | Filename/ZIP traversal, collision, race, no-overwrite tests |
 | TM-016 | PWS-D020, PWS-D021, PWS-D037 | PWS-0105, PWS-0206, PWS-0208, PWS-0209, PWS-0305, PWS-0308 | Signed-source detection, confirmation, unsigned-derivative and signature-image wording |
 | TM-017 | PWS-D022, PWS-D023 | PWS-0405, PWS-0601, PWS-0603, PWS-0606, PWS-0607, PWS-0608 | Visual-cover rejection, canary extraction, blocked failure, independent gate |
-| TM-018 | PWS-D027, PWS-D039 | PWS-0113, PWS-0805 | Inventory preview, opt-in, local-only bundle, canary scan |
-| TM-019 | PWS-D028, PWS-D031, PWS-D037 | PWS-0101, PWS-0102, PWS-0705, PWS-0706 | Case-ID scoping, partial failure, erasure wording, restart |
+| TM-018 | PWS-D027, PWS-D039 | PWS-0113, PWS-0805 | Safe summary baseline; later exact inventory preview, opt-in, local-only bundle, and canary scan |
+| TM-019 | PWS-D028, PWS-D031, PWS-D037 | PWS-0101, PWS-0102, PWS-0113, PWS-0705, PWS-0706 | Case-ID scoping, invalid-case isolation, partial failure, erasure wording, restart |
 | TM-020 | PWS-D034 | PWS-0005, PWS-0801, PWS-0802, PWS-0803, PWS-0808 | Admission, pin/hash/signature, license inventory, SBOM, artifact match |
 | TM-021 | PWS-D005, PWS-D013, PWS-D034 | PWS-0803, PWS-0807, PWS-0808 | Tamper/expiry/channel/rollback/offline/interruption/privacy tests |
-| TM-022 | PWS-D012, PWS-D013, PWS-D027, PWS-D038 | PWS-0008, PWS-0105, PWS-0107 | Closed typed result/frame validation, UUID correlation, hostile counts, discarded tool output, sanitized exceptions |
+| TM-022 | PWS-D012, PWS-D013, PWS-D027, PWS-D038 | PWS-0008, PWS-0105, PWS-0107, PWS-0113 | Closed typed result/frame validation, UUID correlation, hostile counts, discarded tool output, sanitized exceptions, fail-closed ACL recovery |
 | TM-023 | PWS-D009, PWS-D029 | PWS-0103, PWS-0104, PWS-0105, PWS-0108, PWS-0112, PWS-0401, PWS-0407 | Source handle identity/digest/reopen, result correlation, cache/preview/destination/template alias, snapshot, race, and terminal recheck tests |
 | TM-024 | PWS-D026, PWS-D032, PWS-D033, PWS-D037 | PWS-0207, PWS-0403, PWS-0404, PWS-0408, PWS-0409 | Deterministic review signals, confirmation ownership, and prohibited-claim/wording checks |
 | TM-025 | PWS-D008, PWS-D019, PWS-D025 | PWS-0105, PWS-0401, PWS-0405, PWS-0501 | All-object XFA/script/action/form/attachment markers, unknown-state handling, archive/revision inventory |

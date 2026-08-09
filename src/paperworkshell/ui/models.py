@@ -159,6 +159,14 @@ class OrganizerPageListModel(QAbstractListModel):
 
         self._set_preview_state(page_id, PreviewState.FAILED, None)
 
+    def reset_failed_preview(self, page_id: UUID) -> bool:
+        """Return one failed row to not-loaded state after an explicit retry action."""
+
+        if self._preview_states.get(page_id) is not PreviewState.FAILED:
+            return False
+        self._set_preview_state(page_id, PreviewState.NOT_LOADED, None)
+        return True
+
     def finish_preview_loading(self, page_ids: tuple[UUID, ...]) -> None:
         """Return unfinished requested rows to an honest on-demand state."""
 

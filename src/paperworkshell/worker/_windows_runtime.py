@@ -28,6 +28,7 @@ _ALLOWED_ENVIRONMENT: Final = frozenset(
         "LOCALAPPDATA",
         "TEMP",
         "TMP",
+        "PWS_QPDF_EXECUTABLE",
         "PYTHONIOENCODING",
         "PYTHONUTF8",
     }

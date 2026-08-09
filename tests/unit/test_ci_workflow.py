@@ -45,6 +45,17 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
         )
         self.assertIn("run: python tools/dev.py check", self.text)
 
+    def test_quality_job_timeout_covers_the_full_hosted_suite(self) -> None:
+        timeout = re.search(
+            r"^\s*timeout-minutes:\s*(\d+)\s*$",
+            self.text,
+            flags=re.MULTILINE,
+        )
+
+        self.assertIsNotNone(timeout)
+        assert timeout is not None
+        self.assertEqual(30, int(timeout.group(1)))
+
     def test_gitleaks_download_is_versioned_and_hash_verified(self) -> None:
         self.assertIn("gitleaks_8.30.1_windows_x64.zip", self.text)
         self.assertIn(
@@ -52,6 +63,24 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
             self.text,
         )
         self.assertIn("Get-FileHash -Algorithm SHA256", self.text)
+
+    def test_qpdf_archive_is_verified_before_program_files_extraction(self) -> None:
+        self.assertIn(
+            '$archive = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2-msvc64.zip"',
+            self.text,
+        )
+        self.assertIn(
+            '$destination = Join-Path $env:ProgramFiles "PaperWorkShell-ci-qpdf-12.3.2"',
+            self.text,
+        )
+        self.assertNotIn(
+            '$destination = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2"',
+            self.text,
+        )
+        self.assertIn(
+            "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+            self.text,
+        )
 
 
 if __name__ == "__main__":

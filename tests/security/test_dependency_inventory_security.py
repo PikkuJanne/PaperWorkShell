@@ -1182,8 +1182,13 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "DEPENDENCY_REPOSITORY_INPUT_INVALID",
             ),
             (
-                "    timeout-minutes: 20",
-                "    timeout-minutes: 20\n    permissions:\n      contents: write\n      id-token: write",
+                "    timeout-minutes: 30",
+                "    timeout-minutes: 29",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "    timeout-minutes: 30",
+                "    timeout-minutes: 30\n    permissions:\n      contents: write\n      id-token: write",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (

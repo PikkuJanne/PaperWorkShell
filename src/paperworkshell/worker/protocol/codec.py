@@ -19,6 +19,7 @@ from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
     MESSAGE_VERSION,
     NOOP_CAPABILITY,
+    PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     PROTOCOL_NAME,
@@ -57,6 +58,7 @@ from paperworkshell.worker.protocol.models import (
     ShutdownReason,
     TaggedScalar,
     WorkerFaultPayload,
+    validate_pdf_export_start,
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_start,
 )
@@ -563,7 +565,12 @@ class OperationRegistry:
 
     @property
     def capabilities(self) -> tuple[CapabilityDescriptor, ...]:
-        return (NOOP_CAPABILITY, PDF_INSPECT_CAPABILITY, PDF_THUMBNAIL_CAPABILITY)
+        return (
+            NOOP_CAPABILITY,
+            PDF_INSPECT_CAPABILITY,
+            PDF_THUMBNAIL_CAPABILITY,
+            PDF_EXPORT_CAPABILITY,
+        )
 
     def validate_descriptor(self, operation_kind: str, operation_version: int) -> None:
         """Reject an operation descriptor absent from the protocol-v1 registry."""
@@ -592,6 +599,8 @@ class OperationRegistry:
             validate_pdf_inspect_start(payload)
         if payload.operation_kind == PDF_THUMBNAIL_CAPABILITY.capability_id:
             validate_pdf_thumbnail_start(payload)
+        if payload.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:
+            validate_pdf_export_start(payload)
 
     def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
         """Reject worker-advertised capabilities absent from the local registry."""

@@ -76,7 +76,7 @@ class _DiscardBudget:
                 self.exceeded.set()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class QpdfCommandChecker:
     """Invoke one trusted absolute qpdf executable without a shell."""
 
@@ -96,6 +96,9 @@ class QpdfCommandChecker:
             or self.termination_grace_seconds <= 0
         ):
             reject_pdf_inspection(PdfInspectionErrorCode.MODEL_INVALID, "qpdf.configuration")
+
+    def __repr__(self) -> str:
+        return "QpdfCommandChecker(<approved fixed executable>)"
 
     def check(
         self,

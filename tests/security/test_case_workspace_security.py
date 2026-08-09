@@ -439,6 +439,105 @@ def test_terminal_file_size_change_returns_partial_without_deleting_same_identit
     assert candidate.read_bytes() == b"longer-same-file-identity"
 
 
+def test_unexpected_later_temp_delete_preserves_confirmed_partial_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager(tmp_path)
+    layout = manager.provision()
+    payload = b"same-sized-cleanup-candidate"
+    first = layout.temp / "10000000-0000-4000-8000-000000000001.tmp"
+    second = layout.temp / "20000000-0000-4000-8000-000000000002.tmp"
+    first.write_bytes(payload)
+    second.write_bytes(payload)
+    original_mark = WindowsHandle.mark_for_deletion
+    calls = 0
+
+    def fail_second_delete(handle: WindowsHandle) -> None:
+        nonlocal calls
+        if handle.info.final_path.parent == layout.temp:
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("synthetic later temp deletion failure")
+        original_mark(handle)
+
+    monkeypatch.setattr(WindowsHandle, "mark_for_deletion", fail_second_delete)
+
+    report = manager.cleanup_disposable(layout.case_id, CleanupTarget.TEMP)
+
+    assert calls == 2
+    assert report.status is CleanupStatus.PARTIAL
+    assert report.failure_code is WorkspaceErrorCode.CLEANUP_FAILED
+    assert report.removed_files == 1
+    assert report.released_bytes == len(payload)
+    remaining = tuple(path for path in (first, second) if path.exists())
+    assert len(remaining) == 1
+    assert remaining[0].read_bytes() == payload
+
+
+def test_temp_root_close_failure_preserves_confirmed_partial_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager(tmp_path)
+    layout = manager.provision()
+    payload = b"confirmed-temp-cleanup-before-root-close-failure"
+    candidate = layout.temp / "10000000-0000-4000-8000-000000000001.tmp"
+    candidate.write_bytes(payload)
+    original_close = WindowsHandle.close
+    failures = 0
+
+    def fail_temp_root_close(handle: WindowsHandle) -> None:
+        nonlocal failures
+        is_temp_root = handle.info.final_path.name == "temp"
+        original_close(handle)
+        if is_temp_root and failures == 0:
+            failures += 1
+            raise RuntimeError("synthetic temp root close failure")
+
+    monkeypatch.setattr(WindowsHandle, "close", fail_temp_root_close)
+
+    report = manager.cleanup_disposable(layout.case_id, CleanupTarget.TEMP)
+
+    assert failures == 1
+    assert report.status is CleanupStatus.PARTIAL
+    assert report.failure_code is WorkspaceErrorCode.CLEANUP_FAILED
+    assert report.removed_files == 1
+    assert report.released_bytes == len(payload)
+    assert not candidate.exists()
+
+
+def test_temp_root_process_control_failure_is_not_converted_to_a_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SyntheticProcessControl(BaseException):
+        pass
+
+    manager = _manager(tmp_path)
+    layout = manager.provision()
+    candidate = layout.temp / "10000000-0000-4000-8000-000000000001.tmp"
+    candidate.write_bytes(b"process-control-cleanup-candidate")
+    original_close = WindowsHandle.close
+    failures = 0
+
+    def interrupt_temp_root_close(handle: WindowsHandle) -> None:
+        nonlocal failures
+        is_temp_root = handle.info.final_path.name == "temp"
+        original_close(handle)
+        if is_temp_root and failures == 0:
+            failures += 1
+            raise SyntheticProcessControl
+
+    monkeypatch.setattr(WindowsHandle, "close", interrupt_temp_root_close)
+
+    with pytest.raises(SyntheticProcessControl):
+        manager.cleanup_disposable(layout.case_id, CleanupTarget.TEMP)
+
+    assert failures == 1
+    assert not candidate.exists()
+
+
 def test_terminal_directory_swap_to_junction_never_traverses_outside(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

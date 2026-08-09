@@ -143,8 +143,8 @@ rather than following a replaced name, link, stream, or reparse target.
 Publishing the immutable copy necessarily precedes the manifest commit. A crash, interruption, or
 unresolved manifest failure in that interval can therefore leave a random case-scoped file in
 `originals/` that no valid manifest references. It is an orphan, not a source record. Normal failure
-handling may remove the exact retained object; PWS-0113 owns bounded restart discovery and cleanup
-when immediate proof or cleanup is unavailable.
+handling may remove the exact retained object; PWS-0113 owns bounded [restart discovery and
+cleanup](startup-recovery-and-diagnostics.md) when immediate proof or cleanup is unavailable.
 
 Lease cleanup is one-shot and attempts the pending handle, source/manifest/checkpoint reservations,
 and retained case authority independently. Cleanup faults cannot replace the original precommit
@@ -157,7 +157,8 @@ unknown checkpoint or manifest outcome conservatively preserves the random publi
 recovery evidence; the store does not downgrade uncertainty to permission to delete. A delayed
 process-control interruption is propagated only after those artifacts are preserved. Fresh open
 fully validates current and checkpoint state, promotes an exact next revision when possible, and
-otherwise makes no new valid-record claim. PWS-0113 owns explicit orphan resolution.
+otherwise makes no new valid-record claim. PWS-0113 owns explicit
+[orphan resolution](startup-recovery-and-diagnostics.md).
 
 After source publication begins, commit code stops consulting cancellation and deadline probes and
 settles the manifest outcome by exact destination identity. Once manifest replacement is confirmed,

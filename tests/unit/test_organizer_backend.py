@@ -49,6 +49,7 @@ from paperworkshell.domain.manifest_repository import (
 from paperworkshell.domain.page_operations import PageOperationError, PageOperationErrorCode
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest, PdfThumbnailResult
+from paperworkshell.domain.recovery import StartupRecoveryResult
 from paperworkshell.domain.source_ingest import SourceImportResult
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000111")
@@ -400,6 +401,20 @@ def test_list_create_open_and_close_expose_only_path_free_state() -> None:
     assert backend.close_case() == OrganizerViewState.empty()
 
 
+def test_startup_recovery_result_is_preserved_for_the_desktop_bridge() -> None:
+    recovery = StartupRecoveryResult()
+    repository = _Repository(_document(page_count=0))
+    backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        startup_recovery=recovery,
+    )
+
+    assert backend.startup_recovery_result is recovery
+
+
 def test_recovered_manifest_sets_path_free_review_status() -> None:
     backend, repository, _, _, _ = _backend(_document(page_count=1))
     repository.load_status = ManifestLoadStatus.RECOVERED
@@ -740,3 +755,31 @@ def test_shutdown_leaves_resources_open_until_pending_save_can_be_retried() -> N
     assert backend.state == OrganizerViewState.empty()
     backend.shutdown()
     assert close_events == ["closed"]
+
+
+def test_shutdown_retries_resource_cleanup_after_the_case_session_is_closed() -> None:
+    close_attempts = 0
+
+    def close_resources() -> None:
+        nonlocal close_attempts
+        close_attempts += 1
+        if close_attempts == 1:
+            raise RuntimeError("PRIVATE_RESOURCE_CLEANUP_CANARY")
+
+    backend, _, lifecycle, _, _ = _backend(
+        _document(page_count=1),
+        close_resources=close_resources,
+    )
+    backend.open_case(CASE_ID)
+
+    with pytest.raises(RuntimeError, match="PRIVATE_RESOURCE_CLEANUP_CANARY"):
+        backend.shutdown()
+
+    assert close_attempts == 1
+    assert lifecycle.active_case is None
+    assert backend.state == OrganizerViewState.empty()
+
+    backend.shutdown()
+
+    assert close_attempts == 2
+    assert backend.state == OrganizerViewState.empty()

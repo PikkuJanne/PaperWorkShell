@@ -178,6 +178,21 @@ class CleanupReport:
     failure_code: WorkspaceErrorCode | None = None
 
 
+def _has_confirmed_cleanup_mutation(report: CleanupReport) -> bool:
+    return bool(report.removed_files or report.removed_directories or report.released_bytes)
+
+
+def _cleanup_finalization_failure(report: CleanupReport) -> CleanupReport:
+    return CleanupReport(
+        target=report.target,
+        status=CleanupStatus.PARTIAL,
+        removed_files=report.removed_files,
+        removed_directories=report.removed_directories,
+        released_bytes=report.released_bytes,
+        failure_code=WorkspaceErrorCode.CLEANUP_FAILED,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class CaseRemovalReport:
     """Sanitized counts from one whole-case removal attempt."""
@@ -969,29 +984,42 @@ class CaseWorkspaceManager:
         layout = self.layout(case_id)
         target_path = layout.cache if target is CleanupTarget.CACHE else layout.temp
         quota_area = QuotaArea.CACHE if target is CleanupTarget.CACHE else QuotaArea.TEMP
-        with self._coordinated_reservation_state(layout.case_id) as (_, reservation_state):
-            if reservation_state.deletion_in_progress:
-                reject(
-                    WorkspaceErrorCode.CLEANUP_FAILED,
-                    "cleanup.case_deleting",
-                    "Disposable cleanup cannot run while the case is being removed.",
-                )
-            with self._pinned_layout(layout) as case_handle:
-                require_no_alternate_streams(layout.case_root)
-                identity = case_handle.info.identity
-                self._bind_case_identity(reservation_state, identity)
-                if reservation_state.book.has_reservations_for(quota_area):
+        report: CleanupReport | None = None
+        try:
+            with self._coordinated_reservation_state(layout.case_id) as (_, reservation_state):
+                if reservation_state.deletion_in_progress:
                     reject(
                         WorkspaceErrorCode.CLEANUP_FAILED,
-                        "cleanup.active_reservation",
-                        "Disposable cleanup cannot run while the selected area is in use.",
+                        "cleanup.case_deleting",
+                        "Disposable cleanup cannot run while the case is being removed.",
                     )
-                return self._cleanup_authenticated_target(
-                    layout,
-                    target,
-                    target_path,
-                    expected_case_identity=identity,
-                )
+                with self._pinned_layout(layout) as case_handle:
+                    require_no_alternate_streams(layout.case_root)
+                    identity = case_handle.info.identity
+                    self._bind_case_identity(reservation_state, identity)
+                    if reservation_state.book.has_reservations_for(quota_area):
+                        reject(
+                            WorkspaceErrorCode.CLEANUP_FAILED,
+                            "cleanup.active_reservation",
+                            "Disposable cleanup cannot run while the selected area is in use.",
+                        )
+                    report = self._cleanup_authenticated_target(
+                        layout,
+                        target,
+                        target_path,
+                        expected_case_identity=identity,
+                    )
+        except Exception:
+            if report is None or not _has_confirmed_cleanup_mutation(report):
+                raise
+            return _cleanup_finalization_failure(report)
+        if report is None:
+            reject(
+                WorkspaceErrorCode.CLEANUP_FAILED,
+                "cleanup.report",
+                "Disposable cleanup did not produce a verified result.",
+            )
+        return report
 
     def remove_case(
         self,
@@ -1200,45 +1228,62 @@ class CaseWorkspaceManager:
         *,
         expected_case_identity: FileIdentity,
     ) -> CleanupReport:
-        with self._pinned_layout(
-            layout,
-            target_path=target_path,
-            expected_case_identity=expected_case_identity,
-        ) as target_handle:
-            with ExitStack() as stack:
-                fixed_cache_identities: dict[tuple[str, ...], FileIdentity] = {}
-                if target is CleanupTarget.CACHE:
-                    for fixed_parts in sorted(_FIXED_CACHE_DIRECTORY_PARTS):
-                        path = target_path.joinpath(*fixed_parts)
-                        handle = stack.enter_context(open_handle(path))
-                        require_expected_handle(handle, path, directory=True)
-                        verify_private_acl(handle)
-                        require_no_alternate_streams(path)
-                        fixed_cache_identities[fixed_parts] = handle.info.identity
-                inventory_state = _InventoryState(entries=[])
-                self._inventory_directory(
-                    target_path,
-                    target_handle,
-                    relative_parts=(),
-                    depth=0,
-                    state=inventory_state,
-                    top_level=False,
-                )
-                inventory = {entry.relative_parts: entry for entry in inventory_state.entries}
-                for fixed_parts, fixed_identity in fixed_cache_identities.items():
-                    entry = inventory.get(fixed_parts)
-                    if entry is None or not entry.is_directory or entry.identity != fixed_identity:
-                        reject(
-                            WorkspaceErrorCode.IDENTITY_CHANGED,
-                            "cleanup.cache_layout",
-                            "A fixed cache directory changed during cleanup inventory.",
-                        )
-                return self._delete_inventory(
-                    target,
-                    target_path,
-                    target_handle,
-                    inventory_state.entries,
-                )
+        report: CleanupReport | None = None
+        try:
+            with self._pinned_layout(
+                layout,
+                target_path=target_path,
+                expected_case_identity=expected_case_identity,
+            ) as target_handle:
+                with ExitStack() as stack:
+                    fixed_cache_identities: dict[tuple[str, ...], FileIdentity] = {}
+                    if target is CleanupTarget.CACHE:
+                        for fixed_parts in sorted(_FIXED_CACHE_DIRECTORY_PARTS):
+                            path = target_path.joinpath(*fixed_parts)
+                            handle = stack.enter_context(open_handle(path))
+                            require_expected_handle(handle, path, directory=True)
+                            verify_private_acl(handle)
+                            require_no_alternate_streams(path)
+                            fixed_cache_identities[fixed_parts] = handle.info.identity
+                    inventory_state = _InventoryState(entries=[])
+                    self._inventory_directory(
+                        target_path,
+                        target_handle,
+                        relative_parts=(),
+                        depth=0,
+                        state=inventory_state,
+                        top_level=False,
+                    )
+                    inventory = {entry.relative_parts: entry for entry in inventory_state.entries}
+                    for fixed_parts, fixed_identity in fixed_cache_identities.items():
+                        entry = inventory.get(fixed_parts)
+                        if (
+                            entry is None
+                            or not entry.is_directory
+                            or entry.identity != fixed_identity
+                        ):
+                            reject(
+                                WorkspaceErrorCode.IDENTITY_CHANGED,
+                                "cleanup.cache_layout",
+                                "A fixed cache directory changed during cleanup inventory.",
+                            )
+                    report = self._delete_inventory(
+                        target,
+                        target_path,
+                        target_handle,
+                        inventory_state.entries,
+                    )
+        except Exception:
+            if report is None or not _has_confirmed_cleanup_mutation(report):
+                raise
+            return _cleanup_finalization_failure(report)
+        if report is None:
+            reject(
+                WorkspaceErrorCode.CLEANUP_FAILED,
+                "cleanup.report",
+                "Disposable cleanup did not produce a verified result.",
+            )
+        return report
 
     @contextmanager
     def _coordinated_reservation_state(
@@ -1621,6 +1666,15 @@ class CaseWorkspaceManager:
                     removed_directories=removed_directories,
                     released_bytes=released_bytes,
                     failure_code=error.code,
+                )
+            except Exception:
+                return CleanupReport(
+                    target=target,
+                    status=CleanupStatus.PARTIAL,
+                    removed_files=removed_files,
+                    removed_directories=removed_directories,
+                    released_bytes=released_bytes,
+                    failure_code=WorkspaceErrorCode.CLEANUP_FAILED,
                 )
         return CleanupReport(
             target=target,

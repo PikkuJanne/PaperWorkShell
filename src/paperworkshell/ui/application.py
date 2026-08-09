@@ -51,7 +51,7 @@ def _wait_for_backend_shutdown(
         outcome = _ShutdownWaitOutcome.COMPLETE
         wait_loop.quit()
 
-    def refused() -> None:
+    def refused(_kind: object) -> None:
         nonlocal outcome
         outcome = _ShutdownWaitOutcome.REFUSED
         wait_loop.quit()

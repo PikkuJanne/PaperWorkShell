@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from threading import Event, Lock
 from typing import Final, Protocol
@@ -20,6 +21,7 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailErrorCode,
     PdfThumbnailProgress,
 )
+from paperworkshell.domain.recovery import RecoveryError
 from paperworkshell.domain.source_ingest import (
     SourceImportProgress,
     SourceIngestError,
@@ -55,6 +57,13 @@ class UiProgress:
     operation_id: int
 
 
+class ShutdownRefusalKind(StrEnum):
+    """Closed recovery actions after a backend declines desktop shutdown."""
+
+    SAVE_PENDING = "save_pending"
+    CLEANUP_RETRY = "cleanup_retry"
+
+
 class OperationCancellation:
     """Thread-safe cooperative cancellation token for one long operation."""
 
@@ -81,6 +90,7 @@ _KNOWN_FAILURES: Final = (
     ManifestRepositoryError,
     PageOperationError,
     PdfThumbnailError,
+    RecoveryError,
     SourceIngestError,
 )
 
@@ -111,6 +121,7 @@ class OrganizerBackendWorker(QObject):
     """Serialize backend and worker mutations on one long-lived Qt thread."""
 
     initialized = Signal()
+    startup_recovery_changed = Signal(object)
     cases_changed = Signal(object)
     state_changed = Signal(object)
     thumbnails_ready = Signal(int, int, object)
@@ -124,7 +135,7 @@ class OrganizerBackendWorker(QObject):
     operation_finished = Signal(int)
     failed = Signal(object)
     shutdown_complete = Signal()
-    shutdown_refused = Signal()
+    shutdown_refused = Signal(object)
 
     def __init__(self, factory: OrganizerBackendFactory) -> None:
         super().__init__()
@@ -139,7 +150,7 @@ class OrganizerBackendWorker(QObject):
             self._backend = self._factory()
             self.initialized.emit()
             self._emit_cases()
-            self.status_changed.emit("Ready. Create a case or open an existing case.")
+            self.startup_recovery_changed.emit(self._backend.startup_recovery_result)
         except BaseException as error:
             self.failed.emit(sanitize_ui_failure(error))
 
@@ -334,8 +345,16 @@ class OrganizerBackendWorker(QObject):
         try:
             backend.shutdown()
         except BaseException as error:
+            state = backend.state
+            refusal = (
+                ShutdownRefusalKind.SAVE_PENDING
+                if state.autosave_pending
+                else ShutdownRefusalKind.CLEANUP_RETRY
+            )
             self.failed.emit(sanitize_ui_failure(error))
-            self.shutdown_refused.emit()
+            if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
+                self.state_changed.emit(state)
+            self.shutdown_refused.emit(refusal)
             return
         self._backend = None
         self.shutdown_complete.emit()

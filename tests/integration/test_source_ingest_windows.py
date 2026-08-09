@@ -20,8 +20,21 @@ from uuid import UUID
 import pytest
 
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
-from paperworkshell.app.source_ingest import SourceIngestService
+from paperworkshell.app.source_ingest import (
+    CommittedPdfSourceBatchLease,
+    CommittedPdfSourceBatchStore,
+    CommittedPdfSourceLease,
+    SourceIngestService,
+)
 from paperworkshell.domain.import_precheck import DetectedMediaType, ImportLimits
+from paperworkshell.domain.pdf_export import (
+    PdfExportPage,
+    PdfExportPlan,
+    PdfExportRotation,
+    PdfExportSource,
+    PdfExportSourceSignatureState,
+    build_pdf_export_plan,
+)
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -36,6 +49,7 @@ from paperworkshell.domain.source_ingest import (
     reject_source_ingest,
 )
 from paperworkshell.storage import manifest_repository as repository_storage
+from paperworkshell.storage import source_ingest as source_ingest_storage
 from paperworkshell.storage._windows import (
     MAXIMUM_STREAM_CHUNK_BYTES,
     ManifestReplaceResult,
@@ -47,6 +61,10 @@ from paperworkshell.storage._windows import (
     open_handle as windows_open_handle,
 )
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.manifest_repository import (
+    WindowsManifestRepository,
+    canonical_manifest_bytes,
+)
 from paperworkshell.storage.quotas import QuotaArea, WorkspaceQuota
 from paperworkshell.storage.source_ingest import (
     WindowsPreparedSourceLease,
@@ -115,6 +133,38 @@ class _SyntheticImageInspector:
             page_count=1,
             signature_state=SourceSignatureState.NOT_APPLICABLE,
             encryption_state=SourceEncryptionState.NOT_APPLICABLE,
+        )
+
+
+class _SyntheticPdfInspector:
+    """Stand in for the restricted PDF worker for committed-source lease tests."""
+
+    def inspect(
+        self,
+        source: PreparedSourceSummary,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> CompletedSourceInspection:
+        if deadline():
+            reject_source_ingest(SourceIngestErrorCode.TIMED_OUT, "test.inspection")
+        if cancellation():
+            reject_source_ingest(SourceIngestErrorCode.CANCELLED, "test.inspection")
+        progress(
+            SourceImportProgress(
+                source.pending_id,
+                SourceProgressPhase.INSPECTING,
+                1,
+                1,
+            )
+        )
+        return CompletedSourceInspection(
+            pending_id=source.pending_id,
+            media_type=DetectedMediaType.PDF,
+            page_count=2,
+            signature_state=SourceSignatureState.NONE_DETECTED,
+            encryption_state=SourceEncryptionState.UNENCRYPTED,
         )
 
 
@@ -204,6 +254,110 @@ def _jpeg_of_size(byte_size: int, *, fill: bytes = b"U") -> bytes:
     remaining = byte_size - len(base)
     repeated = (fill * ((remaining + len(fill) - 1) // len(fill)))[:remaining]
     return base[:-2] + repeated + base[-2:]
+
+
+def _pdf(marker: bytes) -> bytes:
+    return b"%PDF-1.7\n% synthetic-" + marker + b"\n1 0 obj\n<<>>\nendobj\nstartxref\n0\n%%EOF\n"
+
+
+def _advance_duplicated_handle(source_handle: int) -> None:
+    """Model one worker read through a duplicated broker handle, then terminate it."""
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    current_process = kernel32.GetCurrentProcess
+    current_process.argtypes = ()
+    current_process.restype = wintypes.HANDLE
+    duplicate_handle = kernel32.DuplicateHandle
+    duplicate_handle.argtypes = (
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.DWORD,
+    )
+    duplicate_handle.restype = wintypes.BOOL
+    process = current_process()
+    duplicated = wintypes.HANDLE()
+    assert duplicate_handle(
+        process,
+        wintypes.HANDLE(source_handle),
+        process,
+        ctypes.byref(duplicated),
+        0,
+        False,
+        0x00000002,
+    )
+    read_file = kernel32.ReadFile
+    read_file.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.c_void_p,
+    )
+    read_file.restype = wintypes.BOOL
+    buffer = ctypes.create_string_buffer(8)
+    received = wintypes.DWORD()
+    try:
+        assert read_file(
+            duplicated,
+            buffer,
+            len(buffer),
+            ctypes.byref(received),
+            None,
+        )
+        assert received.value == len(buffer)
+    finally:
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        assert close_handle(duplicated)
+
+
+def _import_pdf(
+    stack: _Stack,
+    tmp_path: Path,
+    *,
+    name: str,
+    marker: bytes,
+) -> SourceImportResult:
+    source = (tmp_path / name).resolve()
+    source.write_bytes(_pdf(marker))
+    return SourceIngestService(stack.store, _SyntheticPdfInspector()).import_source(
+        CASE_ID,
+        source,
+        name,
+    )
+
+
+def _reverse_source_order(plan: PdfExportPlan) -> PdfExportPlan:
+    source_order = tuple(reversed(plan.sources))
+    source_positions = {source.source_id: index for index, source in enumerate(source_order)}
+    ordered_pages = sorted(
+        plan.pages,
+        key=lambda page: (source_positions[page.source_id], page.source_page_index),
+    )
+    pages = tuple(
+        PdfExportPage(
+            output_page_index=index,
+            page_id=page.page_id,
+            source_id=page.source_id,
+            source_page_index=page.source_page_index,
+            additional_rotation=page.additional_rotation,
+        )
+        for index, page in enumerate(ordered_pages)
+    )
+    return PdfExportPlan(
+        case_id=plan.case_id,
+        manifest_revision=plan.manifest_revision,
+        manifest_sha256=plan.manifest_sha256,
+        manifest_cas_token=plan.manifest_cas_token,
+        sources=source_order,
+        pages=pages,
+        profile=plan.profile,
+    )
 
 
 def _manifest(layout: CaseWorkspacePaths) -> dict[str, object]:
@@ -985,3 +1139,296 @@ def test_import_deadline_expires_while_case_coordination_is_contended(
     assert list(stack.layout.originals.iterdir()) == []
     assert list(stack.layout.temp.iterdir()) == []
     assert _external_snapshot(source) == source_before
+
+
+def test_committed_pdf_batch_lease_preserves_plan_order_and_revalidates_all_handles(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    first = _import_pdf(stack, tmp_path, name="batch-private-first.pdf", marker=b"first")
+    second = _import_pdf(stack, tmp_path, name="batch-private-second.pdf", marker=b"second")
+    snapshot = WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    plan = _reverse_source_order(build_pdf_export_plan(snapshot))
+
+    assert isinstance(stack.store, CommittedPdfSourceBatchStore)
+    with stack.store.borrow_committed_pdf_sources(
+        plan,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+    ) as lease:
+        assert isinstance(lease, CommittedPdfSourceBatchLease)
+        assert repr(lease) == "CommittedPdfSourceBatchReadLease(<redacted>)"
+        assert lease.case_id == plan.case_id
+        assert lease.manifest_revision == plan.manifest_revision
+        assert lease.manifest_sha256 == plan.manifest_sha256
+        assert lease.manifest_cas_token == plan.manifest_cas_token
+        assert tuple(source.source_id for source in lease.sources) == tuple(
+            source.source_id for source in plan.sources
+        )
+        retained = lease.sources
+        for source, expected in zip(retained, plan.sources, strict=True):
+            assert isinstance(source, CommittedPdfSourceLease)
+            assert repr(source) == "CommittedPdfSourceReadLease(<redacted>)"
+            assert source.source_id == expected.source_id
+            assert source.media_type is expected.media_type
+            assert source.byte_size == expected.byte_size
+            assert source.page_count == expected.page_count
+            assert source.sha256 == expected.sha256
+            assert source.signature_state is expected.signature_state
+            assert source.encryption_state is expected.encryption_state
+            assert source.handle_value > 0
+            _advance_duplicated_handle(source.handle_value)
+        lease.revalidate(cancellation=lambda: False, deadline=lambda: False)
+
+    for source in retained:
+        with pytest.raises(SourceIngestError):
+            _ = source.handle_value
+
+    active = stack.store.borrow_committed_pdf_sources(
+        plan,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+    )
+    active_sources = active.sources
+    alias = tmp_path / "private-batch-link.bin"
+    case_copy = stack.layout.originals / f"{first.source_id}.bin"
+    os.link(case_copy, alias)
+    try:
+        with pytest.raises(SourceIngestError) as changed:
+            active.revalidate(cancellation=lambda: False, deadline=lambda: False)
+        assert changed.value.code is SourceIngestErrorCode.SOURCE_CHANGED
+        for source in active_sources:
+            with pytest.raises(SourceIngestError):
+                _ = source.handle_value
+    finally:
+        alias.unlink()
+        active.close()
+
+    assert second.source_id != first.source_id
+    assert "batch-private" not in repr(active)
+
+
+def test_committed_pdf_batch_rejects_stale_duplicate_missing_and_changed_plan_facts(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    _import_pdf(stack, tmp_path, name="batch-plan-private.pdf", marker=b"plan")
+    snapshot = WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    plan = build_pdf_export_plan(snapshot)
+
+    stale = PdfExportPlan(
+        case_id=plan.case_id,
+        manifest_revision=plan.manifest_revision + 1,
+        manifest_sha256=plan.manifest_sha256,
+        manifest_cas_token=plan.manifest_cas_token,
+        sources=plan.sources,
+        pages=plan.pages,
+    )
+    with pytest.raises(SourceIngestError) as stale_error:
+        stack.store.borrow_committed_pdf_sources(
+            stale,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+    assert stale_error.value.code is SourceIngestErrorCode.MANIFEST_CONFLICT
+
+    duplicate = build_pdf_export_plan(snapshot)
+    object.__setattr__(duplicate, "sources", (duplicate.sources[0], duplicate.sources[0]))
+    with pytest.raises(SourceIngestError) as duplicate_error:
+        stack.store.borrow_committed_pdf_sources(
+            duplicate,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+    assert duplicate_error.value.code is SourceIngestErrorCode.MODEL_INVALID
+
+    missing_id = UUID("99000000-0000-4000-8000-000000000112")
+    missing_source = PdfExportSource(
+        source_id=missing_id,
+        byte_size=plan.sources[0].byte_size,
+        page_count=plan.sources[0].page_count,
+        sha256=plan.sources[0].sha256,
+        signature_state=plan.sources[0].signature_state,
+    )
+    missing_page = PdfExportPage(
+        output_page_index=0,
+        page_id=UUID("99000000-0000-4000-8000-000000000113"),
+        source_id=missing_id,
+        source_page_index=0,
+        additional_rotation=plan.pages[0].additional_rotation,
+    )
+    missing = PdfExportPlan(
+        case_id=plan.case_id,
+        manifest_revision=plan.manifest_revision,
+        manifest_sha256=plan.manifest_sha256,
+        manifest_cas_token=plan.manifest_cas_token,
+        sources=(missing_source,),
+        pages=(missing_page,),
+    )
+    with pytest.raises(SourceIngestError) as missing_error:
+        stack.store.borrow_committed_pdf_sources(
+            missing,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+    assert missing_error.value.code is SourceIngestErrorCode.SOURCE_UNAVAILABLE
+
+    changed_source = PdfExportSource(
+        source_id=plan.sources[0].source_id,
+        byte_size=plan.sources[0].byte_size + 1,
+        page_count=plan.sources[0].page_count,
+        sha256=plan.sources[0].sha256,
+        signature_state=plan.sources[0].signature_state,
+    )
+    changed = PdfExportPlan(
+        case_id=plan.case_id,
+        manifest_revision=plan.manifest_revision,
+        manifest_sha256=plan.manifest_sha256,
+        manifest_cas_token=plan.manifest_cas_token,
+        sources=(changed_source,),
+        pages=plan.pages,
+    )
+    with pytest.raises(SourceIngestError) as changed_error:
+        stack.store.borrow_committed_pdf_sources(
+            changed,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+    assert changed_error.value.code is SourceIngestErrorCode.SOURCE_CHANGED
+    assert "batch-plan-private" not in str(changed_error.value)
+
+
+@pytest.mark.parametrize("encryption_state", ("encrypted", "unknown"))
+def test_committed_pdf_batch_rejects_encrypted_or_unknown_manifest_state(
+    tmp_path: Path,
+    encryption_state: str,
+) -> None:
+    stack = _stack(tmp_path)
+    imported = _import_pdf(
+        stack,
+        tmp_path,
+        name="batch-encryption-private.pdf",
+        marker=b"encryption",
+    )
+    document = _manifest(stack.layout)
+    sources = cast(list[dict[str, object]], document["sources"])
+    sources[0]["encryption_state"] = encryption_state
+    stack.layout.manifest.write_bytes(canonical_manifest_bytes(document))
+    snapshot = WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    source = PdfExportSource(
+        source_id=imported.source_id,
+        byte_size=imported.byte_size,
+        page_count=2,
+        sha256=imported.sha256,
+        signature_state=PdfExportSourceSignatureState.NONE_DETECTED,
+    )
+    plan = PdfExportPlan(
+        case_id=CASE_ID,
+        manifest_revision=snapshot.revision,
+        manifest_sha256=snapshot.sha256,
+        manifest_cas_token=snapshot.cas_token,
+        sources=(source,),
+        pages=(
+            PdfExportPage(
+                output_page_index=0,
+                page_id=imported.page_ids[0],
+                source_id=imported.source_id,
+                source_page_index=0,
+                additional_rotation=PdfExportRotation.DEGREES_0,
+            ),
+        ),
+    )
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.store.borrow_committed_pdf_sources(
+            plan,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.SOURCE_UNAVAILABLE
+    assert "batch-encryption-private" not in str(raised.value)
+
+
+def test_committed_pdf_batch_closes_prior_handles_when_a_later_source_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    _import_pdf(stack, tmp_path, name="batch-close-first.pdf", marker=b"close-first")
+    second = _import_pdf(stack, tmp_path, name="batch-close-second.pdf", marker=b"close-second")
+    plan = build_pdf_export_plan(WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot)
+    second_copy = stack.layout.originals / f"{second.source_id}.bin"
+    second_copy.write_bytes(second_copy.read_bytes() + b"changed")
+    opened_sources: list[WindowsHandle] = []
+    real_open_handle = windows_open_handle
+
+    def track_source_handles(path: Path, *args: object, **kwargs: object) -> WindowsHandle:
+        handle = real_open_handle(path, *args, **kwargs)  # type: ignore[arg-type]
+        if path.parent == stack.layout.originals and path.suffix == ".bin":
+            opened_sources.append(handle)
+        return handle
+
+    monkeypatch.setattr(source_ingest_storage, "open_handle", track_source_handles)
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.store.borrow_committed_pdf_sources(
+            plan,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.SOURCE_CHANGED
+    assert len(opened_sources) == 2
+    assert all(handle.value == 0 for handle in opened_sources)
+
+
+def test_committed_pdf_batch_rejects_non_pdf_and_non_ready_sources(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    image = (tmp_path / "batch-image-private.jpg").resolve()
+    image.write_bytes(_jpeg())
+    imported = stack.service.import_source(CASE_ID, image, "Batch image private.jpg")
+    snapshot = WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    source = PdfExportSource(
+        source_id=imported.source_id,
+        byte_size=imported.byte_size,
+        page_count=1,
+        sha256=imported.sha256,
+        signature_state=PdfExportSourceSignatureState.NONE_DETECTED,
+    )
+    page = PdfExportPage(
+        output_page_index=0,
+        page_id=imported.page_ids[0],
+        source_id=imported.source_id,
+        source_page_index=0,
+        additional_rotation=PdfExportRotation.DEGREES_0,
+    )
+    plan = PdfExportPlan(
+        case_id=CASE_ID,
+        manifest_revision=snapshot.revision,
+        manifest_sha256=snapshot.sha256,
+        manifest_cas_token=snapshot.cas_token,
+        sources=(source,),
+        pages=(page,),
+    )
+    with pytest.raises(SourceIngestError) as media_error:
+        stack.store.borrow_committed_pdf_sources(
+            plan,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+    assert media_error.value.code is SourceIngestErrorCode.SOURCE_UNAVAILABLE
+
+    document = _manifest(stack.layout)
+    sources = cast(list[dict[str, object]], document["sources"])
+    sources[0]["import_state"] = "pending"
+    stack.layout.manifest.write_bytes(canonical_manifest_bytes(document))
+    with pytest.raises(SourceIngestError) as readiness_error:
+        stack.store.borrow_committed_pdf_sources(
+            plan,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+    assert readiness_error.value.code is SourceIngestErrorCode.MANIFEST_INVALID

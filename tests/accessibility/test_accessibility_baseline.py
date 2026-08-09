@@ -9,6 +9,7 @@ from uuid import UUID
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -20,9 +21,21 @@ from PySide6.QtWidgets import (
 )
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
+from paperworkshell.domain.case_lifecycle import (
+    CaseIndex,
+    CaseIndexIssue,
+    CaseLifecycleErrorCode,
+)
+from paperworkshell.domain.recovery import (
+    CaseRecoveryResult,
+    CaseRecoveryStatus,
+    RecoveryIssueCode,
+    StartupRecoveryResult,
+)
 from paperworkshell.ui.backend import (
     OrganizerBackendCommands,
     OrganizerBackendWorker,
+    ShutdownRefusalKind,
     UiFailure,
     UiProgress,
 )
@@ -31,6 +44,7 @@ from paperworkshell.ui.window import (
     PageOrderDialog,
     PaperWorkShellWindow,
     _LongOperationKind,
+    _startup_recovery_notice,
 )
 from tools.dev import COMMANDS
 
@@ -118,7 +132,9 @@ def test_core_controls_have_names_descriptions_and_no_drag_requirement() -> None
             "undoButton",
             "redoButton",
             "cancelButton",
+            "retryPreviewButton",
             "retrySaveButton",
+            "retryCloseButton",
         ):
             button = window.findChild(QPushButton, object_name)
             assert button is not None
@@ -211,6 +227,105 @@ def test_progress_error_and_cancellation_are_textual_focusable_and_announced() -
         assert "Action failed" in window._status_label.text()
 
 
+def test_startup_recovery_is_one_path_free_accessibility_announcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    announcements: list[tuple[str, bool]] = []
+    original_announce = PaperWorkShellWindow._announce
+
+    def record_announcement(
+        window: PaperWorkShellWindow,
+        message: str,
+        *,
+        assertive: bool = False,
+    ) -> None:
+        announcements.append((message, assertive))
+        original_announce(window, message, assertive=assertive)
+
+    monkeypatch.setattr(PaperWorkShellWindow, "_announce", record_announcement)
+
+    with _window() as (_window_instance, _commands, worker):
+        worker.startup_recovery_changed.emit(StartupRecoveryResult())
+        _application().processEvents()
+
+        assert len(announcements) == 1
+        assert announcements[0][1] is False
+        assert "Startup recovery complete" in announcements[0][0]
+
+    announcements.clear()
+    hidden_case_id = UUID("61000000-0000-4000-8000-000000000001")
+    result = StartupRecoveryResult(
+        (
+            CaseRecoveryResult(
+                case_id=hidden_case_id,
+                status=CaseRecoveryStatus.CURRENT,
+                manifest_revision=0,
+                issues=(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED,),
+                retained_source_artifacts=1,
+            ),
+        )
+    )
+    with _window() as (window, _commands, worker):
+        new_case_id = UUID("61000000-0000-4000-8000-000000000002")
+        worker.cases_changed.emit(
+            CaseIndex(
+                unavailable=(CaseIndexIssue(new_case_id, CaseLifecycleErrorCode.MANIFEST_INVALID),)
+            )
+        )
+        worker.startup_recovery_changed.emit(StartupRecoveryResult())
+        _application().processEvents()
+
+        notice = window._status_label.text()
+        assert announcements == [(notice, True)]
+        assert notice == (
+            "Startup recovery needs attention. Checked 1 local case; 1 needs review. "
+            "Uncertain leftover work data was preserved."
+        )
+        assert str(new_case_id) not in notice
+        assert window._pending_startup_unavailable_case_ids == frozenset()
+
+    announcements.clear()
+    with _window() as (window, _commands, worker):
+        worker.cases_changed.emit(
+            CaseIndex(
+                unavailable=(
+                    CaseIndexIssue(hidden_case_id, CaseLifecycleErrorCode.MANIFEST_INVALID),
+                )
+            )
+        )
+        worker.startup_recovery_changed.emit(result)
+        _application().processEvents()
+
+        notice = window._status_label.text()
+        assert announcements == [(notice, True)]
+        assert notice == (
+            "Startup recovery needs attention. Checked 1 local case; 1 needs review. "
+            "Uncertain leftover work data was preserved."
+        )
+        assert str(hidden_case_id) not in notice
+        assert "\\" not in notice
+        assert window._pending_startup_unavailable_case_ids == frozenset()
+
+
+def test_startup_recovery_notice_pluralizes_case_counts() -> None:
+    cases = tuple(
+        CaseRecoveryResult(
+            case_id=UUID(f"62000000-0000-4000-8000-{number:012d}"),
+            status=CaseRecoveryStatus.CURRENT,
+            manifest_revision=0,
+            issues=(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED,),
+            retained_source_artifacts=1,
+        )
+        for number in (1, 2)
+    )
+
+    assert _startup_recovery_notice(StartupRecoveryResult(cases)) == (
+        "Startup recovery needs attention. Checked 2 local cases; 2 need review. "
+        "Uncertain leftover work data was preserved.",
+        True,
+    )
+
+
 def test_preview_cancel_and_failure_leave_no_page_claiming_to_be_loading() -> None:
     with _window() as (window, _commands, worker):
         supported = replace(
@@ -242,6 +357,150 @@ def test_preview_cancel_and_failure_leave_no_page_claiming_to_be_loading() -> No
         )
         window._operation_finished(failed.operation_id)
         assert window._model.preview_state(PAGE_ONE) is PreviewState.FAILED
+
+
+def test_failed_preview_focuses_keyboard_retry_and_reissues_a_new_correlation() -> None:
+    app = _application()
+    with _window() as (window, commands, worker):
+        supported = replace(
+            _state(),
+            pages=tuple(replace(page, preview_supported=True) for page in _state().pages),
+        )
+        worker.initialized.emit()
+        worker.state_changed.emit(supported)
+        app.processEvents()
+        window._preview_refresh_timer.stop()
+        commands.thumbnails_requested.disconnect(worker.get_thumbnails)
+        requests: list[tuple[object, ...]] = []
+        commands.thumbnails_requested.connect(lambda *request: requests.append(request))
+
+        failed = window._begin_long_operation(_LongOperationKind.PREVIEW)
+        window._active_preview_page_ids = (PAGE_ONE,)
+        window._model.set_preview_loading((PAGE_ONE,))
+        window._failed(
+            UiFailure(
+                "PDF_THUMBNAIL_WORKER_FAILED",
+                "The document worker could not generate the thumbnail safely.",
+                True,
+                failed.operation_id,
+            )
+        )
+        assert window._retry_preview_button.isVisible()
+        assert not window._retry_preview_button.isEnabled()
+
+        window._operation_finished(failed.operation_id)
+        app.processEvents()
+
+        assert window._retry_preview_button.isVisible()
+        assert window._retry_preview_button.isEnabled()
+        assert app.focusWidget() is window._retry_preview_button
+
+        QTest.keyClick(window._retry_preview_button, Qt.Key.Key_Space)
+        app.processEvents()
+
+        retry = window._active_operation
+        assert retry is not None
+        assert retry.operation_id != failed.operation_id
+        assert retry.kind is _LongOperationKind.PREVIEW
+        assert window._model.preview_state(PAGE_ONE) is PreviewState.LOADING
+        assert len(requests) == 1
+        assert requests[0][0] == retry.operation_id
+        assert requests[0][2] == (PAGE_ONE,)
+        assert app.focusWidget() is window._page_view
+        assert window._status_label.text() == "Retrying the selected page preview."
+
+
+def test_import_failure_restores_focus_to_the_import_recovery_action() -> None:
+    app = _application()
+    with _window() as (window, _commands, worker):
+        worker.initialized.emit()
+        worker.state_changed.emit(_state())
+        app.processEvents()
+        window._preview_refresh_timer.stop()
+
+        failed = window._begin_long_operation(_LongOperationKind.IMPORT)
+        window._failed(
+            UiFailure(
+                "SOURCE_UNAVAILABLE",
+                "The selected source file is not available.",
+                False,
+                failed.operation_id,
+            )
+        )
+        assert app.focusWidget() is window._error_label
+
+        window._operation_finished(failed.operation_id)
+        app.processEvents()
+
+        assert window._import_button.isEnabled()
+        assert app.focusWidget() is window._import_button
+        assert window._error_label.isVisible()
+
+
+def test_pending_save_shutdown_refusal_keeps_the_existing_retry_save_action() -> None:
+    app = _application()
+    with _window() as (window, _commands, worker):
+        worker.initialized.emit()
+        worker.state_changed.emit(_state(autosave_pending=True))
+        app.processEvents()
+        window._autosave_timer.stop()
+        window._closing_requested = True
+        window._set_controls_enabled(False)
+
+        window._shutdown_refused(ShutdownRefusalKind.SAVE_PENDING)
+        app.processEvents()
+
+        assert window._status_label.text() == (
+            "The application remains open because queued changes could not be saved. "
+            "Retry saving changes."
+        )
+        assert window._retry_save_button.isVisible()
+        assert window._retry_save_button.isEnabled()
+        assert not window._retry_close_button.isVisible()
+        assert app.focusWidget() is window._retry_save_button
+
+
+def test_cleanup_shutdown_refusal_requires_typed_signal_and_retries_truthfully() -> None:
+    app = _application()
+    with _window() as (window, commands, worker):
+        worker.initialized.emit()
+        worker.state_changed.emit(OrganizerViewState.empty())
+        app.processEvents()
+        window._closing_requested = True
+        window._set_controls_enabled(False)
+
+        window._shutdown_refused(object())
+        app.processEvents()
+
+        assert window._closing_requested
+        assert not window._create_case_button.isEnabled()
+        assert not window._retry_save_button.isVisible()
+        assert not window._retry_close_button.isVisible()
+
+        window._shutdown_refused(ShutdownRefusalKind.CLEANUP_RETRY)
+        app.processEvents()
+
+        assert window._status_label.text() == (
+            "The application remains open because secure cleanup could not finish. "
+            "Retry closing PaperWorkShell."
+        )
+        assert window._retry_close_button.isVisible()
+        assert window._retry_close_button.isEnabled()
+        assert not window._retry_save_button.isVisible()
+        assert app.focusWidget() is window._retry_close_button
+
+        requested: list[bool] = []
+        commands.shutdown_requested.disconnect(worker.shutdown)
+        commands.shutdown_requested.connect(lambda: requested.append(True))
+        QTest.keyClick(window._retry_close_button, Qt.Key.Key_Space)
+        app.processEvents()
+
+        assert requested == [True]
+        assert window._closing_requested
+        assert window._status_label.text() == (
+            "Retrying secure cleanup before closing PaperWorkShell."
+        )
+        assert not window._retry_close_button.isVisible()
 
 
 def test_committed_import_reopen_outcome_locks_stale_actions_and_focuses_close() -> None:
@@ -299,6 +558,7 @@ def test_committed_import_reopen_outcome_locks_stale_actions_and_focuses_close()
         QTest.qWait(100)
         app.processEvents()
         assert preview_requests == []
+        assert app.focusWidget() is window._close_case_button
 
 
 def test_status_and_safe_error_are_visible_and_focusable_on_each_workflow_page() -> None:
@@ -308,6 +568,10 @@ def test_status_and_safe_error_are_visible_and_focusable_on_each_workflow_page()
         assert window._status_surface.isVisible()
         assert window._status_label.isVisible()
         assert window._status_label.accessibleName() == "Current operation status"
+        for label in (window._status_label, window._error_label):
+            assert "border: 2px solid transparent" in label.styleSheet()
+            assert "QLabel:focus" in label.styleSheet()
+            assert "border-color: palette(highlight)" in label.styleSheet()
 
         worker.status_changed.emit("Case list is ready.")
         app.processEvents()

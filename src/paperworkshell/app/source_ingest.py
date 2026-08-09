@@ -9,6 +9,12 @@ from types import TracebackType
 from typing import Final, Protocol, Self, runtime_checkable
 from uuid import UUID
 
+from paperworkshell.domain.pdf_export import (
+    PdfExportPlan,
+    PdfExportSourceEncryptionState,
+    PdfExportSourceMediaType,
+    PdfExportSourceSignatureState,
+)
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -53,6 +59,101 @@ class ProgressSink(Protocol):
 
     def __call__(self, progress: SourceImportProgress, /) -> None:
         """Receive one already validated progress record."""
+
+
+@runtime_checkable
+class CommittedPdfSourceLease(Protocol):
+    """One exact committed PDF source exposed only as path-free facts and a handle."""
+
+    @property
+    def source_id(self) -> UUID:
+        """Return the source's opaque manifest identifier."""
+
+    @property
+    def media_type(self) -> PdfExportSourceMediaType:
+        """Return the fixed PDF media type authenticated from the manifest."""
+
+    @property
+    def byte_size(self) -> int:
+        """Return the exact authenticated source byte size."""
+
+    @property
+    def page_count(self) -> int:
+        """Return the exact inspected page count."""
+
+    @property
+    def sha256(self) -> str:
+        """Return the exact authenticated source digest."""
+
+    @property
+    def signature_state(self) -> PdfExportSourceSignatureState:
+        """Return the exact conservative signature-marker state."""
+
+    @property
+    def encryption_state(self) -> PdfExportSourceEncryptionState:
+        """Return the required unencrypted state."""
+
+    @property
+    def handle_value(self) -> int:
+        """Return the read-only handle value intended solely for worker duplication."""
+
+
+@runtime_checkable
+class CommittedPdfSourceBatchLease(Protocol):
+    """Retain one manifest state and all exact PDF sources required by an export."""
+
+    @property
+    def case_id(self) -> UUID:
+        """Return the one case bound to this batch."""
+
+    @property
+    def manifest_revision(self) -> int:
+        """Return the authenticated manifest revision."""
+
+    @property
+    def manifest_sha256(self) -> str:
+        """Return the authenticated manifest digest."""
+
+    @property
+    def manifest_cas_token(self) -> str:
+        """Return the identity-bound manifest compare-and-swap token."""
+
+    @property
+    def sources(self) -> tuple[CommittedPdfSourceLease, ...]:
+        """Return sources in deterministic first-use order."""
+
+    def revalidate(
+        self,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> None:
+        """Re-hash every retained source after worker termination."""
+
+    def __enter__(self) -> Self:
+        """Retain every authenticated handle for one export attempt."""
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
+        """Close the complete batch on every exit path."""
+
+
+@runtime_checkable
+class CommittedPdfSourceBatchStore(Protocol):
+    """Narrow storage port for a manifest-bound deterministic PDF-source batch."""
+
+    def borrow_committed_pdf_sources(
+        self,
+        plan: PdfExportPlan,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> CommittedPdfSourceBatchLease:
+        """Authenticate once and retain every exact source required by ``plan``."""
 
 
 @runtime_checkable

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+from collections.abc import Iterator
 from contextlib import AbstractContextManager
 from ctypes import wintypes
 from typing import Any, Final, Self
@@ -243,6 +244,46 @@ class WindowsBoundedOutputBuffer(AbstractContextManager["WindowsBoundedOutputBuf
             )
         try:
             return ctypes.string_at(self._read_view, byte_count)
+        except MemoryError:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                "broker.output_read",
+            )
+        except OSError, OverflowError, ValueError:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.RESULT_INVALID,
+                "broker.output_read",
+            )
+
+    def iter_chunks(
+        self,
+        byte_count: int,
+        *,
+        chunk_bytes: int = 1024 * 1024,
+    ) -> Iterator[bytes]:
+        """Yield an exact trusted prefix without copying the complete output at once."""
+
+        if self._closed or self._read_view == 0:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.INTERNAL_ERROR,
+                "broker.output_reader",
+            )
+        if (
+            type(byte_count) is not int
+            or not 0 <= byte_count <= self._capacity
+            or type(chunk_bytes) is not int
+            or not 1 <= chunk_bytes <= 16 * 1024 * 1024
+        ):
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.RESULT_INVALID,
+                "broker.output_byte_count",
+            )
+        offset = 0
+        try:
+            while offset < byte_count:
+                size = min(chunk_bytes, byte_count - offset)
+                yield ctypes.string_at(self._read_view + offset, size)
+                offset += size
         except MemoryError:
             reject_pdf_thumbnail(
                 PdfThumbnailErrorCode.LIMIT_EXCEEDED,

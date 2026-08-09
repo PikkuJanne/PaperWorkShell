@@ -167,6 +167,7 @@ class BrokeredHandlePurpose(StrEnum):
     """Closed least-privilege access profiles for out-of-band worker handles."""
 
     READ_SOURCE = "read_source"
+    READ_BOUNDED_INPUT_SECTION = "read_bounded_input_section"
     WRITE_RESULT_PIPE = "write_result_pipe"
     WRITE_BOUNDED_OUTPUT_SECTION = "write_bounded_output_section"
 

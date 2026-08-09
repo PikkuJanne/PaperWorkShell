@@ -24,12 +24,21 @@ from paperworkshell.app.organizer import (
     OrganizerPageView,
     OrganizerViewState,
 )
-from paperworkshell.domain.case_lifecycle import CaseIndex
+from paperworkshell.domain.case_lifecycle import (
+    CaseIndex,
+    CaseLifecycleError,
+    CaseLifecycleErrorCode,
+)
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
     PdfThumbnailErrorCode,
     PdfThumbnailResult,
+)
+from paperworkshell.domain.recovery import (
+    CaseRecoveryResult,
+    CaseRecoveryStatus,
+    StartupRecoveryResult,
 )
 from paperworkshell.domain.source_ingest import (
     SourceImportResult,
@@ -94,6 +103,8 @@ def _many_page_state(page_count: int) -> OrganizerViewState:
 
 
 class _BlockingOrganizerBackend:
+    startup_recovery_result = StartupRecoveryResult()
+
     def __init__(
         self,
         *,
@@ -207,6 +218,8 @@ class _BlockingOrganizerBackend:
 
 
 class _ReopenRequiredOrganizerBackend:
+    startup_recovery_result = StartupRecoveryResult()
+
     def __init__(self) -> None:
         self.state = _initial_state()
 
@@ -236,6 +249,32 @@ class _ReopenRequiredOrganizerBackend:
             self.state,
             OrganizerImportRefreshStatus.REOPEN_REQUIRED,
         )
+
+
+class _CleanupRefusalBackend(_BlockingOrganizerBackend):
+    def __init__(self, failure_kind: str) -> None:
+        super().__init__(
+            state=OrganizerViewState(
+                CASE_ID,
+                0,
+                (),
+                False,
+                False,
+                False,
+            )
+        )
+        self.failure_kind = failure_kind
+        self.shutdown_attempts = 0
+
+    def shutdown(self) -> None:
+        self.shutdown_attempts += 1
+        self.shutdown_started.set()
+        if self.shutdown_attempts == 1:
+            self.state = OrganizerViewState.empty()
+            if self.failure_kind == "lifecycle":
+                raise CaseLifecycleError(CaseLifecycleErrorCode.CLOSE_FAILED, "case.test")
+            raise RuntimeError("PRIVATE_SHUTDOWN_CLEANUP_CANARY")
+        self.shutdown_finished.set()
 
 
 @contextmanager
@@ -313,6 +352,76 @@ def test_worker_reports_committed_reopen_outcome_without_retryable_failure() -> 
     assert finished == [41]
     worker.deleteLater()
     application.processEvents()
+
+
+def test_worker_publishes_exact_path_free_startup_recovery_result() -> None:
+    application = _application()
+    result = StartupRecoveryResult(
+        (
+            CaseRecoveryResult(
+                case_id=UUID("85000000-0000-4000-8000-000000000001"),
+                status=CaseRecoveryStatus.CURRENT,
+                manifest_revision=0,
+                removed_temp_files=1,
+                released_bytes=17,
+            ),
+        )
+    )
+    backend = _BlockingOrganizerBackend()
+    backend.startup_recovery_result = result
+    worker = OrganizerBackendWorker(lambda: cast(OrganizerBackend, backend))
+    published: list[object] = []
+    signal_order: list[str] = []
+    statuses: list[str] = []
+    worker.initialized.connect(lambda: signal_order.append("initialized"))
+    worker.cases_changed.connect(lambda _cases: signal_order.append("cases"))
+    worker.status_changed.connect(statuses.append)
+
+    def record_recovery(value: object) -> None:
+        signal_order.append("recovery")
+        published.append(value)
+
+    worker.startup_recovery_changed.connect(record_recovery)
+
+    worker.initialize()
+
+    assert published == [result]
+    assert signal_order == ["initialized", "cases", "recovery"]
+    assert statuses == []
+    worker.deleteLater()
+    application.processEvents()
+
+
+@pytest.mark.parametrize("failure_kind", ("lifecycle", "resource"))
+def test_cleanup_shutdown_refusal_republishes_empty_state_and_keyboard_retry_closes(
+    failure_kind: str,
+) -> None:
+    backend = _CleanupRefusalBackend(failure_kind)
+    with _threaded_window(backend) as (window, commands, _worker):
+        commands.create_case_requested.emit()
+        _wait_until(lambda: window._state is not None and window._state.case_id == CASE_ID)
+
+        window.request_shutdown()
+        _wait_until(lambda: window._retry_close_button.isVisible())
+
+        assert backend.shutdown_attempts == 1
+        assert window._state == OrganizerViewState.empty()
+        assert window._stack.currentWidget() is window._welcome_page
+        assert not window._retry_save_button.isVisible()
+        assert window._retry_close_button.isEnabled()
+        assert _application().focusWidget() is window._retry_close_button
+        assert window._status_label.text() == (
+            "The application remains open because secure cleanup could not finish. "
+            "Retry closing PaperWorkShell."
+        )
+        assert "PRIVATE_SHUTDOWN_CLEANUP_CANARY" not in window._error_label.text()
+        assert "PRIVATE_SHUTDOWN_CLEANUP_CANARY" not in window._status_label.text()
+
+        QTest.keyClick(window._retry_close_button, Qt.Key.Key_Space)
+
+        _wait_until(lambda: backend.shutdown_attempts == 2)
+        _wait_until(lambda: window._allow_close)
+        assert backend.shutdown_finished.is_set()
 
 
 def test_real_thread_correlates_preview_and_import_cancellation_and_resumes(

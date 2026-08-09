@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import traceback
+import venv
 from collections.abc import Iterator
 from ctypes import wintypes
 from pathlib import Path
@@ -21,6 +22,12 @@ from uuid import uuid4
 import pytest
 
 from paperworkshell.worker.client import _windows as windows_module
+from paperworkshell.worker.client._acl_recovery import (
+    AclRecoveryEntry,
+    AclRecoveryJournal,
+    AclRecoveryJournalError,
+    AclRecoveryPhase,
+)
 from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
     WindowsLaunchError,
@@ -430,11 +437,10 @@ def test_actual_python_host_negotiates_and_closes_inside_app_container(
     _assert_profile_removed(profile_folder)
 
 
-def test_base_interpreter_uses_consumed_venv_hint_in_one_process() -> None:
+def test_base_interpreter_uses_consumed_venv_hint_in_one_process(tmp_path: Path) -> None:
     base_runtime = Path(sys.base_prefix).resolve()
-    venv_runtime = Path(sys.prefix).resolve()
-    if base_runtime == venv_runtime:
-        pytest.skip("the test runner is not using a Windows virtual environment")
+    venv_runtime = tmp_path / "worker-venv"
+    venv.EnvBuilder(with_pip=False).create(venv_runtime)
     source_root = _REPOSITORY_ROOT / "src"
     config = WindowsLaunchConfig(
         python_executable=(base_runtime / "python.exe").resolve(),
@@ -442,7 +448,7 @@ def test_base_interpreter_uses_consumed_venv_hint_in_one_process() -> None:
         runtime_roots=(venv_runtime, base_runtime),
         code_roots=(source_root,),
         working_directory=source_root,
-        venv_launcher=Path(sys.executable).resolve(),
+        venv_launcher=(venv_runtime / "Scripts" / "python.exe").resolve(),
     )
     policy = WorkerResourcePolicy(
         process_memory_bytes=512 * 1024 * 1024,
@@ -719,7 +725,7 @@ def test_overlapping_hardlink_guards_preserve_preexisting_user_deny(
                 user_sid,
                 windows_module._FILE_WRITE_ATTRIBUTES,
             )
-            == 3
+            == 2
         )
         with pytest.raises(PermissionError):
             os.link(existing, alias)
@@ -772,7 +778,79 @@ def test_overlapping_hardlink_guards_preserve_preexisting_user_deny(
     _assert_profile_removed(second_folder)
 
 
-def test_post_apply_guard_removal_failure_is_idempotent_across_leases(
+def test_second_lease_rejects_missing_shared_guard_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recovery_root = tmp_path / "worker-acl-recovery"
+    monkeypatch.setattr(
+        windows_module,
+        "_acl_recovery_directory_path",
+        lambda: recovery_root,
+    )
+    approved = tmp_path / "missing-shared-guard-runtime"
+    approved.mkdir()
+    existing = approved / "existing-resource.bin"
+    existing.write_bytes(b"synthetic-runtime-resource")
+    before = (_dacl_sddl(approved), _dacl_sddl(existing))
+    first = _AppContainerProfile.create((approved,))
+    second = _AppContainerProfile.create((approved,))
+    first_folder = first.local_app_data
+    second_folder = second.local_app_data
+    journal = AclRecoveryJournal(recovery_root)
+    try:
+        first.grant_read_execute((approved,))
+        first_entry = journal.inventory()[0]
+        inventory = first.access.inventory
+        assert inventory is not None
+        resource = inventory.resources_by_path[windows_module._normalized_path(existing)]
+        baseline = resource.hardlink_guard_baseline
+        expected_auto_inherited = resource.original_auto_inherited
+        assert baseline is not None
+        assert expected_auto_inherited is not None
+        peer_sid = windows_module._convert_string_sid(
+            windows_module._current_process_user_sid_string()
+        )
+        try:
+            windows_module._remove_one_exact_deny_ace_handle(
+                resource.handle.value,
+                peer_sid,
+                windows_module._FILE_WRITE_ATTRIBUTES,
+            )
+            windows_module._restore_dacl_auto_inherited_handle(
+                resource.handle.value,
+                expected_auto_inherited,
+            )
+            assert (
+                windows_module._exact_deny_ace_count_handle(
+                    resource.handle.value,
+                    peer_sid,
+                    windows_module._FILE_WRITE_ATTRIBUTES,
+                )
+                == baseline
+            )
+        finally:
+            windows_module._local_free(peer_sid)
+
+        with pytest.raises(WindowsLaunchError) as raised:
+            second.grant_read_execute((approved,))
+
+        assert raised.value.context == "access.guard_verify"
+        assert second.access.inventory is None
+        assert journal.inventory() == (first_entry,)
+        assert windows_module._sid_access_mask(approved, second.sid) == 0
+        assert windows_module._sid_access_mask(existing, second.sid) == 0
+        assert second.close_no_raise()
+        assert first.close_no_raise()
+        assert (_dacl_sddl(approved), _dacl_sddl(existing)) == before
+    finally:
+        assert second.close_no_raise()
+        assert first.close_no_raise()
+    _assert_profile_removed(first_folder)
+    _assert_profile_removed(second_folder)
+
+
+def test_last_shared_guard_removal_failure_is_idempotent_across_leases(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -793,31 +871,10 @@ def test_post_apply_guard_removal_failure_is_idempotent_across_leases(
     first.grant_read_execute((approved,))
     second.grant_read_execute((approved,))
     alias_parent.mkdir()
-
-    def remove_then_fail(handle: int, sid: ctypes.c_void_p, mask: int) -> None:
-        nonlocal interrupted
-        original_remove(handle, sid, mask)
-        if not interrupted:
-            interrupted = True
-            raise WindowsLaunchError(
-                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-                "access.guard_remove",
-                "Synthetic sanitized post-apply failure.",
-            )
-
-    monkeypatch.setattr(
-        windows_module,
-        "_remove_one_exact_deny_ace_handle",
-        remove_then_fail,
-    )
-    assert not first.close_no_raise()
-    first_inventory = first.access.inventory
+    assert first.close_no_raise()
     second_inventory = second.access.inventory
-    assert first_inventory is not None
     assert second_inventory is not None
-    first_resource = first_inventory.resources_by_path[windows_module._normalized_path(existing)]
     second_resource = second_inventory.resources_by_path[windows_module._normalized_path(existing)]
-    assert not first_resource.hardlink_guard_added
     peer_sid_string = second.access.peer_sid_string
     assert peer_sid_string is not None
     peer_sid = windows_module._convert_string_sid(peer_sid_string)
@@ -835,14 +892,43 @@ def test_post_apply_guard_removal_failure_is_idempotent_across_leases(
     with pytest.raises(PermissionError):
         os.link(existing, alias)
 
+    def remove_then_fail(handle: int, sid: ctypes.c_void_p, mask: int) -> None:
+        nonlocal interrupted
+        original_remove(handle, sid, mask)
+        if not interrupted:
+            interrupted = True
+            raise WindowsLaunchError(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.guard_remove",
+                "Synthetic sanitized post-apply failure.",
+            )
+
+    monkeypatch.setattr(
+        windows_module,
+        "_remove_one_exact_deny_ace_handle",
+        remove_then_fail,
+    )
+    assert not second.close_no_raise()
+    assert second.access.inventory is second_inventory
+    assert interrupted
+    peer_sid = windows_module._convert_string_sid(peer_sid_string)
+    try:
+        assert (
+            windows_module._exact_deny_ace_count_handle(
+                second_resource.handle.value,
+                peer_sid,
+                windows_module._FILE_WRITE_ATTRIBUTES,
+            )
+            == 0
+        )
+    finally:
+        windows_module._local_free(peer_sid)
+
     monkeypatch.setattr(
         windows_module,
         "_remove_one_exact_deny_ace_handle",
         original_remove,
     )
-    assert first.close_no_raise()
-    with pytest.raises(PermissionError):
-        os.link(existing, alias)
     assert second.close_no_raise()
 
     assert (_dacl_sddl(approved), _dacl_sddl(existing)) == before
@@ -941,6 +1027,7 @@ def test_mid_revoke_failure_retains_authenticated_cleanup_inventory(
     approved = tmp_path / "revoke-failure-runtime"
     approved.mkdir()
     existing = approved / "existing-resource.bin"
+    alias = tmp_path / "existing-resource-alias.bin"
     existing.write_bytes(b"synthetic-runtime-resource")
     before = (_dacl_sddl(approved), _dacl_sddl(existing))
     profile = _AppContainerProfile.create()
@@ -967,11 +1054,198 @@ def test_mid_revoke_failure_retains_authenticated_cleanup_inventory(
         fail_second_revoke,
     )
     assert not profile.close_no_raise()
-    assert profile.access.inventory is not None
+    inventory = profile.access.inventory
+    assert inventory is not None
+    assert any(
+        windows_module._sid_access_mask_handle(resource.handle.value, profile.sid)
+        for resource in inventory.resources
+    )
+    resource = inventory.resources_by_path[windows_module._normalized_path(existing)]
+    baseline = resource.hardlink_guard_baseline
+    assert baseline is not None
+    peer_sid = windows_module._convert_string_sid(windows_module._current_process_user_sid_string())
+    try:
+        assert (
+            windows_module._exact_deny_ace_count_handle(
+                resource.handle.value,
+                peer_sid,
+                windows_module._FILE_WRITE_ATTRIBUTES,
+            )
+            == baseline + 1
+        )
+    finally:
+        windows_module._local_free(peer_sid)
+    with pytest.raises(PermissionError):
+        os.link(existing, alias)
 
     monkeypatch.setattr(windows_module, "_change_sid_access_handle", original_change)
     assert profile.close_no_raise()
     assert (_dacl_sddl(approved), _dacl_sddl(existing)) == before
+    os.link(existing, alias)
+    alias.unlink()
+    _assert_profile_removed(profile_folder)
+
+
+def test_sid_absence_query_failure_retains_guard_until_successful_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    approved = tmp_path / "verify-failure-runtime"
+    approved.mkdir()
+    existing = approved / "existing-resource.bin"
+    alias = tmp_path / "existing-resource-alias.bin"
+    existing.write_bytes(b"synthetic-runtime-resource")
+    before = (_dacl_sddl(approved), _dacl_sddl(existing))
+    profile = _AppContainerProfile.create()
+    profile_folder = profile.local_app_data
+    profile.grant_read_execute((approved,))
+    original_mask = windows_module._sid_access_mask_handle
+    failed = False
+
+    def fail_first_absence_query(handle: int, sid: ctypes.c_void_p) -> int:
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise WindowsLaunchError(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.inspect",
+                "Synthetic sanitized failure.",
+            )
+        return original_mask(handle, sid)
+
+    monkeypatch.setattr(
+        windows_module,
+        "_sid_access_mask_handle",
+        fail_first_absence_query,
+    )
+    assert not profile.close_no_raise()
+    inventory = profile.access.inventory
+    assert inventory is not None
+    assert all(
+        original_mask(resource.handle.value, profile.sid) == 0 for resource in inventory.resources
+    )
+    resource = inventory.resources_by_path[windows_module._normalized_path(existing)]
+    baseline = resource.hardlink_guard_baseline
+    assert baseline is not None
+    peer_sid = windows_module._convert_string_sid(windows_module._current_process_user_sid_string())
+    try:
+        assert (
+            windows_module._exact_deny_ace_count_handle(
+                resource.handle.value,
+                peer_sid,
+                windows_module._FILE_WRITE_ATTRIBUTES,
+            )
+            == baseline + 1
+        )
+    finally:
+        windows_module._local_free(peer_sid)
+    with pytest.raises(PermissionError):
+        os.link(existing, alias)
+
+    monkeypatch.setattr(windows_module, "_sid_access_mask_handle", original_mask)
+    assert profile.close_no_raise()
+    assert (_dacl_sddl(approved), _dacl_sddl(existing)) == before
+    os.link(existing, alias)
+    alias.unlink()
+    _assert_profile_removed(profile_folder)
+
+
+def test_missing_active_journal_is_republished_for_exact_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recovery_root = tmp_path / "worker-acl-recovery"
+    monkeypatch.setattr(
+        windows_module,
+        "_acl_recovery_directory_path",
+        lambda: recovery_root,
+    )
+    approved = tmp_path / "missing-ledger-runtime"
+    approved.mkdir()
+    existing = approved / "existing-resource.bin"
+    alias = tmp_path / "existing-resource-alias.bin"
+    existing.write_bytes(b"synthetic-runtime-resource")
+    before = (_dacl_sddl(approved), _dacl_sddl(existing))
+    profile = _AppContainerProfile.create()
+    profile_folder = profile.local_app_data
+    profile.grant_read_execute((approved,))
+    journal = AclRecoveryJournal(recovery_root)
+    entries = journal.inventory()
+    assert len(entries) == 1
+    assert entries[0].phase is AclRecoveryPhase.ACTIVE
+    journal.delete(profile.access.profile_id)
+
+    assert profile.close_no_raise()
+
+    assert journal.inventory() == ()
+    assert (_dacl_sddl(approved), _dacl_sddl(existing)) == before
+    os.link(existing, alias)
+    alias.unlink()
+    _assert_profile_removed(profile_folder)
+
+
+def test_revoking_republish_failure_retains_handles_sid_and_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recovery_root = tmp_path / "worker-acl-recovery"
+    monkeypatch.setattr(
+        windows_module,
+        "_acl_recovery_directory_path",
+        lambda: recovery_root,
+    )
+    approved = tmp_path / "republish-failure-runtime"
+    approved.mkdir()
+    existing = approved / "existing-resource.bin"
+    alias = tmp_path / "existing-resource-alias.bin"
+    existing.write_bytes(b"synthetic-runtime-resource")
+    before = (_dacl_sddl(approved), _dacl_sddl(existing))
+    profile = _AppContainerProfile.create()
+    profile_folder = profile.local_app_data
+    profile.grant_read_execute((approved,))
+    journal = AclRecoveryJournal(recovery_root)
+    original_write = AclRecoveryJournal.write
+    journal.delete(profile.access.profile_id)
+
+    def fail_write(
+        _journal: AclRecoveryJournal,
+        _entry: AclRecoveryEntry,
+    ) -> None:
+        raise AclRecoveryJournalError("write.replace")
+
+    monkeypatch.setattr(AclRecoveryJournal, "write", fail_write)
+    assert not profile.close_no_raise()
+    inventory = profile.access.inventory
+    assert inventory is not None
+    assert any(
+        windows_module._sid_access_mask_handle(resource.handle.value, profile.sid)
+        for resource in inventory.resources
+    )
+    resource = inventory.resources_by_path[windows_module._normalized_path(existing)]
+    baseline = resource.hardlink_guard_baseline
+    assert baseline is not None
+    peer_sid = windows_module._convert_string_sid(windows_module._current_process_user_sid_string())
+    try:
+        assert (
+            windows_module._exact_deny_ace_count_handle(
+                resource.handle.value,
+                peer_sid,
+                windows_module._FILE_WRITE_ATTRIBUTES,
+            )
+            == baseline + 1
+        )
+    finally:
+        windows_module._local_free(peer_sid)
+    with pytest.raises(PermissionError):
+        os.link(existing, alias)
+    assert journal.inventory() == ()
+
+    monkeypatch.setattr(AclRecoveryJournal, "write", original_write)
+    assert profile.close_no_raise()
+    assert journal.inventory() == ()
+    assert (_dacl_sddl(approved), _dacl_sddl(existing)) == before
+    os.link(existing, alias)
+    alias.unlink()
     _assert_profile_removed(profile_folder)
 
 
@@ -2288,8 +2562,12 @@ def test_failed_launch_retries_profile_cleanup_and_restores_access_policy(
     original_close = _AppContainerProfile.close_no_raise
     close_attempts = 0
 
-    def capture_profile(_cls: type[_AppContainerProfile]) -> _AppContainerProfile:
-        profile = original_create()
+    def capture_profile(
+        _cls: type[_AppContainerProfile],
+        recovery_roots: tuple[Path, ...],
+    ) -> _AppContainerProfile:
+        assert recovery_roots == config.access_roots
+        profile = original_create(recovery_roots)
         captured.append(profile)
         return profile
 
@@ -2372,7 +2650,11 @@ def test_partial_process_authority_terminates_owned_process_and_cleans_profile(
         terminated.append(process.value)
         return True
 
-    monkeypatch.setattr(_AppContainerProfile, "create", classmethod(lambda _cls: profile))
+    monkeypatch.setattr(
+        _AppContainerProfile,
+        "create",
+        classmethod(lambda _cls, _recovery_roots: profile),
+    )
     monkeypatch.setattr(windows_module, "_Job", lambda _policy: job)
     monkeypatch.setattr(_PipeSet, "create", classmethod(lambda _cls: pipes))
     monkeypatch.setattr(windows_module, "_AttributeList", FakeAttributeList)
@@ -2515,7 +2797,11 @@ def test_interrupted_process_creation_is_adopted_before_waiter_and_cleanup(
             raise KeyboardInterrupt
         original_adopt(owner, value)
 
-    monkeypatch.setattr(_AppContainerProfile, "create", classmethod(lambda _cls: profile))
+    monkeypatch.setattr(
+        _AppContainerProfile,
+        "create",
+        classmethod(lambda _cls, _recovery_roots: profile),
+    )
     monkeypatch.setattr(windows_module, "_Job", lambda _policy: job)
     monkeypatch.setattr(_PipeSet, "create", classmethod(lambda _cls: pipes))
     monkeypatch.setattr(windows_module, "_AttributeList", FakeAttributeList)
@@ -2623,7 +2909,11 @@ def test_missing_process_authority_quarantines_before_creation_lock_release(
         information.process_id = 1013
         information.thread_id = 1019
 
-    monkeypatch.setattr(_AppContainerProfile, "create", classmethod(lambda _cls: profile))
+    monkeypatch.setattr(
+        _AppContainerProfile,
+        "create",
+        classmethod(lambda _cls, _recovery_roots: profile),
+    )
     monkeypatch.setattr(windows_module, "_Job", lambda _policy: job)
     monkeypatch.setattr(_PipeSet, "create", classmethod(lambda _cls: pipes))
     monkeypatch.setattr(windows_module, "_AttributeList", FakeAttributeList)

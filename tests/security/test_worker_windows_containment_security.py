@@ -62,7 +62,10 @@ def test_fixed_venv_startup_hint_does_not_expand_the_worker_environment_allowlis
     monkeypatch.setenv("PYTHONPATH", "ambient-pythonpath-canary")
 
     environment = _environment(
-        _minimal_environment_block(tmp_path / "app-container-profile", launcher)
+        _minimal_environment_block(
+            tmp_path / "app-container-profile",
+            venv_launcher=launcher,
+        )
     )
 
     assert environment["__PYVENV_LAUNCHER__"] == os.fspath(launcher)

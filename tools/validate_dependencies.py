@@ -3523,7 +3523,7 @@ def _workflow_reconciliation_issues(
         and set(jobs) == {"windows-quality"}
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
-        and quality_job.get("timeout-minutes") == 20
+        and quality_job.get("timeout-minutes") == 30
         and len(quality_steps) == 8
     )
     expected_command_steps = {
@@ -3838,7 +3838,10 @@ def _workflow_reconciliation_issues(
         expected_qpdf_script_lines = [
             '$ErrorActionPreference = "Stop"',
             f'$archive = Join-Path $env:RUNNER_TEMP "{qpdf_artifact}"',
-            f'$destination = Join-Path $env:RUNNER_TEMP "qpdf-{qpdf_selected}"',
+            (
+                "$destination = Join-Path $env:ProgramFiles "
+                f'"PaperWorkShell-ci-qpdf-{qpdf_selected}"'
+            ),
             f'$uri = "{qpdf_uri}"',
             f'$expected = "{qpdf_hash}"',
             "Invoke-WebRequest -Uri $uri -OutFile $archive",

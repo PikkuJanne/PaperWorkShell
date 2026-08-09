@@ -120,6 +120,7 @@ class ThumbnailCleanupReport:
     retained_entries: int
     released_bytes: int
     failure_code: PdfThumbnailErrorCode | None = None
+    unexpected_failure: bool = False
 
 
 class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheStage"]):
@@ -497,6 +498,15 @@ class WindowsThumbnailCacheStore:
         """Boundedly remove inactive UUID-named stages while retaining live or unsafe entries."""
 
         selected_case = _require_uuid4(case_id, context="thumbnail.cleanup_case")
+        report: ThumbnailCleanupReport | None = None
+        selected: list[str] = []
+        registry_retained = 0
+        removed = 0
+        retained = 0
+        released = 0
+        failure: PdfThumbnailErrorCode | None = None
+        report_ready = False
+        unexpected_failure = False
         try:
             with ExitStack() as stack:
                 authority = stack.enter_context(self._manager.authenticate_case(selected_case))
@@ -504,8 +514,6 @@ class WindowsThumbnailCacheStore:
                 names = self._bounded_names(authority.layout.thumbnails)
                 with self._stage_lock:
                     retained_ids = self._live_stage_ids | self._quarantined_stage_ids
-                selected: list[str] = []
-                registry_retained = 0
                 for name in names:
                     if _CACHE_STAGE_NAME.fullmatch(name) is None:
                         continue
@@ -514,11 +522,9 @@ class WindowsThumbnailCacheStore:
                         registry_retained += 1
                     else:
                         selected.append(name)
-                removed = 0
                 retained = registry_retained
-                released = 0
-                failure: PdfThumbnailErrorCode | None = None
-                for name in selected:
+                report_ready = True
+                for index, name in enumerate(selected):
                     try:
                         was_removed, byte_count = _delete_exact_regular(
                             authority.layout.thumbnails / name,
@@ -528,10 +534,15 @@ class WindowsThumbnailCacheStore:
                         retained += 1
                         failure = PdfThumbnailErrorCode.DESTINATION_FAILED
                         continue
+                    except Exception:
+                        retained += len(selected) - index
+                        failure = PdfThumbnailErrorCode.DESTINATION_FAILED
+                        unexpected_failure = True
+                        break
                     if was_removed:
                         removed += 1
                         released += byte_count
-                return ThumbnailCleanupReport(
+                report = ThumbnailCleanupReport(
                     status=(
                         ThumbnailCleanupStatus.COMPLETE
                         if failure is None
@@ -542,17 +553,45 @@ class WindowsThumbnailCacheStore:
                     retained_entries=retained,
                     released_bytes=released,
                     failure_code=failure,
+                    unexpected_failure=unexpected_failure,
                 )
         except PdfThumbnailError:
+            if report_ready:
+                return _partial_thumbnail_cleanup_report(
+                    selected_entries=len(selected),
+                    registry_retained=registry_retained,
+                    removed_entries=removed,
+                    retained_entries=retained,
+                    released_bytes=released,
+                )
             raise
         except WorkspaceError:
+            if report_ready:
+                return _partial_thumbnail_cleanup_report(
+                    selected_entries=len(selected),
+                    registry_retained=registry_retained,
+                    removed_entries=removed,
+                    retained_entries=retained,
+                    released_bytes=released,
+                )
             reject_pdf_thumbnail(
                 PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.cleanup_stage"
             )
         except Exception:
+            if report_ready:
+                return _partial_thumbnail_cleanup_report(
+                    selected_entries=len(selected),
+                    registry_retained=registry_retained,
+                    removed_entries=removed,
+                    retained_entries=retained,
+                    released_bytes=released,
+                )
             reject_pdf_thumbnail(
                 PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.cleanup_stage"
             )
+        if report is None:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.INTERNAL_ERROR, "thumbnail.cleanup_report")
+        return report
 
     def _lookup_under_root(
         self,
@@ -661,6 +700,25 @@ class WindowsThumbnailCacheStore:
     def _release_stage(self, cache_object_id: UUID) -> None:
         with self._stage_lock:
             self._live_stage_ids.discard(cache_object_id)
+
+
+def _partial_thumbnail_cleanup_report(
+    *,
+    selected_entries: int,
+    registry_retained: int,
+    removed_entries: int,
+    retained_entries: int,
+    released_bytes: int,
+) -> ThumbnailCleanupReport:
+    return ThumbnailCleanupReport(
+        status=ThumbnailCleanupStatus.PARTIAL,
+        examined_entries=selected_entries + registry_retained,
+        removed_entries=removed_entries,
+        retained_entries=retained_entries,
+        released_bytes=released_bytes,
+        failure_code=PdfThumbnailErrorCode.DESTINATION_FAILED,
+        unexpected_failure=True,
+    )
 
 
 def _open_thumbnail_roots(

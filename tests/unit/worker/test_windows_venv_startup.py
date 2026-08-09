@@ -108,7 +108,7 @@ def test_minimal_child_environment_contains_only_the_fixed_startup_hint(
     launcher = config.venv_launcher
     assert launcher is not None
 
-    environment = _environment(_minimal_environment_block(local_app_data, launcher))
+    environment = _environment(_minimal_environment_block(local_app_data, venv_launcher=launcher))
 
     assert environment["__PYVENV_LAUNCHER__"] == os.fspath(launcher)
     assert set(environment) == {

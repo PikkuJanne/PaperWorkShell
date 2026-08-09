@@ -17,6 +17,10 @@ The maintainer has been asked to install it. No different screen reader is being
 This missing external verification keeps PWS-0111 from being marked done even though implementation
 and non-NVDA validation may proceed.
 
+Environment update (2026-08-09): NVDA 2026.1.1 is now installed at the standard Program Files
+location. The live keyboard/NVDA scenarios below remain pending until the final production worker
+composition passes against the rebuilt project environment.
+
 ## Automated evidence
 
 Run from the repository root with the default locked environment:
@@ -35,7 +39,8 @@ by 540 logical viewport with 200-percent text, authoritative-state synchronizati
 visible/selected preview batches and Qt pixmap eviction, operation-correlated cancellation on a real
 Qt thread, autosave-before-preview ordering, the committed-import close/reopen recovery lock and
 focus target, recovered-case review status, autosave/restart
-reconstruction, and unknown-error privacy.
+reconstruction, explicit failed-preview retry with a fresh correlated operation (`Ctrl+Shift+R`),
+actionable import-failure focus, visible error/status focus treatment, and unknown-error privacy.
 
 ## Automation-assisted keyboard evidence
 
@@ -61,6 +66,8 @@ Use only the keyboard and a repository synthetic PDF; do not use applicant docum
    `tests/fixtures/synthetic/v1/pdf/render-calibration.pdf`, and press Enter.
 4. Confirm phase and numeric progress text is visible. While a preview is active, use Tab to reach
    Cancel current operation and confirm it has a visible focus indicator; do not cancel this run.
+   For the deliberate safe preview failure later in the scenario, use Ctrl+Shift+R or activate
+   Retry selected preview and confirm a fresh attempt starts for only the selected failed row.
 5. In Active pages, use arrow keys to select the first page. Press `Ctrl+R` and confirm the row text
    reports 90-degree rotation.
 6. Press `Alt+Down` and confirm the selected page moves one position later. Press `Ctrl+Z` and
@@ -88,8 +95,9 @@ After NVDA is installed:
    and a deliberately cancelled preview are announced once without exposing a path or filename.
 4. Traverse Active pages. Confirm each row announces “Page N of M,” rotation, and the truthful
    preview state: not loaded, loading, ready, failed, or unavailable as applicable.
-5. Exercise Rotate, Move, Remove, Undo, Redo, Change full order, and Retry saving changes using only
-   keyboard controls. Confirm disabled actions are reported as unavailable and focus remains visible.
+5. Exercise Rotate, Move, Remove, Undo, Redo, Change full order, Retry selected preview, and Retry
+   saving changes using only keyboard controls. Confirm disabled actions are reported as unavailable
+   and focus remains visible.
 6. Trigger one synthetic safe failure and confirm the stable recovery message is announced and
    focus moves to its recovery action.
 7. Repeat at 200-percent Windows text/display scaling and note clipped, unreachable, duplicated, or

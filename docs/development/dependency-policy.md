@@ -288,10 +288,13 @@ qpdf DLL, and runtime DLL hashes so a wheel replacement cannot silently change t
 Standalone structural checking uses qpdf 12.3.2 from the official Windows x64 ZIP. CI downloads
 `qpdf-12.3.2-msvc64.zip` to runner temporary storage, verifies SHA-256
 `8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202` before extraction, checks
-the executable's exact version, and exports only the absolute `PWS_QPDF_EXECUTABLE` path. The ZIP
-route avoids executing the unsigned NSIS installer. qpdf uses the selected Apache-2.0 license
-route; its official MSVC closure reports libjpeg 9f, OpenSSL 3.6.0, zlib 1.3.1, and Microsoft CRT
-files as release-inventory inputs.
+the executable's exact version, and exports only the absolute `PWS_QPDF_EXECUTABLE` path. The
+verified test installation is extracted under `Program Files` so its inherited policy exercises
+the installed-resource AppContainer path; a separate live test copies that closure to temporary
+storage and proves the launcher's bounded access grant is removed afterward. The ZIP route avoids
+executing the unsigned NSIS installer. qpdf uses the selected Apache-2.0 license route; its official
+MSVC closure reports libjpeg 9f, OpenSSL 3.6.0, zlib 1.3.1, and Microsoft CRT files as
+release-inventory inputs.
 
 pikepdf/qpdf load and process untrusted PDFs only in the worker. Application and UI modules never
 receive third-party objects or raw exceptions. Structural checking through an executable uses a

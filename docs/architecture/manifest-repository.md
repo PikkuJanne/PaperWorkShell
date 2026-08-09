@@ -16,7 +16,8 @@ authenticated Windows staging, the fixed recovery checkpoint, atomic replacement
 
 The repository does not parse documents, render pages, import UI or PDF libraries, perform schema
 migration, or claim power-loss durability. PWS-0110 owns page-operation construction and replay;
-PWS-0113 owns bounded restart cleanup for unrelated orphaned staging objects.
+PWS-0113 owns the ordered [startup recovery](startup-recovery-and-diagnostics.md) boundary for
+unrelated orphaned staging objects after authoritative manifest and export-receipt settlement.
 
 ## Full runtime validation
 

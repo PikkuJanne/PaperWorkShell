@@ -69,6 +69,11 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailResult,
     reject_pdf_thumbnail,
 )
+from paperworkshell.domain.recovery import (
+    RecoveryErrorCode,
+    StartupRecoveryResult,
+    reject_recovery,
+)
 from paperworkshell.domain.source_ingest import SourceImportResult
 
 _DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS
@@ -269,6 +274,7 @@ class OrganizerBackend:
         "_session",
         "_shutdown",
         "_source_ingest",
+        "_startup_recovery",
         "_thumbnails",
     )
 
@@ -280,17 +286,29 @@ class OrganizerBackend:
         thumbnails: _ThumbnailServicePort,
         *,
         close_resources: Callable[[], None] = _close_nothing,
+        startup_recovery: StartupRecoveryResult | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
+        if startup_recovery is None:
+            startup_recovery = StartupRecoveryResult()
+        elif type(startup_recovery) is not StartupRecoveryResult:
+            reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.organizer_result")
         self._lifecycle = lifecycle
         self._repository = repository
         self._source_ingest = source_ingest
         self._thumbnails = thumbnails
         self._close_resources = close_resources
+        self._startup_recovery = startup_recovery
         self._pending_committed_import: SourceImportResult | None = None
         self._session: _OrganizerSession | None = None
         self._shutdown = False
+
+    @property
+    def startup_recovery_result(self) -> StartupRecoveryResult:
+        """Return the immutable path-free result from desktop startup recovery."""
+
+        return self._startup_recovery
 
     @property
     def state(self) -> OrganizerViewState:
