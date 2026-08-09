@@ -1224,13 +1224,14 @@ tasks:
   blocker: null
   evidence:
     completed_at: '2026-08-09'
-    revision: "f61ae6d"
+    revision: "77972df"
     commands:
     - "uv run --no-sync python tools/dev.py test-unit - passed; 1799 unit tests covered deterministic planning/assembly, strict reopen, qpdf/PDFium verification, destination publication, history settlement/retry, malformed output, encrypted output, cleanup failures, DOS 8.3 temp aliases, and temp-parent identity changes"
     - "uv run --no-sync python tools/dev.py test-integration - passed; 267 tests with 2 disclosed Windows link-capability skips, including live restricted-worker PDF export with real pikepdf/libqpdf, qpdf, and PDFium"
     - "uv run --no-sync python tools/dev.py test-security - passed; 228 tests with 5 disclosed Windows capability/privilege skips; export containment, limits, no-egress behavior, source preservation, and sanitized failures passed"
     - "uv run --no-sync python tools/dev.py test-accessibility - passed; 2 baseline accessibility tests"
     - "uv run --no-sync python -m pytest tests/integration/test_pdf_export_worker_windows.py tests/integration/test_pdf_export_adapter_appcontainer_windows.py tests/integration/test_worker_windows_temp_access.py -q - passed; 4 live Windows tests proved the restricted export worker accepts broker-provisioned temp paths while equivalent host aliases remain contained"
+    - "uv run --no-sync python -m pytest tests/unit/test_ci_workflow.py tests/unit/test_validate_dependencies.py -q; uv run --no-sync python -m pytest tests/integration/test_qpdf_worker_configuration_windows.py -q - passed; 31 workflow/dependency tests with 55 subtests and 2 live qpdf AppContainer tests"
     - "uv run --no-sync python tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed; 224 files formatted/linted/typed and 12 layers across 83 source files remained valid"
     - "uv run --no-sync python tools/dev.py validate-dependencies; validate-docs; validate-schemas; validate-task-graph - passed; locked dependency inventory, documentation references, 8 schema families, and the 80-task/238-edge DAG validated"
     - "uv run --no-sync python tools/dev.py validate-fixtures after the approved tip rewrite - passed; 42 deterministic fixtures, 15 renderer references, 1075 historical blobs, 392 index blobs, and 416 working files"
@@ -1242,6 +1243,7 @@ tasks:
     - Path-free canonical history receipts are prepared before destination commit, durable history identifiers are reserved before export, selected-case retries are independently bound, and history-only failures never recreate or relabel the verified derivative; durable pending-receipt recovery across application restart belongs to PWS-0113.
     - Independent cleanup, application-boundary, documentation, and completion audits found no remaining P0-P2 issue after the encrypted-candidate regression and final wording corrections.
     - GitHub-hosted Windows exposes TEMP/TMP through a DOS 8.3 user-profile alias while LOCALAPPDATA uses the long spelling; export temp authentication now compares validated lstat identities for differing spellings, rechecks them after creation, and preserves the query-free broker-provisioned AppContainer path.
+    - CI keeps the pinned qpdf archive in runner temporary storage but extracts the verified test installation under Program Files, preserving the live no-mutation installed-resource check while the temporary-copy test proves one bounded grant and complete restoration.
 - id: PWS-0113
   milestone: M1
   title: Implement crash recovery and sanitized diagnostic baseline
