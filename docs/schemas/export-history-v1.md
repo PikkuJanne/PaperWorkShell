@@ -50,6 +50,18 @@ and verifies the exact canonical bytes before only the authenticated retired ide
 An indeterminate identity is reported as commit-uncertain; exact staged and retired authorities are
 preserved for PWS-0113 recovery rather than deleting through an untrusted name.
 
+Startup validates stable history independently of the retry journal. Every manifest history
+reference must resolve to the exact version and canonical record digest in stable history; valid
+unlinked records may remain pending. If the stable name is absent, startup may restore only one
+canonical UUIDv4 `.retired` file after authenticating its identity and proving that it contains all
+manifest references. A generic `.tmp` file is never promoted because its name does not bind it to
+the interrupted transaction. If stable history exists, one authenticated retirement is disposable
+only when its complete record sequence is a strict prefix of stable history. Multiple, malformed,
+corrupt, linked, streamed, divergent, or equal retirements remain unresolved and preserved. An
+unresolved history state requires attention and stops all generic case-temp cleanup so recovery
+evidence survives. A successful retirement restore marks the case `recovered`;
+`repaired_export_history` continues to count only exact retry-receipt settlements.
+
 Reparse points, sparse files, hard links, alternate data streams, noncanonical JSON, duplicate
 keys, malformed records, and unsupported current or future versions fail before mutation. A failed
 record write never creates a manifest reference; a failed manifest link never removes the already

@@ -19,7 +19,8 @@ use case through a structural storage protocol and holds at most one active leas
 The lifecycle service has no UI, network operation, or document engine. PWS-0109 supplies the
 general manifest repository used by lifecycle list/open and by PWS-0104 import commits, while case
 creation keeps its create-only initial publication boundary. PWS-0111 owns the first accessible
-desktop workflow, PWS-0110 owns page-operation state, and PWS-0113 owns restart-time orphan cleanup.
+desktop workflow, PWS-0110 owns page-operation state, and PWS-0113 owns the ordered
+[startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md) boundary.
 
 ## Public lifecycle behavior
 
@@ -58,8 +59,9 @@ Creation uses `manifest.json` as the sole lifecycle-validity marker:
 
 The rename is the commit point. Interruption before it leaves no authoritative manifest and the
 case cannot appear in the valid index. Interruption after it leaves one complete recoverable case.
-A failed pre-publication cleanup may conservatively leave a random incomplete skeleton; PWS-0113
-owns bounded restart cleanup, and listing continues to classify it as unavailable.
+A failed pre-publication cleanup may conservatively leave a random incomplete skeleton. PWS-0113
+reports an incomplete candidate as unavailable without treating it as a valid case or cleaning
+unvalidated state.
 
 ## Source-import revisions
 
@@ -137,7 +139,8 @@ identity cannot be proven are outside its authority and remain untouched.
   malware, administrators, SYSTEM, backups, snapshots, or physical-media recovery.
 - Application removal is not secure erase and does not guarantee forensic erasure.
 - A power loss may leave a non-authoritative staged file or incomplete UUID skeleton; it cannot
-  create a partially written valid manifest.
+  create a partially written valid manifest. PWS-0113 cleans only authenticated artifacts beneath
+  a case whose complete current manifest loaded successfully.
 - PWS-0102 does not cancel a document worker because no lifecycle document operation exists yet.
   Later composition must close worker operations before releasing the active case lease.
 - Deleting an unsupported-version case is intentionally blocked. A future incompatible-case

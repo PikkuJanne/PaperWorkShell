@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from collections import deque
+from datetime import datetime
 from threading import RLock
 from typing import BinaryIO, Final
 
@@ -13,10 +14,14 @@ from paperworkshell.diagnostics.errors import (
     DiagnosticErrorContext,
     reject_diagnostic,
 )
-from paperworkshell.diagnostics.models import DiagnosticRecord, copy_diagnostic_record
+from paperworkshell.diagnostics.models import (
+    MAX_DIAGNOSTIC_RECORDS,
+    DiagnosticRecord,
+    copy_diagnostic_record,
+)
+from paperworkshell.diagnostics.summary import DiagnosticSummary, build_diagnostic_summary
 
 DEFAULT_MAXIMUM_DIAGNOSTIC_RECORDS: Final = 256
-MAXIMUM_DIAGNOSTIC_RECORDS: Final = 4_096
 
 
 class SanitizedDiagnosticLogger:
@@ -47,7 +52,7 @@ class SanitizedDiagnosticLogger:
     ) -> None:
         if (
             type(maximum_records) is not int
-            or not 1 <= maximum_records <= MAXIMUM_DIAGNOSTIC_RECORDS
+            or not 1 <= maximum_records <= MAX_DIAGNOSTIC_RECORDS
             or type(flush_on_emit) is not bool
         ):
             reject_diagnostic(
@@ -127,6 +132,20 @@ class SanitizedDiagnosticLogger:
 
         with self._lock:
             return tuple(bytes(line) for line in self._encoded_lines)
+
+    def snapshot_summary(self, *, generated_at: datetime) -> DiagnosticSummary:
+        """Atomically freeze current safe records and counters into a typed summary."""
+
+        with self._lock:
+            records = tuple(copy_diagnostic_record(record) for record in self._records)
+            dropped = self._dropped_records
+            failures = self._sink_failures
+        return build_diagnostic_summary(
+            records,
+            generated_at=generated_at,
+            dropped_record_count=dropped,
+            sink_failure_count=failures,
+        )
 
     def __repr__(self) -> str:
         with self._lock:

@@ -414,7 +414,7 @@ class _RetryLease:
     def __init__(self, receipt: PdfExportHistoryRetryReceipt) -> None:
         self.receipt = receipt
         self.mark_error: BaseException | None = None
-        self.mark_result = True
+        self.mark_result: object = True
         self.resolve_error: BaseException | None = None
         self.resolve_result = True
         self.discard_error: BaseException | None = None
@@ -423,12 +423,13 @@ class _RetryLease:
         self.resolve_calls = 0
         self.discard_calls = 0
         self.close_calls = 0
+        self.close_error: BaseException | None = None
 
     def mark_committed(self) -> bool:
         self.mark_calls += 1
         if self.mark_error is not None:
             raise self.mark_error
-        return self.mark_result
+        return cast(bool, self.mark_result)
 
     def resolve(self) -> bool:
         self.resolve_calls += 1
@@ -444,6 +445,8 @@ class _RetryLease:
 
     def close(self) -> None:
         self.close_calls += 1
+        if self.close_error is not None:
+            raise self.close_error
 
 
 class _Retries:
@@ -719,6 +722,43 @@ def test_committed_marker_failure_uses_durable_history_as_independent_proof() ->
     assert stack.retries.lease.mark_calls == 1
     assert stack.retries.lease.resolve_calls == 0
     assert stack.retries.discard_prepared_calls == 1
+    assert stack.retries.lease.close_calls == 1
+
+
+@pytest.mark.parametrize("mark_result", (False, object()))
+def test_unconfirmed_marker_result_uses_recorded_history_as_proof(mark_result: object) -> None:
+    stack = _stack()
+
+    def lease_factory(receipt: PdfExportHistoryRetryReceipt) -> _RetryLease:
+        lease = _RetryLease(receipt)
+        lease.mark_result = mark_result
+        return lease
+
+    stack.retries.lease_factory = lease_factory
+
+    outcome = _export(stack)
+
+    assert outcome.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert stack.retries.lease is not None
+    assert stack.retries.lease.resolve_calls == 0
+    assert stack.retries.discard_prepared_calls == 1
+
+
+def test_retry_lease_close_failure_cannot_relabel_committed_output() -> None:
+    stack = _stack()
+
+    def lease_factory(receipt: PdfExportHistoryRetryReceipt) -> _RetryLease:
+        lease = _RetryLease(receipt)
+        lease.close_error = KeyboardInterrupt()
+        return lease
+
+    stack.retries.lease_factory = lease_factory
+
+    outcome = _export(stack)
+
+    assert outcome.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert outcome.destination_reopened
+    assert stack.retries.lease is not None
     assert stack.retries.lease.close_calls == 1
 
 

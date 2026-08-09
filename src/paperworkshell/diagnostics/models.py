@@ -21,6 +21,7 @@ MAX_DIAGNOSTIC_VERSION_COMPONENTS: Final = 4
 MAX_DIAGNOSTIC_VERSIONS: Final = 16
 MAX_DIAGNOSTIC_COUNTS: Final = 32
 MAX_DIAGNOSTIC_RESOURCES: Final = 32
+MAX_DIAGNOSTIC_RECORDS: Final = 4_096
 
 
 class DiagnosticEventCode(StrEnum):
@@ -62,6 +63,7 @@ class DiagnosticFailureCode(StrEnum):
     """Generic failures that disclose no rejected value or implementation detail."""
 
     RECOVERY_SCAN_FAILED = "RECOVERY_SCAN_FAILED"
+    RECOVERY_ATTENTION_REQUIRED = "RECOVERY_ATTENTION_REQUIRED"
     CASE_INVALID = "CASE_INVALID"
     MANIFEST_INVALID = "MANIFEST_INVALID"
     CACHE_INVALID = "CACHE_INVALID"
@@ -112,6 +114,7 @@ class DiagnosticResourceKind(StrEnum):
     CPU_MILLISECONDS = "cpu_milliseconds"
     PEAK_MEMORY_BYTES = "peak_memory_bytes"
     TEMPORARY_STORAGE_BYTES = "temporary_storage_bytes"
+    STORAGE_BYTES_RELEASED = "storage_bytes_released"
 
 
 def _reject_record() -> None:

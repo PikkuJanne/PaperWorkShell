@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,11 +17,13 @@ import pytest
 from PIL import Image
 
 from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
+from paperworkshell.app.recovery import build_windows_startup_recovery_service
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import (
     PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES,
+    PdfThumbnailCacheKey,
     PdfThumbnailCacheStatus,
     PdfThumbnailError,
     PdfThumbnailErrorCode,
@@ -28,6 +31,7 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailProgressPhase,
     PdfThumbnailRequest,
 )
+from paperworkshell.domain.recovery import CaseRecoveryStatus, StartupRecoveryStatus
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -38,18 +42,28 @@ from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
-from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
+from paperworkshell.storage.thumbnail_cache import (
+    ThumbnailCacheLookup,
+    WindowsThumbnailCacheStage,
+    WindowsThumbnailCacheStore,
+)
 from paperworkshell.storage.workspace import CaseWorkspaceManager
 from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsProcessLauncher
 from paperworkshell.worker.client.client import WorkerClient
-from paperworkshell.worker.client.models import WorkerLifecyclePhase, WorkerTimeoutPolicy
-from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.client.models import (
+    WorkerClientSnapshot,
+    WorkerLifecyclePhase,
+    WorkerTimeoutPolicy,
+)
+from paperworkshell.worker.client.process import BrokeredHandlePurpose, WorkerResourcePolicy
 from paperworkshell.worker.pdf_thumbnail_broker import (
     BrokeredPdfThumbnailGenerator,
     PdfThumbnailBrokerPolicy,
 )
 from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
+    CancelReason,
+    OperationStartPayload,
     ResourceLimits,
 )
 from tests.worker_resources import WorkerTestResources
@@ -119,6 +133,85 @@ class _LiveSystem:
     cache: WindowsThumbnailCacheStore
     worker: WorkerClient
     service: PdfThumbnailService
+
+
+class _TerminateAfterOperationStart:
+    """Kill a real worker only after its operation submission becomes active."""
+
+    __slots__ = (
+        "_client",
+        "active_snapshot",
+        "rendering_announced",
+        "rendering_announced_before_termination",
+    )
+
+    def __init__(self, client: WorkerClient) -> None:
+        self._client = client
+        self.active_snapshot: WorkerClientSnapshot | None = None
+        self.rendering_announced = False
+        self.rendering_announced_before_termination = False
+
+    def start(self, case_id: UUID) -> int:
+        return self._client.start(case_id)
+
+    def query(self) -> WorkerClientSnapshot:
+        return self._client.query()
+
+    def pump(self, timeout_seconds: float = 0.0) -> WorkerClientSnapshot:
+        return self._client.pump(timeout_seconds)
+
+    def duplicate_handle(
+        self,
+        source_handle: int,
+        purpose: BrokeredHandlePurpose,
+    ) -> int:
+        return self._client.duplicate_handle(source_handle, purpose)
+
+    def start_operation(
+        self,
+        payload: OperationStartPayload,
+        *,
+        operation_id: UUID | None = None,
+    ) -> UUID:
+        selected = self._client.start_operation(payload, operation_id=operation_id)
+        accept_deadline = time.monotonic() + 5.0
+        snapshot = self._client.query()
+        try:
+            while (
+                snapshot.active_operation is not None
+                and not snapshot.active_operation.accepted
+                and snapshot.active_operation.progress is None
+                and time.monotonic() < accept_deadline
+            ):
+                snapshot = self._client.pump(0.01)
+            self.active_snapshot = snapshot
+            self.rendering_announced_before_termination = self.rendering_announced
+        finally:
+            self._client.terminate()
+        return selected
+
+    def cancel(self, reason: CancelReason = CancelReason.USER_REQUESTED) -> UUID:
+        return self._client.cancel(reason)
+
+    def terminate(self) -> None:
+        self._client.terminate()
+
+
+class _QuarantiningThumbnailCache:
+    """Retain one authentic unpublished stage to model a lost GUI process registry."""
+
+    __slots__ = ("_store",)
+
+    def __init__(self, store: WindowsThumbnailCacheStore) -> None:
+        self._store = store
+
+    def lookup(self, key: PdfThumbnailCacheKey) -> ThumbnailCacheLookup:
+        return self._store.lookup(key)
+
+    def create_stage(self, key: PdfThumbnailCacheKey) -> WindowsThumbnailCacheStage:
+        stage = self._store.create_stage(key)
+        stage.quarantine()
+        return stage
 
 
 def _stage_pdf_engines(resources: WorkerTestResources) -> None:
@@ -475,3 +568,132 @@ def test_live_cancellation_after_stage_creation_leaves_manifest_and_cache_clean(
     assert system.worker.generation == 1
     assert system.worker.query().phase is WorkerLifecyclePhase.STOPPED
     assert tuple(system.manager.layout(_CASE_ID).thumbnails.iterdir()) == ()
+
+
+def test_live_worker_termination_during_render_recovers_with_fresh_service(
+    tmp_path: Path,
+    worker_test_resources: WorkerTestResources,
+) -> None:
+    """A killed thumbnail generation leaves only immutable committed state."""
+
+    _stage_pdf_engines(worker_test_resources)
+    system = _live_system(tmp_path, worker_test_resources, page_count=2)
+    source, source_bytes, page_ids = _import_pdf(
+        system,
+        "render-calibration.pdf",
+        page_count=2,
+    )
+    layout = system.manager.layout(_CASE_ID)
+    committed_sources = tuple(layout.originals.iterdir())
+    assert len(committed_sources) == 1
+    committed_source = committed_sources[0]
+    committed_source_bytes = committed_source.read_bytes()
+    manifest_before = layout.manifest.read_bytes()
+    coordinator = _TerminateAfterOperationStart(system.worker)
+    interrupted_generator = BrokeredPdfThumbnailGenerator(
+        coordinator,
+        system.sources,
+        _QuarantiningThumbnailCache(system.cache),
+        _broker_policy(),
+        id_factory=_SequentialUuidFactory(0x70800000),
+    )
+    interrupted_service = PdfThumbnailService(
+        interrupted_generator,
+        id_factory=_SequentialUuidFactory(0x80800000),
+    )
+    progress: list[PdfThumbnailProgress] = []
+
+    def capture_progress(value: PdfThumbnailProgress) -> None:
+        progress.append(value)
+        if value.phase is PdfThumbnailProgressPhase.RENDERING:
+            coordinator.rendering_announced = True
+
+    with pytest.raises(PdfThumbnailError) as raised:
+        interrupted_service.get_thumbnails(
+            (_request(page_ids[0], 1_024, 1_024),),
+            progress=capture_progress,
+        )
+
+    active = coordinator.active_snapshot
+    assert active is not None
+    assert active.phase is WorkerLifecyclePhase.BUSY
+    assert active.active_operation is not None
+    assert active.active_operation.accepted or active.active_operation.progress is not None
+    assert active.active_operation.operation_id.version == 4
+    assert active.active_operation.operation_kind == PDF_THUMBNAIL_CAPABILITY.capability_id
+    assert coordinator.rendering_announced_before_termination
+    assert [item.phase for item in progress] == [
+        PdfThumbnailProgressPhase.LOOKUP,
+        PdfThumbnailProgressPhase.RENDERING,
+    ]
+    assert raised.value.code is PdfThumbnailErrorCode.WORKER_FAILED
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert _PRIVATE_DISPLAY_NAME not in str(raised.value)
+    assert str(source) not in str(raised.value)
+    assert system.worker.generation == 1
+    assert system.worker.query().phase is WorkerLifecyclePhase.STOPPED
+    assert source.read_bytes() == source_bytes
+    assert committed_source.read_bytes() == committed_source_bytes
+    assert layout.manifest.read_bytes() == manifest_before
+    interrupted_entries = tuple(layout.thumbnails.iterdir())
+    assert len(interrupted_entries) == 1
+    assert interrupted_entries[0].suffix == ".tmp"
+    assert interrupted_entries[0].stat().st_size == 0
+
+    restarted_manager = CaseWorkspaceManager(
+        profile_root=system.manager.profile_root,
+        cases_root=system.manager.cases_root,
+        quota=_workspace_quota(),
+        id_factory=lambda: _CASE_ID,
+    )
+    restarted_layout = restarted_manager.layout(_CASE_ID)
+    recovery = build_windows_startup_recovery_service(restarted_manager).recover_startup()
+
+    assert recovery.status is StartupRecoveryStatus.COMPLETE
+    assert len(recovery.cases) == 1
+    assert recovery.cases[0].status is CaseRecoveryStatus.CURRENT
+    assert recovery.cases[0].removed_thumbnail_stages == 1
+    assert source.read_bytes() == source_bytes
+    assert committed_source.read_bytes() == committed_source_bytes
+    assert restarted_layout.manifest.read_bytes() == manifest_before
+    assert tuple(restarted_layout.thumbnails.iterdir()) == ()
+
+    restarted_sources = WindowsSourceIngestStore(
+        restarted_manager,
+        WindowsSourcePrechecker(_import_limits()),
+        maximum_page_count=100,
+        clock=lambda: _NOW,
+        id_factory=_SequentialUuidFactory(0x90800000),
+        temp_id_factory=_SequentialUuidFactory(0xA0800000),
+    )
+    restarted_cache = WindowsThumbnailCacheStore(
+        restarted_manager,
+        id_factory=_SequentialUuidFactory(0xB0800000),
+    )
+    restarted_worker = _worker(worker_test_resources)
+    restarted_generator = BrokeredPdfThumbnailGenerator(
+        restarted_worker,
+        restarted_sources,
+        restarted_cache,
+        _broker_policy(),
+        id_factory=_SequentialUuidFactory(0xC0800000),
+    )
+    restarted_service = PdfThumbnailService(
+        restarted_generator,
+        id_factory=_SequentialUuidFactory(0xD0800000),
+    )
+
+    result = restarted_service.get_thumbnails((_request(page_ids[0], 40, 60),))[0]
+
+    expected = Image.open(_GOLDEN_ROOT / "render-calibration-crop-rotate.png").convert("RGBA")
+    assert result.cache_status is PdfThumbnailCacheStatus.GENERATED
+    assert result.snapshot.pixels == expected.tobytes()
+    assert restarted_worker.generation == 1
+    assert restarted_worker.query().phase is WorkerLifecyclePhase.STOPPED
+    assert source.read_bytes() == source_bytes
+    assert committed_source.read_bytes() == committed_source_bytes
+    assert restarted_layout.manifest.read_bytes() == manifest_before
+    cache_entries = tuple(restarted_layout.thumbnails.iterdir())
+    assert len(cache_entries) == 1
+    assert all(not path.name.endswith(".tmp") for path in cache_entries)

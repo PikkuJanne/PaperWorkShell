@@ -17,6 +17,7 @@ import pytest
 
 from paperworkshell.app.export_history import PdfExportHistoryService
 from paperworkshell.app.pdf_export import PdfExportService
+from paperworkshell.app.recovery import build_windows_startup_recovery_service
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_export import (
@@ -27,6 +28,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgress,
     PdfExportProgressPhase,
 )
+from paperworkshell.domain.recovery import CaseRecoveryStatus, StartupRecoveryStatus
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -363,6 +365,7 @@ def test_live_worker_termination_never_publishes_destination(
     worker = _worker(worker_test_resources, qpdf_executable)
     manifests = WindowsManifestRepository(manager)
     history_repository = WindowsPdfExportHistoryRepository(manager)
+    manifest_before = manager.layout(_CASE_ID).manifest.read_bytes()
     service = PdfExportService(
         manifests,
         sources,
@@ -393,7 +396,28 @@ def test_live_worker_termination_never_publishes_destination(
     assert raised.value.code is PdfExportErrorCode.WORKER_FAILED
     assert not destination.exists()
     assert not history_repository.load(_CASE_ID).document.records
+    assert manager.layout(_CASE_ID).manifest.read_bytes() == manifest_before
     assert _FIXTURE.read_bytes() == source_bytes
     assert committed_source.read_bytes() == committed_source_bytes
     assert hashlib.sha256(committed_source.read_bytes()).hexdigest() == imported.sha256
+    assert worker.query().phase is WorkerLifecyclePhase.STOPPED
+
+    recovery = build_windows_startup_recovery_service(manager).recover_startup()
+    assert recovery.status is StartupRecoveryStatus.COMPLETE
+    assert recovery.cases[0].status is CaseRecoveryStatus.CURRENT
+    assert manager.layout(_CASE_ID).manifest.read_bytes() == manifest_before
+
+    restarted_destination = tmp_path / "verified-after-worker-restart.pdf"
+    restarted = service.export_pdf(
+        _CASE_ID,
+        restarted_destination,
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    )
+
+    assert restarted.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert restarted_destination.is_file()
+    assert len(history_repository.load(_CASE_ID).document.records) == 1
+    assert _FIXTURE.read_bytes() == source_bytes
+    assert committed_source.read_bytes() == committed_source_bytes
     assert worker.query().phase is WorkerLifecyclePhase.STOPPED

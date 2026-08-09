@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Final, Never
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.pdf_export_history import (
     MAX_PDF_EXPORT_HISTORY_BYTES,
     PdfExportHistoryAppendResult,
@@ -44,6 +46,10 @@ _EXPORT_HISTORY_NAME: Final = "export-history.json"
 _STAGE_SUFFIX: Final = ".tmp"
 _RETIRED_SUFFIX: Final = ".retired"
 _MAX_STAGE_ID_ATTEMPTS: Final = 16
+_MAX_RECOVERY_TEMP_ENTRIES: Final = 4_096
+_RETIRED_NAME: Final = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.retired\Z"
+)
 
 
 class PdfExportHistoryPhase(StrEnum):
@@ -52,6 +58,14 @@ class PdfExportHistoryPhase(StrEnum):
     BEFORE_STAGE_WRITE = "before_stage_write"
     BEFORE_PUBLISH = "before_publish"
     AFTER_PUBLISH = "after_publish"
+
+
+class PdfExportHistoryRecoveryStatus(StrEnum):
+    """Closed startup state for interrupted history replacement evidence."""
+
+    CURRENT = "current"
+    RESTORED = "restored"
+    UNRESOLVED = "unresolved"
 
 
 class _CommitState(StrEnum):
@@ -184,6 +198,78 @@ class WindowsPdfExportHistoryRepository:
                 PdfExportHistoryErrorCode.STORAGE_FAILED,
                 "export_history.load_storage",
             )
+
+    def recover_interrupted_replacement(
+        self,
+        snapshot: ManifestSnapshot,
+    ) -> PdfExportHistoryRecoveryStatus:
+        """Validate stable history and restore one exact retired predecessor if needed.
+
+        Generic ``.tmp`` files are deliberately ignored: their names do not bind them to an
+        export-history transaction.  More than one retirement, any malformed retirement owner,
+        or any non-prefix/corrupt state remains untouched for review.
+        """
+
+        if type(snapshot) is not ManifestSnapshot:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.recovery_snapshot",
+            )
+        try:
+            manifest_references = _manifest_history_references(snapshot)
+            with self._manager.authenticate_case(snapshot.case_id) as authority:
+                with authority.transaction_guard():
+                    retired_names, invalid_retirement = _retired_history_names(
+                        authority.layout.temp
+                    )
+                    if invalid_retirement or len(retired_names) > 1:
+                        return PdfExportHistoryRecoveryStatus.UNRESOLVED
+
+                    stable = _read_history_if_present(authority.layout.export_history)
+                    retired: _ObservedHistory | None = None
+                    retired_path: Path | None = None
+                    if retired_names:
+                        retired_path = authority.layout.temp / retired_names[0]
+                        retired = _read_history_if_present(retired_path)
+                        if retired is None:
+                            return PdfExportHistoryRecoveryStatus.UNRESOLVED
+
+                    if stable is not None:
+                        if not _history_contains_manifest_references(
+                            stable.document,
+                            manifest_references,
+                        ):
+                            return PdfExportHistoryRecoveryStatus.UNRESOLVED
+                        if retired is not None and not _is_strict_history_prefix(
+                            retired.document,
+                            stable.document,
+                        ):
+                            return PdfExportHistoryRecoveryStatus.UNRESOLVED
+                        return PdfExportHistoryRecoveryStatus.CURRENT
+
+                    if retired is None or retired_path is None:
+                        return (
+                            PdfExportHistoryRecoveryStatus.CURRENT
+                            if not manifest_references
+                            else PdfExportHistoryRecoveryStatus.UNRESOLVED
+                        )
+                    if not _history_contains_manifest_references(
+                        retired.document,
+                        manifest_references,
+                    ):
+                        return PdfExportHistoryRecoveryStatus.UNRESOLVED
+                    if not _restore_retired_history(
+                        retired_path,
+                        authority.layout.export_history,
+                        authority.handle,
+                        retired,
+                    ):
+                        return PdfExportHistoryRecoveryStatus.UNRESOLVED
+                    return PdfExportHistoryRecoveryStatus.RESTORED
+        except PdfExportHistoryError, WorkspaceError:
+            return PdfExportHistoryRecoveryStatus.UNRESOLVED
+        except Exception:
+            return PdfExportHistoryRecoveryStatus.UNRESOLVED
 
     def append(
         self,
@@ -528,6 +614,146 @@ def _read_history_if_present(path: Path) -> _ObservedHistory | None:
             PdfExportHistoryErrorCode.DOCUMENT_INVALID,
             "export_history.record_identity",
         )
+
+
+def _manifest_history_references(
+    snapshot: ManifestSnapshot,
+) -> tuple[tuple[str, int, str], ...]:
+    document = snapshot.document
+    history = document.get("export_history")
+    if type(history) is not dict or set(history) != {"storage_name", "entries"}:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.recovery_manifest",
+        )
+    if history.get("storage_name") != _EXPORT_HISTORY_NAME:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.recovery_manifest",
+        )
+    entries = history.get("entries")
+    if type(entries) is not list:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.recovery_manifest",
+        )
+    references: list[tuple[str, int, str]] = []
+    for raw in entries:
+        if type(raw) is not dict or set(raw) != {"export_id", "record_version", "sha256"}:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+                "export_history.recovery_manifest",
+            )
+        export_id = raw.get("export_id")
+        record_version = raw.get("record_version")
+        sha256 = raw.get("sha256")
+        if type(export_id) is not str or type(record_version) is not int or type(sha256) is not str:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+                "export_history.recovery_manifest",
+            )
+        references.append((export_id, record_version, sha256))
+    if len(references) != len(set(references)):
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+            "export_history.recovery_manifest",
+        )
+    return tuple(references)
+
+
+def _history_contains_manifest_references(
+    document: PdfExportHistoryDocument,
+    references: tuple[tuple[str, int, str], ...],
+) -> bool:
+    available = {
+        (str(record.export_id), record.record_version, record.sha256) for record in document.records
+    }
+    return all(reference in available for reference in references)
+
+
+def _is_strict_history_prefix(
+    retired: PdfExportHistoryDocument,
+    stable: PdfExportHistoryDocument,
+) -> bool:
+    count = len(retired.records)
+    return count < len(stable.records) and stable.records[:count] == retired.records
+
+
+def _retired_history_names(path: Path) -> tuple[tuple[str, ...], bool]:
+    names: list[str] = []
+    invalid = False
+    with open_handle(path, traverse=True) as root:
+        _authenticate_directory_handle(root, path)
+        try:
+            examined = 0
+            with os.scandir(path) as iterator:
+                for entry in iterator:
+                    examined += 1
+                    if examined > _MAX_RECOVERY_TEMP_ENTRIES:
+                        reject_pdf_export_history(
+                            PdfExportHistoryErrorCode.CAPACITY_EXCEEDED,
+                            "export_history.recovery_inventory",
+                        )
+                    if not entry.name.casefold().endswith(_RETIRED_SUFFIX):
+                        continue
+                    if _RETIRED_NAME.fullmatch(entry.name) is None:
+                        invalid = True
+                        continue
+                    names.append(entry.name)
+        except PdfExportHistoryError:
+            raise
+        except OSError:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.STORAGE_FAILED,
+                "export_history.recovery_inventory",
+            )
+        _authenticate_directory_handle(root, path)
+    return tuple(sorted(names)), invalid
+
+
+def _restore_retired_history(
+    retired_path: Path,
+    destination: Path,
+    case_root: WindowsHandle,
+    expected: _ObservedHistory,
+) -> bool:
+    handle: WindowsHandle | None = None
+    delayed: BaseException | None = None
+    try:
+        handle = _open_expected_history(retired_path, expected)
+        try:
+            _renamed, _error_number = rename_open_file_no_replace_at(
+                handle,
+                case_root,
+                destination_name=_EXPORT_HISTORY_NAME,
+            )
+        except BaseException as error:
+            delayed = error
+        location = _resolve_file_location(
+            handle,
+            expected_identity=expected.identity,
+            initial_path=retired_path,
+            target_path=destination,
+        )
+        if location is _FileLocation.TARGET:
+            _close_handle(handle, delete=False)
+            handle = None
+            _verify_committed_history(
+                destination,
+                expected.document,
+                expected.payload,
+                expected.identity,
+            )
+            if delayed is not None and not isinstance(delayed, Exception):
+                raise delayed
+            return True
+        if delayed is not None and not isinstance(delayed, Exception):
+            raise delayed
+        return False
+    except PdfExportHistoryError, WorkspaceError:
+        return False
+    finally:
+        _close_handle(handle, delete=False)
 
 
 def _open_expected_history(path: Path, expected: _ObservedHistory) -> WindowsHandle:

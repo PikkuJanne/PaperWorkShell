@@ -56,6 +56,11 @@ _RETRY_NAME: Final = re.compile(
     r"[89ab][0-9a-f]{3}-[0-9a-f]{12})\."
     r"(?P<phase>prepared|committed)\.json\Z"
 )
+_OWNED_ID_PREFIX: Final = re.compile(
+    r"export-retry-(?P<id>[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
+    r"[89ab][0-9a-f]{3}-[0-9a-f]{12})",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True, repr=False)
@@ -156,18 +161,15 @@ class WindowsPreparedPdfExportRetry:
 
         if self._closed:
             return
-        self._closed = True
         _close_handle(self._prepared_handle)
         _close_handle(self._committed_stage_handle)
         _close_handle(self._journal_handle)
         self._prepared_handle = None
         self._committed_stage_handle = None
-        self._committed_reservation.release()
-        self._prepared_reservation.release()
-        try:
-            self._authority.close()
-        except BaseException:
-            return
+        committed_released = _release_reservation_no_raise(self._committed_reservation)
+        prepared_released = _release_reservation_no_raise(self._prepared_reservation)
+        authority_closed = _close_authority_no_raise(self._authority)
+        self._closed = committed_released and prepared_released and authority_closed
 
     def __repr__(self) -> str:
         return f"WindowsPreparedPdfExportRetry(committed={self._committed}, closed={self._closed})"
@@ -337,14 +339,11 @@ class WindowsPdfExportRetryRepository:
                 _delete_exact_handle(committed_stage_handle)
                 _close_handle(journal_handle)
                 if authority is not None:
-                    try:
-                        authority.close()
-                    except BaseException:
-                        pass
+                    _close_authority_no_raise(authority)
                 if committed_reservation is not None:
-                    committed_reservation.release()
+                    _release_reservation_no_raise(committed_reservation)
                 if prepared_reservation is not None:
-                    prepared_reservation.release()
+                    _release_reservation_no_raise(prepared_reservation)
 
     def inventory(self, case_id: UUID) -> PdfExportRetryInventory:
         """Classify exact replayable and commit-ambiguous entries without mutation."""
@@ -353,11 +352,10 @@ class WindowsPdfExportRetryRepository:
         try:
             with self._manager.authenticate_case(selected) as authority:
                 with authority.transaction_guard():
-                    names = _retry_names(authority.layout.journal)
+                    names, invalid_name_ids, invalid = _retry_names(authority.layout.journal)
                     committed: dict[UUID, PdfExportHistoryRetryReceipt] = {}
                     prepared: dict[UUID, PdfExportHistoryRetryReceipt] = {}
-                    invalid_ids: set[UUID] = set()
-                    invalid = 0
+                    invalid_ids: set[UUID] = set(invalid_name_ids)
                     for name, export_id, phase in names:
                         try:
                             entry = _read_entry(
@@ -550,10 +548,19 @@ def _phase_name(export_id: UUID, phase: PdfExportRetryPhase) -> str:
     return f"{_NAME_PREFIX}{export_id}{suffix}"
 
 
-def _retry_names(path: Path) -> tuple[tuple[str, UUID, PdfExportRetryPhase], ...]:
+def _retry_names(
+    path: Path,
+) -> tuple[
+    tuple[tuple[str, UUID, PdfExportRetryPhase], ...],
+    tuple[UUID, ...],
+    int,
+]:
     selected: list[tuple[str, UUID, PdfExportRetryPhase]] = []
+    invalid_ids: set[UUID] = set()
+    invalid_entries = 0
     try:
         examined = 0
+        owned = 0
         with os.scandir(path) as iterator:
             for item in iterator:
                 examined += 1
@@ -564,8 +571,21 @@ def _retry_names(path: Path) -> tuple[tuple[str, UUID, PdfExportRetryPhase], ...
                     )
                 match = _RETRY_NAME.fullmatch(item.name)
                 if match is None:
+                    if not item.name.casefold().startswith(_NAME_PREFIX):
+                        continue
+                    owned += 1
+                    if owned > MAX_PDF_EXPORT_RETRY_JOURNAL_ENTRIES:
+                        reject_pdf_export_history(
+                            PdfExportHistoryErrorCode.CAPACITY_EXCEEDED,
+                            "export_retry.inventory_limit",
+                        )
+                    invalid_entries += 1
+                    owned_id = _OWNED_ID_PREFIX.match(item.name)
+                    if owned_id is not None:
+                        invalid_ids.add(UUID(owned_id.group("id")))
                     continue
-                if len(selected) >= MAX_PDF_EXPORT_RETRY_JOURNAL_ENTRIES:
+                owned += 1
+                if owned > MAX_PDF_EXPORT_RETRY_JOURNAL_ENTRIES:
                     reject_pdf_export_history(
                         PdfExportHistoryErrorCode.CAPACITY_EXCEEDED,
                         "export_retry.inventory_limit",
@@ -581,7 +601,11 @@ def _retry_names(path: Path) -> tuple[tuple[str, UUID, PdfExportRetryPhase], ...
             "export_retry.inventory_scan",
         )
     selected.sort(key=lambda item: item[0])
-    return tuple(selected)
+    return (
+        tuple(selected),
+        tuple(sorted(invalid_ids, key=str)),
+        invalid_entries,
+    )
 
 
 def _read_entry(
@@ -744,6 +768,28 @@ def _close_handle(handle: WindowsHandle | None) -> None:
         handle.close()
     except BaseException:
         return
+
+
+def _release_reservation_no_raise(
+    reservation: WorkspaceCapacityReservation,
+) -> bool:
+    for _attempt in range(2):
+        try:
+            reservation.release()
+            return not reservation.is_active
+        except BaseException:
+            continue
+    return False
+
+
+def _close_authority_no_raise(authority: AuthenticatedCase) -> bool:
+    for _attempt in range(2):
+        try:
+            authority.close()
+            return not authority.is_open
+        except BaseException:
+            continue
+    return False
 
 
 def _same_path(left: Path, right: Path) -> bool:

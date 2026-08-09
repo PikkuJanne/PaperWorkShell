@@ -5,8 +5,10 @@ from __future__ import annotations
 import ast
 import hashlib
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -19,6 +21,8 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailErrorCode,
     encode_pdf_thumbnail_artifact,
 )
+from paperworkshell.storage import thumbnail_cache as thumbnail_cache_module
+from paperworkshell.storage._windows import WindowsHandle
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -166,6 +170,48 @@ def test_stale_cleanup_retains_hard_linked_stage_and_reports_partial(
     assert report.retained_entries == 1
     assert stage.exists()
     assert alias.exists()
+
+
+def test_unexpected_later_stage_failure_preserves_confirmed_cleanup_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, store = _stack(tmp_path)
+    first_id = UUID("60000000-0000-4000-8000-000000000308")
+    second_id = UUID("70000000-0000-4000-8000-000000000308")
+    first_payload = b"first-confirmed-thumbnail-stage"
+    first = manager.layout(CASE_ID).thumbnails / f"{first_id}.tmp"
+    second = manager.layout(CASE_ID).thumbnails / f"{second_id}.tmp"
+    first.write_bytes(first_payload)
+    second.write_bytes(b"second-thumbnail-stage-failure")
+    original_delete = cast(
+        Callable[..., tuple[bool, int]],
+        thumbnail_cache_module.__dict__["_delete_exact_regular"],
+    )
+
+    def fail_second_stage(
+        path: Path,
+        *,
+        expected_root: WindowsHandle,
+    ) -> tuple[bool, int]:
+        if path.name == second.name:
+            raise RuntimeError("synthetic later thumbnail stage failure")
+        return original_delete(path, expected_root=expected_root)
+
+    monkeypatch.setattr(
+        thumbnail_cache_module,
+        "_delete_exact_regular",
+        fail_second_stage,
+    )
+
+    report = store.cleanup_stale_stages(CASE_ID)
+
+    assert report.status.value == "partial"
+    assert report.removed_entries == 1
+    assert report.retained_entries == 1
+    assert report.released_bytes == len(first_payload)
+    assert not first.exists()
+    assert second.read_bytes() == b"second-thumbnail-stage-failure"
 
 
 def test_worker_cannot_receive_persistent_cache_handle_and_stage_write_is_bounded(

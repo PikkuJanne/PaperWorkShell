@@ -33,7 +33,11 @@ from paperworkshell.diagnostics.models import (
     DiagnosticVersion,
     DiagnosticVersionKind,
 )
-from paperworkshell.diagnostics.summary import DiagnosticSummary, render_diagnostic_summary
+from paperworkshell.diagnostics.summary import (
+    DiagnosticSummary,
+    build_diagnostic_summary,
+    render_diagnostic_summary,
+)
 
 _NOW = datetime(2026, 8, 9, 12, 34, 56, tzinfo=UTC)
 _OPERATION_ID = UUID("00000000-0000-4000-8000-000000000001")
@@ -132,9 +136,22 @@ def test_every_public_typed_seam_rejects_prohibited_values_without_echoing_them(
             )
         rendered_failures.append(_render_error(summary_failure.value))
 
+        with pytest.raises(DiagnosticError) as builder_failure:
+            build_diagnostic_summary(
+                (_safe_record(),),
+                generated_at=cast(datetime, canary),
+            )
+        rendered_failures.append(_render_error(builder_failure.value))
+
         with pytest.raises(DiagnosticError) as configuration_failure:
             SanitizedDiagnosticLogger(sink=cast(BinaryIO, canary))
         rendered_failures.append(_render_error(configuration_failure.value))
+
+        logger = SanitizedDiagnosticLogger()
+        logger.emit(_safe_record())
+        with pytest.raises(DiagnosticError) as snapshot_failure:
+            logger.snapshot_summary(generated_at=cast(datetime, canary))
+        rendered_failures.append(_render_error(snapshot_failure.value))
 
     routine_output = "\n".join(rendered_failures)
     captured = capsys.readouterr()

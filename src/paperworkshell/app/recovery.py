@@ -6,6 +6,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from paperworkshell.app.export_history import (
+    PdfExportHistoryService,
+    PdfExportRetryRecoveryService,
+)
 from paperworkshell.diagnostics.models import (
     DiagnosticCount,
     DiagnosticCountKind,
@@ -23,6 +27,11 @@ from paperworkshell.domain.recovery import (
     StartupRecoveryStatus,
     reject_recovery,
 )
+from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
+from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
+from paperworkshell.storage.manifest_repository import WindowsManifestRepository
+from paperworkshell.storage.recovery import WindowsStartupRecoveryStore
+from paperworkshell.storage.workspace import CaseWorkspaceManager
 
 
 class StartupRecoveryStore(Protocol):
@@ -88,7 +97,7 @@ class StartupRecoveryService:
         self._emit(
             DiagnosticEventCode.RECOVERY_SCAN_COMPLETED,
             outcome=DiagnosticOutcome.PARTIAL if attention else DiagnosticOutcome.SUCCESS,
-            failure_code=DiagnosticFailureCode.CASE_INVALID if attention else None,
+            failure_code=(DiagnosticFailureCode.RECOVERY_ATTENTION_REQUIRED if attention else None),
             result=result,
         )
         return result
@@ -147,7 +156,7 @@ class StartupRecoveryService:
                 )
                 resources = (
                     DiagnosticResource(
-                        DiagnosticResourceKind.TEMPORARY_STORAGE_BYTES,
+                        DiagnosticResourceKind.STORAGE_BYTES_RELEASED,
                         sum(case.released_bytes for case in cases),
                     ),
                 )
@@ -163,3 +172,31 @@ class StartupRecoveryService:
             )
         except Exception:
             return
+
+
+def build_windows_startup_recovery_service(
+    manager: CaseWorkspaceManager,
+    *,
+    diagnostics: StartupRecoveryDiagnosticSink | None = None,
+    clock: Callable[[], datetime] = _utc_now,
+) -> StartupRecoveryService:
+    """Compose the complete Windows startup path with mandatory export settlement."""
+
+    if not isinstance(manager, CaseWorkspaceManager):
+        reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.composition")
+    manifests = WindowsManifestRepository(manager)
+    history = PdfExportHistoryService(
+        WindowsPdfExportHistoryRepository(manager),
+        manifests,
+    )
+    retries = WindowsPdfExportRetryRepository(manager)
+    exports = PdfExportRetryRecoveryService(history, retries)
+    store = WindowsStartupRecoveryStore(
+        manager,
+        settle_exports=exports.recover_case,
+    )
+    return StartupRecoveryService(
+        store,
+        diagnostics=diagnostics,
+        clock=clock,
+    )

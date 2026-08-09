@@ -126,12 +126,14 @@ def test_export_history_recovery_counts_map_to_closed_attention_codes() -> None:
         pending_entries=2,
         ambiguous_entries=3,
         invalid_entries=4,
+        recovery_failed=True,
     )
 
     assert export.issues == (
         RecoveryIssueCode.EXPORT_COMMIT_AMBIGUOUS,
         RecoveryIssueCode.EXPORT_HISTORY_PENDING,
         RecoveryIssueCode.EXPORT_RETRY_INVALID,
+        RecoveryIssueCode.EXPORT_RECOVERY_FAILED,
     )
     case = CaseRecoveryResult(
         case_id=CASE_A,
@@ -147,3 +149,22 @@ def test_export_history_recovery_counts_map_to_closed_attention_codes() -> None:
 
     with pytest.raises(RecoveryError):
         ExportHistoryRecoveryResult(pending_entries=-1)
+
+    with pytest.raises(RecoveryError):
+        ExportHistoryRecoveryResult(recovery_failed=1)  # type: ignore[arg-type]
+
+    with pytest.raises(RecoveryError):
+        CaseRecoveryResult(
+            case_id=CASE_A,
+            status=CaseRecoveryStatus.CURRENT,
+            manifest_revision=2,
+            ambiguous_export_commits=1,
+        )
+
+    with pytest.raises(RecoveryError):
+        CaseRecoveryResult(
+            case_id=CASE_A,
+            status=CaseRecoveryStatus.CURRENT,
+            manifest_revision=2,
+            repaired_export_history=1,
+        )

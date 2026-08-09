@@ -126,17 +126,34 @@ Before worker or destination work begins, identifier allocation excludes the com
 manifest namespace and every durable export-history record, including records whose manifest link
 is still pending. If history IDs cannot be read safely, export stops before creating a derivative.
 
-After a successful destination reopen, the application creates a `COMMITTED_HISTORY_PENDING`
-outcome carrying that receipt. It then writes the exact record and CAS-links it in the manifest.
-Successful linkage upgrades the outcome to `COMMITTED_RECORDED` without discarding the receipt.
+The path-free receipt is durably published in the protected case journal as `PREPARED` before the
+destination call. The corresponding `COMMITTED` phase is prewritten but cannot become replayable
+until exact destination publication and reopen succeed. A known pre-commit destination failure
+removes only the exact preparation; an indeterminate destination state preserves it because the
+application cannot safely infer whether the external rename occurred.
+
+After a successful destination reopen, the application publishes the `COMMITTED` marker and
+creates a `COMMITTED_HISTORY_PENDING` outcome carrying that receipt. It then writes the exact
+record and CAS-links it in the manifest. Successful linkage upgrades the outcome to
+`COMMITTED_RECORDED`; the outcome retains its receipt value while the exact durable retry marker is
+removed only after history/link success is independently established.
 
 A history, manifest-link, or post-commit progress failure never relabels or recreates the already
 verified output. A fresh history service can use the receipt with an independently selected,
 exactly matching case ID to append and link the exact original record even after the manifest
-advances; that retry cannot invoke source, worker, or destination code. PWS-0113 owns durable
-pending-receipt recovery across application restart. The destination
-path and filename are deliberately absent from the record and receipt; see
-[Export history v1](../schemas/export-history-v1.md).
+advances; that retry cannot invoke source, worker, or destination code.
+
+On restart, PWS-0113 first validates stable history against every manifest reference independently
+of receipt inventory. One authenticated retired predecessor may restore an absent stable name;
+unbound `.tmp` candidates are never promoted, and ambiguous retirement state is preserved before
+generic temp cleanup. It then replays `COMMITTED` receipts through history and manifest services
+only. A `PREPARED` receipt is commit-ambiguous and stays inert unless the exact record already present in
+case history or its exact manifest reference independently proves the downstream commit. Invalid
+journal entries are not replayed, and their parseable IDs remain reserved. Receipt settlement
+precedes general case-temp cleanup. The complete order, limits, and diagnostic result are defined
+by [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md). The
+destination path and filename are deliberately absent from the record and receipt; see [Export
+history v1](../schemas/export-history-v1.md).
 
 ## Failure and cleanup invariants
 

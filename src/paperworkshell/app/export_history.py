@@ -378,12 +378,9 @@ class PdfExportRetryRecoveryService:
         try:
             inventory = self._retries.inventory(case_id)
         except Exception:
-            return ExportHistoryRecoveryResult(invalid_entries=1)
+            return ExportHistoryRecoveryResult(recovery_failed=True)
         if type(inventory) is not PdfExportRetryInventory:
-            return ExportHistoryRecoveryResult(invalid_entries=1)
-        if inventory.invalid_entries:
-            return ExportHistoryRecoveryResult(invalid_entries=inventory.invalid_entries)
-
+            return ExportHistoryRecoveryResult(recovery_failed=True)
         repaired = 0
         pending = 0
         ambiguous = 0
@@ -394,8 +391,11 @@ class PdfExportRetryRecoveryService:
                 pending += 1
         for receipt in inventory.prepared:
             try:
-                proven = self._history.has_commit_proof(case_id, receipt)
+                proven: object = self._history.has_commit_proof(case_id, receipt)
             except Exception:
+                pending += 1
+                continue
+            if type(proven) is not bool:
                 pending += 1
                 continue
             if not proven:
@@ -409,6 +409,7 @@ class PdfExportRetryRecoveryService:
             repaired_entries=repaired,
             pending_entries=pending,
             ambiguous_entries=ambiguous,
+            invalid_entries=inventory.invalid_entries,
         )
 
     def _retry_and_clear(
@@ -429,16 +430,18 @@ class PdfExportRetryRecoveryService:
             ):
                 return False
             if committed:
-                return self._retries.discard_committed(
+                discarded = self._retries.discard_committed(
                     case_id,
                     receipt.export_id,
                     receipt.record_sha256,
                 )
-            return self._retries.discard_prepared(
-                case_id,
-                receipt.export_id,
-                receipt.record_sha256,
-            )
+            else:
+                discarded = self._retries.discard_prepared(
+                    case_id,
+                    receipt.export_id,
+                    receipt.record_sha256,
+                )
+            return discarded is True
         except Exception:
             return False
 

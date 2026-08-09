@@ -5,8 +5,8 @@
 - Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
   structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle;
   PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
-  PWS-0112 deterministic verified PDF export
-- Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
+  PWS-0112 deterministic verified PDF export; PWS-0113 startup recovery and sanitized diagnostics
+- Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
 
@@ -38,7 +38,7 @@ worker host -> domain
 | `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
 | `templates` | Declarative, versioned template loading and validation |
 | `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), and [Deterministic verified PDF-export contract](pdf-export.md) |
-| `diagnostics` | Sanitized logging and previewable diagnostic data |
+| `diagnostics` | Closed, content-free records, canonical structured logging, and deterministic safe summary rendering; PWS-0805 owns later preview/confirmation/bundle writing |
 
 ## Enforced import rules
 
@@ -58,6 +58,11 @@ worker host -> domain
    PySide6-Addons renderer-evaluation group grants no source import boundary or product scope.
 6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. A later adapter task may add a narrow, tested exception only when an admitted dependency requires one.
 7. Every package initializer is a passive namespace: it must not import or re-export product layers or implementation modules. Consequently, every package namespace remains importable without optional UI or document engines.
+8. `diagnostics` may import only the standard library, the root identity package, and its own
+   modules. It cannot import case storage, worker, UI, document adapters, export implementations,
+   networking, subprocess control, filesystem path APIs, or Python's general-purpose logging
+   framework. Application composition may emit already validated diagnostic records through a
+   structural sink; that does not reverse the dependency direction.
 
 Imports inside `TYPE_CHECKING`, conditional blocks, or exception handlers still count: a prohibited dependency is an architectural violation even when a particular execution path does not currently load it. Relative and absolute imports are normalized before comparison.
 
@@ -71,6 +76,34 @@ restricted worker's `pdf` adapter. The `export.pdf_destination` module is a trus
 adapter over authenticated `storage.export_destination`; it sees only the user-selected destination
 and the already verified bounded candidate, never a third-party PDF object. The complete split is
 specified in the [deterministic verified PDF-export contract](pdf-export.md).
+
+PWS-0113 keeps path-free recovery results in `domain.recovery`; `app.recovery` coordinates a
+structural startup store and an optional already-sanitized diagnostic sink. `storage.recovery`
+loads authoritative manifests, invokes an injected export-history settlement hook, and owns exact
+case cleanup. Durable retry phases and their codec live in `domain.pdf_export_retry`, history-only
+settlement stays in `app.export_history`, and protected marker I/O stays in
+`storage.export_retry`. No restart path creates a `storage -> app` edge, invokes a PDF engine, or
+passes an external destination into recovery.
+
+Until the PWS-0111 desktop composition branch converges, the explicit
+`app.recovery.build_windows_startup_recovery_service` factory is the sole temporary exception that
+wires concrete Windows storage implementations. The toolkit-free service itself still depends
+only on structural ports, and committed-receipt integration evidence exercises the factory. The
+desktop composition root must absorb this wiring when that branch lands; no other application
+module may add a concrete storage dependency through this exception.
+
+The independent `diagnostics` layer accepts only closed typed records and renders only a bounded
+summary snapshot. It has no filesystem-path constructor and does not collect or export a support
+bundle. The later PWS-0805 workflow must compose snapshot, preview, confirmation, and local bundle
+writing outside this pure safe-data boundary. See [Startup recovery and sanitized
+diagnostics](startup-recovery-and-diagnostics.md).
+
+The same task extends the private Windows worker client with a standard-library-only ACL-recovery
+journal. It records trusted launcher resource paths because exact cold-restart revocation requires
+them, but exposes only path-free numeric recovery results outside that private adapter. The journal
+has no case-storage, application, protocol, host, or diagnostics import edge, and the worker never
+receives it. Its launch ordering is specified in the [restricted worker lifecycle
+contract](worker-lifecycle.md).
 
 PWS-0101 makes `storage` the first namespace with concrete product modules. Its Windows adapter is
 private to storage; callers use the fixed workspace, permission, quota, and sanitized-error

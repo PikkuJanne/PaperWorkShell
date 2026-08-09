@@ -142,3 +142,38 @@ def test_runner_temp_qpdf_uses_and_restores_temporary_access(
     assert result["status"] == 0
     assert qpdf_grants == 1
     assert windows_launcher._PROCESS_CREATION_QUARANTINED is False
+
+
+def test_two_live_profiles_keep_temp_qpdf_inside_recovery_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    worker_test_resources: WorkerTestResources,
+) -> None:
+    installed_qpdf = _qpdf_executable()
+    qpdf_root = tmp_path / "runner-qpdf"
+    shutil.copytree(installed_qpdf.parent, qpdf_root, copy_function=shutil.copyfile)
+    qpdf_executable = qpdf_root / installed_qpdf.name
+    recovery_root = tmp_path / "worker-acl-recovery"
+    monkeypatch.setattr(
+        windows_launcher,
+        "_acl_recovery_directory_path",
+        lambda: recovery_root,
+    )
+    launcher = WindowsProcessLauncher(_launch_config(worker_test_resources, qpdf_executable))
+    first = launcher.launch(_launch_request())
+    second = None
+    try:
+        first_received = first.transport.receive_payload(20.0)
+        assert first_received.kind is TransportReceiveKind.PAYLOAD
+        assert first.wait(20.0) == 0
+
+        second = launcher.launch(_launch_request())
+        second_received = second.transport.receive_payload(20.0)
+        assert second_received.kind is TransportReceiveKind.PAYLOAD
+        assert second.wait(20.0) == 0
+    finally:
+        if second is not None:
+            second.close()
+        first.close()
+
+    assert windows_launcher._PROCESS_CREATION_QUARANTINED is False

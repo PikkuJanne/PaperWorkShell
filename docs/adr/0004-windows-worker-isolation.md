@@ -3,8 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Task: PWS-0107
-- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output
-- Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
+- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output; PWS-0113 persistent worker ACL recovery
+- Decisions: PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
 
 ## Context
 
@@ -43,11 +43,30 @@ therefore preserve one another's entries; after the final lease closes, the temp
 is absent and each observed object's original auto-inheritance state is restored without writing a
 stale retained descriptor over concurrent entries.
 
-`WAIT_ABANDONED` means a prior GUI may have died during an ACL mutation. The detecting process puts
-the acquired mutex and ownership in a fail-closed in-process quarantine, does not intentionally
-release them before exit, blocks later launches, and reports maintenance-required cleanup rather
-than entering the critical section. PWS-0107 does not claim durable cold-restart orphan recovery;
-PWS-0113 owns a persistent inventory/repair workflow.
+PWS-0113 extends this lease with a durable, bounded per-profile recovery record beneath an
+authenticated private directory in the trusted Windows LocalAppData known folder. The record is
+canonical and path-private: it contains the exact profile/SID, owner PID and process-creation time,
+approved grant roots, authenticated resource identities/types, and original auto-inheritance
+states needed to revoke only that interrupted grant. It contains no case path and never crosses
+RPC, routine diagnostics, UI results, or representations.
+
+The launcher flushes `PREPARED` before the first ACL mutation, publishes `ACTIVE` after the grant
+is fully established, and publishes `REVOKING` before cleanup. Before every new worker profile, it
+inventories this journal under the protected Global mutex. A live exact owner with `ACTIVE` state
+is left alone. A dead owner or interrupted phase is repaired only when its roots remain within the
+current approved launcher allowlist and every resource still has its recorded identity. Repair
+removes the exact SID, restores recorded auto-inheritance state without replaying a stale whole
+DACL, proves the SID absent, and then clears the exact record.
+
+Every mutation is preceded under the mutex by its own durable `PREPARED` or `REVOKING` record.
+`WAIT_ABANDONED` recovery repairs every validated dead/interrupted entry while retaining mutex
+ownership and blocks if it can repair none. Windows exposes no prior mutex-owner identity, so this
+is deliberately an aggregate cutpoint invariant, not a claimed one-to-one correlation: an
+abandonment before its record is pre-mutation, while an abandonment after mutation necessarily
+leaves that record. Insecure, corrupt, unknown, mismatched, identity-changed, or incompletely
+repaired state blocks later ACL work and worker launch. The launcher never guesses which
+unrecorded ACE to remove, deletes recovery evidence to make startup pass, or treats ACL repair as
+worker-operation replay.
 
 Python startup requires writable profile and temporary locations. `LOCALAPPDATA`, `TEMP`, and
 `TMP` are therefore constructed as paths inside the new per-launch AppContainer profile. They are
@@ -258,6 +277,11 @@ Task completion requires live Windows evidence, not launcher flags or this ADR a
 - path opens for another case, case-authoritative records, external source/destination, and user
   temporary locations fail; and
 - runtime/code access grants and the per-launch profile are removed only after the job tree exits.
+- a real helper owner is forcibly terminated while retaining the mutex at durable `PREPARED`,
+  partial-grant, `ACTIVE`, and `REVOKING` cutpoints; separate-process recovery observes
+  `WAIT_ABANDONED`, repairs the exact grant before a new profile/grant, and verifies SID absence and
+  auto-inheritance before journal deletion; insecure, hardlinked, corrupt, unknown, allowlist-
+  mismatched, or identity-changed recovery state blocks launch without widening authority.
 
 Successful case-object handle brokerage is not PWS-0107 evidence because `protocol.noop` receives no
 such handle. PWS-0105 is the first consuming operation and separately proves that only its
@@ -334,6 +358,10 @@ controls on the supported Windows target.
 - Starting source-tree Python requires temporary read/execute ACL entries on approved runtime/code
   roots. Their exact scope and revocation are security evidence. Packaged builds should narrow this
   to app-owned immutable runtime resources.
+- Persistent ACL recovery necessarily stores approved runtime/code paths and object identities in
+  a protected current-user/LocalSystem launcher journal. That path-private security state is not a
+  case artifact, routine log, or diagnostic bundle input. If it cannot be authenticated, launch
+  fails closed rather than bypassing recovery.
 - The AppContainer profile has intentionally writable ephemeral storage needed by Python. It is not
   a guarantee of a write-free process, secure erasure, or crash-artifact absence.
 - The PWS-0108 section is volatile and page-rounded. The adapter and broker enforce the exact
@@ -359,6 +387,7 @@ controls on the supported Windows target.
 
 - [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md)
 - [Bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md)
+- [Startup recovery and sanitized diagnostics](../architecture/startup-recovery-and-diagnostics.md)
 - [Microsoft: Implementing an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)
 - [Microsoft: CreateFileMappingW](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw)
 - [Microsoft: MapViewOfFile](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile)

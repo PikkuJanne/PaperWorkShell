@@ -14,20 +14,23 @@ from paperworkshell.diagnostics.errors import (
 )
 from paperworkshell.diagnostics.models import (
     MAX_DIAGNOSTIC_COUNTS,
+    MAX_DIAGNOSTIC_RECORDS,
     MAX_DIAGNOSTIC_RESOURCES,
     MAX_DIAGNOSTIC_VERSIONS,
     MAX_SAFE_DIAGNOSTIC_INTEGER,
     DiagnosticCount,
     DiagnosticCountKind,
     DiagnosticFailureCode,
+    DiagnosticRecord,
     DiagnosticResource,
     DiagnosticResourceKind,
     DiagnosticVersion,
     DiagnosticVersionKind,
+    copy_diagnostic_record,
 )
 
 DIAGNOSTIC_SUMMARY_VERSION: Final = 1
-MAX_DIAGNOSTIC_SUMMARY_OPERATION_IDS: Final = 1_024
+MAX_DIAGNOSTIC_SUMMARY_OPERATION_IDS: Final = MAX_DIAGNOSTIC_RECORDS
 MAX_DIAGNOSTIC_SUMMARY_CODES: Final = 32
 
 _VERSION_LABELS: Final = {
@@ -59,6 +62,7 @@ _RESOURCE_LABELS: Final = {
     DiagnosticResourceKind.CPU_MILLISECONDS: "CPU milliseconds",
     DiagnosticResourceKind.PEAK_MEMORY_BYTES: "Peak memory bytes",
     DiagnosticResourceKind.TEMPORARY_STORAGE_BYTES: "Temporary storage bytes",
+    DiagnosticResourceKind.STORAGE_BYTES_RELEASED: "Storage bytes released",
 }
 
 
@@ -248,6 +252,58 @@ def copy_diagnostic_summary(value: DiagnosticSummary) -> DiagnosticSummary:
         codes=tuple(value.codes),
         resources=tuple(DiagnosticResource(item.kind, item.value) for item in value.resources),
         summary_version=value.summary_version,
+    )
+
+
+def build_diagnostic_summary(
+    records: tuple[DiagnosticRecord, ...],
+    *,
+    generated_at: datetime,
+    dropped_record_count: int = 0,
+    sink_failure_count: int = 0,
+) -> DiagnosticSummary:
+    """Aggregate one frozen typed-record snapshot into documented safe summary fields."""
+
+    if (
+        type(records) is not tuple
+        or len(records) > MAX_DIAGNOSTIC_RECORDS
+        or any(type(record) is not DiagnosticRecord for record in records)
+    ):
+        _reject_summary()
+    copied = tuple(copy_diagnostic_record(record) for record in records)
+    versions: dict[DiagnosticVersionKind, tuple[int, ...]] = {}
+    operation_ids: set[UUID] = set()
+    counts: dict[DiagnosticCountKind, int] = {}
+    codes: set[DiagnosticFailureCode] = set()
+    resources: dict[DiagnosticResourceKind, int] = {}
+    for record in copied:
+        for version in record.versions:
+            previous = versions.setdefault(version.kind, version.components)
+            if previous != version.components:
+                _reject_summary()
+        if record.operation_id is not None:
+            operation_ids.add(record.operation_id)
+        if record.failure_code is not None:
+            codes.add(record.failure_code)
+        for count in record.counts:
+            counts[count.kind] = counts.get(count.kind, 0) + count.value
+        for resource in record.resources:
+            if resource.kind is DiagnosticResourceKind.PEAK_MEMORY_BYTES:
+                resources[resource.kind] = max(resources.get(resource.kind, 0), resource.value)
+            else:
+                resources[resource.kind] = resources.get(resource.kind, 0) + resource.value
+    if any(not _valid_safe_integer(value) for value in (*counts.values(), *resources.values())):
+        _reject_summary()
+    return DiagnosticSummary(
+        generated_at=generated_at,
+        record_count=len(copied),
+        dropped_record_count=dropped_record_count,
+        sink_failure_count=sink_failure_count,
+        versions=tuple(DiagnosticVersion(kind, value) for kind, value in versions.items()),
+        operation_ids=tuple(operation_ids),
+        counts=tuple(DiagnosticCount(kind, value) for kind, value in counts.items()),
+        codes=tuple(codes),
+        resources=tuple(DiagnosticResource(kind, value) for kind, value in resources.items()),
     )
 
 

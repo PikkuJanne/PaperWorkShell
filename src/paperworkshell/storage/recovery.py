@@ -37,6 +37,10 @@ from paperworkshell.storage._windows import (
     verify_private_acl,
 )
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode, reject
+from paperworkshell.storage.export_history import (
+    PdfExportHistoryRecoveryStatus,
+    WindowsPdfExportHistoryRepository,
+)
 from paperworkshell.storage.manifest_codec import MAX_MANIFEST_BYTES
 from paperworkshell.storage.manifest_repository import (
     WindowsManifestRepository,
@@ -64,15 +68,22 @@ class _ManifestChanged(RuntimeError):
     """Private control signal; no filesystem value is retained."""
 
 
+class _ExportHistoryUnresolved(RuntimeError):
+    """Private signal that preserves retirement evidence from generic cleanup."""
+
+
 @dataclass(frozen=True, slots=True)
 class _SourceCleanupReport:
     removed_entries: int = 0
     retained_entries: int = 0
     released_bytes: int = 0
+    post_cleanup_authenticated: bool = True
+    unexpected_failure: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class _CaseCleanupReport:
+    history_restored: bool
     source: _SourceCleanupReport
     thumbnail_removed: int
     thumbnail_released_bytes: int
@@ -85,19 +96,18 @@ class _CaseCleanupReport:
 class WindowsStartupRecoveryStore:
     """Recover valid manifests first, then clean only authenticated disposable state."""
 
-    __slots__ = ("_manager", "_manifests", "_settle_exports", "_thumbnails")
+    __slots__ = ("_history", "_manager", "_manifests", "_settle_exports", "_thumbnails")
 
     def __init__(
         self,
         manager: CaseWorkspaceManager,
         *,
-        settle_exports: Callable[[UUID], ExportHistoryRecoveryResult] | None = None,
+        settle_exports: Callable[[UUID], ExportHistoryRecoveryResult],
     ) -> None:
-        if not isinstance(manager, CaseWorkspaceManager) or (
-            settle_exports is not None and not callable(settle_exports)
-        ):
+        if not isinstance(manager, CaseWorkspaceManager) or not callable(settle_exports):
             reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.store")
         self._manager = manager
+        self._history = WindowsPdfExportHistoryRepository(manager)
         self._manifests = WindowsManifestRepository(manager)
         self._thumbnails = WindowsThumbnailCacheStore(manager)
         self._settle_exports = settle_exports
@@ -114,6 +124,7 @@ class WindowsStartupRecoveryStore:
 
     def _recover_case(self, case_id: UUID) -> CaseRecoveryResult:
         recovered_manifest = False
+        recovered_history = False
         export_recovery = ExportHistoryRecoveryResult()
         exports_settled = False
         loaded: ManifestSnapshot | None = None
@@ -131,11 +142,83 @@ class WindowsStartupRecoveryStore:
             recovered_manifest = (
                 recovered_manifest or load_result.status is ManifestLoadStatus.RECOVERED
             )
+            history_status = self._recover_history(loaded)
+            if history_status is PdfExportHistoryRecoveryStatus.UNRESOLVED:
+                return CaseRecoveryResult(
+                    case_id=case_id,
+                    status=(
+                        CaseRecoveryStatus.RECOVERED
+                        if recovered_manifest
+                        or recovered_history
+                        or export_recovery.repaired_entries
+                        else CaseRecoveryStatus.CURRENT
+                    ),
+                    manifest_revision=loaded.revision,
+                    issues=tuple(
+                        sorted(
+                            {
+                                RecoveryIssueCode.EXPORT_RECOVERY_FAILED,
+                                *export_recovery.issues,
+                            },
+                            key=lambda issue: issue.value,
+                        )
+                    ),
+                    repaired_export_history=export_recovery.repaired_entries,
+                    pending_export_history=export_recovery.pending_entries,
+                    ambiguous_export_commits=export_recovery.ambiguous_entries,
+                    invalid_export_retries=export_recovery.invalid_entries,
+                )
+            recovered_history = (
+                recovered_history or history_status is PdfExportHistoryRecoveryStatus.RESTORED
+            )
             if not exports_settled:
                 export_recovery = self._recover_exports(case_id)
                 exports_settled = True
+            if export_recovery.recovery_failed:
+                return CaseRecoveryResult(
+                    case_id=case_id,
+                    status=(
+                        CaseRecoveryStatus.RECOVERED
+                        if recovered_manifest
+                        or recovered_history
+                        or export_recovery.repaired_entries
+                        else CaseRecoveryStatus.CURRENT
+                    ),
+                    manifest_revision=loaded.revision,
+                    issues=export_recovery.issues,
+                    repaired_export_history=export_recovery.repaired_entries,
+                    pending_export_history=export_recovery.pending_entries,
+                    ambiguous_export_commits=export_recovery.ambiguous_entries,
+                    invalid_export_retries=export_recovery.invalid_entries,
+                )
             try:
                 cleanup = self._cleanup_loaded_case(loaded)
+                recovered_history = recovered_history or cleanup.history_restored
+            except _ExportHistoryUnresolved:
+                return CaseRecoveryResult(
+                    case_id=case_id,
+                    status=(
+                        CaseRecoveryStatus.RECOVERED
+                        if recovered_manifest
+                        or recovered_history
+                        or export_recovery.repaired_entries
+                        else CaseRecoveryStatus.CURRENT
+                    ),
+                    manifest_revision=loaded.revision,
+                    issues=tuple(
+                        sorted(
+                            {
+                                RecoveryIssueCode.EXPORT_RECOVERY_FAILED,
+                                *export_recovery.issues,
+                            },
+                            key=lambda issue: issue.value,
+                        )
+                    ),
+                    repaired_export_history=export_recovery.repaired_entries,
+                    pending_export_history=export_recovery.pending_entries,
+                    ambiguous_export_commits=export_recovery.ambiguous_entries,
+                    invalid_export_retries=export_recovery.invalid_entries,
+                )
             except _ManifestChanged:
                 if attempt + 1 < _MAXIMUM_CASE_SETTLEMENT_ATTEMPTS:
                     continue
@@ -143,7 +226,9 @@ class WindowsStartupRecoveryStore:
                     case_id=case_id,
                     status=(
                         CaseRecoveryStatus.RECOVERED
-                        if recovered_manifest or export_recovery.repaired_entries
+                        if recovered_manifest
+                        or recovered_history
+                        or export_recovery.repaired_entries
                         else CaseRecoveryStatus.CURRENT
                     ),
                     manifest_revision=loaded.revision,
@@ -166,14 +251,16 @@ class WindowsStartupRecoveryStore:
                     case_id=case_id,
                     status=(
                         CaseRecoveryStatus.RECOVERED
-                        if recovered_manifest or export_recovery.repaired_entries
+                        if recovered_manifest
+                        or recovered_history
+                        or export_recovery.repaired_entries
                         else CaseRecoveryStatus.CURRENT
                     ),
                     manifest_revision=loaded.revision,
                     issues=tuple(
                         sorted(
                             {
-                                RecoveryIssueCode.CASE_CHANGED,
+                                RecoveryIssueCode.CLEANUP_FAILED,
                                 *export_recovery.issues,
                             },
                             key=lambda issue: issue.value,
@@ -188,7 +275,7 @@ class WindowsStartupRecoveryStore:
                 case_id=case_id,
                 status=(
                     CaseRecoveryStatus.RECOVERED
-                    if recovered_manifest or export_recovery.repaired_entries
+                    if recovered_manifest or recovered_history or export_recovery.repaired_entries
                     else CaseRecoveryStatus.CURRENT
                 ),
                 manifest_revision=loaded.revision,
@@ -219,7 +306,7 @@ class WindowsStartupRecoveryStore:
             case_id=case_id,
             status=(
                 CaseRecoveryStatus.RECOVERED
-                if export_recovery.repaired_entries
+                if recovered_history or export_recovery.repaired_entries
                 else CaseRecoveryStatus.CURRENT
             ),
             manifest_revision=loaded.revision,
@@ -236,17 +323,29 @@ class WindowsStartupRecoveryStore:
         )
 
     def _recover_exports(self, case_id: UUID) -> ExportHistoryRecoveryResult:
-        if self._settle_exports is None:
-            return ExportHistoryRecoveryResult()
         try:
             result = self._settle_exports(case_id)
         except Exception:
-            return ExportHistoryRecoveryResult(invalid_entries=1)
+            return ExportHistoryRecoveryResult(recovery_failed=True)
         if type(result) is not ExportHistoryRecoveryResult:
-            return ExportHistoryRecoveryResult(invalid_entries=1)
+            return ExportHistoryRecoveryResult(recovery_failed=True)
+        return result
+
+    def _recover_history(
+        self,
+        snapshot: ManifestSnapshot,
+    ) -> PdfExportHistoryRecoveryStatus:
+        try:
+            result = self._history.recover_interrupted_replacement(snapshot)
+        except Exception:
+            return PdfExportHistoryRecoveryStatus.UNRESOLVED
+        if type(result) is not PdfExportHistoryRecoveryStatus:
+            return PdfExportHistoryRecoveryStatus.UNRESOLVED
         return result
 
     def _cleanup_loaded_case(self, snapshot: ManifestSnapshot) -> _CaseCleanupReport:
+        history_restored = False
+        stop_cleanup = False
         issues: list[RecoveryIssueCode] = []
         source = _SourceCleanupReport()
         thumbnail_removed = 0
@@ -255,50 +354,103 @@ class WindowsStartupRecoveryStore:
         temp_directories_removed = 0
         temp_released = 0
 
-        with self._manager.authenticate_case(snapshot.case_id) as authority:
-            with authority.transaction_guard():
-                _require_current_snapshot(authority, snapshot)
-                try:
-                    source = _cleanup_source_orphans(authority, snapshot)
-                except WorkspaceError:
-                    issues.append(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED)
-                else:
-                    if source.retained_entries:
-                        issues.append(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED)
+        def add_issue(issue: RecoveryIssueCode) -> None:
+            if issue not in issues:
+                issues.append(issue)
 
-                try:
-                    thumbnail = self._thumbnails.cleanup_stale_stages(snapshot.case_id)
-                except PdfThumbnailError, WorkspaceError:
-                    issues.append(RecoveryIssueCode.THUMBNAIL_CLEANUP_PARTIAL)
-                else:
-                    thumbnail_removed = thumbnail.removed_entries
-                    thumbnail_released = thumbnail.released_bytes
-                    if thumbnail.status is ThumbnailCleanupStatus.PARTIAL:
-                        issues.append(RecoveryIssueCode.THUMBNAIL_CLEANUP_PARTIAL)
+        def report() -> _CaseCleanupReport:
+            return _CaseCleanupReport(
+                history_restored=history_restored,
+                source=source,
+                thumbnail_removed=thumbnail_removed,
+                thumbnail_released_bytes=thumbnail_released,
+                temp_files_removed=temp_files_removed,
+                temp_directories_removed=temp_directories_removed,
+                temp_released_bytes=temp_released,
+                issues=tuple(issues),
+            )
 
-                try:
-                    temporary = self._manager.cleanup_disposable(
-                        snapshot.case_id,
-                        CleanupTarget.TEMP,
-                    )
-                except WorkspaceError:
-                    issues.append(RecoveryIssueCode.TEMP_CLEANUP_PARTIAL)
-                else:
-                    temp_files_removed = temporary.removed_files
-                    temp_directories_removed = temporary.removed_directories
-                    temp_released = temporary.released_bytes
-                    if temporary.status is CleanupStatus.PARTIAL:
-                        issues.append(RecoveryIssueCode.TEMP_CLEANUP_PARTIAL)
+        def has_confirmed_observation() -> bool:
+            return bool(
+                history_restored
+                or source.removed_entries
+                or source.retained_entries
+                or source.released_bytes
+                or thumbnail_removed
+                or thumbnail_released
+                or temp_files_removed
+                or temp_directories_removed
+                or temp_released
+                or issues
+            )
 
-        return _CaseCleanupReport(
-            source=source,
-            thumbnail_removed=thumbnail_removed,
-            thumbnail_released_bytes=thumbnail_released,
-            temp_files_removed=temp_files_removed,
-            temp_directories_removed=temp_directories_removed,
-            temp_released_bytes=temp_released,
-            issues=tuple(issues),
-        )
+        try:
+            with self._manager.authenticate_case(snapshot.case_id) as authority:
+                with authority.transaction_guard():
+                    _require_current_snapshot(authority, snapshot)
+                    history_status = self._recover_history(snapshot)
+                    if history_status is PdfExportHistoryRecoveryStatus.UNRESOLVED:
+                        raise _ExportHistoryUnresolved from None
+                    history_restored = history_status is PdfExportHistoryRecoveryStatus.RESTORED
+                    try:
+                        source = _cleanup_source_orphans(authority, snapshot)
+                    except WorkspaceError:
+                        add_issue(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED)
+                    except Exception:
+                        add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+                        stop_cleanup = True
+                    else:
+                        if source.retained_entries or not source.post_cleanup_authenticated:
+                            add_issue(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED)
+                        if not source.post_cleanup_authenticated:
+                            stop_cleanup = True
+                        if source.unexpected_failure:
+                            add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+
+                    if not stop_cleanup:
+                        try:
+                            thumbnail = self._thumbnails.cleanup_stale_stages(snapshot.case_id)
+                        except PdfThumbnailError, WorkspaceError:
+                            add_issue(RecoveryIssueCode.THUMBNAIL_CLEANUP_PARTIAL)
+                        except Exception:
+                            add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+                            stop_cleanup = True
+                        else:
+                            thumbnail_removed = thumbnail.removed_entries
+                            thumbnail_released = thumbnail.released_bytes
+                            if thumbnail.status is ThumbnailCleanupStatus.PARTIAL:
+                                add_issue(RecoveryIssueCode.THUMBNAIL_CLEANUP_PARTIAL)
+                            if thumbnail.unexpected_failure:
+                                add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+                                stop_cleanup = True
+
+                    if not stop_cleanup:
+                        try:
+                            temporary = self._manager.cleanup_disposable(
+                                snapshot.case_id,
+                                CleanupTarget.TEMP,
+                            )
+                        except WorkspaceError:
+                            add_issue(RecoveryIssueCode.TEMP_CLEANUP_PARTIAL)
+                        except Exception:
+                            add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+                        else:
+                            temp_files_removed = temporary.removed_files
+                            temp_directories_removed = temporary.removed_directories
+                            temp_released = temporary.released_bytes
+                            if temporary.status is CleanupStatus.PARTIAL:
+                                add_issue(RecoveryIssueCode.TEMP_CLEANUP_PARTIAL)
+                            if temporary.failure_code is WorkspaceErrorCode.CLEANUP_FAILED:
+                                add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+        except _ExportHistoryUnresolved, _ManifestChanged:
+            raise
+        except Exception:
+            if not has_confirmed_observation():
+                raise
+            add_issue(RecoveryIssueCode.CLEANUP_FAILED)
+            return report()
+
+        return report()
 
 
 def _unavailable_case(case_id: UUID, issue: RecoveryIssueCode) -> CaseRecoveryResult:
@@ -364,33 +516,83 @@ def _cleanup_source_orphans(
 ) -> _SourceCleanupReport:
     expected = _manifest_source_names(snapshot)
     root_path = authority.layout.originals
-    with open_handle(root_path) as root:
-        require_expected_handle(root, root_path, directory=True)
-        verify_private_acl(root)
-        require_no_alternate_streams(root_path)
-        names = _bounded_names(root_path)
-        candidates = [
-            name
-            for name in names
-            if name not in expected and _SOURCE_STORAGE_NAME.fullmatch(name) is not None
-        ]
-        retained = sum(
-            name not in expected and _SOURCE_STORAGE_NAME.fullmatch(name) is None for name in names
-        )
-        removed = 0
-        released = 0
-        for name in candidates:
+    removed = 0
+    retained = 0
+    released = 0
+    report_ready = False
+    try:
+        with open_handle(root_path) as root:
+            require_expected_handle(root, root_path, directory=True)
+            verify_private_acl(root)
+            require_no_alternate_streams(root_path)
+            names = _bounded_names(root_path)
+            candidates = [
+                name
+                for name in names
+                if name not in expected and _SOURCE_STORAGE_NAME.fullmatch(name) is not None
+            ]
+            retained = sum(
+                name not in expected and _SOURCE_STORAGE_NAME.fullmatch(name) is None
+                for name in names
+            )
+            report_ready = True
+            for index, name in enumerate(candidates):
+                try:
+                    was_removed, byte_count = _delete_exact_source(root_path / name, root)
+                    if was_removed:
+                        removed += 1
+                        released += byte_count
+                except WorkspaceError:
+                    retained += 1
+                    continue
+                except Exception:
+                    retained += len(candidates) - index
+                    return _SourceCleanupReport(
+                        removed_entries=removed,
+                        retained_entries=retained,
+                        released_bytes=released,
+                        post_cleanup_authenticated=False,
+                        unexpected_failure=True,
+                    )
             try:
-                was_removed, byte_count = _delete_exact_source(root_path / name, root)
+                require_expected_handle(root, root_path, directory=True)
+                verify_private_acl(root)
+                require_no_alternate_streams(root_path)
             except WorkspaceError:
-                retained += 1
-                continue
-            if was_removed:
-                removed += 1
-                released += byte_count
-        require_expected_handle(root, root_path, directory=True)
-        verify_private_acl(root)
-        require_no_alternate_streams(root_path)
+                return _SourceCleanupReport(
+                    removed_entries=removed,
+                    retained_entries=retained,
+                    released_bytes=released,
+                    post_cleanup_authenticated=False,
+                )
+            except Exception:
+                return _SourceCleanupReport(
+                    removed_entries=removed,
+                    retained_entries=retained,
+                    released_bytes=released,
+                    post_cleanup_authenticated=False,
+                    unexpected_failure=True,
+                )
+    except WorkspaceError:
+        if not report_ready:
+            raise
+        return _SourceCleanupReport(
+            removed_entries=removed,
+            retained_entries=retained,
+            released_bytes=released,
+            post_cleanup_authenticated=False,
+            unexpected_failure=True,
+        )
+    except Exception:
+        if not report_ready:
+            raise
+        return _SourceCleanupReport(
+            removed_entries=removed,
+            retained_entries=retained,
+            released_bytes=released,
+            post_cleanup_authenticated=False,
+            unexpected_failure=True,
+        )
     return _SourceCleanupReport(removed, retained, released)
 
 

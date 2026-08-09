@@ -1,10 +1,11 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, and PWS-0112 export extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0112
-- Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0112 export, and PWS-0113 ACL-recovery extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0112, PWS-0113
+- Decisions: PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
+- Startup recovery: [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md)
 
 ## Scope
 
@@ -37,6 +38,7 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md) and
 | `worker.client.client` | Dedicated coordinator-thread lifecycle, local snapshots, deadlines, cancellation, shutdown, fault and restart | GUI-process-side; no host/platform/document-adapter import |
 | `worker.client.process` | Typed launcher/process/transport contracts and bounded framed transport | Hides payloads, paths, commands, and environment from representations |
 | `worker.client._windows` | AppContainer profile, ACL grant lease, pipes, suspended process, Job Object, termination and cleanup | Windows-only private launcher; no UI dependency |
+| `worker.client._acl_recovery` | Canonical bounded `PREPARED`/`ACTIVE`/`REVOKING` ACL ledger and atomic private journal | Path-private Windows-launcher state; no case, protocol, UI, or routine-diagnostic surface |
 | `worker.protocol.bootstrap` | Exact 92-byte launch grant | Launch-only; secret redacted and never extensibly decoded |
 | `worker.protocol.framing` | Four-byte length framing and sanitized local transport errors | Returns bytes only; protocol decode always follows |
 | `worker.protocol.peer` | Outbound validation/encoding and inbound decode/authentication/state transition | Sole conversation owner on each side |
@@ -89,29 +91,58 @@ One generation is created in this order:
 
 1. Generate a fresh generation number, session UUIDv4, worker-instance UUIDv4, and 256-bit
    capability; bind them to one logical case UUIDv4.
-2. Create an ephemeral AppContainer profile with zero capability SIDs.
-3. Grant its SID read/execute access to only the approved runtime and code roots.
-4. Construct an environment containing only the approved Windows/Python names. Construct
+2. Under the protected ACL mutex, authenticate the private recovery journal and repair every dead
+   or interrupted runtime/code grant whose exact recorded resources remain inside the current
+   approved access-root allowlist. Any invalid or unprovable state blocks launch.
+3. Create an ephemeral AppContainer profile with zero capability SIDs.
+4. Grant its SID read/execute access to only the approved runtime and code roots.
+5. Construct an environment containing only the approved Windows/Python names. Construct
    `LOCALAPPDATA`, `TEMP`, and `TMP` beneath that per-launch profile rather than inheriting them.
-5. Create three anonymous pipes and make only the worker ends inheritable.
-6. Build an explicit process-attribute handle list and zero-capability security descriptor.
-7. Create the fixed process suspended, with no window and no shell.
-8. Configure and assign the Job Object before resume.
-9. Close broker duplicates of the worker-only pipe ends; write and close the exact bootstrap
+6. Create three anonymous pipes and make only the worker ends inheritable.
+7. Build an explicit process-attribute handle list and zero-capability security descriptor.
+8. Create the fixed process suspended, with no window and no shell.
+9. Configure and assign the Job Object before resume.
+10. Close broker duplicates of the worker-only pipe ends; write and close the exact bootstrap
    grant; resume the primary thread.
-10. Before negotiation or descendant launch, clear and re-query `HANDLE_FLAG_INHERIT` on all
+11. Before negotiation or descendant launch, clear and re-query `HANDLE_FLAG_INHERIT` on all
     three worker endpoints.
-11. Retain the process, job, profile, and broker pipe ends for the full generation.
+12. Retain the process, job, profile, and broker pipe ends for the full generation.
 
 Runtime/code ACL changes are SID-specific and serialized across sessions by a protected Global
 mutex. Its owner is the current user, its DACL grants only that user and LocalSystem, its handle is
-non-inheritable, and an existing object's owner/DACL must match exactly. An abandoned mutex retains
-ownership in an in-process quarantine and is not intentionally released before exit because the
-interrupted ACL state is unknown. The broker preflights the complete bounded resource tree before
-mutation, rejects an absent or NULL DACL, and removes only the launch SID's entries during cleanup.
-Overlapping profiles therefore retain one another's access; cleanup proves the temporary SID absent
-and restores each observed object's original auto-inheritance state without replaying a stale whole
-descriptor. Numeric Job Object limits are range-checked before conversion to the Windows ABI.
+non-inheritable, and an existing object's owner/DACL must match exactly. The broker preflights the
+complete bounded resource tree before mutation, rejects an absent or NULL DACL, and removes only
+the launch SID's entries during cleanup. Overlapping live profiles therefore retain one another's
+access; cleanup proves the temporary SID absent and restores each observed object's original
+auto-inheritance state without replaying a stale whole descriptor.
+
+PWS-0113 makes interruption recovery durable. Beneath the trusted Windows LocalAppData known
+folder, the launcher creates or authenticates one non-reparse recovery directory whose protected
+DACL grants full inherited access only to the current user and LocalSystem. Each profile receives
+one bounded canonical journal record containing the profile ID/name, exact AppContainer SID,
+owner PID plus process-creation time, fixed approved grant roots, every resource's absolute trusted
+path and filesystem identity/type, and its original auto-inheritance state. Those paths are needed
+only to revoke an interrupted grant; they never enter RPC, routine diagnostics, UI results, or
+representations.
+
+The journal publishes `PREPARED` before the first SID ACL mutation, `ACTIVE` after the grant and
+inheritance-state restoration are verified, and `REVOKING` before cleanup begins. A new launch
+inventories the journal before creating a profile. An `ACTIVE` entry whose exact owner process is
+still live is retained; a dead owner or interrupted phase is repaired only after the current
+configuration allowlist and every recorded object identity are revalidated under the mutex. Repair
+removes that exact SID from the recorded roots, restores each object's recorded auto-inheritance
+state, proves the SID absent across the inventory, and only then deletes the exact journal record.
+
+Every grant/revoke mutation publishes its own `PREPARED` or `REVOKING` record first while holding
+the mutex. On `WAIT_ABANDONED`, recovery inventories and repairs all validated dead/interrupted
+entries while retaining mutex ownership; if it can repair none, launch blocks conservatively.
+Windows does not expose the prior mutex owner, so this is an aggregate cutpoint invariant rather
+than a claimed one-to-one abandonment/entry correlation: an abandonment before its record is
+pre-mutation, while one after mutation necessarily leaves that record. An insecure/corrupt/unknown
+entry, PID-identity uncertainty, allowlist mismatch, resource identity change, incomplete SID
+removal, or journal cleanup failure blocks the new grant and launch. Abandonment is never converted
+into permission to remove an unrecorded ACE or restore an entire stale DACL. Numeric Job Object and
+recovery limits are range-checked before conversion to Windows ABI values.
 
 At launch the child receives exactly three handles: standard input for client-to-worker RPC,
 standard output for worker-to-client RPC, and standard error as a one-shot bootstrap reader. It
@@ -238,6 +269,12 @@ generation with fresh session/worker UUIDs, capability, pipes, profile, job, pee
 IDs, and sender sequences. Events tagged with any earlier generation are rejected as stale.
 The concrete Windows adapter stops and confirms the live Job tree before joining transport-close
 threads, so a worker blocked in anonymous-pipe I/O cannot exhaust the bounded close deadline.
+
+After a whole desktop-process interruption, a later launcher instance may repair only the durable
+runtime/code ACL lease described above. That repair restores host resource access policy; it does
+not recover a process, reconnect a pipe, accept an old result, or replay the interrupted document
+operation. Case manifest/export/temp settlement remains the separate PWS-0113 startup-recovery
+boundary.
 
 Handle, ACL, mutex, profile, and partial-launch cleanup retain authority until Windows confirms the
 release. Bounded retries may physically release a resource, but an earlier unconfirmed lifecycle
@@ -376,6 +413,26 @@ fixed layout, size, and digests; every success/failure/cancel/timeout path must 
 termination before trusted section readback or persistent stage write. An unconfirmed tree must
 leave no persistent writer and block another generation rather than manufacture cleanup evidence.
 
+PWS-0113 adds required supported-Windows evidence for the persistent ACL-recovery boundary:
+
+- a canonical `PREPARED` record is flushed before the first SID ACL mutation and phase updates are
+  published atomically beneath the authenticated private LocalAppData recovery directory;
+- a real helper process is forcibly terminated while retaining the protected mutex at `PREPARED`,
+  partial-grant, `ACTIVE`, and `REVOKING` cutpoints; separate-process recovery observes
+  `WAIT_ABANDONED`, authenticates the dead PID plus creation time, removes the exact SID, restores
+  auto-inheritance, clears the journal only after complete verification, and permits a replacement
+  grant;
+- an insecure recovery-directory policy, corrupt/noncanonical record, unknown entry, current
+  configuration allowlist mismatch, hardlinked/special resource, or resource identity mismatch
+  blocks new ACL work without deleting evidence or widening authority; and
+- the complete live worker/descendant containment suite still passes with pre-launch recovery in
+  the production launcher path.
+
+These tests prove cold-restart repair of recorded runtime/code AppContainer grants only. They do
+not prove replay of worker operations, general ACL repair, case-workspace access, recovery from an
+unrecorded mutation, or automatic cold deletion of an abandoned AppContainer profile and its local
+temporary tree.
+
 Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
 probes into a temporary physical tree at the root of CPython's fixed drive before launch. The
 fixed-drive location gives AppContainer descendants stable ancestor-traverse semantics even when a
@@ -404,5 +461,4 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 
 - PWS-0106: renderer operations behind a replaceable worker adapter.
 - PWS-0109: authoritative manifest/journal persistence and recovery.
-- PWS-0113: startup recovery, orphan cleanup, routine logging, and diagnostics baseline.
 - PWS-0204: external OCR descendant/resource policy and cancellation integration.

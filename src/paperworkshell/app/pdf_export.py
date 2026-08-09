@@ -41,6 +41,7 @@ from paperworkshell.domain.pdf_export_history import (
     build_pdf_export_history_retry_receipt,
 )
 from paperworkshell.domain.pdf_export_retry import (
+    PdfExportRetryInventory,
     PdfExportRetryRepository,
     PreparedPdfExportRetry,
 )
@@ -120,6 +121,13 @@ class PdfExportHistoryRecorder(Protocol):
 
 def _ignore_progress(_progress: PdfExportProgress) -> None:
     return
+
+
+def _close_retry(retry: PreparedPdfExportRetry) -> None:
+    try:
+        retry.close()
+    except BaseException:
+        return
 
 
 def _utc_now() -> datetime:
@@ -259,15 +267,15 @@ class PdfExportService:
                                 retry_lease.discard_prepared()
                             except BaseException:
                                 pass
-                        retry_lease.close()
+                        _close_retry(retry_lease)
                         retry_lease = None
                         raise
                     except BaseException:
-                        retry_lease.close()
+                        _close_retry(retry_lease)
                         retry_lease = None
                         raise
                     try:
-                        retry_phase_committed = retry_lease.mark_committed()
+                        retry_phase_committed = retry_lease.mark_committed() is True
                     except BaseException:
                         retry_phase_committed = False
         except PdfExportError:
@@ -338,7 +346,7 @@ class PdfExportService:
                     )
             except BaseException:
                 pass
-        retry_lease.close()
+        _close_retry(retry_lease)
         _emit_progress_after_commit(
             progress,
             PdfExportProgress(
@@ -412,6 +420,11 @@ class PdfExportService:
             reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.history_ids")
         try:
             retry_inventory = self._retries.inventory(case_id)
+            if type(retry_inventory) is not PdfExportRetryInventory:
+                reject_pdf_export(
+                    PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                    "export.retry_inventory",
+                )
             if retry_inventory.invalid_entries:
                 reject_pdf_export(
                     PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,

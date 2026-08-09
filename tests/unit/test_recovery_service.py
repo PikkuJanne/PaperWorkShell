@@ -14,12 +14,14 @@ from paperworkshell.diagnostics.models import (
     DiagnosticEventCode,
     DiagnosticFailureCode,
     DiagnosticOutcome,
+    DiagnosticResourceKind,
 )
 from paperworkshell.domain.recovery import (
     CaseRecoveryResult,
     CaseRecoveryStatus,
     RecoveryError,
     RecoveryErrorCode,
+    RecoveryIssueCode,
     StartupRecoveryResult,
 )
 
@@ -107,6 +109,32 @@ def test_service_emits_only_typed_aggregate_recovery_diagnostics() -> None:
     assert counts[DiagnosticCountKind.CASES_SCANNED] == 1
     assert counts[DiagnosticCountKind.CASES_RECOVERED] == 1
     assert counts[DiagnosticCountKind.FILES_REMOVED] == 3
+    resources = {resource.kind: resource.value for resource in completed.resources}
+    assert resources == {DiagnosticResourceKind.STORAGE_BYTES_RELEASED: 512}
+
+
+def test_service_reports_attention_without_mislabeling_a_valid_case_invalid() -> None:
+    expected = StartupRecoveryResult(
+        (
+            CaseRecoveryResult(
+                CASE_ID,
+                CaseRecoveryStatus.CURRENT,
+                2,
+                issues=(RecoveryIssueCode.TEMP_CLEANUP_PARTIAL,),
+            ),
+        )
+    )
+    diagnostics = SanitizedDiagnosticLogger()
+
+    StartupRecoveryService(
+        _Store(expected),
+        diagnostics=diagnostics,
+        clock=lambda: NOW,
+    ).recover_startup()
+
+    completed = diagnostics.snapshot_records()[-1]
+    assert completed.outcome is DiagnosticOutcome.PARTIAL
+    assert completed.failure_code is DiagnosticFailureCode.RECOVERY_ATTENTION_REQUIRED
 
 
 def test_service_logs_closed_failure_without_changing_sanitized_error() -> None:

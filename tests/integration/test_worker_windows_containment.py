@@ -1841,14 +1841,14 @@ def test_resource_inventory_error_has_no_path_bearing_exception_context(
     resource = tmp_path / "runtime-resource"
     resource.mkdir()
     canary = r"C:\private\applicant-canary.pdf"
-    original_is_dir = Path.is_dir
+    original_stat = Path.stat
 
-    def fail_inventory(path: Path) -> bool:
+    def fail_inventory(path: Path, *args: Any, **kwargs: Any) -> os.stat_result:
         if path == resource:
             raise OSError(canary)
-        return original_is_dir(path)
+        return original_stat(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "is_dir", fail_inventory)
+    monkeypatch.setattr(Path, "stat", fail_inventory)
     with pytest.raises(WindowsLaunchError) as raised:
         windows_module._approved_resource_tree(resource)
 
@@ -1871,8 +1871,12 @@ def test_failed_launch_retries_profile_cleanup_and_restores_access_policy(
     original_close = _AppContainerProfile.close_no_raise
     close_attempts = 0
 
-    def capture_profile(_cls: type[_AppContainerProfile]) -> _AppContainerProfile:
-        profile = original_create()
+    def capture_profile(
+        _cls: type[_AppContainerProfile],
+        recovery_roots: tuple[Path, ...],
+    ) -> _AppContainerProfile:
+        assert recovery_roots == config.access_roots
+        profile = original_create(recovery_roots)
         captured.append(profile)
         return profile
 
@@ -1955,7 +1959,11 @@ def test_partial_process_authority_terminates_owned_process_and_cleans_profile(
         terminated.append(process.value)
         return True
 
-    monkeypatch.setattr(_AppContainerProfile, "create", classmethod(lambda _cls: profile))
+    monkeypatch.setattr(
+        _AppContainerProfile,
+        "create",
+        classmethod(lambda _cls, _recovery_roots: profile),
+    )
     monkeypatch.setattr(windows_module, "_Job", lambda _policy: job)
     monkeypatch.setattr(_PipeSet, "create", classmethod(lambda _cls: pipes))
     monkeypatch.setattr(windows_module, "_AttributeList", FakeAttributeList)
@@ -2098,7 +2106,11 @@ def test_interrupted_process_creation_is_adopted_before_waiter_and_cleanup(
             raise KeyboardInterrupt
         original_adopt(owner, value)
 
-    monkeypatch.setattr(_AppContainerProfile, "create", classmethod(lambda _cls: profile))
+    monkeypatch.setattr(
+        _AppContainerProfile,
+        "create",
+        classmethod(lambda _cls, _recovery_roots: profile),
+    )
     monkeypatch.setattr(windows_module, "_Job", lambda _policy: job)
     monkeypatch.setattr(_PipeSet, "create", classmethod(lambda _cls: pipes))
     monkeypatch.setattr(windows_module, "_AttributeList", FakeAttributeList)
@@ -2206,7 +2218,11 @@ def test_missing_process_authority_quarantines_before_creation_lock_release(
         information.process_id = 1013
         information.thread_id = 1019
 
-    monkeypatch.setattr(_AppContainerProfile, "create", classmethod(lambda _cls: profile))
+    monkeypatch.setattr(
+        _AppContainerProfile,
+        "create",
+        classmethod(lambda _cls, _recovery_roots: profile),
+    )
     monkeypatch.setattr(windows_module, "_Job", lambda _policy: job)
     monkeypatch.setattr(_PipeSet, "create", classmethod(lambda _cls: pipes))
     monkeypatch.setattr(windows_module, "_AttributeList", FakeAttributeList)

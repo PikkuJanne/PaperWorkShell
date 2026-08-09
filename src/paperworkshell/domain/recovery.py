@@ -83,9 +83,11 @@ class RecoveryIssueCode(StrEnum):
     SOURCE_ARTIFACTS_RETAINED = "RECOVERY_SOURCE_ARTIFACTS_RETAINED"
     THUMBNAIL_CLEANUP_PARTIAL = "RECOVERY_THUMBNAIL_CLEANUP_PARTIAL"
     TEMP_CLEANUP_PARTIAL = "RECOVERY_TEMP_CLEANUP_PARTIAL"
+    CLEANUP_FAILED = "RECOVERY_CLEANUP_FAILED"
     EXPORT_COMMIT_AMBIGUOUS = "RECOVERY_EXPORT_COMMIT_AMBIGUOUS"
     EXPORT_HISTORY_PENDING = "RECOVERY_EXPORT_HISTORY_PENDING"
     EXPORT_RETRY_INVALID = "RECOVERY_EXPORT_RETRY_INVALID"
+    EXPORT_RECOVERY_FAILED = "RECOVERY_EXPORT_RECOVERY_FAILED"
 
 
 class StartupRecoveryStatus(StrEnum):
@@ -109,6 +111,7 @@ class ExportHistoryRecoveryResult:
     pending_entries: int = 0
     ambiguous_entries: int = 0
     invalid_entries: int = 0
+    recovery_failed: bool = False
 
     def __post_init__(self) -> None:
         for value, context in (
@@ -118,6 +121,8 @@ class ExportHistoryRecoveryResult:
             (self.invalid_entries, "recovery.export_invalid"),
         ):
             _require_count(value, context=context)
+        if type(self.recovery_failed) is not bool:
+            reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.export_failed")
 
     @property
     def issues(self) -> tuple[RecoveryIssueCode, ...]:
@@ -128,6 +133,8 @@ class ExportHistoryRecoveryResult:
             issues.append(RecoveryIssueCode.EXPORT_HISTORY_PENDING)
         if self.invalid_entries:
             issues.append(RecoveryIssueCode.EXPORT_RETRY_INVALID)
+        if self.recovery_failed:
+            issues.append(RecoveryIssueCode.EXPORT_RECOVERY_FAILED)
         return tuple(issues)
 
 
@@ -199,6 +206,15 @@ class CaseRecoveryResult:
             (self.released_bytes, "recovery.released_bytes"),
         ):
             _require_count(value, context=context)
+        export_issue_counts = (
+            (RecoveryIssueCode.EXPORT_COMMIT_AMBIGUOUS, self.ambiguous_export_commits),
+            (RecoveryIssueCode.EXPORT_HISTORY_PENDING, self.pending_export_history),
+            (RecoveryIssueCode.EXPORT_RETRY_INVALID, self.invalid_export_retries),
+        )
+        if any(
+            (issue in normalized_issues) != (count > 0) for issue, count in export_issue_counts
+        ) or (self.repaired_export_history > 0 and self.status is not CaseRecoveryStatus.RECOVERED):
+            reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.export_state")
         object.__setattr__(self, "issues", normalized_issues)
 
 

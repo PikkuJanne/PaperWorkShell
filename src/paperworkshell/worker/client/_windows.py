@@ -12,6 +12,7 @@ import ctypes
 import io
 import math
 import os
+import stat
 import subprocess
 import threading
 import time
@@ -23,6 +24,14 @@ from pathlib import Path
 from secrets import token_hex
 from typing import TYPE_CHECKING, Any, Final, Never, Self
 
+from paperworkshell.worker.client._acl_recovery import (
+    MAX_ACL_RECOVERY_GRANT_ROOTS,
+    AclRecoveryEntry,
+    AclRecoveryJournal,
+    AclRecoveryJournalError,
+    AclRecoveryObject,
+    AclRecoveryPhase,
+)
 from paperworkshell.worker.protocol.bootstrap import (
     BOOTSTRAP_BYTES,
     BootstrapGrant,
@@ -138,6 +147,10 @@ _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
 _DRIVE_FIXED: Final = 3
 _TOKEN_USER_INFORMATION_CLASS: Final = 1
 _CURRENT_PROCESS_TOKEN: Final = -4
+_PROCESS_QUERY_LIMITED_INFORMATION: Final = 0x0000_1000
+_ERROR_ACCESS_DENIED: Final = 5
+_ERROR_FILE_NOT_FOUND: Final = 2
+_ERROR_INVALID_PARAMETER: Final = 87
 
 _PROFILE_PREFIX: Final = "PaperWorkShell.Worker."
 _PROFILE_DISPLAY_NAME: Final = "PaperWorkShell document worker"
@@ -151,6 +164,7 @@ _PROFILE_DELETE_RETRY_SECONDS: Final = 0.125
 _PROFILE_CLEANUP_ATTEMPTS: Final = 3
 _HANDLE_CLOSE_ATTEMPTS: Final = 3
 _ACL_MUTATION_MUTEX_NAME: Final = "Global\\PaperWorkShell.WorkerResourceAcl.v1"
+_ACL_RECOVERY_DIRECTORY_NAME: Final = "PaperWorkShell.WorkerAclRecovery.v1"
 _ACL_MUTATION_WAIT_MILLISECONDS: Final = 120_000
 _PROCESS_CREATION_WAIT_SECONDS: Final = 10.0
 _MAX_WINDOWS_CPU_TIME_MS: Final = ((1 << 63) - 1) // 10_000
@@ -226,6 +240,15 @@ class WindowsWorkerResourceSnapshot:
     peak_job_memory_used_bytes: int
 
 
+@dataclass(frozen=True, slots=True)
+class WindowsWorkerAclRecoveryResult:
+    """Path-free startup evidence for persistent worker-access repair."""
+
+    journal_entries: int
+    active_leases: int
+    repaired_leases: int
+
+
 def _reject(
     code: WindowsLaunchErrorCode,
     context: str,
@@ -278,6 +301,22 @@ class _ProcessInformation(ctypes.Structure):
         ("thread", wintypes.HANDLE),
         ("process_id", wintypes.DWORD),
         ("thread_id", wintypes.DWORD),
+    ]
+
+
+class _FileTime(ctypes.Structure):
+    _fields_ = [
+        ("low", wintypes.DWORD),
+        ("high", wintypes.DWORD),
+    ]
+
+
+class _Guid(ctypes.Structure):
+    _fields_ = [
+        ("data1", wintypes.DWORD),
+        ("data2", wintypes.WORD),
+        ("data3", wintypes.WORD),
+        ("data4", wintypes.BYTE * 8),
     ]
 
 
@@ -418,6 +457,11 @@ def _advapi32() -> Any:
 def _userenv() -> Any:
     _kernel32()
     return ctypes.WinDLL("userenv", use_last_error=True)
+
+
+def _shell32() -> Any:
+    _kernel32()
+    return ctypes.WinDLL("shell32", use_last_error=True)
 
 
 def _local_free(value: ctypes.c_void_p | wintypes.LPWSTR) -> None:
@@ -705,6 +749,321 @@ def _render_mutex_security_descriptor(descriptor: ctypes.c_void_p) -> str:
         _local_free(rendered)
 
 
+def _acl_recovery_directory_path() -> Path:
+    folder_id = _Guid(
+        data1=0xF1B32785,
+        data2=0x6FBA,
+        data3=0x4FCF,
+        data4=(wintypes.BYTE * 8)(0x9D, 0x55, 0x7B, 0x8E, 0x7F, 0x15, 0x70, 0x91),
+    )
+    get_known_folder = _shell32().SHGetKnownFolderPath
+    get_known_folder.argtypes = (
+        ctypes.POINTER(_Guid),
+        wintypes.DWORD,
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.LPWSTR),
+    )
+    get_known_folder.restype = ctypes.c_long
+    rendered = wintypes.LPWSTR()
+    result = get_known_folder(ctypes.byref(folder_id), 0, None, ctypes.byref(rendered))
+    if result != 0 or rendered.value is None:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_location",
+            "Worker access recovery storage is unavailable.",
+        )
+    try:
+        local_app_data = rendered.value
+        if "\x00" in local_app_data or len(local_app_data) > 32_000:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_location",
+                "Worker access recovery storage is unavailable.",
+            )
+        root = Path(local_app_data)
+    finally:
+        _co_task_mem_free(rendered)
+    if not root.is_absolute() or _is_remote_or_device_path(root):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_location",
+            "Worker access recovery storage is unavailable.",
+        )
+    return root / _ACL_RECOVERY_DIRECTORY_NAME
+
+
+def _acl_recovery_directory_security_descriptor() -> ctypes.c_void_p:
+    user_sid = _current_process_user_sid_string()
+    convert = _advapi32().ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.DWORD),
+    )
+    convert.restype = wintypes.BOOL
+    descriptor = ctypes.c_void_p()
+    access = f"0x{_FILE_ALL_ACCESS:x}"
+    sddl = f"O:{user_sid}D:P(A;OICI;{access};;;SY)(A;OICI;{access};;;{user_sid})"
+    if not convert(sddl, 1, ctypes.byref(descriptor), None) or not descriptor.value:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_policy",
+            "Worker access recovery storage could not be protected.",
+        )
+    return descriptor
+
+
+def _named_object_has_expected_security(
+    path: Path,
+    expected_descriptor: ctypes.c_void_p,
+) -> bool:
+    get_security = _advapi32().GetNamedSecurityInfoW
+    get_security.argtypes = (
+        wintypes.LPWSTR,
+        ctypes.c_int,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    get_security.restype = wintypes.DWORD
+    actual = ctypes.c_void_p()
+    mutable_path = ctypes.create_unicode_buffer(os.fspath(path))
+    status = get_security(
+        mutable_path,
+        _SE_FILE_OBJECT,
+        _OWNER_SECURITY_INFORMATION | _DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        None,
+        None,
+        ctypes.byref(actual),
+    )
+    if status != _ERROR_SUCCESS or not actual.value:
+        return False
+    try:
+        return _render_mutex_security_descriptor(actual) == _render_mutex_security_descriptor(
+            expected_descriptor
+        )
+    finally:
+        _local_free(actual)
+
+
+def _ensure_acl_recovery_directory() -> Path:
+    root = _acl_recovery_directory_path()
+    parent = root.parent
+    try:
+        if not parent.is_dir():
+            raise OSError
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_location",
+            "Worker access recovery storage is unavailable.",
+        )
+    _require_no_reparse_local_path(parent)
+    descriptor = _acl_recovery_directory_security_descriptor()
+    attributes = _SecurityAttributes(
+        length=ctypes.sizeof(_SecurityAttributes),
+        security_descriptor=descriptor,
+        inherit_handle=False,
+    )
+    create = _kernel32().CreateDirectoryW
+    create.argtypes = (wintypes.LPCWSTR, ctypes.POINTER(_SecurityAttributes))
+    create.restype = wintypes.BOOL
+    try:
+        ctypes.set_last_error(_ERROR_SUCCESS)
+        if not create(os.fspath(root), ctypes.byref(attributes)):
+            if ctypes.get_last_error() != _ERROR_ALREADY_EXISTS:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_create",
+                    "Worker access recovery storage could not be created.",
+                )
+        _require_no_reparse_local_path(root)
+        try:
+            is_directory = root.is_dir()
+        except OSError:
+            is_directory = False
+        if not is_directory or not _named_object_has_expected_security(root, descriptor):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_policy",
+                "Worker access recovery storage has an unsupported access policy.",
+            )
+    finally:
+        _local_free(descriptor)
+    return root
+
+
+def _sid_string(sid: ctypes.c_void_p) -> str:
+    convert = _advapi32().ConvertSidToStringSidW
+    convert.argtypes = (ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR))
+    convert.restype = wintypes.BOOL
+    rendered = wintypes.LPWSTR()
+    if not convert(sid, ctypes.byref(rendered)) or rendered.value is None:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "Worker access recovery identity is unavailable.",
+        )
+    try:
+        return rendered.value
+    finally:
+        _local_free(rendered)
+
+
+def _sid_from_string(value: str) -> ctypes.c_void_p:
+    convert = _advapi32().ConvertStringSidToSidW
+    convert.argtypes = (wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p))
+    convert.restype = wintypes.BOOL
+    sid = ctypes.c_void_p()
+    if not convert(value, ctypes.byref(sid)) or not sid.value:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "Worker access recovery identity is invalid.",
+        )
+    if _sid_string(sid) != value:
+        _local_free(sid)
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "Worker access recovery identity is invalid.",
+        )
+    return sid
+
+
+def _derive_app_container_sid(profile_name: str) -> ctypes.c_void_p:
+    derive = _userenv().DeriveAppContainerSidFromAppContainerName
+    derive.argtypes = (wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p))
+    derive.restype = ctypes.c_long
+    sid = ctypes.c_void_p()
+    if derive(profile_name, ctypes.byref(sid)) != 0 or not sid.value:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "Worker access recovery identity is invalid.",
+        )
+    return sid
+
+
+def _free_derived_app_container_sid(sid: ctypes.c_void_p) -> None:
+    free_sid = _advapi32().FreeSid
+    free_sid.argtypes = (ctypes.c_void_p,)
+    free_sid.restype = ctypes.c_void_p
+    if free_sid(sid):
+        _reject(
+            WindowsLaunchErrorCode.CLEANUP_FAILED,
+            "access.recovery_identity_cleanup",
+            "Worker access recovery identity cleanup failed.",
+        )
+
+
+def _file_time_value(value: _FileTime) -> int:
+    return (int(value.high) << 32) | int(value.low)
+
+
+def _process_creation_time(handle: int) -> int:
+    get_times = _kernel32().GetProcessTimes
+    get_times.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_FileTime),
+        ctypes.POINTER(_FileTime),
+        ctypes.POINTER(_FileTime),
+        ctypes.POINTER(_FileTime),
+    )
+    get_times.restype = wintypes.BOOL
+    created = _FileTime()
+    exited = _FileTime()
+    kernel = _FileTime()
+    user = _FileTime()
+    if not get_times(
+        wintypes.HANDLE(handle),
+        ctypes.byref(created),
+        ctypes.byref(exited),
+        ctypes.byref(kernel),
+        ctypes.byref(user),
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_owner",
+            "Worker access recovery ownership could not be verified.",
+        )
+    result = _file_time_value(created)
+    if result < 1:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_owner",
+            "Worker access recovery ownership could not be verified.",
+        )
+    return result
+
+
+def _current_process_identity() -> tuple[int, int]:
+    get_current = _kernel32().GetCurrentProcess
+    get_current.argtypes = ()
+    get_current.restype = wintypes.HANDLE
+    handle = int(get_current() or 0)
+    if handle == 0:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_owner",
+            "Worker access recovery ownership could not be verified.",
+        )
+    return (os.getpid(), _process_creation_time(handle))
+
+
+def _ledger_owner_is_active(owner_pid: int, owner_created_100ns: int) -> bool:
+    open_process = _kernel32().OpenProcess
+    open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    open_process.restype = wintypes.HANDLE
+    ctypes.set_last_error(_ERROR_SUCCESS)
+    raw = int(
+        open_process(
+            _PROCESS_QUERY_LIMITED_INFORMATION | _SYNCHRONIZE,
+            False,
+            owner_pid,
+        )
+        or 0
+    )
+    if raw in {0, _INVALID_HANDLE_VALUE}:
+        error = ctypes.get_last_error()
+        if error == _ERROR_INVALID_PARAMETER:
+            return False
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_owner",
+            "Worker access recovery ownership could not be verified.",
+        )
+    try:
+        if _process_creation_time(raw) != owner_created_100ns:
+            return False
+        wait = _kernel32().WaitForSingleObject
+        wait.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        wait.restype = wintypes.DWORD
+        result = int(wait(wintypes.HANDLE(raw), 0))
+        if result == _WAIT_TIMEOUT:
+            return True
+        if result == _WAIT_OBJECT_0:
+            return False
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_owner",
+            "Worker access recovery ownership could not be verified.",
+        )
+    finally:
+        if not _close_raw_handle(raw):
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "access.recovery_owner_cleanup",
+                "Worker access recovery ownership cleanup failed.",
+            )
+
+
 def _existing_mutex_has_expected_security(
     handle: int,
     expected_descriptor: ctypes.c_void_p,
@@ -785,9 +1144,23 @@ def _drain_acl_mutex_quarantine() -> bool:
 class _AclMutationMutex(AbstractContextManager["_AclMutationMutex"]):
     """Serialize SID-specific ACL read/modify/write operations across app instances."""
 
-    __slots__ = ("_handle", "_owned", "_owner_thread_id")
+    __slots__ = (
+        "_abandoned",
+        "_handle",
+        "_owned",
+        "_owner_thread_id",
+        "_recover_abandoned",
+    )
 
-    def __init__(self) -> None:
+    def __init__(self, *, recover_abandoned: bool = False) -> None:
+        if type(recover_abandoned) is not bool:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.lock_configuration",
+                "Worker resource access recovery is unavailable.",
+            )
+        self._recover_abandoned = recover_abandoned
+        self._abandoned = False
         self._handle = _OwnedHandle.empty()
         descriptor = _acl_mutex_security_descriptor()
         attributes = _SecurityAttributes(
@@ -876,6 +1249,9 @@ class _AclMutationMutex(AbstractContextManager["_AclMutationMutex"]):
         if result == _WAIT_ABANDONED:
             self._owned = True
             self._owner_thread_id = threading.get_ident()
+            self._abandoned = True
+            if self._recover_abandoned:
+                return self
             _PROCESS_CREATION_QUARANTINED = True
             _quarantine_abandoned_acl_mutex(self)
             _reject(
@@ -899,6 +1275,12 @@ class _AclMutationMutex(AbstractContextManager["_AclMutationMutex"]):
         self._owned = True
         self._owner_thread_id = threading.get_ident()
         return self
+
+    @property
+    def was_abandoned(self) -> bool:
+        """Return whether this recovery-capable acquisition inherited ownership."""
+
+        return self._abandoned
 
     def release_no_raise(self) -> bool:
         if not self._owned:
@@ -1105,9 +1487,15 @@ def _require_no_reparse_local_path(path: Path) -> None:
 @dataclass(slots=True, repr=False)
 class _AccessGrantLease:
     sid: ctypes.c_void_p = field(repr=False)
+    profile_id: str = field(default_factory=lambda: token_hex(12), repr=False)
+    profile_name: str | None = field(default=None, repr=False)
+    recovery_roots: tuple[Path, ...] = field(default=(), repr=False)
     paths: list[Path] = field(default_factory=list, repr=False)
     observed_objects: list[Path] = field(default_factory=list, repr=False)
     original_auto_inherited: dict[Path, bool] = field(default_factory=dict, repr=False)
+    recovery_objects: dict[Path, AclRecoveryObject] = field(default_factory=dict, repr=False)
+    owner_pid: int = field(default=0, repr=False)
+    owner_created_100ns: int = field(default=0, repr=False)
 
     def grant_all(self, paths: tuple[Path, ...]) -> None:
         discovered: list[Path] = []
@@ -1115,24 +1503,38 @@ class _AccessGrantLease:
             for descendant in _approved_resource_tree(path):
                 if descendant not in discovered:
                     discovered.append(descendant)
-        with _AclMutationMutex():
-            captured: dict[Path, bool] = {}
+        allowed = _normalized_unique_roots((*self.recovery_roots, *self.paths, *paths))
+        mutex = _AclMutationMutex(recover_abandoned=True)
+        with mutex:
+            _recover_acl_entries_locked(
+                allowed,
+                mutex_was_abandoned=mutex.was_abandoned,
+            )
             for descendant in discovered:
-                captured[descendant] = _dacl_auto_inherited(descendant)
-            for descendant, expected in captured.items():
-                self.original_auto_inherited.setdefault(descendant, expected)
+                if descendant not in self.recovery_objects:
+                    captured = _capture_acl_recovery_object(descendant)
+                    self.recovery_objects[descendant] = captured
+                    self.original_auto_inherited[descendant] = captured.auto_inherited
                 if descendant not in self.observed_objects:
                     self.observed_objects.append(descendant)
+            new_paths = [path for path in paths if path not in self.paths]
             for path in paths:
                 if path in self.paths:
                     continue
                 self.paths.append(path)
+            journal = self._journal()
+            self._write_entry(journal, AclRecoveryPhase.PREPARED)
+            for item in self.recovery_objects.values():
+                _require_acl_recovery_object_identity(item)
+            for path in new_paths:
                 _change_sid_access(path, self.sid, _GRANT_ACCESS)
             for descendant in discovered:
+                _require_acl_recovery_object_identity(self.recovery_objects[descendant])
                 _restore_dacl_auto_inherited(
                     descendant,
                     self.original_auto_inherited[descendant],
                 )
+            self._write_entry(journal, AclRecoveryPhase.ACTIVE)
 
     def require_read_execute(self, paths: tuple[Path, ...]) -> None:
         for path in paths:
@@ -1166,9 +1568,24 @@ class _AccessGrantLease:
             )
 
     def close_no_raise(self) -> bool:
+        if not self.paths:
+            return True
         success = True
         try:
-            with _AclMutationMutex():
+            allowed = _normalized_unique_roots((*self.recovery_roots, *self.paths))
+            mutex = _AclMutationMutex(recover_abandoned=True)
+            with mutex:
+                _recover_acl_entries_locked(
+                    allowed,
+                    mutex_was_abandoned=mutex.was_abandoned,
+                )
+                journal = self._journal()
+                if not journal.exists(self.profile_id):
+                    self._clear()
+                    return True
+                self._write_entry(journal, AclRecoveryPhase.REVOKING)
+                for item in self.recovery_objects.values():
+                    _require_acl_recovery_object_identity(item)
                 for path in reversed(self.paths):
                     try:
                         _change_sid_access(path, self.sid, _REVOKE_ACCESS)
@@ -1182,13 +1599,70 @@ class _AccessGrantLease:
                             success = False
                     except KeyError, WindowsLaunchError:
                         success = False
-        except WindowsLaunchError:
+                if success:
+                    journal.delete(self.profile_id)
+        except WindowsLaunchError, AclRecoveryJournalError:
             success = False
         if success:
-            self.paths.clear()
-            self.observed_objects.clear()
-            self.original_auto_inherited.clear()
+            self._clear()
         return success
+
+    def _journal(self) -> AclRecoveryJournal:
+        try:
+            return AclRecoveryJournal(_ensure_acl_recovery_directory())
+        except AclRecoveryJournalError:
+            raise WindowsLaunchError(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_journal",
+                "Worker access recovery records are invalid or unavailable.",
+            ) from None
+
+    def _entry(self, phase: AclRecoveryPhase) -> AclRecoveryEntry:
+        if not self.owner_pid or not self.owner_created_100ns:
+            self.owner_pid, self.owner_created_100ns = _current_process_identity()
+        profile_name = self.profile_name or f"{_PROFILE_PREFIX}{self.profile_id}"
+        objects = tuple(
+            self.recovery_objects[path]
+            for path in self.observed_objects
+            if path in self.recovery_objects
+        )
+        try:
+            return AclRecoveryEntry(
+                profile_id=self.profile_id,
+                profile_name=profile_name,
+                sid=_sid_string(self.sid),
+                owner_pid=self.owner_pid,
+                owner_created_100ns=self.owner_created_100ns,
+                phase=phase,
+                grant_roots=tuple(self.paths),
+                objects=objects,
+            )
+        except ValueError:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_inventory",
+                "Worker access recovery could not prepare a complete inventory.",
+            )
+
+    def _write_entry(
+        self,
+        journal: AclRecoveryJournal,
+        phase: AclRecoveryPhase,
+    ) -> None:
+        try:
+            journal.write(self._entry(phase))
+        except AclRecoveryJournalError:
+            raise WindowsLaunchError(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_journal",
+                "Worker access recovery records could not be persisted.",
+            ) from None
+
+    def _clear(self) -> None:
+        self.paths.clear()
+        self.observed_objects.clear()
+        self.original_auto_inherited.clear()
+        self.recovery_objects.clear()
 
 
 def _capture_security_descriptor(path: Path) -> bytes:
@@ -1311,23 +1785,37 @@ def _approved_resource_tree(root: Path) -> tuple[Path, ...]:
                 "The approved worker resource tree exceeds its safe depth.",
             )
         _require_no_reparse_local_path(current)
+        observed: os.stat_result | None = None
+        try:
+            observed = current.stat(follow_symlinks=False)
+        except OSError:
+            pass
+        if observed is None:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.resources",
+                "An approved worker runtime resource is unavailable.",
+            )
+        attributes = int(getattr(observed, "st_file_attributes", 0))
+        is_directory = stat.S_ISDIR(observed.st_mode)
+        if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.reparse",
+                "Linked or redirected worker runtime resources are not supported.",
+            )
+        if not is_directory and (not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.resource_identity",
+                "Hardlinked or special worker runtime resources are not supported.",
+            )
         discovered.append(current)
         if len(discovered) > _MAX_APPROVED_RESOURCE_ENTRIES:
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
                 "config.resource_entries",
                 "The approved worker resource tree exceeds its safe entry limit.",
-            )
-        is_directory: bool | None = None
-        try:
-            is_directory = current.is_dir()
-        except OSError:
-            pass
-        if is_directory is None:
-            _reject(
-                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                "config.resources",
-                "An approved worker runtime resource is unavailable.",
             )
         if not is_directory:
             continue
@@ -1588,6 +2076,258 @@ def _sid_access_mask(path: Path, sid: ctypes.c_void_p) -> int:
     return allowed_mask
 
 
+def _capture_acl_recovery_object(path: Path) -> AclRecoveryObject:
+    canonical = Path(os.path.abspath(path))
+    _require_no_reparse_local_path(canonical)
+    try:
+        before = canonical.stat(follow_symlinks=False)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource cannot be authenticated for recovery.",
+        )
+    expected_auto_inherited = _dacl_auto_inherited(canonical)
+    try:
+        after = canonical.stat(follow_symlinks=False)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource cannot be authenticated for recovery.",
+        )
+    before_identity = (int(before.st_dev), int(before.st_ino))
+    after_identity = (int(after.st_dev), int(after.st_ino))
+    before_is_directory = stat.S_ISDIR(before.st_mode)
+    after_is_directory = stat.S_ISDIR(after.st_mode)
+    if (
+        before_identity != after_identity
+        or before_identity[1] < 1
+        or before.st_mode != after.st_mode
+        or before_is_directory is not after_is_directory
+        or int(getattr(before, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
+        or int(getattr(after, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
+        or (
+            not before_is_directory
+            and (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or after.st_nlink != 1)
+        )
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource changed during recovery preparation.",
+        )
+    try:
+        return AclRecoveryObject(
+            path=canonical,
+            device=before_identity[0],
+            inode=before_identity[1],
+            is_directory=before_is_directory,
+            auto_inherited=expected_auto_inherited,
+        )
+    except ValueError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource cannot be authenticated for recovery.",
+        )
+
+
+def _require_acl_recovery_object_identity(expected: AclRecoveryObject) -> None:
+    _require_no_reparse_local_path(expected.path)
+    try:
+        observed = expected.path.stat(follow_symlinks=False)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "An approved worker recovery resource is unavailable.",
+        )
+    is_directory = stat.S_ISDIR(observed.st_mode)
+    if (
+        int(observed.st_dev) != expected.device
+        or int(observed.st_ino) != expected.inode
+        or is_directory is not expected.is_directory
+        or int(getattr(observed, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
+        or (not is_directory and (not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1))
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "An approved worker recovery resource no longer has its recorded identity.",
+        )
+
+
+def _normalized_unique_roots(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+    if (
+        type(paths) is not tuple
+        or not 1 <= len(paths) <= MAX_ACL_RECOVERY_GRANT_ROOTS
+        or any(not isinstance(path, Path) or not path.is_absolute() for path in paths)
+    ):
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "access.recovery_roots",
+            "Worker access recovery requires fixed approved resource roots.",
+        )
+    result: list[Path] = []
+    normalized: set[str] = set()
+    for path in paths:
+        _require_no_reparse_local_path(path)
+        key = _normalized_path(path)
+        if key in normalized:
+            continue
+        normalized.add(key)
+        result.append(Path(os.path.abspath(path)))
+    if not result:
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "access.recovery_roots",
+            "Worker access recovery requires fixed approved resource roots.",
+        )
+    return tuple(result)
+
+
+def _require_acl_recovery_entry_authority(
+    entry: AclRecoveryEntry,
+    allowed_roots: tuple[Path, ...],
+) -> ctypes.c_void_p:
+    allowed = {_normalized_path(path) for path in allowed_roots}
+    entry_roots = {_normalized_path(path) for path in entry.grant_roots}
+    if not entry_roots <= allowed:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_allowlist",
+            "Worker access recovery does not match the approved runtime configuration.",
+        )
+    for item in entry.objects:
+        if not any(_is_within(item.path, root) for root in entry.grant_roots):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_allowlist",
+                "Worker access recovery contains an unapproved resource.",
+            )
+    object_paths = {_normalized_path(item.path) for item in entry.objects}
+    if not entry_roots <= object_paths:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_inventory",
+            "Worker access recovery has an incomplete resource inventory.",
+        )
+    for item in entry.objects:
+        _require_acl_recovery_object_identity(item)
+    sid = _derive_app_container_sid(entry.profile_name)
+    try:
+        if _sid_string(sid) != entry.sid:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_identity",
+                "Worker access recovery profile identity does not match its recorded SID.",
+            )
+    except BaseException:
+        _free_derived_app_container_sid(sid)
+        raise
+    return sid
+
+
+def _repair_acl_recovery_entry(
+    journal: AclRecoveryJournal,
+    entry: AclRecoveryEntry,
+    sid: ctypes.c_void_p,
+) -> None:
+    by_path = {_normalized_path(item.path): item for item in entry.objects}
+    for root in reversed(entry.grant_roots):
+        expected_root = by_path.get(_normalized_path(root))
+        if expected_root is None:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_inventory",
+                "Worker access recovery has an incomplete resource inventory.",
+            )
+        _require_acl_recovery_object_identity(expected_root)
+        _change_sid_access(root, sid, _REVOKE_ACCESS)
+    for item in entry.objects:
+        _require_acl_recovery_object_identity(item)
+        _restore_dacl_auto_inherited(item.path, item.auto_inherited)
+    for item in entry.objects:
+        _require_acl_recovery_object_identity(item)
+        if _sid_access_mask(item.path, sid):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_verify",
+                "Worker access recovery could not prove complete SID removal.",
+            )
+    journal.delete(entry.profile_id)
+
+
+def _recover_acl_entries_locked(
+    allowed_roots: tuple[Path, ...],
+    *,
+    mutex_was_abandoned: bool,
+) -> WindowsWorkerAclRecoveryResult:
+    journal_failed = False
+    entries: tuple[AclRecoveryEntry, ...] = ()
+    active = 0
+    repaired = 0
+    try:
+        journal = AclRecoveryJournal(_ensure_acl_recovery_directory())
+        entries = journal.inventory()
+        for entry in entries:
+            sid = _require_acl_recovery_entry_authority(entry, allowed_roots)
+            try:
+                owner_active = _ledger_owner_is_active(
+                    entry.owner_pid,
+                    entry.owner_created_100ns,
+                )
+                if owner_active and entry.phase is AclRecoveryPhase.ACTIVE:
+                    active += 1
+                    continue
+                _repair_acl_recovery_entry(journal, entry, sid)
+                repaired += 1
+            finally:
+                _free_derived_app_container_sid(sid)
+    except AclRecoveryJournalError:
+        journal_failed = True
+    if journal_failed:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_journal",
+            "Worker access recovery records are invalid or unavailable.",
+        )
+    if mutex_was_abandoned and repaired == 0:
+        _reject(
+            WindowsLaunchErrorCode.CLEANUP_FAILED,
+            "access.recovery_abandoned",
+            "An abandoned worker access update has no safe recovery inventory.",
+        )
+    return WindowsWorkerAclRecoveryResult(
+        journal_entries=len(entries),
+        active_leases=active,
+        repaired_leases=repaired,
+    )
+
+
+def recover_worker_acl_access(
+    allowed_roots: tuple[Path, ...],
+) -> WindowsWorkerAclRecoveryResult:
+    """Repair orphaned worker-resource SID grants under the protected mutex."""
+
+    global _PROCESS_CREATION_QUARANTINED
+
+    roots = _normalized_unique_roots(allowed_roots)
+    mutex = _AclMutationMutex(recover_abandoned=True)
+    try:
+        with mutex:
+            result = _recover_acl_entries_locked(
+                roots,
+                mutex_was_abandoned=mutex.was_abandoned,
+            )
+    except WindowsLaunchError:
+        if mutex.was_abandoned:
+            _PROCESS_CREATION_QUARANTINED = True
+        raise
+    return result
+
+
 def _masks_grant_app_container_read_execute(
     package_masks: tuple[int, int],
     any_package_masks: tuple[int, int],
@@ -1653,7 +2393,7 @@ class _AppContainerProfile:
     _closed: bool = False
 
     @classmethod
-    def create(cls) -> Self:
+    def create(cls, recovery_roots: tuple[Path, ...] = ()) -> Self:
         name = f"{_PROFILE_PREFIX}{token_hex(12)}"
         if len(name) > _MAX_PROFILE_NAME_CODEPOINTS:
             _reject(
@@ -1703,7 +2443,12 @@ class _AppContainerProfile:
             name=name,
             sid=sid,
             local_app_data=local_app_data,
-            access=_AccessGrantLease(sid=sid),
+            access=_AccessGrantLease(
+                sid=sid,
+                profile_id=name.removeprefix(_PROFILE_PREFIX),
+                profile_name=name,
+                recovery_roots=recovery_roots,
+            ),
         )
 
     def grant_read_execute(self, paths: tuple[Path, ...]) -> None:
@@ -2992,10 +3737,11 @@ class WindowsProcessLauncher:
                 "launch.quarantine",
                 "A previous worker launch still requires deterministic cleanup.",
             )
+        recover_worker_acl_access(self._config.access_roots)
         process = _OwnedHandle.empty()
         thread = _OwnedHandle.empty()
         information = _ProcessInformation()
-        profile = _AppContainerProfile.create()
+        profile = _AppContainerProfile.create(self._config.access_roots)
         job: _Job | None = None
         job_assigned = False
         process_created = False

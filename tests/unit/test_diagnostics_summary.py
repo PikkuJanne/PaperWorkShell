@@ -9,10 +9,15 @@ from uuid import UUID
 import pytest
 
 from paperworkshell.diagnostics.errors import DiagnosticError, DiagnosticErrorCode
+from paperworkshell.diagnostics.logging import SanitizedDiagnosticLogger
 from paperworkshell.diagnostics.models import (
     DiagnosticCount,
     DiagnosticCountKind,
+    DiagnosticEventCode,
     DiagnosticFailureCode,
+    DiagnosticOperationKind,
+    DiagnosticOutcome,
+    DiagnosticRecord,
     DiagnosticResource,
     DiagnosticResourceKind,
     DiagnosticVersion,
@@ -21,6 +26,7 @@ from paperworkshell.diagnostics.models import (
 from paperworkshell.diagnostics.summary import (
     DIAGNOSTIC_SUMMARY_VERSION,
     DiagnosticSummary,
+    build_diagnostic_summary,
     copy_diagnostic_summary,
     render_diagnostic_summary,
 )
@@ -28,6 +34,7 @@ from paperworkshell.diagnostics.summary import (
 _NOW = datetime(2026, 8, 9, 12, 34, 56, 789, tzinfo=UTC)
 _OPERATION_A = UUID("00000000-0000-4000-8000-000000000001")
 _OPERATION_B = UUID("00000000-0000-4000-8000-000000000002")
+_CASE_ID = UUID("00000000-0000-4000-8000-000000000003")
 
 
 def _summary() -> DiagnosticSummary:
@@ -153,6 +160,111 @@ def test_summary_owns_nested_values_and_copy_is_independent() -> None:
 
     assert copied.versions[0].components == (1, 2, 3)
     assert summary.versions[0].components == (8, 8, 8)
+
+
+def test_summary_builder_aggregates_one_frozen_typed_record_snapshot() -> None:
+    first = DiagnosticRecord(
+        occurred_at=_NOW,
+        event=DiagnosticEventCode.OPERATION_COMPLETED,
+        case_id=_CASE_ID,
+        operation_id=_OPERATION_A,
+        operation_kind=DiagnosticOperationKind.PDF_EXPORT,
+        outcome=DiagnosticOutcome.SUCCESS,
+        versions=(DiagnosticVersion(DiagnosticVersionKind.APPLICATION, (1, 2, 3)),),
+        counts=(DiagnosticCount(DiagnosticCountKind.PAGES_PROCESSED, 2),),
+        resources=(
+            DiagnosticResource(DiagnosticResourceKind.DURATION_MILLISECONDS, 10),
+            DiagnosticResource(DiagnosticResourceKind.PEAK_MEMORY_BYTES, 100),
+        ),
+    )
+    second = DiagnosticRecord(
+        occurred_at=_NOW,
+        event=DiagnosticEventCode.OPERATION_COMPLETED,
+        case_id=_CASE_ID,
+        operation_id=_OPERATION_B,
+        operation_kind=DiagnosticOperationKind.PDF_EXPORT,
+        outcome=DiagnosticOutcome.PARTIAL,
+        failure_code=DiagnosticFailureCode.STORAGE_FAILED,
+        versions=(DiagnosticVersion(DiagnosticVersionKind.APPLICATION, (1, 2, 3)),),
+        counts=(DiagnosticCount(DiagnosticCountKind.PAGES_PROCESSED, 3),),
+        resources=(
+            DiagnosticResource(DiagnosticResourceKind.DURATION_MILLISECONDS, 20),
+            DiagnosticResource(DiagnosticResourceKind.PEAK_MEMORY_BYTES, 80),
+            DiagnosticResource(DiagnosticResourceKind.STORAGE_BYTES_RELEASED, 4),
+        ),
+    )
+
+    summary = build_diagnostic_summary((first, second), generated_at=_NOW)
+
+    assert summary.record_count == 2
+    assert summary.operation_ids == (_OPERATION_A, _OPERATION_B)
+    assert summary.codes == (DiagnosticFailureCode.STORAGE_FAILED,)
+    assert {item.kind: item.value for item in summary.counts} == {
+        DiagnosticCountKind.PAGES_PROCESSED: 5
+    }
+    assert {item.kind: item.value for item in summary.resources} == {
+        DiagnosticResourceKind.DURATION_MILLISECONDS: 30,
+        DiagnosticResourceKind.PEAK_MEMORY_BYTES: 100,
+        DiagnosticResourceKind.STORAGE_BYTES_RELEASED: 4,
+    }
+
+    logger = SanitizedDiagnosticLogger(maximum_records=1)
+    logger.emit(first)
+    logger.emit(second)
+    frozen = logger.snapshot_summary(generated_at=_NOW)
+    assert frozen.record_count == 1
+    assert frozen.dropped_record_count == 1
+    assert frozen.operation_ids == (_OPERATION_B,)
+
+
+def test_summary_builder_rejects_conflicting_versions() -> None:
+    first = DiagnosticRecord(
+        occurred_at=_NOW,
+        event=DiagnosticEventCode.APPLICATION_STARTED,
+        versions=(DiagnosticVersion(DiagnosticVersionKind.APPLICATION, (1,)),),
+    )
+    second = DiagnosticRecord(
+        occurred_at=_NOW,
+        event=DiagnosticEventCode.APPLICATION_STARTED,
+        versions=(DiagnosticVersion(DiagnosticVersionKind.APPLICATION, (2,)),),
+    )
+
+    with pytest.raises(DiagnosticError) as raised:
+        build_diagnostic_summary((first, second), generated_at=_NOW)
+
+    assert raised.value.code is DiagnosticErrorCode.SUMMARY_INVALID
+
+
+def test_summary_builder_rejects_an_unbounded_record_snapshot() -> None:
+    record = DiagnosticRecord(
+        occurred_at=_NOW,
+        event=DiagnosticEventCode.APPLICATION_STARTED,
+    )
+
+    with pytest.raises(DiagnosticError) as raised:
+        build_diagnostic_summary((record,) * 4_097, generated_at=_NOW)
+
+    assert raised.value.code is DiagnosticErrorCode.SUMMARY_INVALID
+
+
+def test_logger_summary_accepts_every_unique_operation_in_its_bounded_history() -> None:
+    logger = SanitizedDiagnosticLogger(maximum_records=4_096)
+    for index in range(1, 1_026):
+        logger.emit(
+            DiagnosticRecord(
+                occurred_at=_NOW,
+                event=DiagnosticEventCode.OPERATION_STARTED,
+                case_id=_CASE_ID,
+                operation_id=UUID(int=index, version=4),
+                operation_kind=DiagnosticOperationKind.PDF_EXPORT,
+            )
+        )
+
+    summary = logger.snapshot_summary(generated_at=_NOW)
+
+    assert summary.record_count == 1_025
+    assert len(summary.operation_ids) == 1_025
+    assert summary.operation_ids == tuple(sorted(summary.operation_ids, key=lambda item: item.hex))
 
 
 def test_renderer_revalidates_a_mutated_summary() -> None:
