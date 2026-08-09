@@ -45,6 +45,17 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
         )
         self.assertIn("run: python tools/dev.py check", self.text)
 
+    def test_quality_job_timeout_covers_the_full_hosted_suite(self) -> None:
+        timeout = re.search(
+            r"^\s*timeout-minutes:\s*(\d+)\s*$",
+            self.text,
+            flags=re.MULTILINE,
+        )
+
+        self.assertIsNotNone(timeout)
+        assert timeout is not None
+        self.assertEqual(30, int(timeout.group(1)))
+
     def test_gitleaks_download_is_versioned_and_hash_verified(self) -> None:
         self.assertIn("gitleaks_8.30.1_windows_x64.zip", self.text)
         self.assertIn(
