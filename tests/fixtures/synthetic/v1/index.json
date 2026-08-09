@@ -1,0 +1,1208 @@
+{
+  "schema_version": 1,
+  "corpus_id": "paperworkshell-public-synthetic-v1",
+  "generator": {
+    "id": "paperworkshell-stdlib-fixtures",
+    "version": 1
+  },
+  "policy": {
+    "classification": "public-synthetic-only",
+    "marker": "PWS-SYNTHETIC-FIXTURE",
+    "external_source_material": false,
+    "decision_ref": "PWS-D035"
+  },
+  "coverage": [
+    {
+      "category": "annotation",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-annotation",
+        "pdf-render-annotation-appearance",
+        "png-render-annotation-appearance"
+      ]
+    },
+    {
+      "category": "attachment",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-attachment"
+      ]
+    },
+    {
+      "category": "blank",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-blank"
+      ]
+    },
+    {
+      "category": "born-digital",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-born-digital",
+        "pdf-render-embedded-type3-font",
+        "pdf-render-missing-font-fallback",
+        "png-render-embedded-type3-font"
+      ]
+    },
+    {
+      "category": "cmyk",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-render-cmyk",
+        "pdf-render-colorspaces"
+      ]
+    },
+    {
+      "category": "crop",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-page-geometry",
+        "pdf-render-calibration",
+        "pdf-render-geometry-matrix",
+        "png-render-calibration-crop-rotate",
+        "png-render-geometry-direct-box"
+      ]
+    },
+    {
+      "category": "duplicate",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-duplicate-a",
+        "pdf-duplicate-b"
+      ]
+    },
+    {
+      "category": "handwriting-demonstration",
+      "status": "committed",
+      "fixture_ids": [
+        "png-handwriting-demonstration"
+      ]
+    },
+    {
+      "category": "image-only",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-image-only"
+      ]
+    },
+    {
+      "category": "incremental",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-incremental"
+      ]
+    },
+    {
+      "category": "long-path",
+      "status": "on-demand",
+      "recipe_id": "long-path-tree-v1"
+    },
+    {
+      "category": "low-resolution",
+      "status": "committed",
+      "fixture_ids": [
+        "png-low-resolution"
+      ]
+    },
+    {
+      "category": "malformed",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-malformed",
+        "pdf-render-malformed-page-tree"
+      ]
+    },
+    {
+      "category": "mixed",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-mixed"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0303",
+      "reason_code": "font-engine-required"
+    },
+    {
+      "category": "page-size",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-page-geometry",
+        "pdf-render-calibration",
+        "pdf-render-geometry-matrix",
+        "pdf-render-high-dimension",
+        "png-render-calibration-crop-rotate",
+        "png-render-calibration-media-box",
+        "png-render-geometry-user-unit"
+      ]
+    },
+    {
+      "category": "protected",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-protected"
+      ]
+    },
+    {
+      "category": "rotated",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-page-geometry",
+        "pdf-render-calibration",
+        "pdf-render-geometry-matrix",
+        "png-render-calibration-crop-rotate",
+        "png-render-geometry-inherited-rotate-0",
+        "png-render-geometry-inherited-rotate-180",
+        "png-render-geometry-inherited-rotate-270",
+        "png-render-geometry-inherited-rotate-90"
+      ]
+    },
+    {
+      "category": "rtl",
+      "status": "scheduled",
+      "scheduled_task": "PWS-0704",
+      "reason_code": "rtl-layout-engine-required"
+    },
+    {
+      "category": "script-marker",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-action-marker",
+        "pdf-script-marker"
+      ]
+    },
+    {
+      "category": "signed-marker",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-signed-marker"
+      ]
+    },
+    {
+      "category": "transparency",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-render-soft-mask-blend",
+        "pdf-render-transparency",
+        "png-render-soft-mask-blend",
+        "png-render-transparency",
+        "png-transparent"
+      ]
+    },
+    {
+      "category": "unicode",
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-unicode-named"
+      ]
+    },
+    {
+      "category": "very-large",
+      "status": "on-demand",
+      "recipe_id": "oversized-pdf-v1"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "pdf-action-marker",
+      "path": "pdf/action-marker.pdf",
+      "media_type": "application/pdf",
+      "bytes": 810,
+      "sha256": "9eb62a1bd2f1ba742e80b0a59c7931fb065ea13908db275ec434d74b90eedc39",
+      "categories": [
+        "script-marker"
+      ],
+      "recipe": "catalog-action-marker-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "action_marker_count": 1,
+        "javascript_marker_count": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-annotation",
+      "path": "pdf/annotation.pdf",
+      "media_type": "application/pdf",
+      "bytes": 865,
+      "sha256": "42f9dde1c47c6e852a7254d6223f7a5272dd7cf7ee4e872a921a65466040f35a",
+      "categories": [
+        "annotation"
+      ],
+      "recipe": "annotation-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "annotation_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-attachment",
+      "path": "pdf/attachment.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1101,
+      "sha256": "1b2ff87ff47a5995e888c5e36f9a7a7ae943c3c68b7d169834e93a405b35b8e1",
+      "categories": [
+        "attachment"
+      ],
+      "recipe": "attachment-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "embedded_file_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-blank",
+      "path": "pdf/blank.pdf",
+      "media_type": "application/pdf",
+      "bytes": 439,
+      "sha256": "97e6e10d05526eb58578e07d7e81e0439770c1dc093b42ffaa08b42d25691d6a",
+      "categories": [
+        "blank"
+      ],
+      "recipe": "blank-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "content_stream_count": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-born-digital",
+      "path": "pdf/born-digital.pdf",
+      "media_type": "application/pdf",
+      "bytes": 802,
+      "sha256": "3f62fe484b8b389ec18afe115939d491f795e517195a7acf7fe5989075839c47",
+      "categories": [
+        "born-digital"
+      ],
+      "recipe": "text-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "has_text_operator": true
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-duplicate-a",
+      "path": "pdf/duplicate-a.pdf",
+      "media_type": "application/pdf",
+      "bytes": 805,
+      "sha256": "5db79fd077ad039f15b5579bba35f909c7cb7766129dc151a17b757ec3f80f48",
+      "categories": [
+        "duplicate"
+      ],
+      "recipe": "duplicate-pdf-v1",
+      "construction_assertions": {
+        "duplicate_group": "pdf-exact-pair-v1"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-duplicate-b",
+      "path": "pdf/duplicate-b.pdf",
+      "media_type": "application/pdf",
+      "bytes": 805,
+      "sha256": "5db79fd077ad039f15b5579bba35f909c7cb7766129dc151a17b757ec3f80f48",
+      "categories": [
+        "duplicate"
+      ],
+      "recipe": "duplicate-pdf-v1",
+      "construction_assertions": {
+        "duplicate_group": "pdf-exact-pair-v1"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-image-only",
+      "path": "pdf/image-only.pdf",
+      "media_type": "application/pdf",
+      "bytes": 973,
+      "sha256": "e69b5ec4cf655d07136cd7c77d24e0a8d70ce197b3dde537cd3a0c0c8889198b",
+      "categories": [
+        "image-only"
+      ],
+      "recipe": "image-only-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "image_xobject_count": 1,
+        "has_text_operator": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-incremental",
+      "path": "pdf/incremental-update.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1006,
+      "sha256": "cdbc1d99d2a84cb0d09f42c3f548757e986ea8d1c10316caffed6d9e3ab3e76d",
+      "categories": [
+        "incremental"
+      ],
+      "recipe": "incremental-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "revision_count": 2,
+        "prev_trailer_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-malformed",
+      "path": "pdf/malformed-truncated.pdf",
+      "media_type": "application/pdf",
+      "bytes": 97,
+      "sha256": "3d9c1b442c5621be869ce6e8358d7bfc7fbfcb19a489653d28006b41abc212ca",
+      "categories": [
+        "malformed"
+      ],
+      "recipe": "truncated-pdf-v1",
+      "construction_assertions": {
+        "parse_expected": false,
+        "truncated": true
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-mixed",
+      "path": "pdf/mixed.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1359,
+      "sha256": "4d91cae4580b767c69662dd8d4d63481bed34aea44e42c568bdd53adaac7758d",
+      "categories": [
+        "mixed"
+      ],
+      "recipe": "mixed-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "text_page_count": 1,
+        "image_page_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-page-geometry",
+      "path": "pdf/page-geometry.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1046,
+      "sha256": "c58b0456ba3a3c6f547a858754b2c09d33cd056dde66220ee34bd4985f8fa391",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "geometry-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "rotation_degrees": 90,
+        "distinct_media_boxes": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-protected",
+      "path": "pdf/password-required.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1002,
+      "sha256": "f21f26d37ceaca1302999b2cc474cf8e81b77f32196de3cff5452935485a44f0",
+      "categories": [
+        "protected"
+      ],
+      "recipe": "standard-security-handler-r2-pdf-v1",
+      "construction_assertions": {
+        "password_required": true,
+        "test_only_weak_encryption": true,
+        "user_password_fixture_token": "locked"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-annotation-appearance",
+      "path": "pdf/render-annotation-appearance.pdf",
+      "media_type": "application/pdf",
+      "bytes": 921,
+      "sha256": "f62ae16b6bfc9fe89110b4a5c597ce4b2d8c01564ea5fdea187c272fdd7bba8c",
+      "categories": [
+        "annotation"
+      ],
+      "recipe": "render-annotation-appearance-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "annotation_count": 1,
+        "annotation_subtype": "Square",
+        "stored_normal_appearance_count": 1,
+        "print_flag_set": true
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-calibration",
+      "path": "pdf/render-calibration.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1050,
+      "sha256": "a0b937f3cf2fd2e4653d4fc067aae459f8dd17c5ad88edc9a3a5482b6f94dbc0",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "render-calibration-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "font_resource_count": 0,
+        "page_one_crop_box": "10 10 70 50",
+        "page_one_rotation_degrees": 90,
+        "page_two_media_box": "0 0 72 96"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-cmyk",
+      "path": "pdf/render-cmyk.pdf",
+      "media_type": "application/pdf",
+      "bytes": 984,
+      "sha256": "b51ac42dff2d2a21014123d8e133d1049de0b8dd12726e4540bc12d58370d69f",
+      "categories": [
+        "cmyk"
+      ],
+      "recipe": "render-cmyk-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_resource_count": 0,
+        "device_cmyk_vector_swatches": 4,
+        "device_cmyk_image_pixels": 4,
+        "image_interpolation": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-colorspaces",
+      "path": "pdf/render-colorspaces.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1578,
+      "sha256": "c0e74a04f6c7b0468d128128dcc5e263b59d8b3c90fc20074638818c53384865",
+      "categories": [
+        "cmyk"
+      ],
+      "recipe": "render-colorspaces-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "device_cmyk_vector_swatches": 2,
+        "icc_based_image_pixels": 2,
+        "icc_components": 3,
+        "icc_alternate": "DeviceRGB",
+        "icc_profile_version": "2.1",
+        "icc_tag_count": 9,
+        "icc_shared_linear_trc": true,
+        "analytical_rgb_reference": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-embedded-type3-font",
+      "path": "pdf/render-embedded-type3-font.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1032,
+      "sha256": "35fc07e396e843f8fd95e3fee746ee4a5fcf074ddaede701df6fa54531ae2af2",
+      "categories": [
+        "born-digital"
+      ],
+      "recipe": "render-embedded-type3-font-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_subtype": "Type3",
+        "embedded_charproc_count": 1,
+        "external_font_asset": false,
+        "glyph_instances": 4
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-geometry-matrix",
+      "path": "pdf/render-geometry-matrix.pdf",
+      "media_type": "application/pdf",
+      "bytes": 2308,
+      "sha256": "b94972c3f45516fc1dbb38f58594c35721253bf252a76b8452430e054b90fccc",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "render-geometry-matrix-pdf-v1",
+      "construction_assertions": {
+        "pdf_version": "1.6",
+        "page_count": 6,
+        "inherited_media_box_page_count": 4,
+        "inherited_crop_box_page_count": 4,
+        "inherited_media_box": "0 0 43 37",
+        "inherited_crop_box": "3 5 33 25",
+        "inherited_opposing_insets": "3,5,10,12",
+        "explicit_rotations_degrees": "0,90,180,270",
+        "direct_box_page_index": 4,
+        "user_unit_page_index": 5,
+        "user_unit_value": 2,
+        "user_unit_crop_box": "0 0 36 24"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-high-dimension",
+      "path": "pdf/render-high-dimension.pdf",
+      "media_type": "application/pdf",
+      "bytes": 595,
+      "sha256": "5200af06d81559aef0c48c42b190ac7edbd5a5ab07456d6ac86b7e02a90c4409",
+      "categories": [
+        "page-size"
+      ],
+      "recipe": "render-high-dimension-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "media_box_width_points": 14400,
+        "media_box_height_points": 14400,
+        "pixels_at_96_dpi": 368640000
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-malformed-page-tree",
+      "path": "pdf/render-malformed-page-tree.pdf",
+      "media_type": "application/pdf",
+      "bytes": 305,
+      "sha256": "2cefb2633b0f639f8b914e078ef9dd32ae58fb68bc5e571d487d7efe0b098458",
+      "categories": [
+        "malformed"
+      ],
+      "recipe": "render-malformed-page-tree-pdf-v1",
+      "construction_assertions": {
+        "parse_expected": false,
+        "header_complete": true,
+        "xref_complete": true,
+        "missing_pages_object": 99
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-missing-font-fallback",
+      "path": "pdf/render-missing-font-fallback.pdf",
+      "media_type": "application/pdf",
+      "bytes": 788,
+      "sha256": "cd8fa826ee31bbd41a19055db1909516af6b636a29aa9a0e10426053306bfcc8",
+      "categories": [
+        "born-digital"
+      ],
+      "recipe": "render-missing-font-fallback-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_subtype": "Type1",
+        "base_font": "PWSSyntheticMissingFont",
+        "embedded_font_program": false,
+        "base14_font": false,
+        "fallback_rendering_expected": true,
+        "analytical_pixel_reference": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-soft-mask-blend",
+      "path": "pdf/render-soft-mask-blend.pdf",
+      "media_type": "application/pdf",
+      "bytes": 1132,
+      "sha256": "313594e8a0851e9523df5ce3f97db45a5c23150305958b076c4bcbedd6e32058",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "render-soft-mask-blend-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "soft_mask_subtype": "Alpha",
+        "blend_mode": "Multiply",
+        "transparency_group_color_space": "DeviceGray"
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-render-transparency",
+      "path": "pdf/render-transparency.pdf",
+      "media_type": "application/pdf",
+      "bytes": 750,
+      "sha256": "28fe792cf1083f331d72fab162df7f1099fb86324704ba87de1cc7db9a42bc05",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "render-transparency-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_resource_count": 0,
+        "ext_gstate_count": 1,
+        "fill_alpha_numerator": 1,
+        "fill_alpha_denominator": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-script-marker",
+      "path": "pdf/script-marker.pdf",
+      "media_type": "application/pdf",
+      "bytes": 847,
+      "sha256": "226de12e099580ec2b0873fb1cd457409fde0fe3b9f45642691f49155f3e3e8f",
+      "categories": [
+        "script-marker"
+      ],
+      "recipe": "orphan-script-marker-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "script_marker_count": 1,
+        "script_reachable_from_catalog": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-signed-marker",
+      "path": "pdf/signed-marker.pdf",
+      "media_type": "application/pdf",
+      "bytes": 934,
+      "sha256": "520a27e1952cdad2d936729041dd28c7ce7bbb150510cac9ab7481485976c3e4",
+      "categories": [
+        "signed-marker"
+      ],
+      "recipe": "unsigned-signature-field-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "signature_field_marker": true,
+        "cryptographically_signed": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-unicode-named",
+      "path": "pdf/unicode-named-caf\u00e9.pdf",
+      "media_type": "application/pdf",
+      "bytes": 811,
+      "sha256": "8729be3639d9c670920b3fe359fbccf1bdfd11be218fb5723a931e0f92736a9d",
+      "categories": [
+        "unicode"
+      ],
+      "recipe": "unicode-named-path-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "path_is_nfc": true,
+        "rendered_unicode_content": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-handwriting-demonstration",
+      "path": "image/handwriting-demonstration.png",
+      "media_type": "image/png",
+      "bytes": 37080,
+      "sha256": "b7889c1f825c7587851eecdf242cf7d6631fae64b3caad6215893f15eb321cab",
+      "categories": [
+        "handwriting-demonstration"
+      ],
+      "recipe": "handwriting-demonstration-png-v1",
+      "construction_assertions": {
+        "width": 192,
+        "height": 64,
+        "is_signature": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-low-resolution",
+      "path": "image/low-resolution.png",
+      "media_type": "image/png",
+      "bytes": 344,
+      "sha256": "2c5d5a34149c7ce24072771fdc1efb60a5106d5c1b30f2bb7269d324e7cc7724",
+      "categories": [
+        "low-resolution"
+      ],
+      "recipe": "low-resolution-png-v1",
+      "construction_assertions": {
+        "width": 8,
+        "height": 8,
+        "color_type": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-annotation-appearance",
+      "path": "image/render-annotation-appearance.png",
+      "media_type": "image/png",
+      "bytes": 12509,
+      "sha256": "e5b3a19338b69a3e9fc1458178374930052e5666d5883f91046003f60640e916",
+      "categories": [
+        "annotation"
+      ],
+      "recipe": "render-annotation-appearance-png-v1",
+      "construction_assertions": {
+        "width": 64,
+        "height": 64,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-annotation-appearance",
+        "page_index": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-calibration-crop-rotate",
+      "path": "image/render-calibration-crop-rotate.png",
+      "media_type": "image/png",
+      "bytes": 7416,
+      "sha256": "90648e4c601382ca3b96f7282cd2f33a6ef577a223ef185584b088372738ccf3",
+      "categories": [
+        "crop",
+        "page-size",
+        "rotated"
+      ],
+      "recipe": "render-calibration-crop-rotate-png-v1",
+      "construction_assertions": {
+        "width": 40,
+        "height": 60,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-calibration",
+        "page_index": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-calibration-media-box",
+      "path": "image/render-calibration-media-box.png",
+      "media_type": "image/png",
+      "bytes": 20969,
+      "sha256": "412a3a6068b87271bcff388cead2a00a9bd6ee83bc3568f244a50aa439662b67",
+      "categories": [
+        "page-size"
+      ],
+      "recipe": "render-calibration-media-box-png-v1",
+      "construction_assertions": {
+        "width": 72,
+        "height": 96,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-calibration",
+        "page_index": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-embedded-type3-font",
+      "path": "image/render-embedded-type3-font.png",
+      "media_type": "image/png",
+      "bytes": 24798,
+      "sha256": "26ecec7f512b6239b21dcb52f301a0f749b0f0d9a89afaa267f701449dcebd4f",
+      "categories": [
+        "born-digital"
+      ],
+      "recipe": "render-embedded-type3-font-png-v1",
+      "construction_assertions": {
+        "width": 128,
+        "height": 64,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-embedded-type3-font",
+        "page_index": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-geometry-direct-box",
+      "path": "image/render-geometry-direct-box.png",
+      "media_type": "image/png",
+      "bytes": 2576,
+      "sha256": "b27619c6aa76af98303747a48bf079d7e1811cf701daf3c5764e2abbe6535cdf",
+      "categories": [
+        "crop"
+      ],
+      "recipe": "render-geometry-direct-box-png-v1",
+      "construction_assertions": {
+        "width": 40,
+        "height": 20,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-geometry-matrix",
+        "page_index": 4
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-geometry-inherited-rotate-0",
+      "path": "image/render-geometry-inherited-rotate-0.png",
+      "media_type": "image/png",
+      "bytes": 1973,
+      "sha256": "d3072e8731477721e211578ea14de7c1d23e3840273dfe2c6cda23e79cc8afd6",
+      "categories": [
+        "rotated"
+      ],
+      "recipe": "render-geometry-inherited-rotate-0-png-v1",
+      "construction_assertions": {
+        "width": 30,
+        "height": 20,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-geometry-matrix",
+        "page_index": 0
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-geometry-inherited-rotate-180",
+      "path": "image/render-geometry-inherited-rotate-180.png",
+      "media_type": "image/png",
+      "bytes": 1975,
+      "sha256": "43c13ee3e3aa5c20ad21dd66c3eca826887de0821b11eb0ade2e38e47eda2823",
+      "categories": [
+        "rotated"
+      ],
+      "recipe": "render-geometry-inherited-rotate-180-png-v1",
+      "construction_assertions": {
+        "width": 30,
+        "height": 20,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-geometry-matrix",
+        "page_index": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-geometry-inherited-rotate-270",
+      "path": "image/render-geometry-inherited-rotate-270.png",
+      "media_type": "image/png",
+      "bytes": 1985,
+      "sha256": "9ce3fafd5a09f7ff67161588b89e0ac5ae9f398924f355761effdcd04dccecad",
+      "categories": [
+        "rotated"
+      ],
+      "recipe": "render-geometry-inherited-rotate-270-png-v1",
+      "construction_assertions": {
+        "width": 20,
+        "height": 30,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-geometry-matrix",
+        "page_index": 3
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-geometry-inherited-rotate-90",
+      "path": "image/render-geometry-inherited-rotate-90.png",
+      "media_type": "image/png",
+      "bytes": 1984,
+      "sha256": "341bb01fc684fd3d6c86e9a4b2fcec3b210158f3bb70c95ac9d2f4a40de77f1e",
+      "categories": [
+        "rotated"
+      ],
+      "recipe": "render-geometry-inherited-rotate-90-png-v1",
+      "construction_assertions": {
+        "width": 20,
+        "height": 30,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-geometry-matrix",
+        "page_index": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-geometry-user-unit",
+      "path": "image/render-geometry-user-unit.png",
+      "media_type": "image/png",
+      "bytes": 2761,
+      "sha256": "a3eebb062e0d8cb17c724a22f4a26c301e089788d1c98fbd85f1161748437d68",
+      "categories": [
+        "page-size"
+      ],
+      "recipe": "render-geometry-user-unit-png-v1",
+      "construction_assertions": {
+        "width": 36,
+        "height": 24,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-geometry-matrix",
+        "page_index": 5,
+        "user_unit_value": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-soft-mask-blend",
+      "path": "image/render-soft-mask-blend.png",
+      "media_type": "image/png",
+      "bytes": 12509,
+      "sha256": "27ec3692e145af5649d6af158f1e46febb35a1b2172569dde3ec9afd2090c54d",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "render-soft-mask-blend-png-v1",
+      "construction_assertions": {
+        "width": 64,
+        "height": 64,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-soft-mask-blend",
+        "page_index": 0,
+        "maximum_channel_delta": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-render-transparency",
+      "path": "image/render-transparency.png",
+      "media_type": "image/png",
+      "bytes": 12502,
+      "sha256": "48b14820387a1343d2910cc8bf8b9a283a68b9dcf862d55392df18cb352753c4",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "render-transparency-png-v1",
+      "construction_assertions": {
+        "width": 64,
+        "height": 64,
+        "color_type": 2,
+        "golden_for_fixture": "pdf-render-transparency",
+        "page_index": 0,
+        "maximum_channel_delta": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-transparent",
+      "path": "image/transparent.png",
+      "media_type": "image/png",
+      "bytes": 1175,
+      "sha256": "7bc269e5b630e004ea31c19298198899aaa49216c226f46642bc346a0cc7fb08",
+      "categories": [
+        "transparency"
+      ],
+      "recipe": "transparent-png-v1",
+      "construction_assertions": {
+        "width": 16,
+        "height": 16,
+        "color_type": 6
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    }
+  ],
+  "on_demand_recipes": [
+    {
+      "id": "long-path-tree-v1",
+      "kind": "long-path",
+      "committed": false,
+      "default_component_count": 8,
+      "expected_minimum_path_characters": 260
+    },
+    {
+      "id": "oversized-pdf-v1",
+      "kind": "large-hostile",
+      "committed": false,
+      "default_bytes": 52428801,
+      "maximum_bytes": 268435456
+    }
+  ]
+}

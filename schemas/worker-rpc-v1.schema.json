@@ -1,0 +1,1070 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperworkshell.invalid/schemas/worker-rpc-v1.json",
+  "title": "PaperWorkShell worker RPC protocol v1 message",
+  "description": "One closed, bounded message exchanged between the trusted client and a per-case document worker. Files are represented only by logical case-object references.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "protocol_version",
+    "message_version",
+    "message_type",
+    "direction",
+    "session_id",
+    "worker_instance_id",
+    "session_capability",
+    "case_id",
+    "message_id",
+    "sender_sequence",
+    "request_id",
+    "operation_id",
+    "payload"
+  ],
+  "properties": {
+    "protocol": {
+      "const": "paperworkshell.worker-rpc"
+    },
+    "protocol_version": {
+      "const": 1
+    },
+    "message_version": {
+      "const": 1
+    },
+    "message_type": {
+      "enum": [
+        "session.hello",
+        "session.ready",
+        "operation.start",
+        "operation.accepted",
+        "operation.progress",
+        "operation.cancel",
+        "operation.cancel_ack",
+        "operation.result",
+        "session.shutdown",
+        "session.closed",
+        "protocol.error",
+        "worker.fault"
+      ]
+    },
+    "direction": {
+      "enum": ["client_to_worker", "worker_to_client"]
+    },
+    "session_id": {
+      "$ref": "#/$defs/uuidV4"
+    },
+    "worker_instance_id": {
+      "$ref": "#/$defs/uuidV4"
+    },
+    "session_capability": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "case_id": {
+      "$ref": "#/$defs/uuidV4"
+    },
+    "message_id": {
+      "$ref": "#/$defs/uuidV4"
+    },
+    "sender_sequence": {
+      "$ref": "#/$defs/safeInteger"
+    },
+    "request_id": {
+      "$ref": "#/$defs/nullableUuidV4"
+    },
+    "operation_id": {
+      "$ref": "#/$defs/nullableUuidV4"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sessionHelloMessage"
+        },
+        {
+          "$ref": "#/$defs/sessionReadyMessage"
+        },
+        {
+          "$ref": "#/$defs/operationStartMessage"
+        },
+        {
+          "$ref": "#/$defs/operationAcceptedMessage"
+        },
+        {
+          "$ref": "#/$defs/operationProgressMessage"
+        },
+        {
+          "$ref": "#/$defs/operationCancelMessage"
+        },
+        {
+          "$ref": "#/$defs/operationCancelAckMessage"
+        },
+        {
+          "$ref": "#/$defs/operationResultMessage"
+        },
+        {
+          "$ref": "#/$defs/sessionShutdownMessage"
+        },
+        {
+          "$ref": "#/$defs/sessionClosedMessage"
+        },
+        {
+          "$ref": "#/$defs/protocolErrorMessage"
+        },
+        {
+          "$ref": "#/$defs/workerFaultMessage"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "uuidV4": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "nullableUuidV4": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/uuidV4"
+        }
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableSha256": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/sha256"
+        }
+      ]
+    },
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nullableSafeInteger": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/safeInteger"
+        }
+      ]
+    },
+    "signedSafeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "parameterName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "RPC_MESSAGE_INVALID",
+        "WORKER_OPERATION_FAILED",
+        "WORKER_OPERATION_TIMED_OUT",
+        "WORKER_INTERNAL_FAULT"
+      ]
+    },
+    "capabilityDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_id", "capability_version"],
+      "properties": {
+        "capability_id": {
+          "$ref": "#/$defs/token"
+        },
+        "capability_version": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "taggedScalar": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "value_type", "value"],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/parameterName"
+            },
+            "value_type": {
+              "const": "boolean"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "value_type", "value"],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/parameterName"
+            },
+            "value_type": {
+              "const": "integer"
+            },
+            "value": {
+              "$ref": "#/$defs/signedSafeInteger"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "value_type", "value"],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/parameterName"
+            },
+            "value_type": {
+              "const": "token"
+            },
+            "value": {
+              "$ref": "#/$defs/token"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "value_type", "value"],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/parameterName"
+            },
+            "value_type": {
+              "const": "uuid"
+            },
+            "value": {
+              "$ref": "#/$defs/uuidV4"
+            }
+          }
+        }
+      ]
+    },
+    "errorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error_version",
+        "code",
+        "category",
+        "retry_action",
+        "restart_required",
+        "parameters"
+      ],
+      "properties": {
+        "error_version": {
+          "const": 1
+        },
+        "code": {
+          "$ref": "#/$defs/errorCode"
+        },
+        "category": {
+          "enum": [
+            "protocol",
+            "invalid_request",
+            "unsupported",
+            "resource_limit",
+            "dependency",
+            "operation",
+            "internal"
+          ]
+        },
+        "retry_action": {
+          "enum": ["never", "retry", "restart_worker", "user_action"]
+        },
+        "restart_required": {
+          "type": "boolean"
+        },
+        "parameters": {
+          "type": "array",
+          "maxItems": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "retry_action": {
+                "const": "restart_worker"
+              }
+            },
+            "required": ["retry_action"]
+          },
+          "then": {
+            "properties": {
+              "restart_required": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "restart_required": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "protocolCategoryError": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/errorPayload"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "category": {
+              "const": "protocol"
+            },
+            "code": {
+              "const": "RPC_MESSAGE_INVALID"
+            },
+            "retry_action": {
+              "const": "restart_worker"
+            },
+            "restart_required": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "restartRequiredError": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/errorPayload"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": "WORKER_INTERNAL_FAULT"
+            },
+            "category": {
+              "const": "internal"
+            },
+            "retry_action": {
+              "const": "restart_worker"
+            },
+            "restart_required": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "resourceLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "limits_version",
+        "wall_time_ms",
+        "cpu_time_ms",
+        "memory_bytes",
+        "temporary_storage_bytes",
+        "output_bytes",
+        "page_count",
+        "pixel_count"
+      ],
+      "properties": {
+        "limits_version": {
+          "const": 1
+        },
+        "wall_time_ms": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "cpu_time_ms": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "memory_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "temporary_storage_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "output_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "page_count": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "pixel_count": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      }
+    },
+    "readObjectReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_version",
+        "area",
+        "object_id",
+        "operation_id",
+        "content_kind",
+        "expected_byte_size",
+        "expected_sha256"
+      ],
+      "properties": {
+        "reference_version": {
+          "const": 1
+        },
+        "area": {
+          "enum": ["source_read", "asset_read"]
+        },
+        "object_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "type": "null"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/token"
+        },
+        "expected_byte_size": {
+          "$ref": "#/$defs/nullableSafeInteger"
+        },
+        "expected_sha256": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "operationObjectReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_version",
+        "area",
+        "object_id",
+        "operation_id",
+        "content_kind",
+        "expected_byte_size",
+        "expected_sha256"
+      ],
+      "properties": {
+        "reference_version": {
+          "const": 1
+        },
+        "area": {
+          "enum": ["operation_cache", "operation_temp", "operation_staging"]
+        },
+        "object_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/token"
+        },
+        "expected_byte_size": {
+          "$ref": "#/$defs/nullableSafeInteger"
+        },
+        "expected_sha256": {
+          "$ref": "#/$defs/nullableSha256"
+        }
+      }
+    },
+    "caseObjectReference": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/readObjectReference"
+        },
+        {
+          "$ref": "#/$defs/operationObjectReference"
+        }
+      ]
+    },
+    "startInputReference": {
+      "$ref": "#/$defs/readObjectReference"
+    },
+    "resultOutputReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_version",
+        "area",
+        "object_id",
+        "operation_id",
+        "content_kind",
+        "expected_byte_size",
+        "expected_sha256"
+      ],
+      "properties": {
+        "reference_version": {
+          "const": 1
+        },
+        "area": {
+          "const": "operation_staging"
+        },
+        "object_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "content_kind": {
+          "$ref": "#/$defs/token"
+        },
+        "expected_byte_size": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "expected_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sessionHelloPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported_protocol_versions", "required_capabilities"],
+      "properties": {
+        "supported_protocol_versions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "contains": {
+            "const": 1
+          },
+          "minContains": 1,
+          "maxContains": 1,
+          "items": {
+            "$ref": "#/$defs/positiveSafeInteger"
+          }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/capabilityDescriptor"
+          }
+        }
+      }
+    },
+    "sessionReadyPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_protocol_version",
+        "capabilities",
+        "max_message_bytes",
+        "max_in_flight_operations"
+      ],
+      "properties": {
+        "selected_protocol_version": {
+          "const": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/capabilityDescriptor"
+          }
+        },
+        "max_message_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "max_in_flight_operations": {
+          "const": 1
+        }
+      }
+    },
+    "operationStartPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_kind",
+        "operation_version",
+        "inputs",
+        "parameters",
+        "requested_limits"
+      ],
+      "properties": {
+        "operation_kind": {
+          "$ref": "#/$defs/token"
+        },
+        "operation_version": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/startInputReference"
+          }
+        },
+        "parameters": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/taggedScalar"
+          }
+        },
+        "requested_limits": {
+          "$ref": "#/$defs/resourceLimits"
+        }
+      }
+    },
+    "operationAcceptedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_kind", "operation_version", "effective_limits"],
+      "properties": {
+        "operation_kind": {
+          "$ref": "#/$defs/token"
+        },
+        "operation_version": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "effective_limits": {
+          "$ref": "#/$defs/resourceLimits"
+        }
+      }
+    },
+    "operationProgressPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage_code", "completed_units", "total_units", "unit"],
+      "properties": {
+        "stage_code": {
+          "const": "processing"
+        },
+        "completed_units": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "total_units": {
+          "$ref": "#/$defs/nullableSafeInteger"
+        },
+        "unit": {
+          "enum": ["pages", "items", "bytes", "steps"]
+        }
+      }
+    },
+    "operationCancelPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "enum": ["user_requested", "shutdown", "superseded"]
+        }
+      }
+    },
+    "operationCancelAckPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition"],
+      "properties": {
+        "disposition": {
+          "enum": ["requested", "already_requested", "already_terminal"]
+        }
+      }
+    },
+    "succeededResultPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "outputs", "error"],
+      "properties": {
+        "outcome": {
+          "const": "succeeded"
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/resultOutputReference"
+          }
+        },
+        "error": {
+          "type": "null"
+        }
+      }
+    },
+    "cancelledResultPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "outputs", "error"],
+      "properties": {
+        "outcome": {
+          "const": "cancelled"
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "error": {
+          "type": "null"
+        }
+      }
+    },
+    "failedResultPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "outputs", "error"],
+      "properties": {
+        "outcome": {
+          "enum": ["failed", "timed_out"]
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "error": {
+          "$ref": "#/$defs/errorPayload"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "failed"
+              }
+            },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "code": {
+                    "const": "WORKER_OPERATION_FAILED"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "code": {
+                    "const": "WORKER_OPERATION_TIMED_OUT"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "operationResultPayload": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/succeededResultPayload"
+        },
+        {
+          "$ref": "#/$defs/cancelledResultPayload"
+        },
+        {
+          "$ref": "#/$defs/failedResultPayload"
+        }
+      ]
+    },
+    "sessionShutdownPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "enum": ["user_requested", "application_exit", "protocol_fault"]
+        }
+      }
+    },
+    "sessionClosedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "const": "shutdown_complete"
+        }
+      }
+    },
+    "protocolErrorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/protocolCategoryError"
+        }
+      }
+    },
+    "workerFaultPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error", "invalidated_operation_ids"],
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/restartRequiredError"
+        },
+        "invalidated_operation_ids": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuidV4"
+          }
+        }
+      }
+    },
+    "sessionHelloMessage": {
+      "$ref": "#/$defs/clientSessionMessage",
+      "properties": {
+        "message_type": {
+          "const": "session.hello"
+        },
+        "payload": {
+          "$ref": "#/$defs/sessionHelloPayload"
+        }
+      }
+    },
+    "sessionReadyMessage": {
+      "$ref": "#/$defs/workerSessionMessage",
+      "properties": {
+        "message_type": {
+          "const": "session.ready"
+        },
+        "payload": {
+          "$ref": "#/$defs/sessionReadyPayload"
+        }
+      }
+    },
+    "operationStartMessage": {
+      "$ref": "#/$defs/clientOperationMessage",
+      "properties": {
+        "message_type": {
+          "const": "operation.start"
+        },
+        "payload": {
+          "$ref": "#/$defs/operationStartPayload"
+        }
+      }
+    },
+    "operationAcceptedMessage": {
+      "$ref": "#/$defs/workerOperationMessage",
+      "properties": {
+        "message_type": {
+          "const": "operation.accepted"
+        },
+        "payload": {
+          "$ref": "#/$defs/operationAcceptedPayload"
+        }
+      }
+    },
+    "operationProgressMessage": {
+      "$ref": "#/$defs/workerOperationMessage",
+      "properties": {
+        "message_type": {
+          "const": "operation.progress"
+        },
+        "payload": {
+          "$ref": "#/$defs/operationProgressPayload"
+        }
+      }
+    },
+    "operationCancelMessage": {
+      "$ref": "#/$defs/clientOperationMessage",
+      "properties": {
+        "message_type": {
+          "const": "operation.cancel"
+        },
+        "payload": {
+          "$ref": "#/$defs/operationCancelPayload"
+        }
+      }
+    },
+    "operationCancelAckMessage": {
+      "$ref": "#/$defs/workerOperationMessage",
+      "properties": {
+        "message_type": {
+          "const": "operation.cancel_ack"
+        },
+        "payload": {
+          "$ref": "#/$defs/operationCancelAckPayload"
+        }
+      }
+    },
+    "operationResultMessage": {
+      "$ref": "#/$defs/workerOperationMessage",
+      "properties": {
+        "message_type": {
+          "const": "operation.result"
+        },
+        "payload": {
+          "$ref": "#/$defs/operationResultPayload"
+        }
+      }
+    },
+    "sessionShutdownMessage": {
+      "$ref": "#/$defs/clientSessionMessage",
+      "properties": {
+        "message_type": {
+          "const": "session.shutdown"
+        },
+        "payload": {
+          "$ref": "#/$defs/sessionShutdownPayload"
+        }
+      }
+    },
+    "sessionClosedMessage": {
+      "$ref": "#/$defs/workerSessionMessage",
+      "properties": {
+        "message_type": {
+          "const": "session.closed"
+        },
+        "payload": {
+          "$ref": "#/$defs/sessionClosedPayload"
+        }
+      }
+    },
+    "protocolErrorMessage": {
+      "type": "object",
+      "required": ["message_type", "direction", "request_id", "operation_id", "payload"],
+      "properties": {
+        "message_type": {
+          "const": "protocol.error"
+        },
+        "direction": {
+          "enum": ["client_to_worker", "worker_to_client"]
+        },
+        "request_id": {
+          "$ref": "#/$defs/nullableUuidV4"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/nullableUuidV4"
+        },
+        "payload": {
+          "$ref": "#/$defs/protocolErrorPayload"
+        }
+      }
+    },
+    "workerFaultMessage": {
+      "type": "object",
+      "required": ["message_type", "direction", "request_id", "operation_id", "payload"],
+      "properties": {
+        "message_type": {
+          "const": "worker.fault"
+        },
+        "direction": {
+          "const": "worker_to_client"
+        },
+        "request_id": {
+          "$ref": "#/$defs/nullableUuidV4"
+        },
+        "operation_id": {
+          "type": "null"
+        },
+        "payload": {
+          "$ref": "#/$defs/workerFaultPayload"
+        }
+      }
+    },
+    "clientSessionMessage": {
+      "type": "object",
+      "required": ["direction", "request_id", "operation_id"],
+      "properties": {
+        "direction": {
+          "const": "client_to_worker"
+        },
+        "request_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "type": "null"
+        }
+      }
+    },
+    "workerSessionMessage": {
+      "type": "object",
+      "required": ["direction", "request_id", "operation_id"],
+      "properties": {
+        "direction": {
+          "const": "worker_to_client"
+        },
+        "request_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "type": "null"
+        }
+      }
+    },
+    "clientOperationMessage": {
+      "type": "object",
+      "required": ["direction", "request_id", "operation_id"],
+      "properties": {
+        "direction": {
+          "const": "client_to_worker"
+        },
+        "request_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/uuidV4"
+        }
+      }
+    },
+    "workerOperationMessage": {
+      "type": "object",
+      "required": ["direction", "request_id", "operation_id"],
+      "properties": {
+        "direction": {
+          "const": "worker_to_client"
+        },
+        "request_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/uuidV4"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+[build-system]
+requires = ["uv_build==0.11.32"]
+build-backend = "uv_build"
+
+[project]
+name = "paperworkshell"
+version = "0.0.0"
+description = "A local-first guided document packet builder."
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "pikepdf==10.10.0",
+    "pypdfium2==5.12.1",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.14",
+]
+
+[project.urls]
+Repository = "https://github.com/PikkuJanne/PaperWorkShell"
+
+[project.scripts]
+paperworkshell-worker = "paperworkshell.worker.host:main"
+
+[dependency-groups]
+dev = [
+  { include-group = "quality" },
+  { include-group = "test" },
+  { include-group = "validation" },
+]
+quality = [
+  "mypy==2.3.0",
+  "ruff==0.15.22",
+]
+renderer-evaluation = [
+    "pyside6-addons==6.11.1",
+]
+test = [
+  "pytest==9.1.1",
+]
+validation = [
+  "jsonschema==4.26.0",
+  "PyYAML==6.0.3",
+  "types-jsonschema==4.26.0.20260518",
+  "types-PyYAML==6.0.12.20260518",
+]
+
+[tool.uv]
+required-version = "==0.11.32"
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+
+[tool.pytest.ini_options]
+minversion = "9.1"
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["."]
+xfail_strict = true

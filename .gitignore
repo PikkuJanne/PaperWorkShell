@@ -1,0 +1,37 @@
+# Python bytecode and environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+.python-version.local
+.venv/
+
+# Test, type-check, lint, and coverage caches
+.coverage
+.coverage.*
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
+# Build output
+build/
+dist/
+
+# Local configuration and editor state
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.log
+Thumbs.db
+.DS_Store
+
+# PaperWorkShell local sensitive state and release material
+/.paperworkshell-local/
+/diagnostic-exports/
+/local-cases/
+/packaging/out/
+/benchmark-results/
+/secrets/
+/signing/

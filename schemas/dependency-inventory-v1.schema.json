@@ -1,0 +1,927 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperworkshell.invalid/schemas/dependency-inventory-v1.json",
+  "title": "PaperWorkShell dependency inventory v1",
+  "description": "Admission, licensing, provenance, integrity, maintenance, security, packaging, and SBOM inputs for direct and evaluated dependency families.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "inventory_id",
+    "inventory_profile",
+    "inventory_revision",
+    "reviewed_on",
+    "target",
+    "policy",
+    "license_refs",
+    "components",
+    "relationships"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "../schemas/dependency-inventory-v1.schema.json"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "inventory_id": {
+      "const": "paperworkshell-dependencies"
+    },
+    "inventory_profile": {
+      "const": "policy-baseline"
+    },
+    "inventory_revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "reviewed_on": {
+      "$ref": "#/$defs/date"
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "license_refs": {
+      "$ref": "#/$defs/license_refs"
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/relationship"
+      }
+    }
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "https_uri": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^\\s]+$",
+      "maxLength": 500
+    },
+    "short_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^\r\n]+$"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "architecture", "python_minor"],
+      "properties": {
+        "os": {
+          "const": "Windows"
+        },
+        "architecture": {
+          "const": "x86_64"
+        },
+        "python_minor": {
+          "const": "3.14"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document",
+        "release_pinning_required",
+        "release_source_hash_verification_required",
+        "distribution_altering_requires_decision_change",
+        "resolved_build_inventory_required_before_release",
+        "transitive_resolution_sources",
+        "target_sbom_formats"
+      ],
+      "properties": {
+        "document": {
+          "const": "docs/development/dependency-policy.md"
+        },
+        "release_pinning_required": {
+          "const": true
+        },
+        "release_source_hash_verification_required": {
+          "const": true
+        },
+        "distribution_altering_requires_decision_change": {
+          "const": true
+        },
+        "resolved_build_inventory_required_before_release": {
+          "const": true
+        },
+        "transitive_resolution_sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["uv.lock", "packaged-file-inventory"]
+          },
+          "contains": {
+            "const": "uv.lock"
+          }
+        },
+        "target_sbom_formats": {
+          "const": ["CycloneDX JSON", "SPDX JSON"]
+        }
+      }
+    },
+    "license_refs": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^LicenseRef-[A-Za-z0-9.-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "terms_url", "review_status"],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/short_text"
+          },
+          "terms_url": {
+            "$ref": "#/$defs/https_uri"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": ["candidate-only", "decision-required", "notice-closure-required"]
+          }
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "name",
+        "ecosystem",
+        "relationship",
+        "admission_status",
+        "active_scopes",
+        "decision_refs",
+        "task_refs",
+        "version",
+        "source",
+        "integrity",
+        "license",
+        "binary",
+        "maintenance",
+        "security",
+        "packaging",
+        "sbom"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 80
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[^\r\n]+$"
+        },
+        "ecosystem": {
+          "type": "string",
+          "enum": [
+            "data",
+            "framework",
+            "github-action",
+            "interpreter",
+            "native-library",
+            "native-tool",
+            "python-package"
+          ]
+        },
+        "relationship": {
+          "type": "string",
+          "enum": ["candidate", "direct", "external", "transitive"]
+        },
+        "admission_status": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "candidate",
+            "deferred",
+            "evaluated",
+            "planned",
+            "requires-decision-change"
+          ]
+        },
+        "active_scopes": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "build",
+              "ci",
+              "data",
+              "development",
+              "runtime",
+              "test",
+              "validation",
+              "worker"
+            ]
+          }
+        },
+        "decision_refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^PWS-D[0-9]{3}$"
+          }
+        },
+        "task_refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^PWS-[0-9]{4}$"
+          }
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "integrity": {
+          "$ref": "#/$defs/integrity"
+        },
+        "artifact_evidence": {
+          "$ref": "#/$defs/artifact_evidence"
+        },
+        "license": {
+          "$ref": "#/$defs/license"
+        },
+        "binary": {
+          "$ref": "#/$defs/binary"
+        },
+        "maintenance": {
+          "$ref": "#/$defs/maintenance"
+        },
+        "security": {
+          "$ref": "#/$defs/security"
+        },
+        "renderer_assessment": {
+          "$ref": "#/$defs/renderer_assessment"
+        },
+        "packaging": {
+          "$ref": "#/$defs/packaging"
+        },
+        "sbom": {
+          "$ref": "#/$defs/sbom"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "admission_status": {
+                "const": "approved"
+              }
+            },
+            "required": ["admission_status"]
+          },
+          "then": {
+            "properties": {
+              "active_scopes": {
+                "minItems": 1
+              },
+              "version": {
+                "properties": {
+                  "selected": {
+                    "type": "string"
+                  },
+                  "pin_kind": {
+                    "not": {
+                      "const": "unselected"
+                    }
+                  }
+                }
+              },
+              "integrity": {
+                "properties": {
+                  "verification": {
+                    "not": {
+                      "const": "required-before-admission"
+                    }
+                  }
+                }
+              },
+              "packaging": {
+                "properties": {
+                  "ship_state": {
+                    "not": {
+                      "const": "prohibited-without-decision-change"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "active_scopes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admission_status": {
+                "enum": ["approved", "evaluated"]
+              }
+            },
+            "required": ["admission_status"]
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "properties": {
+                  "selected": {
+                    "type": "string"
+                  },
+                  "pin_kind": {
+                    "not": {
+                      "const": "unselected"
+                    }
+                  }
+                }
+              },
+              "integrity": {
+                "properties": {
+                  "verification": {
+                    "not": {
+                      "const": "required-before-admission"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "version": {
+                "properties": {
+                  "selected": {
+                    "type": "null"
+                  },
+                  "pin_kind": {
+                    "const": "unselected"
+                  }
+                }
+              },
+              "integrity": {
+                "properties": {
+                  "verification": {
+                    "const": "required-before-admission"
+                  },
+                  "revision": {
+                    "type": "null"
+                  },
+                  "hashes": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "admission_status": {
+                "const": "evaluated"
+              }
+            },
+            "required": ["admission_status"]
+          },
+          "then": {
+            "required": ["artifact_evidence"],
+            "properties": {
+              "version": {
+                "properties": {
+                  "pin_kind": {
+                    "enum": ["exact", "git-commit", "lockfile"]
+                  }
+                }
+              },
+              "integrity": {
+                "properties": {
+                  "verification": {
+                    "enum": ["git-commit", "sha256", "uv-lock"]
+                  }
+                }
+              },
+              "packaging": {
+                "properties": {
+                  "ship_state": {
+                    "const": "candidate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["constraint", "selected", "pin_kind", "pin_source"],
+      "properties": {
+        "constraint": {
+          "$ref": "#/$defs/short_text"
+        },
+        "selected": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+        },
+        "pin_kind": {
+          "type": "string",
+          "enum": ["exact", "git-commit", "lockfile", "minor-line", "minimum", "unselected"]
+        },
+        "pin_source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "pattern": "^[A-Za-z0-9._/# -]+$"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_url", "release_url", "license_url"],
+      "properties": {
+        "project_url": {
+          "$ref": "#/$defs/https_uri"
+        },
+        "release_url": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/https_uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "license_url": {
+          "$ref": "#/$defs/https_uri"
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verification", "revision", "hashes"],
+      "properties": {
+        "verification": {
+          "type": "string",
+          "enum": [
+            "environment-version",
+            "git-commit",
+            "required-before-admission",
+            "sha256",
+            "uv-lock"
+          ]
+        },
+        "revision": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "hashes": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verification": {
+                "enum": ["sha256", "uv-lock"]
+              }
+            },
+            "required": ["verification"]
+          },
+          "then": {
+            "properties": {
+              "revision": {
+                "type": "null"
+              },
+              "hashes": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification": {
+                "const": "git-commit"
+              }
+            },
+            "required": ["verification"]
+          },
+          "then": {
+            "properties": {
+              "revision": {
+                "type": "string"
+              },
+              "hashes": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification": {
+                "enum": ["environment-version", "required-before-admission"]
+              }
+            },
+            "required": ["verification"]
+          },
+          "then": {
+            "properties": {
+              "revision": {
+                "type": "null"
+              },
+              "hashes": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value", "artifact"],
+      "properties": {
+        "algorithm": {
+          "const": "SHA-256"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+        }
+      }
+    },
+    "artifact_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "url", "target_platform", "size_bytes", "sha256"],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+        },
+        "url": {
+          "$ref": "#/$defs/https_uri"
+        },
+        "target_platform": {
+          "type": "string",
+          "enum": ["platform-independent", "windows-x64"]
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expression",
+        "distribution_note",
+        "notice_required",
+        "source_offer_required",
+        "relinking_required",
+        "distribution_altering"
+      ],
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240,
+          "pattern": "^[A-Za-z0-9.+() -]+$"
+        },
+        "distribution_note": {
+          "$ref": "#/$defs/short_text"
+        },
+        "notice_required": {
+          "type": "boolean"
+        },
+        "source_offer_required": {
+          "type": "boolean"
+        },
+        "relinking_required": {
+          "type": "boolean"
+        },
+        "distribution_altering": {
+          "type": "boolean"
+        },
+        "selected_route": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 120,
+              "pattern": "^[A-Za-z0-9.+-]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contains_native_code", "installs_executable", "processes_untrusted_documents"],
+      "properties": {
+        "contains_native_code": {
+          "type": "boolean"
+        },
+        "installs_executable": {
+          "type": "boolean"
+        },
+        "processes_untrusted_documents": {
+          "type": "boolean"
+        }
+      }
+    },
+    "maintenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checked_on", "evidence_url", "note"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["active", "conditional", "stable", "unselected"]
+        },
+        "checked_on": {
+          "$ref": "#/$defs/date"
+        },
+        "evidence_url": {
+          "$ref": "#/$defs/https_uri"
+        },
+        "note": {
+          "$ref": "#/$defs/short_text"
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boundary",
+        "network_needed_at_runtime",
+        "adapter_required",
+        "contract_tests_required"
+      ],
+      "properties": {
+        "boundary": {
+          "type": "string",
+          "enum": ["ci-runner", "data-only", "developer-host", "gui-process", "unselected", "worker-process"]
+        },
+        "network_needed_at_runtime": {
+          "const": false
+        },
+        "adapter_required": {
+          "type": "boolean"
+        },
+        "contract_tests_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "packaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ship_state", "windows_impact", "redistribution_assets"],
+      "properties": {
+        "ship_state": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "candidate",
+            "external-runtime",
+            "not-shipped",
+            "planned",
+            "prohibited-without-decision-change",
+            "shipped"
+          ]
+        },
+        "windows_impact": {
+          "$ref": "#/$defs/short_text"
+        },
+        "redistribution_assets": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "corresponding-source",
+              "hashes",
+              "license-text",
+              "notice",
+              "relinkable-library",
+              "sbom",
+              "third-party-notices"
+            ]
+          }
+        }
+      }
+    },
+    "sbom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_type", "purl", "supplier", "transitive_components_from"],
+      "properties": {
+        "component_type": {
+          "type": "string",
+          "enum": ["application", "data", "file", "framework", "library"]
+        },
+        "purl": {
+          "type": ["string", "null"],
+          "pattern": "^pkg:[A-Za-z0-9.+-]+/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+@[A-Za-z0-9._~+%-]+$",
+          "maxLength": 500
+        },
+        "supplier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[^\r\n]+$"
+        },
+        "transitive_components_from": {
+          "type": ["string", "null"],
+          "enum": ["uv.lock", "upstream-release-inventory", null]
+        }
+      }
+    },
+    "renderer_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["security", "license", "fidelity", "performance", "windows_packaging"],
+      "properties": {
+        "security": {
+          "$ref": "#/$defs/renderer_criterion"
+        },
+        "license": {
+          "$ref": "#/$defs/renderer_criterion"
+        },
+        "fidelity": {
+          "$ref": "#/$defs/renderer_criterion"
+        },
+        "performance": {
+          "$ref": "#/$defs/renderer_criterion"
+        },
+        "windows_packaging": {
+          "$ref": "#/$defs/renderer_criterion"
+        }
+      }
+    },
+    "renderer_criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence_urls", "note"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["acceptable", "blocked", "concern", "not-measured"]
+        },
+        "evidence_urls": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/https_uri"
+          }
+        },
+        "note": {
+          "$ref": "#/$defs/short_text"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not-measured"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evidence_urls": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "evidence_urls": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "type", "to", "enabled"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 80
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "build-depends-on",
+            "contains",
+            "depends-on",
+            "optional-depends-on",
+            "optional-tool",
+            "provisions",
+            "required-tool",
+            "uses-data"
+          ]
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 80
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

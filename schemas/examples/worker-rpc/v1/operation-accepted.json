@@ -1,0 +1,29 @@
+{
+  "protocol": "paperworkshell.worker-rpc",
+  "protocol_version": 1,
+  "message_version": 1,
+  "message_type": "operation.accepted",
+  "direction": "worker_to_client",
+  "session_id": "10000000-0000-4000-8000-000000000001",
+  "worker_instance_id": "10000000-0000-4000-8000-000000000002",
+  "session_capability": "0000000000000000000000000000000000000000000000000000000000000000",
+  "case_id": "10000000-0000-4000-8000-000000000003",
+  "message_id": "20000000-0000-4000-8000-000000000004",
+  "sender_sequence": 1,
+  "request_id": "21000000-0000-4000-8000-000000000002",
+  "operation_id": "30000000-0000-4000-8000-000000000001",
+  "payload": {
+    "operation_kind": "protocol.noop",
+    "operation_version": 1,
+    "effective_limits": {
+      "limits_version": 1,
+      "wall_time_ms": 30000,
+      "cpu_time_ms": 20000,
+      "memory_bytes": 268435456,
+      "temporary_storage_bytes": 67108864,
+      "output_bytes": 16777216,
+      "page_count": 100,
+      "pixel_count": 100000000
+    }
+  }
+}

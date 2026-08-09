@@ -101,7 +101,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: ready
+  status: done
   critical_path: true
   depends_on: []
   decision_refs:
@@ -134,17 +134,23 @@ tasks:
   - licensing
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "f6bf518"
+    commands:
+    - "uv sync --locked (fresh remote clone) - passed; 22 locked packages installed"
+    - 'uv run --locked --no-sync python -c "import paperworkshell; print(paperworkshell.__version__)" (fresh environment) - passed; printed 0.0.0'
+    - "py -3.14 tools/dev.py check (fresh remote clone) - passed; format, lint, strict typing, 18 unit tests, schema, and DAG"
+    notes:
+    - Pinned standard CPython 3.14 and uv/uv_build 0.11.32 with an empty runtime dependency set.
+    - Added deterministic task validation for duplicate keys, schema/date errors, references, gates, task state, and dependency cycles.
+    - Added no PDF, OCR, renderer, UI, cloud, signing, installer, or real-document dependency or fixture.
 - id: PWS-0002
   milestone: M0
   title: Establish source layout and enforce architecture boundaries
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0001
@@ -177,17 +183,23 @@ tasks:
   - maintainability
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "3dd5f66"
+    commands:
+    - "py -3.14 tools/dev.py check - passed; format, lint, import boundaries, strict typing, 63 unit tests, schema, and DAG"
+    - "uv run --locked --no-sync pytest tests/unit/test_import_boundaries.py -q - passed; 45 focused tests including deliberate prohibited imports"
+    - "fresh remote clone: uv sync --locked; imported all 12 package roots; full tools/dev.py check passed"
+    notes:
+    - Created the required layered package roots and tracked architecture, gate, schema, tool, and packaging locations.
+    - Added a standard-library AST checker with stable diagnostics for domain, UI/worker, adapter, initializer, unknown-layer, third-party, and dynamic-import violations.
+    - Added no runtime dependency, document engine, UI implementation, document parsing, network behavior, or document fixture.
 - id: PWS-0003
   milestone: M0
   title: Implement local quality gates and CI-equivalent commands
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -221,17 +233,25 @@ tasks:
   - supply-chain
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "a77e4f8"
+    commands:
+    - "py -3.14 tools/dev.py check - passed; format, lint, import boundaries, strict typing, 93 unit tests, 2 integration tests, 36 security tests, 2 accessibility tests, schema/task/profile validation, live secret scanning, and 5 negative self-tests"
+    - "py -3.14 tools/dev.py benchmark-reference - passed; deterministic two-file record-only local-smoke workload completed with no guessed product target"
+    - "fresh remote clone at a77e4f8: uv sync --locked; full tools/dev.py check and benchmark-reference passed"
+    - "GitHub Actions run 30703343451 on windows-2025 - passed the local-equivalent quality suite"
+    notes:
+    - Stable developer commands now share one registry used by local runs, integration tests, documentation, and pinned Windows CI.
+    - Secret scanning covers reachable Git history, exact index state, tracked and nonignored untracked bytes with redacted diagnostics, fail-closed limits, process-tree cleanup, and no routine content upload.
+    - The machine-readable reference profile records two-core, 4096-MiB, integrated-graphics, limited-storage, and rotational-HDD scenarios; numeric product targets remain intentionally unmeasured.
+    - Independent exact-tree audits of staged tree dab68859 found no actionable P1/P2 issues.
 - id: PWS-0004
   milestone: M0
   title: Document threat model and data flows
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -241,10 +261,16 @@ tasks:
   - PWS-D009
   - PWS-D012
   - PWS-D013
+  - PWS-D020
+  - PWS-D021
   - PWS-D022
+  - PWS-D023
+  - PWS-D025
   - PWS-D027
   - PWS-D028
   - PWS-D029
+  - PWS-D034
+  - PWS-D035
   - PWS-D038
   - PWS-D039
   objective: Define assets, trust boundaries, attacker capabilities, misuse cases, and required mitigations before
@@ -268,17 +294,25 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "b4872e4"
+    commands:
+    - "py -3.14 tools/dev.py check - passed; formatting, lint, 12-layer import boundaries, strict typing, 124 unit tests, 2 integration tests, 36 security tests, 2 accessibility tests, schema/task/document/reference validation, live secret scanning, and 5 negative self-tests"
+    - "py -3.14 tools/dev.py validate-docs - passed; local links/anchors and decision, task, threat, traceability, and security-test-plan references validated offline"
+    - "fresh remote clone at b4872e4: uv sync --locked and the full tools/dev.py check passed"
+    - "GitHub Actions run 30707215325 on windows-2025 - passed the local-equivalent quality suite"
+    notes:
+    - The 28-threat catalogue covers every mandated PWS-0004 category, and every high-impact threat maps to a frozen decision plus a concrete task or gate and planned test evidence.
+    - Import, preview, OCR, export, diagnostics, deletion, template, and future update flows identify the UI, worker, filesystem, executable, destination, and network trust boundaries with accessible text alternatives.
+    - The offline validator fails closed on missing or hidden authority, malformed local references, unknown IDs, incomplete security mappings, and ambiguous unsupported Markdown without fetching network content.
+    - Independent exact-tree security and traceability audits found no remaining actionable P1/P2 issues.
 - id: PWS-0005
   milestone: M0
   title: Establish dependency, license, and redistribution policy
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -309,17 +343,25 @@ tasks:
   - packaging
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "cb29771"
+    commands:
+    - "uv run --locked --no-sync python tools/dev.py check at 454bc9a - passed; Ruff formatting and linting, 12-layer import boundaries, strict typing, 216 unit tests, 2 integration tests, 76 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync python -m tools.validate_dependencies - passed; the canonical dependency inventory, 1 complete example, and 4 rejected examples validated offline"
+    - "fresh remote clone at 454bc9a: uv sync --locked and the full tools/dev.py check passed; all 7 repository file records in BUNDLE_MANIFEST.json independently matched byte counts and SHA-256 hashes"
+    - "GitHub Actions runs 30718318232 (push) and 30718319778 (pull_request) on windows-2025 - passed the local-equivalent quality suite at 454bc9a"
+    notes:
+    - The v1 inventory records 41 reviewed components and 29 relationships with closed license, source, maintenance, security-boundary, artifact, lock, packaging, governance, and SBOM profiles.
+    - Release admission fails closed on unpinned or unhashed artifacts, incompatible Windows wheel coverage, lock or project drift, unsafe source identities, distribution-altering license routes without an approved decision, and unreviewed hostile-document capabilities.
+    - PySide6/Qt, pikepdf/qpdf, OCRmyPDF/Tesseract/language data, Ghostscript, and candidate renderers remain gated by their named implementation and decision tasks; this task added no runtime processor or document parsing.
+    - Independent exact-tree semantic, schema, workflow, provenance, privacy, and supply-chain audits found no remaining concrete PWS-0005 bypass; the final POSIX-path canary is rejected without disclosure.
 - id: PWS-0006
   milestone: M0
   title: Define case manifest JSON Schema v1
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0002
@@ -353,17 +395,25 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "e4aedbc"
+    commands:
+    - "py -3.14 tools/dev.py check at e4aedbc - passed; formatting, lint, 12-layer import boundaries, strict typing, 154 unit tests, 2 integration tests, 36 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync python -m unittest tests.unit.test_validate_manifests - passed; 29 manifest tests and 189 generated subtests covered canonical, malformed, hostile-schema, geometry, and source/page-reference cases"
+    - "fresh remote clone at e4aedbc: uv sync --locked and the full py -3.14 tools/dev.py check passed"
+    - "GitHub Actions runs 30710588150 (push) and 30710589744 (pull_request) on windows-2025 - passed the local-equivalent quality suite at e4aedbc"
+    notes:
+    - The self-contained Draft 2020-12 v1 schema defines case identity, immutable source/page references, deterministic replay operations, inert overlays, assignments, constraints, confirmations, and export-history references using synthetic examples only.
+    - Strict bounded loading, canonical-schema fingerprinting, non-recursive local references, ID/reference integrity, import/restore ordering, fixed-point geometry, timestamp precision, Windows-safe names, and sanitized stable errors fail closed without external paths or executable fields.
+    - Canonical validation covers 2 positive examples and 11 intended-negative fixtures; deterministic generated grids exercise normalized-box and multi-source page-reference boundaries and their failure paths.
+    - Three independent exact-commit audits found no remaining actionable schema, validator, security, privacy, or test-coverage issues at e4aedbc.
 - id: PWS-0007
   milestone: M0
   title: Define declarative template schema v1
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0002
@@ -397,17 +447,24 @@ tasks:
   - product-scope
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "87baff8"
+    commands:
+    - "fresh SSH clone at 87baff8: uv sync --locked and uv run --locked --no-sync python tools/dev.py check passed; formatting, lint, 12-layer import boundaries, strict typing, 232 unit tests, 2 integration tests, 86 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync pytest tests/unit/test_validate_templates.py tests/unit/test_validate_schemas.py tests/security/test_template_schema_security.py -q - passed; 31 focused tests and 253 generated subtests covered strict decoding, schema identity, semantic references, lifecycle/output boundaries, prohibited capabilities, sanitized diagnostics, and inert side-effect checks"
+    - "uv run --locked --no-sync python -m tools.validate_templates - passed; 1 canonical synthetic template and 7 exact intended-negative fixtures validated offline"
+    - "GitHub Actions runs 30720860594 (push) and 30720862671 (pull_request) on windows-2025 passed the local-equivalent quality suite at 87baff8"
+    notes:
+    - The closed, fingerprint-bound Draft 2020-12 v1 schema models declarative packaging requirements, ordering, safe static filenames, output modes and limits, warnings, user review confirmations, untrusted provenance claims, and deterministic lifecycle dates without executable or eligibility-decision fields.
+    - Bounded strict JSON loading, exact version dispatch, self-contained non-recursive references, Unicode and decoded-value checks, stable sanitized diagnostics, exact fixture inventories, and explicit semantic cross-reference/output/date validation fail closed without network, file, import, or process side effects.
+    - Three independent exact-commit audits found no remaining actionable schema, validator, security, privacy, integration, or evidence issue; all fixtures are synthetic. PWS-0401 retains trusted snapshot/provenance/freshness behavior, and PWS-0406/PWS-0407 retain runtime constraint feasibility and output containment.
 - id: PWS-0008
   milestone: M0
   title: Define worker RPC protocol v1
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0002
@@ -439,17 +496,25 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "8438448"
+    commands:
+    - "fresh SSH clone at 8438448: uv sync --locked and py -3.14 tools/dev.py check passed; formatting, lint, 12-layer import boundaries, strict typing, 194 unit tests, 2 integration tests, 51 security tests, 2 accessibility tests, schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync python -m unittest tests.unit.test_worker_protocol_models tests.unit.test_worker_protocol_codec tests.unit.test_worker_protocol_state tests.unit.test_validate_worker_rpc tests.security.test_worker_protocol_security - passed; 54 focused tests and 255 subtests covered typed round trips, full canonical conversations, state races, hostile decoding, and leakage boundaries"
+    - "py -3.14 tools/dev.py validate-schemas - passed; worker RPC v1 validated 15 canonical messages and 27 intended-negative fixtures offline"
+    - "GitHub Actions runs 30714104861 (push) and 30714106395 (pull_request) on windows-2025 passed the local-equivalent quality suite at 8438448"
+    notes:
+    - The closed Draft 2020-12 schema, immutable typed models, canonical JSON codec, explicit operation registry, and pure conversation state cover negotiation, start, progress, cooperative cancellation, all terminal outcomes, shutdown, protocol errors, and worker faults.
+    - Strict UTF-8 decoding enforces 64-KiB messages, bounded depth/nodes/strings/collections, exact versions, UUID/capability/case binding, replay-safe sequences, logical case-object references, resource limits, and deterministic cleanup state without paths or shell strings.
+    - Worker-originated capabilities, progress stages, public error codes, and error context fail closed before UI or logging; restart-required results fault the session, and public v1 errors contain no raw or worker-controlled context values.
+    - Three independent exact-commit audits and 5,525 differential mutations found no remaining schema/runtime/validator mismatch or worker-controlled string channel; transport framing, Windows ACLs, egress denial, process limits, and case-object handle resolution remain intentionally assigned to PWS-0107.
 - id: PWS-0009
   milestone: M0
   title: Create synthetic document corpus harness
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0001
@@ -479,17 +544,25 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-01'
+    revision: "4903749"
+    commands:
+    - "fresh SSH clone at 4903749: uv sync --locked and py -3.14 tools/dev.py check passed; formatting, lint, 12-layer import boundaries, strict typing, 256 unit tests, 3 integration tests, 103 security tests with 2 expected Windows directory-link capability skips, 2 accessibility tests, fixture/schema/task/document/reference validation, reachable-history secret scanning, and 5 negative self-tests"
+    - "uv run --locked --no-sync pytest tests/security/test_synthetic_fixture_security.py -q - passed; 17 tests, 2 expected Windows directory-link capability skips, and 68 subtests covered corpus privacy, repository history, links, cancellation, structured-data boundaries, and bounded scanner work"
+    - "py -3.14 tools/dev.py validate-fixtures at 4903749 - passed; 17 deterministic public fixtures (50,489 bytes), 394 historical blobs, 180 index blobs, and 187 working files validated against the canonical generator and privacy policy"
+    - "GitHub Actions runs 30727132293 (push) and 30727133193 (pull_request) on windows-2025 passed the local-equivalent quality suite at 4903749"
+    notes:
+    - The closed standard-library generator and fingerprint-bound Draft 2020-12 index produce 17 byte-deterministic PDF/image fixtures with 24 reviewed coverage entries, 5 intended-negative index examples, explicit scheduled categories, and outside-repository recipes for long-path and excessive-size cases.
+    - Repository admission authenticates schema and fixture handles, rejects links/reparse points and identity races, scans reachable Git history plus index and working-tree bytes, and applies sanitized bounded checks for document signatures, personal-data shapes, issuer-qualified PANs, fixed-length IBANs, reserved example domains, and canonical UUID identifiers.
+    - On-demand generation is exclusive, bounded, non-overwriting, outside the repository, and removes identity-matched partial files on cancellation or failure; sensitive bug samples remain prohibited from Git and require separately authorized restricted storage.
+    - Three independent exact-commit audits found no remaining actionable generator, security, privacy, integration, resource-bound, determinism, or evidence issue; real NTFS junction and file-identity ABA probes supplemented the two unavailable Python directory-link capability tests, while committed KeyboardInterrupt tests cover identity-matched partial cleanup and a hard process termination can leave a scoped partial that retry refuses to overwrite.
 - id: PWS-0010
   milestone: M0
   title: Run Milestone 0 foundation gate
   kind: gate
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0001
@@ -528,17 +601,26 @@ tasks:
   - foundation
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "f9e910d"
+    commands:
+    - "fresh SSH clone at ebe66c8: uv sync --locked installed 22 packages and py -3.14 tools/dev.py check passed; 56-file formatting/lint, 12-layer boundaries, strict typing, 256 unit tests, 3 integration tests, 103 security tests with 2 disclosed local Windows symlink-privilege skips, 2 accessibility tests, all validators/scans, and 5 negative self-tests"
+    - "py -3.14 tools/dev.py check at review commit f9e910d - passed; the complete registry-derived suite revalidated the committed PASS report and task-review state"
+    - "manual Windows review at ebe66c8 - passed; real NTFS junctions were rejected without target mutation, file-identity ABA replacements survived cleanup, and the focused KeyboardInterrupt cleanup test passed"
+    - "GitHub Actions runs 30728984177 (push) and 30728985626 (pull_request) on windows-2025 passed the local-equivalent quality suite at f9e910d, including all 105 security tests without skips"
+    notes:
+    - The M0 report records PASS for every roadmap exit and PWS-0010 acceptance criterion with no waiver or unresolved release-blocking defect.
+    - All 28 threats map to frozen decisions, non-gate implementation owners, and 20 planned security suites; future runtime controls remain explicitly unimplemented until their tasks and gates pass.
+    - The validated dependency record is a 41-component, 29-relationship policy baseline rather than a resolved release inventory or SBOM.
+    - "The public corpus is synthetic by closed no-input construction: 17 deterministic files cover 18 committed categories, with 2 on-demand and 4 engine/UI-owned scheduled categories."
+    - Three independent exact-commit gate audits found no remaining actionable security, privacy, schema, dependency, corpus, traceability, or evidence issue.
 - id: PWS-0101
   milestone: M1
   title: Implement secure case workspace conventions
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0010
@@ -570,17 +652,26 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "31d5141"
+    commands:
+    - "py -3.14 tools/dev.py check at 31d5141 - passed; formatting, lint, 12-layer import boundaries, strict typing, 335 unit tests, 15 integration tests, 134 security tests with 3 disclosed local Windows capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run --locked --no-sync pytest tests/unit/test_case_workspace.py tests/integration/test_case_workspace_windows.py tests/security/test_case_workspace_security.py -q at 31d5141 - passed; 122 tests passed and the one local symlink-privilege case skipped, while the real NTFS junction case ran and passed"
+    - "GitHub Actions runs 30732657677 (push) and 30732659059 (pull_request) on windows-2025 passed the Windows quality suite at 31d5141"
+    - "fresh SSH clone at d9900d0: uv sync --locked installed 22 packages and py -3.14 tools/dev.py check passed; 64-file formatting/lint, 12-layer boundaries over 23 source files, strict typing over 64 files, 335 unit tests, 15 integration tests, 134 security tests with 3 disclosed capability skips, 2 accessibility tests, all validators/scans, and 5 negative self-tests"
+    - "GitHub Actions runs 30733008309 (push) and 30733009554 (pull_request) on windows-2025 passed the Windows quality suite at review commit d9900d0"
+    notes:
+    - The fixed case skeleton, canonical UUIDv4 identifiers, Windows namespace validation, handle-bound identities, protected owner-only ACL policy, quota floors, reservation coordination, and authenticated cleanup primitives satisfy the selected workspace contract.
+    - Cleanup is limited to typed cache or temp areas, retains the authenticated case identity through deletion, rejects reparse points, alternate streams, hard links, identity replacement, and active publication claims, and never traverses originals or external paths.
+    - Three independent exact-commit audits of the Windows API adapter, reservation and cleanup coordination, and integration/security behavior found no remaining actionable issue.
+    - Same-account administrators and SYSTEM retain intended recovery access; cleanup does not claim forensic erasure, reservations are process-local, and case lifecycle, document import, worker isolation, and export remain owned by their later tasks.
 - id: PWS-0102
   milestone: M1
   title: Implement case lifecycle service
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0101
@@ -608,17 +699,25 @@ tasks:
   - storage
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "28fcde5"
+    commands:
+    - "py -3.14 tools/dev.py check at 28fcde5 - passed; formatting, lint, 12-layer import boundaries, strict typing over 110 files, 634 unit tests, 139 integration tests with 2 disclosed local link-capability skips, 162 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_case_lifecycle_service.py tests/integration/test_case_lifecycle_windows.py tests/security/test_case_lifecycle_security.py at a9774f3 - passed; 43 lifecycle state, Windows round-trip/interruption, and deletion-boundary tests"
+    - "GitHub Actions runs 30756953278 (push) and 30756954774 (pull_request) on windows-2025 passed the complete Windows quality suite at 28fcde5"
+    notes:
+    - Create, deterministic list, open, close, and exact-confirmation delete use path-free immutable domain results, one serialized active lease, shared per-case coordination, and stable sanitized errors without parsing documents.
+    - Creation publishes the strict current-version empty manifest by flushing and renaming one retained random staging-file handle without replacement; interrupted or incomplete UUID candidates remain unavailable rather than valid or hiding healthy cases.
+    - Manifest decoding is bounded for bytes, UTF-8, duplicate/non-finite numbers, depth, nodes, strings, collections, timestamps, schema version, case identity, and lifecycle fields; unknown, legacy, future, malformed, or raced envelopes fail before authoritative mutation.
+    - Deletion authenticates and inventories the complete fixed tree before mutation, reopens and validates the inventory-selected manifest through the same retained handle it invalidates first, then removes the remaining exact inventory deepest-first with honest partial counts and no forensic-erasure claim.
+    - Independent final audits of domain/application state, Win32 publication and removal, concurrency, security/privacy, tests, and documentation found no remaining P1/P2 issue; full manifest transactions, restart orphan recovery, and human retention workflows remain owned by PWS-0109, PWS-0113, and PWS-0706.
 - id: PWS-0103
   milestone: M1
   title: Implement import sniffing and resource-limit prechecks
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0101
@@ -648,17 +747,27 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "3182132"
+    commands:
+    - "py -3.14 tools/dev.py check at 3182132 - passed; formatting, lint, 12-layer import boundaries, strict typing over 70 files, 525 unit tests, 45 integration tests with 1 disclosed symlink-privilege skip, 147 security tests with 3 disclosed link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_import_prechecks.py tests/integration/test_import_prechecks_windows.py tests/security/test_import_prechecks_security.py at 3182132 - passed; 233 tests passed and the one local file-symlink privilege case skipped, while mandatory real NTFS junction coverage ran and passed"
+    - "GitHub Actions runs 30738294562 (push) and 30738296416 (pull_request) on windows-2025 passed the Windows quality suite at 3182132"
+    - "py -3.14 tools/dev.py validate-fixtures at 3182132 - passed; 17 deterministic fixtures, 457 reachable-history blobs, 198 index blobs, and 205 working files were admitted without an unindexed document"
+    - "fresh SSH clone at c0c21fa: uv sync --locked installed 22 packages and py -3.14 tools/dev.py check passed; 70-file formatting/lint/type checks, 12-layer boundaries over 26 source files, 525 unit tests, 45 integration tests with 1 disclosed capability skip, 147 security tests with 3 disclosed capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "GitHub Actions runs 30738719481 (push) and 30738721155 (pull_request) on windows-2025 passed the Windows quality suite at review commit c0c21fa"
+    notes:
+    - PDF, JPEG, and PNG are detected from strict bounded framing bytes; missing suffixes may pass by content, mismatches and unsupported media fail closed, and PDF page, structure, encryption, and signature inspection remain explicitly deferred to the owning restricted-worker adapter.
+    - Caller-supplied source, page-observation, image dimension, pixel, decompression, header-byte, and JPEG-structure limits are typed and inclusive; preliminary reads, source path depth, UTF-16 length, JPEG marker-fill steps, and native range operations also have fixed hard ceilings.
+    - The retained Windows lease pins a no-follow same-volume ancestor chain and one read-only default-stream handle, denies write/delete sharing, requests no recall, revalidates terminal identity, never mutates the external source or case state, and exposes no path or raw exception in routine errors.
+    - Three independent exact-commit audits of parser arithmetic, Win32 races/privacy, and end-to-end acceptance evidence found no remaining blocker; the reproduced 1 MiB JPEG fill attack fell from 71.364 seconds before the fix to 0.0355 seconds at the final implementation revision.
 - id: PWS-0104
   milestone: M1
   title: Implement immutable ingest and SHA-256 source records
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0102
@@ -690,17 +799,26 @@ tasks:
   - storage
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "b5f6913"
+    commands:
+    - "uv run python tools/dev.py check at b5f6913 - passed; formatting, lint, 12-layer import boundaries over 46 source files, strict typing over 119 files, 762 unit tests, 165 integration tests with 2 disclosed local link-capability skips, 168 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_source_ingest_domain.py tests/unit/test_source_ingest_service.py tests/unit/test_source_ingest_storage.py tests/integration/test_case_workspace_windows.py tests/integration/test_source_ingest_windows_primitives.py tests/integration/test_source_ingest_windows.py tests/security/test_source_ingest_security.py at b5f6913 - passed; 171 immutable-ingest, case-coordination, atomic-publication, integrity, privacy, and failure-path tests"
+    - "uv run python tools/dev.py scan-secrets at b5f6913 - passed; 625 historical blobs, 111 commit/tag objects, 637 historical path/blob pairs, 251 index blobs, 258 tracked files, and 0 untracked files were scanned"
+    notes:
+    - Exact external default-stream bytes are copied once through the retained read-only PWS-0103 lease, hashed while streaming, flushed, independently rehashed, terminally source-checked, and published under a random UUIDv4 `.bin` name without overwriting the external source or an existing case object.
+    - Source-first and manifest-last publication preserves the prior authoritative manifest on every confirmed precommit failure; identity-resolved committed, not-committed, and unknown outcomes prevent false rollback, unsafe deletion, and post-commit false failure while PWS-0113 retains restart orphan recovery.
+    - Complete source/page records append atomically to both base and current sequences, duplicate digests remain advisory with distinct copies, and later bounded integrity verification reports verified, missing, or mismatch without repair or manifest mutation.
+    - One finite monotonic deadline spans prepare, inspection, commit, integrity chunks, callbacks, and 50-millisecond case-coordination waits; cancellation and timeout stop before the next prepublication step, while confirmed publication remains authoritative and cleanup faults cannot mask either a commit or the original failure.
+    - Synthetic Windows evidence covers copy boundaries, quota/cancellation/timeouts, true concurrent stale commits, source changes, random-name/log privacy, hard-link and byte mutations, interruption/ambiguity settlement, and sibling/outside preservation; operating-system disk-full/write-flush injection, end-to-end ADS/reparse races, power loss, and restart cleanup remain explicitly assigned to their adjacent or later gate owners rather than claimed here.
+    - Independent transaction, deadline, filesystem, privacy, and acceptance-evidence audits found no remaining high-confidence blocker; the exact rule-scoped Gitleaks exception admits only the public PWS-0104 privacy canary and retains positive near-miss and realistic-key detection tests.
 - id: PWS-0105
   milestone: M1
   title: Implement pikepdf/qpdf adapter and PDF structural inspection
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0005
@@ -734,17 +852,26 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "00ddd78"
+    commands:
+    - "uv run python tools/dev.py check at 00ddd78 - passed; formatting and lint over 137 files, 12-layer import boundaries over 53 source files, strict typing over 137 files, 840 unit tests, 169 integration tests with 2 disclosed local link-capability skips, 181 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run pytest -q tests/unit/test_pdf_inspection_domain.py tests/unit/test_pikepdf_adapter.py tests/unit/worker/test_pdf_inspect_protocol.py tests/unit/worker/test_pdf_operation.py tests/unit/worker/test_pdf_source_inspector.py tests/unit/worker/test_windows_handle_transfer.py tests/unit/worker/test_windows_result_pipe.py tests/integration/test_pdf_inspection_worker_windows.py tests/security/test_pdf_dependency_capabilities.py tests/security/test_qpdf_checker_security.py at 00ddd78 - passed; 88 typed-contract, parser, handle-broker, AppContainer, dependency-closure, timeout, and no-shell qpdf tests"
+    - "uv run python tools/dev.py scan-secrets at 00ddd78 - passed; 693 historical blobs, 114 commit/tag objects, 705 historical path/blob pairs, 272 index blobs, 279 tracked files, and 0 nonignored untracked files were scanned"
+    notes:
+    - The closed inspection model returns only typed sanitized states and stable codes; ordinary, malformed, password-encrypted, signed-marker, attachment, interactive, action/script, and unknown outcomes remain distinct without exposing pikepdf objects, raw exceptions, PDF values, paths, or tool output.
+    - The client brokers one reduced read-only source HANDLE and one write-only result-pipe HANDLE into a one-shot zero-capability AppContainer worker; size and SHA-256 are reverified into a reparse-free worker-private temporary stream, the case HANDLE closes before native parsing, every terminal branch consumes both authorities, and the worker tree terminates before broker release.
+    - One bounded deadline covers authenticated copy and pikepdf/libqpdf inspection; page, object, graph, collection, input, temporary-storage, result-frame, and tool-output budgets fail closed, while cancellation, timeout, malformed messages, parser failures, and pipe failures have deterministic cleanup evidence.
+    - pikepdf 10.10.0, its embedded libqpdf 12.3.2 closure, and required transitive wheels are locked and inventoried with artifact/hash evidence. The independent qpdf 12.3.2 command seam uses a reviewed absolute executable, fixed argv with `--`, `shell=False`, a minimal environment, bounded discarded output, and no ambient PATH lookup.
+    - The selected lxml wheel's two upstream Schematron resources remain an explicit PWS-0801 redistribution-review blocker for bundling, not for this development/runtime adapter; the dependency inventory forbids advancing those inputs to shipped state before that review closes.
+    - Independent semantic, containment, dependency, lifecycle, privacy, and adversarial reviews found and closed encrypted-state, capability-fallback, private-temp, handle-consumption, pipe-close, and inventory-wording issues; no P0-P2 finding remains.
 - id: PWS-0106
   milestone: M1
   title: Select and implement replaceable PDF renderer adapter
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0005
@@ -775,17 +902,31 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-05'
+    revision: "74c1c7aae799195a87608a797d7136b88e80cc87"
+    commands:
+    - '$process = [System.Diagnostics.Process]::GetCurrentProcess(); $previousAffinity = $process.ProcessorAffinity; try { $process.ProcessorAffinity = [IntPtr]3; uv run --locked --no-sync --group renderer-evaluation python -m tools.pdf_renderer_benchmark benchmark --scenario local-smoke --attest-memory-mib 4096 --attest-graphics integrated } finally { $process.ProcessorAffinity = $previousAffinity } at clean 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; both candidate reports completed under the exact two-core/4,096-MiB Job profile and authenticated the 1,015-file closure SHA-256 f78dffe61e4b86e6596f1080097a7a23aed90cc0ca6eca9023d67fb2521e3da8'
+    - "uv run --locked --no-sync pytest -q tests/unit/test_pdf_renderer_benchmark.py at 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; 64 tests and 349 subtests in 73.99 seconds covered strict result oracles, exact affinity, installed RECORD and staged-closure authentication, AppContainer launch, cancellation, Job termination, cleanup authority, and report privacy"
+    - "uv run --locked --no-sync pytest -q tests/unit/test_pdf_renderer_contract.py tests/integration/test_pdfium_renderer.py tests/security/test_pdfium_renderer_security.py - passed; 47 renderer contract, integration, malformed-input, destination, cancellation, timeout, geometry, color, and log-sanitization tests"
+    - "uv run python tools/dev.py format-check; uv run python tools/dev.py lint; uv run python tools/dev.py typecheck; uv lock --check at 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; Ruff formatting/lint and strict mypy covered 155 files, and the 29-package lock was current"
+    - "uv run python tools/dev.py check-import-boundaries; uv run python tools/dev.py validate-dependencies; uv run python tools/dev.py validate-docs; uv run python tools/dev.py validate-fixtures; uv run python tools/dev.py validate-schemas; uv run python tools/dev.py validate-task-graph; uv run python tools/dev.py validate-pdf-renderer-benchmark; uv run python tools/dev.py scan-secrets at 74c1c7aae799195a87608a797d7136b88e80cc87 - passed; 12 layers/58 source files, exact dependency records, 42 synthetic plus 15 analytical fixtures, 15 golden plus 2 semantic plus 3 outcome cases across 2 candidates, 80 tasks/238 edges/9 milestones/40 decisions, and 814 historical blobs/136 commit-tag objects/842 path-blob pairs/309 index blobs/331 tracked files/8 nonignored untracked files"
+    - "uv run python tools/dev.py check on the final PWS-0106 working tree - passed in 752.5 seconds; formatting, lint, and strict mypy covered 155 files; 1,081 unit tests, 192 integration tests with 2 disclosed capability skips, 193 security tests with 3 disclosed capability skips, and 2 accessibility tests passed; 42 synthetic plus 15 analytical fixtures, every schema/task/document/reference-profile/renderer-benchmark/dependency validator, and all 5 quality negative self-tests passed; secret scanning covered 840 historical blobs, 137 commit/tag objects, 868 historical path/blob pairs, 317 index blobs, 339 tracked working-tree files, and 0 nonignored untracked files"
+    notes:
+    - pypdfium2 5.12.1 with default PDFium 152.0.7947.0 was selected behind the renderer-neutral worker adapter. It matched 15/15 analytical goldens, 2/2 semantic cases, and all 3 malformed/high-dimension outcomes; cold import/open/first-page times were 375,281,700/1,873,900/5,025,600 ns, and 119 warm samples measured p50/p95/max 518,800/4,152,500/6,255,300 ns.
+    - pypdfium2 peak process/Job private bytes were 50,356,224/51,597,312; output/temp high-water bytes were 32,768/0; cooperative cancellation and hard Job termination were 1,230,400/188,100 ns. The run was record-only selection evidence, not a product latency or low-storage/HDD target.
+    - Qt PDF matched 15/15 goldens, the missing-font semantic case, all 3 stable outcomes, and the expected PDF_RENDER_PAGE_BOX_UNSUPPORTED result for distinct MediaBox rendering; cold import/open/first-page times were 283,393,700/9,078,200/7,794,900 ns, and warm p50/p95/max were 683,300/6,484,400/9,441,700 ns.
+    - Qt PDF peak process/Job private bytes were 49,643,520/50,884,608; output/temp high-water bytes were 32,768/0; cooperative cancellation and hard Job termination were 1,315,600/191,000 ns. Its missing MediaBox mode, broader closure, and unresolved redistribution work kept it evaluation-only.
+    - Installed RECORD SHA-256 values were ff272f40a71c74019f169edc8b3b6bb446616bd18c928932e639166b02971c00 for pypdfium2, bd0e0c69ea4adc61f8f6fcfe33a03a4840b735479187d676d64df785383343c9 for PySide6-Addons, 859898b05309b1ec139e12377c9ad0490260e10cbb7f18138002c3844ae3cb58 for PySide6-Essentials, and c4a6c7643da99ac93e8f5eb9a32ea90863993f87e76fe136cc6b11045b67badb for shiboken6; the selected dependency, native closure, licenses/notices, lock edges, and later SBOM inputs are inventoried separately from published-wheel hashes.
+    - The worker-only adapter exposes immutable typed results rather than third-party objects, renders caller-owned sources to caller-owned opaque-white RGBA8 sinks, and enforces page, geometry, pixel, output, destination, timeout, cancellation, memory, process, and temporary-storage limits with stable sanitized failures. Rotation, direct/inherited CropBox and MediaBox, UserUnit, transparency, CMYK, annotations, malformed input, and extreme dimensions have explicit tests and documented behavior.
+    - Independent security reviews found no remaining P0-P2 issue. Authenticated handle-based staging and cleanup fail closed on replacement or uncertain authority; abrupt parent or machine termination may leave at most 768 MiB of sealed public runtime/project/synthetic stage data, which a later process preserves rather than trusting a self-asserted deletion token.
+    - The final aggregate gate exposed and closed a Windows secret-scanner Job cleanup race. Process-tree teardown now calls TerminateJobObject, obtains bounded WAIT_OBJECT_0 confirmation, and only then closes the Job handle; temp-working-directory overflow, descendant-process, timeout, and injected-failure regressions plus repeated live cycles passed, and independent review found no remaining P0-P2 issue.
 - id: PWS-0107
   milestone: M1
   title: Implement worker host, client, and cancellation lifecycle
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0008
@@ -820,17 +961,28 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-02'
+    revision: "6cbd6c2"
+    commands:
+    - "uv run python tools/dev.py lint and uv run python tools/dev.py typecheck at 6cbd6c2 - passed; Ruff checked 102 files and strict mypy reported no issues in 102 source files"
+    - "uv run --locked --no-sync pytest -q tests/security/test_worker_windows_containment_security.py tests/security/test_worker_windows_isolation_security.py at 6cbd6c2 - passed; both live zero-capability AppContainer, Job Object, egress, filesystem-scope, descendant-isolation, and cleanup probes passed"
+    - "uv run --locked --no-sync pytest -q tests/unit/worker/test_worker_resource_staging.py tests/unit/worker/test_exception_compatibility.py at 6cbd6c2 - passed; 4 staging-cleanup and CPython 3.14 exception-compatibility regressions passed"
+    - "GitHub Actions runs 30753004606 (push) and 30753006610 (pull_request) on windows-2025 passed the complete Windows quality suite at 6cbd6c2"
+    - "fresh SSH clone at 6cbd6c2: uv sync --locked installed 22 packages and uv run python tools/dev.py check passed; 102-file formatting/lint, 12-layer boundaries over 40 source files, strict typing over 102 files, 580 unit tests, 122 integration tests with 2 disclosed local link-capability skips, 156 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    notes:
+    - The GUI-safe client and sole worker-launch broker implement bounded versioned framing, correlation and state validation, progress, cancellation, deadlines, crash classification, deterministic terminal-race arbitration, severe-fault termination, and clean restart without exposing raw worker exceptions.
+    - Windows workers launch directly and suspended in a zero-capability AppContainer, inherit exactly three identity-checked protocol/bootstrap kernel objects, receive a minimal environment and only validated case/runtime resources, and remain in a kill-on-close Job Object with CPU, memory, process-count, and whole-tree cleanup enforcement.
+    - Live security evidence proves IPv4 and IPv6 TCP denial, bounded UDP probe behavior, active-case filesystem scope, denied external reads and writes, descendant token/profile/job inheritance, descendant cleanup, protected singleton brokering, and shell-free structured process creation.
+    - Test-only worker resources are copied into bounded, validated, fixed-drive staging trees so hosted-runner reparse-point layouts cannot weaken the production resource policy; every setup and teardown failure path removes only an authenticated staging root.
+    - The hosted-only descendant failure was traced to CPython opening the Windows NUL device for subprocess.DEVNULL inside the zero-capability AppContainer; bounded anonymous pipes avoid that device access, and both hosted descendant probes then passed without relaxing AppContainer, Job, ACL, environment, or egress controls.
+    - Independent exact-commit reviews of Win32 launch/cleanup behavior, CI portability, diagnostic privacy, and handle lifecycle found no remaining P0-P2 issue; document-library adapters and their format-specific resource limits remain owned by PWS-0105, PWS-0106, and later worker operations.
 - id: PWS-0108
   milestone: M1
   title: Implement bounded PDF thumbnail service
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0104
@@ -864,17 +1016,36 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-05'
+    revision: "e0563821a344c46dd0f456c3a1e56733d257dd5c"
+    commands:
+    - "uv run python -c \"from pypdfium2.version import PYPDFIUM_INFO, PDFIUM_INFO; print(PYPDFIUM_INFO.version); print(PDFIUM_INFO.version)\" - passed; the locked environment reported pypdfium2 5.12.1 and PDFium 152.0.7947.0"
+    - "uv run pytest tests -q -k \"thumbnail or windows_handle_transfer or windows_bounded_output_buffer or pdf_renderer_contract or pdf_rendering_domain\" - passed; 297 focused domain, service, RPC, renderer, broker, Win32-handle, storage, AppContainer, corruption, cancellation, and privacy tests"
+    - "uv run pytest tests/unit/worker/test_windows_bounded_output_buffer.py -q - passed; 14 real-Windows section bounds, rights, page-rounding, close-failure, partial-construction, cleanup-retention, and retry tests"
+    - "uv run pytest tests/unit/worker/test_pdf_thumbnail_broker.py -q - passed; 12 cache-hit/miss, terminal/cancel race, deadline, worker-fault, termination-uncertainty, output-validation, and no-persistent-write tests"
+    - "uv run pytest tests/integration/test_pdf_thumbnail_worker_windows.py::test_live_large_page_renders_inside_exact_requested_bound -q - passed; the restricted worker rendered the 14,400-point synthetic page to exact bounded 128 by 128 opaque RGBA8 output"
+    - "uv run python tools/dev.py check on the final PWS-0108 implementation tree - passed in 755 seconds; formatting, lint, import boundaries, and strict mypy covered 173 files; 1,292 unit tests, 210 integration tests with 2 disclosed link-capability skips, 201 security tests with 3 disclosed link-capability skips, and 2 accessibility tests passed; every fixture/schema/task/document/reference/renderer validator, secret scan, and all 5 quality negative self-tests passed"
+    - "Independent adversarial and acceptance reviews of the final tree found no remaining P0-P2 defect; focused review reruns included 83 boundary tests, 5 live AppContainer thumbnail tests, strict typing, documentation validation, and exact cleanup/authority checks"
+    - "uv run pytest tests/security/test_secret_scanning.py -q after the final local-history boundary regression - passed; 39 tests and 26 subtests preserve separate fail-closed raw-metadata and logical-source limits"
+    - "uv run python tools/dev.py scan-secrets on the final working tree - passed in 186 seconds; 928 historical blobs, 140 commit/tag objects, 956 historical path/blob pairs, 336 index blobs, 358 tracked files, and 0 nonignored untracked files were covered"
+    - "uv run python tools/dev.py test-security after the quality-gate maintenance - passed; 201 security tests with 3 disclosed Windows link-capability skips"
+    - "uv run python tools/dev.py quality-self-test after the quality-gate maintenance - passed; all 5 deliberate formatting, typing, schema, graph, and secret violations were detected"
+    notes:
+    - The toolkit-free application service resolves and renders thumbnails one page at a time, reports only bounded aggregate phase/count progress, checks cancellation/deadlines between pages and worker phases, and returns fixed-layout opaque RGBA8 snapshots only after complete validation.
+    - Cache keys bind case/source/page IDs, source index/size/SHA-256, requested dimensions/rotation, fixed rendering choices, artifact/key versions, and the renderer-profile digest. Final names contain only internal page IDs and the full key digest; corrupt entries are removed and rebuilt, and bounded invalidation/stale-stage cleanup remains disposable and manifest-independent.
+    - The worker receives one authenticated committed-source reader and one unnamed pagefile-backed output section with only SECTION_MAP_WRITE. The adapter enforces the exact logical artifact cap; Windows backing may add less than one page of volatile slack, but the worker has no persistent cache-file, directory, path, rename, delete, or publication authority.
+    - Whole-tree termination is confirmed before the broker reads volatile output. The broker validates result size/digest and every operation/cache/key/header/pixel correlation before trusted storage performs a one-shot bounded stage write, readback validation, and atomic no-replace publication.
+    - Section cleanup failures retain exact handle/view authority in a fail-closed quarantine, block new output sections, and retry deterministically. Partial-construction and close failures are covered; unconfirmed worker termination leaves the broker-only persistent stage empty and safely disposable, while quarantine is reserved for indeterminate persistent publication.
+    - Live zero-capability AppContainer evidence covers multi-page and rotated golden output, cache hits, corruption rebuild, malformed input, policy rejection before launch, bounded rendering of the high-dimension fixture, cancellation with unchanged source/manifest and empty cache, and routine-output privacy canaries.
+    - ADR 0004 records the volatile section selection, reduced rights, page-rounding consequence, rejected persistent-file/pipe/named-mapping alternatives, and revocation-before-persistence rule. No new UI control was added; the accessible UI handoff remains owned by PWS-0111.
+    - Finalization exposed that the quality scanner's 10,000 logical-item limit also counted repeated raw Git integrity records. ADR 0002 and the quality-gate documentation now retain that logical limit while bounding raw metadata independently at 50,000 records; the existing 16 MiB metadata, 512 MiB work, and five-minute ceilings remain unchanged.
 - id: PWS-0109
   milestone: M1
   title: Implement atomic manifest repository and autosave journal
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0102
@@ -906,17 +1077,24 @@ tasks:
   - migration
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "c6bad8a"
+    commands:
+    - "GitHub Actions run 30817047647 at c6bad8a - passed; formatting, lint, 12-layer import boundaries over 58 source files, strict typing over 149 files, 948 unit tests, 186 hosted integration tests, 193 hosted security tests, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run python tools/dev.py check at c6bad8a - passed; 948 unit tests, 184 integration tests with 2 disclosed local link-capability skips, 190 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, exact fixture validation, schemas, task graph, docs, reference profile, secret scan, and all 5 deliberate quality violations"
+    - "uv run pytest -q tests/unit/test_validate_synthetic_fixtures.py tests/security/test_synthetic_fixture_security.py at c6bad8a - passed; 31 tests and 77 subtests with 2 disclosed local directory-link skips, including authenticated sibling-branch provenance and exact-digest rejection evidence"
+    notes:
+    - Validated manifests are saved under a named per-case Windows mutex with revision, digest, case-identity, and storage-identity compare-and-swap checks; two independently reopened staged copies, a fixed latest-checkpoint journal, atomic replacement, and post-commit reopen verification preserve the last known-good revision across ordinary failures and simulated interruption.
+    - Open and recovery fail before mutation on unknown future current or checkpoint versions, reject corrupt or noncontiguous journal state, restore a valid published checkpoint deterministically, and return only stable sanitized diagnostics; the shared transaction also prevents immutable source publication from bypassing pending recovery.
+    - The autosave coordinator coalesces rapid edits without losing the final state, owns exact in-flight revision transitions through completion notifications, rejects stale external rebases, preserves caller documents, and keeps revision and timestamp advancement inside the service.
+    - At c6bad8a, a fingerprinted PWS-D035 provenance ledger admitted only the 22 exact synthetic renderer blobs already reviewed on the then-sibling PWS-0106 branch. PWS-0111 integration retired that branch-only ledger after the renderer fixtures became part of the active validated ancestry; independent persistence, concurrency, schema, privacy, and final acceptance audits found no remaining P0-P2 finding.
 - id: PWS-0110
   milestone: M1
   title: Implement page sequence, operations, undo, and redo domain model
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0006
@@ -945,17 +1123,24 @@ tasks:
   - data-integrity
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-03'
+    revision: "a78dfb7"
+    commands:
+    - "GitHub Actions run 30820309807 at a78dfb7 - passed; formatting and lint over 152 files, 12-layer import boundaries over 59 source files, strict typing over 152 files, 987 unit tests, 187 hosted integration tests, 196 hosted security tests, 2 accessibility tests, every validator/scan, and 5 negative self-tests"
+    - "uv run python tools/dev.py check at a78dfb7 - passed; 987 unit tests, 185 integration tests with 2 disclosed local link-capability skips, 193 security tests with 3 disclosed local link-capability skips, 2 accessibility tests, exact fixture validation, schemas, task graph, docs, reference profile, secret scan, and all 5 deliberate quality violations"
+    - "uv run pytest -q tests/unit/test_page_operations.py tests/integration/test_manifest_repository_windows.py tests/security/test_page_operations_security.py at a78dfb7 - passed; 55 deterministic replay, generated sequence, undo/redo, save/reload, concurrency, bounded-work, and diagnostic-privacy tests"
+    notes:
+    - Exact manifest-v1 page references and rotate, crop, sequence-change, and grouping intent replay deterministically under page, operation, aggregate-work, normalized-coordinate, contiguous-sequence, and global identifier-namespace limits without importing UI, renderer, PDF, worker, or storage implementations.
+    - Immutable session histories treat loaded operations as a non-undoable durable baseline; undo and redo restore exact operation identities and projections, branching clears redo without reusing discarded identifiers, and fixed-seed plus exhaustive permutation/subset grids prove equivalent replay and serialization.
+    - Candidate construction replaces only page operations and sequence in a defensive copy, accepts only exact history-owned autosave states, rejects stale or concurrent page changes and namespace collisions, and round-trips through the real atomic repository with equivalent state after reopen.
+    - Closed errors disclose no manifest values or raw exceptions, distinguish unsupported versions, invalid group cardinality, capacity, and recovery actions, and bound adversarial identifier generation; independent replay, concurrency, privacy, boundary, integration, and final-delta reviews found no remaining P0-P2 issue.
 - id: PWS-0111
   milestone: M1
   title: Build accessible page organizer vertical-slice UI
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0108
@@ -1000,7 +1185,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0105
@@ -1038,17 +1223,34 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-09'
+    revision: "77972df"
+    commands:
+    - "uv run --no-sync python tools/dev.py test-unit - passed; 1799 unit tests covered deterministic planning/assembly, strict reopen, qpdf/PDFium verification, destination publication, history settlement/retry, malformed output, encrypted output, cleanup failures, DOS 8.3 temp aliases, and temp-parent identity changes"
+    - "uv run --no-sync python tools/dev.py test-integration - passed; 267 tests with 2 disclosed Windows link-capability skips, including live restricted-worker PDF export with real pikepdf/libqpdf, qpdf, and PDFium"
+    - "uv run --no-sync python tools/dev.py test-security - passed; 228 tests with 5 disclosed Windows capability/privilege skips; export containment, limits, no-egress behavior, source preservation, and sanitized failures passed"
+    - "uv run --no-sync python tools/dev.py test-accessibility - passed; 2 baseline accessibility tests"
+    - "uv run --no-sync python -m pytest tests/integration/test_pdf_export_worker_windows.py tests/integration/test_pdf_export_adapter_appcontainer_windows.py tests/integration/test_worker_windows_temp_access.py -q - passed; 4 live Windows tests proved the restricted export worker accepts broker-provisioned temp paths while equivalent host aliases remain contained"
+    - "uv run --no-sync python -m pytest tests/unit/test_ci_workflow.py tests/unit/test_validate_dependencies.py -q; uv run --no-sync python -m pytest tests/integration/test_qpdf_worker_configuration_windows.py -q - passed; 31 workflow/dependency tests with 55 subtests and 2 live qpdf AppContainer tests"
+    - "uv run --no-sync python tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed; 224 files formatted/linted/typed and 12 layers across 83 source files remained valid"
+    - "uv run --no-sync python tools/dev.py validate-dependencies; validate-docs; validate-schemas; validate-task-graph - passed; locked dependency inventory, documentation references, 8 schema families, and the 80-task/238-edge DAG validated"
+    - "uv run --no-sync python tools/dev.py validate-fixtures after the approved tip rewrite - passed; 42 deterministic fixtures, 15 renderer references, 1075 historical blobs, 392 index blobs, and 416 working files"
+    - "uv run --no-sync python tools/dev.py scan-secrets after committed documentation/evidence - passed; 1075 historical blobs, 161 commit/tag objects, 1104 historical path/blob pairs, 392 index blobs, and 416 tracked files"
+    notes:
+    - The pure path-free plan preserves validated manifest order and accumulated rotations, rejects unsupported crop/overlay intent, and binds deterministic semantic fingerprints to exact immutable source facts and the closed export profile.
+    - A one-shot zero-capability worker receives only reduced source, plan, bounded output, and report handles; it copies and rehashes sources privately, assembles with pikepdf, strictly reopens, runs fixed qpdf checks, compares every page with PDFium, and returns only a correlated typed report after complete job-tree termination and source revalidation.
+    - The trusted desktop adapter authenticates a local destination, stages and readback-verifies bounded bytes, performs a same-directory no-replace rename, and verifies the exact final-name identity/digest without overwriting an original or prior export; post-commit uncertainty is preserved rather than mislabeled.
+    - Path-free canonical history receipts are prepared before destination commit, durable history identifiers are reserved before export, selected-case retries are independently bound, and history-only failures never recreate or relabel the verified derivative; durable pending-receipt recovery across application restart belongs to PWS-0113.
+    - Independent cleanup, application-boundary, documentation, and completion audits found no remaining P0-P2 issue after the encrypted-candidate regression and final wording corrections.
+    - GitHub-hosted Windows exposes TEMP/TMP through a DOS 8.3 user-profile alias while LOCALAPPDATA uses the long spelling; export temp authentication now compares validated lstat identities for differing spellings, rechecks them after creation, and preserves the query-free broker-provisioned AppContainer path.
+    - CI keeps the pinned qpdf archive in runner temporary storage but extracts the verified test installation under Program Files, preserving the live no-mutation installed-resource check while the temporary-copy test proves one bounded grant and complete restoration.
 - id: PWS-0113
   milestone: M1
   title: Implement crash recovery and sanitized diagnostic baseline
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0107
@@ -1083,10 +1285,21 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-09'
+    revision: "8a0b80c"
+    commands:
+    - "uv run --no-sync python tools/dev.py check at 8a0b80c - passed; 249 files formatted/linted/typed, 12 import layers across 94 source files, 1919 unit tests, 318 integration tests with 2 disclosed Windows link-capability skips, 240 security tests with 6 disclosed capability/privilege skips, 2 accessibility tests, all registered validators and scans, and all 5 deliberate quality violations"
+    - "uv run --locked --no-sync pytest -q tests/integration/test_startup_recovery_windows.py tests/integration/test_export_retry_storage_windows.py tests/integration/test_worker_acl_recovery_windows.py tests/integration/test_pdf_thumbnail_worker_windows.py::test_live_worker_termination_during_render_recovers_with_fresh_service tests/integration/test_pdf_export_worker_windows.py::test_live_worker_termination_never_publishes_destination 'tests/integration/test_manifest_repository_windows.py::test_stage_failure_never_replaces_last_valid_manifest[disk_full]' tests/security/test_startup_recovery_security.py tests/security/test_diagnostics_privacy.py - passed; 60 acceptance-focused tests with 1 disclosed local symlink-capability skip"
+    - "uv run --no-sync python tools/dev.py scan-secrets at 8a0b80c - passed; reachable Git history and source-path bytes, 1164 historical blobs, 168 commit/tag objects, 1193 historical path/blob pairs, 419 index blobs, and 443 tracked working-tree files contained no secret finding"
+    notes:
+    - Startup recovery loads or restores the last valid manifest before reconciling authenticated export-history retirements and exact durable export receipts, then removes only proven source orphans, inactive thumbnail stages, and bounded case temp inventory; unresolved authority preserves all recovery evidence and blocks generic cleanup.
+    - Export receipts are durably prepared before destination publication, distinguish inert commit-ambiguous state from destination-confirmed state, reserve identifiers, and replay only exact history/manifest work without recreating the PDF; interrupted history replacement restores only a unique authenticated retired prefix and never trusts a generic stage.
+    - The worker broker records bounded per-profile ACL mutation intent before every grant/revoke, validates current resource identity, hardlink count, profile-name/SID binding, and owner liveness, and repairs PREPARED, partial-grant, ACTIVE, and REVOKING cut points after real child-process termination and WAIT_ABANDONED observation.
+    - Diagnostics accept only closed typed records containing internal UUIDv4 identifiers, version components, numeric counts/resources, and stable codes; canonical JSONL, bounded logging, deterministic summaries, import boundaries, and prohibited-token tests exclude document content, paths, names, metadata, thumbnails, signatures, and raw exceptions.
+    - Live restricted-worker tests terminate an accepted thumbnail render and an active export, preserve imported sources and the byte-identical last valid manifest, run cold-composed application/storage recovery, and succeed through fresh worker/service composition without publishing an interrupted destination.
+    - Cleanup accounting preserves every confirmed deletion and released-byte count across later ordinary item or context-finalization failures, stops subsequent mutation when authority is uncertain, keeps process-control BaseException propagation, and emits only sanitized phase-specific plus generic failure codes.
+    - PWS-0113 does not claim a real PySide UI-process kill or automatic deletion of abandoned AppContainer profiles/temp trees; PWS-0111 owns desktop composition, while this task proves deterministic cold application-service restart and durable ACL repair.
+    - Independent recovery, privacy, cleanup-finalization, export-history, ACL, documentation, and completion audits found no remaining P0-P2 issue.
 - id: PWS-0114
   milestone: M1
   title: Run Milestone 1 vertical-slice gate
@@ -1407,6 +1620,7 @@ tasks:
   - PWS-0204
   decision_refs:
   - PWS-D026
+  - PWS-D032
   - PWS-D037
   objective: Generate typed, explainable review signals for likely low resolution, blur, clipping, blank pages,
     orientation, duplicates, and OCR failure/low confidence.

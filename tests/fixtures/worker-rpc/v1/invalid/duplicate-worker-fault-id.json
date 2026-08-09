@@ -1,0 +1,29 @@
+{
+  "protocol": "paperworkshell.worker-rpc",
+  "protocol_version": 1,
+  "message_version": 1,
+  "message_type": "worker.fault",
+  "direction": "worker_to_client",
+  "session_id": "10000000-0000-4000-8000-000000000001",
+  "worker_instance_id": "10000000-0000-4000-8000-000000000002",
+  "session_capability": "0000000000000000000000000000000000000000000000000000000000000000",
+  "case_id": "10000000-0000-4000-8000-000000000003",
+  "message_id": "20000000-0000-4000-8000-000000000008",
+  "sender_sequence": 7,
+  "request_id": null,
+  "operation_id": null,
+  "payload": {
+    "error": {
+      "error_version": 1,
+      "code": "WORKER_INTERNAL_FAULT",
+      "category": "internal",
+      "retry_action": "restart_worker",
+      "restart_required": true,
+      "parameters": []
+    },
+    "invalidated_operation_ids": [
+      "22000000-0000-4000-8000-000000000001",
+      "22000000-0000-4000-8000-000000000001"
+    ]
+  }
+}

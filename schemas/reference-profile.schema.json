@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperworkshell.local/schemas/reference-profile-v1.json",
+  "title": "PaperWorkShell reference environment and workload profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "environment",
+    "storage_scenarios",
+    "workload",
+    "measurement_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os_family", "architecture", "logical_processors", "memory_mib", "graphics"],
+      "properties": {
+        "os_family": {
+          "const": "Windows"
+        },
+        "architecture": {
+          "const": "x86_64"
+        },
+        "logical_processors": {
+          "const": 2
+        },
+        "memory_mib": {
+          "const": 4096
+        },
+        "graphics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["class", "hardware_acceleration_required", "verification"],
+          "properties": {
+            "class": {
+              "const": "integrated"
+            },
+            "hardware_acceleration_required": {
+              "const": false
+            },
+            "verification": {
+              "const": "operator-attested"
+            }
+          }
+        }
+      }
+    },
+    "storage_scenarios": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "capacity", "media", "verification"],
+        "properties": {
+          "id": {
+            "enum": ["local-smoke", "limited-storage", "rotational-hdd"]
+          },
+          "capacity": {
+            "enum": ["observed", "bounded"]
+          },
+          "maximum_capacity_bytes": {
+            "const": 8589934592
+          },
+          "minimum_free_bytes": {
+            "const": 4194304
+          },
+          "media": {
+            "enum": ["observed", "hdd-or-validated-emulation"]
+          },
+          "verification": {
+            "enum": ["runtime-observation", "runtime-and-operator-attested"]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {"id": {"const": "local-smoke"}},
+              "required": ["id"]
+            },
+            "then": {
+              "properties": {
+                "capacity": {"const": "observed"},
+                "media": {"const": "observed"},
+                "verification": {"const": "runtime-observation"}
+              },
+              "not": {
+                "anyOf": [
+                  {"required": ["maximum_capacity_bytes"]},
+                  {"required": ["minimum_free_bytes"]}
+                ]
+              }
+            },
+            "else": {
+              "required": ["maximum_capacity_bytes", "minimum_free_bytes"],
+              "properties": {
+                "capacity": {"const": "bounded"}
+              }
+            }
+          }
+        ]
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "runner",
+        "generator",
+        "data_class",
+        "file_count",
+        "bytes_per_file",
+        "block_size_bytes",
+        "seed",
+        "expected_file_sha256"
+      ],
+      "properties": {
+        "id": {
+          "const": "generated-io-v1"
+        },
+        "runner": {
+          "const": "generated-io"
+        },
+        "generator": {
+          "const": "sha256-seed-repeat-v1"
+        },
+        "data_class": {
+          "const": "synthetic-deterministic-bytes"
+        },
+        "file_count": {
+          "const": 2
+        },
+        "bytes_per_file": {
+          "const": 1048576
+        },
+        "block_size_bytes": {
+          "const": 65536
+        },
+        "seed": {
+          "const": "paperworkshell-reference-io-v1"
+        },
+        "expected_file_sha256": {
+          "const": "8a8bf3b68cac0e3b77effddf97749adce36999f135bbcc6887fb982d9e48533c"
+        }
+      }
+    },
+    "measurement_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "product_targets"],
+      "properties": {
+        "status": {
+          "const": "record-only"
+        },
+        "product_targets": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    }
+  }
+}

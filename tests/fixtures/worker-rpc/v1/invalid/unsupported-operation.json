@@ -1,0 +1,31 @@
+{
+  "protocol": "paperworkshell.worker-rpc",
+  "protocol_version": 1,
+  "message_version": 1,
+  "message_type": "operation.start",
+  "direction": "client_to_worker",
+  "session_id": "10000000-0000-4000-8000-000000000001",
+  "worker_instance_id": "10000000-0000-4000-8000-000000000002",
+  "session_capability": "0000000000000000000000000000000000000000000000000000000000000000",
+  "case_id": "10000000-0000-4000-8000-000000000003",
+  "message_id": "20000000-0000-4000-8000-000000000002",
+  "sender_sequence": 1,
+  "request_id": "21000000-0000-4000-8000-000000000002",
+  "operation_id": "22000000-0000-4000-8000-000000000001",
+  "payload": {
+    "operation_kind": "document.parse",
+    "operation_version": 1,
+    "inputs": [],
+    "parameters": [],
+    "requested_limits": {
+      "limits_version": 1,
+      "wall_time_ms": 1000,
+      "cpu_time_ms": 1000,
+      "memory_bytes": 1048576,
+      "temporary_storage_bytes": 1048576,
+      "output_bytes": 1048576,
+      "page_count": 1,
+      "pixel_count": 1000000
+    }
+  }
+}
