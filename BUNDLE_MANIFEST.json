@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.51",
+  "bundle_version": "0.1.52",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 161695,
-      "sha256": "93a04b5a8f25b011d29376903bf3bdcf4bc7396554d47a3a2efa087625f36538"
+      "bytes": 170025,
+      "sha256": "76f1eb8088f01f9219c23db8bbdd46edb47e44d8825f2555ddeb032baa4f17b6"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 20219,
-      "sha256": "f8b68b732f9ec7130f42396526c176747bed7036cbfc7883d3abe8980cb0ad34"
+      "bytes": 20844,
+      "sha256": "de5816265df91f50ce5c3f56a5e583165a8501cb8dcccfe90a72fece0170ce15"
     }
   ],
   "validation": {
@@ -55,13 +55,11 @@
     "dependency_edge_count": 238,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0112"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for PWS-0111 integration/start; PWS-0111 is in progress and PWS-0112 remains dependency-ready.",
+    "Regenerated after PWS-0113 completed with full restart-recovery and sanitized-diagnostics evidence; PWS-0111 remains in progress and PWS-0114 remains dependency-blocked.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
