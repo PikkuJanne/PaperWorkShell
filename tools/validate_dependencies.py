@@ -3824,7 +3824,10 @@ def _workflow_reconciliation_issues(
         expected_qpdf_script_lines = [
             '$ErrorActionPreference = "Stop"',
             f'$archive = Join-Path $env:RUNNER_TEMP "{qpdf_artifact}"',
-            f'$destination = Join-Path $env:RUNNER_TEMP "qpdf-{qpdf_selected}"',
+            (
+                "$destination = Join-Path $env:ProgramFiles "
+                f'"PaperWorkShell-ci-qpdf-{qpdf_selected}"'
+            ),
             f'$uri = "{qpdf_uri}"',
             f'$expected = "{qpdf_hash}"',
             "Invoke-WebRequest -Uri $uri -OutFile $archive",

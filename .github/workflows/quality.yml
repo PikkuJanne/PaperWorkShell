@@ -63,7 +63,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $archive = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2-msvc64.zip"
-          $destination = Join-Path $env:RUNNER_TEMP "qpdf-12.3.2"
+          $destination = Join-Path $env:ProgramFiles "PaperWorkShell-ci-qpdf-12.3.2"
           $uri = "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip"
           $expected = "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202"
           Invoke-WebRequest -Uri $uri -OutFile $archive
