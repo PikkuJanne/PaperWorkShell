@@ -81,6 +81,11 @@ class WindowsVerifiedPdfDestination:
             reject_pdf_export(PdfExportErrorCode.DESTINATION_FAILED, "export.destination")
         if result.state is ExportCommitState.DESTINATION_EXISTS:
             reject_pdf_export(PdfExportErrorCode.DESTINATION_EXISTS, "export.destination")
+        if result.state is ExportCommitState.UNKNOWN:
+            reject_pdf_export(
+                PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN,
+                "export.destination",
+            )
         if (
             result.state is not ExportCommitState.COMMITTED
             or result.byte_size != expected_byte_size

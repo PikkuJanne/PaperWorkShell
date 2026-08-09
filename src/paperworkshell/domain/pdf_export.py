@@ -98,6 +98,8 @@ class PdfExportErrorCode(StrEnum):
     DESTINATION_INVALID = "PDF_EXPORT_DESTINATION_INVALID"
     DESTINATION_EXISTS = "PDF_EXPORT_DESTINATION_EXISTS"
     DESTINATION_FAILED = "PDF_EXPORT_DESTINATION_FAILED"
+    DESTINATION_COMMIT_UNCERTAIN = "PDF_EXPORT_DESTINATION_COMMIT_UNCERTAIN"
+    HISTORY_RECOVERY_REQUIRED = "PDF_EXPORT_HISTORY_RECOVERY_REQUIRED"
     REPORT_INVALID = "PDF_EXPORT_REPORT_INVALID"
     OUTCOME_INVALID = "PDF_EXPORT_OUTCOME_INVALID"
     RESULT_INVALID = "PDF_EXPORT_RESULT_INVALID"
@@ -158,6 +160,13 @@ _SAFE_ERROR_MESSAGES: Final[dict[PdfExportErrorCode, str]] = {
     ),
     PdfExportErrorCode.DESTINATION_FAILED: (
         "PaperWorkShell could not save the verified PDF at the selected destination."
+    ),
+    PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN: (
+        "PaperWorkShell could not confirm whether the verified PDF was saved. "
+        "Check the selected destination before trying again."
+    ),
+    PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED: (
+        "Export history recovery needs attention before another PDF can be exported."
     ),
     PdfExportErrorCode.REPORT_INVALID: (
         "PaperWorkShell received an invalid PDF-export verification report."

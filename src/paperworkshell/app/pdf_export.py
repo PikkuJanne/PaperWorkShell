@@ -40,6 +40,10 @@ from paperworkshell.domain.pdf_export_history import (
     build_pdf_export_history_record_for_commit,
     build_pdf_export_history_retry_receipt,
 )
+from paperworkshell.domain.pdf_export_retry import (
+    PdfExportRetryRepository,
+    PreparedPdfExportRetry,
+)
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 
 _MAXIMUM_IDENTIFIER_ATTEMPTS = 32
@@ -132,6 +136,7 @@ class PdfExportService:
         "_history",
         "_id_factory",
         "_manifests",
+        "_retries",
         "_sources",
     )
 
@@ -142,6 +147,7 @@ class PdfExportService:
         broker: PdfExportBroker,
         destination: VerifiedPdfDestination,
         history: PdfExportHistoryRecorder,
+        retries: PdfExportRetryRepository,
         *,
         clock: Callable[[], datetime] = _utc_now,
         id_factory: Callable[[], UUID] = uuid4,
@@ -152,6 +158,7 @@ class PdfExportService:
             or not isinstance(broker, PdfExportBroker)
             or not isinstance(destination, VerifiedPdfDestination)
             or not isinstance(history, PdfExportHistoryRecorder)
+            or not isinstance(retries, PdfExportRetryRepository)
             or not callable(clock)
             or not callable(id_factory)
         ):
@@ -161,6 +168,7 @@ class PdfExportService:
         self._broker = broker
         self._destination = destination
         self._history = history
+        self._retries = retries
         self._clock = clock
         self._id_factory = id_factory
 
@@ -196,6 +204,8 @@ class PdfExportService:
         report: PdfExportVerificationReport | None = None
         history_record: PdfExportHistoryRecord | None = None
         history_retry: PdfExportHistoryRetryReceipt | None = None
+        retry_lease: PreparedPdfExportRetry | None = None
+        retry_phase_committed = False
         destination_committed = False
         try:
             batch = self._sources.borrow_committed_pdf_sources(
@@ -227,20 +237,39 @@ class PdfExportService:
                             plan.page_count,
                         ),
                     )
-                    commit_result = self._destination.commit(
-                        destination,
-                        candidate,
-                        expected_byte_size=report.output_byte_size,
-                        expected_sha256=report.output_sha256,
-                        cancellation=cancellation,
-                        deadline=deadline,
-                    )
-                    if commit_result is not None:
-                        reject_pdf_export(
-                            PdfExportErrorCode.DESTINATION_FAILED,
-                            "export.destination_result",
+                    retry_lease = self._prepare_retry(history_retry)
+                    try:
+                        commit_result = self._destination.commit(
+                            destination,
+                            candidate,
+                            expected_byte_size=report.output_byte_size,
+                            expected_sha256=report.output_sha256,
+                            cancellation=cancellation,
+                            deadline=deadline,
                         )
-                    destination_committed = True
+                        if commit_result is not None:
+                            reject_pdf_export(
+                                PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN,
+                                "export.destination_result",
+                            )
+                        destination_committed = True
+                    except PdfExportError as error:
+                        if error.code is not PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN:
+                            try:
+                                retry_lease.discard_prepared()
+                            except BaseException:
+                                pass
+                        retry_lease.close()
+                        retry_lease = None
+                        raise
+                    except BaseException:
+                        retry_lease.close()
+                        retry_lease = None
+                        raise
+                    try:
+                        retry_phase_committed = retry_lease.mark_committed()
+                    except BaseException:
+                        retry_phase_committed = False
         except PdfExportError:
             if not destination_committed:
                 raise
@@ -262,6 +291,7 @@ class PdfExportService:
             or type(report) is not PdfExportVerificationReport
             or type(history_record) is not PdfExportHistoryRecord
             or type(history_retry) is not PdfExportHistoryRetryReceipt
+            or not isinstance(retry_lease, PreparedPdfExportRetry)
         ):
             reject_pdf_export(PdfExportErrorCode.DESTINATION_FAILED, "export.commit_state")
 
@@ -296,6 +326,19 @@ class PdfExportService:
             result = pending
         except BaseException:
             result = pending
+        if result.status is PdfExportOutcomeStatus.COMMITTED_RECORDED:
+            try:
+                if retry_phase_committed:
+                    retry_lease.resolve()
+                else:
+                    self._retries.discard_prepared(
+                        history_retry.case_id,
+                        history_retry.export_id,
+                        history_retry.record_sha256,
+                    )
+            except BaseException:
+                pass
+        retry_lease.close()
         _emit_progress_after_commit(
             progress,
             PdfExportProgress(
@@ -305,6 +348,31 @@ class PdfExportService:
             ),
         )
         return result
+
+    def _prepare_retry(
+        self,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> PreparedPdfExportRetry:
+        try:
+            prepared = self._retries.prepare(receipt)
+            if not isinstance(prepared, PreparedPdfExportRetry) or prepared.receipt != receipt:
+                reject_pdf_export(
+                    PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                    "export.retry_prepare",
+                )
+            return prepared
+        except PdfExportError:
+            raise
+        except PdfExportHistoryError:
+            reject_pdf_export(
+                PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                "export.retry_prepare",
+            )
+        except BaseException:
+            reject_pdf_export(
+                PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                "export.retry_prepare",
+            )
 
     def _prepare_history(
         self,
@@ -336,13 +404,32 @@ class PdfExportService:
                 type(value) is not UUID or value.version != 4 for value in identifiers
             ):
                 reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.history_ids")
-            return identifiers
         except PdfExportError:
             raise
         except PdfExportHistoryError:
             reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.history_ids")
         except BaseException:
             reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.history_ids")
+        try:
+            retry_inventory = self._retries.inventory(case_id)
+            if retry_inventory.invalid_entries:
+                reject_pdf_export(
+                    PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                    "export.retry_inventory",
+                )
+            return identifiers | retry_inventory.reserved_export_ids
+        except PdfExportError:
+            raise
+        except PdfExportHistoryError:
+            reject_pdf_export(
+                PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                "export.retry_inventory",
+            )
+        except BaseException:
+            reject_pdf_export(
+                PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED,
+                "export.retry_inventory",
+            )
 
     def _load_plan(self, case_id: UUID) -> tuple[PdfExportPlan, frozenset[UUID]]:
         try:

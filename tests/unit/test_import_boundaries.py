@@ -96,6 +96,30 @@ def test_repository_respects_import_boundaries() -> None:
             "ARCH_DOMAIN_EXTERNAL",
         ),
         (
+            "paperworkshell.diagnostics.example",
+            "paperworkshell.diagnostics",
+            "import paperworkshell.domain\n",
+            "ARCH_DIAGNOSTICS_OUTBOUND",
+        ),
+        (
+            "paperworkshell.diagnostics.example",
+            "paperworkshell.diagnostics",
+            "import paperworkshell.storage\n",
+            "ARCH_DIAGNOSTICS_OUTBOUND",
+        ),
+        (
+            "paperworkshell.diagnostics.example",
+            "paperworkshell.diagnostics",
+            "import paperworkshell.worker\n",
+            "ARCH_DIAGNOSTICS_OUTBOUND",
+        ),
+        (
+            "paperworkshell.diagnostics.example",
+            "paperworkshell.diagnostics",
+            "import paperworkshell.pdf\n",
+            "ARCH_DIAGNOSTICS_OUTBOUND",
+        ),
+        (
             "paperworkshell.app.example",
             "paperworkshell.app",
             "from paperworkshell import pdf\n",
@@ -336,6 +360,24 @@ def test_import_scanner_ignores_non_import_text_and_local_relative_name() -> Non
             source,
             module="paperworkshell.domain.example",
             package="paperworkshell.domain",
+            path="allowed.py",
+        )
+        == ()
+    )
+
+
+def test_diagnostics_may_import_only_stdlib_root_identity_and_own_modules() -> None:
+    source = (
+        "from __future__ import annotations\n"
+        "import json\n"
+        "from paperworkshell import PRODUCT_NAME\n"
+        "from paperworkshell.diagnostics import models\n"
+    )
+    assert (
+        inspect_source(
+            source,
+            module="paperworkshell.diagnostics.example",
+            package="paperworkshell.diagnostics",
             path="allowed.py",
         )
         == ()

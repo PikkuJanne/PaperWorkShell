@@ -37,6 +37,7 @@ from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
 from paperworkshell.pdf.qpdf_checker import DEFAULT_QPDF_EXECUTABLE
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
+from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
@@ -266,6 +267,10 @@ def test_live_export_is_repeatable_verified_recorded_and_preserves_source(
         broker,
         WindowsVerifiedPdfDestination(),
         PdfExportHistoryService(history_repository, manifests),
+        WindowsPdfExportRetryRepository(
+            manager,
+            id_factory=_SequentialUuidFactory(0x71210000),
+        ),
         clock=lambda: _NOW,
         id_factory=_SequentialUuidFactory(0x71200000),
     )
@@ -364,6 +369,7 @@ def test_live_worker_termination_never_publishes_destination(
         BrokeredPdfExporter(worker, _broker_policy()),
         WindowsVerifiedPdfDestination(),
         PdfExportHistoryService(history_repository, manifests),
+        WindowsPdfExportRetryRepository(manager),
     )
     destination = tmp_path / "must-not-exist.pdf"
     terminated = False

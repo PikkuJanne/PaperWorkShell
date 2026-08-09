@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +32,7 @@ from paperworkshell.domain.manifest_repository import (
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
+    PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportOutcomeStatus,
     PdfExportPlan,
@@ -47,6 +48,12 @@ from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryError,
     PdfExportHistoryErrorCode,
     PdfExportHistoryRecord,
+    build_pdf_export_history_record_for_commit,
+    build_pdf_export_history_retry_receipt,
+)
+from paperworkshell.domain.pdf_export_retry import (
+    PdfExportRetryInventory,
+    PreparedPdfExportRetry,
 )
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 
@@ -403,6 +410,109 @@ class _History:
         )
 
 
+class _RetryLease:
+    def __init__(self, receipt: PdfExportHistoryRetryReceipt) -> None:
+        self.receipt = receipt
+        self.mark_error: BaseException | None = None
+        self.mark_result = True
+        self.resolve_error: BaseException | None = None
+        self.resolve_result = True
+        self.discard_error: BaseException | None = None
+        self.discard_result = True
+        self.mark_calls = 0
+        self.resolve_calls = 0
+        self.discard_calls = 0
+        self.close_calls = 0
+
+    def mark_committed(self) -> bool:
+        self.mark_calls += 1
+        if self.mark_error is not None:
+            raise self.mark_error
+        return self.mark_result
+
+    def resolve(self) -> bool:
+        self.resolve_calls += 1
+        if self.resolve_error is not None:
+            raise self.resolve_error
+        return self.resolve_result
+
+    def discard_prepared(self) -> bool:
+        self.discard_calls += 1
+        if self.discard_error is not None:
+            raise self.discard_error
+        return self.discard_result
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+class _Retries:
+    def __init__(self) -> None:
+        self.inventory_result: object = PdfExportRetryInventory()
+        self.prepare_error: BaseException | None = None
+        self.lease_factory: Callable[[PdfExportHistoryRetryReceipt], _RetryLease] = _RetryLease
+        self.lease: _RetryLease | None = None
+        self.prepare_calls = 0
+        self.inventory_calls = 0
+        self.discard_committed_calls = 0
+        self.discard_prepared_calls = 0
+
+    def prepare(
+        self,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> PreparedPdfExportRetry:
+        self.prepare_calls += 1
+        if self.prepare_error is not None:
+            raise self.prepare_error
+        self.lease = self.lease_factory(receipt)
+        return self.lease
+
+    def inventory(self, case_id: UUID) -> PdfExportRetryInventory:
+        assert case_id == CASE_ID
+        self.inventory_calls += 1
+        if isinstance(self.inventory_result, BaseException):
+            raise self.inventory_result
+        return cast(PdfExportRetryInventory, self.inventory_result)
+
+    def discard_committed(
+        self,
+        case_id: UUID,
+        export_id: UUID,
+        record_sha256: str,
+    ) -> bool:
+        del record_sha256
+        assert case_id == CASE_ID
+        assert export_id == EXPORT_ID
+        self.discard_committed_calls += 1
+        return True
+
+    def discard_prepared(
+        self,
+        case_id: UUID,
+        export_id: UUID,
+        record_sha256: str,
+    ) -> bool:
+        del record_sha256
+        assert case_id == CASE_ID
+        assert export_id == EXPORT_ID
+        self.discard_prepared_calls += 1
+        return True
+
+
+def _retry_receipt(
+    export_id: UUID = EXPORT_ID,
+) -> PdfExportHistoryRetryReceipt:
+    plan = _plan()
+    report = _report(plan)
+    record = build_pdf_export_history_record_for_commit(
+        plan,
+        export_id=export_id,
+        report=report,
+        recorded_at=RECORDED_AT,
+    )
+    return build_pdf_export_history_retry_receipt(plan, record, report)
+
+
 class _Clock:
     def __init__(self, events: list[str]) -> None:
         self.events = events
@@ -427,6 +537,7 @@ class _Stack:
     candidate: _Candidate
     destination: _Destination
     history: _History
+    retries: _Retries
     clock: _Clock
     events: list[str]
 
@@ -441,6 +552,7 @@ def _stack() -> _Stack:
     broker = _Broker(candidate, events)
     destination = _Destination(events)
     history = _History(events)
+    retries = _Retries()
     clock = _Clock(events)
     service = PdfExportService(
         manifests,
@@ -448,6 +560,7 @@ def _stack() -> _Stack:
         broker,
         destination,
         history,
+        retries,
         clock=clock,
         id_factory=lambda: EXPORT_ID,
     )
@@ -460,6 +573,7 @@ def _stack() -> _Stack:
         candidate,
         destination,
         history,
+        retries,
         clock,
         events,
     )
@@ -509,6 +623,13 @@ def test_full_success_orders_progress_cleanup_destination_and_history() -> None:
     assert stack.history.record.export_id == EXPORT_ID
     assert stack.destination.deadline is deadline
     assert stack.destination.cancellation is cancellation
+    assert stack.retries.inventory_calls == 1
+    assert stack.retries.prepare_calls == 1
+    assert stack.retries.lease is not None
+    assert stack.retries.lease.mark_calls == 1
+    assert stack.retries.lease.resolve_calls == 1
+    assert stack.retries.lease.discard_calls == 0
+    assert stack.retries.lease.close_calls == 1
     assert stack.events == [
         "manifest.load",
         "history.ids",
@@ -548,6 +669,79 @@ def test_post_commit_history_failures_return_exact_retry_receipt(failure: str) -
     assert outcome.history_retry.record_sha256 == stack.history.record.sha256
     assert stack.destination.calls == 1
     assert stack.history.calls == 1
+    assert stack.retries.lease is not None
+    assert stack.retries.lease.mark_calls == 1
+    assert stack.retries.lease.resolve_calls == 0
+    assert stack.retries.lease.discard_calls == 0
+    assert stack.retries.lease.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        PdfExportHistoryError(
+            PdfExportHistoryErrorCode.STORAGE_FAILED,
+            "export_retry.test",
+        ),
+        RuntimeError("private retry storage detail"),
+        KeyboardInterrupt(),
+    ),
+)
+def test_retry_prepare_failure_blocks_destination_and_is_sanitized(
+    failure: BaseException,
+) -> None:
+    stack = _stack()
+    stack.retries.prepare_error = failure
+
+    with pytest.raises(PdfExportError) as raised:
+        _export(stack)
+
+    assert raised.value.code is PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED
+    assert "private retry" not in str(raised.value)
+    assert stack.destination.calls == 0
+    assert stack.history.calls == 0
+
+
+def test_committed_marker_failure_uses_durable_history_as_independent_proof() -> None:
+    stack = _stack()
+
+    def lease_factory(receipt: PdfExportHistoryRetryReceipt) -> _RetryLease:
+        lease = _RetryLease(receipt)
+        lease.mark_error = RuntimeError("private marker publication detail")
+        return lease
+
+    stack.retries.lease_factory = lease_factory
+
+    outcome = _export(stack)
+
+    assert outcome.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert stack.retries.lease is not None
+    assert stack.retries.lease.mark_calls == 1
+    assert stack.retries.lease.resolve_calls == 0
+    assert stack.retries.discard_prepared_calls == 1
+    assert stack.retries.lease.close_calls == 1
+
+
+def test_committed_marker_and_history_failure_preserve_prepared_receipt() -> None:
+    stack = _stack()
+    stack.history.mode = "closed_error"
+
+    def lease_factory(receipt: PdfExportHistoryRetryReceipt) -> _RetryLease:
+        lease = _RetryLease(receipt)
+        lease.mark_result = False
+        return lease
+
+    stack.retries.lease_factory = lease_factory
+
+    outcome = _export(stack)
+
+    assert outcome.status is PdfExportOutcomeStatus.COMMITTED_HISTORY_PENDING
+    assert stack.retries.lease is not None
+    assert stack.retries.lease.mark_calls == 1
+    assert stack.retries.lease.resolve_calls == 0
+    assert stack.retries.lease.discard_calls == 0
+    assert stack.retries.discard_prepared_calls == 0
+    assert stack.retries.lease.close_calls == 1
 
 
 @pytest.mark.parametrize(
@@ -645,6 +839,45 @@ def test_destination_failure_closes_candidate_then_sources_and_never_records_his
     assert raised.value.code is expected
     assert stack.events[-3:] == ["destination.commit", "candidate.exit", "source.exit"]
     assert stack.clock.calls == 1
+    assert stack.history.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected", "discarded"),
+    (
+        (
+            PdfExportError(PdfExportErrorCode.DESTINATION_FAILED, "export.test"),
+            PdfExportErrorCode.DESTINATION_FAILED,
+            True,
+        ),
+        (
+            PdfExportError(
+                PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN,
+                "export.test",
+            ),
+            PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN,
+            False,
+        ),
+        (RuntimeError("private destination detail"), PdfExportErrorCode.INTERNAL_ERROR, False),
+        (KeyboardInterrupt(), PdfExportErrorCode.INTERNAL_ERROR, False),
+    ),
+)
+def test_destination_commit_certainty_controls_prepared_receipt_cleanup(
+    failure: BaseException,
+    expected: PdfExportErrorCode,
+    discarded: bool,
+) -> None:
+    stack = _stack()
+    stack.destination.error = failure
+
+    with pytest.raises(PdfExportError) as raised:
+        _export(stack)
+
+    assert raised.value.code is expected
+    assert stack.retries.lease is not None
+    assert stack.retries.lease.discard_calls == (1 if discarded else 0)
+    assert stack.retries.lease.mark_calls == 0
+    assert stack.retries.lease.close_calls == 1
     assert stack.history.calls == 0
 
 
@@ -806,6 +1039,7 @@ def test_invalid_probe_and_identifier_dependencies_are_sanitized() -> None:
         stack.broker,
         stack.destination,
         stack.history,
+        stack.retries,
         clock=stack.clock,
         id_factory=lambda: CASE_ID,
     )
@@ -842,6 +1076,7 @@ def test_existing_manifest_export_id_is_retried_before_worker_or_destination() -
         stack.broker,
         stack.destination,
         stack.history,
+        stack.retries,
         clock=stack.clock,
         id_factory=lambda: next(identifiers),
     )
@@ -906,6 +1141,7 @@ def test_durable_orphan_history_id_is_retried_before_destination_commit() -> Non
         stack.broker,
         stack.destination,
         stack.history,
+        stack.retries,
         clock=stack.clock,
         id_factory=lambda: next(identifiers),
     )
@@ -916,6 +1152,73 @@ def test_durable_orphan_history_id_is_retried_before_destination_commit() -> Non
     assert stack.history.record is not None
     assert stack.history.record.export_id == NEXT_EXPORT_ID
     assert stack.events.index("history.ids") < stack.events.index("source.borrow")
+
+
+@pytest.mark.parametrize("phase", ("prepared", "committed"))
+def test_retry_journal_id_is_reserved_before_destination_commit(phase: str) -> None:
+    stack = _stack()
+    receipt = _retry_receipt()
+    stack.retries.inventory_result = PdfExportRetryInventory(
+        prepared=(receipt,) if phase == "prepared" else (),
+        committed=(receipt,) if phase == "committed" else (),
+    )
+    identifiers = iter((EXPORT_ID, NEXT_EXPORT_ID))
+    stack.service = PdfExportService(
+        stack.manifests,
+        stack.sources,
+        stack.broker,
+        stack.destination,
+        stack.history,
+        stack.retries,
+        clock=stack.clock,
+        id_factory=lambda: next(identifiers),
+    )
+
+    outcome = _export(stack)
+
+    assert outcome.export_id == NEXT_EXPORT_ID
+    assert stack.history.record is not None
+    assert stack.history.record.export_id == NEXT_EXPORT_ID
+
+
+def test_invalid_retry_journal_blocks_new_export_before_worker() -> None:
+    stack = _stack()
+    stack.retries.inventory_result = PdfExportRetryInventory(
+        invalid_export_ids=(EXPORT_ID,),
+        invalid_entries=1,
+    )
+
+    with pytest.raises(PdfExportError) as raised:
+        _export(stack)
+
+    assert raised.value.code is PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED
+    assert stack.sources.calls == 0
+    assert stack.destination.calls == 0
+    assert stack.history.calls == 0
+
+
+@pytest.mark.parametrize(
+    "result",
+    (
+        PdfExportHistoryError(
+            PdfExportHistoryErrorCode.STORAGE_FAILED,
+            "export_retry.test",
+        ),
+        RuntimeError("private retry inventory detail"),
+        object(),
+    ),
+)
+def test_retry_inventory_failure_is_sanitized_before_worker(result: object) -> None:
+    stack = _stack()
+    stack.retries.inventory_result = result
+
+    with pytest.raises(PdfExportError) as raised:
+        _export(stack)
+
+    assert raised.value.code is PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED
+    assert "private retry" not in str(raised.value)
+    assert stack.sources.calls == 0
+    assert stack.destination.calls == 0
 
 
 @pytest.mark.parametrize(
@@ -969,6 +1272,7 @@ def test_exhausted_existing_export_id_fails_before_worker_or_destination() -> No
         stack.broker,
         stack.destination,
         stack.history,
+        stack.retries,
         clock=stack.clock,
         id_factory=lambda: EXPORT_ID,
     )

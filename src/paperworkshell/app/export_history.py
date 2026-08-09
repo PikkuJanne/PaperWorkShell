@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import hmac
 from datetime import UTC, datetime, timedelta
-from typing import Final, cast
+from typing import Final, Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from paperworkshell.domain.manifest_repository import (
@@ -32,6 +33,11 @@ from paperworkshell.domain.pdf_export_history import (
     decode_pdf_export_history_record,
     reject_pdf_export_history,
 )
+from paperworkshell.domain.pdf_export_retry import (
+    PdfExportRetryInventory,
+    PdfExportRetryRepository,
+)
+from paperworkshell.domain.recovery import ExportHistoryRecoveryResult
 
 _MAX_MANIFEST_LINK_ATTEMPTS: Final = 3
 
@@ -139,6 +145,48 @@ class PdfExportHistoryService:
         self._require_outcome_correlation(record, outcome)
         self._require_receipt_correlation(case_id, record, receipt)
         return self._append_and_link(case_id, record, outcome)
+
+    def has_commit_proof(
+        self,
+        case_id: UUID,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> bool:
+        """Return whether exact durable case state independently proves publication."""
+
+        if (
+            type(case_id) is not UUID
+            or case_id.version != 4
+            or type(receipt) is not PdfExportHistoryRetryReceipt
+            or receipt.case_id != case_id
+        ):
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.commit_proof",
+            )
+        record = decode_pdf_export_history_record(receipt.record_payload)
+        self._require_receipt_correlation(case_id, record, receipt)
+        snapshot = self._history.load(case_id)
+        if type(snapshot) is not PdfExportHistorySnapshot:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.DOCUMENT_INVALID,
+                "export_history.commit_proof_history",
+            )
+        for current in snapshot.document.records:
+            if current.export_id != record.export_id:
+                continue
+            if hmac.compare_digest(current.sha256, record.sha256):
+                return True
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.RECORD_MISMATCH,
+                "export_history.commit_proof_history",
+            )
+        loaded = self._manifests.load(case_id)
+        if type(loaded) is not ManifestLoadResult or loaded.snapshot.case_id != case_id:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MANIFEST_LINK_FAILED,
+                "export_history.commit_proof_manifest",
+            )
+        return _manifest_has_commit_proof(loaded, record)
 
     def _append_and_link(
         self,
@@ -279,6 +327,161 @@ class PdfExportHistoryService:
                 PdfExportHistoryErrorCode.RECORD_MISMATCH,
                 "export_history.receipt_correlation",
             )
+
+
+@runtime_checkable
+class PdfExportHistoryRecoveryPort(Protocol):
+    """History-only operations used during restart recovery."""
+
+    def has_commit_proof(
+        self,
+        case_id: UUID,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> bool: ...
+
+    def retry_record_and_link(
+        self,
+        case_id: UUID,
+        receipt: PdfExportHistoryRetryReceipt,
+    ) -> PdfExportOutcome: ...
+
+
+class PdfExportRetryRecoveryService:
+    """Settle replayable receipts without invoking worker or destination code."""
+
+    __slots__ = ("_history", "_retries")
+
+    def __init__(
+        self,
+        history: PdfExportHistoryRecoveryPort,
+        retries: PdfExportRetryRepository,
+    ) -> None:
+        if not isinstance(history, PdfExportHistoryRecoveryPort) or not isinstance(
+            retries,
+            PdfExportRetryRepository,
+        ):
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_retry.recovery_service",
+            )
+        self._history = history
+        self._retries = retries
+
+    def recover_case(self, case_id: UUID) -> ExportHistoryRecoveryResult:
+        """Repair exact committed receipts; retain ambiguous preparations."""
+
+        if type(case_id) is not UUID or case_id.version != 4:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_retry.recovery_case",
+            )
+        try:
+            inventory = self._retries.inventory(case_id)
+        except Exception:
+            return ExportHistoryRecoveryResult(invalid_entries=1)
+        if type(inventory) is not PdfExportRetryInventory:
+            return ExportHistoryRecoveryResult(invalid_entries=1)
+        if inventory.invalid_entries:
+            return ExportHistoryRecoveryResult(invalid_entries=inventory.invalid_entries)
+
+        repaired = 0
+        pending = 0
+        ambiguous = 0
+        for receipt in inventory.committed:
+            if self._retry_and_clear(case_id, receipt, committed=True):
+                repaired += 1
+            else:
+                pending += 1
+        for receipt in inventory.prepared:
+            try:
+                proven = self._history.has_commit_proof(case_id, receipt)
+            except Exception:
+                pending += 1
+                continue
+            if not proven:
+                ambiguous += 1
+                continue
+            if self._retry_and_clear(case_id, receipt, committed=False):
+                repaired += 1
+            else:
+                pending += 1
+        return ExportHistoryRecoveryResult(
+            repaired_entries=repaired,
+            pending_entries=pending,
+            ambiguous_entries=ambiguous,
+        )
+
+    def _retry_and_clear(
+        self,
+        case_id: UUID,
+        receipt: PdfExportHistoryRetryReceipt,
+        *,
+        committed: bool,
+    ) -> bool:
+        try:
+            outcome = self._history.retry_record_and_link(case_id, receipt)
+            if (
+                type(outcome) is not PdfExportOutcome
+                or outcome.status is not PdfExportOutcomeStatus.COMMITTED_RECORDED
+                or outcome.export_id != receipt.export_id
+                or outcome.history_retry != receipt
+                or not outcome.destination_reopened
+            ):
+                return False
+            if committed:
+                return self._retries.discard_committed(
+                    case_id,
+                    receipt.export_id,
+                    receipt.record_sha256,
+                )
+            return self._retries.discard_prepared(
+                case_id,
+                receipt.export_id,
+                receipt.record_sha256,
+            )
+        except Exception:
+            return False
+
+
+def _manifest_has_commit_proof(
+    loaded: ManifestLoadResult,
+    record: PdfExportHistoryRecord,
+) -> bool:
+    document = loaded.snapshot.document
+    history = document.get("export_history")
+    if type(history) is not dict or set(history) != {"storage_name", "entries"}:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MANIFEST_LINK_FAILED,
+            "export_history.commit_proof_shape",
+        )
+    if history.get("storage_name") != "export-history.json":
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MANIFEST_LINK_FAILED,
+            "export_history.commit_proof_storage",
+        )
+    entries = history.get("entries")
+    if type(entries) is not list:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MANIFEST_LINK_FAILED,
+            "export_history.commit_proof_entries",
+        )
+    reference = record.manifest_reference
+    for value in entries:
+        if type(value) is not dict:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MANIFEST_LINK_FAILED,
+                "export_history.commit_proof_entry",
+            )
+        entry = cast(dict[str, object], value)
+        if entry.get("export_id") != str(record.export_id):
+            continue
+        if entry == reference:
+            return True
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.RECORD_MISMATCH,
+            "export_history.commit_proof_conflict",
+        )
+    return False
 
 
 def _manifest_candidate(

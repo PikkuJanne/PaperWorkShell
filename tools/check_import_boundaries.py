@@ -180,6 +180,14 @@ def _target_violation(
                 f"domain code must not import {target!r}",
             )
 
+        if owner == "diagnostics" and target_layer not in (None, "diagnostics"):
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_DIAGNOSTICS_OUTBOUND",
+                f"diagnostics code must not import {target!r}",
+            )
+
         if owner == "app" and target_layer in ("ui", "desktop"):
             return BoundaryViolation(
                 path,

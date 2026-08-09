@@ -106,7 +106,7 @@ def test_committed_exact_result_forwards_every_trusted_argument(
         ),
         (
             ExportDestinationResult(ExportCommitState.UNKNOWN, recovered_outcome=True),
-            PdfExportErrorCode.DESTINATION_FAILED,
+            PdfExportErrorCode.DESTINATION_COMMIT_UNCERTAIN,
         ),
         (
             ExportDestinationResult(ExportCommitState.COMMITTED, len(PAYLOAD) + 1, DIGEST),

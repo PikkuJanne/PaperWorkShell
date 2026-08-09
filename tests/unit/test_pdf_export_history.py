@@ -613,6 +613,59 @@ def test_exact_receipt_retries_failed_append_after_manifest_changes() -> None:
     assert manifests.snapshot.revision == 9
 
 
+def test_exact_history_or_manifest_reference_proves_a_prepared_commit() -> None:
+    record = _record()
+    receipt = _outcome().history_retry
+
+    history_events: list[str] = []
+    history = _MemoryHistory(history_events)
+    history.document = PdfExportHistoryDocument((record,))
+    history_proof = PdfExportHistoryService(
+        history,
+        _MemoryManifests(history_events),
+    ).has_commit_proof(CASE_ID, receipt)
+    assert history_proof
+    assert history_events == ["history.load"]
+
+    manifest_document = _manifest_document()
+    cast(dict[str, object], manifest_document["export_history"])["entries"] = [
+        record.manifest_reference
+    ]
+    manifest_events: list[str] = []
+    manifest_proof = PdfExportHistoryService(
+        _MemoryHistory(manifest_events),
+        _MemoryManifests(manifest_events, manifest_document),
+    ).has_commit_proof(CASE_ID, receipt)
+    assert manifest_proof
+    assert manifest_events == ["history.load", "manifest.load"]
+
+
+def test_prepared_commit_proof_is_absent_or_conflicting_without_mutation() -> None:
+    events: list[str] = []
+    service = PdfExportHistoryService(_MemoryHistory(events), _MemoryManifests(events))
+
+    assert not service.has_commit_proof(CASE_ID, _outcome().history_retry)
+    assert events == ["history.load", "manifest.load"]
+
+    conflict_document = _manifest_document()
+    cast(dict[str, object], conflict_document["export_history"])["entries"] = [
+        {
+            "export_id": str(EXPORT_ID),
+            "record_version": 1,
+            "sha256": "f" * 64,
+        }
+    ]
+    conflict_events: list[str] = []
+    with pytest.raises(PdfExportHistoryError) as raised:
+        PdfExportHistoryService(
+            _MemoryHistory(conflict_events),
+            _MemoryManifests(conflict_events, conflict_document),
+        ).has_commit_proof(CASE_ID, _outcome().history_retry)
+
+    assert raised.value.code is PdfExportHistoryErrorCode.RECORD_MISMATCH
+    assert conflict_events == ["history.load", "manifest.load"]
+
+
 def test_retry_receipt_rejects_nonrecord_payload_before_mutation() -> None:
     outcome = _outcome()
     payload = b'{"destination_path":"C:/private/final.pdf"}\n'
