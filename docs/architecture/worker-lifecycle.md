@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection and PWS-0108 thumbnail extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, and PWS-0112 export extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0112
 - Decisions: PWS-D012, PWS-D013, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -16,15 +16,19 @@ standard-library-only and are injected behind process/transport interfaces for d
 tests. After bootstrap isolation succeeds, host composition may load the admitted worker-side PDF
 adapter from the exact staged runtime; third-party types still do not enter the core contracts.
 
-The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, and `pdf.thumbnail`
-version 1. The no-op still proves process/protocol lifecycle without document authority. PWS-0105
-proves exact prepared-source read-handle transfer, a write-only bounded result pipe, worker-private
-copy verification, pikepdf/libqpdf structural inspection, and one-shot worker revocation. PWS-0108
-adds one committed-source read handle and one fixed-size writable volatile output section for
-a bounded one-page render. Neither operation grants a case/directory path, persistent cache writer,
-or general filesystem access. See
+The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
+version 1, and `pdf.export` version 1. The no-op still proves process/protocol lifecycle without
+document authority. PWS-0105 proves exact prepared-source read-handle transfer, a write-only
+bounded result pipe, worker-private copy verification, pikepdf/libqpdf structural inspection, and
+one-shot worker revocation. PWS-0108 adds one committed-source read handle and one fixed-size
+writable volatile output section for a bounded one-page render. PWS-0112 adds a manifest-bound
+batch of committed-source read handles, one read-only plan section, one bounded writable candidate
+section, and one write-only report pipe for deterministic assembly and verification. No PDF
+operation grants a case/directory path, persistent cache or destination writer, or general
+filesystem access. See
 the [PDF structural-inspection contract](pdf-structural-inspection.md) and
-[bounded PDF-thumbnail service contract](pdf-thumbnails.md).
+[bounded PDF-thumbnail service contract](pdf-thumbnails.md), plus the
+[deterministic verified PDF-export contract](pdf-export.md).
 
 ## Component ownership
 
@@ -42,10 +46,13 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md) and
 | `worker.pdf_operation` | Adopt one brokered source, verify/copy/hash it, invoke the PDF adapter, and write one correlated result | Host-side only; closes the case handle before native parsing |
 | `worker.pdf_thumbnail_broker` | Resolve one committed page, authenticate cache hits, broker exact source/output-section handles, terminate one-shot generation, validate volatile output, and persist/publish through storage | Structural ports only; never treats a key, UUID, or path as authority |
 | `worker.pdf_thumbnail_operation` | Adopt one source and fixed-size output-section handle, enforce its exact logical limit, verify/copy/hash source, render one page, and write one fixed correlated artifact | Host-side only; receives no persistent cache-file or directory capability |
+| `worker.pdf_export_broker` | Authenticate one manifest-bound source batch, broker exact plan/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; never receives or publishes a destination path |
+| `worker.pdf_export_operation` | Adopt exact source/plan/output/report handles, copy and rehash sources in one private operation directory, assemble and verify, and write one correlated report | Host-side only; receives no case, manifest, history, or destination authority |
 | `worker._windows_broker` | Non-inheritable bounded anonymous result pipe and fixed-size pagefile-backed output section | GUI-process-side private primitives; no path or document value |
 | `storage.prepared_source_registry` | Register/revoke one sealed pending source and lend an exact independently positioned read handle | Storage owns source identity and publication; no worker-host import |
 | `storage.source_ingest` / `storage.thumbnail_cache` | Lend one manifest-bound committed PDF handle; authenticate, stage, validate, publish, invalidate, and clean disposable thumbnails | Storage owns handle identity and cache publication; no worker implementation import |
 | `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
+| `pdf.export_adapter` | Assemble, strictly reopen, qpdf-check, and PDFium-compare one worker-private candidate | Third-party objects, native output, and paths remain inside the restricted worker |
 
 Package initializers remain passive. Application/UI code may import explicit `worker.client` and
 `worker.protocol` modules but cannot import the host, Windows launcher implementation, operation
@@ -312,6 +319,27 @@ rules:
 
 No later task may substitute a case path, general directory capability, or broad AppContainer ACL.
 
+### PWS-0112 verified PDF-export grant
+
+`pdf.export` is another one-shot consuming operation. The broker authenticates a manifest-bound
+batch of retained committed-source handles and transfers only source read-data/read-attributes/
+synchronize handles, one read-only bounded plan section, one write-only bounded candidate section,
+and one write-only bounded report pipe. The worker receives neither case nor destination paths.
+
+The worker copies and rehashes each source into generation-private temporary storage and closes all
+case-source handles before invoking pikepdf, qpdf, or PDFium. It assembles and verifies the private
+candidate, copies only the exact verified byte count into the output section, and writes one closed
+correlated report. After confirmed whole-tree termination, the broker revalidates every retained
+source before it reads either report or output. Only then can the trusted desktop destination
+adapter stream the candidate into an authenticated, no-replace external commit.
+
+The standalone qpdf executable is a fixed launcher resource, never a PATH-discovered command. An
+explicit packaged/test executable adds only its exact absolute path to the constructed worker
+environment. The launcher proves AppContainer read/execute access across the bounded non-reparse
+qpdf directory closure, including adjacent DLLs/resources, without weakening the existing runtime
+and code-root grant lifecycle. The worker still uses a fixed argument vector and no shell. See the
+[deterministic verified PDF-export contract](pdf-export.md).
+
 ## Required verification
 
 PWS-0107 is complete only with real supported-Windows evidence for:
@@ -376,6 +404,5 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 
 - PWS-0106: renderer operations behind a replaceable worker adapter.
 - PWS-0109: authoritative manifest/journal persistence and recovery.
-- PWS-0112: export staging handle brokerage, verification, and destination publication.
 - PWS-0113: startup recovery, orphan cleanup, routine logging, and diagnostics baseline.
 - PWS-0204: external OCR descendant/resource policy and cancellation integration.

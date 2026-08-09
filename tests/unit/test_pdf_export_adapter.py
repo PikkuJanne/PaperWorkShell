@@ -432,6 +432,40 @@ def test_rotation_mismatch_blocks_candidate(
     assert not output.exists()
 
 
+def test_encrypted_candidate_blocks_export_and_is_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, paths = _single_plan(PDF_FIXTURES / "born-digital.pdf")
+    output = tmp_path / "candidate.pdf"
+    original = export_module._verify_candidate_structure
+
+    def encrypt(path: Path, **kwargs: object) -> None:
+        replacement = path.with_name("encrypted-candidate.pdf")
+        with path.open("rb") as stream:
+            with pikepdf.Pdf.open(
+                stream,
+                password="",
+                attempt_recovery=False,
+                suppress_warnings=True,
+                inherit_page_attributes=False,
+            ) as document:
+                document.save(
+                    replacement,
+                    encryption=pikepdf.Encryption(owner="owner", user="user", R=6),
+                )
+        os.replace(replacement, path)
+        original(path, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(export_module, "_verify_candidate_structure", encrypt)
+
+    with pytest.raises(PdfExportError) as caught:
+        _run(plan, paths, output)
+
+    assert caught.value.code is PdfExportErrorCode.VERIFICATION_ENCRYPTION_FAILED
+    assert not output.exists()
+
+
 def test_render_failure_blocks_candidate(tmp_path: Path) -> None:
     plan, paths = _single_plan(PDF_FIXTURES / "born-digital.pdf")
     output = tmp_path / "candidate.pdf"

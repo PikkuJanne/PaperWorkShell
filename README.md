@@ -157,6 +157,13 @@ RPC/handle correlation, atomic publication, cancellation/quarantine, cleanup, pr
 privacy contracts are documented in
 [`docs/architecture/pdf-thumbnails.md`](docs/architecture/pdf-thumbnails.md).
 
+The deterministic PDF-export service turns validated manifest page order and rotation intent into
+a new derivative inside the restricted worker, strictly reopens it, runs pikepdf/qpdf structure
+checks, compares every planned page with a PDFium render, then publishes only the verified bytes
+through an authenticated no-replace destination commit. Its exact claims, handle boundary,
+resource limits, post-commit history state, and failure semantics are documented in
+[`docs/architecture/pdf-export.md`](docs/architecture/pdf-export.md).
+
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in
 [`docs/schemas/case-manifest-v1.md`](docs/schemas/case-manifest-v1.md). The authoritative manifest
@@ -177,10 +184,11 @@ reject unknown versions, unregistered operations, path-bearing messages, and raw
 The PWS-0107 Windows worker boundary launches a fresh zero-capability AppContainer inside a retained
 Job Object, inherits only two RPC handles plus a fixed 92-byte bootstrap handle, constructs a
 minimal per-launch environment, and supports bounded negotiation, progress, cancellation, timeout,
-shutdown, forced tree termination, and fresh restart. Registered document operations receive only
-their exact reduced-right source/result-pipe or source/bounded-output-section handles after ready;
-thumbnail workers receive no persistent cache-file handle, and no worker receives a case or
-directory path. The implementation contract and live
+shutdown, forced tree termination, and fresh restart. Document operations receive only the exact
+reduced-right handles they need after ready: prepared sources plus, as applicable, a read-only plan
+section, bounded writable output section, and write-only result pipe. Thumbnail and export workers
+receive no persistent cache/destination writer, and no worker receives a case or directory path.
+The implementation contract and live
 egress/job/environment/filesystem evidence requirements are documented in
 [`docs/architecture/worker-lifecycle.md`](docs/architecture/worker-lifecycle.md), with the operating
 system decision in

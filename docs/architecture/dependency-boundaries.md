@@ -4,7 +4,8 @@
 - Task: PWS-0002
 - Extensions: PWS-0102 local case lifecycle; PWS-0104 immutable ingest; PWS-0105 PDF
   structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle;
-  PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations
+  PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
+  PWS-0112 deterministic verified PDF export
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D036, PWS-D038
 
 ## Purpose
@@ -28,15 +29,15 @@ worker host -> domain
 |---|---|
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
-| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; thumbnail integration is documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md) |
-| `pdf` | PDF interfaces and worker-side pikepdf/qpdf implementations; implemented and in-progress contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md) and [PDF page-rendering contract](pdf-page-rendering.md) |
+| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md) and [deterministic verified PDF-export contract](pdf-export.md) |
+| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), and [deterministic verified PDF-export contract](pdf-export.md) |
 | `imaging` | Image inspection and transformation interfaces/implementations |
 | `ocr` | OCR interfaces and worker-side OCRmyPDF/Tesseract implementations |
 | `overlays` | Normalized visual-overlay intent and rendering boundaries |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
-| `export` | Output planning, verification, and derivative commit behavior |
+| `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
 | `templates` | Declarative, versioned template loading and validation |
-| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source leases, immutable ingest/integrity, disposable thumbnail caching, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), and [Bounded PDF-thumbnail contract](pdf-thumbnails.md) |
+| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), and [Deterministic verified PDF-export contract](pdf-export.md) |
 | `diagnostics` | Sanitized logging and previewable diagnostic data |
 
 ## Enforced import rules
@@ -64,7 +65,12 @@ Imports inside `TYPE_CHECKING`, conditional blocks, or exception handlers still 
 
 The checker enforces dependency ownership, not public API design or process isolation. Later tasks add typed protocols, a distinct GUI-safe worker client, a worker-host composition root, versioned RPC, concrete adapters, and operating-system restrictions. Desktop composition will wire UI, application services, storage, and the worker client; worker composition will wire the host and document adapters. Package initializers must not bridge those composition roots.
 
-The passive `export` namespace is not a low-level document adapter, but no `export` submodule is currently GUI-safe. Application code may eventually use pure export-plan types and interfaces, while writing, reopening, rendering, and verification remain worker-side behavior. PWS-0112 must name safe planning modules and extend the executable policy before adding them; PWS-0002 does not guess that future module split.
+PWS-0112 keeps pure, path-free plan/report/outcome types in `domain.pdf_export` and use-case ports in
+`app.pdf_export`. Native assembly, strict reopen, qpdf inspection, and PDFium rendering stay in the
+restricted worker's `pdf` adapter. The `export.pdf_destination` module is a trusted desktop-side
+adapter over authenticated `storage.export_destination`; it sees only the user-selected destination
+and the already verified bounded candidate, never a third-party PDF object. The complete split is
+specified in the [deterministic verified PDF-export contract](pdf-export.md).
 
 PWS-0101 makes `storage` the first namespace with concrete product modules. Its Windows adapter is
 private to storage; callers use the fixed workspace, permission, quota, and sanitized-error
