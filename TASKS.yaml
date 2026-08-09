@@ -1185,7 +1185,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0105
@@ -1223,17 +1223,30 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-09'
+    revision: "492f8f9"
+    commands:
+    - "uv run --no-sync python tools/dev.py test-unit - passed; 1795 unit tests covered deterministic planning/assembly, strict reopen, qpdf/PDFium verification, destination publication, history settlement/retry, malformed output, encrypted output, and cleanup failures"
+    - "uv run --no-sync python tools/dev.py test-integration - passed; 267 tests with 2 disclosed Windows link-capability skips, including live restricted-worker PDF export with real pikepdf/libqpdf, qpdf, and PDFium"
+    - "uv run --no-sync python tools/dev.py test-security - passed; 228 tests with 5 disclosed Windows capability/privilege skips; export containment, limits, no-egress behavior, source preservation, and sanitized failures passed"
+    - "uv run --no-sync python tools/dev.py test-accessibility - passed; 2 baseline accessibility tests"
+    - "uv run --no-sync python tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed; 224 files formatted/linted/typed and 12 layers across 83 source files remained valid"
+    - "uv run --no-sync python tools/dev.py validate-dependencies; validate-docs; validate-schemas; validate-task-graph - passed; locked dependency inventory, documentation references, 8 schema families, and the 80-task/238-edge DAG validated"
+    - "uv run --no-sync python tools/dev.py validate-fixtures after the approved tip rewrite - passed; 42 deterministic fixtures, 15 renderer references, 1075 historical blobs, 392 index blobs, and 416 working files"
+    - "uv run --no-sync python tools/dev.py scan-secrets after committed documentation/evidence - passed; 1075 historical blobs, 161 commit/tag objects, 1104 historical path/blob pairs, 392 index blobs, and 416 tracked files"
+    notes:
+    - The pure path-free plan preserves validated manifest order and accumulated rotations, rejects unsupported crop/overlay intent, and binds deterministic semantic fingerprints to exact immutable source facts and the closed export profile.
+    - A one-shot zero-capability worker receives only reduced source, plan, bounded output, and report handles; it copies and rehashes sources privately, assembles with pikepdf, strictly reopens, runs fixed qpdf checks, compares every page with PDFium, and returns only a correlated typed report after complete job-tree termination and source revalidation.
+    - The trusted desktop adapter authenticates a local destination, stages and readback-verifies bounded bytes, performs a same-directory no-replace rename, and verifies the exact final-name identity/digest without overwriting an original or prior export; post-commit uncertainty is preserved rather than mislabeled.
+    - Path-free canonical history receipts are prepared before destination commit, durable history identifiers are reserved before export, selected-case retries are independently bound, and history-only failures never recreate or relabel the verified derivative; durable pending-receipt recovery across application restart belongs to PWS-0113.
+    - Independent cleanup, application-boundary, documentation, and completion audits found no remaining P0-P2 issue after the encrypted-candidate regression and final wording corrections.
 - id: PWS-0113
   milestone: M1
   title: Implement crash recovery and sanitized diagnostic baseline
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0107
