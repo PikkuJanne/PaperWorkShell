@@ -40,6 +40,7 @@ from paperworkshell.worker.pdf_export_buffers import (
 )
 from paperworkshell.worker.pdf_export_operation import (
     WindowsPdfExportOperationAdapter,
+    _materialize_worker_private_temp,
     _worker_private_operation_temp,
     build_pdf_export_operation_handler,
 )
@@ -554,6 +555,138 @@ def test_build_function_composes_the_fixed_export_handler() -> None:
 
     assert type(handler) is PdfExportOperationHandler
     assert type(handler.adapter) is WindowsPdfExportOperationAdapter
+
+
+def test_worker_private_temp_accepts_an_identity_equivalent_local_path_spelling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_root = tmp_path / "Local"
+    alias_root = tmp_path / "LOCAL~1"
+    local_root.mkdir()
+    alias_root.mkdir()
+    temp_root = alias_root / "Temp"
+    local_information = os.lstat(local_root)
+    alias_information = os.lstat(alias_root)
+    equivalent_parent_identities = {
+        (local_information.st_dev, local_information.st_ino),
+        (alias_information.st_dev, alias_information.st_ino),
+    }
+    real_samestat = os.path.samestat
+
+    def samestat(first: os.stat_result, second: os.stat_result) -> bool:
+        identities = {
+            (first.st_dev, first.st_ino),
+            (second.st_dev, second.st_ino),
+        }
+        if identities == equivalent_parent_identities:
+            return True
+        return real_samestat(first, second)
+
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+    monkeypatch.setattr(os.path, "samestat", samestat)
+
+    assert _materialize_worker_private_temp() == temp_root
+    assert temp_root.is_dir()
+
+
+def test_worker_private_temp_avoids_identity_queries_for_exact_launch_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_root = tmp_path / "Local"
+    local_root.mkdir()
+    temp_root = local_root / "Temp"
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+
+    def denied_samestat(_first: object, _second: object) -> bool:
+        raise PermissionError
+
+    monkeypatch.setattr(os.path, "samestat", denied_samestat)
+
+    assert _materialize_worker_private_temp() == temp_root
+    assert temp_root.is_dir()
+
+
+def test_worker_private_temp_rejects_a_different_parent_before_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_root = tmp_path / "Local"
+    unrelated_root = tmp_path / "unrelated"
+    local_root.mkdir()
+    unrelated_root.mkdir()
+    temp_root = unrelated_root / "Temp"
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+
+    with pytest.raises(PdfExportError) as caught:
+        _materialize_worker_private_temp()
+
+    assert caught.value.code is PdfExportErrorCode.INTERNAL_ERROR
+    assert caught.value.context == "export.temp_scope"
+    assert not temp_root.exists()
+
+
+def test_worker_private_temp_rejects_an_alias_parent_identity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_root = tmp_path / "Local"
+    alias_root = tmp_path / "LOCAL~1"
+    local_root.mkdir()
+    alias_root.mkdir()
+    temp_root = alias_root / "Temp"
+    local_information = os.lstat(local_root)
+    alias_information = os.lstat(alias_root)
+    equivalent_parent_identities = {
+        (local_information.st_dev, local_information.st_ino),
+        (alias_information.st_dev, alias_information.st_ino),
+    }
+    real_lstat = os.lstat
+    real_samestat = os.path.samestat
+    alias_checks = 0
+
+    def changing_lstat(candidate: os.PathLike[str] | str) -> os.stat_result:
+        nonlocal alias_checks
+        information = real_lstat(candidate)
+        if Path(candidate) != alias_root:
+            return information
+        alias_checks += 1
+        if alias_checks <= 2:
+            return information
+        changed = list(information)
+        changed[1] = information.st_ino + 1
+        return os.stat_result(
+            changed,
+            {"st_file_attributes": information.st_file_attributes},
+        )
+
+    def samestat(first: os.stat_result, second: os.stat_result) -> bool:
+        identities = {
+            (first.st_dev, first.st_ino),
+            (second.st_dev, second.st_ino),
+        }
+        if identities == equivalent_parent_identities:
+            return True
+        return real_samestat(first, second)
+
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+    monkeypatch.setattr(os, "lstat", changing_lstat)
+    monkeypatch.setattr(os.path, "samestat", samestat)
+
+    with pytest.raises(PdfExportError) as caught:
+        _materialize_worker_private_temp()
+
+    assert caught.value.code is PdfExportErrorCode.INTERNAL_ERROR
+    assert caught.value.context == "export.temp_identity"
 
 
 def test_worker_private_operation_temp_removes_nested_content(tmp_path: Path) -> None:

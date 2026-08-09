@@ -804,25 +804,67 @@ def _materialize_worker_private_temp() -> Path:
             not local_root.is_absolute()
             or not temp_root.is_absolute()
             or not tmp_root.is_absolute()
-            or os.path.normcase(os.path.abspath(temp_root))
-            != os.path.normcase(os.path.abspath(tmp_root))
-            or os.path.normcase(os.path.abspath(temp_root.parent))
-            != os.path.normcase(os.path.abspath(local_root))
             or temp_root.name.casefold() != "temp"
-            or os.fspath(local_root).startswith(("\\\\", "\\\\?\\", "\\\\.\\", "\\??\\"))
+            or tmp_root.name.casefold() != "temp"
+            or any(
+                os.fspath(candidate).startswith(("\\\\", "\\\\?\\", "\\\\.\\", "\\??\\"))
+                for candidate in (local_root, temp_root, tmp_root)
+            )
         ):
             reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_scope")
-        temp_root.mkdir(parents=True, exist_ok=True)
-        for candidate in (local_root, temp_root):
-            information = os.lstat(candidate)
-            attributes = int(getattr(information, "st_file_attributes", 0))
-            if not stat.S_ISDIR(information.st_mode) or attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+        parent_spelling_matches = _same_absolute_spelling(
+            temp_root.parent, local_root
+        ) and _same_absolute_spelling(tmp_root.parent, local_root)
+        parent_before: tuple[os.stat_result, os.stat_result, os.stat_result] | None = None
+        if not parent_spelling_matches:
+            parent_before = (
+                _lstat_private_temp_directory(local_root),
+                _lstat_private_temp_directory(temp_root.parent),
+                _lstat_private_temp_directory(tmp_root.parent),
+            )
+            if not (
+                os.path.samestat(parent_before[0], parent_before[1])
+                and os.path.samestat(parent_before[0], parent_before[2])
+            ):
+                reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_scope")
+        temp_root.mkdir(parents=parent_spelling_matches, exist_ok=True)
+        local_after = _lstat_private_temp_directory(local_root)
+        if parent_before is not None:
+            temp_parent_after = _lstat_private_temp_directory(temp_root.parent)
+            tmp_parent_after = _lstat_private_temp_directory(tmp_root.parent)
+            if not (
+                os.path.samestat(parent_before[0], local_after)
+                and os.path.samestat(parent_before[1], temp_parent_after)
+                and os.path.samestat(parent_before[2], tmp_parent_after)
+                and os.path.samestat(local_after, temp_parent_after)
+                and os.path.samestat(local_after, tmp_parent_after)
+            ):
                 reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
+        temp_after = _lstat_private_temp_directory(temp_root)
+        tmp_after = _lstat_private_temp_directory(tmp_root)
+        if not (
+            _same_absolute_spelling(temp_root, tmp_root) or os.path.samestat(temp_after, tmp_after)
+        ):
+            reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_scope")
         return temp_root
     except PdfExportError:
         raise
     except OSError, TypeError, ValueError:
         reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_unavailable")
+
+
+def _same_absolute_spelling(first: Path, second: Path) -> bool:
+    """Return whether two absolute launch paths have the same conservative spelling."""
+
+    return os.path.abspath(first) == os.path.abspath(second)
+
+
+def _lstat_private_temp_directory(candidate: Path) -> os.stat_result:
+    information = os.lstat(candidate)
+    attributes = int(getattr(information, "st_file_attributes", 0))
+    if not stat.S_ISDIR(information.st_mode) or attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+        reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.temp_identity")
+    return information
 
 
 @contextmanager

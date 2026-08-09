@@ -359,10 +359,10 @@ def _run_probe() -> dict[str, bool | int | str]:
     if qpdf is None:
         return {"ok": False, "stage": "configuration"}
     source = Path(__file__).with_name(_SOURCE_NAME)
-    output = _materialize_worker_private_temp() / "pdf-export-adapter-result.pdf"
     deadline = time.monotonic() + 25.0
     adapter = PdfExportAdapter(qpdf_checker=QpdfCommandChecker(Path(qpdf)))
     try:
+        output = _materialize_worker_private_temp() / "pdf-export-adapter-result.pdf"
         plan = _plan(source)
         report = adapter.assemble_and_verify(
             plan,
