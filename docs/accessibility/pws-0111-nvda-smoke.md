@@ -1,25 +1,26 @@
 # PWS-0111 keyboard-only and NVDA smoke record
 
-Record date: 2026-08-05
+Record date: 2026-08-09
 
-Platform: Windows, Python 3.14, Qt/PySide6-Essentials 6.11.1
+Platform: Windows, Python 3.14, Qt/PySide6-Essentials 6.11.1, NVDA 2026.1.1
 Scope: initial case chooser and page organizer vertical slice
 
 ## Current result
 
-The automated accessibility and keyboard checks pass. An automation-assisted Windows scenario
-also exercised organizer keyboard commands, cancellation, shutdown, and restart persistence, but
-it could not enter a path in the native file chooser. A complete human keyboard-only scenario and
-the required NVDA smoke are therefore not yet claimed in this record. NVDA was not installed or
-discoverable in the command path or standard installation locations when checked on 2026-08-05.
-The maintainer has been asked to install it. No different screen reader is being substituted.
+The automated accessibility and keyboard checks pass. The rebuilt current-user environment also
+passes the production restricted-worker composition: its ACL-authority inventory authenticated
+12,091 exact resources, and the live organizer integration test passed both cases in 258.52 seconds.
 
-This missing external verification keeps PWS-0111 from being marked done even though implementation
-and non-NVDA validation may proceed.
+An agent-operated Windows smoke on 2026-08-09 completed the native chooser import with UI
+Automation assistance, exercised organizer keyboard commands, cancellation, clean close/reopen,
+and a full process restart while NVDA 2026.1.1 was installed and running. This is supplemental tool
+evidence, not a human keyboard-only or NVDA Speech Viewer result. Windows Settings and Control
+Panel were not targetable through the agent's Windows automation surface, so the agent did not
+perform or claim an actual 200-percent Windows scaling run.
 
-Environment update (2026-08-09): NVDA 2026.1.1 is now installed at the standard Program Files
-location. The live keyboard/NVDA scenarios below remain pending until the final production worker
-composition passes against the rebuilt project environment.
+PWS-0111 therefore remains blocked only on a genuine maintainer-operated keyboard-only and NVDA
+Speech Viewer run at the normal Windows scale and at actual 200-percent display/text scaling. The
+procedures and result fields to record remain below.
 
 ## Automated evidence
 
@@ -42,7 +43,31 @@ focus target, recovered-case review status, autosave/restart
 reconstruction, explicit failed-preview retry with a fresh correlated operation (`Ctrl+Shift+R`),
 actionable import-failure focus, visible error/status focus treatment, and unknown-error privacy.
 
-## Automation-assisted keyboard evidence
+## Agent-operated production smoke — 2026-08-09
+
+The production exact-object inventory authenticated 12,091 resources from the rebuilt current-user
+environment. The following live composition test then passed both cases in 258.52 seconds:
+
+```text
+uv run --locked --no-sync pytest -q tests/integration/test_organizer_ui_windows.py
+```
+
+With NVDA 2026.1.1 installed and running, the agent launched PaperWorkShell and created a case.
+`Ctrl+I` opened the native Windows chooser; the separate dialog was targeted through UI Automation
+and the repository synthetic `render-calibration.pdf` path was supplied. The import completed with
+two pages. Keyboard input exercised organizer rotation and movement, undo and redo, removal and
+restoration, and cancellation of active preview work.
+
+The agent cleanly closed and reopened the case, then terminated and relaunched the complete
+PaperWorkShell process. The reopened organizer preserved manifest revision 8, both pages, and Page
+2 at 90-degree rotation. This closes the earlier agent-tool native-chooser gap but does not prove
+human keyboard-only operation, NVDA announcements, or Speech Viewer output.
+
+The agent could not target Windows Settings or Control Panel through the available Windows
+automation surface. No actual 200-percent Windows display/text scaling result is claimed; the
+automated constrained-viewport coverage described above is separate evidence.
+
+## Earlier automation-assisted keyboard evidence — 2026-08-05
 
 On 2026-08-05 the Windows desktop application was exercised with the repository synthetic
 two-page render-calibration PDF. The run used keyboard shortcuts to open the case, rotate a page,

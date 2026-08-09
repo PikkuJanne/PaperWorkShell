@@ -1174,25 +1174,28 @@ tasks:
   - accessibility
   - state-management
   blocker:
-    reason: Production worker verification and the required human keyboard-only organizer/NVDA
-      scenarios remain incomplete. NVDA is installed, but the current derived environment still
-      contains Administrator-owned native files that the non-elevated broker correctly rejects.
+    reason: The required maintainer-operated keyboard-only organizer and NVDA Speech Viewer
+      scenarios remain incomplete at normal and actual 200-percent Windows display/text scaling.
+      Production worker composition now passes, and NVDA is installed and running, but
+      agent-operated UI Automation evidence does not satisfy the two human verification requirements.
     evidence:
-    - On 2026-08-05, Get-Command and the standard NVDA installation locations found no NVDA
-      executable; the maintainer was asked to install it and no substitute screen reader was used.
-    - An automation-assisted synthetic scenario verified organizer shortcuts, focus, cancellation,
-      guarded shutdown, autosave, and revision-8 restart persistence, but could only open and cancel
-      the native file chooser; it did not complete keyboard-only path selection.
-    - On 2026-08-09, NVDA 2026.1.1 was found at its standard Program Files location. A real organizer
-      worker launch then failed closed with config.resource_identity/Win32 access denied because the
-      attempted rebuild raced a live test and left the older Administrator-owned environment root.
+    - On 2026-08-09, the rebuilt current-user production inventory authenticated 12,091 exact
+      resources, and the live restricted-worker organizer integration test passed both cases in
+      258.52 seconds.
+    - A 2026-08-09 agent-operated smoke used UI Automation to target the separate native chooser and
+      import the repository synthetic render-calibration PDF, then exercised keyboard organizer
+      actions, undo/redo, removal/restoration, cancellation, clean close/reopen, and full process
+      restart. Revision 8 reopened with two pages and Page 2 at 90-degree rotation.
+    - NVDA 2026.1.1 was installed and running during the agent smoke, but no genuine maintainer NVDA
+      Speech Viewer result is claimed. Windows Settings and Control Panel were not targetable through
+      the agent automation surface, so no actual 200-percent Windows scaling run is claimed.
     - Automated constrained-viewport, accessibility, UI lifecycle, privacy, real PDF composition,
       worker-containment, hardlink-race, and restart tests pass; these do not replace the two manual
       verification requirements in this task.
-    requested_action: Recreate the derived .venv from a standard non-administrator PowerShell while
-      no test process is using it, pass the production worker composition, then perform and record
-      the human keyboard-only and NVDA smoke procedures in docs/accessibility/pws-0111-nvda-smoke.md
-      with the repository synthetic PDF at normal and 200-percent scaling.
+    requested_action: Perform and record the genuine maintainer keyboard-only and NVDA Speech
+      Viewer procedures in docs/accessibility/pws-0111-nvda-smoke.md with the repository synthetic
+      PDF at the normal Windows scale and actual 200-percent display/text scaling, including focus,
+      pointer use, clipping, reachability, and missing or duplicate announcement observations.
   evidence:
     completed_at: null
     revision: null
@@ -1206,12 +1209,22 @@ tasks:
       59 tests with 1 reparse-privilege skip
     - uv run --locked --no-sync pytest on installed, temporary, and overlapping qpdf profiles -
       passed; 3 live tests
+    - Production exact-object ACL-authority inventory on the rebuilt current-user environment -
+      passed; 12,091 resources authenticated
+    - uv run --locked --no-sync pytest -q tests/integration/test_organizer_ui_windows.py - passed;
+      2 live production-composition tests in 258.52 seconds
+    - Agent-operated Windows UI Automation smoke with NVDA 2026.1.1 running - passed; native
+      chooser import, keyboard organizer actions, cancellation, clean close/reopen, and full process
+      restart preserved revision 8, two pages, and Page 2 at 90-degree rotation
     - Targeted Ruff format/check, strict mypy, import boundaries, docs, task graph, and diff checks -
       passed on the blocked checkpoint
     notes:
     - The desktop vertical slice, bounded previews, explicit preview/close recovery actions, startup
       recovery notice, import reconciliation, and durable exact-object Windows resource lease are
       implemented and independently reviewed with no remaining P0-P2 code finding.
+    - The rebuilt current-user environment and production worker composition now pass. The remaining
+      blocker is limited to genuine maintainer keyboard-only and NVDA Speech Viewer evidence at
+      normal and actual 200-percent Windows scaling; the agent smoke is not counted as human evidence.
     - Dependency and schema admission validation intentionally remains closed while PWS-0111 is not
       done; PySide6-Essentials and shiboken6 cannot become an accepted canonical baseline until the
       required manual evidence is recorded.
