@@ -3509,7 +3509,7 @@ def _workflow_reconciliation_issues(
         and set(jobs) == {"windows-quality"}
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
-        and quality_job.get("timeout-minutes") == 20
+        and quality_job.get("timeout-minutes") == 30
         and len(quality_steps) == 8
     )
     expected_command_steps = {
