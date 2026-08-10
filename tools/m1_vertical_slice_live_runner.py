@@ -949,13 +949,13 @@ def _publish_derivative(
                 else "M1_LIVE_OUTPUT_FAILED"
             )
             _fail(code, "The fixed live derivative destination could not be published.")
+        current = derivative_handle.refresh_info()
         require_expected_handle(
             derivative_handle,
             destination,
             directory=False,
             expected_identity=identity,
         )
-        current = derivative_handle.refresh_info()
         if current.identity != identity or current.link_count != 1:
             _fail("M1_LIVE_OUTPUT_FAILED", "The live derivative changed during publication.")
         _validate_derivative(

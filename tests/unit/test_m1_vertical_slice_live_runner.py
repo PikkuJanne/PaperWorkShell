@@ -45,6 +45,7 @@ from tools.m1_vertical_slice_live_runner import (
     _decode_child_result,
     _git_identity,
     _open_qpdf_distribution_authority,
+    _publish_derivative,
     _publish_fixed_bundle,
     _qpdf_bin_names,
     _read_authenticated_file,
@@ -525,6 +526,31 @@ def test_fixed_output_preflight_preserves_existing_leaf(tmp_path: Path, name: st
 
     assert raised.value.code == "M1_LIVE_OUTPUT_EXISTS"
     assert existing.read_bytes() == b"existing"
+
+
+def test_derivative_publication_refreshes_retained_path_before_validation(
+    tmp_path: Path,
+) -> None:
+    payload = b"%PDF-1.4\n%%EOF\n"
+    directory = open_handle(tmp_path, traverse=True)
+    derivative: WindowsHandle | None = None
+
+    try:
+        destination, derivative = _publish_derivative(
+            tmp_path,
+            payload,
+            directory_handle=directory,
+        )
+
+        assert destination == tmp_path / LIVE_DERIVATIVE_FILENAME
+        assert derivative.refresh_info().final_path == destination
+        derivative.close()
+        derivative = None
+        assert destination.read_bytes() == payload
+    finally:
+        if derivative is not None:
+            derivative.close()
+        directory.close()
 
 
 def test_private_run_cleanup_removes_only_exact_child(tmp_path: Path) -> None:
