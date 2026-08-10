@@ -3523,8 +3523,8 @@ def _workflow_reconciliation_issues(
         and set(jobs) == {"windows-quality"}
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
-        and quality_job.get("timeout-minutes") == 30
-        and len(quality_steps) == 8
+        and quality_job.get("timeout-minutes") == 45
+        and len(quality_steps) == 9
     )
     expected_command_steps = {
         "Bootstrap locked environment": "python tools/dev.py bootstrap",
@@ -3536,6 +3536,57 @@ def _workflow_reconciliation_issues(
     for step_name, command in expected_command_steps.items():
         matches = [step for step in quality_steps if step.get("name") == step_name]
         if matches != [{"name": step_name, "run": command}]:
+            workflow_shape_valid = False
+    expected_step_names = [
+        "Check out full history",
+        "Set up CPython",
+        "Set up pinned uv without cache upload",
+        "Stage copy-owned worker CPython",
+        "Install and verify Gitleaks 8.30.1",
+        "Install and verify qpdf 12.3.2",
+        "Bootstrap locked environment",
+        "Install renderer comparison dependencies",
+        "Run local-equivalent quality suite",
+    ]
+    if [step.get("name") for step in quality_steps] != expected_step_names:
+        workflow_shape_valid = False
+    copy_runtime_steps = [
+        step for step in quality_steps if step.get("name") == "Stage copy-owned worker CPython"
+    ]
+    expected_copy_runtime_script = [
+        '$ErrorActionPreference = "Stop"',
+        '$source = (& python -I -S -c "import sys; print(sys.base_prefix)").Trim()',
+        "if (-not [IO.Path]::IsPathFullyQualified($source)) {",
+        '  throw "The setup-python runtime root is not absolute."',
+        "}",
+        '$destination = Join-Path $env:RUNNER_TEMP "PaperWorkShell-ci-python"',
+        "if (Test-Path -LiteralPath $destination) {",
+        '  throw "The copy-owned worker runtime destination already exists."',
+        "}",
+        "Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force",
+        '$python = Join-Path $destination "python.exe"',
+        "if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {",
+        '  throw "The copy-owned worker interpreter was not staged."',
+        "}",
+        '$reported = (& $python -I -S -c "import sys; print(sys.base_prefix)").Trim()',
+        "$expectedRoot = [IO.Path]::GetFullPath($destination)",
+        "$reportedRoot = [IO.Path]::GetFullPath($reported)",
+        "if (-not [StringComparer]::OrdinalIgnoreCase.Equals($expectedRoot, $reportedRoot)) {",
+        '  throw "The staged interpreter did not bind to the copy-owned runtime."',
+        "}",
+        '"UV_PYTHON=$python" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append',
+    ]
+    if len(copy_runtime_steps) != 1:
+        workflow_shape_valid = False
+    else:
+        copy_runtime_step = copy_runtime_steps[0]
+        copy_runtime_script = copy_runtime_step.get("run")
+        if (
+            set(copy_runtime_step) != {"name", "shell", "run"}
+            or copy_runtime_step.get("shell") != "pwsh"
+            or not isinstance(copy_runtime_script, str)
+            or copy_runtime_script.splitlines() != expected_copy_runtime_script
+        ):
             workflow_shape_valid = False
     if not workflow_shape_valid:
         _add_issue(
