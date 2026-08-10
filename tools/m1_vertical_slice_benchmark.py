@@ -1,8 +1,9 @@
-"""Build and validate record-only Milestone 1 vertical-slice measurements.
+"""Build and validate Milestone 1 vertical-slice measurement reports.
 
-The supported builder and CLI intentionally emit only host observations with a
-``not-run`` workload status.  Completed and failed payloads are decode-only
-until a direct live runner can bind every measurement to the real workload.
+The public builder, serializer, and CLI intentionally emit only host
+observations with a ``not-run`` workload status.  Completed live-run evidence
+is available only through an unsupported module-private boundary owned by the
+canonical runner.
 """
 
 from __future__ import annotations
@@ -18,12 +19,21 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final, NoReturn, Protocol, cast
-from uuid import UUID
+from typing import Any, Final, Literal, NoReturn, Protocol, Self, cast
+from uuid import UUID, uuid4
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from paperworkshell.storage._windows import (
+    FileIdentity,
+    WindowsHandle,
+    open_handle,
+    rename_open_file_no_replace_at,
+    require_expected_handle,
+    write_new_file,
+)
+from paperworkshell.storage.errors import WorkspaceError
 from tools.reference_profile import (
     PROFILE_PATH,
     SCENARIO_IDS,
@@ -41,6 +51,11 @@ MAX_SCHEMA_BYTES: Final = 256 * 1024
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
 NOT_RUN_CODE: Final = "M1_VERTICAL_SLICE_NOT_RUN"
 LIVE_RUNNER_UNAVAILABLE_CODE: Final = "M1_LIVE_RUNNER_UNAVAILABLE"
+LIVE_REPORT_FILENAME: Final = "PWS-0114-m1-benchmark-report.json"
+LIVE_REPORT_OUTPUT_INVALID_CODE: Final = "M1_LIVE_REPORT_OUTPUT_INVALID"
+LIVE_REPORT_ALREADY_EXISTS_CODE: Final = "M1_LIVE_REPORT_ALREADY_EXISTS"
+LIVE_REPORT_PUBLISH_FAILED_CODE: Final = "M1_LIVE_REPORT_PUBLISH_FAILED"
+LIVE_REPORT_WRITER_CLOSED_CODE: Final = "M1_LIVE_REPORT_WRITER_CLOSED"
 EXPECTED_VERIFIER_CODES: Final = (
     "PDF_REOPENED",
     "STRUCTURE_CLEAN",
@@ -53,6 +68,9 @@ EXPECTED_VERIFIER_CODES: Final = (
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _GIT_OBJECT_ID: Final = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _VERSION_IDENTITY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
+_LIVE_STAGE_PREFIX: Final = ".pws-0114-m1-report-"
+_LIVE_STAGE_SUFFIX: Final = ".tmp"
+_WINDOWS_ALREADY_EXISTS_ERRORS: Final = frozenset({80, 183})
 
 
 class M1Phase(StrEnum):
@@ -174,6 +192,18 @@ class NonStandardJsonConstantError(ValueError):
     """Raised when strict JSON loading sees NaN or Infinity."""
 
 
+class _LiveM1ReportAuthority:
+    """Unsupported module-private marker retained by the canonical live runner."""
+
+    __slots__ = ("_marker",)
+
+    def __init__(self, marker: object) -> None:
+        self._marker = marker
+
+
+_LIVE_M1_REPORT_AUTHORITY_MARKER: Final = object()
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class BenchmarkIssue:
     """One stable, path-only schema or report validation issue."""
@@ -228,6 +258,17 @@ def _reject(code: str, safe_message: str) -> NoReturn:
     finally:
         error.__context__ = None
         error.__cause__ = None
+
+
+def _require_live_m1_report_authority(authority: object) -> None:
+    if (
+        type(authority) is not _LiveM1ReportAuthority
+        or authority._marker is not _LIVE_M1_REPORT_AUTHORITY_MARKER
+    ):
+        _reject(
+            LIVE_RUNNER_UNAVAILABLE_CODE,
+            "Completed workload reports require the trusted live runner.",
+        )
 
 
 def _exact_integer(value: object, field: str, *, minimum: int = 0) -> int:
@@ -400,6 +441,7 @@ class CompletedRunEvidence:
 
     run_id: UUID
     sample_count: int
+    total_elapsed_ns: int
     repository_revision: str
     repository_tree: str
     repository_worktree_clean: bool
@@ -444,6 +486,7 @@ class CompletedRunEvidence:
         if type(self.run_id) is not UUID or self.run_id.version != 4:
             _reject("M1_MEASUREMENT_INVALID", "The run identity must be a UUIDv4 value.")
         sample_count = _exact_integer(self.sample_count, "sample_count", minimum=1)
+        _exact_integer(self.total_elapsed_ns, "total_elapsed_ns", minimum=1)
         workload_version = _exact_integer(self.workload_version, "workload_version", minimum=1)
         output_count = _exact_integer(self.output_count, "output_count", minimum=1)
         if sample_count != 1 or workload_version != 1 or output_count != 2:
@@ -520,6 +563,7 @@ class CompletedRunEvidence:
         return cls(
             run_id=run_id,
             sample_count=cast(int, value["sample_count"]),
+            total_elapsed_ns=cast(int, value["total_elapsed_ns"]),
             repository_revision=cast(str, value["repository_revision"]),
             repository_tree=cast(str, value["repository_tree"]),
             repository_worktree_clean=cast(bool, value["repository_worktree_clean"]),
@@ -565,6 +609,7 @@ class CompletedRunEvidence:
         return {
             "run_id": str(self.run_id),
             "sample_count": self.sample_count,
+            "total_elapsed_ns": self.total_elapsed_ns,
             "repository_revision": self.repository_revision,
             "repository_tree": self.repository_tree,
             "repository_worktree_clean": self.repository_worktree_clean,
@@ -609,11 +654,11 @@ class CompletedRunEvidence:
 
 @dataclass(frozen=True, slots=True, init=False)
 class VerticalSliceMeasurement:
-    """Decode-only workload evidence plus the one public host-only non-run state.
+    """Decode-only workload evidence plus the public host-only non-run state.
 
-    A direct runner will own a future trusted completed constructor.  Until
-    then, callers can only construct the explicit non-run value; completed and
-    failed states exist solely so checked evidence can be decoded and audited.
+    Ordinary callers can only construct the explicit non-run value.  Completed
+    evidence is assembled through the live-writer authority, while failed
+    states remain decode-only for audit compatibility.
     """
 
     run_status: VerticalSliceRunStatus
@@ -725,6 +770,17 @@ class VerticalSliceMeasurement:
                 _reject(
                     "M1_MEASUREMENT_INVALID",
                     "A completed run requires every ordered phase and resource observation.",
+                )
+            assert self.completed_evidence is not None
+            measured_phase_ns = sum(item.elapsed_ns for item in self.phase_measurements)
+            if (
+                self.completed_evidence.total_elapsed_ns < measured_phase_ns
+                or self.completed_evidence.maximum_heartbeat_gap_ns
+                > self.completed_evidence.total_elapsed_ns
+            ):
+                _reject(
+                    "M1_MEASUREMENT_INVALID",
+                    "Completed timing evidence is not causally consistent.",
                 )
             return
 
@@ -996,7 +1052,7 @@ class ReferenceEnvironmentMeasurement:
 
 @dataclass(frozen=True, slots=True)
 class M1BenchmarkReport:
-    """A typed record-only report; it intentionally has no gate-pass field."""
+    """A typed closed report that intentionally has no gate-pass field."""
 
     profile_id: str
     scenario_id: str
@@ -1020,7 +1076,7 @@ class M1BenchmarkReport:
         if self.vertical_slice.run_status is not VerticalSliceRunStatus.NOT_RUN:
             _reject(
                 LIVE_RUNNER_UNAVAILABLE_CODE,
-                "Completed or failed workload reports require the future direct live runner.",
+                "Completed or failed workload reports require the trusted live runner.",
             )
         return self._to_payload()
 
@@ -1076,6 +1132,56 @@ def build_m1_benchmark_report(
         reference,
         VerticalSliceMeasurement(),
     )
+
+
+def _build_live_m1_completed_report(
+    authority: _LiveM1ReportAuthority,
+    host_observation_report: M1BenchmarkReport,
+    *,
+    phase_measurements: tuple[PhaseMeasurement, ...],
+    worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
+    workspace_usage_measurements: tuple[WorkspaceUsageMeasurement, ...],
+    completed_evidence: CompletedRunEvidence,
+) -> M1BenchmarkReport:
+    """Build one completed report through the live runner's retained authority."""
+
+    _require_live_m1_report_authority(authority)
+    if (
+        type(host_observation_report) is not M1BenchmarkReport
+        or host_observation_report.vertical_slice.run_status is not VerticalSliceRunStatus.NOT_RUN
+        or type(completed_evidence) is not CompletedRunEvidence
+    ):
+        _reject(
+            "M1_REPORT_INVALID",
+            "The live run is not bound to a valid host-observation report.",
+        )
+    try:
+        # This public encoder is deliberately reused as the authority check for
+        # the host-only portion.  It reopens the checked-in schema/profile and
+        # proves that the reference evaluation has not been forged before live
+        # evidence is attached.
+        encode_m1_benchmark_report(host_observation_report)
+        measurement = VerticalSliceMeasurement._from_decoded(
+            run_status=VerticalSliceRunStatus.COMPLETED,
+            result_code=None,
+            phase_measurements=phase_measurements,
+            worker_resource_measurements=worker_resource_measurements,
+            workspace_usage_measurements=workspace_usage_measurements,
+            completed_evidence=completed_evidence,
+        )
+        return M1BenchmarkReport(
+            host_observation_report.profile_id,
+            host_observation_report.scenario_id,
+            host_observation_report.reference_environment,
+            measurement,
+        )
+    except M1BenchmarkError:
+        raise
+    except Exception:
+        _reject(
+            "M1_REPORT_INVALID",
+            "The completed measurement report could not be constructed safely.",
+        )
 
 
 def _validate_attestations(attestations: ReferenceAttestations) -> None:
@@ -1165,12 +1271,45 @@ def encode_m1_benchmark_report(report: M1BenchmarkReport) -> bytes:
     ):
         _reject(
             LIVE_RUNNER_UNAVAILABLE_CODE,
-            "Completed or failed workload reports require the future direct live runner.",
+            "Completed or failed workload reports require the trusted live runner.",
         )
     encoded = _canonical_report_bytes(report)
     decoded, issues = decode_m1_benchmark_report(encoded)
     if issues or decoded is None:
         _reject("M1_REPORT_INVALID", "The constructed measurement report failed validation.")
+    return encoded
+
+
+def _encode_live_m1_completed_report(
+    authority: _LiveM1ReportAuthority,
+    report: M1BenchmarkReport,
+) -> bytes:
+    """Canonically encode and independently decode one trusted completed report."""
+
+    _require_live_m1_report_authority(authority)
+    if (
+        type(report) is not M1BenchmarkReport
+        or report.vertical_slice.run_status is not VerticalSliceRunStatus.COMPLETED
+    ):
+        _reject(
+            "M1_REPORT_INVALID",
+            "The trusted live serializer accepts only a completed workload report.",
+        )
+    try:
+        encoded = _canonical_report_bytes(report)
+        decoded, issues = decode_m1_benchmark_report(encoded)
+    except M1BenchmarkError:
+        raise
+    except Exception:
+        _reject(
+            "M1_REPORT_INVALID",
+            "The completed measurement report could not be validated safely.",
+        )
+    if issues or decoded != report:
+        _reject(
+            "M1_REPORT_INVALID",
+            "The completed measurement report failed canonical validation.",
+        )
     return encoded
 
 
@@ -1197,8 +1336,8 @@ def decode_m1_benchmark_report(
 ) -> tuple[M1BenchmarkReport | None, list[BenchmarkIssue]]:
     """Validate a bounded closed report without attesting who produced it.
 
-    Decoding supports the closed completed/failed shapes needed by the future
-    runner, but the current public serializer still refuses those states.
+    Decoding supports the closed completed/failed shapes needed for audit and
+    the trusted live writer, while the public serializer still refuses them.
     """
 
     loaded, issues = _load_report_object(payload)
@@ -1434,6 +1573,378 @@ def _checked_file_sha256(root: Path, relative_path: Path, *, context: str) -> st
     if not 1 <= len(payload) <= MAX_SCHEMA_BYTES:
         _reject("M1_IDENTITY_INVALID", f"The checked-in {context} identity is invalid.")
     return hashlib.sha256(payload).hexdigest()
+
+
+class _LiveM1ReportWriter:
+    """Canonical-runner-only writer for a fixed, no-overwrite completed report.
+
+    Opening retains an authenticated no-follow handle to an existing output
+    directory.  Publication writes an opaque same-directory stage, validates
+    it through an identity-checked read handle, renames the exact stage handle
+    without replacement, and then reopens and decodes the fixed final leaf.
+    """
+
+    __slots__ = (
+        "_authority",
+        "_cleanup_incomplete",
+        "_closed",
+        "_directory_handle",
+        "_output_directory",
+        "_published",
+    )
+
+    def __init__(
+        self,
+        authority: _LiveM1ReportAuthority,
+        output_directory: Path,
+        directory_handle: WindowsHandle,
+    ) -> None:
+        _require_live_m1_report_authority(authority)
+        self._authority = authority
+        self._output_directory = output_directory
+        self._directory_handle = directory_handle
+        self._cleanup_incomplete = False
+        self._closed = False
+        self._published = False
+
+    @classmethod
+    def _open(cls, output_directory: Path) -> Self:
+        """Authenticate one existing absolute, non-reparse output directory."""
+
+        if not isinstance(output_directory, Path) or not output_directory.is_absolute():
+            _reject(
+                LIVE_REPORT_OUTPUT_INVALID_CODE,
+                "The live-report output directory must be an existing absolute directory.",
+            )
+        retained: WindowsHandle | None = None
+        selected = Path(output_directory)
+        try:
+            retained = open_handle(selected, traverse=True)
+            require_expected_handle(retained, selected, directory=True)
+            before = retained.info
+            current = retained.refresh_info()
+            if (
+                current.identity != before.identity
+                or not current.is_directory
+                or current.is_reparse_point
+            ):
+                _reject(
+                    LIVE_REPORT_OUTPUT_INVALID_CODE,
+                    "The live-report output directory could not be authenticated safely.",
+                )
+        except M1BenchmarkError:
+            _close_live_handle_safely(retained)
+            raise
+        except WorkspaceError:
+            _close_live_handle_safely(retained)
+            _reject(
+                LIVE_REPORT_OUTPUT_INVALID_CODE,
+                "The live-report output directory could not be authenticated safely.",
+            )
+        except Exception:
+            _close_live_handle_safely(retained)
+            _reject(
+                LIVE_REPORT_OUTPUT_INVALID_CODE,
+                "The live-report output directory could not be authenticated safely.",
+            )
+        except BaseException:
+            _close_live_handle_safely(retained)
+            raise
+        try:
+            return cls(
+                _LiveM1ReportAuthority(_LIVE_M1_REPORT_AUTHORITY_MARKER),
+                selected,
+                retained,
+            )
+        except BaseException:
+            _close_live_handle_safely(retained)
+            raise
+
+    @property
+    def _destination_path(self) -> Path:
+        """Return the fixed report destination; callers cannot choose a leaf."""
+
+        return self._output_directory / LIVE_REPORT_FILENAME
+
+    def __enter__(self) -> Self:
+        self._require_open()
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        _exception: BaseException | None,
+        _traceback: object | None,
+    ) -> Literal[False]:
+        if exception_type is None:
+            self._close()
+        else:
+            try:
+                self._close()
+            except BaseException:
+                pass
+        return False
+
+    def _close(self) -> None:
+        """Release the retained output-directory authority exactly once."""
+
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._directory_handle.close()
+        except Exception:
+            self._cleanup_incomplete = True
+            if self._published:
+                return
+            _reject(
+                LIVE_REPORT_PUBLISH_FAILED_CODE,
+                "The live-report output authority could not be released safely.",
+            )
+        except BaseException:
+            self._cleanup_incomplete = True
+            raise
+
+    def _build_completed_report(
+        self,
+        host_observation_report: M1BenchmarkReport,
+        *,
+        phase_measurements: tuple[PhaseMeasurement, ...],
+        worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
+        workspace_usage_measurements: tuple[WorkspaceUsageMeasurement, ...],
+        completed_evidence: CompletedRunEvidence,
+    ) -> M1BenchmarkReport:
+        """Bind one exact successful workload to a validated host observation."""
+
+        self._require_open()
+        try:
+            return _build_live_m1_completed_report(
+                self._authority,
+                host_observation_report,
+                phase_measurements=phase_measurements,
+                worker_resource_measurements=worker_resource_measurements,
+                workspace_usage_measurements=workspace_usage_measurements,
+                completed_evidence=completed_evidence,
+            )
+        except M1BenchmarkError:
+            raise
+        except Exception:
+            _reject(
+                "M1_REPORT_INVALID",
+                "The completed measurement report could not be constructed safely.",
+            )
+
+    def _encode_completed_report(self, report: M1BenchmarkReport) -> bytes:
+        """Encode a completed report through this writer's retained authority."""
+
+        self._require_open()
+        try:
+            return _encode_live_m1_completed_report(self._authority, report)
+        except M1BenchmarkError:
+            raise
+        except Exception:
+            _reject(
+                "M1_REPORT_INVALID",
+                "The completed measurement report could not be encoded safely.",
+            )
+
+    def _publish_completed_report(self, report: M1BenchmarkReport) -> Path:
+        """Atomically publish one validated report without replacing any object."""
+
+        self._require_open()
+        if self._published:
+            _reject(
+                LIVE_REPORT_ALREADY_EXISTS_CODE,
+                "This live-report writer has already published its fixed report.",
+            )
+        encoded = self._encode_completed_report(report)
+        stage_path = self._output_directory / (
+            f"{_LIVE_STAGE_PREFIX}{uuid4().hex}{_LIVE_STAGE_SUFFIX}"
+        )
+        stage_handle: WindowsHandle | None = None
+        destination = self._destination_path
+        try:
+            stage_handle = write_new_file(stage_path, encoded)
+            stage_identity = stage_handle.info.identity
+            _validate_authenticated_live_report(
+                stage_path,
+                expected_identity=stage_identity,
+                expected_report=report,
+            )
+            published, error_code = rename_open_file_no_replace_at(
+                stage_handle,
+                self._directory_handle,
+                destination_name=LIVE_REPORT_FILENAME,
+            )
+            if not published:
+                if error_code in _WINDOWS_ALREADY_EXISTS_ERRORS:
+                    _reject(
+                        LIVE_REPORT_ALREADY_EXISTS_CODE,
+                        "The fixed live-report destination already exists and was preserved.",
+                    )
+                _reject(
+                    LIVE_REPORT_PUBLISH_FAILED_CODE,
+                    "The completed live report could not be published safely.",
+                )
+            current = stage_handle.refresh_info()
+            if current.identity != stage_identity or current.link_count != 1:
+                _reject(
+                    LIVE_REPORT_PUBLISH_FAILED_CODE,
+                    "The completed live report changed during publication.",
+                )
+            require_expected_handle(
+                stage_handle,
+                destination,
+                directory=False,
+                expected_identity=stage_identity,
+            )
+            _validate_authenticated_live_report(
+                destination,
+                expected_identity=stage_identity,
+                expected_report=report,
+            )
+            self._mark_report_committed()
+        except M1BenchmarkError:
+            self._settle_interrupted_publication(stage_handle)
+            raise
+        except WorkspaceError:
+            self._settle_interrupted_publication(stage_handle)
+            _reject(
+                LIVE_REPORT_PUBLISH_FAILED_CODE,
+                "The completed live report could not be published safely.",
+            )
+        except Exception:
+            self._settle_interrupted_publication(stage_handle)
+            _reject(
+                LIVE_REPORT_PUBLISH_FAILED_CODE,
+                "The completed live report could not be published safely.",
+            )
+        except BaseException:
+            self._settle_interrupted_publication(stage_handle)
+            raise
+        self._settle_committed_stage_handle(stage_handle)
+        return destination
+
+    def _mark_report_committed(self) -> None:
+        """Record the report commit before any interruptible post-commit work."""
+
+        self._published = True
+
+    def _settle_committed_stage_handle(self, handle: WindowsHandle) -> None:
+        """Release a post-commit handle without changing the commit result."""
+
+        try:
+            handle.close()
+        except Exception:
+            self._cleanup_incomplete = True
+        except BaseException:
+            self._cleanup_incomplete = True
+            raise
+
+    def _settle_committed_stage_handle_no_raise(self, handle: WindowsHandle | None) -> None:
+        """Release post-commit authority without replacing an active exception."""
+
+        if handle is None:
+            self._cleanup_incomplete = True
+            return
+        try:
+            handle.close()
+        except BaseException:
+            self._cleanup_incomplete = True
+
+    def _settle_interrupted_publication(self, handle: WindowsHandle | None) -> None:
+        """Preserve committed output and discard only an uncommitted stage."""
+
+        if self._published:
+            self._settle_committed_stage_handle_no_raise(handle)
+        else:
+            _discard_live_stage_safely(handle)
+
+    def _require_open(self) -> None:
+        if self._closed or self._directory_handle.value == 0:
+            _reject(
+                LIVE_REPORT_WRITER_CLOSED_CODE,
+                "The live-report writer is already closed.",
+            )
+
+
+def _open_live_m1_report_writer(output_directory: Path) -> _LiveM1ReportWriter:
+    """Open the unsupported completed-report boundary for the canonical runner."""
+
+    return _LiveM1ReportWriter._open(output_directory)
+
+
+def _validate_authenticated_live_report(
+    path: Path,
+    *,
+    expected_identity: FileIdentity,
+    expected_report: M1BenchmarkReport,
+) -> None:
+    reader: WindowsHandle | None = None
+    try:
+        reader = open_handle(
+            path,
+            read=True,
+            share_delete=True,
+            share_write=True,
+        )
+        require_expected_handle(
+            reader,
+            path,
+            directory=False,
+            expected_identity=expected_identity,
+        )
+        current = reader.refresh_info()
+        if (
+            current.identity != expected_identity
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+        ):
+            _reject(
+                LIVE_REPORT_PUBLISH_FAILED_CODE,
+                "The completed live report changed during validation.",
+            )
+        payload = reader.read_bytes(maximum_bytes=MAX_REPORT_BYTES)
+    except BaseException as primary:
+        if reader is not None:
+            try:
+                reader.close()
+            except BaseException as cleanup:
+                if isinstance(primary, Exception) and not isinstance(cleanup, Exception):
+                    raise
+        raise
+    else:
+        if reader is not None:
+            reader.close()
+    decoded, issues = decode_m1_benchmark_report(payload)
+    if issues or decoded != expected_report:
+        _reject(
+            LIVE_REPORT_PUBLISH_FAILED_CODE,
+            "The completed live report failed canonical reopen validation.",
+        )
+
+
+def _discard_live_stage_safely(handle: WindowsHandle | None) -> None:
+    if handle is None:
+        return
+    try:
+        handle.mark_for_deletion()
+    except BaseException:
+        pass
+    try:
+        handle.close()
+    except BaseException:
+        pass
+
+
+def _close_live_handle_safely(handle: WindowsHandle | None) -> None:
+    if handle is None:
+        return
+    try:
+        handle.close()
+    except BaseException:
+        pass
 
 
 def _json_path(parts: Sequence[object]) -> str:

@@ -16,7 +16,11 @@ from paperworkshell.worker.client.errors import (
     WorkerClientErrorCode,
     WorkerRecoveryAction,
 )
-from paperworkshell.worker.client.models import WorkerLifecyclePhase, WorkerTimeoutPolicy
+from paperworkshell.worker.client.models import (
+    WorkerLifecyclePhase,
+    WorkerResourceSnapshot,
+    WorkerTimeoutPolicy,
+)
 from paperworkshell.worker.client.process import (
     BrokeredHandlePurpose,
     IsolationEvidence,
@@ -113,6 +117,13 @@ class FakeProcess:
         self.fail_close = False
         self.fail_duplicate = False
         self.duplicate_calls: list[tuple[int, BrokeredHandlePurpose]] = []
+        self.resource_snapshot_calls = 0
+        self.resource_observation = WorkerResourceSnapshot(
+            process_memory_limit_bytes=64 * 1024 * 1024,
+            job_memory_limit_bytes=128 * 1024 * 1024,
+            peak_process_memory_used_bytes=1_024,
+            peak_job_memory_used_bytes=2_048,
+        )
 
     def poll(self) -> int | None:
         self.poll_calls += 1
@@ -140,6 +151,10 @@ class FakeProcess:
         self.close_calls += 1
         if self.fail_close:
             raise OSError("C:\\private\\unconfirmed-worker-tree")
+
+    def resource_snapshot(self) -> WorkerResourceSnapshot:
+        self.resource_snapshot_calls += 1
+        return self.resource_observation
 
 
 @dataclass(slots=True)
@@ -648,6 +663,8 @@ def test_operation_accept_progress_and_success_are_protocol_authoritative() -> N
     assert snapshot.last_result is not None
     assert snapshot.last_result.generation == generation
     assert snapshot.last_result.outcome is OperationOutcome.SUCCEEDED
+    assert snapshot.last_resource_snapshot == record.process.resource_observation
+    assert record.process.resource_snapshot_calls == 1
 
 
 def test_cancel_ack_is_nonterminal_and_success_may_win_the_race() -> None:

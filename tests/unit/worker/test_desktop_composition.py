@@ -16,7 +16,10 @@ from paperworkshell.worker.client.errors import (
     WorkerClientError,
     WorkerClientErrorCode,
 )
-from paperworkshell.worker.client.models import WorkerTimeoutPolicy
+from paperworkshell.worker.client.models import (
+    WorkerResourceSnapshot,
+    WorkerTimeoutPolicy,
+)
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.desktop_composition import (
     DesktopWorkerCompositionConfig,
@@ -72,9 +75,20 @@ class _FakeWorkerClient:
         self.required_capabilities = required_capabilities
         self.constructed_thread = threading.get_ident()
         self.terminate_calls = 0
+        self.resource_snapshot_calls = 0
+        self.snapshot = WorkerResourceSnapshot(
+            process_memory_limit_bytes=resource_policy.process_memory_bytes,
+            job_memory_limit_bytes=resource_policy.job_memory_bytes,
+            peak_process_memory_used_bytes=1,
+            peak_job_memory_used_bytes=2,
+        )
 
     def terminate(self) -> None:
         self.terminate_calls += 1
+
+    def resource_snapshot(self) -> WorkerResourceSnapshot:
+        self.resource_snapshot_calls += 1
+        return self.snapshot
 
 
 def _fixed_resources(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
@@ -172,6 +186,8 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     assert cast(Any, source_port)._worker is worker
     assert cast(Any, thumbnail_port)._worker is worker
     assert worker.constructed_thread == threading.get_ident()
+    assert composition.resource_snapshot() == worker.snapshot
+    assert worker.resource_snapshot_calls == 1
 
     composition.close()
 

@@ -9,17 +9,25 @@ from unittest.mock import patch
 
 import pytest
 
+import tools.m1_vertical_slice_benchmark as benchmark_module
+from paperworkshell.storage._windows import WindowsHandle, open_handle, write_new_file
+from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from tools.m1_vertical_slice_benchmark import (
     EXPECTED_PHASES,
     EXPECTED_VERIFIER_CODES,
     EXPECTED_WORKER_OPERATIONS,
     EXPECTED_WORKSPACE_CHECKPOINTS,
+    LIVE_REPORT_ALREADY_EXISTS_CODE,
+    LIVE_REPORT_FILENAME,
+    LIVE_REPORT_OUTPUT_INVALID_CODE,
+    LIVE_REPORT_WRITER_CLOSED_CODE,
     LIVE_RUNNER_UNAVAILABLE_CODE,
     MAX_REPORT_BYTES,
     MAX_SAFE_INTEGER,
     NOT_RUN_CODE,
     PROJECT_ROOT,
     REPORT_SCHEMA_PATH,
+    CompletedRunEvidence,
     M1BenchmarkError,
     M1BenchmarkReport,
     M1Phase,
@@ -32,6 +40,9 @@ from tools.m1_vertical_slice_benchmark import (
     WorkerResourceMeasurement,
     WorkspaceCheckpoint,
     WorkspaceUsageMeasurement,
+    _build_live_m1_completed_report,
+    _LiveM1ReportWriter,
+    _open_live_m1_report_writer,
     build_m1_benchmark_report,
     decode_m1_benchmark_report,
     encode_m1_benchmark_report,
@@ -114,6 +125,7 @@ def _completed_evidence_payload() -> dict[str, Any]:
     return {
         "run_id": "50000000-0000-4000-8000-000000000114",
         "sample_count": 1,
+        "total_elapsed_ns": 100_000_000,
         "repository_revision": "a" * 40,
         "repository_tree": "b" * 40,
         "repository_worktree_clean": True,
@@ -227,8 +239,300 @@ def _failed_payload(tmp_path: Path) -> dict[str, Any]:
     return payload
 
 
+def _live_measurements() -> tuple[
+    tuple[PhaseMeasurement, ...],
+    tuple[WorkerResourceMeasurement, ...],
+    tuple[WorkspaceUsageMeasurement, ...],
+    CompletedRunEvidence,
+]:
+    phases = tuple(
+        PhaseMeasurement(phase, PhaseOutcome.COMPLETED, index + 1)
+        for index, phase in enumerate(EXPECTED_PHASES)
+    )
+    workers = tuple(
+        WorkerResourceMeasurement.from_snapshot(operation, FakeWorkerSnapshot())
+        for operation in EXPECTED_WORKER_OPERATIONS
+    )
+    workspaces = tuple(
+        WorkspaceUsageMeasurement.from_usage(
+            checkpoint,
+            FakeWorkspaceUsage(
+                case_bytes=10_000 + index,
+                cache_bytes=2_000,
+                temp_bytes=1_000,
+                entry_count=20 + index,
+                maximum_depth_seen=3,
+            ),
+        )
+        for index, checkpoint in enumerate(EXPECTED_WORKSPACE_CHECKPOINTS)
+    )
+    return (
+        phases,
+        workers,
+        workspaces,
+        CompletedRunEvidence.from_payload(_completed_evidence_payload()),
+    )
+
+
+def _live_report(writer: _LiveM1ReportWriter, tmp_path: Path) -> M1BenchmarkReport:
+    phases, workers, workspaces, evidence = _live_measurements()
+    return writer._build_completed_report(
+        _build(tmp_path / "host-observation"),
+        phase_measurements=phases,
+        worker_resource_measurements=workers,
+        workspace_usage_measurements=workspaces,
+        completed_evidence=evidence,
+    )
+
+
 def test_checked_in_report_schema_is_valid() -> None:
     assert validate_report_schema() == []
+
+
+def test_completed_writer_has_no_public_symbol_or_public_encoder_path(tmp_path: Path) -> None:
+    assert not hasattr(benchmark_module, "LiveM1ReportWriter")
+    decoded, issues = decode_m1_benchmark_report(_canonical_payload(_completed_payload(tmp_path)))
+    assert issues == []
+    assert decoded is not None
+
+    with pytest.raises(M1BenchmarkError) as raised:
+        encode_m1_benchmark_report(decoded)
+
+    assert raised.value.code == LIVE_RUNNER_UNAVAILABLE_CODE
+
+
+def test_live_writer_publishes_fixed_canonical_completed_report(tmp_path: Path) -> None:
+    with _open_live_m1_report_writer(tmp_path) as writer:
+        report = _live_report(writer, tmp_path)
+
+        encoded = writer._encode_completed_report(report)
+        destination = writer._publish_completed_report(report)
+
+    decoded, issues = decode_m1_benchmark_report(destination.read_bytes())
+    assert issues == []
+    assert decoded == report
+    assert destination == tmp_path / LIVE_REPORT_FILENAME
+    assert destination.read_bytes() == encoded
+    assert not any(path.name.startswith(".pws-0114-m1-report-") for path in tmp_path.iterdir())
+
+
+def test_live_writer_never_replaces_fixed_destination(tmp_path: Path) -> None:
+    destination = tmp_path / LIVE_REPORT_FILENAME
+    original = b"PREEXISTING-REPORT-BYTES"
+    destination.write_bytes(original)
+
+    with _open_live_m1_report_writer(tmp_path) as writer:
+        report = _live_report(writer, tmp_path)
+        with pytest.raises(M1BenchmarkError) as raised:
+            writer._publish_completed_report(report)
+
+    assert raised.value.code == LIVE_REPORT_ALREADY_EXISTS_CODE
+    assert destination.read_bytes() == original
+    assert not any(path.name.startswith(".pws-0114-m1-report-") for path in tmp_path.iterdir())
+
+
+def test_live_completed_factory_rejects_missing_writer_authority(tmp_path: Path) -> None:
+    phases, workers, workspaces, evidence = _live_measurements()
+
+    with pytest.raises(M1BenchmarkError) as raised:
+        _build_live_m1_completed_report(
+            cast(Any, object()),
+            _build(tmp_path / "host-observation"),
+            phase_measurements=phases,
+            worker_resource_measurements=workers,
+            workspace_usage_measurements=workspaces,
+            completed_evidence=evidence,
+        )
+
+    assert raised.value.code == LIVE_RUNNER_UNAVAILABLE_CODE
+
+
+def test_live_writer_authority_is_revoked_on_close(tmp_path: Path) -> None:
+    writer = _open_live_m1_report_writer(tmp_path)
+    report = _live_report(writer, tmp_path)
+    writer._close()
+
+    with pytest.raises(M1BenchmarkError) as raised:
+        writer._encode_completed_report(report)
+
+    assert raised.value.code == LIVE_REPORT_WRITER_CLOSED_CODE
+
+
+def test_live_writer_requires_existing_absolute_directory(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+
+    with pytest.raises(M1BenchmarkError) as raised:
+        _open_live_m1_report_writer(missing)
+
+    assert raised.value.code == LIVE_REPORT_OUTPUT_INVALID_CODE
+    assert not missing.exists()
+
+
+def test_live_writer_interrupt_during_open_releases_directory_authority(
+    tmp_path: Path,
+) -> None:
+    retained = open_handle(tmp_path, traverse=True)
+
+    with (
+        patch(
+            "tools.m1_vertical_slice_benchmark.open_handle",
+            return_value=retained,
+        ),
+        patch(
+            "tools.m1_vertical_slice_benchmark.require_expected_handle",
+            side_effect=KeyboardInterrupt,
+        ),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        _open_live_m1_report_writer(tmp_path)
+
+    assert retained.value == 0
+
+
+def test_live_writer_keyboard_interrupt_before_commit_discards_exact_stage(
+    tmp_path: Path,
+) -> None:
+    with _open_live_m1_report_writer(tmp_path) as writer:
+        report = _live_report(writer, tmp_path)
+        with (
+            patch(
+                "tools.m1_vertical_slice_benchmark.rename_open_file_no_replace_at",
+                side_effect=KeyboardInterrupt,
+            ),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            writer._publish_completed_report(report)
+
+        assert writer._published is False
+        assert not writer._destination_path.exists()
+        assert not any(path.name.startswith(".pws-0114-m1-report-") for path in tmp_path.iterdir())
+
+
+def test_live_writer_interrupt_after_final_validation_preserves_commit(
+    tmp_path: Path,
+) -> None:
+    original_settle = _LiveM1ReportWriter._settle_committed_stage_handle
+
+    def settle_then_interrupt(
+        writer: _LiveM1ReportWriter,
+        handle: WindowsHandle,
+    ) -> None:
+        original_settle(writer, handle)
+        raise KeyboardInterrupt
+
+    with _open_live_m1_report_writer(tmp_path) as writer:
+        report = _live_report(writer, tmp_path)
+        with (
+            patch.object(
+                _LiveM1ReportWriter,
+                "_settle_committed_stage_handle",
+                new=settle_then_interrupt,
+            ),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            writer._publish_completed_report(report)
+
+        assert writer._published is True
+        decoded, issues = decode_m1_benchmark_report(writer._destination_path.read_bytes())
+        assert issues == []
+        assert decoded == report
+
+
+def test_live_writer_interrupt_at_commit_flag_preserves_report(
+    tmp_path: Path,
+) -> None:
+    original_mark = _LiveM1ReportWriter._mark_report_committed
+
+    def mark_then_interrupt(writer: _LiveM1ReportWriter) -> None:
+        original_mark(writer)
+        raise KeyboardInterrupt
+
+    with _open_live_m1_report_writer(tmp_path) as writer:
+        report = _live_report(writer, tmp_path)
+        with (
+            patch.object(
+                _LiveM1ReportWriter,
+                "_mark_report_committed",
+                new=mark_then_interrupt,
+            ),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            writer._publish_completed_report(report)
+
+        assert writer._published is True
+        decoded, issues = decode_m1_benchmark_report(writer._destination_path.read_bytes())
+        assert issues == []
+        assert decoded == report
+
+
+def test_live_writer_stage_close_failure_after_commit_is_cleanup_only(
+    tmp_path: Path,
+) -> None:
+    original_write = write_new_file
+    original_close = WindowsHandle.close
+    staged: list[WindowsHandle] = []
+
+    def capture_stage(path: Path, payload: bytes) -> WindowsHandle:
+        handle = original_write(path, payload)
+        staged.append(handle)
+        return handle
+
+    def fail_committed_stage_close(handle: WindowsHandle) -> None:
+        original_close(handle)
+        if staged and handle is staged[0]:
+            raise WorkspaceError(
+                WorkspaceErrorCode.CLEANUP_FAILED,
+                "test.stage_close",
+                "The committed stage handle could not report clean settlement.",
+            )
+
+    with (
+        _open_live_m1_report_writer(tmp_path) as writer,
+        patch(
+            "tools.m1_vertical_slice_benchmark.write_new_file",
+            side_effect=capture_stage,
+        ),
+        patch.object(WindowsHandle, "close", new=fail_committed_stage_close),
+    ):
+        report = _live_report(writer, tmp_path)
+        destination = writer._publish_completed_report(report)
+
+        assert destination == writer._destination_path
+        assert writer._published is True
+        assert writer._cleanup_incomplete is True
+        decoded, issues = decode_m1_benchmark_report(destination.read_bytes())
+        assert issues == []
+        assert decoded == report
+
+
+def test_live_writer_directory_close_failure_after_commit_is_cleanup_only(
+    tmp_path: Path,
+) -> None:
+    writer = _open_live_m1_report_writer(tmp_path)
+    directory_handle = writer._directory_handle
+    original_close = WindowsHandle.close
+
+    def fail_committed_directory_close(handle: WindowsHandle) -> None:
+        original_close(handle)
+        if handle is directory_handle:
+            raise WorkspaceError(
+                WorkspaceErrorCode.CLEANUP_FAILED,
+                "test.directory_close",
+                "The committed directory handle could not report clean settlement.",
+            )
+
+    report = _live_report(writer, tmp_path)
+    destination = writer._publish_completed_report(report)
+    with patch.object(WindowsHandle, "close", new=fail_committed_directory_close):
+        writer._close()
+
+    assert destination.exists()
+    assert writer._published is True
+    assert writer._closed is True
+    assert writer._cleanup_incomplete is True
+    decoded, issues = decode_m1_benchmark_report(destination.read_bytes())
+    assert issues == []
+    assert decoded == report
 
 
 def test_completed_evidence_schema_is_closed_and_every_field_is_required() -> None:
@@ -373,6 +677,29 @@ def test_completed_report_requires_exact_seven_verifier_codes(tmp_path: Path) ->
 def test_completed_report_rejects_cross_result_count_mismatch(tmp_path: Path) -> None:
     payload = _completed_payload(tmp_path)
     payload["vertical_slice"]["completed_evidence"]["reopened_page_count"] = 1
+
+    decoded, issues = decode_m1_benchmark_report(_canonical_payload(payload))
+
+    assert decoded is None
+    assert [issue.code for issue in issues] == ["M1_MEASUREMENT_INVALID"]
+
+
+@pytest.mark.parametrize(
+    ("total_elapsed_ns", "maximum_heartbeat_gap_ns"),
+    (
+        (20, 10),
+        (100, 101),
+    ),
+)
+def test_completed_report_rejects_causally_impossible_timings(
+    tmp_path: Path,
+    total_elapsed_ns: int,
+    maximum_heartbeat_gap_ns: int,
+) -> None:
+    payload = _completed_payload(tmp_path)
+    evidence = payload["vertical_slice"]["completed_evidence"]
+    evidence["total_elapsed_ns"] = total_elapsed_ns
+    evidence["maximum_heartbeat_gap_ns"] = maximum_heartbeat_gap_ns
 
     decoded, issues = decode_m1_benchmark_report(_canonical_payload(payload))
 

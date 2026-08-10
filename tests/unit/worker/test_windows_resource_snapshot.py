@@ -17,6 +17,7 @@ from paperworkshell.worker.client._windows import (
     _Job,
     _OwnedHandle,
 )
+from paperworkshell.worker.client.models import WorkerResourceSnapshot
 
 
 class _Function:
@@ -85,6 +86,7 @@ def test_resource_snapshot_returns_only_immutable_authoritative_numbers(
 
     snapshot = worker.resource_snapshot()
 
+    assert WindowsWorkerResourceSnapshot is WorkerResourceSnapshot
     assert snapshot == WindowsWorkerResourceSnapshot(
         process_memory_limit_bytes=256 * 1024 * 1024,
         job_memory_limit_bytes=512 * 1024 * 1024,

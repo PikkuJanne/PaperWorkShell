@@ -76,7 +76,7 @@ evidence under the accepted reference contract.
 |---|---|---|
 | Every M1 prerequisite is done | Pass | PWS-0101 through PWS-0113 are `done`; final task-graph validation must remain green |
 | Originals remain byte-for-byte unchanged | Pass | The gate scenario records external and committed-source bytes plus SHA-256 before import and after export/restart |
-| The same manifest produces the same semantic page result | Pass | Two fresh exports from the same persisted manifest have equal semantic fingerprints, order, rotation, rendered result, verified output hash, and bytes |
+| The same manifest produces the same semantic page result | Pass | PWS-0112 repeats one exact plan across fresh workers; the gate scenario additionally proves equal semantic fingerprints, order, rotation, rendered result, verified output hash, and bytes across history-only manifest revisions |
 | Malformed input and worker termination fail cleanly | Pass in focused suites | Final report must cite live malformed render, active render termination, active export termination, cold recovery, and no failed destination publication |
 | Export passes parse, structure, page count, encryption, and render checks | Pass | Gate scenario exposes the exact typed verification report and all seven current check codes for both exports |
 | Routine logs contain no prohibited document content | Pass in gate scenario and focused suites | Gate scenario scans its canonical diagnostic JSONL, rendered summary, caplog, stdout, and stderr for distinct filename, path, destination, text, and metadata canaries in raw and JSON-escaped forms |

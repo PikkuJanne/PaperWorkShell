@@ -25,6 +25,7 @@ from paperworkshell.worker.client.models import (
     WorkerOperationResultSnapshot,
     WorkerOperationSnapshot,
     WorkerProgressSnapshot,
+    WorkerResourceSnapshot,
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import (
@@ -36,6 +37,7 @@ from paperworkshell.worker.client.process import (
     WorkerLaunchRequest,
     WorkerProcess,
     WorkerResourcePolicy,
+    WorkerResourceReporter,
     WorkerTransport,
 )
 from paperworkshell.worker.protocol.codec import (
@@ -184,6 +186,7 @@ class WorkerClient:
         self._pending_cancel_request_ids: set[UUID] = set()
         self._last_result: WorkerOperationResultSnapshot | None = None
         self._last_failure: WorkerFailure | None = None
+        self._last_resource_snapshot: WorkerResourceSnapshot | None = None
         self._handshake_deadline: float | None = None
         self._operation_deadline: float | None = None
         self._cancellation_deadline: float | None = None
@@ -263,6 +266,7 @@ class WorkerClient:
         self._pending_cancel_request_ids.clear()
         self._last_result = None
         self._last_failure = None
+        self._last_resource_snapshot = None
         self._clear_deadlines()
         self._shutdown_after_operation = False
         self._pending_shutdown_reason = None
@@ -361,7 +365,16 @@ class WorkerClient:
             active_operation=operation,
             last_result=self._last_result,
             last_failure=self._last_failure,
+            last_resource_snapshot=self._last_resource_snapshot,
         )
+
+    def resource_snapshot(self) -> WorkerResourceSnapshot | None:
+        """Sample and cache safe Job accounting, or return the terminal cache."""
+
+        self._require_owner()
+        if self._process is None:
+            return self._last_resource_snapshot
+        return self._capture_resource_snapshot(required=True)
 
     def pump(self, timeout_seconds: float = 0.0) -> WorkerClientSnapshot:
         """Accept at most one transport event, preserving actor-order race semantics."""
@@ -688,6 +701,7 @@ class WorkerClient:
                 outputs=payload.outputs,
                 error_code=None if payload.error is None else payload.error.code,
             )
+            self._capture_resource_snapshot(required=False)
             self._active_operation = None
             self._operation_deadline = None
             if (
@@ -917,6 +931,8 @@ class WorkerClient:
                 # are gone before returning from close().
                 pass
         if process is not None:
+            self._capture_resource_snapshot(required=False)
+        if process is not None:
             try:
                 process.close()
             except Exception:
@@ -937,6 +953,55 @@ class WorkerClient:
             # than treating a later idempotent no-op as fresh evidence.
             self._cleanup_unconfirmed = True
         return success
+
+    def _capture_resource_snapshot(
+        self,
+        *,
+        required: bool,
+    ) -> WorkerResourceSnapshot | None:
+        process = self._process
+        if process is None:
+            return self._last_resource_snapshot
+        reporter: WorkerResourceReporter | None = None
+        try:
+            if isinstance(process, WorkerResourceReporter):
+                reporter = cast(WorkerResourceReporter, process)
+        except Exception:
+            pass
+        if reporter is None:
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return self._last_resource_snapshot
+
+        observed: object = None
+        try:
+            observed = reporter.resource_snapshot()
+        except Exception:
+            pass
+        previous = self._last_resource_snapshot
+        if type(observed) is not WorkerResourceSnapshot:
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return previous
+        if (
+            observed.process_memory_limit_bytes != self._resource_policy.process_memory_bytes
+            or observed.job_memory_limit_bytes != self._resource_policy.job_memory_bytes
+            or (previous is not None and not observed.is_monotonic_successor_of(previous))
+        ):
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return previous
+        self._last_resource_snapshot = observed
+        return observed
 
     def _next_deadline(self) -> float | None:
         candidates: list[float] = []

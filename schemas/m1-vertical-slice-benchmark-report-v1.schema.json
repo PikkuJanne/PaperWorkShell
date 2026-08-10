@@ -337,6 +337,7 @@
       "required": [
         "run_id",
         "sample_count",
+        "total_elapsed_ns",
         "repository_revision",
         "repository_tree",
         "repository_worktree_clean",
@@ -384,6 +385,11 @@
         },
         "sample_count": {
           "const": 1
+        },
+        "total_elapsed_ns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "repository_revision": {
           "$ref": "#/$defs/gitObjectId"

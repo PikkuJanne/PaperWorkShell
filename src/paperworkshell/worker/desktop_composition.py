@@ -18,7 +18,10 @@ from paperworkshell.worker.client.errors import (
     WorkerClientErrorCode,
     reject_client,
 )
-from paperworkshell.worker.client.models import WorkerTimeoutPolicy
+from paperworkshell.worker.client.models import (
+    WorkerResourceSnapshot,
+    WorkerTimeoutPolicy,
+)
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
@@ -170,6 +173,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
 
         return self._thumbnail_generator
 
+    def resource_snapshot(self) -> WorkerResourceSnapshot | None:
+        """Forward safe worker accounting without exposing process authority."""
+
+        self._require_owner()
+        return self._worker.resource_snapshot()
+
     @property
     def closed(self) -> bool:
         return self._closed
@@ -231,6 +240,12 @@ class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposit
         """Expose the verified export application port without launcher details."""
 
         return self._pdf_exporter
+
+    def resource_snapshot(self) -> WorkerResourceSnapshot | None:
+        """Forward safe export-worker accounting without launcher authority."""
+
+        self._require_owner()
+        return self._worker.resource_snapshot()
 
     @property
     def closed(self) -> bool:

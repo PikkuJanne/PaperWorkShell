@@ -9,12 +9,18 @@ from unittest.mock import patch
 import pytest
 
 from tools.m1_vertical_slice_benchmark import (
+    LIVE_REPORT_ALREADY_EXISTS_CODE,
+    LIVE_REPORT_FILENAME,
+    LIVE_REPORT_OUTPUT_INVALID_CODE,
+    LIVE_REPORT_PUBLISH_FAILED_CODE,
     M1BenchmarkError,
     M1BenchmarkReport,
     WorkerOperation,
     WorkerResourceMeasurement,
     WorkspaceCheckpoint,
     WorkspaceUsageMeasurement,
+    _LiveM1ReportWriter,
+    _open_live_m1_report_writer,
     build_m1_benchmark_report,
     decode_m1_benchmark_report,
     encode_m1_benchmark_report,
@@ -238,3 +244,121 @@ def test_host_only_report_contains_no_gate_pass_or_product_threshold(tmp_path: P
     assert "gate_pass" not in encoded.decode()
     assert "qualified" not in encoded.decode()
     assert "C:/" not in encoded.decode()
+
+
+def test_live_writer_rejects_reparse_output_directory_without_disclosure(
+    tmp_path: Path,
+) -> None:
+    private_token = "PRIVATE-REPARSE-OUTPUT-CANARY"
+    target = tmp_path / private_token
+    target.mkdir()
+    redirected = tmp_path / "redirected-output"
+    try:
+        redirected.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory reparse creation is unavailable ({error.winerror})")
+
+    with pytest.raises(M1BenchmarkError) as raised:
+        _open_live_m1_report_writer(redirected)
+
+    assert raised.value.code == LIVE_REPORT_OUTPUT_INVALID_CODE
+    assert private_token not in raised.value.safe_message
+    assert private_token not in repr(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert list(target.iterdir()) == []
+
+
+def test_live_writer_output_authentication_sanitizes_unexpected_failure(
+    tmp_path: Path,
+) -> None:
+    private_token = "PRIVATE-OUTPUT-AUTH-CANARY"
+    with (
+        patch(
+            "tools.m1_vertical_slice_benchmark.open_handle",
+            side_effect=OSError(private_token),
+        ),
+        pytest.raises(M1BenchmarkError) as raised,
+    ):
+        _open_live_m1_report_writer(tmp_path)
+
+    assert raised.value.code == LIVE_REPORT_OUTPUT_INVALID_CODE
+    assert private_token not in raised.value.safe_message
+    assert private_token not in repr(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+
+
+def test_live_writer_no_replace_preserves_preexisting_hardlink_target(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    outside = tmp_path / "outside-report"
+    original = b"PREEXISTING-PRIVATE-REPORT"
+    outside.write_bytes(original)
+    destination = output / LIVE_REPORT_FILENAME
+    try:
+        destination.hardlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"hardlink creation is unavailable ({error.winerror})")
+
+    with (
+        _open_live_m1_report_writer(output) as writer,
+        patch.object(_LiveM1ReportWriter, "_encode_completed_report", return_value=b"{}\n"),
+        patch(
+            "tools.m1_vertical_slice_benchmark._validate_authenticated_live_report",
+        ),
+        pytest.raises(M1BenchmarkError) as raised,
+    ):
+        writer._publish_completed_report(_report(tmp_path / "host-observation"))
+
+    assert raised.value.code == LIVE_REPORT_ALREADY_EXISTS_CODE
+    assert outside.read_bytes() == original
+    assert destination.read_bytes() == original
+    assert not any(path.name.startswith(".pws-0114-m1-report-") for path in output.iterdir())
+
+
+def test_live_writer_publication_failure_is_sanitized_and_removes_stage(
+    tmp_path: Path,
+) -> None:
+    private_token = "PRIVATE-PUBLISH-FAILURE-CANARY"
+    with (
+        _open_live_m1_report_writer(tmp_path) as writer,
+        patch.object(_LiveM1ReportWriter, "_encode_completed_report", return_value=b"{}\n"),
+        patch(
+            "tools.m1_vertical_slice_benchmark._validate_authenticated_live_report",
+        ),
+        patch(
+            "tools.m1_vertical_slice_benchmark.rename_open_file_no_replace_at",
+            side_effect=OSError(private_token),
+        ),
+        pytest.raises(M1BenchmarkError) as raised,
+    ):
+        writer._publish_completed_report(_report(tmp_path / "host-observation"))
+
+    assert raised.value.code == LIVE_REPORT_PUBLISH_FAILED_CODE
+    assert private_token not in raised.value.safe_message
+    assert private_token not in repr(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert not any(path.name.startswith(".pws-0114-m1-report-") for path in tmp_path.iterdir())
+
+
+def test_live_writer_internal_encoding_failure_clears_private_exception_chain(
+    tmp_path: Path,
+) -> None:
+    private_token = "PRIVATE-LIVE-ENCODER-CANARY"
+    with (
+        _open_live_m1_report_writer(tmp_path) as writer,
+        patch(
+            "tools.m1_vertical_slice_benchmark._encode_live_m1_completed_report",
+            side_effect=ValueError(private_token),
+        ),
+        pytest.raises(M1BenchmarkError) as raised,
+    ):
+        writer._encode_completed_report(_report(tmp_path / "host-observation"))
+
+    assert raised.value.code == "M1_REPORT_INVALID"
+    assert private_token not in raised.value.safe_message
+    assert private_token not in repr(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None

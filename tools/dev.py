@@ -204,6 +204,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         "Record host/reference observations without inventing vertical-slice measurements.",
         include_in_check=False,
     ),
+    "run-m1-vertical-slice": CommandSpec(
+        ("python", "-m", "tools.m1_vertical_slice_live_runner"),
+        "Run the fixed PWS-0114 scenario and publish its local derivative and report.",
+        include_in_check=False,
+    ),
     "benchmark-pdf-renderers": CommandSpec(
         ("python", "-m", "tools.pdf_renderer_benchmark", "benchmark"),
         "Compare the pinned PDF renderers on the versioned synthetic corpus.",

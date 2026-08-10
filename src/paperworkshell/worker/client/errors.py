@@ -19,6 +19,7 @@ class WorkerClientErrorCode(StrEnum):
     ISOLATION_INSUFFICIENT = "WORKER_ISOLATION_INSUFFICIENT"
     TRANSPORT_FAILED = "WORKER_TRANSPORT_FAILED"
     HANDLE_TRANSFER_FAILED = "WORKER_HANDLE_TRANSFER_FAILED"
+    RESOURCE_REPORT_FAILED = "WORKER_RESOURCE_REPORT_FAILED"
     PROTOCOL_FAILED = "WORKER_PROTOCOL_FAILED"
     HANDSHAKE_TIMED_OUT = "WORKER_HANDSHAKE_TIMED_OUT"
     OPERATION_TIMED_OUT = "WORKER_OPERATION_TIMED_OUT"
@@ -40,6 +41,7 @@ class WorkerClientContext(StrEnum):
     ISOLATION = "worker.isolation"
     TRANSPORT = "worker.transport"
     HANDLE_TRANSFER = "worker.handle_transfer"
+    RESOURCE = "worker.resource"
     PROTOCOL = "worker.protocol"
     HANDSHAKE = "worker.handshake"
     OPERATION = "worker.operation"
@@ -77,6 +79,9 @@ _SAFE_MESSAGES: Final = MappingProxyType(
         ),
         WorkerClientErrorCode.HANDLE_TRANSFER_FAILED: (
             "PaperWorkShell could not grant the document worker its required input safely."
+        ),
+        WorkerClientErrorCode.RESOURCE_REPORT_FAILED: (
+            "PaperWorkShell could not verify the document worker resource measurements."
         ),
         WorkerClientErrorCode.PROTOCOL_FAILED: (
             "The document worker sent an invalid or incompatible response."
@@ -116,6 +121,7 @@ _RECOVERY_ACTIONS: Final = MappingProxyType(
         WorkerClientErrorCode.ISOLATION_INSUFFICIENT: WorkerRecoveryAction.NONE,
         WorkerClientErrorCode.TRANSPORT_FAILED: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.HANDLE_TRANSFER_FAILED: WorkerRecoveryAction.RESTART_WORKER,
+        WorkerClientErrorCode.RESOURCE_REPORT_FAILED: WorkerRecoveryAction.NONE,
         WorkerClientErrorCode.PROTOCOL_FAILED: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.HANDSHAKE_TIMED_OUT: WorkerRecoveryAction.RESTART_WORKER,
         WorkerClientErrorCode.OPERATION_TIMED_OUT: WorkerRecoveryAction.RESTART_WORKER,
