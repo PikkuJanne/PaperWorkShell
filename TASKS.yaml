@@ -1176,7 +1176,7 @@ tasks:
   blocker: null
   evidence:
     completed_at: '2026-08-10'
-    revision: "88f9aec"
+    revision: "663c966"
     commands:
     - uv run --locked --no-sync python tools/dev.py check - passed; 1,987 unit tests, 351 integration
       tests with 2 disclosed local link-capability skips, 256 security tests with 6 disclosed local
@@ -1190,6 +1190,9 @@ tasks:
       budget
     - Bounded copy-owned CPython runtime probe - passed; the staged interpreter reported its copied
       root as sys.base_prefix and a derived virtual environment retained that copied base
+    - uv run --locked --no-sync python tools/dev.py test-security - passed; 256 tests with 6 disclosed
+      local capability skips, including exact path-independent PySide wheel-payload and installed-file
+      RECORD verification
     - Production exact-object ACL-authority inventory on the rebuilt current-user environment -
       passed; 12,091 resources authenticated
     - uv run --locked --no-sync pytest -q tests/integration/test_organizer_ui_windows.py - passed;
@@ -1214,6 +1217,9 @@ tasks:
     - Hosted Windows quality runs retain the same production runtime-admission policy; the pinned
       setup-python interpreter is copied into a fresh runner-owned tree, rebound through UV_PYTHON,
       and verified before the locked environment is created. No worker security check is weakened.
+      Installed PySide identity is bound to the canonical wheel payload and every RECORD-listed file,
+      while only exact metadata-declared path-dependent entry-point launchers are excluded from the
+      payload fingerprint.
     - The observed local inspection failure was remediated only after an exhaustive 12,339-object
       ACL/journal residue audit reported zero target-SID or guard residue and an empty journal; the
       subsequent synthetic import committed one source and two pages. No generalized cache-path
