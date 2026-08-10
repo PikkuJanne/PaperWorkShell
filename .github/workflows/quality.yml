@@ -16,7 +16,7 @@ jobs:
   windows-quality:
     name: Windows quality suite
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,6 +40,31 @@ jobs:
           restore-cache: false
           save-cache: false
           download-from-astral-mirror: false
+
+      - name: Stage copy-owned worker CPython
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $source = (& python -I -S -c "import sys; print(sys.base_prefix)").Trim()
+          if (-not [IO.Path]::IsPathFullyQualified($source)) {
+            throw "The setup-python runtime root is not absolute."
+          }
+          $destination = Join-Path $env:RUNNER_TEMP "PaperWorkShell-ci-python"
+          if (Test-Path -LiteralPath $destination) {
+            throw "The copy-owned worker runtime destination already exists."
+          }
+          Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
+          $python = Join-Path $destination "python.exe"
+          if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+            throw "The copy-owned worker interpreter was not staged."
+          }
+          $reported = (& $python -I -S -c "import sys; print(sys.base_prefix)").Trim()
+          $expectedRoot = [IO.Path]::GetFullPath($destination)
+          $reportedRoot = [IO.Path]::GetFullPath($reported)
+          if (-not [StringComparer]::OrdinalIgnoreCase.Equals($expectedRoot, $reportedRoot)) {
+            throw "The staged interpreter did not bind to the copy-owned runtime."
+          }
+          "UV_PYTHON=$python" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install and verify Gitleaks 8.30.1
         shell: pwsh

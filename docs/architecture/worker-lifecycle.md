@@ -88,6 +88,14 @@ the changed link count, avoiding a stranded user policy or profile.
 The repository configures uv's install mode as `copy` so a locked development environment creates
 independently owned runtime files.
 
+The hosted Windows workflow also refuses to use the shared `setup-python` tool-cache tree as
+worker authority. Before bootstrap it copies that pinned interpreter into a fresh runner-private
+physical directory, proves the copied executable reports that directory as `sys.base_prefix`, and
+sets uv's exact `UV_PYTHON` interpreter selection before creating `.venv`. The live production
+composition tests then apply the unchanged exact-object, link-count, ACL-authority, and retained-
+handle checks to the copy-owned base runtime. This CI staging does not relax launcher admission for
+shared, hardlinked, or foreign-authority runtime trees.
+
 The command is a fixed structured argument array, never a shell string:
 
 ```text
