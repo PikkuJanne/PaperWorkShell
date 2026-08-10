@@ -5,6 +5,7 @@ Milestone gate reports and their reproducible evidence belong in this directory.
 ## Reports
 
 - [Milestone 0 foundation gate](m0-foundation-gate.md) — PWS-0010; PASS
+- [Milestone 1 reliable vertical-slice gate](m1-vertical-slice-gate.md) — PWS-0114; IN PROGRESS
 
 Each report records the reviewed revision and environment, prerequisite status, automated and
 manual evidence, known limitations, unresolved defects, owned future risks, and an explicit pass
