@@ -87,6 +87,7 @@ LIVE_FIXTURES: Final = (
 )
 LIVE_DERIVATIVE_FILENAME: Final = "PWS-0114-m1-vertical-slice.pdf"
 LIVE_REPORT_FILENAME: Final = "PWS-0114-m1-benchmark-report.json"
+_LIVE_REFERENCE_SCENARIO_ID: Final = "rotational-hdd"
 LIVE_CHILD_RESULT_FILENAME: Final = "result.json"
 LIVE_CHILD_DERIVATIVE_FILENAME: Final = "derivative.pdf"
 LIVE_ENV_PROTOCOL: Final = "PWS_M1_LIVE_PROTOCOL"
@@ -1287,7 +1288,7 @@ def run_live_m1_vertical_slice(
         _fail("M1_REFERENCE_INVALID", "The checked-in reference profile is invalid.")
     host_report = build_m1_benchmark_report(
         profile,
-        "limited-storage",
+        _LIVE_REFERENCE_SCENARIO_ID,
         selected_work,
         attestations=attestations,
     )

@@ -27,6 +27,7 @@ from tools.m1_vertical_slice_benchmark import (
     _LiveM1ReportWriter,
 )
 from tools.m1_vertical_slice_live_runner import (
+    _LIVE_REFERENCE_SCENARIO_ID,
     _QPDF_BIN_FILE_SHA256,
     LIVE_CHILD_DERIVATIVE_FILENAME,
     LIVE_CHILD_RESULT_FILENAME,
@@ -80,6 +81,28 @@ class _PostcommitInterruptWriter:
     def _publish_completed_report(self, _report: M1BenchmarkReport) -> Path:
         self._published = self._committed
         raise KeyboardInterrupt
+
+
+def test_live_reference_scenario_requires_bounded_hdd_evidence() -> None:
+    profile = json.loads(
+        (PROJECT_ROOT / "benchmarks" / "reference-windows-v1.json").read_text(encoding="utf-8")
+    )
+    selected = tuple(
+        scenario
+        for scenario in profile["storage_scenarios"]
+        if scenario["id"] == _LIVE_REFERENCE_SCENARIO_ID
+    )
+
+    assert selected == (
+        {
+            "id": "rotational-hdd",
+            "capacity": "bounded",
+            "maximum_capacity_bytes": 8_589_934_592,
+            "minimum_free_bytes": 4_194_304,
+            "media": "hdd-or-validated-emulation",
+            "verification": "runtime-and-operator-attested",
+        },
+    )
 
 
 def _phases() -> tuple[PhaseMeasurement, ...]:
