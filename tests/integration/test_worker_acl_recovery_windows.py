@@ -448,6 +448,68 @@ def test_recovery_identity_mismatch_fails_closed_without_acl_mutation(
         assert profile.close_no_raise()
 
 
+def test_old_v2_python_cache_identity_mismatch_remains_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recovery_root = _recovery_root(tmp_path, monkeypatch)
+    approved = tmp_path / "approved-runtime"
+    package = approved / "package"
+    cache = package / "__pycache__"
+    cache.mkdir(parents=True)
+    source = package / "module.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    cached = cache / "module.cpython-314.pyc"
+    cached.write_bytes(b"old synthetic bytecode")
+    profile = _AppContainerProfile.create((approved,))
+    journal = AclRecoveryJournal(recovery_root)
+    cache_handle, cache_info = windows_module._open_retained_resource(
+        cached,
+        acl_authority=True,
+    )
+    cache_resource = windows_module._RetainedResource(cached, cache_handle, cache_info)
+    peer_sid = windows_module._convert_string_sid(windows_module._current_process_user_sid_string())
+    try:
+        cache_object = windows_module._capture_exact_acl_recovery_object(
+            cache_resource,
+            guard_baseline=windows_module._exact_deny_ace_count_handle(
+                cache_handle.value,
+                peer_sid,
+                windows_module._FILE_WRITE_ATTRIBUTES,
+            ),
+            auto_inherited=windows_module._dacl_auto_inherited_handle(cache_handle.value),
+        )
+    finally:
+        windows_module._local_free(peer_sid)
+        cache_handle.close()
+    try:
+        profile.grant_read_execute((approved,))
+        original = journal.inventory()[0]
+        old_v2 = replace(original, objects=(*original.objects, cache_object))
+        journal.write(old_v2)
+        replacement = cache / "replacement.tmp"
+        replacement.write_bytes(b"new synthetic bytecode")
+        replacement.replace(cached)
+        replacement_dacl = _dacl_sddl(cached)
+        granted_dacl = _dacl_sddl(approved)
+        monkeypatch.setattr(windows_module, "_ledger_owner_is_active", lambda *_args: False)
+
+        with pytest.raises(WindowsLaunchError) as raised:
+            recover_worker_acl_access((approved,))
+
+        assert raised.value.code is WindowsLaunchErrorCode.ACCESS_GRANT_FAILED
+        assert raised.value.context == "access.recovery_identity"
+        assert journal.inventory() == (old_v2,)
+        assert _dacl_sddl(approved) == granted_dacl
+        assert _dacl_sddl(cached) == replacement_dacl
+        assert _sid_access_mask(approved, profile.sid)
+
+        journal.write(original)
+        assert recover_worker_acl_access((approved,)).repaired_leases == 1
+    finally:
+        assert profile.close_no_raise()
+
+
 def test_legacy_recovery_pins_root_before_rechecking_swap_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -783,12 +845,12 @@ def test_retained_handle_blocks_runtime_replacement_after_prepared_cutpoint(
             replacement_blocked = True
         original_append(handle, sid, mask)
 
+    profile = _AppContainerProfile.create((approved,))
     monkeypatch.setattr(
         windows_module,
         "_append_exact_deny_ace_handle",
         attempt_replace_before_first_acl_mutation,
     )
-    profile = _AppContainerProfile.create((approved,))
     try:
         profile.grant_read_execute((approved,))
 

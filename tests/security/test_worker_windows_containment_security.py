@@ -5,7 +5,10 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import py_compile
 import socket
+import subprocess
+import sys
 from contextlib import ExitStack
 from pathlib import Path
 from secrets import token_hex
@@ -14,7 +17,10 @@ from uuid import uuid4
 
 import pytest
 
-from paperworkshell.worker._windows_runtime import _ALLOWED_ENVIRONMENT
+from paperworkshell.worker._windows_runtime import (
+    _ALLOWED_ENVIRONMENT,
+    _private_bytecode_configuration_is_valid,
+)
 from paperworkshell.worker.client import _windows as windows_module
 from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
@@ -92,6 +98,143 @@ def test_hardlinked_runtime_file_is_rejected_before_access_grant(tmp_path: Path)
     rendered = str(caught.value)
     assert os.fspath(shared) not in rendered
     assert os.fspath(alias) not in rendered
+
+
+def test_mutable_python_bytecode_caches_are_not_worker_access_authorities(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "approved-runtime"
+    package = runtime_root / "package"
+    cache = package / "__PyCaChE__"
+    cache.mkdir(parents=True)
+    source = package / "module.py"
+    cached = cache / "module.cpython-314.pyc"
+    standalone_cache = package / "optimized.PyC"
+    legacy_cache = package / "legacy.PYO"
+    source.write_text("VALUE = 'approved'\n", encoding="utf-8")
+    cached.write_bytes(b"mutable bytecode cache")
+    standalone_cache.write_bytes(b"mutable optimized bytecode cache")
+    legacy_cache.write_bytes(b"mutable legacy bytecode cache")
+
+    first = frozenset(_approved_resource_tree(runtime_root))
+    cached.write_bytes(b"replaced bytecode cache")
+    second = frozenset(_approved_resource_tree(runtime_root))
+
+    assert first == second
+    assert runtime_root in first
+    assert package in first
+    assert source in first
+    assert cache not in first
+    assert cached not in first
+    assert standalone_cache not in first
+    assert legacy_cache not in first
+    for mutable_cache_root in (cache, cached, standalone_cache, legacy_cache):
+        with pytest.raises(WindowsLaunchError) as cache_root_error:
+            _approved_resource_tree(mutable_cache_root)
+        assert cache_root_error.value.code is WindowsLaunchErrorCode.CONFIGURATION_INVALID
+        assert cache_root_error.value.context == "config.resources"
+
+
+def test_private_pycache_prefix_ignores_a_valid_conflicting_source_cache(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "approved-source"
+    source_root.mkdir()
+    module = source_root / "cache_canary.py"
+    runner = source_root / "runner.py"
+    module.write_text("VALUE = 'cached'\n", encoding="utf-8")
+    source_stat = module.stat()
+    compiled = py_compile.compile(
+        os.fspath(module),
+        doraise=True,
+        invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+    )
+    assert type(compiled) is str
+    cached = Path(compiled)
+    cached_bytes = cached.read_bytes()
+    module.write_text("VALUE = 'source'\n", encoding="utf-8")
+    os.utime(module, ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
+    runner.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {os.fspath(source_root)!r})\n"
+        "import cache_canary\n"
+        "sys.stdout.write(cache_canary.VALUE)\n",
+        encoding="utf-8",
+    )
+    base_arguments = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-X",
+        "utf8",
+    )
+    cached_run = subprocess.run(
+        (*base_arguments, os.fspath(runner)),
+        check=False,
+        capture_output=True,
+        timeout=10.0,
+    )
+    assert cached_run.returncode == 0
+    assert cached_run.stdout == b"cached"
+
+    profile_root = tmp_path / "profile"
+    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix.mkdir(parents=True)
+    isolated_run = subprocess.run(
+        (
+            *base_arguments,
+            "-X",
+            f"pycache_prefix={pycache_prefix}",
+            os.fspath(runner),
+        ),
+        check=False,
+        capture_output=True,
+        timeout=10.0,
+    )
+
+    assert isolated_run.returncode == 0
+    assert isolated_run.stdout == b"source"
+    assert isolated_run.stderr == b""
+    assert cached.read_bytes() == cached_bytes
+    assert not tuple(pycache_prefix.iterdir())
+
+
+def test_private_pycache_configuration_rejects_an_empty_wrong_parent(
+    tmp_path: Path,
+) -> None:
+    local_app_data = tmp_path / "profile"
+    expected = local_app_data / "PyCache"
+    unrelated = tmp_path / "unrelated" / "PyCache"
+    expected.mkdir(parents=True)
+    unrelated.mkdir(parents=True)
+    nested_local_app_data = local_app_data / "Local"
+    nested_local_app_data.mkdir()
+
+    assert _private_bytecode_configuration_is_valid(
+        os.fspath(local_app_data),
+        os.fspath(local_app_data),
+        os.fspath(expected),
+        os.fspath(expected),
+    )
+    assert _private_bytecode_configuration_is_valid(
+        os.fspath(local_app_data),
+        os.fspath(nested_local_app_data),
+        os.fspath(expected),
+        os.fspath(expected),
+    )
+    assert not _private_bytecode_configuration_is_valid(
+        os.fspath(local_app_data),
+        os.fspath(local_app_data),
+        os.fspath(unrelated),
+        os.fspath(unrelated),
+    )
+    assert not _private_bytecode_configuration_is_valid(
+        os.fspath(local_app_data),
+        os.fspath(local_app_data),
+        os.fspath(expected),
+        os.fspath(unrelated),
+    )
 
 
 def test_create_hardlink_after_inventory_is_blocked_for_full_lease(

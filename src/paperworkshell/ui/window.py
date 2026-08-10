@@ -97,6 +97,15 @@ class _LongOperationKind(StrEnum):
     PREVIEW = "Preview"
 
 
+class _ImportPresentationState(StrEnum):
+    IDLE = "idle"
+    QUEUED = "queued"
+    ACTIVE = "active"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    REOPEN_REQUIRED = "reopen_required"
+
+
 @dataclass(frozen=True, slots=True)
 class _LongOperation:
     operation_id: int
@@ -328,8 +337,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._case_reopen_required = False
         self._controls_enabled = False
         self._closing_requested = False
+        self._closing_import_cleanup = False
         self._allow_close = False
         self._last_announced_progress: tuple[str, str, int] | None = None
+        self._latest_import_progress: UiProgress | None = None
+        self._import_presentation = _ImportPresentationState.IDLE
         self._pending_failure_focus: str | None = None
         self._startup_recovery_announced = False
         self._pending_startup_unavailable_case_ids: frozenset[UUID] = frozenset()
@@ -525,6 +537,24 @@ class PaperWorkShellWindow(QMainWindow):
         organizer_group.setAccessibleDescription(
             "Keyboard-selectable active pages. Reordering never requires drag-and-drop."
         )
+        self._organizer_guidance = QLabel()
+        self._organizer_guidance.setObjectName("organizerGuidance")
+        self._organizer_guidance.setAccessibleName("Page organizer guidance")
+        self._organizer_guidance.setAccessibleDescription(
+            "Current page organizer state and the next available action."
+        )
+        self._organizer_guidance.setTextFormat(Qt.TextFormat.PlainText)
+        self._organizer_guidance.setWordWrap(True)
+        self._organizer_guidance.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._organizer_guidance.setFrameShape(QFrame.Shape.StyledPanel)
+        self._organizer_guidance.setMargin(8)
+        self._organizer_guidance.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self._organizer_guidance.setVisible(False)
+        layout.addWidget(self._organizer_guidance)
+
         organizer_layout = QVBoxLayout(organizer_group)
         self._page_view = QListView()
         self._page_view.setObjectName("pageList")
@@ -725,8 +755,11 @@ class PaperWorkShellWindow(QMainWindow):
         selected_page = self._selected_page_id()
         if state.case_id is None or prior_state is None or prior_state.case_id != state.case_id:
             self._case_reopen_required = False
+            self._latest_import_progress = None
+            self._import_presentation = _ImportPresentationState.IDLE
         self._state = state
         self._model.set_organizer_state(state)
+        self._update_organizer_guidance()
         self._update_import_availability()
         self._update_preview_retry_action()
         if state.case_id is None:
@@ -819,6 +852,17 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         if active is None or active.operation_id != progress.operation_id:
             return
+        prior = self._last_announced_progress
+        phase_changed = prior is None or prior[:2] != (progress.operation, progress.phase)
+        announcement_step = max(1, progress.total // 4)
+        completed_enough = prior is None or progress.completed - prior[2] >= announcement_step
+        announce_checkpoint = (
+            phase_changed or completed_enough or progress.completed == progress.total
+        )
+        if active.kind is _LongOperationKind.IMPORT and announce_checkpoint:
+            self._latest_import_progress = progress
+            self._import_presentation = _ImportPresentationState.ACTIVE
+            self._update_organizer_guidance()
         self._progress.setVisible(True)
         self._progress.setRange(0, progress.total)
         self._progress.setValue(progress.completed)
@@ -829,11 +873,7 @@ class PaperWorkShellWindow(QMainWindow):
         cancelable = progress.cancelable and not active.cancellation.cancelled()
         self._cancel_button.setVisible(progress.cancelable)
         self._cancel_button.setEnabled(cancelable)
-        prior = self._last_announced_progress
-        phase_changed = prior is None or prior[:2] != (progress.operation, progress.phase)
-        announcement_step = max(1, progress.total // 4)
-        completed_enough = prior is None or progress.completed - prior[2] >= announcement_step
-        if phase_changed or completed_enough or progress.completed == progress.total:
+        if announce_checkpoint:
             self._last_announced_progress = (
                 progress.operation,
                 progress.phase,
@@ -876,6 +916,9 @@ class PaperWorkShellWindow(QMainWindow):
             return
         if active.kind is _LongOperationKind.IMPORT:
             self._hide_error()
+            self._import_presentation = _ImportPresentationState.IDLE
+            self._latest_import_progress = None
+            self._update_organizer_guidance()
         self._announce(message)
 
     def _reject_preview_result(self, operation_id: int) -> None:
@@ -898,6 +941,9 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             return
         self._case_reopen_required = True
+        self._latest_import_progress = None
+        self._import_presentation = _ImportPresentationState.REOPEN_REQUIRED
+        self._update_organizer_guidance()
         self._preview_refresh_timer.stop()
         self._autosave_timer.stop()
         self._deferred_import = None
@@ -929,6 +975,10 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         if active is None or active.operation_id != operation_id:
             return
+        if active.kind is _LongOperationKind.IMPORT:
+            self._latest_import_progress = None
+            self._import_presentation = _ImportPresentationState.CANCELLED
+            self._update_organizer_guidance()
         self._announce(message, assertive=True)
 
     @Slot(int)
@@ -978,6 +1028,9 @@ class PaperWorkShellWindow(QMainWindow):
             for page_id in self._active_preview_page_ids:
                 self._model.set_preview_failed(page_id)
             self._preview_batch_complete = False
+        elif correlated_kind is _LongOperationKind.IMPORT:
+            self._latest_import_progress = None
+            self._import_presentation = _ImportPresentationState.FAILED
         self._error_label.setText(f"{failure.code}: {failure.message}")
         self._error_label.setVisible(True)
         pending_save = self._state is not None and self._state.autosave_pending
@@ -992,6 +1045,7 @@ class PaperWorkShellWindow(QMainWindow):
         else:
             self._pending_failure_focus = None
         self._update_preview_retry_action()
+        self._update_organizer_guidance()
         self._announce(f"Action failed. {failure.message}", assertive=True)
         if self._retry_save_button.isVisible():
             self._retry_save_button.setFocus()
@@ -1012,6 +1066,8 @@ class PaperWorkShellWindow(QMainWindow):
         if type(refusal) is not ShutdownRefusalKind:
             return
         self._closing_requested = False
+        self._closing_import_cleanup = False
+        self._update_organizer_guidance()
         self._set_controls_enabled(True)
         if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
             self._hide_retry_save()
@@ -1180,6 +1236,9 @@ class PaperWorkShellWindow(QMainWindow):
                 )
                 return
             self._deferred_import = (source_path, display_name)
+            self._import_presentation = _ImportPresentationState.QUEUED
+            self._latest_import_progress = None
+            self._update_organizer_guidance()
             self._update_import_availability()
             self._cancel_active_preview()
             self._announce("Stopping the current preview before import starts.")
@@ -1187,6 +1246,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._start_import(source_path, display_name)
 
     def _start_import(self, source_path: Path, display_name: str) -> None:
+        self._hide_error()
         operation = self._begin_long_operation(_LongOperationKind.IMPORT)
         self._announce("Import started. You can cancel this operation.")
         self._commands.import_requested.emit(
@@ -1409,6 +1469,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._next_operation_id = 1 if operation_id >= _MAX_OPERATION_ID else operation_id + 1
         operation = _LongOperation(operation_id, kind, OperationCancellation())
         self._active_operation = operation
+        if kind is _LongOperationKind.IMPORT:
+            self._latest_import_progress = None
+            self._import_presentation = _ImportPresentationState.ACTIVE
+            self._update_organizer_guidance()
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)
         self._progress.setFormat(f"{kind.value} queued")
@@ -1442,23 +1506,81 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setEnabled(False)
 
     def _finish_active_operation(self) -> None:
+        finished_kind = None if self._active_operation is None else self._active_operation.kind
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
         self._progress.setVisible(False)
         self._cancel_button.setVisible(False)
         self._active_operation = None
+        if finished_kind is _LongOperationKind.IMPORT:
+            self._latest_import_progress = None
+            if self._import_presentation is _ImportPresentationState.ACTIVE:
+                self._import_presentation = _ImportPresentationState.IDLE
         self._active_preview_page_ids = ()
         self._preview_batch_complete = False
         self._last_announced_progress = None
         self._update_import_availability()
         self._update_page_actions()
         self._update_preview_retry_action()
+        self._update_organizer_guidance()
 
     def _import_is_pending_or_running(self) -> bool:
         active = self._active_operation
         return self._deferred_import is not None or (
             active is not None and active.kind is _LongOperationKind.IMPORT
         )
+
+    def _update_organizer_guidance(self) -> None:
+        state = self._state
+        if state is None or state.case_id is None:
+            self._organizer_guidance.setVisible(False)
+            return
+        if self._closing_requested and self._closing_import_cleanup:
+            message = (
+                "Closing PaperWorkShell safely. Waiting for the current import to stop and secure "
+                "cleanup to finish."
+            )
+        elif self._case_reopen_required:
+            message = (
+                "The import was saved, but this organizer must be reopened before the new pages "
+                "can be used. Choose Close case, then reopen this case."
+            )
+        elif self._import_presentation is _ImportPresentationState.FAILED:
+            recovery = (
+                "Review Action error below, then choose"
+                if self._error_label.isVisible()
+                else "Choose"
+            )
+            message = f"Import did not finish. {recovery} Import document (Ctrl+I) to try again."
+        elif self._import_presentation is _ImportPresentationState.CANCELLED:
+            message = (
+                "Import cancelled. No source was committed. Choose Import document (Ctrl+I) "
+                "to try again."
+            )
+        elif self._import_presentation is _ImportPresentationState.QUEUED:
+            message = (
+                "Import queued. PaperWorkShell is stopping the current preview before import "
+                "starts. Keep PaperWorkShell open."
+            )
+        elif self._import_is_pending_or_running():
+            progress = self._latest_import_progress
+            phase = (
+                ""
+                if progress is None
+                else f" — {progress.phase}: {progress.completed} of {progress.total}"
+            )
+            message = (
+                f"Importing document{phase}. PaperWorkShell copies and checks the file before new "
+                "pages appear. Keep PaperWorkShell open; press Escape to cancel safely."
+            )
+        elif not state.pages:
+            message = "No pages yet. Choose Import document (Ctrl+I) to add a PDF, JPEG, or PNG."
+        else:
+            self._organizer_guidance.setVisible(False)
+            return
+        self._organizer_guidance.setText(message)
+        self._organizer_guidance.setAccessibleDescription(message)
+        self._organizer_guidance.setVisible(True)
 
     def _announce(self, message: str, *, assertive: bool = False) -> None:
         self._status_label.setText(message)
@@ -1512,6 +1634,7 @@ class PaperWorkShellWindow(QMainWindow):
     def _hide_error(self) -> None:
         had_focus = self._error_label.hasFocus()
         self._error_label.setVisible(False)
+        self._update_organizer_guidance()
         if had_focus:
             self._focus_safe_control()
 
@@ -1622,14 +1745,21 @@ class PaperWorkShellWindow(QMainWindow):
         if self._closing_requested:
             return
         retrying_cleanup = self._retry_close_button.isVisible()
+        queued_import = self._deferred_import is not None
+        active = self._active_operation
+        active_import = active is not None and active.kind is _LongOperationKind.IMPORT
         self._closing_requested = True
+        self._closing_import_cleanup = queued_import or active_import
         self._hide_retry_close()
         self._autosave_timer.stop()
         self._deferred_import = None
+        if queued_import:
+            self._import_presentation = _ImportPresentationState.CANCELLED
         self._deferred_preview_state = None
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
         self._cancel_active_operation_silently()
+        self._update_organizer_guidance()
         self._set_controls_enabled(False)
         self._announce(
             "Retrying secure cleanup before closing PaperWorkShell."

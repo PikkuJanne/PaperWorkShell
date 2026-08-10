@@ -113,6 +113,7 @@ def test_minimal_child_environment_contains_only_the_fixed_startup_hint(
     assert environment["__PYVENV_LAUNCHER__"] == os.fspath(launcher)
     assert set(environment) == {
         "LOCALAPPDATA",
+        "PWS_PROFILE_ROOT",
         "SystemRoot",
         "TEMP",
         "TMP",

@@ -120,6 +120,10 @@ _PRIVATE_TEMP_ACCESS: Final = (
     | _READ_CONTROL
     | _SYNCHRONIZE
 )
+_PRIVATE_PYCACHE_DIRECTORY_NAME: Final = "PyCache"
+_PRIVATE_PYCACHE_MUTATION_ACCESS: Final = (
+    _FILE_WRITE_DATA | _FILE_APPEND_DATA | _FILE_DELETE_CHILD | _FILE_WRITE_ATTRIBUTES | _DELETE
+)
 _ACCESS_ALLOWED_ACE_TYPE: Final = 0
 _ACCESS_DENIED_ACE_TYPE: Final = 1
 _ACL_REVISION_DS: Final = 4
@@ -180,6 +184,7 @@ _PROFILE_CLEANUP_ATTEMPTS: Final = 3
 _HANDLE_CLOSE_ATTEMPTS: Final = 3
 _ACL_MUTATION_MUTEX_NAME: Final = "Global\\PaperWorkShell.WorkerResourceAcl.v1"
 _ACL_RECOVERY_DIRECTORY_NAME: Final = "PaperWorkShell.WorkerAclRecovery.v1"
+_MUTABLE_PYTHON_CACHE_SUFFIXES: Final = frozenset({".pyc", ".pyo"})
 _ACL_MUTATION_WAIT_MILLISECONDS: Final = 120_000
 _PROCESS_CREATION_WAIT_SECONDS: Final = 10.0
 _MAX_WINDOWS_CPU_TIME_MS: Final = ((1 << 63) - 1) // 10_000
@@ -1502,6 +1507,17 @@ class WindowsLaunchConfig:
             os.fspath(self.bootstrap_script),
         )
 
+    def fixed_argv_for_profile(self, local_app_data: Path) -> tuple[str, ...]:
+        """Bind cache lookup to the launch profile's fresh private namespace."""
+
+        pycache_prefix = _require_private_pycache_prefix(local_app_data)
+        return (
+            *self.fixed_argv[:-1],
+            "-X",
+            f"pycache_prefix={os.fspath(pycache_prefix)}",
+            self.fixed_argv[-1],
+        )
+
     def __repr__(self) -> str:
         return "WindowsLaunchConfig(<approved fixed resources>)"
 
@@ -2761,6 +2777,12 @@ def _open_approved_resource_inventory(
     inventory = _ApprovedResourceInventory()
     try:
         for root in sorted(roots, key=lambda candidate: len(_absolute_path_prefixes(candidate))):
+            if _is_mutable_python_cache_entry(root):
+                _reject(
+                    WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                    "config.resources",
+                    "A mutable Python cache cannot be a worker resource root.",
+                )
             _require_no_reparse_local_path(root)
             _retain_ancestor_guards(root.parent, inventory)
             pending: list[tuple[Path, int]] = [(root, 0)]
@@ -2799,11 +2821,24 @@ def _open_approved_resource_inventory(
                         "config.resources",
                         "An approved worker runtime resource is unavailable.",
                     )
-                pending.extend((child, depth + 1) for child in reversed(children))
+                pending.extend(
+                    (child, depth + 1)
+                    for child in reversed(children)
+                    if not _is_mutable_python_cache_entry(child)
+                )
         return inventory
     except BaseException:
         _close_failed_inventory(inventory)
         raise
+
+
+def _is_mutable_python_cache_entry(path: Path) -> bool:
+    """Exclude interpreter caches that trusted GUI imports may replace at runtime."""
+
+    return (
+        path.name.casefold() == "__pycache__"
+        or path.suffix.casefold() in _MUTABLE_PYTHON_CACHE_SUFFIXES
+    )
 
 
 def _require_retained_resource_unchanged(
@@ -3872,11 +3907,219 @@ def _has_effective_app_container_read_execute(
 
 
 @dataclass(slots=True, repr=False)
+class _PrivatePycacheGuard:
+    """Retain one empty cache namespace and deny peer/profile mutation."""
+
+    path: Path = field(repr=False)
+    handle: _OwnedHandle = field(repr=False)
+    info: _RetainedResourceInfo = field(repr=False)
+    ancestor_guards: _ApprovedResourceInventory = field(repr=False)
+    peer_sid_string: str = field(repr=False)
+    peer_guard_baseline: int
+    profile_guard_baseline: int
+    peer_guard_started: bool = False
+    profile_guard_started: bool = False
+    profile_access_started: bool = False
+    _closed: bool = False
+
+    @classmethod
+    def open(cls, path: Path, profile_sid: ctypes.c_void_p) -> Self:
+        ancestors = _ApprovedResourceInventory()
+        handle = _OwnedHandle.empty()
+        try:
+            _retain_ancestor_guards(path.parent, ancestors)
+            opened, info = _open_retained_resource(path, acl_authority=True)
+            handle = opened
+            if not info.is_directory:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_identity",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+            peer_sid_string = _current_process_user_sid_string()
+            peer_sid = _convert_string_sid(peer_sid_string)
+            try:
+                peer_baseline = _exact_deny_ace_count_handle(
+                    handle.value,
+                    peer_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                profile_baseline = _exact_deny_ace_count_handle(
+                    handle.value,
+                    profile_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+            finally:
+                _local_free(peer_sid)
+            return cls(
+                path=path,
+                handle=handle,
+                info=info,
+                ancestor_guards=ancestors,
+                peer_sid_string=peer_sid_string,
+                peer_guard_baseline=peer_baseline,
+                profile_guard_baseline=profile_baseline,
+            )
+        except BaseException:
+            cleanup_failed = False
+            if handle.is_open and not _close_owned_handle_bounded(handle):
+                _quarantine_owned_handle(handle)
+                cleanup_failed = True
+            if not ancestors.close_no_raise():
+                for guard in ancestors.guards:
+                    if guard.handle.is_open:
+                        _quarantine_owned_handle(guard.handle)
+                cleanup_failed = True
+            if cleanup_failed:
+                raise WindowsLaunchError(
+                    WindowsLaunchErrorCode.CLEANUP_FAILED,
+                    "profile.pycache_partial_cleanup",
+                    "Windows could not clean up private worker bytecode authority.",
+                ) from None
+            raise
+
+    def activate(self, profile_sid: ctypes.c_void_p) -> None:
+        peer_sid = _convert_string_sid(self.peer_sid_string)
+        try:
+            if (
+                _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    peer_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.peer_guard_baseline
+                or _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    profile_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.profile_guard_baseline
+            ):
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_guard",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+            self.peer_guard_started = True
+            _append_exact_deny_ace_handle(
+                self.handle.value,
+                peer_sid,
+                _PRIVATE_PYCACHE_MUTATION_ACCESS,
+            )
+            self.profile_guard_started = True
+            _append_exact_deny_ace_handle(
+                self.handle.value,
+                profile_sid,
+                _PRIVATE_PYCACHE_MUTATION_ACCESS,
+            )
+            self.profile_access_started = True
+            _change_sid_access_handle(self.handle.value, profile_sid, _GRANT_ACCESS)
+            self.require_ready(profile_sid)
+        finally:
+            _local_free(peer_sid)
+
+    def require_ready(self, profile_sid: ctypes.c_void_p) -> None:
+        peer_sid = _convert_string_sid(self.peer_sid_string)
+        try:
+            if (
+                _query_retained_resource_info(self.handle.value) != self.info
+                or _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    peer_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.peer_guard_baseline + 1
+                or _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    profile_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.profile_guard_baseline + 1
+                or _sid_access_mask_handle(self.handle.value, profile_sid)
+                & _FILE_GENERIC_READ_EXECUTE
+                != _FILE_GENERIC_READ_EXECUTE
+            ):
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_guard",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+            if _require_private_pycache_prefix(self.path.parent) != self.path:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_identity",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+        finally:
+            _local_free(peer_sid)
+
+    def close_no_raise(self, profile_sid: ctypes.c_void_p) -> bool:
+        if self._closed:
+            return True
+        try:
+            peer_sid = _convert_string_sid(self.peer_sid_string)
+        except WindowsLaunchError:
+            return False
+        try:
+            if self.profile_access_started:
+                try:
+                    _change_sid_access_handle(self.handle.value, profile_sid, _REVOKE_ACCESS)
+                except WindowsLaunchError:
+                    return False
+                self.profile_access_started = False
+            if self.profile_guard_started:
+                try:
+                    current = _exact_deny_ace_count_handle(
+                        self.handle.value,
+                        profile_sid,
+                        _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                    )
+                    if current == self.profile_guard_baseline + 1:
+                        _remove_one_exact_deny_ace_handle(
+                            self.handle.value,
+                            profile_sid,
+                            _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                        )
+                    elif current != self.profile_guard_baseline:
+                        return False
+                except WindowsLaunchError:
+                    return False
+                self.profile_guard_started = False
+            if self.peer_guard_started:
+                try:
+                    current = _exact_deny_ace_count_handle(
+                        self.handle.value,
+                        peer_sid,
+                        _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                    )
+                    if current == self.peer_guard_baseline + 1:
+                        _remove_one_exact_deny_ace_handle(
+                            self.handle.value,
+                            peer_sid,
+                            _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                        )
+                    elif current != self.peer_guard_baseline:
+                        return False
+                except WindowsLaunchError:
+                    return False
+                self.peer_guard_started = False
+        finally:
+            _local_free(peer_sid)
+        if not _close_owned_handle_bounded(self.handle):
+            return False
+        if not self.ancestor_guards.close_no_raise():
+            return False
+        self._closed = True
+        return True
+
+
+@dataclass(slots=True, repr=False)
 class _AppContainerProfile:
     name: str = field(repr=False)
     sid: ctypes.c_void_p = field(repr=False)
     local_app_data: Path = field(repr=False)
     access: _AccessGrantLease = field(repr=False)
+    pycache_guard: _PrivatePycacheGuard | None = field(default=None, repr=False)
     _deleted: bool = False
     _closed: bool = False
 
@@ -3914,11 +4157,21 @@ class _AppContainerProfile:
                 "profile.create",
                 "Windows could not create an isolated worker profile.",
             )
+        pycache_guard: _PrivatePycacheGuard | None = None
         try:
             local_app_data = _app_container_folder_path(sid)
             _prepare_app_container_temp(local_app_data, sid)
+            pycache_guard = _PrivatePycacheGuard.open(
+                local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME,
+                sid,
+            )
+            pycache_guard.activate(sid)
         except BaseException:
-            partial = _PartialAppContainerProfile(name=name, sid=sid)
+            partial = _PartialAppContainerProfile(
+                name=name,
+                sid=sid,
+                pycache_guard=pycache_guard,
+            )
             if not _close_profile_bounded(partial):
                 _quarantine_profile(partial, cleanup_allowed=True)
                 raise WindowsLaunchError(
@@ -3937,10 +4190,25 @@ class _AppContainerProfile:
                 profile_name=name,
                 recovery_roots=recovery_roots,
             ),
+            pycache_guard=pycache_guard,
         )
 
     def grant_read_execute(self, paths: tuple[Path, ...]) -> None:
         self.access.grant_all(paths)
+
+    @property
+    def pycache_prefix(self) -> Path:
+        return self.local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+
+    def require_private_pycache(self) -> None:
+        guard = self.pycache_guard
+        if guard is None:
+            _reject(
+                WindowsLaunchErrorCode.PROFILE_FAILED,
+                "profile.pycache_guard",
+                "Windows could not authenticate private worker bytecode isolation.",
+            )
+        guard.require_ready(self.sid)
 
     def require_read_execute(self, paths: tuple[Path, ...]) -> None:
         self.access.require_read_execute(paths)
@@ -3956,6 +4224,9 @@ class _AppContainerProfile:
         if self._closed:
             return True
         if not self.access.close_no_raise():
+            return False
+        guard = self.pycache_guard
+        if guard is not None and not guard.close_no_raise(self.sid):
             return False
         if not self._deleted:
             delete_profile = _userenv().DeleteAppContainerProfile
@@ -3985,12 +4256,16 @@ class _PartialAppContainerProfile:
 
     name: str = field(repr=False)
     sid: ctypes.c_void_p = field(repr=False)
+    pycache_guard: _PrivatePycacheGuard | None = field(default=None, repr=False)
     _deleted: bool = False
     _closed: bool = False
 
     def close_no_raise(self) -> bool:
         if self._closed:
             return True
+        guard = self.pycache_guard
+        if guard is not None and not guard.close_no_raise(self.sid):
+            return False
         if not self._deleted:
             delete_profile = _userenv().DeleteAppContainerProfile
             delete_profile.argtypes = (wintypes.LPCWSTR,)
@@ -4085,7 +4360,7 @@ def _app_container_folder_path(sid: ctypes.c_void_p) -> Path:
 
 
 def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> None:
-    """Provision and verify one reparse-free, profile-private writable temp root."""
+    """Provision verified profile-private temp and bytecode lookup roots."""
 
     if (
         not local_app_data.is_absolute()
@@ -4120,6 +4395,49 @@ def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> N
             "profile.temp_access",
             "Windows could not verify private worker temporary-storage access.",
         )
+    pycache_prefix = local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+    try:
+        pycache_prefix.mkdir(mode=0o700, parents=False, exist_ok=False)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.pycache_create",
+            "Windows could not provision private worker bytecode isolation.",
+        )
+    _require_private_pycache_prefix(local_app_data)
+
+
+def _require_private_pycache_prefix(local_app_data: Path) -> Path:
+    """Return one exact, empty, reparse-free profile-private cache namespace."""
+
+    prefix = local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+    if (
+        not local_app_data.is_absolute()
+        or _is_remote_or_device_path(local_app_data)
+        or not prefix.is_dir()
+        or not _is_within(prefix, local_app_data)
+    ):
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.pycache_identity",
+            "Windows could not authenticate private worker bytecode isolation.",
+        )
+    _require_no_reparse_local_path(prefix)
+    try:
+        with os.scandir(prefix) as entries:
+            if next(entries, None) is not None:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_empty",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.pycache_identity",
+            "Windows could not authenticate private worker bytecode isolation.",
+        )
+    return prefix
 
 
 @dataclass(slots=True, repr=False)
@@ -5257,6 +5575,7 @@ class WindowsProcessLauncher:
                     (qpdf_executable.parent,),
                     qpdf_resources,
                 )
+            profile.require_private_pycache()
             job = _Job(request.resource_policy)
             bootstrap = encode_bootstrap_grant(
                 BootstrapGrant(
@@ -5327,6 +5646,7 @@ class WindowsProcessLauncher:
                     )
             _write_exact(pipes.bootstrap_write.value, bootstrap)
             pipes.bootstrap_write.close()
+            profile.require_private_pycache()
             _resume_thread(thread.value)
             thread.close()
             reader = _WindowsPipeReader(pipes.client_read)
@@ -5429,7 +5749,7 @@ class WindowsProcessLauncher:
         startup.startup_info.standard_error = wintypes.HANDLE(pipes.bootstrap_read.value)
         startup.attribute_list = attributes.pointer
         command_line = ctypes.create_unicode_buffer(
-            subprocess.list2cmdline(self._config.fixed_argv)
+            subprocess.list2cmdline(self._config.fixed_argv_for_profile(local_app_data))
         )
         environment = _minimal_environment_block(
             local_app_data,
@@ -5522,6 +5842,7 @@ def _minimal_environment_block(
     temp = local_app_data / "Temp"
     entries = {
         "LOCALAPPDATA": os.fspath(local_app_data),
+        "PWS_PROFILE_ROOT": os.fspath(local_app_data),
         "SystemRoot": buffer.value,
         "TEMP": os.fspath(temp),
         "TMP": os.fspath(temp),

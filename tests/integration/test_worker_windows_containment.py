@@ -2610,6 +2610,7 @@ def test_partial_process_authority_terminates_owned_process_and_cleans_profile(
         local_app_data=Path(r"C:\synthetic-app-container"),
         grant_read_execute=Mock(),
         require_read_execute=Mock(),
+        require_private_pycache=Mock(),
         close_no_raise=Mock(return_value=True),
     )
     job = SimpleNamespace(
@@ -2725,6 +2726,7 @@ def test_interrupted_process_creation_is_adopted_before_waiter_and_cleanup(
         local_app_data=Path(r"C:\synthetic-app-container"),
         grant_read_execute=Mock(),
         require_read_execute=Mock(),
+        require_private_pycache=Mock(),
         close_no_raise=Mock(return_value=True),
     )
     job = SimpleNamespace(handle=_OwnedHandle(1097), assign=Mock())
@@ -2855,6 +2857,7 @@ def test_missing_process_authority_quarantines_before_creation_lock_release(
         local_app_data=Path(r"C:\synthetic-app-container"),
         grant_read_execute=Mock(),
         require_read_execute=Mock(),
+        require_private_pycache=Mock(),
         close_no_raise=Mock(return_value=True),
     )
     job = SimpleNamespace(

@@ -268,10 +268,15 @@ inherited-root behavior rather than being reinterpreted as an exact-object grant
 
 Separate tests must prove that an insecure directory, hardlinked resource, corrupt or unknown
 record, peer-SID/allowlist mismatch, conflicting guard baseline, or object-identity mismatch blocks
-new ACL work without mutating unproven state. The complete live worker/descendant containment suite
-remains required on the production pre-launch path. This does not claim general ACL repair,
-recovery from an unrecorded mutation, or automatic cold deletion of the abandoned AppContainer
-profile/local temporary tree.
+new ACL work without mutating unproven state. New inventories must omit `__pycache__`, `.pyc`, and
+`.pyo` objects and reject those objects as explicit roots. A cache-path identity mismatch in an old
+v2 journal must retain the exact evidence and perform no unproved mutation, just like every other
+identity mismatch. A valid conflicting cache is made explicitly readable to the live restricted
+profile; both the initial worker and its descendant must still import the authenticated source,
+leave the source cache byte-identical, and keep the fresh profile-private prefix empty under `-B`.
+The complete live worker/descendant containment suite remains required on the
+production pre-launch path. This does not claim general ACL repair, recovery from an unrecorded
+mutation, or automatic cold deletion of abandoned AppContainer profiles/local temporary trees.
 
 ## Milestone evidence progression
 

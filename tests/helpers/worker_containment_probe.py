@@ -24,6 +24,7 @@ _ALLOWED_ENVIRONMENT = {
     "SYSTEMROOT",
     "WINDIR",
     "LOCALAPPDATA",
+    "PWS_PROFILE_ROOT",
     "TEMP",
     "TMP",
     "PYTHONIOENCODING",
@@ -104,9 +105,22 @@ def _nonzero_exit_stage(returncode: int, stderr: bytes) -> int:
 
 def _descendant_result() -> dict[str, bool | int]:
     child = Path(__file__).with_name("worker_containment_descendant_probe.py")
+    pycache_prefix = sys.pycache_prefix
+    if type(pycache_prefix) is not str or not pycache_prefix:
+        return {"completed": False, "failure_stage": 38}
     try:
         completed = subprocess.run(
-            (sys.executable, "-I", "-S", "-B", "-X", "utf8", os.fspath(child)),
+            (
+                sys.executable,
+                "-I",
+                "-S",
+                "-B",
+                "-X",
+                "utf8",
+                "-X",
+                f"pycache_prefix={pycache_prefix}",
+                os.fspath(child),
+            ),
             check=False,
             input=b"",
             capture_output=True,

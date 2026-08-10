@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import py_compile
 import select
 import socket
 import tempfile
@@ -18,7 +19,18 @@ from uuid import uuid4
 
 import pytest
 
-from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsProcessLauncher
+from paperworkshell.worker.client import _windows as windows_module
+from paperworkshell.worker.client._windows import (
+    _GRANT_ACCESS,
+    _REVOKE_ACCESS,
+    WindowsLaunchConfig,
+    WindowsProcessLauncher,
+    _AppContainerProfile,
+    _change_sid_access_handle,
+    _close_owned_handle_bounded,
+    _has_effective_app_container_read_execute,
+    _open_retained_resource,
+)
 from paperworkshell.worker.client.process import (
     TransportReceiveKind,
     WorkerLaunchRequest,
@@ -53,7 +65,7 @@ _AMBIENT_NAMES: Final = (
 # Bit 17 used to infer ambient-handle absence from raw process-local HANDLE
 # numbers. Exact kernel-object identity is now proved directly by the launcher
 # test, outside this worker-reported mask.
-_INITIAL_REQUIRED_MASK: Final = ((1 << 19) - 1) & ~(1 << 17)
+_INITIAL_REQUIRED_MASK: Final = ((1 << 19) - 1) | (1 << 20)
 _DESCENDANT_REQUIRED_MASK: Final = (_INITIAL_REQUIRED_MASK & ~(1 << 16)) | (1 << 19)
 _RESPONSE_KEYS: Final = frozenset(
     {
@@ -333,6 +345,36 @@ def _assert_paths_absent_from_fixed_launch_data(
     )
 
 
+def _prepare_stale_worker_cache(helper_root: Path) -> tuple[Path, Path, bytes]:
+    source = helper_root / "pws_worker_pycache_canary.py"
+    source.write_text("VALUE = 'cached'\n", encoding="utf-8")
+    source_stat = source.stat()
+    compiled = py_compile.compile(
+        os.fspath(source),
+        doraise=True,
+        invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+    )
+    assert type(compiled) is str
+    cached = Path(compiled)
+    cached_bytes = cached.read_bytes()
+    source.write_text("VALUE = 'source'\n", encoding="utf-8")
+    os.utime(source, ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
+    return source, cached, cached_bytes
+
+
+def _change_profile_cache_access(
+    paths: tuple[Path, ...],
+    sid: ctypes.c_void_p,
+    mode: int,
+) -> None:
+    for path in paths:
+        handle, _info = _open_retained_resource(path, acl_authority=True)
+        try:
+            _change_sid_access_handle(handle.value, sid, mode)
+        finally:
+            assert _close_owned_handle_bounded(handle)
+
+
 def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -343,6 +385,10 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
         external_root = Path(raw)
         denied_paths = _create_synthetic_targets(tmp_path / "active-case", external_root)
         original_bytes = tuple(path.read_bytes() for path in denied_paths)
+        canary_source, cached_canary, cached_canary_bytes = _prepare_stale_worker_cache(
+            worker_test_resources.helper_root
+        )
+        cache_objects = (cached_canary.parent, cached_canary)
 
         for name in _AMBIENT_NAMES:
             monkeypatch.setenv(name, _AMBIENT_CANARY)
@@ -352,6 +398,44 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
         config = _launch_config(worker_test_resources)
         request = _launch_request()
         _assert_paths_absent_from_fixed_launch_data(config, request, denied_paths)
+        prepared_profile = _AppContainerProfile.create(config.access_roots)
+        _change_profile_cache_access(
+            cache_objects,
+            prepared_profile.sid,
+            _GRANT_ACCESS,
+        )
+        assert all(
+            _has_effective_app_container_read_execute(path, prepared_profile.sid)
+            for path in cache_objects
+        )
+
+        def return_prepared_profile(
+            _cls: type[_AppContainerProfile],
+            _recovery_roots: tuple[Path, ...] = (),
+        ) -> _AppContainerProfile:
+            return prepared_profile
+
+        monkeypatch.setattr(
+            _AppContainerProfile,
+            "create",
+            classmethod(return_prepared_profile),
+        )
+        original_resume_thread = windows_module._resume_thread
+        race_attempted = False
+
+        def reject_same_user_cache_race(thread_handle: int) -> None:
+            nonlocal race_attempted
+            with pytest.raises(OSError):
+                (prepared_profile.pycache_prefix / "raced.pyc").write_bytes(b"same-user race")
+            with pytest.raises(OSError):
+                prepared_profile.pycache_prefix.rename(
+                    prepared_profile.local_app_data / "MovedPyCache"
+                )
+            prepared_profile.require_private_pycache()
+            race_attempted = True
+            original_resume_thread(thread_handle)
+
+        monkeypatch.setattr(windows_module, "_resume_thread", reject_same_user_cache_race)
 
         with ExitStack() as stack:
             listeners = _LocalListeners.create(stack)
@@ -399,6 +483,10 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
                 assert mask == _INITIAL_REQUIRED_MASK
                 assert descendant_mask == _DESCENDANT_REQUIRED_MASK
                 assert descendant_pid > 0
+                assert race_attempted
+                assert canary_source.read_text(encoding="utf-8") == "VALUE = 'source'\n"
+                assert cached_canary.read_bytes() == cached_canary_bytes
+                assert not tuple(process._profile.pycache_prefix.iterdir())
                 assert all(
                     _wait_for_process(handle, 0) == _WAIT_TIMEOUT for handle in ambient_handles
                 )
@@ -418,7 +506,20 @@ def test_live_worker_and_descendant_enforce_the_complete_isolation_boundary(
                 try:
                     process.terminate_tree()
                 finally:
-                    process.close()
-                    if descendant_handle:
-                        _close_handle(descendant_handle)
+                    try:
+                        _change_profile_cache_access(
+                            cache_objects,
+                            process._profile.sid,
+                            _REVOKE_ACCESS,
+                        )
+                        assert all(
+                            not _has_effective_app_container_read_execute(
+                                path, process._profile.sid
+                            )
+                            for path in cache_objects
+                        )
+                    finally:
+                        process.close()
+                        if descendant_handle:
+                            _close_handle(descendant_handle)
             assert not profile_path.exists()

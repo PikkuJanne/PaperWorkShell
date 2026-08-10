@@ -133,6 +133,7 @@ def test_worker_environment_allowlist_remains_closed() -> None:
             "TEMP",
             "TMP",
             "PWS_QPDF_EXECUTABLE",
+            "PWS_PROFILE_ROOT",
             "PYTHONIOENCODING",
             "PYTHONUTF8",
         }

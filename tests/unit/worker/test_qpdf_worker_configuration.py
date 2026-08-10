@@ -109,6 +109,20 @@ def test_optional_qpdf_is_a_fixed_sanitized_launch_resource(tmp_path: Path) -> N
         "utf8",
         os.fspath(config.bootstrap_script),
     )
+    profile_root = tmp_path / "profile"
+    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix.mkdir(parents=True)
+    assert config.fixed_argv_for_profile(profile_root) == (
+        os.fspath(config.python_executable),
+        "-I",
+        "-S",
+        "-B",
+        "-X",
+        "utf8",
+        "-X",
+        f"pycache_prefix={pycache_prefix}",
+        os.fspath(config.bootstrap_script),
+    )
     assert os.fspath(qpdf_executable) not in repr(config)
 
 
@@ -132,6 +146,20 @@ def test_qpdf_inventory_requires_the_exact_configured_executable(
     assert raised.value.context == "config.qpdf_inventory"
 
 
+def test_profile_argv_rejects_a_nonempty_bytecode_namespace(tmp_path: Path) -> None:
+    config = _launch_config(tmp_path, include_qpdf=False)
+    profile_root = tmp_path / "profile"
+    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix.mkdir(parents=True)
+    (pycache_prefix / "unexpected.pyc").write_bytes(b"synthetic cache")
+
+    with pytest.raises(WindowsLaunchError) as raised:
+        config.fixed_argv_for_profile(profile_root)
+
+    assert raised.value.code is WindowsLaunchErrorCode.PROFILE_FAILED
+    assert raised.value.context == "profile.pycache_empty"
+
+
 def test_default_launch_configuration_is_unchanged(tmp_path: Path) -> None:
     config = _launch_config(tmp_path, include_qpdf=False)
 
@@ -149,6 +177,7 @@ def test_minimal_environment_adds_only_explicit_qpdf(tmp_path: Path) -> None:
 
     assert set(default_entries) == {
         "LOCALAPPDATA",
+        "PWS_PROFILE_ROOT",
         "SYSTEMROOT",
         "TEMP",
         "TMP",

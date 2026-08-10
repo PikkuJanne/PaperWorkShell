@@ -151,8 +151,12 @@ authenticates a bounded runtime/code/fixed-tool inventory and grants the profile
 non-inheritable read/execute access only on those exact objects. Each file has one current-user
 hardlink guard shared by authenticated overlapping v2 leases. A protected versioned journal
 supports legacy-v1 inherited-root cleanup and v2 exact-object/SID/guard-baseline recovery after a
-crash. The exact job tree exits before a live lease's grants, final shared guard, and profile are
-removed. See the
+crash. Mutable Python bytecode caches are excluded from new authority, and every worker generation
+uses a freshly authenticated empty profile-private `pycache_prefix` plus `-B`, so an ambient valid
+source-tree cache is neither read nor replaced. Old records remain
+exact-identity fail-closed because a missing/replacement cache path does not prove that the old
+object was not renamed with residual authority. The exact job tree exits before a live lease's
+grants, final shared guard, and profile are removed. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [Windows isolation ADR](../adr/0004-windows-worker-isolation.md).
 

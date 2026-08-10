@@ -211,9 +211,11 @@ class _BlockingOrganizerBackend:
         return self.state
 
     def shutdown(self) -> None:
+        self.timeline.append("shutdown_started")
         self.shutdown_started.set()
         if self.shutdown_delay_seconds:
             time.sleep(self.shutdown_delay_seconds)
+        self.timeline.append("shutdown_finished")
         self.shutdown_finished.set()
 
 
@@ -475,6 +477,55 @@ def test_real_thread_correlates_preview_and_import_cancellation_and_resumes(
             "import_cancelled",
         ]
         assert backend.timeline[-1] == "preview_resumed"
+
+
+def test_window_close_during_import_waits_for_cancellation_and_backend_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _BlockingOrganizerBackend(
+        state=OrganizerViewState(CASE_ID, 0, (), False, False, False),
+        shutdown_delay_seconds=0.25,
+    )
+    selected = tmp_path / "synthetic.pdf"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *_args, **_kwargs: (str(selected), ""),
+    )
+
+    with _threaded_window(backend) as (window, commands, _worker):
+        commands.create_case_requested.emit()
+        _wait_until(lambda: window._state is not None and window._state.case_id == CASE_ID)
+
+        window._choose_import()
+        _wait_until(backend.import_started.is_set)
+        assert "Keep PaperWorkShell open" in window._organizer_guidance.text()
+
+        window.request_shutdown()
+        assert window._closing_requested
+        assert not window._allow_close
+        assert window._organizer_guidance.text() == (
+            "Closing PaperWorkShell safely. Waiting for the current import to stop and secure "
+            "cleanup to finish."
+        )
+        _wait_until(backend.import_cancelled.is_set)
+        _wait_until(backend.shutdown_started.is_set)
+        _wait_until(lambda: window._active_operation is None)
+        assert not backend.shutdown_finished.is_set()
+        assert window._organizer_guidance.text() == (
+            "Closing PaperWorkShell safely. Waiting for the current import to stop and secure "
+            "cleanup to finish."
+        )
+        _wait_until(backend.shutdown_finished.is_set)
+        _wait_until(lambda: window._allow_close)
+
+        assert backend.timeline == [
+            "import_started",
+            "import_cancelled",
+            "shutdown_started",
+            "shutdown_finished",
+        ]
 
 
 def test_real_thread_cancels_preview_and_saves_before_renderer_timeout() -> None:

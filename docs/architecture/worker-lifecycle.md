@@ -91,10 +91,13 @@ independently owned runtime files.
 The command is a fixed structured argument array, never a shell string:
 
 ```text
-<approved-python> -I -S -B -X utf8 <approved-host-bootstrap>
+<approved-python> -I -S -B -X utf8 -X pycache_prefix=<profile-root>\PyCache <approved-host-bootstrap>
 ```
 
-No filename, template value, OCR/document text, case path, or RPC value can alter that array.
+The broker creates and revalidates that fresh, empty, reparse-free profile-private namespace before
+`CreateProcessW`. The raw `-X` value is bound to the broker-provided profile root, and the worker
+self-audit requires the active cache namespace, `-B`, and an empty directory before negotiation. No
+filename, template value, OCR/document text, case path, or RPC value can alter that array.
 
 The PWS-0111 desktop composition launches the approved base CPython executable directly. A Windows
 virtual-environment `python.exe` is itself a launcher that would create a second process, which the
@@ -125,8 +128,11 @@ One generation is created in this order:
 3. Create an ephemeral AppContainer profile with zero capability SIDs.
 4. Open and authenticate the complete bounded runtime/code inventory through retained no-delete
    handles; reject reparse points and hardlinked non-directory resources; capture each v2 Windows
-   object identity, auto-inheritance state, current-user peer SID, and shared-guard baseline; then
-   durably publish `PREPARED` before mutation.
+   object identity, auto-inheritance state, current-user peer SID, and shared-guard baseline. Mutable
+   `__pycache__` directories and `.pyc`/`.pyo` cache leaves are not worker authority. The fixed
+   profile-private `pycache_prefix` prevents source-tree cache lookup, while `-B` prevents cache
+   writes, so the worker uses the authenticated source/runtime objects. Durably
+   publish `PREPARED` before mutation.
 5. Establish or reuse one shared hardlink guard per file, add the profile SID's direct,
    non-inheritable read/execute entry to every exact object, restore inheritance-control bits, and
    verify every fixed startup resource before publishing `ACTIVE`. The optional virtual-environment
@@ -176,6 +182,13 @@ covered by another authenticated live v2 ledger or removes exactly one guard and
 recorded baseline, restores/verifies inheritance state, deletes the exact record, and closes the
 retained handles. Legacy v1 repair revokes only its recorded inherited root entries and verifies
 their original bounded inventory.
+
+Pre-exclusion v2 journals retain the same strict exact-identity rule, including for recorded Python
+cache objects. A missing or replacement cache path is not proof that the recorded object vanished:
+the old object may have been renamed while retaining its profile SID entry or peer guard. Recovery
+therefore keeps the profile/journal evidence and blocks launch on any such mismatch instead of
+guessing that cleanup is complete. New journals avoid this compatibility trap by never recording
+mutable cache objects.
 
 On `WAIT_ABANDONED`, recovery inventories and repairs all validated dead/interrupted entries while
 retaining mutex ownership; if it can repair none, launch blocks conservatively. Windows does not
@@ -482,14 +495,16 @@ PWS-0113 adds required supported-Windows evidence for the persistent ACL-recover
 - an insecure recovery-directory policy, corrupt/noncanonical record, unknown entry, current
   configuration peer-SID/allowlist mismatch, conflicting baseline, hardlinked/special resource, or
   resource identity mismatch blocks new ACL work without deleting evidence or widening authority;
-  and
+- new inventories omit mutable Python cache objects and reject a cache object as an explicit root,
+  while a cache-path identity mismatch in an old record remains strict, retains evidence, and makes
+  no unproved ACL mutation; and
 - the complete live worker/descendant containment suite still passes with pre-launch recovery in
   the production launcher path.
 
 These tests prove cold-restart repair of recorded runtime/code AppContainer grants only. They do
 not prove replay of worker operations, general ACL repair, case-workspace access, recovery from an
-unrecorded mutation, or automatic cold deletion of an abandoned AppContainer profile and its local
-temporary tree.
+unrecorded mutation, or automatic cold deletion of abandoned AppContainer profiles and their local
+temporary trees.
 
 Live containment tests copy a bounded minimum CPython runtime, worker source, and fixed synthetic
 probes into a temporary physical tree at the root of CPython's fixed drive before launch. The

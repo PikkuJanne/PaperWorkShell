@@ -107,9 +107,12 @@ The same task extends the private Windows worker client with a standard-library-
 ACL-recovery journal. New v2 ledgers record trusted launcher resource paths, exact Windows object
 identities, the current-user guard SID, and guard baselines because exact cold-restart revocation
 requires them; strictly decoded v1 ledgers retain only their legacy bounded recovery meaning. The
-adapter exposes only path-free numeric recovery results. The journal has no case-storage,
-application, protocol, host, or diagnostics import edge, and the worker never receives it. Its
-launch ordering is specified in the [restricted worker lifecycle contract](worker-lifecycle.md).
+adapter excludes mutable Python bytecode caches from new authority, binds interpreter cache lookup
+to a fresh empty profile-private namespace, and retains strict exact-identity handling for every
+old-v2 object. It exposes only path-free numeric recovery results.
+The journal has no case-storage, application, protocol, host, or diagnostics import edge, and the
+worker never receives it. Its launch ordering is specified in the
+[restricted worker lifecycle contract](worker-lifecycle.md).
 
 PWS-0101 makes `storage` the first namespace with concrete product modules. Its Windows adapter is
 private to storage; callers use the fixed workspace, permission, quota, and sanitized-error

@@ -11,6 +11,7 @@ flow back across the boundary.
 from __future__ import annotations
 
 import ctypes
+import importlib
 import json
 import os
 import socket
@@ -77,8 +78,10 @@ DENIED_READS_BLOCKED: Final = 1 << 13
 DENIED_WRITES_BLOCKED: Final = 1 << 14
 TARGETS_ABSENT_FROM_ARGV_ENVIRONMENT: Final = 1 << 15
 TARGETS_ABSENT_FROM_BOOTSTRAP: Final = 1 << 16
+PRIVATE_BYTECODE_CACHE: Final = 1 << 17
 STANDARD_HANDLES_NON_INHERITABLE: Final = 1 << 18
 PARENT_STANDARD_HANDLES_ABSENT: Final = 1 << 19
+SOURCE_CACHE_CANARY_WON: Final = 1 << 20
 
 _BASE_REQUIRED_MASK: Final = (
     APP_CONTAINER
@@ -97,7 +100,9 @@ _BASE_REQUIRED_MASK: Final = (
     | DENIED_READS_BLOCKED
     | DENIED_WRITES_BLOCKED
     | TARGETS_ABSENT_FROM_ARGV_ENVIRONMENT
+    | PRIVATE_BYTECODE_CACHE
     | STANDARD_HANDLES_NON_INHERITABLE
+    | SOURCE_CACHE_CANARY_WON
 )
 INITIAL_REQUIRED_MASK: Final = _BASE_REQUIRED_MASK | TARGETS_ABSENT_FROM_BOOTSTRAP
 DESCENDANT_REQUIRED_MASK: Final = _BASE_REQUIRED_MASK | PARENT_STANDARD_HANDLES_ABSENT
@@ -259,6 +264,28 @@ def _environment_is_clean(startup_environment: tuple[tuple[str, str], ...]) -> b
     )
 
 
+def _source_cache_canary_won() -> bool:
+    helper_root = Path(__file__).resolve().parent
+    canary_source = helper_root / "pws_worker_pycache_canary.py"
+    pycache_prefix = sys.pycache_prefix
+    if not canary_source.is_file() or type(pycache_prefix) is not str:
+        return False
+    try:
+        (Path(pycache_prefix) / "worker-raced.pyc").write_bytes(b"worker cache mutation")
+    except OSError:
+        pass
+    else:
+        return False
+    sys.path.insert(0, os.fspath(helper_root))
+    try:
+        canary = importlib.import_module("pws_worker_pycache_canary")
+    except Exception:
+        return False
+    finally:
+        del sys.path[0]
+    return getattr(canary, "VALUE", None) == "source"
+
+
 def _standard_handle_values() -> tuple[int, int, int]:
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     get_std_handle = kernel32.GetStdHandle
@@ -418,8 +445,12 @@ def _probe_mask(
         mask |= IN_JOB
     if evidence.minimal_environment:
         mask |= MINIMAL_ENVIRONMENT
+    if evidence.private_bytecode_cache:
+        mask |= PRIVATE_BYTECODE_CACHE
     if evidence.standard_handles_non_inheritable:
         mask |= STANDARD_HANDLES_NON_INHERITABLE
+    if _source_cache_canary_won():
+        mask |= SOURCE_CACHE_CANARY_WON
     if _environment_is_clean(startup_environment):
         mask |= AMBIENT_ENVIRONMENT_ABSENT
 
@@ -494,6 +525,9 @@ def _spawn_descendant(
     control: _Control,
     parent_standard_handles: tuple[int, int, int],
 ) -> tuple[subprocess.Popen[bytes], int, int, int]:
+    pycache_prefix = sys.pycache_prefix
+    if type(pycache_prefix) is not str or not pycache_prefix:
+        raise _DescendantProbeError(-26)
     arguments = (
         sys.executable,
         "-I",
@@ -501,6 +535,8 @@ def _spawn_descendant(
         "-B",
         "-X",
         "utf8",
+        "-X",
+        f"pycache_prefix={pycache_prefix}",
         os.fspath(Path(__file__)),
         _DESCENDANT_ARGUMENT,
     )

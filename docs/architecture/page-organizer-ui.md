@@ -63,8 +63,11 @@ construction problem is reported as a typed `reopen_required` outcome, never as 
 failure. The outcome states plainly that the import committed and asks the user to close and reopen
 the case. The GUI then stops preview and autosave scheduling, disables import and every stale page
 mutation, keeps Close case enabled, assertively announces the recovery instruction, and moves focus
-to Close case. Until reconciliation succeeds, a repeated backend import command reloads and
-verifies that same committed source and its page bindings without invoking ingest again. A
+to Close case. The organizer also keeps the following instruction visible beside the page surface:
+“The import was saved, but this organizer must be reopened before the new pages can be used. Choose
+Close case, then reopen this case.” Until reconciliation succeeds, a repeated backend import
+command reloads and verifies that same committed source and its page bindings without invoking
+ingest again. A
 successful reconciliation publishes the authoritative manifest state; closing and reopening
 instead reconstructs that same state after process restart without duplicating the committed pages.
 
@@ -78,6 +81,26 @@ PDF, JPEG, and PNG selection enters the existing authenticated, bounded immutabl
 PDF structure and page count are inspected in the isolated document worker. Image headers and
 dimensions have already been bounded by the prechecker; the router records one image page without
 decoding pixels in the GUI process.
+
+The organizer places a prominent, word-wrapped guidance notice immediately above the active-page
+surface whenever no committed page can yet be shown. This prevents an empty case or a long-running
+import from looking like a blank organizer at enlarged text or display scaling. The notice is
+path-free plain text and follows the correlated import state:
+
+| State | Visible organizer guidance |
+|---|---|
+| Empty case | “No pages yet. Choose Import document (Ctrl+I) to add a PDF, JPEG, or PNG.” |
+| Import queued behind preview cancellation | “Import queued. PaperWorkShell is stopping the current preview before import starts. Keep PaperWorkShell open.” |
+| Import running | “Importing document” plus the latest announced phase and completed/total count when available, followed by the instruction to keep PaperWorkShell open and press Escape to cancel safely. |
+| Import cancelled | “Import cancelled. No source was committed. Choose Import document (Ctrl+I) to try again.” |
+| Import failed | “Import did not finish,” followed by the visible Action-error direction when that error is still present, and the Import document (`Ctrl+I`) retry action. |
+| Import committed but organizer reopen required | The close-and-reopen instruction described above. |
+| Window close while import is active | “Closing PaperWorkShell safely,” retained through import completion while backend cleanup runs; a shutdown refusal replaces it with the focused save/cleanup retry path. |
+
+The global operation-status surface remains the canonical visible and accessibility-announced
+operation record. The inline notice is a non-focusable summary of current organizer state and the
+next safe action; it does not include source paths or filenames and disappears after authoritative
+state contains committed pages unless a terminal import outcome still needs attention.
 
 Active PDF pages receive bounded 240 by 320 pixel RGBA8 preview requests on demand. After a
 debounced list-layout pass, the GUI considers intersecting rows, the keyboard-selected row, and two

@@ -80,6 +80,12 @@ inventory, captures identities, inheritance state, and shared-guard baselines, t
 `PREPARED` before the first guard or AppContainer mutation. It establishes or reuses each shared
 guard, adds one direct non-inheritable AppContainer entry through every retained object handle,
 restores the recorded inheritance-control bits, verifies the grant, and publishes `ACTIVE`.
+Mutable Python `__pycache__` directories and `.pyc`/`.pyo` leaves are excluded from new inventories.
+The broker binds `pycache_prefix` to a fresh, empty, reparse-free directory inside the ephemeral
+profile, grants that profile only direct non-inheritable read/execute access to the empty root, and
+revalidates it at launch. The worker self-audits the raw profile binding and active namespace before
+negotiation. Together with fixed `-B`, this consumes authenticated source/runtime objects without
+reading or creating source-tree bytecode caches.
 
 Cleanup publishes `REVOKING`, removes and verifies the exact AppContainer SID on every recorded
 object, and then evaluates the shared guard. An authenticated live `ACTIVE` v2 record for the same
@@ -87,6 +93,11 @@ object and baseline keeps that guard in place; otherwise cleanup removes exactly
 and proves the recorded baseline. Only after it restores and verifies every auto-inheritance state
 does it delete the exact ledger and close the retained handles. Dead-owner recovery follows the
 same order after reopening and authenticating every recorded object by Windows identity.
+
+Pre-exclusion v2 records do not receive an identity exception for cache-shaped paths. A missing or
+replacement path cannot prove that the recorded object was destroyed rather than renamed with its
+profile SID or peer guard intact. Recovery retains the profile/journal evidence and blocks launch
+on that mismatch. New records avoid the condition by omitting mutable caches from their inventory.
 
 On `WAIT_ABANDONED`, recovery inventories and repairs every validated dead/interrupted entry while
 retaining mutex ownership and blocks if it can repair none. Windows exposes no prior mutex-owner
@@ -128,7 +139,7 @@ The trusted launcher uses an absolute approved base Python executable, an absolu
 bootstrap script, an approved working directory, and this fixed argument vector:
 
 ```text
-<python.exe> -I -S -B -X utf8 <host_bootstrap.py>
+<python.exe> -I -S -B -X utf8 -X pycache_prefix=<profile-root>\PyCache <host_bootstrap.py>
 ```
 
 It uses `CreateProcessW` directly with no shell. The worker is created suspended and without a

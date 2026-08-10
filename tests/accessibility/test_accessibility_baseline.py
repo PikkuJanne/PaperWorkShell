@@ -4,6 +4,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from pathlib import Path
 from typing import cast
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QLabel,
     QListView,
     QPushButton,
     QScrollArea,
@@ -225,6 +227,121 @@ def test_progress_error_and_cancellation_are_textual_focusable_and_announced() -
         assert window._error_label.isVisible()
         assert window._error_label.text() == "PWS_TEST_FAILURE: Try the action again."
         assert "Action failed" in window._status_label.text()
+
+
+def test_empty_case_guidance_tracks_correlated_import_outcomes_without_paths() -> None:
+    app = _application()
+    with _window() as (window, commands, worker):
+        commands.import_requested.disconnect(worker.import_source)
+        requests: list[tuple[object, ...]] = []
+        commands.import_requested.connect(lambda *request: requests.append(request))
+        worker.initialized.emit()
+        worker.state_changed.emit(OrganizerViewState(CASE_ID, 0, (), False, False, False))
+        app.processEvents()
+
+        guidance = window.findChild(QLabel, "organizerGuidance")
+        assert guidance is window._organizer_guidance
+        assert guidance.isVisible()
+        assert guidance.wordWrap()
+        assert guidance.textFormat() is Qt.TextFormat.PlainText
+        assert guidance.focusPolicy() is Qt.FocusPolicy.NoFocus
+        assert guidance.accessibleName() == "Page organizer guidance"
+        assert "No pages yet" in guidance.text()
+        assert "Ctrl+I" in guidance.text()
+        assert guidance.accessibleDescription() == guidance.text()
+        assert app.focusWidget() is window._import_button
+
+        source_canary = Path("C:/PRIVATE_SOURCE_CANARY/selected.pdf")
+        window._start_import(source_canary, source_canary.name)
+        active = window._active_operation
+        assert active is not None
+        assert requests and requests[0][0] == active.operation_id
+        assert "Importing document" in guidance.text()
+        assert "Keep PaperWorkShell open" in guidance.text()
+        assert str(source_canary) not in guidance.text()
+        assert source_canary.name not in guidance.text()
+
+        worker.progress_changed.emit(
+            UiProgress("Import", "copying", 2, 8, True, active.operation_id)
+        )
+        app.processEvents()
+        assert "copying: 2 of 8" in guidance.text()
+
+        worker.failed.emit(
+            UiFailure(
+                "SOURCE_UNAVAILABLE",
+                "The selected source file is not available.",
+                False,
+                active.operation_id,
+            )
+        )
+        worker.operation_finished.emit(active.operation_id)
+        app.processEvents()
+        assert "Import did not finish" in guidance.text()
+        assert "No source was committed" not in guidance.text()
+        assert window._error_label.isVisible()
+        assert app.focusWidget() is window._import_button
+
+        worker.status_changed.emit("Organizer state is ready.")
+        app.processEvents()
+        assert not window._error_label.isVisible()
+        assert "Import did not finish" in guidance.text()
+        assert "Action error below" not in guidance.text()
+
+        window._start_import(source_canary, source_canary.name)
+        retry = window._active_operation
+        assert retry is not None
+        assert retry.operation_id != active.operation_id
+        assert not window._error_label.isVisible()
+        assert "Importing document" in guidance.text()
+
+        worker.operation_cancelled.emit(
+            retry.operation_id, "Import cancelled. No source was committed."
+        )
+        worker.operation_finished.emit(retry.operation_id)
+        app.processEvents()
+        assert guidance.isVisible()
+        assert "Import cancelled" in guidance.text()
+        assert "No source was committed" in guidance.text()
+
+
+def test_queued_import_guidance_ignores_stale_progress_and_becomes_active() -> None:
+    app = _application()
+    with _window() as (window, commands, worker):
+        commands.import_requested.disconnect(worker.import_source)
+        commands.import_requested.connect(lambda *_request: None)
+        worker.initialized.emit()
+        worker.state_changed.emit(OrganizerViewState(CASE_ID, 0, (), False, False, False))
+        app.processEvents()
+
+        preview = window._begin_long_operation(_LongOperationKind.PREVIEW)
+        window._queue_import(Path("C:/PRIVATE_QUEUE_CANARY/source.pdf"), "source.pdf")
+        assert "Import queued" in window._organizer_guidance.text()
+
+        worker.progress_changed.emit(
+            UiProgress("Preview", "rendering", 1, 1, True, preview.operation_id)
+        )
+        app.processEvents()
+        assert "Import queued" in window._organizer_guidance.text()
+
+        worker.operation_finished.emit(preview.operation_id)
+        app.processEvents()
+        active = window._active_operation
+        assert active is not None
+        assert active.kind is _LongOperationKind.IMPORT
+        assert "Importing document" in window._organizer_guidance.text()
+
+        worker.progress_changed.emit(
+            UiProgress("Import", "stale", 9, 9, True, preview.operation_id)
+        )
+        app.processEvents()
+        assert "stale" not in window._organizer_guidance.text()
+
+        worker.progress_changed.emit(
+            UiProgress("Import", "validating", 1, 4, True, active.operation_id)
+        )
+        app.processEvents()
+        assert "validating: 1 of 4" in window._organizer_guidance.text()
 
 
 def test_startup_recovery_is_one_path_free_accessibility_announcement(
@@ -529,6 +646,8 @@ def test_committed_import_reopen_outcome_locks_stale_actions_and_focuses_close()
         app.processEvents()
 
         assert window._case_reopen_required
+        assert window._organizer_guidance.isVisible()
+        assert "must be reopened" in window._organizer_guidance.text()
         assert window._status_label.text() == message
         assert not window._error_label.isVisible()
         assert not window._retry_save_button.isVisible()
@@ -559,6 +678,7 @@ def test_committed_import_reopen_outcome_locks_stale_actions_and_focuses_close()
         app.processEvents()
         assert preview_requests == []
         assert app.focusWidget() is window._close_case_button
+        assert "must be reopened" in window._organizer_guidance.text()
 
 
 def test_status_and_safe_error_are_visible_and_focusable_on_each_workflow_page() -> None:
@@ -706,6 +826,15 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
                 assert QRect(chooser_origin, chooser_widget.size()).intersects(
                     scroll.viewport().rect()
                 )
+
+            worker.state_changed.emit(OrganizerViewState(CASE_ID, 0, (), False, False, False))
+            app.processEvents()
+            empty_guidance = window._organizer_guidance
+            assert empty_guidance.isVisible()
+            assert empty_guidance.wordWrap()
+            assert empty_guidance.height() > empty_guidance.fontMetrics().height()
+            empty_origin = empty_guidance.mapTo(scroll.viewport(), QPoint(0, 0))
+            assert QRect(empty_origin, empty_guidance.size()).intersects(scroll.viewport().rect())
 
             worker.state_changed.emit(_state())
             app.processEvents()
