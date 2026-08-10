@@ -1140,7 +1140,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: blocked
+  status: done
   critical_path: true
   depends_on:
   - PWS-0108
@@ -1173,42 +1173,18 @@ tasks:
   - ui
   - accessibility
   - state-management
-  blocker:
-    reason: The required maintainer-operated keyboard-only organizer and NVDA Speech Viewer
-      scenarios remain incomplete at normal and actual 200-percent Windows display/text scaling.
-      Production worker composition now passes, and NVDA is installed and running, but
-      agent-operated UI Automation evidence does not satisfy the two human verification requirements.
-    evidence:
-    - On 2026-08-09, the rebuilt current-user production inventory authenticated 12,091 exact
-      resources, and the live restricted-worker organizer integration test passed both cases in
-      258.52 seconds.
-    - A 2026-08-09 agent-operated smoke used UI Automation to target the separate native chooser and
-      import the repository synthetic render-calibration PDF, then exercised keyboard organizer
-      actions, undo/redo, removal/restoration, cancellation, clean close/reopen, and full process
-      restart. Revision 8 reopened with two pages and Page 2 at 90-degree rotation.
-    - NVDA 2026.1.1 was installed and running during the agent smoke, but no genuine maintainer NVDA
-      Speech Viewer result is claimed. Windows Settings and Control Panel were not targetable through
-      the agent automation surface, so no actual 200-percent Windows scaling run is claimed.
-    - Automated constrained-viewport, accessibility, UI lifecycle, privacy, real PDF composition,
-      worker-containment, hardlink-race, and restart tests pass; these do not replace the two manual
-      verification requirements in this task.
-    requested_action: Perform and record the genuine maintainer keyboard-only and NVDA Speech
-      Viewer procedures in docs/accessibility/pws-0111-nvda-smoke.md with the repository synthetic
-      PDF at the normal Windows scale and actual 200-percent display/text scaling, including focus,
-      pointer use, clipping, reachability, and missing or duplicate announcement observations.
+  blocker: null
   evidence:
-    completed_at: null
-    revision: null
+    completed_at: '2026-08-10'
+    revision: "d242051"
     commands:
-    - uv run --locked --no-sync pytest on the focused organizer, backend, lifecycle, accessibility,
-      and startup-recovery matrix - passed; 48 tests
-    - uv run --locked --no-sync python tools/dev.py test-accessibility - passed; 17 tests
-    - uv run --locked --no-sync pytest on journal-v2 recovery and exact-object ACL cut points -
-      passed; 31 tests
-    - uv run --locked --no-sync pytest on core worker recovery, containment, and security - passed;
-      59 tests with 1 reparse-privilege skip
-    - uv run --locked --no-sync pytest on installed, temporary, and overlapping qpdf profiles -
-      passed; 3 live tests
+    - uv run --locked --no-sync python tools/dev.py check - passed; 1,987 unit tests, 351 integration
+      tests with 2 disclosed local link-capability skips, 256 security tests with 6 disclosed local
+      capability skips, 19 accessibility tests, and every formatter, linter, type, boundary,
+      schema, dependency, documentation, task-graph, fixture, reference, secret, and quality
+      self-test gate
+    - uv run --locked --no-sync pytest on the focused qpdf, venv, ACL-recovery, containment, and
+      worker-isolation cache matrix - passed; 53 tests
     - Production exact-object ACL-authority inventory on the rebuilt current-user environment -
       passed; 12,091 resources authenticated
     - uv run --locked --no-sync pytest -q tests/integration/test_organizer_ui_windows.py - passed;
@@ -1216,19 +1192,26 @@ tasks:
     - Agent-operated Windows UI Automation smoke with NVDA 2026.1.1 running - passed; native
       chooser import, keyboard organizer actions, cancellation, clean close/reopen, and full process
       restart preserved revision 8, two pages, and Page 2 at 90-degree rotation
-    - Targeted Ruff format/check, strict mypy, import boundaries, docs, task graph, and diff checks -
-      passed on the blocked checkpoint
+    - Maintainer-operated keyboard-only and NVDA 2026.1.1 Speech Viewer scenario at actual 100-percent
+      and 200-percent Windows display/text scaling - passed; native chooser, organizer actions,
+      progress, cancellation, safe recovery, close/reopen, process restart, focus, reachability,
+      roles, states, and announcements had no observed issue
     notes:
-    - The desktop vertical slice, bounded previews, explicit preview/close recovery actions, startup
-      recovery notice, import reconciliation, and durable exact-object Windows resource lease are
-      implemented and independently reviewed with no remaining P0-P2 code finding.
-    - The rebuilt current-user environment and production worker composition now pass. The remaining
-      blocker is limited to genuine maintainer keyboard-only and NVDA Speech Viewer evidence at
-      normal and actual 200-percent Windows scaling; the agent smoke is not counted as human evidence.
-    - Dependency and schema admission validation intentionally remains closed while PWS-0111 is not
-      done; PySide6-Essentials and shiboken6 cannot become an accepted canonical baseline until the
-      required manual evidence is recorded.
-    - PWS-0112 and PWS-0113 are done; PWS-0114 remains dependency-blocked by PWS-0111.
+    - The desktop vertical slice provides keyboard-only case/import/organizer actions, logical visible
+      focus, textual and announced cancelable progress/failures, adapter-free UI boundaries, and exact
+      autosaved restart reconstruction. The human NVDA and 100/200-percent scaling gate passed.
+    - Empty, queued, running, cancelled, failed, reopen-required, and closing guidance stays prominent,
+      path-free, operation-correlated, and focused on an actionable recovery control.
+    - Future worker inventories omit Python bytecode caches. A retained, mutation-guarded private
+      profile cache plus fixed raw option and in-worker self-audit proves source wins over a readable
+      stale cache, blocks same-user launch races, and remains write-inaccessible to worker descendants.
+      Pre-exclusion recovery journals retain strict exact-object identity semantics.
+    - The observed local inspection failure was remediated only after an exhaustive 12,339-object
+      ACL/journal residue audit reported zero target-SID or guard residue and an empty journal; the
+      subsequent synthetic import committed one source and two pages. No generalized cache-path
+      replacement migration is supported.
+    - Independent UI, completion-evidence, and hostile worker-security reviews found no remaining
+      P0-P2 issue. PWS-0114 is now dependency-ready.
 - id: PWS-0112
   milestone: M1
   title: Implement deterministic PDF assembly, export, reopen, and verification
@@ -1356,7 +1339,7 @@ tasks:
   kind: gate
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0101
