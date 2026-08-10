@@ -1353,7 +1353,7 @@ tasks:
   kind: gate
   priority: P0
   effort: L
-  status: in_progress
+  status: blocked
   critical_path: true
   depends_on:
   - PWS-0101
@@ -1399,12 +1399,51 @@ tasks:
   risk_tags:
   - gate
   - vertical-slice
-  blocker: null
+  blocker:
+    reason: >-
+      PWS-0114 cannot satisfy the Milestone 1 reference-machine requirement because the available canonical Windows
+      host is not the accepted two-processor, 4,096-MiB, bounded-storage HDD/validated-emulation profile. Relabeling
+      the development-host observations would conflict with PWS-D003, PWS-D013, the ROADMAP M1 criterion, and this
+      task's objective and deliverables.
+    evidence:
+    - >-
+      The clean canonical rotational-HDD run at revision 77adff38e467cd033881e006c3c08408d3b33cd7, tree
+      87653595037a6f88d4945ec0e28209ad1b550b1e, run 2f5bba9a-e013-4ba9-b3d8-486d4e0db80d completed the functional
+      vertical slice, but reference evaluation was mismatched: 8 logical processors were observed versus exactly 2
+      required, and 980393390080 storage bytes were observed versus at most 8589934592 required.
+    - >-
+      The 4,096-MiB allocation, integrated-graphics, and HDD/validated-emulation requirements are unknown because
+      their three operator attestations are null. Observed physical memory of 16527003648 bytes does not prove a
+      4,096-MiB allocation, this run had no two-core affinity/allocation and observed 8 processors, and an SSD-backed VHD is
+      not physical-HDD or independently validated HDD-emulation evidence.
+    - >-
+      The report is a single record-only sample with no product targets. It truthfully proves the complete current-host
+      workflow, but a functional development-host alternative cannot replace the frozen reference-profile evidence.
+    requested_action: >-
+      Provide a Windows x86_64 environment allocated exactly 2 logical processors and 4,096 MiB RAM, with attested
+      integrated graphics and an at-most-8-GiB work volume having at least 4,194,304 free bytes on physical HDD or
+      independently validated HDD emulation. From a clean PWS-0114 revision, run
+      `uv run --locked --no-sync python -m tools.m1_vertical_slice_live_runner --attest-memory-mib 4096
+      --attest-graphics integrated --attest-storage-media hdd-or-validated-emulation`, inspect the retained synthetic
+      derivative, and provide the canonical report plus exact-revision CI result for final gate closure.
   evidence:
     completed_at: null
     revision: null
-    commands: []
-    notes: []
+    commands:
+    - "uv run --locked --no-sync python tools/dev.py check - passed on the final blocked-gate evidence tree: 2104 unit; 353 integration with 2 disclosed capability skips; 271 security with 7 disclosed capability skips; 19 accessibility; format, lint, import boundaries, mypy, schemas, task graph, docs, reference and benchmark validation, secret scan, and all 5 deliberate quality self-tests"
+    - "uv run --locked --no-sync pytest -q tests/unit/test_m1_vertical_slice_live_runner.py tests/unit/test_m1_vertical_slice_benchmark.py tests/security/test_m1_vertical_slice_benchmark_security.py - passed after the publication correction; 101 passed with 1 disclosed reparse-capability skip (102 collected)"
+    - "uv run --locked --no-sync python tools/dev.py typecheck - passed after the publication and rotational-HDD scenario corrections; 278 source files"
+    - "uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice at 77adff38e467cd033881e006c3c08408d3b33cd7 - passed in 732.0 seconds; published the fixed derivative first and canonical rotational-HDD report last"
+    - "Poppler pdfinfo and all-page pdftoppm rendering of benchmark-results/PWS-0114-m1-vertical-slice.pdf - passed; 2 unencrypted PDF 1.5 pages were rendered and visually inspected, and SHA-256 8825cbc568f339ffa86fccf7f8f64400c69b2c82c09d651e903f6d2529bdc6ea matched the report"
+    notes:
+    - All PWS-0101 through PWS-0113 prerequisites are done; the maintainer's keyboard-only and NVDA Speech Viewer evidence at actual 100% and 200% Windows scaling is reused from PWS-0111.
+    - The gate-owned production scenario created one case, immutably imported 2 PDFs with 3 source pages, rendered 3 previews, reordered, rotated, removed, undid and redid, autosaved, exported 2 deterministic 2-page derivatives, cold-recovered and reopened the case, and reproduced the same semantic fingerprint and output bytes.
+    - The retained report is canonical closed-schema JSON bound to clean revision 77adff38e467cd033881e006c3c08408d3b33cd7, tree 87653595037a6f88d4945ec0e28209ad1b550b1e, the checked-in profile/schema/fixtures, production worker configuration, renderer profile, protocol, and engine versions. Report SHA-256 is 7ada3828a36b90f9a131e01eeab510d300fac775e552524379c10975f537701a.
+    - Total workload time was 727883961800 ns. The record-only responsiveness observation captured 2867 Qt owner-thread heartbeats with a 152385400-ns maximum gap while both exports completed off-thread; no unapproved latency target is claimed.
+    - All 7 export verifier codes passed; deterministic output and semantics were equal; recovery was current; the reopened 2-page sequence matched; 5 privacy canaries were absent from actual diagnostic JSONL, summary, caplog, stdout, and stderr; every recorded temp checkpoint was zero.
+    - Independent code, runner, evidence-integrity, PDF, privacy, telemetry, cleanup, and gate reviews found no remaining P0-P2 product defect. The first limited-storage sample was preserved as superseded local evidence after review identified that only the rotational-HDD scenario evaluates the required storage-media attestation.
+    - Agent-operated visual inspection found a legible unclipped Letter text page followed by the expected 72-by-96-point calibration page rotated 90 degrees, with all four color quadrants intact. This is not mislabeled as maintainer reference-host review.
+    - PWS-0114 remains blocked only on the conforming reference environment, its operator attestations and derivative review, and final exact-revision CI evidence. PWS-0201 remains planned and dependency-blocked.
 - id: PWS-0201
   milestone: M2
   title: Implement JPEG/PNG intake and page normalization

@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.58",
+  "bundle_version": "0.1.59",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 174052,
-      "sha256": "f089e24c3971706c70f47d61c7d471ca58f85e51ae3d0232dd12a2e6af135127"
+      "bytes": 179829,
+      "sha256": "c7c2e0218169cccf3ec75ff8c4f6161756d315afdf5db95a94cc1f4affa825a6"
     },
     {
       "path": "TASKS.schema.json",
@@ -59,7 +59,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for the PWS-0114 in-progress gate checkpoint: the production-composition vertical slice, export-only composition, privacy and cleanup proof, and record-only benchmark schema are under active verification; no later task is ready.",
+    "Regenerated for the blocked PWS-0114 gate checkpoint: the trusted rotational-HDD scenario passed functionally on the development host, but the observed processor and storage-capacity profile mismatched the frozen reference and required memory, graphics, and storage-media attestations remain unavailable; PWS-0201 stays planned and no later task is ready.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
