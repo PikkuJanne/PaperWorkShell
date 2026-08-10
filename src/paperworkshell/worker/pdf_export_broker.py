@@ -377,6 +377,7 @@ class BrokeredPdfExporter:
         "_pipe_factory",
         "_plan_buffer_factory",
         "_policy",
+        "_revoked",
         "_worker",
     )
 
@@ -404,6 +405,18 @@ class BrokeredPdfExporter:
         self._plan_buffer_factory = plan_buffer_factory
         self._output_buffer_factory = output_buffer_factory
         self._id_factory = id_factory
+        self._revoked = False
+
+    @property
+    def revoked(self) -> bool:
+        """Report whether the owning composition permanently revoked this port."""
+
+        return self._revoked
+
+    def _revoke_permanently(self) -> None:
+        """Prevent this already-exposed port from launching another worker."""
+
+        self._revoked = True
 
     def export(
         self,
@@ -416,6 +429,8 @@ class BrokeredPdfExporter:
     ) -> BrokeredPdfExportCandidate:
         """Return a candidate only after worker termination and source revalidation."""
 
+        if self._revoked:
+            reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.composition_closed")
         try:
             return self._export(
                 plan,

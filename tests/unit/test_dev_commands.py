@@ -42,10 +42,12 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "validate-task-graph",
             "validate-docs",
             "validate-reference-profile",
+            "validate-m1-benchmark-report",
             "validate-pdf-renderer-benchmark",
             "scan-secrets",
             "quality-self-test",
             "benchmark-reference",
+            "benchmark-m1-vertical-slice",
             "benchmark-pdf-renderers",
         }
 
@@ -59,6 +61,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertEqual(expected, CHECK_COMMANDS)
         self.assertNotIn("format", CHECK_COMMANDS)
         self.assertNotIn("benchmark-reference", CHECK_COMMANDS)
+        self.assertNotIn("benchmark-m1-vertical-slice", CHECK_COMMANDS)
         self.assertNotIn("benchmark-pdf-renderers", CHECK_COMMANDS)
         self.assertNotIn("generate-fixtures", CHECK_COMMANDS)
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)

@@ -35,6 +35,17 @@ The domain has no filesystem, UI, worker, storage, or document-engine dependency
 layer depends only on structural ports. PDF libraries remain worker-side. The worker never receives
 a case path, destination path, manifest writer, history writer, or directory capability.
 
+Desktop composition keeps export authority separate from the always-live organizer worker.
+`PdfExportWorkerComposition` owns an on-demand client that requires only the `pdf.export` capability,
+admits one explicitly validated qpdf executable, permits at most the worker plus that fixed child,
+and terminates on its construction thread. Closing the composition permanently revokes every
+previously exposed reference to its broker, so shutdown cannot be followed by a fresh worker
+launch. The application root wires its broker to the concrete
+manifest, committed-source, destination, history, and retry adapters through
+`build_windows_pdf_export_service`. The shared production operation policy is 120 seconds wall time,
+90 seconds CPU, 512 MiB memory, 1 GiB temporary storage, 512 MiB output, 1,000 pages, and a
+1,048,576-pixel verification bound. Exceeding any bound fails closed before destination commit.
+
 ## Deterministic plan
 
 `build_pdf_export_plan` accepts one validated manifest snapshot and produces versioned, immutable

@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.57",
+  "bundle_version": "0.1.58",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 174046,
-      "sha256": "717a238301b76c0550eff8429c36e0f867cbf9b4dcd8bf190fde8b48d3b62d04"
+      "bytes": 174052,
+      "sha256": "f089e24c3971706c70f47d61c7d471ca58f85e51ae3d0232dd12a2e6af135127"
     },
     {
       "path": "TASKS.schema.json",
@@ -55,13 +55,11 @@
     "dependency_edge_count": 238,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0114"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for completed PWS-0111 evidence: maintainer keyboard-only and NVDA checks passed at actual 100-percent and 200-percent Windows scaling, guarded worker-cache isolation, copy-owned hosted-CI runtime staging, and path-independent exact dependency identity checks passed local verification, and PWS-0114 is ready.",
+    "Regenerated for the PWS-0114 in-progress gate checkpoint: the production-composition vertical slice, export-only composition, privacy and cleanup proof, and record-only benchmark schema are under active verification; no later task is ready.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

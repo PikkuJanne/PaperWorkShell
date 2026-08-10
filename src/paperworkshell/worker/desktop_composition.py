@@ -20,6 +20,10 @@ from paperworkshell.worker.client.errors import (
 )
 from paperworkshell.worker.client.models import WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.pdf_export_broker import (
+    BrokeredPdfExporter,
+    PdfExportBrokerPolicy,
+)
 from paperworkshell.worker.pdf_source_inspector import (
     BrokeredPdfSourceInspector,
     PdfInspectionBrokerPolicy,
@@ -32,6 +36,7 @@ from paperworkshell.worker.pdf_thumbnail_broker import (
     ThumbnailCacheStore,
 )
 from paperworkshell.worker.protocol.models import (
+    PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     ResourceLimits,
@@ -41,6 +46,7 @@ _REQUIRED_DESKTOP_CAPABILITIES = (
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
 )
+_REQUIRED_PDF_EXPORT_CAPABILITIES = (PDF_EXPORT_CAPABILITY,)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -84,6 +90,49 @@ class DesktopWorkerCompositionConfig:
 
     def __repr__(self) -> str:
         return "DesktopWorkerCompositionConfig(<validated fixed resources>)"
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class PdfExportWorkerCompositionConfig:
+    """Validated resources for one separately privileged export worker."""
+
+    python_executable: Path = field(repr=False)
+    bootstrap_script: Path = field(repr=False)
+    runtime_roots: tuple[Path, ...] = field(repr=False)
+    code_roots: tuple[Path, ...] = field(repr=False)
+    working_directory: Path = field(repr=False)
+    qpdf_executable: Path = field(repr=False)
+    resource_policy: WorkerResourcePolicy
+    timeout_policy: WorkerTimeoutPolicy
+    export_policy: PdfExportBrokerPolicy
+    venv_launcher: Path | None = field(default=None, repr=False)
+    _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.runtime_roots) is not tuple
+            or type(self.code_roots) is not tuple
+            or type(self.resource_policy) is not WorkerResourcePolicy
+            or type(self.timeout_policy) is not WorkerTimeoutPolicy
+            or type(self.export_policy) is not PdfExportBrokerPolicy
+        ):
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.CONFIGURATION,
+            )
+        launch_config = WindowsLaunchConfig(
+            python_executable=self.python_executable,
+            bootstrap_script=self.bootstrap_script,
+            runtime_roots=self.runtime_roots,
+            code_roots=self.code_roots,
+            working_directory=self.working_directory,
+            venv_launcher=self.venv_launcher,
+            qpdf_executable=self.qpdf_executable,
+        )
+        object.__setattr__(self, "_launch_config", launch_config)
+
+    def __repr__(self) -> str:
+        return "PdfExportWorkerCompositionConfig(<validated fixed resources>)"
 
 
 class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"]):
@@ -157,6 +206,69 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
             )
 
 
+class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposition"]):
+    """Own one export-only worker client and its handle-only broker port."""
+
+    __slots__ = (
+        "_closed",
+        "_owner_thread_id",
+        "_pdf_exporter",
+        "_worker",
+    )
+
+    def __init__(
+        self,
+        worker: WorkerClient,
+        pdf_exporter: BrokeredPdfExporter,
+    ) -> None:
+        self._worker = worker
+        self._pdf_exporter = pdf_exporter
+        self._owner_thread_id = threading.get_ident()
+        self._closed = False
+
+    @property
+    def pdf_exporter(self) -> BrokeredPdfExporter:
+        """Expose the verified export application port without launcher details."""
+
+        return self._pdf_exporter
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def close(self) -> None:
+        """Idempotently terminate the export client on its construction thread."""
+
+        self._require_owner()
+        if self._closed:
+            return
+        self._pdf_exporter._revoke_permanently()
+        self._worker.terminate()
+        self._closed = True
+
+    def __enter__(self) -> Self:
+        self._require_owner()
+        if self._closed or self._pdf_exporter.revoked:
+            reject_client(
+                WorkerClientErrorCode.STATE_INVALID,
+                WorkerClientContext.STATE,
+            )
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def __repr__(self) -> str:
+        return f"PdfExportWorkerComposition(closed={self._closed})"
+
+    def _require_owner(self) -> None:
+        if threading.get_ident() != self._owner_thread_id:
+            reject_client(
+                WorkerClientErrorCode.OWNER_THREAD_REQUIRED,
+                WorkerClientContext.OWNER,
+            )
+
+
 def create_desktop_worker_composition(
     config: DesktopWorkerCompositionConfig,
     *,
@@ -221,6 +333,62 @@ def create_desktop_worker_composition_config(
         timeout_policy=timeout_policy,
         inspection_policy=PdfInspectionBrokerPolicy(inspection_limits),
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
+        venv_launcher=venv_launcher,
+    )
+
+
+def create_pdf_export_worker_composition(
+    config: PdfExportWorkerCompositionConfig,
+) -> PdfExportWorkerComposition:
+    """Build a separate export-only client with explicit qpdf authority."""
+
+    if type(config) is not PdfExportWorkerCompositionConfig:
+        reject_client(
+            WorkerClientErrorCode.CONFIGURATION_INVALID,
+            WorkerClientContext.CONFIGURATION,
+        )
+    launcher = WindowsProcessLauncher(config._launch_config)
+    worker = WorkerClient(
+        launcher,
+        config.resource_policy,
+        config.timeout_policy,
+        required_capabilities=_REQUIRED_PDF_EXPORT_CAPABILITIES,
+    )
+    return PdfExportWorkerComposition(
+        worker,
+        BrokeredPdfExporter(worker, config.export_policy),
+    )
+
+
+def create_pdf_export_worker_composition_config(
+    *,
+    python_executable: Path,
+    bootstrap_script: Path,
+    runtime_roots: tuple[Path, ...],
+    code_roots: tuple[Path, ...],
+    working_directory: Path,
+    qpdf_executable: Path,
+    resource_policy: WorkerResourcePolicy,
+    timeout_policy: WorkerTimeoutPolicy,
+    export_limits: ResourceLimits,
+    pump_interval_seconds: float = 0.050,
+    venv_launcher: Path | None = None,
+) -> PdfExportWorkerCompositionConfig:
+    """Build the export broker policy behind its least-privilege composition."""
+
+    return PdfExportWorkerCompositionConfig(
+        python_executable=python_executable,
+        bootstrap_script=bootstrap_script,
+        runtime_roots=runtime_roots,
+        code_roots=code_roots,
+        working_directory=working_directory,
+        qpdf_executable=qpdf_executable,
+        resource_policy=resource_policy,
+        timeout_policy=timeout_policy,
+        export_policy=PdfExportBrokerPolicy(
+            export_limits,
+            pump_interval_seconds=pump_interval_seconds,
+        ),
         venv_launcher=venv_launcher,
     )
 

@@ -656,6 +656,19 @@ def _error(
     return raised.value
 
 
+def test_permanent_revocation_fails_before_allocating_or_launching() -> None:
+    system = _System()
+
+    system.exporter._revoke_permanently()
+    error = _error(system)
+
+    assert system.exporter.revoked
+    assert error.code is PdfExportErrorCode.WORKER_FAILED
+    assert system.events == []
+    assert system.output_factory_calls == 0
+    assert system.pipe_factory_calls == 0
+
+
 def test_success_terminates_revalidates_authenticates_then_streams_candidate() -> None:
     system = _System()
     progress: list[PdfExportProgress] = []

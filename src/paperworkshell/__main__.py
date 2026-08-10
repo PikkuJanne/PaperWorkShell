@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
@@ -13,16 +14,25 @@ from paperworkshell.app.export_history import (
     PdfExportRetryRecoveryService,
 )
 from paperworkshell.app.organizer import OrganizerBackend
+from paperworkshell.app.pdf_export import PdfExportService
 from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
 from paperworkshell.app.recovery import (
     StartupRecoveryDiagnosticSink,
     StartupRecoveryService,
 )
-from paperworkshell.app.source_ingest import SourceIngestService
+from paperworkshell.app.source_ingest import (
+    CommittedPdfSourceBatchStore,
+    SourceIngestService,
+)
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.import_precheck import ImportLimits
+from paperworkshell.domain.pdf_export import (
+    PdfExportErrorCode,
+    reject_pdf_export,
+)
 from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_FRAME_BYTES
 from paperworkshell.domain.recovery import RecoveryErrorCode, reject_recovery
+from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
@@ -38,8 +48,11 @@ from paperworkshell.worker.client.models import WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.desktop_composition import (
     DesktopWorkerCompositionConfig,
+    PdfExportWorkerComposition,
+    PdfExportWorkerCompositionConfig,
     create_desktop_worker_composition,
     create_desktop_worker_composition_config,
+    create_pdf_export_worker_composition_config,
 )
 from paperworkshell.worker.protocol.models import ResourceLimits
 
@@ -50,6 +63,8 @@ _MAXIMUM_SOURCE_BYTES = 512 * 1024 * 1024
 _MAXIMUM_PAGES = 1_000
 _WORKER_MEMORY_BYTES = 768 * 1024 * 1024
 _WORKER_JOB_MEMORY_BYTES = 1024 * 1024 * 1024
+_PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
+_DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE = Path(r"C:\Program Files\qpdf 12.3.2\bin\qpdf.exe")
 
 
 def _utc_now() -> datetime:
@@ -81,6 +96,34 @@ def build_windows_startup_recovery_service(
         store,
         diagnostics=diagnostics,
         clock=clock,
+    )
+
+
+def build_windows_pdf_export_service(
+    manager: CaseWorkspaceManager,
+    sources: CommittedPdfSourceBatchStore,
+    composition: PdfExportWorkerComposition,
+) -> PdfExportService:
+    """Wire concrete Windows persistence around one export-only composition."""
+
+    if (
+        not isinstance(manager, CaseWorkspaceManager)
+        or not isinstance(sources, CommittedPdfSourceBatchStore)
+        or type(composition) is not PdfExportWorkerComposition
+        or composition.closed
+    ):
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.composition")
+    manifests = WindowsManifestRepository(manager)
+    return PdfExportService(
+        manifests,
+        sources,
+        composition.pdf_exporter,
+        WindowsVerifiedPdfDestination(),
+        PdfExportHistoryService(
+            WindowsPdfExportHistoryRepository(manager),
+            manifests,
+        ),
+        WindowsPdfExportRetryRepository(manager),
     )
 
 
@@ -153,16 +196,66 @@ def _import_limits() -> ImportLimits:
     )
 
 
-def _desktop_worker_config() -> DesktopWorkerCompositionConfig:
-    package_root = Path(__file__).resolve().parent
-    code_root = package_root.parent
-    runtime_root = Path(sys.prefix).resolve()
-    base_runtime_root = Path(sys.base_prefix).resolve()
-    worker_executable = (base_runtime_root / "python.exe").resolve()
-    venv_launcher = Path(sys.executable).resolve() if runtime_root != base_runtime_root else None
-    runtime_roots = (
-        (runtime_root,) if base_runtime_root == runtime_root else (runtime_root, base_runtime_root)
+def build_windows_pdf_export_limits() -> ResourceLimits:
+    """Return the fixed bounded production policy for one verified PDF export."""
+
+    return ResourceLimits(
+        wall_time_ms=120_000,
+        cpu_time_ms=90_000,
+        memory_bytes=512 * 1024 * 1024,
+        temporary_storage_bytes=_MAXIMUM_TEMP_BYTES,
+        output_bytes=_PDF_EXPORT_OUTPUT_BYTES,
+        page_count=_MAXIMUM_PAGES,
+        pixel_count=1_048_576,
     )
+
+
+def build_windows_pdf_export_worker_config(
+    qpdf_executable: Path | None = None,
+) -> PdfExportWorkerCompositionConfig:
+    """Select the trusted qpdf path and compose the export-only worker policy."""
+
+    selected_qpdf = _configured_qpdf_executable(qpdf_executable)
+    (
+        worker_executable,
+        venv_launcher,
+        bootstrap_script,
+        runtime_roots,
+        code_roots,
+        working_directory,
+    ) = _worker_runtime_resources()
+    return create_pdf_export_worker_composition_config(
+        python_executable=worker_executable,
+        venv_launcher=venv_launcher,
+        bootstrap_script=bootstrap_script,
+        runtime_roots=runtime_roots,
+        code_roots=code_roots,
+        working_directory=working_directory,
+        qpdf_executable=selected_qpdf,
+        resource_policy=WorkerResourcePolicy(
+            process_memory_bytes=_WORKER_MEMORY_BYTES,
+            job_memory_bytes=_WORKER_JOB_MEMORY_BYTES,
+            cpu_time_ms=120_000,
+            maximum_processes=2,
+        ),
+        timeout_policy=WorkerTimeoutPolicy(
+            handshake_seconds=20.0,
+            cancellation_grace_seconds=5.0,
+            shutdown_grace_seconds=10.0,
+        ),
+        export_limits=build_windows_pdf_export_limits(),
+    )
+
+
+def _desktop_worker_config() -> DesktopWorkerCompositionConfig:
+    (
+        worker_executable,
+        venv_launcher,
+        bootstrap_script,
+        runtime_roots,
+        code_roots,
+        working_directory,
+    ) = _worker_runtime_resources()
     return create_desktop_worker_composition_config(
         # A venv's python.exe is a launcher that creates the base interpreter as
         # a child. The worker job deliberately permits one process, so launch the
@@ -170,10 +263,10 @@ def _desktop_worker_config() -> DesktopWorkerCompositionConfig:
         # launcher hint before worker code audits the otherwise minimal environment.
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
-        bootstrap_script=(package_root / "worker" / "host_bootstrap.py").resolve(),
+        bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
-        code_roots=(code_root,),
-        working_directory=code_root,
+        code_roots=code_roots,
+        working_directory=working_directory,
         resource_policy=WorkerResourcePolicy(
             process_memory_bytes=_WORKER_MEMORY_BYTES,
             job_memory_bytes=_WORKER_JOB_MEMORY_BYTES,
@@ -203,6 +296,46 @@ def _desktop_worker_config() -> DesktopWorkerCompositionConfig:
             page_count=_MAXIMUM_PAGES,
             pixel_count=1_048_576,
         ),
+    )
+
+
+def _configured_qpdf_executable(explicit: Path | None) -> Path:
+    selected = explicit
+    if selected is None:
+        configured = os.environ.get("PWS_QPDF_EXECUTABLE")
+        try:
+            selected = Path(configured) if configured else _DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE
+        except OSError, TypeError, ValueError:
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
+    if not isinstance(selected, Path):
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
+    return selected
+
+
+def _worker_runtime_resources() -> tuple[
+    Path,
+    Path | None,
+    Path,
+    tuple[Path, ...],
+    tuple[Path, ...],
+    Path,
+]:
+    package_root = Path(__file__).resolve().parent
+    code_root = package_root.parent
+    runtime_root = Path(sys.prefix).resolve()
+    base_runtime_root = Path(sys.base_prefix).resolve()
+    worker_executable = (base_runtime_root / "python.exe").resolve()
+    venv_launcher = Path(sys.executable).resolve() if runtime_root != base_runtime_root else None
+    runtime_roots = (
+        (runtime_root,) if base_runtime_root == runtime_root else (runtime_root, base_runtime_root)
+    )
+    return (
+        worker_executable,
+        venv_launcher,
+        (package_root / "worker" / "host_bootstrap.py").resolve(),
+        runtime_roots,
+        (code_root,),
+        code_root,
     )
 
 

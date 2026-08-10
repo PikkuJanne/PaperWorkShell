@@ -431,6 +431,12 @@ def _observed_environment(work_directory: Path) -> dict[str, object]:
     }
 
 
+def observe_reference_environment(work_directory: Path) -> dict[str, object]:
+    """Return the path-free runtime observations used by reference evaluation."""
+
+    return _observed_environment(work_directory)
+
+
 def _requirement(
     required: object,
     actual: object,
@@ -545,6 +551,19 @@ def _evaluate_reference_environment(
     statuses = {cast(str, requirement["status"]) for requirement in requirements.values()}
     status = "matched" if statuses == {"matched"} else "mismatched"
     return {"status": status, "requirements": requirements}
+
+
+def evaluate_reference_environment(
+    profile: Mapping[str, Any],
+    scenario_id: str,
+    observations: Mapping[str, object],
+    attestations: ReferenceAttestations,
+) -> dict[str, object]:
+    """Evaluate sanitized observations without deciding whether a product gate passed."""
+
+    if scenario_id not in SCENARIO_IDS:
+        raise BenchmarkError("REFERENCE_SCENARIO_UNKNOWN", scenario_id)
+    return _evaluate_reference_environment(profile, scenario_id, observations, attestations)
 
 
 def benchmark_report(

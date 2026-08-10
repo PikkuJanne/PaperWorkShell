@@ -392,6 +392,8 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
             "import paperworkshell.worker.client\n"
             "import paperworkshell.worker.desktop_composition\n"
             "from paperworkshell.worker import desktop_composition\n"
+            "from paperworkshell.export.pdf_destination import "
+            "WindowsVerifiedPdfDestination\n"
             "import paperworkshell.export\n",
             module="paperworkshell.__main__",
             package="paperworkshell",
@@ -460,6 +462,58 @@ def test_desktop_worker_composition_exception_is_exact(
     )
 
     assert {violation.code for violation in violations} == {"ARCH_UI_WORKER_HOST"}
+
+
+@pytest.mark.parametrize("adapter", ("pdf", "imaging", "ocr"))
+def test_desktop_worker_composition_cannot_import_document_adapters(adapter: str) -> None:
+    violations = inspect_source(
+        f"import paperworkshell.{adapter}.example\n",
+        module="paperworkshell.worker.desktop_composition",
+        package="paperworkshell.worker",
+        path="desktop_composition_adapter_violation.py",
+    )
+
+    assert {violation.code for violation in violations} == {"ARCH_DESKTOP_COMPOSITION_ADAPTER"}
+
+
+@pytest.mark.parametrize(
+    ("module", "package", "source"),
+    [
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "import paperworkshell.export.pdf_destination\n",
+        ),
+        (
+            "paperworkshell.ui.example",
+            "paperworkshell.ui",
+            "import paperworkshell.export.pdf_destination\n",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "import paperworkshell.export.pdf_destination.internal\n",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "import paperworkshell.export.other_destination\n",
+        ),
+    ],
+)
+def test_desktop_export_destination_exception_is_exact(
+    module: str,
+    package: str,
+    source: str,
+) -> None:
+    violations = inspect_source(
+        source,
+        module=module,
+        package=package,
+        path="export_destination_violation.py",
+    )
+
+    assert {violation.code for violation in violations} == {"ARCH_GUI_EXPORT_IMPLEMENTATION"}
 
 
 @pytest.mark.parametrize(

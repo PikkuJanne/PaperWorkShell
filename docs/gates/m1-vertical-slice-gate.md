@@ -1,6 +1,6 @@
 # Milestone 1 reliable vertical-slice gate — PWS-0114
 
-- Review status: In progress; gate-owned integration and reference evidence pending
+- Review status: In progress; production vertical slice passed, trusted benchmark/demo and reference evidence pending
 - Gate conclusion: PENDING
 - Review date: 2026-08-10
 - Evidence revision: Pending
@@ -75,19 +75,19 @@ evidence under the accepted reference contract.
 | Criterion | Current result | Required evidence |
 |---|---|---|
 | Every M1 prerequisite is done | Pass | PWS-0101 through PWS-0113 are `done`; final task-graph validation must remain green |
-| Originals remain byte-for-byte unchanged | Component pass; combined proof pending | The gate scenario records external and committed-source bytes plus SHA-256 before import and after export/restart |
-| The same manifest produces the same semantic page result | Component pass; combined proof pending | Two fresh exports from the same persisted manifest must have equal semantic fingerprints, order, rotation, rendered result, and verified output hash |
+| Originals remain byte-for-byte unchanged | Pass | The gate scenario records external and committed-source bytes plus SHA-256 before import and after export/restart |
+| The same manifest produces the same semantic page result | Pass | Two fresh exports from the same persisted manifest have equal semantic fingerprints, order, rotation, rendered result, verified output hash, and bytes |
 | Malformed input and worker termination fail cleanly | Pass in focused suites | Final report must cite live malformed render, active render termination, active export termination, cold recovery, and no failed destination publication |
-| Export passes parse, structure, page count, encryption, and render checks | Pass in focused suite; combined proof pending | Gate scenario must expose the exact typed verification report and all seven current check codes |
-| Routine logs contain no prohibited document content | Component pass; combined canary pending | Gate scenario scans its diagnostic sink, rendered summary, caplog, stdout, and stderr for filename, path, text, and metadata canaries |
+| Export passes parse, structure, page count, encryption, and render checks | Pass | Gate scenario exposes the exact typed verification report and all seven current check codes for both exports |
+| Routine logs contain no prohibited document content | Pass in gate scenario and focused suites | Gate scenario scans its canonical diagnostic JSONL, rendered summary, caplog, stdout, and stderr for distinct filename, path, destination, text, and metadata canaries in raw and JSON-escaped forms |
 | Primary organizer path works without a mouse | Pass | Maintainer keyboard-only/NVDA scenario at actual 100% and 200% Windows scaling |
 | UI remains responsive for worker operations | Thumbnail path pass; export runner pending | Gate evidence must record background export heartbeat/cancel behavior without claiming a GUI export action |
 | Reference vertical slice passes on low-spec target | Pending | Conforming environment observation/attestation plus functional result and record-only measurements |
 
 ## Gate-owned vertical-slice scenario
 
-The committed gate scenario will use only public synthetic fixtures and a newly created random
-case. It must:
+The committed gate scenario uses only public synthetic fixtures and a newly created random case.
+It:
 
 1. Import at least two PDFs through the production desktop/backend composition.
 2. Render bounded thumbnails in the restricted worker.
@@ -132,8 +132,8 @@ The successful gate outcome must contain these closed checks:
 
 ## Privacy evidence
 
-The gate-owned scenario will use distinct synthetic canaries for display names, external
-filenames, absolute paths, destination names, document text, and metadata values. It will scan
+The gate-owned scenario uses distinct synthetic canaries for display names, external
+filenames, absolute paths, destination names, document text, and metadata values. It scans
 the actual typed diagnostic JSONL, summary rendering, captured Python logging, stdout, and stderr
 for raw and JSON-escaped forms. Manifest/source/export artifacts are not routine logs and are not
 scanned as though they were diagnostic output.
@@ -177,9 +177,10 @@ must remain omitted rather than inferred from unavailable worker telemetry.
 | Command | Current result |
 |---|---|
 | `uv run --locked --no-sync python tools/dev.py check` | Baseline pass at PWS-0111: 1,987 unit, 351 integration with 2 capability skips, 256 security with 6 capability skips, 19 accessibility, and all static/validation gates; final PWS-0114 exact-tree rerun pending |
-| `uv run --locked --no-sync pytest -q tests/integration/test_m1_vertical_slice_windows.py` | Pending implementation |
-| GitHub Actions local-equivalent suite | PWS-0111 final rerun pending; PWS-0114 exact-revision runs pending |
-| Reference-profile vertical-slice command | Pending implementation and conforming-host execution |
+| `uv run --locked --no-sync pytest -q tests/integration/test_m1_vertical_slice_windows.py` | Pass: 1 test in 719.95 seconds on the development workstation |
+| `uv run --locked --no-sync python tools/dev.py benchmark-m1-vertical-slice` | Pass: canonical record-only host observation; vertical slice truthfully `not-run`; processor and limited-storage requirements mismatched and RAM/graphics/media unattested |
+| GitHub Actions local-equivalent suite | PWS-0111 final runs passed in 35m28s and 25m02s; PWS-0114 exact-revision runs pending |
+| Reference-profile vertical-slice command | Closed schema and host observation implemented; trusted live-runner and conforming-host execution pending |
 
 ## Known limitations and owned future work
 
@@ -193,9 +194,8 @@ must remain omitted rather than inferred from unavailable worker telemetry.
 
 ## Gate conclusion
 
-**PENDING.** Prerequisite implementation and component-level evidence are complete, including the
-maintainer keyboard/NVDA gate. PWS-0114 remains open until the gate-owned complete scenario,
-actual-run privacy scan, background export responsiveness evidence, final exact-revision quality
-and CI runs, gate-specific manual derivative/recovery inspection, and conforming reference-profile
-measurement are recorded without unresolved blocking defects.
-
+**PENDING.** Prerequisites, the maintainer keyboard/NVDA gate, and the gate-owned production
+scenario—including its actual typed-log privacy scan and cleanup proof—pass. PWS-0114 remains open
+until the trusted measured/demo runner, background export responsiveness evidence, final
+exact-revision quality and CI runs, gate-specific manual derivative/recovery inspection, and
+conforming reference-profile measurement are recorded without unresolved blocking defects.
