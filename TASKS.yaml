@@ -1176,7 +1176,7 @@ tasks:
   blocker: null
   evidence:
     completed_at: '2026-08-10'
-    revision: "d242051"
+    revision: "88f9aec"
     commands:
     - uv run --locked --no-sync python tools/dev.py check - passed; 1,987 unit tests, 351 integration
       tests with 2 disclosed local link-capability skips, 256 security tests with 6 disclosed local
@@ -1185,6 +1185,11 @@ tasks:
       self-test gate
     - uv run --locked --no-sync pytest on the focused qpdf, venv, ACL-recovery, containment, and
       worker-isolation cache matrix - passed; 53 tests
+    - uv run --locked --no-sync pytest -q tests/unit/test_ci_workflow.py - passed; 7 workflow-policy
+      tests, including copy-owned CPython staging before locked bootstrap and the 45-minute full-job
+      budget
+    - Bounded copy-owned CPython runtime probe - passed; the staged interpreter reported its copied
+      root as sys.base_prefix and a derived virtual environment retained that copied base
     - Production exact-object ACL-authority inventory on the rebuilt current-user environment -
       passed; 12,091 resources authenticated
     - uv run --locked --no-sync pytest -q tests/integration/test_organizer_ui_windows.py - passed;
@@ -1206,6 +1211,9 @@ tasks:
       profile cache plus fixed raw option and in-worker self-audit proves source wins over a readable
       stale cache, blocks same-user launch races, and remains write-inaccessible to worker descendants.
       Pre-exclusion recovery journals retain strict exact-object identity semantics.
+    - Hosted Windows quality runs retain the same production runtime-admission policy; the pinned
+      setup-python interpreter is copied into a fresh runner-owned tree, rebound through UV_PYTHON,
+      and verified before the locked environment is created. No worker security check is weakened.
     - The observed local inspection failure was remediated only after an exhaustive 12,339-object
       ACL/journal residue audit reported zero target-SID or guard residue and an empty journal; the
       subsequent synthetic import committed one source and two pages. No generalized cache-path
