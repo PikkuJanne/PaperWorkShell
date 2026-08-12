@@ -12,6 +12,7 @@ import platform
 import shutil
 import threading
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
@@ -61,8 +62,10 @@ from paperworkshell.domain.pdf_thumbnails import (
 from paperworkshell.domain.recovery import CaseRecoveryStatus, StartupRecoveryStatus
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
+from paperworkshell.storage.quotas import WorkspaceUsage
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -111,6 +114,14 @@ _METADATA_CANARY = "PRIVATE-M1-METADATA-E214"
 _DIAGNOSTIC_TIME = datetime(2026, 8, 10, 12, 0, tzinfo=UTC)
 _EXPORT_TIMER_INTERVAL_MILLISECONDS = 50
 _CANCELLATION_RENDER_DIMENSION_PIXELS = 900
+_TRANSIENT_CONCURRENT_WORKSPACE_FAILURES = (
+    (WorkspaceErrorCode.IDENTITY_CHANGED, "filesystem.open"),
+    (WorkspaceErrorCode.LOCATION_UNSUPPORTED, "filesystem.identity"),
+    (WorkspaceErrorCode.LOCATION_UNSUPPORTED, "filesystem.final_path"),
+    (WorkspaceErrorCode.IDENTITY_CHANGED, "filesystem.containment"),
+    (WorkspaceErrorCode.LOCATION_UNSUPPORTED, "filesystem.streams"),
+    (WorkspaceErrorCode.IDENTITY_CHANGED, "inventory.directory"),
+)
 _VERIFIED_CHECKS = (
     PdfExportCheckCode.PDF_REOPENED,
     PdfExportCheckCode.STRUCTURE_CLEAN,
@@ -138,6 +149,29 @@ class _ResponsiveExportResult:
     worker_resource_snapshot: WorkerResourceSnapshot
     peak_cache_bytes: int
     peak_temp_bytes: int
+
+
+def _iter_concurrent_workspace_usage(
+    measure_usage: Callable[[UUID], WorkspaceUsage],
+    case_id: UUID,
+    export_finished: threading.Event,
+    *,
+    interval_seconds: float,
+) -> Iterator[WorkspaceUsage]:
+    """Yield complete inventories around one known case-mutating export."""
+
+    while True:
+        try:
+            yield measure_usage(case_id)
+        except WorkspaceError as error:
+            if (error.code, error.context) not in _TRANSIENT_CONCURRENT_WORKSPACE_FAILURES:
+                raise
+        if export_finished.wait(interval_seconds):
+            break
+    # The exporter may briefly retain a delete-capable case stage between samples.
+    # Once it is quiescent, require one uncaught full inventory so a persistent
+    # identity failure can never become successful resource evidence.
+    yield measure_usage(case_id)
 
 
 def _build_stack(
@@ -269,13 +303,15 @@ def _export_pdf_while_event_loop_remains_responsive(
 
     def sample_workspace_usage() -> None:
         try:
-            while True:
-                usage = manager.measure_usage(case_id)
-                workspace_samples.append((usage.cache_bytes, usage.temp_bytes))
-                if export_finished.wait(
+            for usage in _iter_concurrent_workspace_usage(
+                manager.measure_usage,
+                case_id,
+                export_finished,
+                interval_seconds=(
                     CONSTRAINED_RESOURCE_POLICY_V1.resource_sampling_interval_ms / 1_000
-                ):
-                    break
+                ),
+            ):
+                workspace_samples.append((usage.cache_bytes, usage.temp_bytes))
         except BaseException as error:
             sampler_errors.append(error)
 
@@ -514,6 +550,136 @@ def test_vertical_slice_event_loop_uses_widget_capable_process_application() -> 
 
     assert QCoreApplication.instance() is application
     assert isinstance(application, QApplication)
+
+
+@pytest.mark.parametrize(("code", "context"), _TRANSIENT_CONCURRENT_WORKSPACE_FAILURES)
+def test_workspace_sampler_discards_only_a_known_active_publication_race(
+    code: WorkspaceErrorCode,
+    context: str,
+) -> None:
+    case_id = UUID("00000000-0000-4000-8000-000000000001")
+    export_finished = threading.Event()
+    active_usage = WorkspaceUsage(100, 20, 10, 8, 2)
+    final_usage = WorkspaceUsage(110, 25, 0, 7, 2)
+    calls = 0
+
+    def measure_usage(selected: UUID) -> WorkspaceUsage:
+        nonlocal calls
+        assert selected == case_id
+        calls += 1
+        if calls == 1:
+            raise WorkspaceError(
+                code,
+                context,
+                "PaperWorkShell could not authenticate the requested storage object.",
+            )
+        if calls == 2:
+            export_finished.set()
+            return active_usage
+        return final_usage
+
+    observed = tuple(
+        _iter_concurrent_workspace_usage(
+            measure_usage,
+            case_id,
+            export_finished,
+            interval_seconds=0,
+        )
+    )
+
+    assert observed == (active_usage, final_usage)
+    assert calls == 3
+
+
+def test_workspace_sampler_requires_a_clean_inventory_after_export() -> None:
+    case_id = UUID("00000000-0000-4000-8000-000000000002")
+    export_finished = threading.Event()
+    error = WorkspaceError(
+        WorkspaceErrorCode.IDENTITY_CHANGED,
+        "filesystem.open",
+        "PaperWorkShell could not authenticate the requested storage object.",
+    )
+    calls = 0
+
+    def measure_usage(_selected: UUID) -> WorkspaceUsage:
+        nonlocal calls
+        calls += 1
+        export_finished.set()
+        raise error
+
+    with pytest.raises(WorkspaceError) as raised:
+        tuple(
+            _iter_concurrent_workspace_usage(
+                measure_usage,
+                case_id,
+                export_finished,
+                interval_seconds=0,
+            )
+        )
+
+    assert raised.value is error
+    assert calls == 2
+
+
+@pytest.mark.parametrize(
+    ("code", "context"),
+    (
+        (WorkspaceErrorCode.ALIAS_DETECTED, "filesystem.open"),
+        (WorkspaceErrorCode.REPARSE_POINT, "filesystem.open"),
+        (WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED, "inventory.entries"),
+        (WorkspaceErrorCode.IDENTITY_CHANGED, "case.manifest"),
+        (WorkspaceErrorCode.LOCATION_UNSUPPORTED, "volume.capabilities"),
+    ),
+)
+def test_workspace_sampler_propagates_other_storage_failures_immediately(
+    code: WorkspaceErrorCode,
+    context: str,
+) -> None:
+    case_id = UUID("00000000-0000-4000-8000-000000000003")
+    error = WorkspaceError(code, context, "Safe storage failure.")
+    calls = 0
+
+    def measure_usage(_selected: UUID) -> WorkspaceUsage:
+        nonlocal calls
+        calls += 1
+        raise error
+
+    with pytest.raises(WorkspaceError) as raised:
+        tuple(
+            _iter_concurrent_workspace_usage(
+                measure_usage,
+                case_id,
+                threading.Event(),
+                interval_seconds=0,
+            )
+        )
+
+    assert raised.value is error
+    assert calls == 1
+
+
+def test_workspace_sampler_propagates_non_storage_failures_immediately() -> None:
+    case_id = UUID("00000000-0000-4000-8000-000000000004")
+    error = RuntimeError("synthetic sampler failure")
+    calls = 0
+
+    def measure_usage(_selected: UUID) -> WorkspaceUsage:
+        nonlocal calls
+        calls += 1
+        raise error
+
+    with pytest.raises(RuntimeError) as raised:
+        tuple(
+            _iter_concurrent_workspace_usage(
+                measure_usage,
+                case_id,
+                threading.Event(),
+                interval_seconds=0,
+            )
+        )
+
+    assert raised.value is error
+    assert calls == 1
 
 
 def test_active_cancellation_probe_fits_the_production_thumbnail_output_budget() -> None:
