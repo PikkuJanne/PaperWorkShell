@@ -1407,7 +1407,7 @@ tasks:
   blocker: null
   evidence:
     completed_at: '2026-08-12'
-    revision: 0b44884558b47aeda60294b5e8cba2f0702f0291
+    revision: cf96a82c1a4b24bed980c2b324b9540c80cda48d
     commands:
     - Focused constrained-profile verification - passed; Ruff format/lint, strict mypy on 285 files,
       414 tests plus 350 subtests, real worker recovery/cancellation, and schema/task/docs/benchmark validators.
@@ -1423,8 +1423,8 @@ tasks:
       integration alone took 28 minutes 44 seconds; the same registered commands were preserved individually.
     notes:
     - PWS-D041 replaces unavailable hardware attestation with enforced software budgets. The canonical report
-      recorded 249077760-byte process-tree RSS, 166296-byte combined cache, 6242-byte case temp, concurrency 1,
-      141-ms maximum heartbeat gap, and 4-ms protocol cancellation acknowledgement; every hard budget passed.
+      recorded 244023296-byte process-tree RSS, 166296-byte combined cache, 650-byte case temp, concurrency 1,
+      147-ms maximum heartbeat gap, and 6-ms protocol cancellation acknowledgement; every hard budget passed.
     - Physical low-end hardware was not tested. The result proves bounded behavior for the recorded synthetic
       workload and revision, not certification of any processor, RAM, GPU, SSD, HDD, VM, or physical device.
 - id: PWS-0114
@@ -1486,7 +1486,7 @@ tasks:
   blocker: null
   evidence:
     completed_at: '2026-08-12'
-    revision: 0b44884558b47aeda60294b5e8cba2f0702f0291
+    revision: cf96a82c1a4b24bed980c2b324b9540c80cda48d
     commands:
     - uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice - passed; exact-revision canonical
       import, thumbnails, organize/autosave, two verified exports, cold reopen/recovery, privacy scan, low-disk,

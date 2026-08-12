@@ -3,7 +3,7 @@
 - Review status: Complete
 - Gate conclusion: PASS
 - Review date: 2026-08-12
-- Evidence revision: `0b44884558b47aeda60294b5e8cba2f0702f0291`
+- Evidence revision: `cf96a82c1a4b24bed980c2b324b9540c80cda48d`
 - Review branch: `codex/pws-0114-m1-gate`
 - Frozen decisions: PWS-D003, PWS-D009, PWS-D012, PWS-D013, PWS-D027, PWS-D029,
   PWS-D030, PWS-D041
@@ -66,7 +66,7 @@ Authoritative sources are [ROADMAP.md](../../ROADMAP.md), [TASKS.yaml](../../TAS
 | PWS-0111 | Done | `663c966` | Accessible desktop organizer and manual NVDA evidence |
 | PWS-0112 | Done | `77972df` | Deterministic verified export and history |
 | PWS-0113 | Done | `8a0b80c` | Cold startup recovery and sanitized diagnostics |
-| PWS-0115 | Done | `0b44884558b47aeda60294b5e8cba2f0702f0291` | Enforced constrained resource policy and machine-readable evidence |
+| PWS-0115 | Done | `cf96a82c1a4b24bed980c2b324b9540c80cda48d` | Enforced constrained resource policy and machine-readable evidence |
 
 ## Gate criteria
 
@@ -142,19 +142,19 @@ focused low-disk, slow-I/O, and worker restart nodes before its authenticated re
 Worker-private temporary-storage peaks remain prospectively bounded by per-operation limits rather
 than sampled separately in report v2. Missing or unknown required evidence fails the gate.
 
-The canonical report at revision `0b44884558b47aeda60294b5e8cba2f0702f0291` decoded with zero
+The canonical report at revision `cf96a82c1a4b24bed980c2b324b9540c80cda48d` decoded with zero
 issues and recorded:
 
 | Hard budget | Observed | Limit | Result |
 |---|---:|---:|---|
-| Complete process-tree RSS | 249,077,760 bytes | 1,342,177,280 bytes | Pass |
+| Complete process-tree RSS | 244,023,296 bytes | 1,342,177,280 bytes | Pass |
 | Combined thumbnail/preview cache | 166,296 bytes | 134,217,728 bytes | Pass |
-| Case-workspace temporary storage | 6,242 bytes | 536,870,912 bytes | Pass |
+| Case-workspace temporary storage | 650 bytes | 536,870,912 bytes | Pass |
 | Heavy-operation concurrency | 1 | 1 | Pass |
-| Maximum controlled UI heartbeat gap | 141 ms | 250 ms | Pass |
-| Protocol cancellation acknowledgement | 4 ms | 2,000 ms | Pass |
+| Maximum controlled UI heartbeat gap | 147 ms | 250 ms | Pass |
+| Protocol cancellation acknowledgement | 6 ms | 2,000 ms | Pass |
 
-The run took 809,864 ms; duration is record-only, not a heterogeneous-machine hard gate. It also
+The run took 819,776 ms; duration is record-only, not a heterogeneous-machine hard gate. It also
 recorded zero heartbeat violations, one-shot worker recycling with all workers terminated, passing
 low-disk/slow-I/O/recovery/privacy outcomes, deterministic repeated output, two output pages, and
 the retained output SHA-256
