@@ -294,6 +294,87 @@ def test_outstanding_quota_reservations_cannot_overcommit() -> None:
     second.release()
 
 
+def test_reservation_observer_captures_unpolled_short_lived_high_water() -> None:
+    usage = _usage(case_bytes=0, cache_bytes=0, temp_bytes=0, entry_count=0)
+    book = QuotaReservationBook(_quota())
+    observer = book.observe()
+
+    cache = book.reserve(usage, QuotaArea.CACHE, byte_count=6, entry_count=1)
+    temporary = book.reserve(usage, QuotaArea.TEMP, byte_count=4, entry_count=1)
+    cache.release()
+    temporary.release()
+    measurement = observer.close()
+
+    assert measurement.current.is_empty
+    assert measurement.high_water.case_bytes == 10
+    assert measurement.high_water.cache_bytes == 6
+    assert measurement.high_water.temp_bytes == 4
+    assert measurement.high_water.entry_count == 2
+
+
+def test_reservation_observer_includes_initial_claim_and_freezes_at_close() -> None:
+    usage = _usage(case_bytes=0, cache_bytes=0, temp_bytes=0, entry_count=0)
+    book = QuotaReservationBook(_quota())
+    initial = book.reserve(usage, QuotaArea.CACHE, byte_count=6)
+    observer = book.observe()
+
+    assert observer.snapshot.current.cache_bytes == 6
+    closed = observer.close()
+    initial.release()
+    late = book.reserve(usage, QuotaArea.TEMP, byte_count=4)
+    late.release()
+
+    assert observer.snapshot == closed
+    assert observer.close() is closed
+    assert closed.current.cache_bytes == 6
+    assert closed.high_water.cache_bytes == 6
+
+
+def test_reservation_observer_count_is_bounded_and_reusable_after_close() -> None:
+    book = QuotaReservationBook(_quota())
+    first = book.observe()
+
+    with pytest.raises(WorkspaceError) as raised:
+        book.observe()
+    assert raised.value.code is WorkspaceErrorCode.QUOTA_INVALID
+    assert raised.value.context == "quota.observation"
+
+    first.close()
+    second = book.observe()
+    assert second.close().current.is_empty
+
+
+@pytest.mark.parametrize("release_before_close", [False, True])
+def test_reservation_observer_close_linearizes_with_release(
+    release_before_close: bool,
+) -> None:
+    usage = _usage(case_bytes=0, cache_bytes=0, temp_bytes=0, entry_count=0)
+    book = QuotaReservationBook(_quota())
+    reservation = book.reserve(usage, QuotaArea.TEMP, byte_count=7)
+    observer = book.observe()
+    release_allowed = Event()
+    released = Event()
+
+    def release() -> None:
+        assert release_allowed.wait(timeout=5)
+        reservation.release()
+        released.set()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(release)
+        if release_before_close:
+            release_allowed.set()
+            assert released.wait(timeout=5)
+            final = observer.close()
+        else:
+            final = observer.close()
+            release_allowed.set()
+        future.result(timeout=5)
+
+    assert final.current.is_empty is release_before_close
+    assert final.high_water.temp_bytes == 7
+
+
 @pytest.mark.parametrize("capacity", ["bytes", "entries"])
 def test_outstanding_reservation_overflow_reports_exceeded_not_invalid(capacity: str) -> None:
     quota = _quota(

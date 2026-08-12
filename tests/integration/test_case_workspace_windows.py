@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -273,6 +274,107 @@ def test_reservations_are_shared_by_case_identity_across_managers(tmp_path: Path
     first.release()
 
     assert raised.value.code is WorkspaceErrorCode.QUOTA_EXCEEDED
+
+
+def test_capacity_observation_captures_short_claims_from_another_manager(
+    tmp_path: Path,
+) -> None:
+    quota = _quota(case_bytes=100, cache_bytes=100, temp_bytes=100)
+    observing_manager = CaseWorkspaceManager(profile_root=tmp_path, quota=quota)
+    writing_manager = CaseWorkspaceManager(profile_root=tmp_path, quota=quota)
+    layout = observing_manager.provision()
+    observation = observing_manager.observe_capacity_claims(layout.case_id)
+    del observing_manager
+    gc.collect()
+
+    reservation = writing_manager.reserve_capacity(
+        layout.case_id,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{uuid4()}.tmp",
+        is_directory=False,
+        byte_count=7,
+    )
+    reservation.release()
+    final = observation.close()
+
+    assert final.current.is_empty
+    assert final.high_water.case_bytes == 7
+    assert final.high_water.temp_bytes == 7
+
+
+def test_capacity_observation_initializes_from_another_managers_active_claim(
+    tmp_path: Path,
+) -> None:
+    quota = _quota(case_bytes=100, cache_bytes=100, temp_bytes=100)
+    writing_manager = CaseWorkspaceManager(profile_root=tmp_path, quota=quota)
+    observing_manager = CaseWorkspaceManager(profile_root=tmp_path, quota=quota)
+    layout = writing_manager.provision()
+    reservation = writing_manager.reserve_capacity(
+        layout.case_id,
+        QuotaArea.CACHE,
+        relative_path=f"cache/thumbnails/{uuid4()}.bin",
+        is_directory=False,
+        byte_count=9,
+    )
+
+    observation = observing_manager.observe_capacity_claims(layout.case_id)
+    assert observation.snapshot.current.cache_bytes == 9
+    reservation.release()
+    final = observation.close()
+
+    assert final.current.is_empty
+    assert final.high_water.cache_bytes == 9
+
+
+def test_active_capacity_observation_prevents_quota_state_replacement(
+    tmp_path: Path,
+) -> None:
+    first = CaseWorkspaceManager(
+        profile_root=tmp_path,
+        quota=_quota(case_bytes=100, cache_bytes=100, temp_bytes=100),
+    )
+    layout = first.provision()
+    observation = first.observe_capacity_claims(layout.case_id)
+    conflicting = CaseWorkspaceManager(
+        profile_root=tmp_path,
+        quota=_quota(case_bytes=200, cache_bytes=100, temp_bytes=100),
+    )
+
+    with pytest.raises(WorkspaceError) as raised:
+        conflicting.reserve_capacity(
+            layout.case_id,
+            QuotaArea.TEMP,
+            relative_path=f"temp/{uuid4()}.tmp",
+            is_directory=False,
+            byte_count=1,
+        )
+
+    assert raised.value.code is WorkspaceErrorCode.QUOTA_INVALID
+    assert observation.close().current.is_empty
+
+    replacement = conflicting.reserve_capacity(
+        layout.case_id,
+        QuotaArea.TEMP,
+        relative_path=f"temp/{uuid4()}.tmp",
+        is_directory=False,
+        byte_count=1,
+    )
+    replacement.release()
+
+
+def test_active_capacity_observation_prevents_whole_case_deletion(tmp_path: Path) -> None:
+    manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota())
+    layout = manager.provision()
+    observation = manager.observe_capacity_claims(layout.case_id)
+
+    with pytest.raises(WorkspaceError) as raised:
+        manager.authenticate_case(layout.case_id, for_deletion=True)
+
+    assert raised.value.code is WorkspaceErrorCode.CLEANUP_FAILED
+    assert raised.value.context == "case.active"
+    observation.close()
+    with manager.authenticate_case(layout.case_id, for_deletion=True) as authority:
+        assert authority.layout.case_id == layout.case_id
 
 
 @pytest.mark.parametrize(("available_bytes", "accepted"), [(100, True), (99, False)])

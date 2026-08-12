@@ -18,10 +18,13 @@ from paperworkshell.storage._windows import WindowsHandle
 from tools.m1_vertical_slice_benchmark import (
     _LIVE_M1_REPORT_AUTHORITY_MARKER,
     HARDWARE_CLAIM_LIMITATION,
+    HISTORICAL_REPORT_SCHEMA_PATH,
+    HISTORICAL_V2_REPORT_SCHEMA_PATH,
     LIVE_REPORT_ALREADY_EXISTS_CODE,
     LIVE_REPORT_FILENAME,
     MEASUREMENT_LIMITATION,
     REPORT_SCHEMA_PATH,
+    WORKSPACE_PEAK_MEASUREMENT_METHOD,
     BudgetId,
     BudgetResult,
     CompletedRunEvidence,
@@ -154,6 +157,7 @@ def _evidence() -> CompletedRunEvidence:
         heartbeat_count=10,
         maximum_heartbeat_gap_ns=50_000_000,
         peak_process_tree_rss_bytes=100,
+        workspace_peak_measurement_method=WORKSPACE_PEAK_MEASUREMENT_METHOD,
         peak_cache_bytes=20,
         peak_temp_bytes=10,
         max_heavy_operation_concurrency=1,
@@ -244,7 +248,7 @@ def test_constrained_policy_report_is_closed_and_contains_no_hardware_observatio
     payload = json.loads(
         encode_m1_benchmark_report(build_m1_benchmark_report(CONSTRAINED_RESOURCE_POLICY_V1))
     )
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["processing_profile"] == "constrained"
     assert payload["resource_policy_version"] == 1
     assert payload["resource_limits"]["canonical_process_tree_rss_bytes"] == 1_280 * 1024 * 1024
@@ -292,6 +296,7 @@ def test_completed_report_round_trip_binds_hard_budget_results() -> None:
     evidence = decoded.vertical_slice.completed_evidence
     assert evidence is not None
     assert evidence.peak_process_tree_rss_bytes == 100
+    assert evidence.workspace_peak_measurement_method == WORKSPACE_PEAK_MEASUREMENT_METHOD
     assert tuple(item.budget_id for item in evidence.budget_results) == tuple(BudgetId)
     assert all(item.passed for item in evidence.budget_results)
     assert evidence.cancellation_acknowledgement_ms == 100
@@ -396,7 +401,7 @@ def test_budget_failure_rejects_falsely_failed_completed_workload_phase() -> Non
 @pytest.mark.parametrize(
     ("mutator", "expected_code"),
     (
-        (lambda value: value.update({"schema_version": 3}), "M1_REPORT_VERSION_UNSUPPORTED"),
+        (lambda value: value.update({"schema_version": 4}), "M1_REPORT_VERSION_UNSUPPORTED"),
         (
             lambda value: value["resource_limits"].update({"thumbnail_preview_cache_bytes": 1}),
             "M1_RESOURCE_POLICY_INVALID",
@@ -406,6 +411,12 @@ def test_budget_failure_rejects_falsely_failed_completed_workload_phase() -> Non
                 {"peak_cache_bytes": 21}
             ),
             "M1_RESOURCE_BUDGET_INVALID",
+        ),
+        (
+            lambda value: value["vertical_slice"]["completed_evidence"].update(
+                {"workspace_peak_measurement_method": "periodic-sampling-v1"}
+            ),
+            "M1_REPORT_SCHEMA_INVALID",
         ),
     ),
 )
@@ -476,6 +487,40 @@ def test_decoder_retains_historical_v1_read_support() -> None:
     assert issues == []
     assert type(decoded) is HistoricalM1BenchmarkReport
     assert decoded.run_status == "not-run"
+
+
+def _historical_v2_payload() -> bytes:
+    value = json.loads(
+        encode_m1_benchmark_report(build_m1_benchmark_report(CONSTRAINED_RESOURCE_POLICY_V1))
+    )
+    value["schema_version"] = 2
+    value["limitations"][1] = (
+        "Peak collection samples the complete observed process-tree RSS and case-workspace usage "
+        "every 50 ms; shorter transients and worker-private temporary-storage peaks may not be "
+        "observed, while each worker operation enforces its configured temporary-storage limit."
+    )
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+def test_decoder_retains_historical_v2_read_support() -> None:
+    decoded, issues = decode_m1_benchmark_report(_historical_v2_payload())
+    assert issues == []
+    assert type(decoded) is HistoricalM1BenchmarkReport
+    assert decoded.run_status == "not-run"
+
+
+def test_historical_report_schema_bytes_remain_immutable() -> None:
+    expected = {
+        HISTORICAL_REPORT_SCHEMA_PATH: (
+            "8799739a25c9ccfe5613d661b51d9ac12f05976fc56c91ee94332b2de0620be2"
+        ),
+        HISTORICAL_V2_REPORT_SCHEMA_PATH: (
+            "154691e4522e6daf73fd38332d2058c98a0f6daa13b177a222f7137483853b38"
+        ),
+    }
+    assert {
+        path: hashlib.sha256((PROJECT_ROOT / path).read_bytes()).hexdigest() for path in expected
+    } == expected
 
 
 def test_historical_v1_decoder_rejects_invalid_instance() -> None:

@@ -94,6 +94,108 @@ class _ReservedCapacity:
     entry_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class QuotaReservationSnapshot:
+    """Content-free point-in-time totals for active capacity claims."""
+
+    case_bytes: int
+    cache_bytes: int
+    temp_bytes: int
+    entry_count: int
+
+    @property
+    def is_empty(self) -> bool:
+        """Return whether no capacity remains claimed."""
+
+        return not (self.case_bytes or self.cache_bytes or self.temp_bytes or self.entry_count)
+
+
+@dataclass(frozen=True, slots=True)
+class QuotaReservationObservationSnapshot:
+    """Current and event-driven high-water claims for one observation window."""
+
+    current: QuotaReservationSnapshot
+    high_water: QuotaReservationSnapshot
+
+
+@dataclass(slots=True)
+class _QuotaReservationObservationState:
+    peak_case_bytes: int
+    peak_cache_bytes: int
+    peak_temp_bytes: int
+    peak_entry_count: int
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: QuotaReservationSnapshot,
+    ) -> _QuotaReservationObservationState:
+        return cls(
+            snapshot.case_bytes,
+            snapshot.cache_bytes,
+            snapshot.temp_bytes,
+            snapshot.entry_count,
+        )
+
+    def record(self, snapshot: QuotaReservationSnapshot) -> None:
+        self.peak_case_bytes = max(self.peak_case_bytes, snapshot.case_bytes)
+        self.peak_cache_bytes = max(self.peak_cache_bytes, snapshot.cache_bytes)
+        self.peak_temp_bytes = max(self.peak_temp_bytes, snapshot.temp_bytes)
+        self.peak_entry_count = max(self.peak_entry_count, snapshot.entry_count)
+
+    def measurement(
+        self,
+        current: QuotaReservationSnapshot,
+    ) -> QuotaReservationObservationSnapshot:
+        return QuotaReservationObservationSnapshot(
+            current=current,
+            high_water=QuotaReservationSnapshot(
+                case_bytes=self.peak_case_bytes,
+                cache_bytes=self.peak_cache_bytes,
+                temp_bytes=self.peak_temp_bytes,
+                entry_count=self.peak_entry_count,
+            ),
+        )
+
+
+class QuotaReservationObservation(AbstractContextManager["QuotaReservationObservation"]):
+    """Retain an event-driven high-water observation over one reservation book."""
+
+    __slots__ = ("_book", "_closed", "_final", "_lock", "_token")
+
+    def __init__(self, book: QuotaReservationBook, token: UUID) -> None:
+        self._book = book
+        self._token = token
+        self._lock = Lock()
+        self._closed = False
+        self._final: QuotaReservationObservationSnapshot | None = None
+
+    @property
+    def snapshot(self) -> QuotaReservationObservationSnapshot:
+        """Return one synchronized current/high-water measurement."""
+
+        with self._lock:
+            if self._final is not None:
+                return self._final
+            return self._book._observation_snapshot(self._token)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> QuotaReservationObservationSnapshot:
+        """Stop observing and return the final measurement idempotently."""
+
+        with self._lock:
+            if not self._closed:
+                self._final = self._book._end_observation(self._token)
+                self._closed = True
+            assert self._final is not None
+            return self._final
+
+
 class QuotaReservation(AbstractContextManager["QuotaReservation"]):
     """A conservative in-process capacity claim released explicitly or on exit."""
 
@@ -154,6 +256,7 @@ class QuotaReservationBook:
         self._quota = quota
         self._lock = Lock()
         self._reservations: dict[UUID, _ReservedCapacity] = {}
+        self._observations: dict[UUID, _QuotaReservationObservationState] = {}
 
     @property
     def quota(self) -> WorkspaceQuota:
@@ -175,11 +278,43 @@ class QuotaReservationBook:
             return any(item.area is area for item in self._reservations.values())
 
     @property
+    def has_observations(self) -> bool:
+        """Return whether the one bounded telemetry observation is active."""
+
+        with self._lock:
+            return bool(self._observations)
+
+    @property
     def reserved_byte_count(self) -> int:
         """Return the synchronized total bytes conservatively claimed."""
 
         with self._lock:
-            return sum(item.byte_count for item in self._reservations.values())
+            return self._snapshot_locked().case_bytes
+
+    @property
+    def snapshot(self) -> QuotaReservationSnapshot:
+        """Return content-free active claims from one lock acquisition."""
+
+        with self._lock:
+            return self._snapshot_locked()
+
+    def observe(self) -> QuotaReservationObservation:
+        """Open an event-driven observation that cannot miss a brief claim."""
+
+        with self._lock:
+            if self._observations:
+                reject(
+                    WorkspaceErrorCode.QUOTA_INVALID,
+                    "quota.observation",
+                    "Only one bounded workspace-capacity observation may be active.",
+                )
+            token = uuid4()
+            while token in self._observations:
+                token = uuid4()
+            self._observations[token] = _QuotaReservationObservationState.from_snapshot(
+                self._snapshot_locked()
+            )
+        return QuotaReservationObservation(self, token)
 
     def reserve(
         self,
@@ -193,23 +328,12 @@ class QuotaReservationBook:
 
         validate_quota_request(byte_count=byte_count, entry_count=entry_count)
         with self._lock:
-            reserved_case_bytes = sum(item.byte_count for item in self._reservations.values())
-            reserved_entries = sum(item.entry_count for item in self._reservations.values())
-            reserved_cache_bytes = sum(
-                item.byte_count
-                for item in self._reservations.values()
-                if item.area is QuotaArea.CACHE
-            )
-            reserved_temp_bytes = sum(
-                item.byte_count
-                for item in self._reservations.values()
-                if item.area is QuotaArea.TEMP
-            )
+            reserved = self._snapshot_locked()
             projected_usage = WorkspaceUsage(
-                case_bytes=usage.case_bytes + reserved_case_bytes,
-                cache_bytes=usage.cache_bytes + reserved_cache_bytes,
-                temp_bytes=usage.temp_bytes + reserved_temp_bytes,
-                entry_count=usage.entry_count + reserved_entries,
+                case_bytes=usage.case_bytes + reserved.case_bytes,
+                cache_bytes=usage.cache_bytes + reserved.cache_bytes,
+                temp_bytes=usage.temp_bytes + reserved.temp_bytes,
+                entry_count=usage.entry_count + reserved.entry_count,
                 maximum_depth_seen=usage.maximum_depth_seen,
             )
             require_capacity(
@@ -224,6 +348,9 @@ class QuotaReservationBook:
                 token = uuid4()
             capacity = _ReservedCapacity(area, byte_count, entry_count)
             self._reservations[token] = capacity
+            snapshot = self._snapshot_locked()
+            for observation in self._observations.values():
+                observation.record(snapshot)
         return QuotaReservation(self, token, capacity)
 
     def _contains(self, token: UUID) -> bool:
@@ -233,6 +360,38 @@ class QuotaReservationBook:
     def _release(self, token: UUID) -> None:
         with self._lock:
             self._reservations.pop(token, None)
+
+    def _snapshot_locked(self) -> QuotaReservationSnapshot:
+        cache_bytes = 0
+        temp_bytes = 0
+        entry_count = 0
+        for item in self._reservations.values():
+            entry_count += item.entry_count
+            if item.area is QuotaArea.CACHE:
+                cache_bytes += item.byte_count
+            else:
+                temp_bytes += item.byte_count
+        return QuotaReservationSnapshot(
+            case_bytes=cache_bytes + temp_bytes,
+            cache_bytes=cache_bytes,
+            temp_bytes=temp_bytes,
+            entry_count=entry_count,
+        )
+
+    def _observation_snapshot(
+        self,
+        token: UUID,
+    ) -> QuotaReservationObservationSnapshot:
+        with self._lock:
+            return self._observations[token].measurement(self._snapshot_locked())
+
+    def _end_observation(
+        self,
+        token: UUID,
+    ) -> QuotaReservationObservationSnapshot:
+        with self._lock:
+            state = self._observations.pop(token)
+            return state.measurement(self._snapshot_locked())
 
 
 def validate_quota_request(*, byte_count: int, entry_count: int) -> None:

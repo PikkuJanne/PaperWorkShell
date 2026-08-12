@@ -140,7 +140,9 @@ heavy-operation concurrency, heartbeat gap, and a closed result for every budget
 canonical workload. The canonical child measures active worker-render cancellation and runs the
 focused low-disk, slow-I/O, and worker restart nodes before its authenticated result is accepted.
 Worker-private temporary-storage peaks remain prospectively bounded by per-operation limits rather
-than sampled separately in report v2. Missing or unknown required evidence fails the gate.
+than reported as a separate measured high-water. Report v2 remains immutable historical evidence;
+new runs use report v3's explicit reservation-accounted workspace method. Missing or unknown
+required evidence fails the gate.
 
 The canonical report at revision `cf96a82c1a4b24bed980c2b324b9540c80cda48d` decoded with zero
 issues and recorded:

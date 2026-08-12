@@ -46,6 +46,7 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("pyproject.toml"),
             Path("schemas/m1-vertical-slice-benchmark-report-v1.schema.json"),
             Path("schemas/m1-vertical-slice-benchmark-report-v2.schema.json"),
+            Path("schemas/m1-vertical-slice-benchmark-report-v3.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
             FIXTURE_INDEX_SCHEMA_PATH,
             TEMPLATE_SCHEMA_PATH,

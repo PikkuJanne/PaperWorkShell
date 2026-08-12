@@ -37,6 +37,8 @@ from paperworkshell.storage.quotas import (
     QuotaArea,
     QuotaReservation,
     QuotaReservationBook,
+    QuotaReservationObservation,
+    QuotaReservationObservationSnapshot,
     WorkspaceQuota,
     WorkspaceUsage,
     validate_quota_request,
@@ -450,6 +452,39 @@ class WorkspaceCapacityReservation:
             yield
 
 
+class WorkspaceCapacityObservation(AbstractContextManager["WorkspaceCapacityObservation"]):
+    """Retain one case's content-free reservation high-water observation."""
+
+    __slots__ = ("_observation", "_state")
+
+    def __init__(
+        self,
+        observation: QuotaReservationObservation,
+        state: _CaseReservationState,
+    ) -> None:
+        self._observation = observation
+        self._state = state
+
+    @property
+    def snapshot(self) -> QuotaReservationObservationSnapshot:
+        """Return an atomic current/high-water capacity-claim measurement."""
+
+        with self._state.coordination_lock:
+            return self._observation.snapshot
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> QuotaReservationObservationSnapshot:
+        """Close the observation under the shared per-case coordination lock."""
+
+        with self._state.coordination_lock:
+            return self._observation.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _InventoryEntry:
     relative_parts: tuple[str, ...]
@@ -835,7 +870,9 @@ class CaseWorkspaceManager:
                     "case.deleting",
                     "The case is already being removed from application storage.",
                 )
-            if for_deletion and (state.active_leases or state.book.has_reservations):
+            if for_deletion and (
+                state.active_leases or state.book.has_reservations or state.book.has_observations
+            ):
                 reject(
                     WorkspaceErrorCode.CLEANUP_FAILED,
                     "case.active",
@@ -917,6 +954,23 @@ class CaseWorkspaceManager:
         layout = self.layout(case_id)
         usage, _ = self._measure_usage_and_identity(layout)
         return usage
+
+    def observe_capacity_claims(
+        self,
+        case_id: UUID | str,
+    ) -> WorkspaceCapacityObservation:
+        """Observe every process-local cache/temp claim without reading case paths."""
+
+        parsed_id = validate_case_id(case_id)
+        with self._coordinated_reservation_state(parsed_id) as (_, state):
+            if state.deletion_in_progress:
+                reject(
+                    WorkspaceErrorCode.CLEANUP_FAILED,
+                    "quota.case_deleting",
+                    "Capacity cannot be observed while the case is being removed.",
+                )
+            observation = state.book.observe()
+        return WorkspaceCapacityObservation(observation, state)
 
     def reserve_capacity(
         self,
@@ -1102,7 +1156,12 @@ class CaseWorkspaceManager:
         layout = authority.layout
         state = authority._state
         with state.coordination_lock:
-            if not state.deletion_in_progress or state.active_leases or state.book.has_reservations:
+            if (
+                not state.deletion_in_progress
+                or state.active_leases
+                or state.book.has_reservations
+                or state.book.has_observations
+            ):
                 reject(
                     WorkspaceErrorCode.CLEANUP_FAILED,
                     "case.active",
@@ -1353,7 +1412,11 @@ class CaseWorkspaceManager:
                     if _RESERVATION_REGISTRY.get(key) is not state:
                         continue
                 if state.book.quota != self._quota:
-                    if state.case_identity is None and not state.book.has_reservations:
+                    if (
+                        state.case_identity is None
+                        and not state.book.has_reservations
+                        and not state.book.has_observations
+                    ):
                         replacement = _CaseReservationState(book=QuotaReservationBook(self._quota))
                         with _RESERVATION_REGISTRY_LOCK:
                             if _RESERVATION_REGISTRY.get(key) is state:

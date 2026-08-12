@@ -35,7 +35,7 @@ Existing PWS-D013 worker CPU, memory, timeout, page-count, pixel, filesystem, ne
 - Controlled UI heartbeat gap: at most 250 ms
 - Cancellation acknowledgement: at most 2 seconds or the next documented safe page/stage boundary
 - Active full-resolution page buffers: 1 unless a separately documented stage proves a need for 2
-- Resource sampling interval: 50 ms, with short-lived-process and worker-private temporary-storage sampling limitations disclosed; worker operation/Job limits remain enforced
+- Process-tree RSS sampling interval: 50 ms, with shorter memory transients disclosed; case-workspace cache and temporary-storage peaks use quiescent inventories plus event-driven reservation high-water bounds, while worker operation/Job limits remain enforced
 
 Numeric changes require evidence and review. A budget must not be raised merely to make a regression pass.
 
@@ -111,8 +111,9 @@ Passing the constrained suite demonstrates that the tested revision obeyed the s
 - Tools, workloads, and schemas: `tools/dev.py`, `tools/validate_schemas.py`,
   `tools/m1_vertical_slice_benchmark.py`, `tools/m1_vertical_slice_live_runner.py`,
   `tools/pdf_renderer_benchmark.py`, `benchmarks/pdf-renderer-windows-v1.json`, the immutable
-  historical `schemas/m1-vertical-slice-benchmark-report-v1.schema.json`, and current
-  `schemas/m1-vertical-slice-benchmark-report-v2.schema.json`. The obsolete
+  historical `schemas/m1-vertical-slice-benchmark-report-v1.schema.json` and
+  `schemas/m1-vertical-slice-benchmark-report-v2.schema.json`, and current
+  `schemas/m1-vertical-slice-benchmark-report-v3.schema.json`. The obsolete
   `tools/reference_profile.py`, `benchmarks/reference-windows-v1.json`, and
   `schemas/reference-profile.schema.json` are removed together with their hardware-attestation
   command surface.

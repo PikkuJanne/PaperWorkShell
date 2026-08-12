@@ -63,6 +63,11 @@ from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
+from paperworkshell.storage.quotas import (
+    QuotaReservationObservationSnapshot,
+    QuotaReservationSnapshot,
+    WorkspaceUsage,
+)
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -140,6 +145,20 @@ class _ResponsiveExportResult:
     peak_temp_bytes: int
 
 
+def _conservative_workspace_peaks(
+    before: WorkspaceUsage,
+    after: WorkspaceUsage,
+    claims: QuotaReservationObservationSnapshot,
+) -> tuple[int, int]:
+    """Bound cache/temp growth from strict quiescent inventories and all claims."""
+
+    assert claims.current.is_empty, "the completed export retained a capacity claim"
+    return (
+        max(before.cache_bytes, after.cache_bytes) + claims.high_water.cache_bytes,
+        max(before.temp_bytes, after.temp_bytes) + claims.high_water.temp_bytes,
+    )
+
+
 def _build_stack(
     profile: Path,
     *,
@@ -213,10 +232,13 @@ def _export_pdf_while_event_loop_remains_responsive(
     export_thread_ids: list[int] = []
     heartbeat_thread_ids: list[int] = []
     composition_closed_states: list[bool] = []
-    workspace_samples: list[tuple[int, int]] = []
-    sampler_errors: list[BaseException] = []
     main_thread_id = threading.get_ident()
     timeline_lock = threading.Lock()
+    workspace_before = manager.measure_usage(case_id)
+    capacity_observation = manager.observe_capacity_claims(case_id)
+    if not capacity_observation.snapshot.current.is_empty:
+        capacity_observation.close()
+        raise AssertionError("the controlled export began with a retained capacity claim")
 
     def run_export() -> None:
         try:
@@ -267,47 +289,39 @@ def _export_pdf_while_event_loop_remains_responsive(
         if should_quit:
             event_loop.quit()
 
-    def sample_workspace_usage() -> None:
-        try:
-            while True:
-                usage = manager.measure_usage(case_id)
-                workspace_samples.append((usage.cache_bytes, usage.temp_bytes))
-                if export_finished.wait(
-                    CONSTRAINED_RESOURCE_POLICY_V1.resource_sampling_interval_ms / 1_000
-                ):
-                    break
-        except BaseException as error:
-            sampler_errors.append(error)
-
     export_thread = threading.Thread(
         target=run_export,
         name="pws-m1-export-gate",
         daemon=False,
     )
-    sampler_thread = threading.Thread(
-        target=sample_workspace_usage,
-        name="pws-m1-workspace-sampler",
-        daemon=False,
-    )
-    timer.timeout.connect(record_responsive_tick)
-    timer.start()
-    started_at_ns = time.monotonic_ns()
+    started_at_ns = 0
+    capacity_claims: QuotaReservationObservationSnapshot | None = None
     try:
-        sampler_thread.start()
-        export_thread.start()
-        event_loop.exec()
+        timer.timeout.connect(record_responsive_tick)
+        timer.start()
+        started_at_ns = time.monotonic_ns()
+        try:
+            export_thread.start()
+            event_loop.exec()
+        finally:
+            if export_thread.ident is not None:
+                export_thread.join()
+
+        assert export_finished.is_set()
+        assert not export_thread.is_alive(), "the completed background export did not join"
+        if errors:
+            raise errors[0]
+        workspace_after = manager.measure_usage(case_id)
     finally:
         timer.stop()
+        capacity_claims = capacity_observation.close()
 
-    assert export_finished.is_set()
-    export_thread.join()
-    sampler_thread.join()
-    assert not export_thread.is_alive(), "the completed background export did not join"
-    assert not sampler_thread.is_alive(), "the workspace resource sampler did not join"
-    if errors:
-        raise errors[0]
-    if sampler_errors:
-        raise sampler_errors[0]
+    assert capacity_claims is not None
+    peak_cache_bytes, peak_temp_bytes = _conservative_workspace_peaks(
+        workspace_before,
+        workspace_after,
+        capacity_claims,
+    )
     assert len(outcomes) == 1
     assert len(resource_snapshots) == 1
     assert len(finished_times_ns) == 1
@@ -318,7 +332,6 @@ def _export_pdf_while_event_loop_remains_responsive(
     assert heartbeat_times_ns[-1] <= finished_times_ns[0]
     assert set(heartbeat_thread_ids) == {main_thread_id}
     assert composition_closed_states == [True]
-    assert workspace_samples
     responsiveness_samples_ns = (
         started_at_ns,
         *heartbeat_times_ns,
@@ -332,8 +345,8 @@ def _export_pdf_while_event_loop_remains_responsive(
         heartbeat_count=len(heartbeat_times_ns),
         maximum_heartbeat_gap_ns=max(heartbeat_gaps_ns),
         worker_resource_snapshot=resource_snapshots[0],
-        peak_cache_bytes=max(item[0] + gui_cache_bytes for item in workspace_samples),
-        peak_temp_bytes=max(item[1] for item in workspace_samples),
+        peak_cache_bytes=peak_cache_bytes + gui_cache_bytes,
+        peak_temp_bytes=peak_temp_bytes,
     )
 
 
@@ -514,6 +527,28 @@ def test_vertical_slice_event_loop_uses_widget_capable_process_application() -> 
 
     assert QCoreApplication.instance() is application
     assert isinstance(application, QApplication)
+
+
+def test_workspace_peak_bound_combines_quiescent_usage_and_all_capacity_claims() -> None:
+    before = WorkspaceUsage(100, 10, 2, 8, 2)
+    after = WorkspaceUsage(110, 15, 3, 9, 2)
+    claims = QuotaReservationObservationSnapshot(
+        current=QuotaReservationSnapshot(0, 0, 0, 0),
+        high_water=QuotaReservationSnapshot(11, 4, 7, 2),
+    )
+
+    assert _conservative_workspace_peaks(before, after, claims) == (19, 10)
+
+
+def test_workspace_peak_bound_rejects_a_retained_capacity_claim() -> None:
+    usage = WorkspaceUsage(100, 10, 2, 8, 2)
+    claims = QuotaReservationObservationSnapshot(
+        current=QuotaReservationSnapshot(1, 0, 1, 1),
+        high_water=QuotaReservationSnapshot(1, 0, 1, 1),
+    )
+
+    with pytest.raises(AssertionError, match="retained a capacity claim"):
+        _conservative_workspace_peaks(usage, usage, claims)
 
 
 def test_active_cancellation_probe_fits_the_production_thumbnail_output_budget() -> None:

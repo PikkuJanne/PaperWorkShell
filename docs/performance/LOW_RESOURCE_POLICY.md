@@ -95,11 +95,15 @@ Worker render/export planning then proves that staged sources plus the maximum r
 fit that complete operation limit. The single-heavy-operation coordinator prevents two such claims
 from overlapping. Private files are opened only through the typed temp-storage seam and are closed
 and removed on write, render, cancellation, or verification failure. The canonical report records
-measured case/cache/temp high-water values separately from configured bounds; worker-private bytes
-remain prospectively bounded rather than separately sampled in report v2. Boundary and
-just-over-boundary tests are mandatory. Obsolete temporary artifacts are removed promptly, but
-cleanup uncertainty preserves evidence rather than risking an authoritative file or immutable
-original.
+case/cache/temp bounds separately from configured limits. Strict no-follow inventories authenticate
+the quiescent workspace before and after export; while export mutates disposable stages, one bounded
+content-free observer records every active quota claim and its high-water mark under the quota lock.
+The reported workspace peak is the conservative sum of the larger quiescent inventory and the
+claim high-water, so it may overstate physical bytes but cannot omit a short-lived reserved stage in
+the controlled M1 export. Worker-private bytes remain prospectively bounded rather than separately
+sampled. Boundary and just-over-boundary tests are mandatory. Obsolete temporary artifacts are
+removed promptly, but cleanup uncertainty preserves evidence rather than risking an authoritative
+file or immutable original.
 
 ## Deterministic slow-I/O and low-disk testing
 
@@ -124,6 +128,6 @@ The canonical resource report contains only:
 - Worker exit/recycle and recovery facts
 - Individual budget results and overall run status
 
-It never contains original filenames, full paths, OCR/document text, form values, extracted metadata, page or signature images, names, or addresses. Sampling occurs at the configured interval and may miss extremely short-lived processes. Process memory covers the observed root and descendant tree. The measured temporary high-water is case-workspace temporary storage; worker-private temporary storage remains prospectively bounded by each enforced operation limit but is not sampled as a separate high-water in report v2. Both limitations are stated in the report.
+It never contains original filenames, full paths, OCR/document text, form values, extracted metadata, page or signature images, names, or addresses. Process-tree RSS sampling occurs at the configured interval and may miss extremely short-lived processes. Case-workspace peak evidence instead combines strict quiescent inventories with event-driven active quota-claim high-water; it is a conservative upper bound and may exceed the instantaneous physical byte count. Worker-private temporary storage remains prospectively bounded by each enforced operation limit but is not reported as a separate measured high-water. These limitations are stated in the current versioned report contract.
 
 Duration is recorded but is not a hard gate across heterogeneous developer machines. Memory, cache, concurrency, disk, responsiveness, cancellation, privacy, and correctness are hard gates. A budget may not be raised merely to make a regression pass: first find the source of the regression, optimize or reject oversized work, and document any evidence-based amendment through an ADR.

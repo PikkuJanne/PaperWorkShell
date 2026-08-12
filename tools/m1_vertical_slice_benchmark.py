@@ -44,7 +44,10 @@ PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 HISTORICAL_REPORT_SCHEMA_PATH: Final = Path(
     "schemas/m1-vertical-slice-benchmark-report-v1.schema.json"
 )
-REPORT_SCHEMA_PATH: Final = Path("schemas/m1-vertical-slice-benchmark-report-v2.schema.json")
+HISTORICAL_V2_REPORT_SCHEMA_PATH: Final = Path(
+    "schemas/m1-vertical-slice-benchmark-report-v2.schema.json"
+)
+REPORT_SCHEMA_PATH: Final = Path("schemas/m1-vertical-slice-benchmark-report-v3.schema.json")
 MAX_REPORT_BYTES: Final = 256 * 1024
 MAX_SCHEMA_BYTES: Final = 256 * 1024
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
@@ -134,10 +137,13 @@ HARDWARE_CLAIM_LIMITATION: Final = (
     "low-end hardware was not tested."
 )
 MEASUREMENT_LIMITATION: Final = (
-    "Peak collection samples the complete observed process-tree RSS and case-workspace usage "
-    "every 50 ms; shorter transients and worker-private temporary-storage peaks may not be "
-    "observed, while each worker operation enforces its configured temporary-storage limit."
+    "Peak process-tree RSS is sampled every 50 ms, so shorter memory transients may not be "
+    "observed. Case-workspace cache and temporary-storage peaks combine strict quiescent "
+    "inventories with event-driven reservation high-water bounds and may conservatively exceed "
+    "simultaneously materialized bytes. Worker-private temporary-storage peaks are not observed, "
+    "while each worker operation enforces its configured temporary-storage limit."
 )
+WORKSPACE_PEAK_MEASUREMENT_METHOD: Final = "quiescent-inventory-plus-reservation-high-water-v1"
 
 
 class M1BenchmarkError(Exception):
@@ -506,6 +512,7 @@ class CompletedRunEvidence:
     heartbeat_count: int
     maximum_heartbeat_gap_ns: int
     peak_process_tree_rss_bytes: int
+    workspace_peak_measurement_method: str
     peak_cache_bytes: int
     peak_temp_bytes: int
     max_heavy_operation_concurrency: int
@@ -604,6 +611,7 @@ class CompletedRunEvidence:
             or self.low_disk_simulation_status != "passed"
             or self.slow_io_simulation_status != "passed"
             or self.worker_recovery_status != "passed"
+            or self.workspace_peak_measurement_method != WORKSPACE_PEAK_MEASUREMENT_METHOD
             or self.verifier_codes != EXPECTED_VERIFIER_CODES
             or self.recovery_status not in {"current", "recovered"}
             or self.privacy_scan_status != "passed"
@@ -674,6 +682,7 @@ class CompletedRunEvidence:
             heartbeat_count=cast(int, value["heartbeat_count"]),
             maximum_heartbeat_gap_ns=cast(int, value["maximum_heartbeat_gap_ns"]),
             peak_process_tree_rss_bytes=cast(int, value["peak_process_tree_rss_bytes"]),
+            workspace_peak_measurement_method=cast(str, value["workspace_peak_measurement_method"]),
             peak_cache_bytes=cast(int, value["peak_cache_bytes"]),
             peak_temp_bytes=cast(int, value["peak_temp_bytes"]),
             max_heavy_operation_concurrency=cast(int, value["max_heavy_operation_concurrency"]),
@@ -736,6 +745,7 @@ class CompletedRunEvidence:
             "heartbeat_count": self.heartbeat_count,
             "maximum_heartbeat_gap_ns": self.maximum_heartbeat_gap_ns,
             "peak_process_tree_rss_bytes": self.peak_process_tree_rss_bytes,
+            "workspace_peak_measurement_method": self.workspace_peak_measurement_method,
             "peak_cache_bytes": self.peak_cache_bytes,
             "peak_temp_bytes": self.peak_temp_bytes,
             "max_heavy_operation_concurrency": self.max_heavy_operation_concurrency,
@@ -1195,7 +1205,7 @@ class M1BenchmarkReport:
 
     def _to_payload(self) -> dict[str, object]:
         return {
-            "schema_version": 2,
+            "schema_version": 3,
             "report_kind": "m1-resource-budget-measurement",
             "workload": {"id": WORKLOAD_ID, "version": WORKLOAD_VERSION},
             "processing_profile": self.processing_profile,
@@ -1208,7 +1218,7 @@ class M1BenchmarkReport:
 
 @dataclass(frozen=True, slots=True)
 class HistoricalM1BenchmarkReport:
-    """Validated canonical v1 bytes retained for historical evidence reads only."""
+    """Validated canonical prior-version bytes retained for historical reads only."""
 
     canonical_payload: bytes
     run_status: str
@@ -1476,8 +1486,24 @@ def decode_m1_benchmark_report(
     if loaded is None:
         return None, sorted(issues)
     if loaded.get("report_schema_version") == 1 and "schema_version" not in loaded:
-        return _decode_historical_v1(payload, loaded, root, issues)
-    if loaded.get("schema_version") != 2 or "report_schema_version" in loaded:
+        return _decode_historical_report(
+            payload,
+            loaded,
+            root,
+            issues,
+            version=1,
+            schema_path=HISTORICAL_REPORT_SCHEMA_PATH,
+        )
+    if loaded.get("schema_version") == 2 and "report_schema_version" not in loaded:
+        return _decode_historical_report(
+            payload,
+            loaded,
+            root,
+            issues,
+            version=2,
+            schema_path=HISTORICAL_V2_REPORT_SCHEMA_PATH,
+        )
+    if loaded.get("schema_version") != 3 or "report_schema_version" in loaded:
         return None, [
             BenchmarkIssue(
                 "M1_REPORT_VERSION_UNSUPPORTED",
@@ -1498,7 +1524,7 @@ def decode_m1_benchmark_report(
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_INVALID",
                 _json_path(tuple(error.absolute_path)),
-                "report does not match the closed v2 schema",
+                "report does not match the closed v3 schema",
             )
             for error in validation_errors
         ]
@@ -1511,21 +1537,24 @@ def decode_m1_benchmark_report(
             BenchmarkIssue(
                 "M1_REPORT_NONCANONICAL",
                 "$",
-                "report bytes do not use the canonical v2 encoding",
+                "report bytes do not use the canonical v3 encoding",
             )
         ]
     return report, []
 
 
-def _decode_historical_v1(
+def _decode_historical_report(
     payload: bytes,
     loaded: dict[str, Any],
     root: Path,
     issues: list[BenchmarkIssue],
+    *,
+    version: int,
+    schema_path: Path,
 ) -> tuple[HistoricalM1BenchmarkReport | None, list[BenchmarkIssue]]:
-    """Validate immutable v1 evidence without offering a legacy writer."""
+    """Validate immutable prior-version evidence without offering a legacy writer."""
 
-    schema, schema_issues = _load_schema(root, HISTORICAL_REPORT_SCHEMA_PATH)
+    schema, schema_issues = _load_schema(root, schema_path)
     issues.extend(schema_issues)
     if schema is None or issues:
         return None, sorted(issues)
@@ -1538,7 +1567,7 @@ def _decode_historical_v1(
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_INVALID",
                 _json_path(tuple(error.absolute_path)),
-                "historical report does not match the closed v1 schema",
+                f"historical report does not match the closed v{version} schema",
             )
             for error in validation_errors
         ]
@@ -1548,7 +1577,7 @@ def _decode_historical_v1(
             BenchmarkIssue(
                 "M1_REPORT_NONCANONICAL",
                 "$",
-                "historical report bytes do not use the canonical v1 encoding",
+                f"historical report bytes do not use the canonical v{version} encoding",
             )
         ]
     vertical = cast(Mapping[str, object], loaded["vertical_slice"])
@@ -1661,11 +1690,12 @@ def _load_schema(
 
 
 def validate_report_schema(root: Path = PROJECT_ROOT) -> list[BenchmarkIssue]:
-    """Validate both immutable historical v1 and current v2 schemas."""
+    """Validate immutable historical v1/v2 and current v3 schemas."""
 
-    _, historical_issues = _load_schema(root, HISTORICAL_REPORT_SCHEMA_PATH)
+    _, historical_v1_issues = _load_schema(root, HISTORICAL_REPORT_SCHEMA_PATH)
+    _, historical_v2_issues = _load_schema(root, HISTORICAL_V2_REPORT_SCHEMA_PATH)
     _, current_issues = _load_schema(root, REPORT_SCHEMA_PATH)
-    return sorted([*historical_issues, *current_issues])
+    return sorted([*historical_v1_issues, *historical_v2_issues, *current_issues])
 
 
 def _report_from_payload(value: Mapping[str, Any], root: Path) -> M1BenchmarkReport:
