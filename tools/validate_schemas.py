@@ -80,7 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"OK: validated worker-RPC v1 with {RPC_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated dependency inventory v1 with {INVENTORY_SCHEMA_PATH.as_posix()}.")
     print(
-        "OK: validated historical M1 report v1 and constrained-profile report v2 with "
+        "OK: validated historical M1 reports v1/v2 and constrained-profile report v3 with "
         f"{M1_BENCHMARK_REPORT_SCHEMA_PATH.as_posix()}."
     )
     print(f"OK: validated export-history v1 with {EXPORT_HISTORY_SCHEMA_PATH.as_posix()}.")

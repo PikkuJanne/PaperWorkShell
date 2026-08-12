@@ -59,6 +59,8 @@ from paperworkshell.worker.pdf_thumbnail_profile import (
 )
 from paperworkshell.worker.protocol.models import PROTOCOL_VERSION
 from tools.m1_vertical_slice_benchmark import (
+    REPORT_SCHEMA_PATH,
+    WORKSPACE_PEAK_MEASUREMENT_METHOD,
     BudgetId,
     BudgetResult,
     CompletedRunEvidence,
@@ -1456,9 +1458,7 @@ def _failed_evidence(
         repository_revision=revision,
         repository_tree=tree,
         repository_worktree_clean=True,
-        report_schema_sha256=_bounded_file_sha256(
-            PROJECT_ROOT / "schemas/m1-vertical-slice-benchmark-report-v2.schema.json"
-        ),
+        report_schema_sha256=_bounded_file_sha256(PROJECT_ROOT / REPORT_SCHEMA_PATH),
         budget_results=budget_results,
     )
 
@@ -1691,10 +1691,9 @@ def _run_live_m1_vertical_slice(
             "repository_revision": revision_before,
             "repository_tree": tree_before,
             "repository_worktree_clean": True,
-            "report_schema_sha256": _bounded_file_sha256(
-                PROJECT_ROOT / "schemas/m1-vertical-slice-benchmark-report-v2.schema.json"
-            ),
+            "report_schema_sha256": _bounded_file_sha256(PROJECT_ROOT / REPORT_SCHEMA_PATH),
             "peak_process_tree_rss_bytes": peak_process_tree_rss_bytes,
+            "workspace_peak_measurement_method": WORKSPACE_PEAK_MEASUREMENT_METHOD,
             "peak_cache_bytes": peak_cache_bytes,
             "peak_temp_bytes": peak_temp_bytes,
             "max_heavy_operation_concurrency": max_heavy_operation_concurrency,
