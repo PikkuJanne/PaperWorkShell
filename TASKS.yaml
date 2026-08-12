@@ -1332,9 +1332,11 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: '2026-08-09'
-    revision: "8a0b80c"
+    completed_at: '2026-08-12'
+    revision: "67c2663"
     commands:
+    - "uv run --locked --no-sync python tools/dev.py check at 67c2663 - passed; 270 files formatted/linted/strictly typed, 13 import layers across 103 source files, 1988 unit tests, 352 integration tests with 2 disclosed Windows link-capability skips, 256 security tests with 6 disclosed capability/privilege skips, 19 accessibility tests, all registered validators and scans, and all 5 deliberate quality violations"
+    - "uv run --locked --no-sync pytest -q tests/integration/test_desktop_startup_recovery_windows.py at 67c2663 - passed; 3 desktop composition/recovery tests, including a real offscreen PySide process forcibly terminated after durable autosave checkpoint publication and a separate fresh PySide process that recovered and reopened the exact revision"
     - "uv run --no-sync python tools/dev.py check at 8a0b80c - passed; 249 files formatted/linted/typed, 12 import layers across 94 source files, 1919 unit tests, 318 integration tests with 2 disclosed Windows link-capability skips, 240 security tests with 6 disclosed capability/privilege skips, 2 accessibility tests, all registered validators and scans, and all 5 deliberate quality violations"
     - "uv run --locked --no-sync pytest -q tests/integration/test_startup_recovery_windows.py tests/integration/test_export_retry_storage_windows.py tests/integration/test_worker_acl_recovery_windows.py tests/integration/test_pdf_thumbnail_worker_windows.py::test_live_worker_termination_during_render_recovers_with_fresh_service tests/integration/test_pdf_export_worker_windows.py::test_live_worker_termination_never_publishes_destination 'tests/integration/test_manifest_repository_windows.py::test_stage_failure_never_replaces_last_valid_manifest[disk_full]' tests/security/test_startup_recovery_security.py tests/security/test_diagnostics_privacy.py - passed; 60 acceptance-focused tests with 1 disclosed local symlink-capability skip"
     - "uv run --no-sync python tools/dev.py scan-secrets at 8a0b80c - passed; reachable Git history and source-path bytes, 1164 historical blobs, 168 commit/tag objects, 1193 historical path/blob pairs, 419 index blobs, and 443 tracked working-tree files contained no secret finding"
@@ -1344,8 +1346,9 @@ tasks:
     - The worker broker records bounded per-profile ACL mutation intent before every grant/revoke, validates current resource identity, hardlink count, profile-name/SID binding, and owner liveness, and repairs PREPARED, partial-grant, ACTIVE, and REVOKING cut points after real child-process termination and WAIT_ABANDONED observation.
     - Diagnostics accept only closed typed records containing internal UUIDv4 identifiers, version components, numeric counts/resources, and stable codes; canonical JSONL, bounded logging, deterministic summaries, import boundaries, and prohibited-token tests exclude document content, paths, names, metadata, thumbnails, signatures, and raw exceptions.
     - Live restricted-worker tests terminate an accepted thumbnail render and an active export, preserve imported sources and the byte-identical last valid manifest, run cold-composed application/storage recovery, and succeed through fresh worker/service composition without publishing an interrupted destination.
+    - A process-level desktop cut point queues a real organizer rotation, pauses after its durable autosave checkpoint replaces the journal name but before manifest publication, forcibly kills that PySide process, and starts a separate fresh PySide process. Startup recovery reports the case recovered, reopens revision 2 with the intended 90-degree rotation, preserves the external and case-copy source bytes and outside sentinel, leaves bounded temp state empty, and emits only path-free result fields.
     - Cleanup accounting preserves every confirmed deletion and released-byte count across later ordinary item or context-finalization failures, stops subsequent mutation when authority is uncertain, keeps process-control BaseException propagation, and emits only sanitized phase-specific plus generic failure codes.
-    - PWS-0113 does not claim a real PySide UI-process kill or automatic deletion of abandoned AppContainer profiles/temp trees; PWS-0111 owns desktop composition, while this task proves deterministic cold application-service restart and durable ACL repair.
+    - PWS-0113 now proves a real PySide UI-process kill at the autosave checkpoint plus deterministic fresh-process desktop recovery. It still does not claim automatic deletion of abandoned AppContainer profiles/temp trees; durable ACL repair remains a separate exact-object boundary.
     - Independent recovery, privacy, cleanup-finalization, export-history, ACL, documentation, and completion audits found no remaining P0-P2 issue.
 - id: PWS-0114
   milestone: M1

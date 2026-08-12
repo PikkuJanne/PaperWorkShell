@@ -210,6 +210,12 @@ recovery result; process-control exceptions remain process control.
 Windows startup integration first exercises PWS-0109 manifest recovery, independently validates or
 restores stable export history from one authenticated retirement, then settles durable PDF export
 receipts, and only afterward performs source-orphan, thumbnail-stage, and generic temp cleanup.
+The desktop-process cut point uses an isolated profile and real offscreen PySide organizer: after
+one edit reaches the durable autosave checkpoint but before manifest replacement, the parent
+forcibly terminates the UI process and launches a fresh one. The restart must report one recovered
+case, reopen the exact checkpoint revision, preserve both external and case-copy source bytes, keep
+an outside sentinel unchanged, and expose no profile, filename, or display-name value in its closed
+result.
 It proves a valid checkpoint is authoritative before deletion, a corrupt case is reported without
 artifact mutation, an exact UUID-named unreferenced source can be removed, a concurrent manifest
 advance forces a reload before cleanup, and repeated stale-authority checks retain the candidate
