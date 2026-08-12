@@ -34,6 +34,7 @@ REQUIRED_PACKAGES: Final = (
 KNOWN_LAYERS: Final = frozenset(REQUIRED_PACKAGES)
 DESKTOP_ENTRYPOINT: Final = f"{PROJECT_PACKAGE}.__main__"
 DESKTOP_WORKER_COMPOSITION_MODULE: Final = f"{PROJECT_PACKAGE}.worker.desktop_composition"
+DESKTOP_EXPORT_DESTINATION_MODULE: Final = f"{PROJECT_PACKAGE}.export.pdf_destination"
 ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
 UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
@@ -224,11 +225,24 @@ def _target_violation(
         is_gui_safe_worker_module = any(
             _is_within(importer, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES
         )
+        is_desktop_worker_composition = importer == DESKTOP_WORKER_COMPOSITION_MODULE
+        is_desktop_export_destination = (
+            importer == DESKTOP_ENTRYPOINT and target == DESKTOP_EXPORT_DESTINATION_MODULE
+        )
+
+        if is_desktop_worker_composition and target_layer in DOCUMENT_ADAPTER_LAYERS:
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_DESKTOP_COMPOSITION_ADAPTER",
+                f"desktop client composition must not import document adapter {target!r}",
+            )
 
         if (
             (owner in UI_FACING_LAYERS or is_gui_safe_worker_module)
             and _is_within(target, EXPORT_PACKAGE)
             and target != EXPORT_PACKAGE
+            and not is_desktop_export_destination
         ):
             return BoundaryViolation(
                 path,
@@ -245,7 +259,7 @@ def _target_violation(
                 f"UI-facing layer {owner!r} must not import adapter {target!r}",
             )
 
-        is_desktop_worker_composition = (
+        is_desktop_worker_composition_import = (
             importer == DESKTOP_ENTRYPOINT and target == DESKTOP_WORKER_COMPOSITION_MODULE
         )
 
@@ -254,7 +268,7 @@ def _target_violation(
             and _is_within(target, WORKER_PACKAGE)
             and target != WORKER_PACKAGE
             and not any(_is_within(target, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES)
-            and not is_desktop_worker_composition
+            and not is_desktop_worker_composition_import
         ):
             return BoundaryViolation(
                 path,

@@ -16,12 +16,16 @@ from paperworkshell.worker.client.errors import (
     WorkerClientError,
     WorkerClientErrorCode,
 )
-from paperworkshell.worker.client.models import WorkerTimeoutPolicy
+from paperworkshell.worker.client.models import (
+    WorkerResourceSnapshot,
+    WorkerTimeoutPolicy,
+)
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.desktop_composition import (
     DesktopWorkerCompositionConfig,
     create_desktop_worker_composition,
 )
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_source_inspector import (
     PdfInspectionBrokerPolicy,
     PreparedSourceHandleBroker,
@@ -72,9 +76,20 @@ class _FakeWorkerClient:
         self.required_capabilities = required_capabilities
         self.constructed_thread = threading.get_ident()
         self.terminate_calls = 0
+        self.resource_snapshot_calls = 0
+        self.snapshot = WorkerResourceSnapshot(
+            process_memory_limit_bytes=resource_policy.process_memory_bytes,
+            job_memory_limit_bytes=resource_policy.job_memory_bytes,
+            peak_process_memory_used_bytes=1,
+            peak_job_memory_used_bytes=2,
+        )
 
     def terminate(self) -> None:
         self.terminate_calls += 1
+
+    def resource_snapshot(self) -> WorkerResourceSnapshot:
+        self.resource_snapshot_calls += 1
+        return self.snapshot
 
 
 def _fixed_resources(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
@@ -120,6 +135,7 @@ def _config(tmp_path: Path) -> DesktopWorkerCompositionConfig:
             cancellation_grace_seconds=5.0,
             shutdown_grace_seconds=10.0,
         ),
+        maximum_heavy_operation_concurrency=1,
         inspection_policy=PdfInspectionBrokerPolicy(_operation_limits()),
         thumbnail_policy=PdfThumbnailBrokerPolicy(_operation_limits()),
     )
@@ -148,6 +164,7 @@ def _compose_with_fake_client(
         prepared_sources=prepared,
         committed_pages=committed,
         thumbnail_cache=cache,
+        heavy_operations=HeavyOperationCoordinator(1),
     )
     worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
     return composition, worker
@@ -171,9 +188,29 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     )
     assert cast(Any, source_port)._worker is worker
     assert cast(Any, thumbnail_port)._worker is worker
+    assert cast(Any, source_port)._heavy_operations is cast(Any, thumbnail_port)._heavy_operations
+    assert composition.heavy_operation_snapshot().maximum_concurrency == 1
     assert worker.constructed_thread == threading.get_ident()
-
+    assert composition.resource_snapshot() == worker.snapshot
+    assert worker.resource_snapshot_calls == 1
     composition.close()
+
+
+def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(
+    tmp_path: Path,
+) -> None:
+    prepared, committed, cache = _ports()
+
+    with pytest.raises(WorkerClientError) as caught:
+        create_desktop_worker_composition(
+            _config(tmp_path),
+            prepared_sources=prepared,
+            committed_pages=committed,
+            thumbnail_cache=cache,
+            heavy_operations=HeavyOperationCoordinator(2),
+        )
+
+    assert caught.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
 
 
 def test_close_is_idempotent_and_rejects_a_non_owner_thread(
@@ -232,6 +269,7 @@ def test_configuration_and_composition_representations_never_disclose_paths(
         prepared_sources=prepared,
         committed_pages=committed,
         thumbnail_cache=cache,
+        heavy_operations=HeavyOperationCoordinator(1),
     )
     try:
         rendered = f"{config!r} {composition!r}"
@@ -263,6 +301,7 @@ def test_factory_rejects_invalid_structural_ports_with_sanitized_error(
             prepared_sources=cast(PreparedSourceHandleBroker, prepared),
             committed_pages=cast(CommittedPdfPageStore, committed),
             thumbnail_cache=cast(ThumbnailCacheStore, cache),
+            heavy_operations=HeavyOperationCoordinator(1),
         )
 
     assert caught.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID

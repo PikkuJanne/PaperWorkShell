@@ -354,7 +354,7 @@ the same synthetic corpus and bounded Windows profile for:
 - **fidelity:** crop/media boxes, rotation, transparency, CMYK, fonts, malformed files, and golden
   rendering results;
 - **performance:** bounded startup, per-page latency, peak memory, cancellation, and temporary
-  storage on the reference profile; and
+  storage under the versioned constrained resource policy; and
 - **Windows packaging:** supported architectures, artifact provenance/signatures, native closure,
   installer size, update path, and notice delivery.
 

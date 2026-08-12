@@ -34,11 +34,13 @@ from paperworkshell.worker.client._acl_recovery import (
     AclRecoveryObject,
     AclRecoveryPhase,
 )
+from paperworkshell.worker.client.models import WorkerResourceSnapshot
 from paperworkshell.worker.protocol.bootstrap import (
     BOOTSTRAP_BYTES,
     BootstrapGrant,
     encode_bootstrap_grant,
 )
+from paperworkshell.worker.protocol.models import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
     from paperworkshell.worker.client.process import (
@@ -250,14 +252,9 @@ class WindowsLaunchError(RuntimeError):
         return f"{self.code.value} at {self.context}: {self.safe_message}"
 
 
-@dataclass(frozen=True, slots=True)
-class WindowsWorkerResourceSnapshot:
-    """Safe numeric resource accounting from one retained Windows Job."""
-
-    process_memory_limit_bytes: int
-    job_memory_limit_bytes: int
-    peak_process_memory_used_bytes: int
-    peak_job_memory_used_bytes: int
+# Compatibility name retained for callers that imported the original
+# Windows-specific model before the GUI-safe client contract was generalized.
+WindowsWorkerResourceSnapshot = WorkerResourceSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -4804,11 +4801,18 @@ class _Job(AbstractContextManager["_Job"]):
         limit_flags = int(information.basic_limit_information.limit_flags)
         process_memory_limit = int(information.process_memory_limit)
         job_memory_limit = int(information.job_memory_limit)
+        peak_process_memory = int(information.peak_process_memory_used)
+        peak_job_memory = int(information.peak_job_memory_used)
         if (
             returned_length.value != ctypes.sizeof(information)
             or limit_flags & required_flags != required_flags
             or process_memory_limit < 1
             or job_memory_limit < process_memory_limit
+            or job_memory_limit > MAX_SAFE_INTEGER
+            or peak_process_memory < 0
+            or peak_job_memory < peak_process_memory
+            or peak_process_memory > process_memory_limit
+            or peak_job_memory > job_memory_limit
         ):
             _reject(
                 WindowsLaunchErrorCode.JOB_FAILED,
@@ -4818,8 +4822,8 @@ class _Job(AbstractContextManager["_Job"]):
         return WindowsWorkerResourceSnapshot(
             process_memory_limit_bytes=process_memory_limit,
             job_memory_limit_bytes=job_memory_limit,
-            peak_process_memory_used_bytes=int(information.peak_process_memory_used),
-            peak_job_memory_used_bytes=int(information.peak_job_memory_used),
+            peak_process_memory_used_bytes=peak_process_memory,
+            peak_job_memory_used_bytes=peak_job_memory,
         )
 
     def active_processes(self) -> int:

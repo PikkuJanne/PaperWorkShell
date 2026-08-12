@@ -6,12 +6,9 @@ from uuid import UUID
 import pytest
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
+from paperworkshell.domain.resource_policy import NORMAL_RESOURCE_POLICY_V1
 from paperworkshell.ui.backend import OrganizerBackendWorker, UiFailure, sanitize_ui_failure
-from paperworkshell.ui.window import (
-    _PREVIEW_PIXMAP_BUDGET,
-    _PREVIEW_REQUEST_CAP,
-    _bounded_preview_rows,
-)
+from paperworkshell.ui.window import _bounded_preview_rows
 
 PRIVATE_CANARY = "PRIVATE_APPLICANT_C:/records/original-name.pdf"
 
@@ -88,5 +85,5 @@ def test_hostile_large_page_view_cannot_expand_preview_memory_or_request_policy(
 
     assert rows == tuple(sorted(rows))
     assert selected_row in rows
-    assert len(rows) <= _PREVIEW_PIXMAP_BUDGET
-    assert _PREVIEW_REQUEST_CAP <= _PREVIEW_PIXMAP_BUDGET <= 16
+    assert len(rows) <= NORMAL_RESOURCE_POLICY_V1.maximum_preview_request_pages
+    assert NORMAL_RESOURCE_POLICY_V1.thumbnail_preview_cache_bytes > 0

@@ -55,6 +55,10 @@ directories created by the failed call, in reverse order, after identity revalid
   cache/temp claim against measured and outstanding use. The returned
   `WorkspaceCapacityReservation` retains that declared scope, byte/entry amounts, authenticated
   case identity, token, and liveness.
+- Production construction supplies the selected policy's minimum physical free-space reserve and
+  a trusted free-space probe. Reservation rejects the requested bytes plus that reserve before
+  stage creation when the volume cannot accommodate them. Tests inject exact-boundary, low-space,
+  and probe-failure outcomes without claiming a particular storage medium.
 - `cleanup_disposable()` removes only an authenticated cache/temp inventory and returns a
   sanitized `CleanupReport` with complete or partial status.
 - `enumerate_case_ids()` authenticates the cases root and bounds UUID-named candidates without
@@ -156,6 +160,10 @@ identity share one book across manager instances in the broker process, and conf
 fail closed. One per-case coordination lock covers fresh authenticated inventory, adding a claim,
 publication guards, and release; a publish-and-release cannot leave the next claim using an older
 snapshot. File accounting uses logical length, not allocated clusters.
+
+Logical workspace quota and physical-volume availability are independent gates. A request must fit
+both; passing one never weakens the other. Probe failures and insufficient space use closed,
+content-free errors, and no path or raw operating-system message crosses the storage boundary.
 
 The reservation is not itself filesystem authority. The manager does not expose a general write
 method; the owning broker operation must compare its exact target and object

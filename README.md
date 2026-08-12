@@ -106,11 +106,11 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py validate-dependencies` | Validate the dependency, license, provenance, and redistribution baseline |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
-| `py -3.14 tools/dev.py validate-reference-profile` | Validate the low-spec Windows environment/workload profile |
+| `py -3.14 tools/dev.py validate-m1-benchmark-report` | Validate the constrained-profile M1 evidence contract |
 | `py -3.14 tools/dev.py validate-pdf-renderer-benchmark` | Validate the bound synthetic renderer-comparison workload |
 | `py -3.14 tools/dev.py scan-secrets` | Scan reachable Git/index blobs and nonignored local source bytes with Gitleaks |
 | `py -3.14 tools/dev.py quality-self-test` | Prove deliberate format/type/schema/cycle/secret violations are rejected |
-| `py -3.14 tools/dev.py benchmark-reference` | Run the record-only generated-I/O baseline workload |
+| `py -3.14 tools/dev.py run-m1-vertical-slice` | Run the constrained M1 vertical slice and publish local evidence |
 | `py -3.14 tools/dev.py benchmark-pdf-renderers` | Compare the pinned PDFium and Qt PDF candidates on Windows |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
@@ -119,10 +119,17 @@ On non-Windows development hosts, replace `py -3.14` with the equivalent CPython
 The GitHub Actions workflow runs the same `bootstrap` and `check` entry points on Windows. It uses
 read-only permissions and does not upload source, fixtures, caches, scan reports, benchmark
 reports, or artifacts. Secret scanning respects `.gitignore`, so ignored local cases and other
-sensitive local state are not traversed. Full behavior, negative tests, and reference-profile
+sensitive local state are not traversed. Full behavior, negative tests, and constrained-resource
 instructions are documented in
 [`docs/development/quality-gates.md`](docs/development/quality-gates.md), with the architectural
 record in [`docs/adr/0002-local-quality-gates.md`](docs/adr/0002-local-quality-gates.md).
+
+Low-resource compatibility is enforced by a central, versioned software policy, bounded
+production composition, deterministic constrained-profile tests, and numeric gate evidence. See
+[`docs/performance/LOW_RESOURCE_POLICY.md`](docs/performance/LOW_RESOURCE_POLICY.md) and
+[`docs/adr/0007-low-resource-budgets.md`](docs/adr/0007-low-resource-budgets.md). These checks do
+not emulate or certify a particular CPU, RAM allocation, GPU, SSD, HDD, VM, or physical machine;
+physical-device observations are useful but optional and non-gating.
 
 ## Architecture baseline
 

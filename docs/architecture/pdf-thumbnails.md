@@ -271,6 +271,8 @@ Limits are cumulative rather than interchangeable:
 - current manifest page count, immutable source size, worker-private copy, render bitmap, memory,
   temporary storage, output bytes, CPU, and wall time have independent caps;
 - cache staging reserves its worst-case byte count and one entry before creation; and
+- cache staging must also fit the selected physical free-space reserve before a persistent stage is
+  created; and
 - lookup, page invalidation, and stale-stage cleanup use bounded inventories and authenticated
   exact-entry deletion.
 
@@ -279,6 +281,11 @@ pypdfium2, pikepdf, Windows, filesystem, or worker exception text never crosses 
 malformed, encrypted, changed, out-of-range, oversized, corrupt, cancelled, timed-out, or crashed
 operation yields no new trusted snapshot. There is no repair attempt, password guess, alternate
 renderer retry, weaker-limit retry, or source/manifest mutation.
+
+Low-space preflight is tested through the workspace probe without creating a stage. A deterministic
+mid-write disk-full fault leaves no final cache entry, removes the exact partial random stage, keeps
+the manifest unchanged, and permits a fresh store after restart to complete stale-stage cleanup.
+This is software failure-path evidence, not HDD emulation or a physical-device claim.
 
 ## Invalidation and cleanup
 

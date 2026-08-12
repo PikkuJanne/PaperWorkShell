@@ -93,6 +93,9 @@ class PdfExportBroker(Protocol):
 class VerifiedPdfDestination(Protocol):
     """Commit one verified candidate or raise a sanitized PDF-export failure."""
 
+    def require_capacity(self, destination: Path, *, estimated_byte_size: int) -> None:
+        """Reject insufficient destination capacity before expensive worker work."""
+
     def commit(
         self,
         destination: Path,
@@ -202,6 +205,22 @@ class PdfExportService:
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.request")
         _require_active(deadline, cancellation)
         plan, manifest_ids = self._load_plan(case_id)
+        estimated_output_bytes = sum(source.byte_size for source in plan.sources)
+        capacity_failed = False
+        try:
+            self._destination.require_capacity(
+                destination,
+                estimated_byte_size=estimated_output_bytes,
+            )
+        except PdfExportError:
+            raise
+        except Exception:
+            capacity_failed = True
+        if capacity_failed:
+            reject_pdf_export(
+                PdfExportErrorCode.DESTINATION_FAILED,
+                "export.capacity_preflight",
+            )
         history_ids = self._load_history_ids(case_id)
         export_id = self._new_id(set(manifest_ids | history_ids))
         _emit_progress(

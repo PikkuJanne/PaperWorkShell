@@ -78,7 +78,7 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
 
         self.assertIsNotNone(timeout)
         assert timeout is not None
-        self.assertEqual(45, int(timeout.group(1)))
+        self.assertEqual(90, int(timeout.group(1)))
 
     def test_gitleaks_download_is_versioned_and_hash_verified(self) -> None:
         self.assertIn("gitleaks_8.30.1_windows_x64.zip", self.text)
@@ -87,6 +87,17 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
             self.text,
         )
         self.assertIn("Get-FileHash -Algorithm SHA256", self.text)
+        self.assertEqual(2, self.text.count("$maximumAttempts = 3"))
+        self.assertEqual(
+            2,
+            self.text.count("for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++)"),
+        )
+        self.assertEqual(
+            2,
+            self.text.count("Remove-Item -LiteralPath $archive -Force"),
+        )
+        self.assertEqual(2, self.text.count("-ConnectionTimeoutSeconds 30"))
+        self.assertEqual(2, self.text.count("-OperationTimeoutSeconds 60"))
 
     def test_qpdf_archive_is_verified_before_program_files_extraction(self) -> None:
         self.assertIn(
@@ -103,6 +114,18 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
         )
         self.assertIn(
             "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+            self.text,
+        )
+        self.assertIn(
+            "43f79db620ce09529a67572a5de87aec4065b95f11ba6e5918db557f943a7eac",
+            self.text,
+        )
+        self.assertIn(
+            "623338ff5a9caab476f9e80ccc40c28c194208f4bc5d8e51eac7fca792e2e969",
+            self.text,
+        )
+        self.assertIn(
+            "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
             self.text,
         )
 

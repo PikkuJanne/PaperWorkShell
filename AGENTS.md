@@ -237,6 +237,18 @@ Tests should use the most direct level available: widget/unit checks, automated 
 
 Do not refresh golden outputs merely to make tests pass. Explain why the output changed, inspect it, and record approval in the task evidence. Keep golden artifacts synthetic and as small as practical.
 
+### 9.4 Resource-budget contract
+
+Resource budgets are part of the definition of done for changes affecting import, rendering, thumbnails, OCR, compression, export, worker lifecycle, caching, queues, or temporary files.
+
+- New unbounded caches, queues, executors, subprocess counts, concurrency, or whole-document/full-resolution materialization are prohibited.
+- Use the central versioned `ResourcePolicy`; do not scatter replacement constants or make a profile change only a report label.
+- Run the relevant constrained-profile tests for every resource-sensitive processing change.
+- Exercise low-disk/disk-full, cancellation, cleanup, and recovery paths when storage or long operations change.
+- Do not raise a budget merely to make a regression pass. Diagnose and optimize first, then document any justified policy amendment with evidence.
+- Hardware-support claims must match actual evidence. Constrained-profile results prove bounded software behavior, not certification of a named CPU, RAM amount, GPU, SSD, HDD, VM, or physical device.
+- Optional physical-device testing is useful but non-gating under `PWS-D041`.
+
 ## 10. Quality commands
 
 `PWS-0001` and `PWS-0003` establish the exact commands. The repository should expose stable developer entry points for at least:

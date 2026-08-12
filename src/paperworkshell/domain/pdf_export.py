@@ -97,6 +97,7 @@ class PdfExportErrorCode(StrEnum):
     VERIFICATION_SEMANTIC_MISMATCH = "PDF_EXPORT_VERIFICATION_SEMANTIC_MISMATCH"
     DESTINATION_INVALID = "PDF_EXPORT_DESTINATION_INVALID"
     DESTINATION_EXISTS = "PDF_EXPORT_DESTINATION_EXISTS"
+    DESTINATION_CAPACITY_EXCEEDED = "PDF_EXPORT_DESTINATION_CAPACITY_EXCEEDED"
     DESTINATION_FAILED = "PDF_EXPORT_DESTINATION_FAILED"
     DESTINATION_COMMIT_UNCERTAIN = "PDF_EXPORT_DESTINATION_COMMIT_UNCERTAIN"
     HISTORY_RECOVERY_REQUIRED = "PDF_EXPORT_HISTORY_RECOVERY_REQUIRED"
@@ -157,6 +158,9 @@ _SAFE_ERROR_MESSAGES: Final[dict[PdfExportErrorCode, str]] = {
     PdfExportErrorCode.DESTINATION_INVALID: "Choose a supported PDF export destination.",
     PdfExportErrorCode.DESTINATION_EXISTS: (
         "A file already exists at the selected destination. Choose another name."
+    ),
+    PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED: (
+        "The selected destination does not have enough available storage for a safe export."
     ),
     PdfExportErrorCode.DESTINATION_FAILED: (
         "PaperWorkShell could not save the verified PDF at the selected destination."

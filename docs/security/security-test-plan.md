@@ -25,8 +25,9 @@
    capability. Release/gate evidence cannot treat a required skipped control as passed.
 8. UI warnings supplement controls; they do not replace isolation, validation, verification, or
    export blocking.
-9. Numeric resource limits are accepted only with measured boundary evidence on the reference
-   profile. An unevidenced limit or incomplete isolation/egress control leaves the owner/gate open.
+9. Numeric resource limits are accepted only with measured boundary evidence under the applicable
+   constrained resource policy. An unevidenced limit or incomplete isolation/egress control leaves
+   the owner/gate open.
 
 ## Planned suites
 
@@ -306,8 +307,8 @@ mutation, or automatic cold deletion of abandoned AppContainer profiles/local te
 - For PWS-0107 specifically, retain the live AppContainer/egress/job/environment/handle/filesystem
   evidence above; combine it with PWS-0105's real one-shot prepared-source/result-handle path rather
   than treating the no-op lifecycle by itself as case-access evidence.
-- PWS-0114 requires original hashes, verified export, worker recovery, egress evidence, and clean
-  logs on the reference profile.
+- PWS-0114 requires original hashes, verified export, worker recovery, egress evidence, clean
+  logs, and numeric budget evidence under the constrained resource profile.
 
 ### M2–M5 document capabilities
 
@@ -330,8 +331,9 @@ mutation, or automatic cold deletion of abandoned AppContainer profiles/local te
 
 - Add keyboard/NVDA coverage to security warnings, consent, lock, retention, deletion,
   diagnostics inventory, update errors, and recovery.
-- Run packaged-build dependency/SBOM/signature, install/update/migration/uninstall, low-disk/HDD,
-  and residual-case matrices.
+- Run packaged-build dependency/SBOM/signature, install/update/migration/uninstall, constrained
+  resource/low-disk, and residual-case matrices. Optional device observations do not replace the
+  automated budget gate and do not certify an HDD or other physical configuration.
 - Capture update traffic to prove no case/document fields leave the machine.
 
 ## Failure report requirements

@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import os
 import re
+import shutil
 import unicodedata
 from collections.abc import Callable
 from ctypes import wintypes
@@ -295,6 +296,7 @@ DeletionSetter = Callable[[WindowsHandle, bool], None]
 CommittedOpener = Callable[[Path], WindowsHandle]
 CommittedReader = Callable[[WindowsHandle, int], bytes]
 CommittedCloser = Callable[[WindowsHandle], None]
+AvailableSpaceProbe = Callable[[Path], int]
 
 
 def _no_checkpoint(_phase: ExportDestinationPhase) -> None:
@@ -303,6 +305,12 @@ def _no_checkpoint(_phase: ExportDestinationPhase) -> None:
 
 def _never_expired() -> bool:
     return False
+
+
+def _available_space(directory: Path) -> int:
+    """Return only the numeric free-byte observation for an authenticated parent."""
+
+    return shutil.disk_usage(directory).free
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,6 +327,7 @@ class ExportDestinationDependencies:
     open_committed: CommittedOpener | None = field(default=None, repr=False)
     read_committed: CommittedReader | None = field(default=None, repr=False)
     close_committed: CommittedCloser | None = field(default=None, repr=False)
+    available_space: AvailableSpaceProbe | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         values = (
@@ -332,6 +341,7 @@ class ExportDestinationDependencies:
             self.open_committed,
             self.read_committed,
             self.close_committed,
+            self.available_space,
         )
         if any(value is not None and not callable(value) for value in values):
             reject_export_destination(
@@ -343,18 +353,72 @@ class ExportDestinationDependencies:
 class WindowsExportDestination:
     """Publish one verified byte stream to one exact local Windows destination."""
 
-    __slots__ = ("_dependencies",)
+    __slots__ = ("_dependencies", "_minimum_free_space_reserve_bytes")
 
-    def __init__(self, dependencies: ExportDestinationDependencies | None = None) -> None:
+    def __init__(
+        self,
+        dependencies: ExportDestinationDependencies | None = None,
+        *,
+        minimum_free_space_reserve_bytes: int = 256 * 1024 * 1024,
+    ) -> None:
         if dependencies is not None and type(dependencies) is not ExportDestinationDependencies:
             reject_export_destination(
                 ExportDestinationErrorCode.MODEL_INVALID,
                 "export.dependencies",
             )
+        if (
+            type(minimum_free_space_reserve_bytes) is not int
+            or not 0 <= minimum_free_space_reserve_bytes <= MAX_EXPORT_DESTINATION_BYTES
+        ):
+            reject_export_destination(
+                ExportDestinationErrorCode.MODEL_INVALID,
+                "export.capacity_policy",
+            )
         self._dependencies = dependencies or ExportDestinationDependencies()
+        self._minimum_free_space_reserve_bytes = minimum_free_space_reserve_bytes
+
+    @property
+    def minimum_free_space_reserve_bytes(self) -> int:
+        """Return the immutable preflight reserve applied to every publication."""
+
+        return self._minimum_free_space_reserve_bytes
 
     def __repr__(self) -> str:
         return "WindowsExportDestination()"
+
+    def require_capacity(self, destination: Path, *, estimated_byte_size: int) -> None:
+        """Fail before expensive work when a destination cannot retain its reserve."""
+
+        selected = _validate_destination(destination)
+        if (
+            type(estimated_byte_size) is not int
+            or not 1 <= estimated_byte_size <= MAX_EXPORT_DESTINATION_BYTES
+        ):
+            reject_export_destination(
+                ExportDestinationErrorCode.MODEL_INVALID,
+                "export.capacity_request",
+            )
+        if os.name != "nt":
+            reject_export_destination(
+                ExportDestinationErrorCode.PLATFORM_UNSUPPORTED,
+                "export.platform",
+            )
+        try:
+            require_local_acl_volume(selected.parent)
+            with open_handle(selected.parent, traverse=True) as parent:
+                _authenticate_parent(parent, selected.parent)
+                self._require_available_bytes(selected.parent, estimated_byte_size)
+        except ExportDestinationError:
+            raise
+        except WorkspaceError as error:
+            _map_workspace_error(error)
+        except OSError as error:
+            _map_os_error(error, context="export.capacity")
+        except Exception:
+            reject_export_destination(
+                ExportDestinationErrorCode.INTERNAL_ERROR,
+                "export.capacity",
+            )
 
     def commit(
         self,
@@ -389,6 +453,7 @@ class WindowsExportDestination:
             with open_handle(selected.parent, traverse=True) as parent:
                 _require_active(cancellation, deadline)
                 _authenticate_parent(parent, selected.parent)
+                self._require_available_bytes(selected.parent, expected_byte_size)
                 existing = _existing_destination_state(selected)
                 if existing is not None:
                     return existing
@@ -418,6 +483,25 @@ class WindowsExportDestination:
             reject_export_destination(
                 ExportDestinationErrorCode.INTERNAL_ERROR,
                 "export.storage",
+            )
+
+    def _require_available_bytes(self, parent: Path, byte_count: int) -> None:
+        if byte_count > MAX_EXPORT_DESTINATION_BYTES - self._minimum_free_space_reserve_bytes:
+            reject_export_destination(
+                ExportDestinationErrorCode.DESTINATION_FULL,
+                "export.capacity",
+            )
+        probe = self._dependencies.available_space or _available_space
+        available = probe(parent)
+        if type(available) is not int or not 0 <= available <= MAX_EXPORT_DESTINATION_BYTES:
+            reject_export_destination(
+                ExportDestinationErrorCode.INTERNAL_ERROR,
+                "export.capacity_probe",
+            )
+        if available < byte_count + self._minimum_free_space_reserve_bytes:
+            reject_export_destination(
+                ExportDestinationErrorCode.DESTINATION_FULL,
+                "export.capacity",
             )
 
     def _stage_and_commit(

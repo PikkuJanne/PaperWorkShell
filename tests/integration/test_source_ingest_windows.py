@@ -55,12 +55,14 @@ from paperworkshell.storage._windows import (
     ManifestReplaceResult,
     ManifestReplaceState,
     WindowsHandle,
+    WindowsPendingSourceFile,
     replace_manifest_atomically,
 )
 from paperworkshell.storage._windows import (
     open_handle as windows_open_handle,
 )
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.manifest_repository import (
     WindowsManifestRepository,
     canonical_manifest_bytes,
@@ -202,13 +204,28 @@ def _limits() -> ImportLimits:
     )
 
 
-def _stack(tmp_path: Path, *, maximum_case_bytes: int = 24_000_000) -> _Stack:
+def _stack(
+    tmp_path: Path,
+    *,
+    maximum_case_bytes: int = 24_000_000,
+    available_space_bytes: int | None = None,
+    available_space_probe: Callable[[Path], int] | None = None,
+    free_space_reserve_bytes: int = 0,
+) -> _Stack:
     profile = tmp_path / "profile"
     profile.mkdir()
     manager = CaseWorkspaceManager(
         profile_root=profile,
         quota=_quota(maximum_case_bytes=maximum_case_bytes),
         id_factory=lambda: CASE_ID,
+        minimum_free_space_reserve_bytes=free_space_reserve_bytes,
+        available_space_probe=(
+            available_space_probe
+            if available_space_probe is not None
+            else None
+            if available_space_bytes is None
+            else lambda _path: available_space_bytes
+        ),
     )
     lifecycle = WindowsCaseLifecycleStore(manager, clock=lambda: CREATED_AT)
     case_lease = lifecycle.create_case()
@@ -556,6 +573,69 @@ def test_capacity_exhaustion_leaves_no_record_or_partial_copy(tmp_path: Path) ->
         stack.service.import_source(CASE_ID, source, "Capacity synthetic.jpg")
 
     assert raised.value.code is SourceIngestErrorCode.CAPACITY_EXCEEDED
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.originals.iterdir()) == []
+    _assert_no_staged_files(stack)
+    assert _external_snapshot(source) == external_before
+
+
+def test_volume_preflight_rejects_import_before_copy_and_preserves_authority(
+    tmp_path: Path,
+) -> None:
+    available = [24_000_000]
+    stack = _stack(
+        tmp_path,
+        available_space_probe=lambda _path: available[0],
+        free_space_reserve_bytes=900,
+    )
+    available[0] = 1_000
+    source = (tmp_path / "volume-capacity.jpg").resolve()
+    payload = _jpeg_of_size(8_192)
+    source.write_bytes(payload)
+    external_before = _external_snapshot(source)
+    manifest_before = stack.layout.manifest.read_bytes()
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.service.import_source(CASE_ID, source, "Capacity synthetic.jpg")
+
+    assert raised.value.code is SourceIngestErrorCode.CAPACITY_EXCEEDED
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.originals.iterdir()) == []
+    _assert_no_staged_files(stack)
+    assert _external_snapshot(source) == external_before
+
+
+def test_disk_full_during_import_copy_removes_partial_stage_and_preserves_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "copy-disk-full.jpg").resolve()
+    payload = _jpeg_of_size(MAXIMUM_STREAM_CHUNK_BYTES + 4_096)
+    source.write_bytes(payload)
+    external_before = _external_snapshot(source)
+    manifest_before = stack.layout.manifest.read_bytes()
+    write_chunk = WindowsPendingSourceFile.write_chunk
+    calls = 0
+
+    def fail_after_first_chunk(stage: WindowsPendingSourceFile, chunk: bytes) -> None:
+        nonlocal calls
+        calls += 1
+        write_chunk(stage, chunk)
+        if calls == 1:
+            raise WorkspaceError(
+                WorkspaceErrorCode.QUOTA_EXCEEDED,
+                "source_stage.synthetic_disk_full",
+                "The synthetic storage budget was exhausted.",
+            )
+
+    monkeypatch.setattr(WindowsPendingSourceFile, "write_chunk", fail_after_first_chunk)
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.service.import_source(CASE_ID, source, "Disk full synthetic.jpg")
+
+    assert raised.value.code is SourceIngestErrorCode.CAPACITY_EXCEEDED
+    assert calls == 1
     assert stack.layout.manifest.read_bytes() == manifest_before
     assert list(stack.layout.originals.iterdir()) == []
     _assert_no_staged_files(stack)

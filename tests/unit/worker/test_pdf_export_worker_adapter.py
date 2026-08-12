@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from ctypes import wintypes
 from pathlib import Path
 from threading import Event
+from typing import Any, BinaryIO, cast
 from uuid import UUID
 
 import pytest
@@ -46,6 +47,10 @@ from paperworkshell.worker.pdf_export_operation import (
 )
 from paperworkshell.worker.pdf_export_plan import encode_pdf_export_worker_plan
 from paperworkshell.worker.pdf_export_report import decode_pdf_export_worker_report
+from paperworkshell.worker.private_temp import (
+    WORKER_PRIVATE_TEMP_MINIMUM_FREE_SPACE_RESERVE_BYTES,
+    OsWorkerPrivateTempStorage,
+)
 from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
     PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
@@ -351,6 +356,160 @@ class _RecordingCandidateAdapter:
             output_sha256=hashlib.sha256(self.expected_payload).hexdigest(),
             output_byte_size=len(self.expected_payload),
         )
+
+
+class _DiskFullNamedStream:
+    """Persist a partial source stage, then simulate one native ENOSPC."""
+
+    def __init__(self, stream: BinaryIO) -> None:
+        self._stream = stream
+
+    def __enter__(self) -> _DiskFullNamedStream:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def write(self, payload: bytes, /) -> int:
+        self._stream.write(payload[: max(1, len(payload) // 2)])
+        raise OSError(28, "sensitive worker-private export disk-full detail")
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def __getattr__(self, member: str) -> object:
+        return getattr(self._stream, member)
+
+
+class _DiskFullOnceNamedTempStorage:
+    def __init__(self, *, available_bytes: int = 2 * 1024 * 1024) -> None:
+        self._storage = OsWorkerPrivateTempStorage(
+            available_bytes_probe=lambda _root: available_bytes,
+            minimum_free_space_reserve_bytes=0,
+        )
+        self._fail_next_named = True
+
+    def require_capacity(self, root: Path, byte_count: int) -> None:
+        self._storage.require_capacity(root, byte_count)
+
+    def open_anonymous(self, root: Path) -> BinaryIO:
+        return self._storage.open_anonymous(root)
+
+    def open_named(self, root: Path, *, suffix: str) -> tuple[BinaryIO, Path]:
+        stream, path = self._storage.open_named(root, suffix=suffix)
+        if self._fail_next_named:
+            self._fail_next_named = False
+            return cast(BinaryIO, _DiskFullNamedStream(stream)), path
+        return stream, path
+
+
+def _execute_worker_export_once(
+    source_path: Path,
+    candidate: _RecordingCandidateAdapter,
+    private_temp_storage: object,
+) -> CaseObjectReference:
+    source_authority = _open_read_authority(source_path)
+    source_worker = _duplicate_local_handle(source_authority)
+    _close_if_open(source_authority)
+    plan = _plan(source_path)
+    with (
+        WindowsPdfExportOutputBuffer.create(1024 * 1024) as output,
+        WindowsResultPipe.create() as result_pipe,
+    ):
+        output_worker = _duplicate_local_handle(
+            output.write_handle_value,
+            access=_FILE_MAP_WRITE,
+        )
+        result_worker = _duplicate_local_handle(result_pipe.write_handle_value)
+        result_pipe.close_local_writer()
+        plan_payload = encode_pdf_export_worker_plan(
+            plan,
+            {plan.sources[0].source_id: source_worker},
+        )
+        with WindowsPdfExportPlanBuffer.create(plan_payload) as plan_buffer:
+            plan_worker = _duplicate_local_handle(
+                plan_buffer.read_handle_value,
+                access=_FILE_MAP_READ,
+            )
+            request = PdfExportOperationRequest(
+                plan_worker,
+                output_worker,
+                result_worker,
+                _uuid(20),
+            )
+            context = _context(plan, plan_payload, request)
+            try:
+                return WindowsPdfExportOperationAdapter(
+                    candidate_adapter=candidate,
+                    private_temp_storage=cast(Any, private_temp_storage),
+                ).export(context, request)
+            finally:
+                for handle in (source_worker, plan_worker, output_worker, result_worker):
+                    _close_if_open(handle)
+
+
+def test_private_temp_preflight_rejects_before_source_copy_or_operation_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_path = tmp_path / "source.pdf"
+    payload = PDF_FIXTURE.read_bytes()
+    source_path.write_bytes(payload)
+    local_root = tmp_path / "worker-profile"
+    local_root.mkdir()
+    temp_root = local_root / "Temp"
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+    candidate = _RecordingCandidateAdapter(source_path, payload)
+    storage = OsWorkerPrivateTempStorage(
+        available_bytes_probe=lambda _root: (
+            (2 * 1024 * 1024) + WORKER_PRIVATE_TEMP_MINIMUM_FREE_SPACE_RESERVE_BYTES - 1
+        )
+    )
+
+    with pytest.raises(PdfExportError) as caught:
+        _execute_worker_export_once(source_path, candidate, storage)
+
+    assert caught.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert caught.value.context == "export.temp_capacity"
+    assert candidate.calls == 0
+    assert temp_root.is_dir()
+    assert tuple(temp_root.iterdir()) == ()
+
+
+def test_mid_export_private_disk_full_removes_partial_and_fresh_retry_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_path = tmp_path / "source.pdf"
+    payload = PDF_FIXTURE.read_bytes()
+    source_path.write_bytes(payload)
+    local_root = tmp_path / "worker-profile"
+    local_root.mkdir()
+    temp_root = local_root / "Temp"
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+    storage = _DiskFullOnceNamedTempStorage()
+    failed_candidate = _RecordingCandidateAdapter(source_path, payload)
+
+    with pytest.raises(PdfExportError) as caught:
+        _execute_worker_export_once(source_path, failed_candidate, storage)
+
+    assert caught.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert caught.value.context == "export.source_temp_write"
+    assert "sensitive" not in str(caught.value)
+    assert failed_candidate.calls == 0
+    assert temp_root.is_dir()
+    assert tuple(temp_root.iterdir()) == ()
+
+    recovered_candidate = _RecordingCandidateAdapter(source_path, payload)
+    reference = _execute_worker_export_once(source_path, recovered_candidate, storage)
+
+    assert reference.expected_byte_size == len(payload)
+    assert recovered_candidate.calls == 1
+    assert tuple(temp_root.iterdir()) == ()
 
 
 def test_production_adapter_consumes_handles_stages_sources_and_correlates_outputs(

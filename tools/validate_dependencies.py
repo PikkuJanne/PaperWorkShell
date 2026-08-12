@@ -192,6 +192,20 @@ EXPECTED_TOOL_ARTIFACTS: Final[dict[str, str]] = {
     "qt-pdf": "pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl",
     "uv": "uv-x86_64-pc-windows-msvc.zip",
 }
+EXPECTED_QPDF_BIN_FILES: Final[tuple[str, ...]] = (
+    "concrt140.dll",
+    "fix-qdf.exe",
+    "msvcp140_1.dll",
+    "msvcp140_2.dll",
+    "msvcp140_atomic_wait.dll",
+    "msvcp140_codecvt_ids.dll",
+    "msvcp140.dll",
+    "qpdf.exe",
+    "qpdf30.dll",
+    "vcruntime140_1.dll",
+    "vcruntime140.dll",
+    "zlib-flate.exe",
+)
 EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
     "pdfium": (
         "https://github.com/bblanchon/pdfium-binaries/releases/download/"
@@ -3523,7 +3537,7 @@ def _workflow_reconciliation_issues(
         and set(jobs) == {"windows-quality"}
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
-        and quality_job.get("timeout-minutes") == 45
+        and quality_job.get("timeout-minutes") == 90
         and len(quality_steps) == 9
     )
     expected_command_steps = {
@@ -3813,11 +3827,26 @@ def _workflow_reconciliation_issues(
                 f'$destination = Join-Path $env:RUNNER_TEMP "gitleaks-{gitleaks_selected}"',
                 f'$uri = "{expected_gitleaks_uri}"',
                 f'$expected = "{inventory_gitleaks_hash}"',
-                "Invoke-WebRequest -Uri $uri -OutFile $archive",
-                "$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
+                "$maximumAttempts = 3",
+                "for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {",
+                "  try {",
+                "    Invoke-WebRequest -Uri $uri -OutFile $archive "
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+                "    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
                 "$archive).Hash.ToLowerInvariant()",
-                "if ($actual -ne $expected) {",
-                '  throw "Gitleaks archive checksum mismatch."',
+                "    if ($actual -ne $expected) {",
+                '      throw "Gitleaks archive checksum mismatch."',
+                "    }",
+                "    break",
+                "  } catch {",
+                "    if (Test-Path -LiteralPath $archive) {",
+                "      Remove-Item -LiteralPath $archive -Force",
+                "    }",
+                "    if ($attempt -eq $maximumAttempts) {",
+                "      throw",
+                "    }",
+                "    Start-Sleep -Seconds (2 * $attempt)",
+                "  }",
                 "}",
                 "Expand-Archive -LiteralPath $archive -DestinationPath $destination",
                 "$destination | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append",
@@ -3834,7 +3863,8 @@ def _workflow_reconciliation_issues(
             and script.splitlines() == expected_script_lines
             and script.count("Invoke-WebRequest") == 1
             and re.search(
-                r"^\s*Invoke-WebRequest\s+-Uri\s+\$uri\s+-OutFile\s+\$archive\s*$",
+                r"^\s*Invoke-WebRequest\s+-Uri\s+\$uri\s+-OutFile\s+\$archive\s+"
+                r"-ConnectionTimeoutSeconds\s+30\s+-OperationTimeoutSeconds\s+60\s*$",
                 script,
                 re.MULTILINE,
             )
@@ -3876,6 +3906,19 @@ def _workflow_reconciliation_issues(
     qpdf_artifact = cast(str, qpdf_evidence["artifact"])
     qpdf_uri = cast(str, qpdf_evidence["url"])
     qpdf_hash = cast(str, qpdf_evidence["sha256"])
+    qpdf_hashes = cast(
+        list[Mapping[str, Any]],
+        cast(Mapping[str, Any], qpdf_component["integrity"])["hashes"],
+    )
+    qpdf_hash_by_artifact = {
+        cast(str, item["artifact"]): cast(str, item["value"]) for item in qpdf_hashes
+    }
+    qpdf_bin_prefix = f"qpdf-{qpdf_selected}-msvc64-bin-"
+    qpdf_bin_hash_by_name = {
+        artifact.removeprefix(qpdf_bin_prefix): digest
+        for artifact, digest in qpdf_hash_by_artifact.items()
+        if artifact.startswith(qpdf_bin_prefix)
+    }
     qpdf_download_steps = [
         mapping
         for mapping in quality_steps
@@ -3895,16 +3938,55 @@ def _workflow_reconciliation_issues(
             ),
             f'$uri = "{qpdf_uri}"',
             f'$expected = "{qpdf_hash}"',
-            "Invoke-WebRequest -Uri $uri -OutFile $archive",
-            "$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
+            "$maximumAttempts = 3",
+            "for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {",
+            "  try {",
+            "    Invoke-WebRequest -Uri $uri -OutFile $archive "
+            "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+            "    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
             "$archive).Hash.ToLowerInvariant()",
-            "if ($actual -ne $expected) {",
-            '  throw "qpdf archive checksum mismatch."',
+            "    if ($actual -ne $expected) {",
+            '      throw "qpdf archive checksum mismatch."',
+            "    }",
+            "    break",
+            "  } catch {",
+            "    if (Test-Path -LiteralPath $archive) {",
+            "      Remove-Item -LiteralPath $archive -Force",
+            "    }",
+            "    if ($attempt -eq $maximumAttempts) {",
+            "      throw",
+            "    }",
+            "    Start-Sleep -Seconds (2 * $attempt)",
+            "  }",
             "}",
             "Expand-Archive -LiteralPath $archive -DestinationPath $destination",
             f'$qpdf = Join-Path $destination "qpdf-{qpdf_selected}-msvc64/bin/qpdf.exe"',
             "if (-not (Test-Path -LiteralPath $qpdf -PathType Leaf)) {",
             '  throw "qpdf executable was not found in the reviewed archive layout."',
+            "}",
+            "$qpdfBin = Split-Path -Parent $qpdf",
+            "$qpdfExpectedFiles = [ordered]@{",
+            *(
+                f'  "{name}" = "{qpdf_bin_hash_by_name.get(name)}"'
+                for name in EXPECTED_QPDF_BIN_FILES
+            ),
+            "}",
+            "$qpdfActualNames = @(Get-ChildItem -LiteralPath $qpdfBin -Force | "
+            "ForEach-Object { $_.Name } | Sort-Object)",
+            "$qpdfExpectedNames = @($qpdfExpectedFiles.Keys | Sort-Object)",
+            "if (@(Compare-Object $qpdfActualNames $qpdfExpectedNames).Count -ne 0) {",
+            '  throw "qpdf binary closure mismatch."',
+            "}",
+            "foreach ($entry in $qpdfExpectedFiles.GetEnumerator()) {",
+            "  $candidate = Join-Path $qpdfBin $entry.Key",
+            "  if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {",
+            '    throw "qpdf binary closure is incomplete."',
+            "  }",
+            "  $candidateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "
+            "$candidate).Hash.ToLowerInvariant()",
+            "  if ($candidateHash -ne $entry.Value) {",
+            '    throw "qpdf binary closure checksum mismatch."',
+            "  }",
             "}",
             "$version = (& $qpdf --version)[0]",
             f'if ($version -ne "qpdf version {qpdf_selected}") {{',
@@ -3914,7 +3996,8 @@ def _workflow_reconciliation_issues(
             "$env:GITHUB_ENV -Encoding utf8 -Append",
         ]
         qpdf_step_valid = (
-            set(qpdf_download_steps[0]) == {"name", "shell", "run"}
+            set(qpdf_bin_hash_by_name) == set(EXPECTED_QPDF_BIN_FILES)
+            and set(qpdf_download_steps[0]) == {"name", "shell", "run"}
             and qpdf_download_steps[0].get("shell") == "pwsh"
             and qpdf_script.splitlines() == expected_qpdf_script_lines
             and qpdf_script.count("Invoke-WebRequest") == 1
@@ -3928,7 +4011,7 @@ def _workflow_reconciliation_issues(
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
                 document,
                 "$.components[*]",
-                "CI qpdf artifact, checksum, fixed executable path, and version must match the dependency inventory",
+                "CI qpdf artifact, binary closure, fixed executable path, and version must match the dependency inventory",
             ),
         )
     git_constraint = cast(str, cast(Mapping[str, Any], components["git"]["version"])["constraint"])

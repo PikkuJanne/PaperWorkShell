@@ -13,7 +13,6 @@ from tools.generate_synthetic_fixtures import (
 from tools.generate_synthetic_fixtures import (
     SCHEMA_PATH as FIXTURE_INDEX_SCHEMA_PATH,
 )
-from tools.reference_profile import PROJECT_ROOT
 from tools.validate_dependencies import (
     INVALID_FIXTURE_DIRECTORY,
     INVENTORY_PATH,
@@ -22,6 +21,7 @@ from tools.validate_dependencies import (
 from tools.validate_schemas import (
     EXPORT_HISTORY_PACKAGED_SCHEMA_PATH,
     EXPORT_HISTORY_SCHEMA_PATH,
+    PROJECT_ROOT,
     validation_messages,
 )
 from tools.validate_synthetic_fixtures import (
@@ -41,11 +41,11 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("DECISIONS.md"),
             Path("TASKS.schema.json"),
             Path("TASKS.yaml"),
-            Path("benchmarks/reference-windows-v1.json"),
             Path("docs/development/dependency-policy.md"),
             INVENTORY_PATH,
             Path("pyproject.toml"),
-            Path("schemas/reference-profile.schema.json"),
+            Path("schemas/m1-vertical-slice-benchmark-report-v1.schema.json"),
+            Path("schemas/m1-vertical-slice-benchmark-report-v2.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
             FIXTURE_INDEX_SCHEMA_PATH,
             TEMPLATE_SCHEMA_PATH,
@@ -88,24 +88,6 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
 
     def test_checked_in_schema_registry_passes(self) -> None:
         self.assertEqual([], validation_messages())
-
-    def test_invalid_reference_profile_is_reported(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self._copy_registry_root(root)
-            loaded = json.loads(
-                (PROJECT_ROOT / "benchmarks/reference-windows-v1.json").read_text(encoding="utf-8")
-            )
-            profile = cast(dict[str, Any], loaded)
-            profile["schema_version"] = 2
-            (root / "benchmarks/reference-windows-v1.json").write_text(
-                json.dumps(profile),
-                encoding="utf-8",
-            )
-
-            messages = validation_messages(root)
-
-        self.assertTrue(any("REFERENCE_PROFILE_INVALID" in message for message in messages))
 
     def test_invalid_manifest_example_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

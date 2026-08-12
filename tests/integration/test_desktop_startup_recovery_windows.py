@@ -188,15 +188,22 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
     fresh_manager = CaseWorkspaceManager(profile_root=profile, quota=_quota())
     composition = _Composition()
     composition_observations: list[bool] = []
+    resources = desktop.create_desktop_application_resource_context()
+    policy_observations: list[object] = []
 
     def compose(*_args: object, **_kwargs: object) -> _Composition:
         composition_observations.append(stale_temp.exists())
+        assert _kwargs["heavy_operations"] is resources.heavy_operations
         return composition
 
-    monkeypatch.setattr(desktop, "_desktop_worker_config", object)
+    def worker_config(policy: object) -> object:
+        policy_observations.append(policy)
+        return object()
+
+    monkeypatch.setattr(desktop, "_desktop_worker_config", worker_config)
     monkeypatch.setattr(desktop, "create_desktop_worker_composition", compose)
 
-    backend = desktop._build_backend(fresh_manager)
+    backend = desktop._build_backend(fresh_manager, resources=resources)
     try:
         result = backend.startup_recovery_result
         assert result.scanned_cases == 1
@@ -205,6 +212,7 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
         assert result.cases[0].released_bytes == len(b"synthetic-leftover-work")
         assert not stale_temp.exists()
         assert composition_observations == [False]
+        assert policy_observations == [resources.resource_policy]
     finally:
         backend.shutdown()
 

@@ -19,6 +19,11 @@ A pass approves the repository to start PWS-0101. It does not approve document p
 isolation, a renderer, OCR, a UI, export, permanent redaction, an installer, a resolved release
 inventory, or an SBOM. Those controls and claims remain with their named future tasks and gates.
 
+Historical note (2026-08-12): PWS-D041 and
+[ADR 0007](../adr/0007-low-resource-budgets.md) retired the physical reference-profile contract and
+its commands. References below describe evidence accepted at the 2026-08-02 M0 review; they do not
+create a current hardware gate or certify a two-core/4-GiB/integrated-GPU/HDD machine.
+
 Authoritative sources for this review are [ROADMAP.md](../../ROADMAP.md),
 [TASKS.yaml](../../TASKS.yaml), [DECISIONS.md](../../DECISIONS.md), the
 [quality workflow](../development/quality-gates.md), the
@@ -31,7 +36,7 @@ Authoritative sources for this review are [ROADMAP.md](../../ROADMAP.md),
 
 | Item | Review value | Interpretation |
 |---|---|---|
-| Operating system | Windows 11 build 26200, x86-64 | Local review workstation; not the constrained reference machine |
+| Operating system | Windows 11 build 26200, x86-64 | Local review workstation; no physical-hardware certification claim |
 | Python | CPython 3.14.6, 64-bit | Supported pinned minor |
 | uv | 0.11.32 | Exact project-manager pin |
 | Git | 2.55.0.windows.3 | Meets the 2.45 minimum |
@@ -39,9 +44,9 @@ Authoritative sources for this review are [ROADMAP.md](../../ROADMAP.md),
 | GitHub Actions | `windows-2025` | Exact-revision push and pull-request runs passed |
 | Product engines | None | No PDF, image, renderer, OCR, UI, or installer runtime is admitted in M0 |
 
-The local machine exposes eight logical processors and about 16.5 GB RAM. The reference profile
-still defines two processors, 4,096 MiB RAM, integrated graphics, limited storage, and an HDD
-scenario. Its M0 workload is record-only and contains no guessed product target.
+The local machine exposed eight logical processors and about 16.5 GB RAM. The then-current
+reference profile was record-only and contained no product target; it has since been superseded by
+the constrained software-resource policy.
 
 ## Prerequisite task review
 
@@ -90,7 +95,7 @@ example to fail for its reviewed stable code.
 | Contract | Positive evidence | Intended-negative evidence |
 |---|---|---|
 | Task graph | Canonical eighty-task graph | Invalid schema date and dependency cycle in the five-case quality self-test; broader unit mutation coverage |
-| Reference profile | Canonical Windows profile and deterministic workload | Boundary and malformed-profile unit coverage; no product threshold is inferred |
+| Retired reference profile | Historical canonical Windows profile and deterministic workload | M0 schema evidence only; superseded by PWS-D041 |
 | Case manifest v1 | Two canonical synthetic manifests | Eleven fixtures plus generated invalid reference, geometry, replay, version, and path cases |
 | Declarative template v1 | One canonical synthetic template | Seven fixtures plus injection, lifecycle, reference, version, and inert side-effect cases |
 | Worker RPC v1 | Fifteen canonical messages and full conversations | Twenty-seven fixtures plus malformed, oversized, state, correlation, path, version, and leakage cases |
@@ -109,9 +114,9 @@ process containment, filesystem confinement, or egress denial; PWS-0107 owns tho
 | `py -3.14 tools/dev.py validate-fixtures` | Pass: seventeen deterministic fixtures, 50,489 bytes, 404 historical blobs, 181 index blobs, and 188 working files |
 | `py -3.14 tools/dev.py validate-task-graph` | Pass: eighty tasks, 238 dependencies, nine milestones, forty decisions |
 | `py -3.14 tools/dev.py validate-docs` | Pass: local links, references, twenty-eight threats, owner mappings, and planned tests |
-| `py -3.14 tools/dev.py validate-reference-profile` | Pass: two-core, 4,096-MiB, integrated-graphics, limited-storage, and HDD profiles |
+| Retired `validate-reference-profile` command | Historical pass at the M0 evidence revision; command removed by PWS-0115 |
 | `py -3.14 tools/dev.py quality-self-test` | Pass: all five deliberate format, type, schema, cycle, and staged-binary secret violations rejected and removed |
-| `py -3.14 tools/dev.py benchmark-reference` | Pass: deterministic two-file local-smoke record; no product target evaluated |
+| Retired `benchmark-reference` command | Historical deterministic local-smoke record; command removed by PWS-0115 |
 | `uv sync --locked` in a fresh SSH clone | Pass: twenty-two locked packages installed at the exact evidence revision |
 | `py -3.14 tools/dev.py check` in that clone | Pass: 56-file format/lint, twelve-layer boundaries, strict typing, 256 unit, three integration, 103 security with two disclosed local privilege skips, two accessibility tests, all validators/scans, and five negative self-tests |
 | GitHub Actions local-equivalent suite | Pass: evidence-baseline [push run 30728665451](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728665451) and [pull-request run 30728666356](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728666356), plus review-state [push run 30728984177](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728984177) and [pull-request run 30728985626](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/30728985626); hosted Windows passed all 105 security tests without skips |

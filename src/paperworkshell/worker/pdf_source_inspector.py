@@ -41,6 +41,7 @@ from paperworkshell.worker.client.models import (
     WorkerOperationResultSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationLease
 from paperworkshell.worker.protocol.models import (
     PDF_INSPECT_CAPABILITY,
     PDF_INSPECT_RESULT_HANDLE_PARAMETER,
@@ -178,7 +179,14 @@ class PdfInspectionBrokerPolicy:
 class BrokeredPdfSourceInspector:
     """Inspect one sealed PDF with exact handles and a fresh worker generation."""
 
-    __slots__ = ("_broker", "_id_factory", "_pipe_factory", "_policy", "_worker")
+    __slots__ = (
+        "_broker",
+        "_heavy_operations",
+        "_id_factory",
+        "_pipe_factory",
+        "_policy",
+        "_worker",
+    )
 
     def __init__(
         self,
@@ -186,11 +194,13 @@ class BrokeredPdfSourceInspector:
         broker: PreparedSourceHandleBroker,
         policy: PdfInspectionBrokerPolicy,
         *,
+        heavy_operations: HeavyOperationCoordinator,
         pipe_factory: ResultPipeFactory = WindowsResultPipe.create,
         id_factory: Callable[[], UUID] = uuid4,
     ) -> None:
         if (
             type(policy) is not PdfInspectionBrokerPolicy
+            or type(heavy_operations) is not HeavyOperationCoordinator
             or not callable(pipe_factory)
             or not callable(id_factory)
         ):
@@ -198,6 +208,7 @@ class BrokeredPdfSourceInspector:
         self._worker = worker
         self._broker = broker
         self._policy = policy
+        self._heavy_operations = heavy_operations
         self._pipe_factory = pipe_factory
         self._id_factory = id_factory
 
@@ -265,7 +276,10 @@ class BrokeredPdfSourceInspector:
         """Return one correlated typed report after the worker tree is terminated."""
 
         try:
-            return self._inspect_structural(source, deadline=deadline, cancellation=cancellation)
+            with self._acquire_heavy_operation(deadline, cancellation):
+                return self._inspect_structural(
+                    source, deadline=deadline, cancellation=cancellation
+                )
         except PdfInspectionError, SourceIngestError:
             raise
         except WorkerClientError as error:
@@ -277,6 +291,17 @@ class BrokeredPdfSourceInspector:
             reject_pdf_inspection(PdfInspectionErrorCode.WORKER_FAILED, "broker.worker")
         except Exception:
             reject_pdf_inspection(PdfInspectionErrorCode.INTERNAL_ERROR, "broker.operation")
+
+    def _acquire_heavy_operation(
+        self,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> HeavyOperationLease:
+        while True:
+            lease = self._heavy_operations.try_acquire(self._policy.pump_interval_seconds)
+            if lease is not None:
+                return lease
+            _require_active(deadline, cancellation)
 
     def _inspect_structural(
         self,

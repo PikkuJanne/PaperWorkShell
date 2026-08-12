@@ -51,6 +51,7 @@ from paperworkshell.ui.backend import (
 )
 from paperworkshell.ui.window import PaperWorkShellWindow
 from paperworkshell.worker.desktop_composition import create_desktop_worker_composition
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 
 FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -215,6 +216,7 @@ def test_live_composition_imports_and_renders_bounded_organizer_previews(tmp_pat
         prepared_sources=source_store,
         committed_pages=source_store,
         thumbnail_cache=cache,
+        heavy_operations=HeavyOperationCoordinator(1),
     )
     backend = OrganizerBackend(
         CaseLifecycleService(WindowsCaseLifecycleStore(manager)),

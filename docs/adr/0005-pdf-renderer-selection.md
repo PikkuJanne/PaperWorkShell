@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-05
+- Resource-contract note: PWS-D041/ADR 0007 supersede hardware attestations as current gate evidence
 - Task: PWS-0106
 - Decisions: PWS-D012, PWS-D013, PWS-D017, PWS-D019, PWS-D034
 - Architecture: [PDF page-rendering contract](../architecture/pdf-page-rendering.md)
@@ -154,10 +155,11 @@ work and is not implied by this ADR.
 
 ### Same-corpus Windows comparison
 
-Both candidates ran through fresh zero-capability AppContainer workers under the production Job
-Object, the same two-logical-processor affinity, 4,096 MiB attestation, integrated-graphics
-attestation, synthetic corpus, and canonical RGBA8-white output contract. The measurements are
-nanoseconds:
+Both candidates historically ran through fresh zero-capability AppContainer workers under the
+production Job Object, the same two-logical-processor affinity, operator-supplied memory/graphics
+labels, synthetic corpus, and canonical RGBA8-white output contract. Those labels were part of the
+selection record but did not prove physical equivalence and are not a current gate. The
+measurements are nanoseconds:
 
 | Candidate | Fidelity and stable outcomes | Warm p50 / p95 / max | Cold import / open / first page | Peak process / Job bytes | Cooperative cancel / hard Job termination |
 |---|---|---:|---:|---:|---:|
@@ -171,11 +173,16 @@ document content, source path, filename, user identity, machine identity, or nat
 Cooperative cancellation is measured only at the documented between-render checkpoint; it does not
 claim interruption of an in-flight native render.
 
-This was a **record-only local-smoke selection run**, not a product performance target or a prepared
-limited-storage/HDD qualification. The complete sanitized JSON result was reviewed locally but is
+This was a **record-only local-smoke selection run**, not a product performance target or
+physical-device qualification. The complete sanitized JSON result was reviewed locally but is
 not committed; the repository commits the versioned workload, exact corpus/golden bindings, this
 decision record, and reproducible command instead. Neither ordinary CI nor this ADR treats mutable
 host timing as a release threshold.
+
+Current reruns use the workload's software-enforced renderer budget: a two-processor child affinity
+mask, 1.25-GiB process and Job memory limits, and one-process Job containment. The report records
+those enforced limits and measured peaks without a reference-environment section, physical scenario
+identifier, hardware-equivalence claim, or operator attestation.
 
 The comparison does not establish one universal performance winner: Qt imported faster and used
 slightly less peak memory, while pypdfium2 opened and rendered faster. pypdfium2 is selected because

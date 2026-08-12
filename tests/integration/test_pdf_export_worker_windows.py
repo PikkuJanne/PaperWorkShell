@@ -49,6 +49,7 @@ from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsPr
 from paperworkshell.worker.client.client import WorkerClient
 from paperworkshell.worker.client.models import WorkerLifecyclePhase, WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
     PdfExportBrokerPolicy,
@@ -253,6 +254,7 @@ def test_live_export_is_repeatable_verified_recorded_and_preserves_source(
     broker = BrokeredPdfExporter(
         worker,
         _broker_policy(),
+        heavy_operations=HeavyOperationCoordinator(1),
         id_factory=_SequentialUuidFactory(0x41200000),
     )
     manifests = WindowsManifestRepository(
@@ -369,7 +371,11 @@ def test_live_worker_termination_never_publishes_destination(
     service = PdfExportService(
         manifests,
         sources,
-        BrokeredPdfExporter(worker, _broker_policy()),
+        BrokeredPdfExporter(
+            worker,
+            _broker_policy(),
+            heavy_operations=HeavyOperationCoordinator(1),
+        ),
         WindowsVerifiedPdfDestination(),
         PdfExportHistoryService(history_repository, manifests),
         WindowsPdfExportRetryRepository(manager),

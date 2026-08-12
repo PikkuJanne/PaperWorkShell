@@ -933,6 +933,18 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
                 "0" * 64,
             ),
+            (
+                "43f79db620ce09529a67572a5de87aec4065b95f11ba6e5918db557f943a7eac",
+                "1" * 64,
+            ),
+            (
+                "623338ff5a9caab476f9e80ccc40c28c194208f4bc5d8e51eac7fca792e2e969",
+                "2" * 64,
+            ),
+            (
+                "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+                "3" * 64,
+            ),
             ("PWS_QPDF_EXECUTABLE=$qpdf", "PATH=$qpdf"),
             ("$version = (& $qpdf --version)[0]", "$version = (& $qpdf --help)[0]"),
         )
@@ -1182,13 +1194,13 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "DEPENDENCY_REPOSITORY_INPUT_INVALID",
             ),
             (
-                "    timeout-minutes: 45",
-                "    timeout-minutes: 44",
+                "    timeout-minutes: 90",
+                "    timeout-minutes: 89",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (
-                "    timeout-minutes: 45",
-                "    timeout-minutes: 45\n    permissions:\n      contents: write\n      id-token: write",
+                "    timeout-minutes: 90",
+                "    timeout-minutes: 90\n    permissions:\n      contents: write\n      id-token: write",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (
@@ -1205,9 +1217,21 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (
-                "          Invoke-WebRequest -Uri $uri -OutFile $archive",
+                "              Invoke-WebRequest -Uri $uri -OutFile $archive "
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
                 '          $uri = "https://example.invalid/unreviewed.zip"\n'
-                "          Invoke-WebRequest -Uri $uri -OutFile $archive",
+                "              Invoke-WebRequest -Uri $uri -OutFile $archive "
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+                "-ConnectionTimeoutSeconds 300 -OperationTimeoutSeconds 600",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "          $maximumAttempts = 3",
+                "          $maximumAttempts = 300",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (

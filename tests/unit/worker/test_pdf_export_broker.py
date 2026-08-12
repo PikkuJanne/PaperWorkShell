@@ -39,6 +39,7 @@ from paperworkshell.worker.client.models import (
     WorkerProgressSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_export_broker import (
     MAX_PDF_EXPORT_CANDIDATE_READ_BYTES,
     PDF_EXPORT_VERIFICATION_PIXELS,
@@ -618,6 +619,7 @@ class _System:
         self.exporter = BrokeredPdfExporter(
             cast(PdfExportWorkerCoordinator, self.worker),
             self.policy,
+            heavy_operations=HeavyOperationCoordinator(1),
             pipe_factory=pipe_factory,
             plan_buffer_factory=plan_factory,
             output_buffer_factory=output_factory,
@@ -654,6 +656,19 @@ def _error(
             progress=progress,
         )
     return raised.value
+
+
+def test_permanent_revocation_fails_before_allocating_or_launching() -> None:
+    system = _System()
+
+    system.exporter._revoke_permanently()
+    error = _error(system)
+
+    assert system.exporter.revoked
+    assert error.code is PdfExportErrorCode.WORKER_FAILED
+    assert system.events == []
+    assert system.output_factory_calls == 0
+    assert system.pipe_factory_calls == 0
 
 
 def test_success_terminates_revalidates_authenticates_then_streams_candidate() -> None:

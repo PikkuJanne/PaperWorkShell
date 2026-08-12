@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.58",
+  "bundle_version": "0.1.62",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -14,18 +14,18 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 30519,
-      "sha256": "bd5b6967606032a32e8c639cc5371d9e48695b7d3df34fe78cfacda39a868b63"
+      "bytes": 31990,
+      "sha256": "d0d68804bb4be4de7b21e567219af282ad52c78ea2eaaf8c525b2e129b8733d5"
     },
     {
       "path": "DECISIONS.md",
-      "bytes": 22411,
-      "sha256": "9145af1f28a0d48c383b469e4a800d1b32e04f0293b6a331bef186f22c38056b"
+      "bytes": 24053,
+      "sha256": "853429b106c53103e81a4b65ff9933d81419db9392eeff35e5be366c38ab03c6"
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 175349,
-      "sha256": "ca5aec6ed41d73b32be148cddc45c63e110f0677d2a0c67ba6fdae565981d3b7"
+      "bytes": 183037,
+      "sha256": "937ba9e4139928832e707eaad03ddb58b13aec9e80e560e05989ce876cb163a9"
     },
     {
       "path": "TASKS.schema.json",
@@ -34,34 +34,34 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 15017,
-      "sha256": "efeac16c36a80f5fc2a3664883b2cc6d2892f97faf19de7d1e73d9e6b70bad1c"
+      "bytes": 16140,
+      "sha256": "2b24f8de1b7785e5c42ee4a3b44b6a0886dc7820acc87e6e0b148155e0114784"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 11592,
-      "sha256": "cd1ed70cb3495c7b2e21d20e7f7d15c63a447cf19775f26d8d4f124a86d8627c"
+      "bytes": 13071,
+      "sha256": "db8266ea326bd976d6d0c62ac06f0aef9495935c03a54c563045e317b0863ce0"
     },
     {
       "path": "README.md",
-      "bytes": 23814,
-      "sha256": "ff19c8f4c94bbbf5a086c0c1f22fb8d03c027a09ec8f2f843c472abc41890ef6"
+      "bytes": 24367,
+      "sha256": "8e52bea0f23a2d9aa499455da2dab2bb51ad9a682f669076594ec73830fd9e3a"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 80,
-    "dependency_edge_count": 238,
+    "task_count": 81,
+    "dependency_edge_count": 240,
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0114"
+      "PWS-0201"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "Regenerated for the completed PWS-0113 desktop interruption evidence: a real offscreen PySide process was forcibly terminated after durable autosave checkpoint publication, a separate fresh process recovered and reopened the exact revision without changing source bytes or escaping the case root, the complete local quality suite passed at implementation checkpoint 67c2663, and PWS-0114 remains ready.",
+    "PWS-0115 and PWS-0114 are done: the accepted PWS-D041 constrained software-resource contract, focused failure paths, exact-revision canonical report, two-page derivative inspection, and final quality evidence pass. Physical low-end hardware was not tested and is optional/non-gating; PWS-0201 is the next ready task.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

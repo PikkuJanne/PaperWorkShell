@@ -190,6 +190,54 @@ class WorkerOperationResultSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkerResourceSnapshot:
+    """Path-free authoritative limits and memory peaks for one worker Job."""
+
+    process_memory_limit_bytes: int
+    job_memory_limit_bytes: int
+    peak_process_memory_used_bytes: int
+    peak_job_memory_used_bytes: int
+
+    def __post_init__(self) -> None:
+        limits = (
+            self.process_memory_limit_bytes,
+            self.job_memory_limit_bytes,
+        )
+        peaks = (
+            self.peak_process_memory_used_bytes,
+            self.peak_job_memory_used_bytes,
+        )
+        if any(
+            type(value) is not int or not 1 <= value <= MAX_SAFE_INTEGER for value in limits
+        ) or any(type(value) is not int or not 0 <= value <= MAX_SAFE_INTEGER for value in peaks):
+            reject_client(
+                WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                WorkerClientContext.RESOURCE,
+            )
+        if (
+            self.process_memory_limit_bytes > self.job_memory_limit_bytes
+            or self.peak_process_memory_used_bytes > self.process_memory_limit_bytes
+            or self.peak_job_memory_used_bytes > self.job_memory_limit_bytes
+            or self.peak_process_memory_used_bytes > self.peak_job_memory_used_bytes
+        ):
+            reject_client(
+                WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                WorkerClientContext.RESOURCE,
+            )
+
+    def is_monotonic_successor_of(self, previous: WorkerResourceSnapshot) -> bool:
+        """Return whether this is a later observation of the same retained Job."""
+
+        return (
+            type(previous) is WorkerResourceSnapshot
+            and self.process_memory_limit_bytes == previous.process_memory_limit_bytes
+            and self.job_memory_limit_bytes == previous.job_memory_limit_bytes
+            and self.peak_process_memory_used_bytes >= previous.peak_process_memory_used_bytes
+            and self.peak_job_memory_used_bytes >= previous.peak_job_memory_used_bytes
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class WorkerClientSnapshot:
     """A local-only immutable view that never queries the process or transport."""
 
@@ -203,6 +251,8 @@ class WorkerClientSnapshot:
     active_operation: WorkerOperationSnapshot | None
     last_result: WorkerOperationResultSnapshot | None
     last_failure: WorkerFailure | None
+    last_resource_snapshot: WorkerResourceSnapshot | None = None
+    last_cancellation_acknowledgement_ms: int | None = None
 
     def __post_init__(self) -> None:
         if type(self.generation) is not int or not 0 <= self.generation <= MAX_SAFE_INTEGER:
@@ -246,6 +296,22 @@ class WorkerClientSnapshot:
                 WorkerClientContext.STATE,
             )
         if self.last_failure is not None and type(self.last_failure) is not WorkerFailure:
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.STATE,
+            )
+        if (
+            self.last_resource_snapshot is not None
+            and type(self.last_resource_snapshot) is not WorkerResourceSnapshot
+        ):
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.STATE,
+            )
+        if self.last_cancellation_acknowledgement_ms is not None and (
+            type(self.last_cancellation_acknowledgement_ms) is not int
+            or not 0 <= self.last_cancellation_acknowledgement_ms <= MAX_SAFE_INTEGER
+        ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
                 WorkerClientContext.STATE,

@@ -251,3 +251,20 @@ Read TASKS.yaml and validate its graph. Read milestone gates, recent ADRs, and c
 
 Keep claims evidence-based and link each blocker or risk to a task, test, ADR, or gate report.
 ```
+
+---
+
+## 11. Resource-sensitive implementation or regression review
+
+```text
+Review or implement this PaperWorkShell resource-sensitive change: <CHANGE>
+Related task: <TASK_ID>
+
+Read DECISIONS.md, ROADMAP.md, TASKS.yaml, AGENTS.md, docs/performance/LOW_RESOURCE_POLICY.md, and the central ResourcePolicy before editing. Identify every affected memory, cache, queue, concurrency, process, pixel, I/O-chunk, temporary-space, heartbeat, cancellation, and cleanup budget.
+
+Prove that the selected normal and constrained profiles apply real enforced values rather than labels. Reject new whole-file reads of untrusted large inputs, eager all-page rendering, full-packet raster retention, unbounded queues/executors, per-page processes/threads, caches without byte limits, and temporary files outside approved scopes.
+
+Add the lowest-level deterministic regression first, including at least one budget/failure boundary. Run the relevant constrained-profile, low-disk/disk-full, slow-I/O, cancellation, recovery, worker-isolation, report-privacy, and architecture tests. Do not raise a budget merely to make a regression pass; diagnose retained memory/work, optimize, or reject oversized input first.
+
+Report measured software budgets honestly. Never describe the result as emulation or certification of a named CPU count, RAM size, GPU, SSD, HDD, VM, or physical computer unless that exact environment was actually tested. Physical-device smoke testing is optional and non-gating.
+```

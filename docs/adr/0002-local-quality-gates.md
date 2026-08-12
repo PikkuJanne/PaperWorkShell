@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-01
-- Amended: 2026-08-05 by PWS-0108 quality-gate maintenance
+- Amended: 2026-08-12 by PWS-0115 low-resource contract migration
 - Task: PWS-0003
 - Decisions: PWS-D003, PWS-D034, PWS-D035
 
@@ -11,8 +11,8 @@
 PaperWorkShell needs one reproducible Windows-first quality workflow before document parsers,
 fixture corpora, or UI dependencies expand the repository. The workflow must detect ordinary
 quality failures and secrets while keeping repository and fixture content local to the developer
-machine or ephemeral CI runner. The low-spec reference environment also needs a reproducible
-description without inventing performance promises before feature workloads exist.
+machine or ephemeral CI runner. Resource-sensitive feature work also needs reproducible,
+machine-independent limits without inventing physical-hardware equivalence.
 
 ## Decision
 
@@ -84,13 +84,10 @@ description without inventing performance promises before feature workloads exis
 5. GitHub Actions runs the same suite on `windows-2025` with read-only permissions. Checkout,
    setup-python, and setup-uv use full commit hashes. uv caching and all artifact/report uploads
    are disabled.
-6. The reference environment profile fixes two logical processors, 4096 MiB RAM, integrated
-   graphics, an at-most-8-GiB volume with at least 4 MiB free, and an HDD scenario. Its generated-I/O
-   harness records observations only. The versioned generator and expected per-file checksum pin
-   the workload across implementations. Reference runs compare Windows, architecture, native
-   process-affinity CPU allocation, capacity, and free-space observations; interpreter CPU-count
-   overrides are rejected. Memory allocation, integrated graphics, and HDD media remain explicit
-   attestations rather than inferences from mutable hosted CI.
+6. The original record-only physical reference profile is superseded by
+   [ADR 0007](0007-low-resource-budgets.md). Current gates use a central, versioned resource policy,
+   enforce it in production composition, and measure deterministic synthetic workloads against
+   numeric software budgets. Physical-device testing is optional and cannot be inferred from CI.
 
 ## Dependency and supply-chain record
 
@@ -139,17 +136,19 @@ development state. Git-aware enumeration covers source inputs while respecting `
 Rejected because duplicated command lists drift. The workflow calls the same dispatcher used
 locally.
 
-### Numeric performance thresholds in M0
+### Numeric performance thresholds before a product workload existed
 
-Rejected because no representative product workload has established them. The version-1 schema
-requires an empty product-target list and records measurements for later gate decisions.
+Originally rejected because no representative product workload had established them. PWS-0115 now
+adds budgets derived from the implemented vertical slice and safety limits; ADR 0007 governs those
+budgets and their amendment process.
 
 ## Consequences and residual risks
 
 - Developers need Git 2.45 or newer and exactly Gitleaks 8.30.1 in addition to the PWS-0001
   toolchain.
-- Hosted `windows-2025` images remain mutable and do not reproduce the two-core/4-GB/HDD profile.
-  Action commits and tool archives are pinned, while reference measurements remain separate.
+- Hosted `windows-2025` images remain mutable and do not prove any named physical configuration.
+  Action commits and tool archives are pinned; deterministic constrained-profile results remain
+  software-budget evidence only.
 - Gitleaks pattern matching can produce false positives. Any future PaperWorkShell allowlist must
   be narrow, reviewed, and tested; no baseline or broad fixture exclusion is accepted by this
   ADR. The PWS-0104 exception records the permitted model: one rule, one exact public test value,

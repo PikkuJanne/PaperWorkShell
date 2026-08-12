@@ -49,6 +49,7 @@ from paperworkshell.worker.pdf_thumbnail_profile import (
     PDF_THUMBNAIL_RENDERER_PROFILE_SHA256,
     PDF_THUMBNAIL_RENDERER_PROFILE_VERSION,
 )
+from paperworkshell.worker.private_temp import OsWorkerPrivateTempStorage
 from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CONTENT_KIND,
     CaseObjectReference,
@@ -724,7 +725,7 @@ def test_second_temporary_file_failure_closes_the_first_and_both_handles(
         return temporary
 
     monkeypatch.setattr(
-        "paperworkshell.worker.pdf_thumbnail_operation.tempfile.TemporaryFile",
+        "paperworkshell.worker.private_temp.tempfile.TemporaryFile",
         fail_second,
     )
     try:
@@ -744,6 +745,117 @@ def test_second_temporary_file_failure_closes_the_first_and_both_handles(
         _close_if_open(source_handle)
         _close_if_open(cache_handle)
     assert _output_is_empty(cache_path)
+
+
+class _DiskFullStream:
+    """Write a real partial private file, then raise one content-bearing ENOSPC."""
+
+    def __init__(self, stream: BinaryIO) -> None:
+        self._stream = stream
+
+    def __enter__(self) -> _DiskFullStream:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def write(self, payload: bytes, /) -> int:
+        self._stream.write(payload[: max(1, len(payload) // 2)])
+        raise OSError(28, "sensitive worker-private disk-full detail")
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def __getattr__(self, member: str) -> object:
+        return getattr(self._stream, member)
+
+
+class _DiskFullOnceTempStorage:
+    def __init__(self) -> None:
+        self._storage = OsWorkerPrivateTempStorage(
+            available_bytes_probe=lambda _root: 16 * 1024 * 1024,
+            minimum_free_space_reserve_bytes=0,
+        )
+        self._anonymous_opens = 0
+
+    def require_capacity(self, root: Path, byte_count: int) -> None:
+        self._storage.require_capacity(root, byte_count)
+
+    def open_anonymous(self, root: Path) -> BinaryIO:
+        stream = self._storage.open_anonymous(root)
+        self._anonymous_opens += 1
+        if self._anonymous_opens == 2:
+            return cast(BinaryIO, _DiskFullStream(stream))
+        return stream
+
+    def open_named(self, root: Path, *, suffix: str) -> tuple[BinaryIO, Path]:
+        return self._storage.open_named(root, suffix=suffix)
+
+
+class _WorkerStyleSyntheticRenderer(_SyntheticRenderer):
+    def render(
+        self,
+        source: BinaryIO,
+        destination: BinaryIO,
+        request: PdfPageRenderRequest,
+        limits: PdfPageRenderLimits,
+        control: PdfRenderControl,
+    ) -> PdfPageRenderResult:
+        try:
+            return super().render(source, destination, request, limits, control)
+        except OSError:
+            raise PdfRenderError(
+                PdfRenderErrorCode.DESTINATION_FAILED,
+                "render.destination_write",
+            ) from None
+
+
+def test_mid_render_private_disk_full_cleans_partial_and_fresh_retry_recovers(
+    tmp_path: Path,
+) -> None:
+    temp_root = tmp_path / "worker-profile" / "Temp"
+    storage = _DiskFullOnceTempStorage()
+    first_output, first_source, first_cache = _brokered_handles(tmp_path)
+    first_renderer = _WorkerStyleSyntheticRenderer()
+
+    try:
+        with pytest.raises(PdfThumbnailError) as caught:
+            WindowsPdfThumbnailAdapter(
+                renderer=cast(PdfPageRenderer, first_renderer),
+                private_temp_storage=storage,
+            ).render_to_cache(
+                _context(_source_reference()),
+                _request(first_source, first_cache),
+            )
+    finally:
+        _close_if_open(first_source)
+        _close_if_open(first_cache)
+
+    assert caught.value.code is PdfThumbnailErrorCode.DESTINATION_FAILED
+    assert "sensitive" not in str(caught.value)
+    assert first_renderer.calls == 1
+    assert _output_is_empty(first_output)
+    assert temp_root.is_dir()
+    assert tuple(temp_root.iterdir()) == ()
+
+    recovered_output, recovered_source, recovered_cache = _brokered_handles(tmp_path)
+    recovered_renderer = _SyntheticRenderer()
+    try:
+        reference = WindowsPdfThumbnailAdapter(
+            renderer=cast(PdfPageRenderer, recovered_renderer),
+            private_temp_storage=storage,
+        ).render_to_cache(
+            _context(_source_reference()),
+            _request(recovered_source, recovered_cache),
+        )
+    finally:
+        _close_if_open(recovered_source)
+        _close_if_open(recovered_cache)
+
+    assert recovered_renderer.calls == 1
+    assert reference.expected_byte_size is not None
+    assert recovered_output.read_exact(reference.expected_byte_size)
+    assert tuple(temp_root.iterdir()) == ()
 
 
 @pytest.mark.parametrize(

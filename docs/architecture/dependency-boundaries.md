@@ -47,7 +47,7 @@ worker host -> domain
 `tools/check_import_boundaries.py` parses source files without importing them and applies these rules:
 
 1. `domain` may import only Python standard-library modules, the root identity package, and `paperworkshell.domain` modules. All other first- and third-party imports are rejected.
-2. UI direction is `paperworkshell.__main__` → `ui` → `app`; `app` cannot import either higher tier, and `ui` cannot import the composition entrypoint. All three must not directly import `paperworkshell.pdf`, `paperworkshell.imaging`, or `paperworkshell.ocr`. They may import the passive `worker` namespace and explicit `worker.client` or `worker.protocol` modules, but not worker-host modules. One exact composition exception permits only `paperworkshell.__main__` to import `paperworkshell.worker.desktop_composition`; it does not grant application or UI modules general worker-host access.
+2. UI direction is `paperworkshell.__main__` → `ui` → `app`; `app` cannot import either higher tier, and `ui` cannot import the composition entrypoint. All three must not directly import `paperworkshell.pdf`, `paperworkshell.imaging`, or `paperworkshell.ocr`. They may import the passive `worker` namespace and explicit `worker.client` or `worker.protocol` modules, but not worker-host modules. One exact worker-composition exception permits only `paperworkshell.__main__` to import `paperworkshell.worker.desktop_composition`; that GUI-loaded client composition may not import document adapters transitively. One exact derivative-publication exception permits that same composition root to import only `paperworkshell.export.pdf_destination`; neither exception grants application or UI modules general implementation access.
 3. Worker, adapter, and service packages must not import `paperworkshell.app` or `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
 4. Only the declared package layers are accepted. Adding another top-level layer requires updating this document, the checker, and positive/negative tests in the task that introduces it.
 5. Third-party imports remain denied unless the owning task admits one exact package and the
@@ -195,8 +195,10 @@ QtWidgets modules there. Toolkit objects do not cross into `app`, `domain`, work
 document adapters. The UI receives only typed application state and the PWS-0108 validated RGBA8
 display contract; it does not parse PDFs, open arbitrary paths, or import Qt PDF. The exact
 `__main__` → `worker.desktop_composition` exception is the desktop composition root, not a new
-application/UI dependency direction. Artifact, LGPL, source, and Windows packaging consequences are
-recorded in [ADR 0006](../adr/0006-pyside6-ui-runtime.md).
+application/UI dependency direction. PWS-0114 adds only the exact
+`__main__` → `export.pdf_destination` publication seam needed to wire the existing structural
+application port; all other export implementations remain prohibited. Artifact, LGPL, source, and
+Windows packaging consequences are recorded in [ADR 0006](../adr/0006-pyside6-ui-runtime.md).
 
 PWS-0108 adds pure cache-key/artifact/snapshot/progress contracts in `domain.pdf_thumbnails` and
 serial, toolkit-free batch orchestration in `app.pdf_thumbnails`. The application depends only on a

@@ -103,15 +103,19 @@ next safe action; it does not include source paths or filenames and disappears a
 state contains committed pages unless a terminal import outcome still needs attention.
 
 Active PDF pages receive bounded 240 by 320 pixel RGBA8 preview requests on demand. After a
-debounced list-layout pass, the GUI considers intersecting rows, the keyboard-selected row, and two
-overscan rows on either side. It retains at most 12 detached Qt pixmaps and requests at most eight
-pages per backend batch. Rows are prioritized deterministically, but every emitted subset remains
-in authoritative organizer order. Scrolling or keyboard selection can load another bounded batch;
-least-recently-used pixmaps outside the current window are evicted while the existing case-scoped
-disk cache remains reusable.
+debounced list-layout pass, the GUI considers intersecting rows, the keyboard-selected row, and the
+resource policy's adjacent-row prefetch radius (currently one). It requests no more than the
+policy batch cap: eight pages under the normal profile and three under the constrained profile.
+Rows are prioritized deterministically, but every emitted subset remains in authoritative organizer
+order. Scrolling or keyboard selection can load another bounded batch. Detached Qt pixmaps are
+charged by decoded pixel bytes to a deterministic least-recently-used cache (256 MiB normal,
+64 MiB constrained); eviction returns the row to “not loaded,” while the constrained profile's
+separate case-scoped disposable-thumbnail share is also 64 MiB so the combined cache ceiling is
+128 MiB. The case-scoped disk cache
+remains reusable.
 
 The toolkit-free organizer validates each preview subset as an exact tuple of unique, active UUIDv4
-page IDs within the eight-page cap before constructing a worker request. Its outer shared deadline
+page IDs within the selected policy cap before constructing a worker request. Its outer shared deadline
 scales only with PDF pages actually requested. The worker renders and validates those pages through
 pypdfium2 and the existing thumbnail cache, and the GUI accepts only exact ordered result
 correlation before converting fixed RGBA8 snapshots to detached `QImage`/`QPixmap` objects.
@@ -120,11 +124,12 @@ return rows to “not loaded,” while a failed batch remains “failed” inste
 Rotation invalidates retained pixels before autosave suppresses new preview work. JPEG and PNG
 preview decode belongs to PWS-0201, so those rows remain explicitly “Preview unavailable.”
 
-The initial product limits selected at the composition root are 512 MiB per source, 1,000 pages,
-32,768 pixels per image dimension, 268,435,456 image pixels, 4 GiB per case, 512 MiB cache, and
-1 GiB temporary case storage. Document-worker operations run with one child process, a 768 MiB
-process limit, a 1 GiB job limit, bounded CPU/wall time, no network capability, and case-scoped
-brokered handles.
+The composition root selects one immutable, versioned resource policy and applies it to source/page,
+pixel, case/cache/temp, preview-cache, worker-memory/CPU/process, and cancellation limits. The
+constrained profile lowers actual composition values rather than changing a report label. PDFium
+serializes the full-resolution allocation boundary and accepts one active page buffer, matching both
+current policy profiles. Document workers retain bounded CPU/wall time, no network capability, and
+case-scoped brokered handles.
 
 ## Keyboard and accessibility contract
 

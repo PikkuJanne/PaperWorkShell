@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
-from typing import Self, cast
+from typing import Any, Self, cast
 from uuid import UUID
 
 import pytest
@@ -337,6 +337,10 @@ class _Destination:
         self.cancellation: CancellationProbe | None = None
         self.deadline: DeadlineProbe | None = None
 
+    def require_capacity(self, destination: Path, *, estimated_byte_size: int) -> None:
+        assert destination == DESTINATION
+        assert estimated_byte_size == 91
+
     def commit(
         self,
         destination: Path,
@@ -358,6 +362,24 @@ class _Destination:
         assert source.read(1) == b""
         assert expected_byte_size == len(PAYLOAD)
         assert expected_sha256 == hashlib.sha256(PAYLOAD).hexdigest()
+
+
+class _CapacityDestination(_Destination):
+    def __init__(self, events: list[str]) -> None:
+        super().__init__(events)
+        self.capacity_error: BaseException | None = None
+
+    def require_capacity(self, destination: Path, *, estimated_byte_size: int) -> None:
+        assert destination == DESTINATION
+        assert estimated_byte_size == 91
+        self.events.append("destination.capacity")
+        if self.capacity_error is not None:
+            raise self.capacity_error
+
+
+class _CommitOnlyDestination:
+    def commit(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
 
 
 class _History:
@@ -597,6 +619,70 @@ def _export(
         cancellation=cancellation,
         progress=sink,
     )
+
+
+def test_destination_without_capacity_contract_is_rejected_at_composition() -> None:
+    stack = _stack()
+
+    with pytest.raises(PdfExportError) as raised:
+        PdfExportService(
+            stack.manifests,
+            stack.sources,
+            stack.broker,
+            cast(Any, _CommitOnlyDestination()),
+            stack.history,
+            stack.retries,
+        )
+
+    assert raised.value.code is PdfExportErrorCode.MODEL_INVALID
+
+
+def test_capacity_preflight_runs_before_history_source_or_worker_activity() -> None:
+    stack = _stack()
+    destination = _CapacityDestination(stack.events)
+    stack.destination = destination
+    stack.service = PdfExportService(
+        stack.manifests,
+        stack.sources,
+        stack.broker,
+        destination,
+        stack.history,
+        stack.retries,
+        clock=stack.clock,
+        id_factory=lambda: EXPORT_ID,
+    )
+    destination.capacity_error = PdfExportError(
+        PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED,
+        "export.destination_capacity",
+    )
+
+    with pytest.raises(PdfExportError) as raised:
+        _export(stack)
+
+    assert raised.value.code is PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED
+    assert stack.events == ["manifest.load", "destination.capacity"]
+    assert stack.sources.calls == 0
+
+
+def test_capacity_preflight_preserves_process_control_exceptions() -> None:
+    stack = _stack()
+    destination = _CapacityDestination(stack.events)
+    stack.service = PdfExportService(
+        stack.manifests,
+        stack.sources,
+        stack.broker,
+        destination,
+        stack.history,
+        stack.retries,
+        clock=stack.clock,
+        id_factory=lambda: EXPORT_ID,
+    )
+    destination.capacity_error = KeyboardInterrupt()
+
+    with pytest.raises(KeyboardInterrupt):
+        _export(stack)
+
+    assert stack.events == ["manifest.load", "destination.capacity"]
 
 
 def test_full_success_orders_progress_cleanup_destination_and_history() -> None:

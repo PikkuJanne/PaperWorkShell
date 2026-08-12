@@ -41,15 +41,21 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "validate-dependencies",
             "validate-task-graph",
             "validate-docs",
-            "validate-reference-profile",
+            "validate-m1-benchmark-report",
             "validate-pdf-renderer-benchmark",
             "scan-secrets",
             "quality-self-test",
-            "benchmark-reference",
+            "run-m1-vertical-slice",
             "benchmark-pdf-renderers",
         }
 
         self.assertLessEqual(required, set(COMMANDS))
+        for retired in (
+            "validate-reference-profile",
+            "benchmark-reference",
+            "benchmark-m1-vertical-slice",
+        ):
+            self.assertNotIn(retired, COMMANDS)
 
     def test_check_order_is_derived_from_registry(self) -> None:
         expected = tuple(
@@ -58,7 +64,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
 
         self.assertEqual(expected, CHECK_COMMANDS)
         self.assertNotIn("format", CHECK_COMMANDS)
-        self.assertNotIn("benchmark-reference", CHECK_COMMANDS)
+        self.assertNotIn("run-m1-vertical-slice", CHECK_COMMANDS)
         self.assertNotIn("benchmark-pdf-renderers", CHECK_COMMANDS)
         self.assertNotIn("generate-fixtures", CHECK_COMMANDS)
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)

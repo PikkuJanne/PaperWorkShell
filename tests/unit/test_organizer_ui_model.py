@@ -11,7 +11,9 @@ from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from paperworkshell.app.organizer import OrganizerPageView, OrganizerViewState
+from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
+from paperworkshell.ui.window import _bounded_preview_rows
 
 CASE_ID = UUID("70000000-0000-4000-8000-000000000001")
 PAGE_ONE = UUID("71000000-0000-4000-8000-000000000001")
@@ -96,7 +98,11 @@ def test_rotation_invalidates_stale_pixels_before_autosave_preview_suppression()
 
 def test_lru_eviction_and_terminal_loading_states_remain_truthful() -> None:
     _application()
-    model = OrganizerPageListModel()
+    image = QImage(8, 12, QImage.Format.Format_RGBA8888)
+    image.fill(QColor("white"))
+    preview = QPixmap.fromImage(image)
+    preview_bytes = preview.width() * preview.height() * ((preview.depth() + 7) // 8)
+    model = OrganizerPageListModel(maximum_preview_cache_bytes=preview_bytes * 2)
     pages = tuple(
         OrganizerPageView(
             UUID(f"71000000-0000-4000-8000-{number:012d}"),
@@ -107,23 +113,27 @@ def test_lru_eviction_and_terminal_loading_states_remain_truthful() -> None:
         for number in range(1, 5)
     )
     model.set_organizer_state(_state(*pages))
-    image = QImage(8, 12, QImage.Format.Format_RGBA8888)
-    image.fill(QColor("white"))
     for page in pages[:3]:
-        model.set_preview(page.page_id, QPixmap.fromImage(image))
+        model.set_preview(page.page_id, preview.copy())
     model.touch_previews((pages[0].page_id,))
 
-    evicted = model.evict_previews(2, protected_page_ids=(pages[2].page_id,))
-
-    assert evicted == (pages[1].page_id,)
+    assert model.preview_state(pages[0].page_id) is PreviewState.NOT_LOADED
     assert model.retained_preview_count == 2
-    assert model.preview_state(pages[1].page_id) is PreviewState.NOT_LOADED
-    assert model.data(model.index(1, 0), int(Qt.ItemDataRole.DecorationRole)) is None
+    assert model.retained_preview_bytes == preview_bytes * 2
+    assert model.maximum_preview_cache_bytes == preview_bytes * 2
 
-    model.evict_previews(
-        1,
-        protected_page_ids=(pages[0].page_id, pages[2].page_id),
+    model.touch_previews((pages[1].page_id,))
+    model.set_preview(pages[3].page_id, preview.copy())
+
+    assert model.preview_state(pages[2].page_id) is PreviewState.NOT_LOADED
+    assert model.preview_state(pages[1].page_id) is PreviewState.READY
+    assert model.preview_state(pages[3].page_id) is PreviewState.READY
+
+    evicted = model.evict_previews(
+        preview_bytes,
+        protected_page_ids=(pages[3].page_id,),
     )
+    assert evicted == (pages[1].page_id,)
     assert model.retained_preview_count == 1
 
     model.set_preview_loading((pages[3].page_id,))
@@ -136,3 +146,19 @@ def test_lru_eviction_and_terminal_loading_states_remain_truthful() -> None:
     assert model.reset_failed_preview(pages[3].page_id)
     assert model.preview_state(pages[3].page_id) is PreviewState.NOT_LOADED
     assert not model.reset_failed_preview(pages[3].page_id)
+
+
+def test_constrained_preview_window_prefetches_at_most_one_adjacent_row() -> None:
+    policy = CONSTRAINED_RESOURCE_POLICY_V1
+
+    rows = _bounded_preview_rows(
+        20,
+        (8, 9),
+        9,
+        overscan_rows=policy.preview_prefetch_radius_pages,
+        maximum_count=policy.maximum_preview_request_pages,
+    )
+
+    assert {8, 9}.issubset(rows)
+    assert set(rows).issubset({7, 8, 9, 10})
+    assert len(rows) <= policy.maximum_preview_request_pages

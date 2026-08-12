@@ -37,7 +37,6 @@ from tools.pdf_renderer_benchmark import (
     OUTCOME_CLEANUP_FAILED,
     OUTCOME_DEPENDENCY_UNAVAILABLE,
     OUTCOME_PAGE_BOX_UNSUPPORTED,
-    BenchmarkAttestations,
     BenchmarkFailure,
     BenchmarkWorkload,
     ChildCapture,
@@ -216,10 +215,6 @@ class PdfRendererBenchmarkWorkloadTests(unittest.TestCase):
             ROOT / "benchmarks/pdf-renderer-windows-v1.json",
             destination / "benchmarks/pdf-renderer-windows-v1.json",
         )
-        shutil.copy2(
-            ROOT / "benchmarks/reference-windows-v1.json",
-            destination / "benchmarks/reference-windows-v1.json",
-        )
         shutil.copytree(
             ROOT / "tests/fixtures/synthetic/v1",
             destination / "tests/fixtures/synthetic/v1",
@@ -244,8 +239,14 @@ class PdfRendererBenchmarkWorkloadTests(unittest.TestCase):
         self.assertEqual(3, len(workload.outcome_cases))
         self.assertEqual(("pypdfium2", "qt-pdf"), tuple(r.renderer_id for r in workload.renderers))
         self.assertEqual(7, workload.measurement.warm_iterations)
-        self.assertEqual(2, workload.reference_logical_processors)
-        self.assertEqual(4 * 1024 * 1024 * 1024, workload.reference_memory_bytes)
+        self.assertEqual(
+            "paperworkshell-pdf-renderer-software-budget-v1",
+            workload.execution_budget_id,
+        )
+        self.assertEqual(2, workload.logical_processor_limit)
+        self.assertEqual(1_342_177_280, workload.process_memory_limit_bytes)
+        self.assertEqual(1_342_177_280, workload.job_memory_limit_bytes)
+        self.assertEqual(1, workload.maximum_processes)
 
         media_case = workload.semantic_cases[1]
         self.assertEqual("media", media_case.page_box)
@@ -276,8 +277,8 @@ class PdfRendererBenchmarkWorkloadTests(unittest.TestCase):
             text = workload_path.read_text(encoding="utf-8")
             workload_path.write_text(
                 text.replace(
-                    '  "schema_version": 1,',
-                    '  "schema_version": 1,\n  "schema_version": 1,',
+                    '  "schema_version": 2,',
+                    '  "schema_version": 2,\n  "schema_version": 2,',
                     1,
                 ),
                 encoding="utf-8",
@@ -325,6 +326,23 @@ class PdfRendererBenchmarkWorkloadTests(unittest.TestCase):
         self.assertIn("2 semantic comparisons", output.getvalue())
         self.assertNotIn(str(ROOT), output.getvalue())
 
+    def test_physical_profile_and_attestation_cli_flags_are_removed(self) -> None:
+        removed_arguments = (
+            ("--scenario", "local-smoke"),
+            ("--attest-memory-mib", "4096"),
+            ("--attest-graphics", "integrated"),
+            ("--attest-storage-media", "hdd-or-validated-emulation"),
+        )
+        for arguments in removed_arguments:
+            with (
+                self.subTest(arguments=arguments),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as raised,
+            ):
+                main(["benchmark", *arguments])
+
+            self.assertEqual(2, raised.exception.code)
+
     def test_benchmark_command_sanitizes_an_unexpected_exception(self) -> None:
         error_output = io.StringIO()
         private_detail = "C:\\private\\unexpected-renderer-detail"
@@ -336,15 +354,7 @@ class PdfRendererBenchmarkWorkloadTests(unittest.TestCase):
             ),
             redirect_stderr(error_output),
         ):
-            result = main(
-                [
-                    "benchmark",
-                    "--attest-memory-mib",
-                    "4096",
-                    "--attest-graphics",
-                    "integrated",
-                ]
-            )
+            result = main(["benchmark"])
 
         rendered = error_output.getvalue()
         report = json.loads(rendered)
@@ -501,32 +511,91 @@ class PdfRendererBenchmarkWorkloadTests(unittest.TestCase):
         self.assertEqual([committed], captured)
         read_bytes.assert_not_called()
 
-    @unittest.skipUnless(sys.platform == "win32", "reference benchmark requires Windows")
-    def test_complete_report_requires_exact_memory_and_graphics_attestations(self) -> None:
+    def test_software_execution_budget_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_bound_root(root)
+            workload_path = root / "benchmarks/pdf-renderer-windows-v1.json"
+            document = json.loads(workload_path.read_text(encoding="utf-8"))
+            document["execution_budget"]["job_memory_limit_bytes"] += 1
+            workload_path.write_text(json.dumps(document), encoding="utf-8")
+
+            workload, issues = validate_workload(root)
+
+        self.assertIsNone(workload)
+        self.assertTrue(any(issue.code == "BENCHMARK_EXECUTION_BUDGET" for issue in issues))
+
+    def test_report_exposes_only_enforced_software_budget_evidence(self) -> None:
         workload, issues = validate_workload()
         self.assertEqual([], issues)
         assert workload is not None
-        attestations = (
-            BenchmarkAttestations(),
-            BenchmarkAttestations(memory_mib=4_095, graphics_class="integrated"),
-            BenchmarkAttestations(memory_mib=4_096),
-        )
-        for evidence in attestations:
-            with (
-                self.subTest(attestations=evidence),
-                self.assertRaises(BenchmarkFailure) as raised,
-            ):
-                benchmark_report(
-                    workload,
-                    scenario_id="local-smoke",
-                    work_directory=ROOT / ".paperworkshell-local" / "attestation-test",
-                    attestations=evidence,
-                )
 
-            self.assertEqual(
-                "PDF_RENDER_BENCHMARK_REFERENCE_MISMATCH",
-                raised.exception.code,
-            )
+        def renderer_result(specification: object, *_arguments: object) -> dict[str, object]:
+            renderer_id = cast(Any, specification).renderer_id
+            return {
+                "renderer_id": renderer_id,
+                "fidelity": [{"status": "matched"} for _case in workload.fidelity_cases],
+                "semantic_fidelity": [
+                    {"outcome_code": case.expected_code} for case in workload.semantic_cases
+                ],
+                "outcomes": [
+                    {"observed_code": case.expected_code} for case in workload.outcome_cases
+                ],
+            }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            resources = _synthetic_staged_resources(Path(temporary) / "stage", "a" * 64)
+            with (
+                patch.object(sys, "platform", "win32"),
+                patch(
+                    "tools.pdf_renderer_benchmark._repository_revision",
+                    return_value="a" * 40,
+                ),
+                patch(
+                    "tools.pdf_renderer_benchmark._windows_runtime_identity",
+                    return_value={},
+                ),
+                patch(
+                    "tools.pdf_renderer_benchmark.create_benchmark_stage_root",
+                    return_value=resources.stage_root,
+                ),
+                patch(
+                    "tools.pdf_renderer_benchmark.stage_benchmark_resources",
+                    return_value=resources,
+                ),
+                patch("tools.pdf_renderer_benchmark._require_same_repository_revision"),
+                patch("tools.pdf_renderer_benchmark._capture_child", return_value=object()),
+                patch("tools.pdf_renderer_benchmark._validate_probe", return_value={}),
+                patch("tools.pdf_renderer_benchmark._validate_stage_record_identity"),
+                patch(
+                    "tools.pdf_renderer_benchmark._run_renderer_suite",
+                    side_effect=renderer_result,
+                ),
+                patch("tools.pdf_renderer_benchmark.cleanup_benchmark_resources"),
+            ):
+                report = benchmark_report(workload, work_directory=Path(temporary))
+
+        self.assertEqual(2, report["report_schema_version"])
+        self.assertNotIn("reference_environment", report)
+        self.assertEqual(
+            {
+                "id": "paperworkshell-pdf-renderer-software-budget-v1",
+                "classification": "software-enforced",
+                "logical_processor_limit": 2,
+                "processor_limit_source": "isolated-child-affinity-mask",
+                "process_memory_limit_bytes": 1_342_177_280,
+                "job_memory_limit_bytes": 1_342_177_280,
+                "memory_limit_source": "windows-job-object",
+                "maximum_processes": 1,
+                "process_limit_source": "windows-job-object",
+                "hardware_equivalence_claim": False,
+            },
+            report["execution_budget"],
+        )
+        rendered = json.dumps(report, sort_keys=True)
+        self.assertNotIn("attest", rendered)
+        self.assertNotIn("rotational-hdd", rendered)
+        self.assertNotIn("limited-storage", rendered)
 
 
 class PdfRendererBenchmarkOracleTests(unittest.TestCase):
@@ -844,7 +913,7 @@ class PdfRendererBenchmarkTemporarySamplerTests(unittest.TestCase):
             ),
             patch(
                 "tools.pdf_renderer_benchmark._limit_process_affinity_count",
-                return_value=workload.reference_logical_processors,
+                return_value=workload.logical_processor_limit,
             ),
             patch("tools.pdf_renderer_benchmark._read_child_payload", return_value=command),
             patch(
@@ -986,8 +1055,8 @@ class PdfRendererBenchmarkMeasurementTests(unittest.TestCase):
             isolated_worker_ready_elapsed_ns=2_000,
             parent_observed_elapsed_ns=200_000,
             process_affinity_count=2,
-            process_memory_limit_bytes=self.workload.reference_memory_bytes,
-            job_memory_limit_bytes=self.workload.reference_memory_bytes,
+            process_memory_limit_bytes=self.workload.process_memory_limit_bytes,
+            job_memory_limit_bytes=self.workload.job_memory_limit_bytes,
             peak_process_memory_used_bytes=peak_process_bytes,
             peak_job_memory_used_bytes=max(peak_process_bytes, 123_456),
         )
@@ -1038,7 +1107,7 @@ class PdfRendererBenchmarkMeasurementTests(unittest.TestCase):
         )
         self.assertEqual(119, cast(dict[str, Any], result["warm"])["sample_count"])
         self.assertEqual(
-            self.workload.reference_memory_bytes,
+            self.workload.job_memory_limit_bytes,
             cast(dict[str, Any], result["resources"])["job_memory_limit_bytes"],
         )
 
@@ -1068,7 +1137,7 @@ class PdfRendererBenchmarkMeasurementTests(unittest.TestCase):
 
         self.assertEqual("PDF_RENDER_BENCHMARK_PROTOCOL_INVALID", raised.exception.code)
 
-    def test_nonreference_64_processor_capture_is_rejected_for_two_processor_workload(
+    def test_capture_outside_the_two_processor_budget_is_rejected(
         self,
     ) -> None:
         capture = replace(
@@ -1083,7 +1152,7 @@ class PdfRendererBenchmarkMeasurementTests(unittest.TestCase):
                 self.workload,
             )
 
-        self.assertEqual(2, self.workload.reference_logical_processors)
+        self.assertEqual(2, self.workload.logical_processor_limit)
         self.assertEqual("PDF_RENDER_BENCHMARK_PROTOCOL_INVALID", raised.exception.code)
 
     def test_contradictory_and_out_of_range_measurements_are_rejected(self) -> None:
@@ -1182,8 +1251,8 @@ class PdfRendererBenchmarkMeasurementTests(unittest.TestCase):
     def test_peak_resource_use_cannot_exceed_the_enforced_limit(self) -> None:
         capture = replace(
             self._capture_for_payload(self._measurement_payload()),
-            peak_process_memory_used_bytes=self.workload.reference_memory_bytes + 1,
-            peak_job_memory_used_bytes=self.workload.reference_memory_bytes + 1,
+            peak_process_memory_used_bytes=self.workload.process_memory_limit_bytes + 1,
+            peak_job_memory_used_bytes=self.workload.job_memory_limit_bytes + 1,
         )
 
         with self.assertRaises(BenchmarkFailure) as raised:
@@ -1349,7 +1418,7 @@ class PdfRendererBenchmarkPrivacyTests(unittest.TestCase):
             process=_Process(),
             correlation_id="1" * 32,
             isolated_worker_ready_elapsed_ns=1,
-            process_affinity_count=workload.reference_logical_processors,
+            process_affinity_count=workload.logical_processor_limit,
         )
         with (
             patch(
@@ -1543,14 +1612,6 @@ class PdfRendererBenchmarkPrivacyTests(unittest.TestCase):
                 return_value="a" * 40,
             ),
             patch(
-                "tools.pdf_renderer_benchmark._reference_environment",
-                return_value={
-                    "observations": {
-                        "logical_processors": workload.reference_logical_processors,
-                    }
-                },
-            ),
-            patch(
                 "tools.pdf_renderer_benchmark._windows_runtime_identity",
                 return_value={},
             ),
@@ -1575,12 +1636,7 @@ class PdfRendererBenchmarkPrivacyTests(unittest.TestCase):
         ):
             benchmark_report(
                 workload,
-                scenario_id="local-smoke",
                 work_directory=Path(temporary),
-                attestations=BenchmarkAttestations(
-                    memory_mib=4_096,
-                    graphics_class="integrated",
-                ),
             )
 
         self.assertEqual(OUTCOME_BENCHMARK_FAILED, raised.exception.code)
@@ -1592,7 +1648,7 @@ class PdfRendererBenchmarkPrivacyTests(unittest.TestCase):
             cast(dict[str, object], failure_report["cleanup"])["code"],
         )
 
-    def test_capture_and_control_modes_reject_nonreference_affinity_before_command(
+    def test_capture_and_control_modes_reject_affinity_outside_budget_before_command(
         self,
     ) -> None:
         workload, issues = validate_workload()
@@ -1659,7 +1715,7 @@ class PdfRendererBenchmarkPrivacyTests(unittest.TestCase):
             ):
                 operation()
 
-            self.assertEqual(2, workload.reference_logical_processors)
+            self.assertEqual(2, workload.logical_processor_limit)
             self.assertEqual("PDF_RENDER_BENCHMARK_PROTOCOL_INVALID", raised.exception.code)
             self.assertEqual(["close-and-revoke", "verify-seal"], events)
             send.assert_not_called()
@@ -1714,7 +1770,7 @@ class PdfRendererBenchmarkPrivacyTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "win32", "Windows launcher evidence requires Windows")
 class PdfRendererBenchmarkReadyAffinityTests(unittest.TestCase):
-    def test_ready_rejects_64_processors_for_the_two_processor_workload(self) -> None:
+    def test_ready_rejects_64_processors_for_the_two_processor_budget(self) -> None:
         workload, issues = validate_workload()
         self.assertEqual([], issues)
         assert workload is not None
@@ -1778,7 +1834,7 @@ class PdfRendererBenchmarkReadyAffinityTests(unittest.TestCase):
                 1_000,
             )
 
-        self.assertEqual(2, workload.reference_logical_processors)
+        self.assertEqual(2, workload.logical_processor_limit)
         self.assertEqual("PDF_RENDER_BENCHMARK_PROTOCOL_INVALID", raised.exception.code)
         self.assertEqual(1, closed)
         self.assertEqual([False, False, True], seal_states)
@@ -2120,7 +2176,7 @@ class PdfRendererBenchmarkWindowsChildTests(unittest.TestCase):
                     resources["peak_process_memory_used_bytes"],
                 )
                 self.assertEqual(
-                    self.workload.reference_memory_bytes,
+                    self.workload.job_memory_limit_bytes,
                     resources["job_memory_limit_bytes"],
                 )
 
@@ -2236,7 +2292,7 @@ class PdfRendererBenchmarkWindowsChildTests(unittest.TestCase):
                 self.assertEqual("between-native-renders", cancellation["checkpoint"])
                 self.assertGreater(cast(int, cancellation["latency_ns"]), 0)
                 self.assertEqual(
-                    self.workload.reference_memory_bytes,
+                    self.workload.job_memory_limit_bytes,
                     cancellation["job_memory_limit_bytes"],
                 )
                 self.assertEqual("PDF_RENDER_JOB_TERMINATED", termination["outcome_code"])

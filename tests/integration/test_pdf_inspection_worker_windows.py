@@ -35,6 +35,7 @@ from paperworkshell.worker.client.process import (
     WorkerLaunchRequest,
     WorkerResourcePolicy,
 )
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_source_inspector import (
     BrokeredPdfSourceInspector,
     PdfInspectionBrokerPolicy,
@@ -264,7 +265,12 @@ def test_real_pdf_inspection_uses_only_brokered_handles_inside_app_container(
         progress=lambda _progress: None,
     )
     worker = _worker(worker_test_resources)
-    inspector = BrokeredPdfSourceInspector(worker, store, _inspection_policy())
+    inspector = BrokeredPdfSourceInspector(
+        worker,
+        store,
+        _inspection_policy(),
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
 
     try:
         result = inspector.inspect_structural(

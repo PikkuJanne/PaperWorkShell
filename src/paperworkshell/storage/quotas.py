@@ -174,6 +174,13 @@ class QuotaReservationBook:
         with self._lock:
             return any(item.area is area for item in self._reservations.values())
 
+    @property
+    def reserved_byte_count(self) -> int:
+        """Return the synchronized total bytes conservatively claimed."""
+
+        with self._lock:
+            return sum(item.byte_count for item in self._reservations.values())
+
     def reserve(
         self,
         usage: WorkspaceUsage,

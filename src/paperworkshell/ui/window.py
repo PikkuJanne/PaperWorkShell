@@ -63,6 +63,11 @@ from paperworkshell.domain.recovery import (
     StartupRecoveryResult,
     StartupRecoveryStatus,
 )
+from paperworkshell.domain.resource_policy import (
+    NORMAL_RESOURCE_POLICY_V1,
+    ResourcePolicy,
+    select_resource_policy,
+)
 from paperworkshell.ui.backend import (
     OperationCancellation,
     OrganizerBackendCommands,
@@ -76,9 +81,6 @@ from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
 _THUMBNAIL_WIDTH: Final = 240
 _THUMBNAIL_HEIGHT: Final = 320
-_PREVIEW_OVERSCAN_ROWS: Final = 2
-_PREVIEW_REQUEST_CAP: Final = MAX_ORGANIZER_PREVIEW_BATCH_PAGES
-_PREVIEW_PIXMAP_BUDGET: Final = 12
 _PREVIEW_REFRESH_DEBOUNCE_MS: Final = 75
 _MAX_OPERATION_ID: Final = 2_147_483_647
 _FOCUS_VISIBLE_TEXT_STYLE: Final = """
@@ -118,8 +120,8 @@ def _bounded_preview_rows(
     visible_rows: tuple[int, ...],
     selected_row: int,
     *,
-    overscan_rows: int = _PREVIEW_OVERSCAN_ROWS,
-    maximum_count: int = _PREVIEW_PIXMAP_BUDGET,
+    overscan_rows: int = NORMAL_RESOURCE_POLICY_V1.preview_prefetch_radius_pages,
+    maximum_count: int = NORMAL_RESOURCE_POLICY_V1.maximum_preview_request_pages,
 ) -> tuple[int, ...]:
     """Choose a deterministic visible/selected window without exceeding memory policy."""
 
@@ -318,15 +320,27 @@ class PaperWorkShellWindow(QMainWindow):
         self,
         commands: OrganizerBackendCommands,
         worker: OrganizerBackendWorker,
+        *,
+        resource_policy: ResourcePolicy | None = None,
     ) -> None:
         super().__init__()
+        selected_policy = select_resource_policy() if resource_policy is None else resource_policy
+        if type(selected_policy) is not ResourcePolicy:
+            raise ValueError("resource_policy must be a ResourcePolicy")
+        if selected_policy.maximum_preview_request_pages > MAX_ORGANIZER_PREVIEW_BATCH_PAGES:
+            raise ValueError("resource policy exceeds the organizer preview batch limit")
+        if _THUMBNAIL_WIDTH * _THUMBNAIL_HEIGHT > (selected_policy.maximum_preview_pixels_per_page):
+            raise ValueError("resource policy cannot accommodate the bounded preview dimensions")
         self.setObjectName("paperWorkShellWindow")
         self.setWindowTitle("PaperWorkShell")
         self.setAccessibleName("PaperWorkShell guided packet builder")
         self._commands = commands
         self._worker = worker
+        self._resource_policy = selected_policy
         self._state: OrganizerViewState | None = None
-        self._model = OrganizerPageListModel()
+        self._model = OrganizerPageListModel(
+            maximum_preview_cache_bytes=selected_policy.thumbnail_preview_cache_bytes
+        )
         self._thumbnail_generation = 0
         self._next_operation_id = 1
         self._active_operation: _LongOperation | None = None
@@ -382,6 +396,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._autosave_timer.timeout.connect(self._request_autosave_flush)
         self._set_controls_enabled(False)
         self._stack.setCurrentWidget(self._welcome_page)
+
+    @property
+    def resource_policy(self) -> ResourcePolicy:
+        """Return the immutable policy actually enforcing this window's preview work."""
+
+        return self._resource_policy
 
     def _build_status_surface(self) -> QGroupBox:
         status_group = QGroupBox("Operation status")
@@ -841,7 +861,6 @@ class PaperWorkShellWindow(QMainWindow):
         retained = self._current_preview_page_ids()
         self._model.touch_previews(retained)
         self._model.evict_previews(
-            _PREVIEW_PIXMAP_BUDGET,
             protected_page_ids=retained,
         )
 
@@ -1108,7 +1127,6 @@ class PaperWorkShellWindow(QMainWindow):
         retained = self._current_preview_page_ids()
         self._model.touch_previews(retained)
         self._model.evict_previews(
-            _PREVIEW_PIXMAP_BUDGET,
             protected_page_ids=retained,
         )
         missing = tuple(
@@ -1120,7 +1138,7 @@ class PaperWorkShellWindow(QMainWindow):
         prioritized = (
             ((selected,) if selected in missing else ())
             + tuple(page_id for page_id in missing if page_id != selected)
-        )[:_PREVIEW_REQUEST_CAP]
+        )[: self._resource_policy.maximum_preview_request_pages]
         requested_set = frozenset(prioritized)
         requested = tuple(page_id for page_id in retained if page_id in requested_set)
         if not requested:
@@ -1188,6 +1206,8 @@ class PaperWorkShellWindow(QMainWindow):
             self._model.rowCount(),
             visible_rows,
             self._page_view.currentIndex().row(),
+            overscan_rows=self._resource_policy.preview_prefetch_radius_pages,
+            maximum_count=self._resource_policy.maximum_preview_request_pages,
         )
         return tuple(state.pages[row].page_id for row in rows if state.pages[row].preview_supported)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +57,7 @@ from paperworkshell.worker.client.models import (
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose, WorkerResourcePolicy
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_thumbnail_broker import (
     BrokeredPdfThumbnailGenerator,
     PdfThumbnailBrokerPolicy,
@@ -66,6 +68,7 @@ from paperworkshell.worker.protocol.models import (
     OperationStartPayload,
     ResourceLimits,
 )
+from tests.helpers.storage_delay import DeterministicStorageDelay, StorageDelayOperation
 from tests.worker_resources import WorkerTestResources
 
 pytestmark = pytest.mark.skipif(
@@ -344,6 +347,7 @@ def _live_system(
         sources,
         cache,
         _broker_policy(maximum_pixels=maximum_pixels),
+        heavy_operations=HeavyOperationCoordinator(1),
         id_factory=_SequentialUuidFactory(0x50800000),
     )
     service = PdfThumbnailService(
@@ -573,6 +577,7 @@ def test_live_cancellation_after_stage_creation_leaves_manifest_and_cache_clean(
 def test_live_worker_termination_during_render_recovers_with_fresh_service(
     tmp_path: Path,
     worker_test_resources: WorkerTestResources,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A killed thumbnail generation leaves only immutable committed state."""
 
@@ -595,6 +600,7 @@ def test_live_worker_termination_during_render_recovers_with_fresh_service(
         system.sources,
         _QuarantiningThumbnailCache(system.cache),
         _broker_policy(),
+        heavy_operations=HeavyOperationCoordinator(1),
         id_factory=_SequentialUuidFactory(0x70800000),
     )
     interrupted_service = PdfThumbnailService(
@@ -648,7 +654,32 @@ def test_live_worker_termination_during_render_recovers_with_fresh_service(
         id_factory=lambda: _CASE_ID,
     )
     restarted_layout = restarted_manager.layout(_CASE_ID)
-    recovery = build_windows_startup_recovery_service(restarted_manager).recover_startup()
+    delay = DeterministicStorageDelay(frozenset({StorageDelayOperation.DIRECTORY}))
+    enumerate_case_ids = CaseWorkspaceManager.enumerate_case_ids
+
+    def delayed_case_enumeration(manager: CaseWorkspaceManager) -> tuple[UUID, ...]:
+        if manager is restarted_manager:
+            assert delay.checkpoint(StorageDelayOperation.DIRECTORY)
+        return enumerate_case_ids(manager)
+
+    monkeypatch.setattr(
+        CaseWorkspaceManager,
+        "enumerate_case_ids",
+        delayed_case_enumeration,
+    )
+    recovery_service = build_windows_startup_recovery_service(restarted_manager)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending_recovery = pool.submit(recovery_service.recover_startup)
+        assert delay.entered.wait(timeout=2)
+        try:
+            assert not pending_recovery.done()
+            assert source.read_bytes() == source_bytes
+            assert committed_source.read_bytes() == committed_source_bytes
+            assert restarted_layout.manifest.read_bytes() == manifest_before
+            assert system.worker.query().phase is WorkerLifecyclePhase.STOPPED
+        finally:
+            delay.release.set()
+        recovery = pending_recovery.result(timeout=30)
 
     assert recovery.status is StartupRecoveryStatus.COMPLETE
     assert len(recovery.cases) == 1
@@ -658,6 +689,7 @@ def test_live_worker_termination_during_render_recovers_with_fresh_service(
     assert committed_source.read_bytes() == committed_source_bytes
     assert restarted_layout.manifest.read_bytes() == manifest_before
     assert tuple(restarted_layout.thumbnails.iterdir()) == ()
+    assert delay.observed == (StorageDelayOperation.DIRECTORY,)
 
     restarted_sources = WindowsSourceIngestStore(
         restarted_manager,
@@ -677,6 +709,7 @@ def test_live_worker_termination_during_render_recovers_with_fresh_service(
         restarted_sources,
         restarted_cache,
         _broker_policy(),
+        heavy_operations=HeavyOperationCoordinator(1),
         id_factory=_SequentialUuidFactory(0xC0800000),
     )
     restarted_service = PdfThumbnailService(

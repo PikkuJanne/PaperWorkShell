@@ -275,6 +275,42 @@ def test_reservations_are_shared_by_case_identity_across_managers(tmp_path: Path
     assert raised.value.code is WorkspaceErrorCode.QUOTA_EXCEEDED
 
 
+@pytest.mark.parametrize(("available_bytes", "accepted"), [(100, True), (99, False)])
+def test_volume_reserve_preflight_accepts_exact_boundary_and_rejects_beyond(
+    tmp_path: Path,
+    available_bytes: int,
+    accepted: bool,
+) -> None:
+    manager = CaseWorkspaceManager(
+        profile_root=tmp_path,
+        quota=_quota(case_bytes=1_000, cache_bytes=1_000, temp_bytes=1_000),
+        minimum_free_space_reserve_bytes=10,
+        available_space_probe=lambda _path: available_bytes,
+    )
+    layout = manager.provision()
+
+    if accepted:
+        reservation = manager.reserve_capacity(
+            layout.case_id,
+            QuotaArea.TEMP,
+            relative_path=f"temp/{uuid4()}.tmp",
+            is_directory=False,
+            byte_count=90,
+        )
+        reservation.release()
+    else:
+        with pytest.raises(WorkspaceError) as raised:
+            manager.reserve_capacity(
+                layout.case_id,
+                QuotaArea.TEMP,
+                relative_path=f"temp/{uuid4()}.tmp",
+                is_directory=False,
+                byte_count=90,
+            )
+        assert raised.value.code is WorkspaceErrorCode.QUOTA_EXCEEDED
+        assert raised.value.context == "quota.volume_capacity"
+
+
 def test_authenticate_checkpoint_exits_while_case_coordination_is_contended(
     tmp_path: Path,
 ) -> None:

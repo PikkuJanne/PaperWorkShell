@@ -1,7 +1,7 @@
 schema_version: 1
 project: PaperWorkShell
-task_graph_version: 0.1.0
-frozen_at: '2026-07-14'
+task_graph_version: 0.2.0
+frozen_at: '2026-08-12'
 roadmap_file: ROADMAP.md
 decision_file: DECISIONS.md
 agent_contract_file: AGENTS.md
@@ -208,26 +208,26 @@ tasks:
   - PWS-D003
   - PWS-D034
   - PWS-D035
-  objective: Make formatting, linting, typing, tests, schema/graph checks, secret scanning, and the reference Windows
-    test profile reproducible locally.
+  - PWS-D041
+  objective: Make formatting, linting, typing, tests, schema/graph checks, secret scanning, and versioned Windows
+    quality workloads reproducible locally.
   deliverables:
   - Stable commands for format, lint, typecheck, unit tests, schema validation, task graph validation, and secret
     scanning
   - Continuous-integration configuration when a CI host is available
   - Developer documentation for running the same checks locally
-  - Reference hardware/workload profile covering two CPU cores, 4 GB RAM, integrated graphics, limited storage,
-    and an HDD scenario
+  - Versioned synthetic workload definitions and repeatable local benchmark entry points
   acceptance_criteria:
   - All quality commands have a single documented source of truth.
   - A deliberate formatting, typing, schema, graph-cycle, and secret-test violation is detected.
   - Quality checks do not upload repository or fixture content.
   - The baseline repository passes all enabled checks.
-  - The reference environment and baseline workload are machine-readable or otherwise consistently reproducible;
-    numeric product targets are measured later rather than guessed.
+  - Baseline workloads are machine-readable or otherwise consistently reproducible; numeric product targets are
+    measured rather than guessed.
   verification:
   - Run the full local quality suite from a clean checkout.
   - Run negative self-tests for schema and graph validation.
-  - Validate the reference environment/workload definition and benchmark entry point.
+  - Validate the workload definition and benchmark entry point.
   risk_tags:
   - quality
   - supply-chain
@@ -243,7 +243,8 @@ tasks:
     notes:
     - Stable developer commands now share one registry used by local runs, integration tests, documentation, and pinned Windows CI.
     - Secret scanning covers reachable Git history, exact index state, tracked and nonignored untracked bytes with redacted diagnostics, fail-closed limits, process-tree cleanup, and no routine content upload.
-    - The machine-readable reference profile records two-core, 4096-MiB, integrated-graphics, limited-storage, and rotational-HDD scenarios; numeric product targets remain intentionally unmeasured.
+    - The original machine-readable physical-reference profile and record-only benchmark were accepted historical
+      M0 evidence; PWS-0115 later replaced that non-runnable gate contract with enforced software resource budgets.
     - Independent exact-tree audits of staged tree dab68859 found no actionable P1/P2 issues.
 - id: PWS-0004
   milestone: M0
@@ -1350,13 +1351,89 @@ tasks:
     - Cleanup accounting preserves every confirmed deletion and released-byte count across later ordinary item or context-finalization failures, stops subsequent mutation when authority is uncertain, keeps process-control BaseException propagation, and emits only sanitized phase-specific plus generic failure codes.
     - PWS-0113 now proves a real PySide UI-process kill at the autosave checkpoint plus deterministic fresh-process desktop recovery. It still does not claim automatic deletion of abandoned AppContainer profiles/temp trees; durable ACL repair remains a separate exact-object boundary.
     - Independent recovery, privacy, cleanup-finalization, export-history, ACL, documentation, and completion audits found no remaining P0-P2 issue.
+- id: PWS-0115
+  milestone: M1
+  title: Enforce low-resource compatibility budgets and regression safeguards
+  kind: implementation
+  priority: P0
+  effort: L
+  status: done
+  critical_path: true
+  depends_on:
+  - PWS-0113
+  decision_refs:
+  - PWS-D004
+  - PWS-D012
+  - PWS-D013
+  - PWS-D027
+  - PWS-D041
+  objective: Replace hardware-specific attestation with enforceable resource policies, bounded processing behavior,
+    deterministic constrained-profile tests, and content-free resource evidence runnable on ordinary Windows
+    development and CI systems.
+  deliverables:
+  - Central immutable resource-policy model with normal and constrained profiles
+  - Bounded heavy-operation concurrency, queues, preview prefetching, pixel area, and byte-costed caches
+  - Incremental import/page-processing guards and a workload-relative temporary-storage quota
+  - Free-space preflight plus deterministic slow-I/O, low-disk, and disk-full fault injection
+  - Complete-process-tree measurement and a canonical constrained M1 resource-budget scenario
+  - Closed sanitized machine-readable resource report, engineering policy, regressions, and updated gate docs
+  acceptance_criteria:
+  - The GUI process does not parse or render complete untrusted documents.
+  - Opening a document does not eagerly render or retain every page at full resolution.
+  - Import hashing and copying use bounded chunked I/O and preview rendering remains demand-driven.
+  - Preview pixel area, request queues, and prefetching are bounded before allocation.
+  - Thumbnail and preview caches are limited by bytes with deterministic tested eviction.
+  - Heavy worker concurrency is one under the constrained profile and overload receives backpressure.
+  - Temporary output is case-scoped, measured, cleaned, quota-controlled, and preserves atomic manifests.
+  - Insufficient space is rejected before expensive work where practical, and disk-full failures preserve originals
+    and the authoritative manifest.
+  - Artificially slow storage leaves the GUI responsive, progress observable, and cancellation available.
+  - Worker termination and application restart remain recoverable.
+  - Peak memory measurement covers the relevant process tree and stays within the canonical 1.25-GiB budget.
+  - Reports contain no filenames, paths, document or OCR text, form values, images, signatures, or metadata.
+  - The canonical vertical slice passes with enforced constrained limits and contains no hardware-equivalence claim.
+  verification:
+  - Run resource-policy selection, validation, cache eviction, queue, backpressure, concurrency, chunked-I/O, and
+    incremental-processing tests.
+  - Run deterministic low-disk, disk-full, slow-I/O responsiveness, cancellation, worker crash, and recovery tests.
+  - Validate the closed report schema, privacy contract, process-tree measurements, and hard budget results.
+  - Run the constrained canonical M1 scenario and full unit, integration, security, accessibility, documentation,
+    schema, graph, bundle, dependency, fixture, and secret gates.
+  risk_tags:
+  - resource-limits
+  - performance
+  - recovery
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: '2026-08-12'
+    revision: cf96a82c1a4b24bed980c2b324b9540c80cda48d
+    commands:
+    - Focused constrained-profile verification - passed; Ruff format/lint, strict mypy on 285 files,
+      414 tests plus 350 subtests, real worker recovery/cancellation, and schema/task/docs/benchmark validators.
+    - uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice - passed on the clean evidence
+      revision; published the constrained report and two-page derivative with all six hard budgets passing.
+    - Poppler pdfinfo and 144-DPI all-page pdftoppm rendering plus strict pikepdf inspection - passed;
+      two unencrypted pages, expected order/rotation, legible output, and no clipping or blank corruption.
+    - Repository quality commands passed on the final implementation tree; 2114 unit tests, 368 integration
+      tests with 2 disclosed Windows capability skips, 268 security tests with 6 disclosed capability skips,
+      and 19 accessibility tests passed, together with format, lint, 13-layer import boundaries, strict mypy
+      over 285 files, every registered validator, reachable-history secret scanning, and all 5 negative
+      quality self-tests. The monolithic wrapper's external 30-minute ceiling expired because unit plus
+      integration alone took 28 minutes 44 seconds; the same registered commands were preserved individually.
+    notes:
+    - PWS-D041 replaces unavailable hardware attestation with enforced software budgets. The canonical report
+      recorded 244023296-byte process-tree RSS, 166296-byte combined cache, 650-byte case temp, concurrency 1,
+      147-ms maximum heartbeat gap, and 6-ms protocol cancellation acknowledgement; every hard budget passed.
+    - Physical low-end hardware was not tested. The result proves bounded behavior for the recorded synthetic
+      workload and revision, not certification of any processor, RAM, GPU, SSD, HDD, VM, or physical device.
 - id: PWS-0114
   milestone: M1
   title: Run Milestone 1 vertical-slice gate
   kind: gate
   priority: P0
   effort: L
-  status: ready
+  status: done
   critical_path: true
   depends_on:
   - PWS-0101
@@ -1372,6 +1449,7 @@ tasks:
   - PWS-0111
   - PWS-0112
   - PWS-0113
+  - PWS-0115
   decision_refs:
   - PWS-D003
   - PWS-D009
@@ -1380,41 +1458,61 @@ tasks:
   - PWS-D027
   - PWS-D029
   - PWS-D030
-  objective: Demonstrate the architecture proof from case creation through verified export and recovery on the reference
-    low-spec profile.
+  - PWS-D041
+  objective: Demonstrate the architecture proof from case creation through verified export and recovery while
+    enforcing and measuring the versioned constrained software resource profile.
   deliverables:
-  - Milestone 1 gate report
-  - End-to-end vertical-slice automated test
-  - Keyboard-only manual scenario
-  - Worker crash/recovery and log-audit evidence
-  - Reference-machine performance measurements
+  - Milestone 1 gate report and end-to-end vertical-slice automated test
+  - Keyboard-only manual scenario and worker crash/recovery and log-audit evidence
+  - Constrained-profile resource-budget report with complete-process-tree memory, cache, temporary-storage,
+    concurrency, responsiveness, cancellation, slow-I/O, and low-disk evidence
   acceptance_criteria:
   - Every M1 prerequisite task is done.
-  - Originals remain byte-for-byte unchanged.
-  - The same manifest produces the same semantic page result.
-  - Malformed inputs and worker termination fail cleanly.
+  - Originals remain byte-for-byte unchanged and the same manifest produces the same semantic page result.
+  - Malformed inputs, disk exhaustion, cancellation, and worker termination fail cleanly and recoverably.
   - Export passes parse, structural, page-count, encryption, and render checks.
-  - No prohibited document content appears in logs.
+  - The canonical workload stays within process-tree memory, cache, queue, concurrency, and temporary-storage budgets.
+  - Slow-I/O simulation does not block the UI or corrupt the case, and low-disk simulations fail safely.
+  - No prohibited document content appears in logs or resource evidence.
   - The primary organizer path works without a mouse.
+  - The report distinguishes bounded software measurements from optional physical-device observations.
   verification:
-  - Run full unit, integration, security, accessibility-smoke, and vertical-slice suites.
-  - Perform and record the M1 manual demonstration.
+  - Run full unit, integration, security, accessibility-smoke, resource-budget, and vertical-slice suites.
+  - Perform and record the M1 manual demonstration and synthetic derivative inspection.
   risk_tags:
   - gate
   - vertical-slice
+  - resource-limits
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-12'
+    revision: cf96a82c1a4b24bed980c2b324b9540c80cda48d
+    commands:
+    - uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice - passed; exact-revision canonical
+      import, thumbnails, organize/autosave, two verified exports, cold reopen/recovery, privacy scan, low-disk,
+      slow-I/O, active cancellation, worker restart, and six resource budgets all passed.
+    - Repository quality commands passed on the final implementation tree; 2114 unit tests, 368 integration
+      tests with 2 disclosed Windows capability skips, 268 security tests with 6 disclosed capability skips,
+      and 19 accessibility tests passed, together with every registered static, validation, secret-scan, and
+      negative-self-test gate. The same commands were run individually after the monolithic wrapper exceeded
+      its external 30-minute ceiling.
+    - Poppler pdfinfo/pdftoppm and strict pikepdf artifact inspection - passed; output SHA-256
+      8825cbc568f339ffa86fccf7f8f64400c69b2c82c09d651e903f6d2529bdc6ea, two unencrypted pages,
+      expected Letter text page and 72x96-pt page rotated 90 degrees, with no visual corruption.
+    notes:
+    - The earlier current-host functional run remains historical evidence only; its physical-host mismatch and
+      operator-attestation fields are not reinterpreted as constrained-profile evidence.
+    - Maintainer keyboard-only and NVDA Speech Viewer testing at actual 100% and 200% scaling passed previously
+      with no reported focus, announcement, reachability, privacy, or scaling issue.
+    - Physical low-end hardware was not tested and is no longer required. The constrained result is bounded
+      software evidence, not a physical-hardware equivalence or certification claim.
 - id: PWS-0201
   milestone: M2
   title: Implement JPEG/PNG intake and page normalization
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0114
@@ -1714,13 +1812,14 @@ tasks:
   - PWS-D020
   - PWS-D021
   - PWS-D037
+  - PWS-D041
   objective: Prevent silent signature invalidation and prove page-by-page OCR/image processing stays within resource
     budgets.
   deliverables:
   - Signed-input policy service and confirmation state
   - Unsigned-derivative labeling in UI/export reports
   - Incremental page-processing scheduler
-  - Reference-hardware memory and cancellation tests
+  - Process-tree resource-budget, incremental-processing, and cancellation tests
   acceptance_criteria:
   - A signed source cannot enter a modifying operation without an explicit derivative warning/confirmation.
   - The original signed file remains unchanged and directly available.
@@ -1728,7 +1827,7 @@ tasks:
   - Resource-limit failures are recoverable and identify affected operations without content leakage.
   verification:
   - Run signed-input modify/cancel scenarios.
-  - Measure peak memory and temp storage on the reference workload.
+  - Measure process-tree peak memory and temporary storage on the versioned constrained workload.
   - Run limit-exceeded and resume/retry tests.
   risk_tags:
   - signatures
@@ -1764,13 +1863,14 @@ tasks:
   - PWS-D021
   - PWS-D026
   - PWS-D030
+  - PWS-D041
   objective: Demonstrate a bounded, cancelable, reviewable mixed-document workflow with local OCR and honest quality
     messaging.
   deliverables:
   - Milestone 2 gate report
   - Mixed PDF/JPEG/PNG end-to-end scenario
   - OCR cancellation and missing-language evidence
-  - Signed-source and reference-memory evidence
+  - Signed-source and process-tree resource-budget evidence
   - Keyboard/scale review evidence
   acceptance_criteria:
   - Every M2 prerequisite task is done.
@@ -1778,7 +1878,7 @@ tasks:
   - Mixed born-digital/scanned output is verified and searchable where reported.
   - Signed inputs are protected and edited derivatives are clearly unsigned.
   - Quality findings remain review signals.
-  - Reference workloads meet documented resource budgets or have approved bounded limits.
+  - OCR workloads meet documented constrained-profile budgets or fail safely with approved bounded limits.
   verification:
   - Run the full M2 unit, integration, security, OCR, accessibility, and performance suites.
   - Perform and record the M2 manual demonstration.
@@ -2507,11 +2607,12 @@ tasks:
   - PWS-D030
   - PWS-D033
   - PWS-D040
+  - PWS-D041
   objective: Approve the complete guided packet workflow as a v0.1 pilot while confirming redaction and other deferred
     boundaries remain disabled and clearly communicated.
   deliverables:
   - Milestone 4/v0.1 gate report
-  - End-to-end generic packet evidence on reference hardware
+  - End-to-end generic packet evidence under the constrained resource profile
   - Keyboard and accessibility evidence
   - Security/log/worker/export evidence
   - Known-limitation and deferred-feature release notes
@@ -2523,7 +2624,7 @@ tasks:
   - No cloud, account, eligibility, legal advice, qualified-signature, or direct-submission claim is present.
   - Core actions have keyboard alternatives and no prohibited content appears in logs.
   verification:
-  - Run the full v0.1 automated suite and reference-hardware scenario.
+  - Run the full v0.1 automated suite and constrained-profile resource scenario.
   - Perform manual first-time-user, keyboard-only, signed-input, malformed-input, cancellation, and recovery scenarios.
   risk_tags:
   - gate
@@ -3712,19 +3813,21 @@ tasks:
   - PWS-D030
   - PWS-D034
   - PWS-D040
+  - PWS-D041
   objective: Execute the complete release matrix on packaged builds and confirm installation, workflow, updates,
     migrations, recovery, accessibility, compatibility, and cleanup behavior.
   deliverables:
   - Release-candidate test plan and environment inventory
   - Packaged-build automated and manual results
-  - Reference/low-disk/HDD performance report
+  - Packaged-build resource-budget plus low-disk and slow-I/O simulation report
+  - Optional physical-device observations when available, explicitly non-gating
   - Install/update/migration/uninstall/residual-case report
   - Release-blocker list
   acceptance_criteria:
   - All prior milestone gates remain valid against the packaged candidate.
   - Install requires no development tools and uninstall clearly handles remaining cases.
   - Supported older cases migrate safely.
-  - Reference hardware meets documented responsiveness/resource targets or the release gate fails.
+  - Packaged builds meet approved resource budgets and bounded-behavior requirements.
   - Full keyboard/NVDA, redaction, compression, reader, recovery, diagnostics, and update scenarios pass.
   - No release-blocking defect remains open.
   verification:

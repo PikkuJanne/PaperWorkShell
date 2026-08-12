@@ -32,12 +32,14 @@ from paperworkshell.domain.page_operations import (
     SetGroupCommand,
 )
 from paperworkshell.storage import manifest_repository as repository_storage
+from paperworkshell.storage._windows import open_handle, replace_manifest_atomically
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.manifest_codec import MAX_JSON_STRING_CODEPOINTS
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.workspace import CaseWorkspaceManager, CaseWorkspacePaths
+from tests.helpers.storage_delay import DeterministicStorageDelay, StorageDelayOperation
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt", reason="PWS-0109 targets the supported Windows storage boundary"
@@ -358,6 +360,50 @@ def test_interruption_after_checkpoint_recovers_exact_candidate(
     assert recovered.status is ManifestLoadStatus.RECOVERED
     assert recovered.snapshot.document == candidate
     assert layout.manifest.read_bytes() == (layout.journal / "latest.json").read_bytes()
+
+
+def test_slow_atomic_rename_keeps_prior_manifest_authoritative_until_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, layout = _stack(tmp_path)
+    repository = WindowsManifestRepository(manager)
+    opened = repository.load(CASE_ID).snapshot
+    candidate = _candidate(opened.document, revision=1, marker=23)
+    previous = layout.manifest.read_bytes()
+    delay = DeterministicStorageDelay(frozenset({StorageDelayOperation.RENAME}))
+    real_replace = replace_manifest_atomically
+
+    def delayed_replace(*args: object, **kwargs: object) -> object:
+        delay.checkpoint(StorageDelayOperation.RENAME)
+        return real_replace(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(repository_storage, "replace_manifest_atomically", delayed_replace)
+    with open_handle(
+        layout.manifest,
+        read=True,
+        share_delete=True,
+        share_write=True,
+    ) as retained_previous:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            saving = pool.submit(
+                repository.save,
+                CASE_ID,
+                candidate,
+                expected_revision=opened.revision,
+                expected_sha256=opened.sha256,
+                expected_cas_token=opened.cas_token,
+            )
+            assert delay.entered.wait(timeout=2)
+            assert not saving.done()
+            assert retained_previous.read_bytes(maximum_bytes=len(previous)) == previous
+
+            delay.release.set()
+            saved = saving.result(timeout=2)
+
+    assert saved.snapshot.document == candidate
+    assert layout.manifest.read_bytes() == (layout.journal / "latest.json").read_bytes()
+    assert delay.observed == (StorageDelayOperation.RENAME,)
 
 
 def test_same_snapshot_concurrency_has_one_exact_winner(

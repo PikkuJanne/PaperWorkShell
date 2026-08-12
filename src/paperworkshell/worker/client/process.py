@@ -9,7 +9,7 @@ from collections import deque
 from collections.abc import Buffer
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Final, Protocol, cast
+from typing import Final, Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from paperworkshell.worker.client.errors import (
@@ -17,6 +17,7 @@ from paperworkshell.worker.client.errors import (
     WorkerClientErrorCode,
     reject_client,
 )
+from paperworkshell.worker.client.models import WorkerResourceSnapshot
 from paperworkshell.worker.protocol.framing import (
     MAX_FRAME_PAYLOAD_BYTES,
     read_frame,
@@ -488,6 +489,14 @@ class WorkerProcess(Protocol):
 
     def close(self) -> None:
         """Close transport, process, thread, job, and profile authority idempotently."""
+
+
+@runtime_checkable
+class WorkerResourceReporter(Protocol):
+    """Narrow optional process capability for path-free Job accounting."""
+
+    def resource_snapshot(self) -> WorkerResourceSnapshot:
+        """Return one validated immutable resource observation."""
 
 
 class ProcessLauncher(Protocol):

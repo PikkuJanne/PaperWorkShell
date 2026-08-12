@@ -1,61 +1,42 @@
-# Reference environment and baseline workload
+# Constrained-resource evidence
 
-`reference-windows-v1.json` defines the PWS-0003 reference environment: Windows x86-64,
-two allocated logical processors, 4096 MiB RAM, integrated graphics, limited storage, and a
-rotational-HDD scenario. The profile separates declared requirements from observations.
+PaperWorkShell's low-resource contract is the central, versioned `ResourcePolicy` described in
+[`docs/performance/LOW_RESOURCE_POLICY.md`](../docs/performance/LOW_RESOURCE_POLICY.md). The
+constrained profile applies real limits to production composition and the canonical Milestone 1
+vertical slice: worker memory and CPU, process count, workspace/cache/temporary storage, preview
+demand and dimensions, queue/concurrency bounds, chunked I/O, responsiveness, cancellation, and
+low-disk behavior.
 
-The `limited-storage` scenario requires a dedicated volume no larger than 8 GiB with at least
-4 MiB free before the run. Capacity and free space are checked and recorded at run time. The
-`rotational-hdd` scenario requires a physical HDD or independently validated HDD emulation;
-placing a virtual disk on an SSD is not sufficient evidence. Assigned memory, integrated
-graphics, and storage media remain operator-attested because portable Windows APIs cannot prove
-those topology properties consistently. CPU allocation comes from the native Windows process
-affinity mask; interpreter CPU-count overrides are rejected.
-
-The generated-I/O workload writes, flushes, reads, hashes, and removes two 1 MiB files made
-from deterministic synthetic bytes. Its `sha256-seed-repeat-v1` generator and expected per-file
-SHA-256 are pinned in the profile so an implementation change cannot silently redefine the v1
-workload. These sizes make the harness reproducible; they are not product performance or storage
-targets. Version 1 is explicitly record-only and rejects all numeric product targets.
-
-Validate the profile without performing I/O:
+Validate the closed evidence schema without running the workload:
 
 ```powershell
-py -3.14 tools/dev.py validate-reference-profile
+py -3.14 tools/dev.py validate-m1-benchmark-report
 ```
 
-Exercise the entry point on the current development volume:
+Run the synthetic, deterministic vertical slice under the constrained profile:
 
 ```powershell
-py -3.14 tools/dev.py benchmark-reference
+py -3.14 tools/dev.py run-m1-vertical-slice
 ```
 
-To validate the reference harness on a prepared environment, invoke the underlying tool and
-provide each operator-attested property explicitly:
+The sanitized report binds the repository revision, resource-policy version, synthetic workload,
+engine identities, configured budgets, observed numeric values, deterministic result, recovery,
+and explicit limitations. It omits usernames, hostnames, serial numbers, network identifiers,
+document content, and full paths. Reports are not uploaded by the quality workflow.
 
-```powershell
-uv run --locked --no-sync python -m tools.reference_profile benchmark --scenario limited-storage --work-directory D:\pws-benchmark --attest-memory-mib 4096 --attest-graphics integrated
-uv run --locked --no-sync python -m tools.reference_profile benchmark --scenario rotational-hdd --work-directory E:\pws-benchmark --attest-memory-mib 4096 --attest-graphics integrated --attest-storage-media hdd-or-validated-emulation
-```
-
-The command fails before generated workload I/O unless observable Windows, x86-64,
-two-allocated-processor, capacity, and free-space requirements plus every required attestation
-match. The JSON report goes
-to standard output and contains a structured match result, generic platform observations, exact
-byte counts, timings, checksums, and free-space observations. It intentionally omits usernames,
-hostnames, serial numbers, network identifiers, and full paths. Reports are not uploaded or
-committed by the quality workflow. The 2 MiB generated workload validates measurement plumbing
-only; it is not HDD or product-performance evidence. Later product workloads establish
-performance evidence.
+Passing this workload proves that the tested revision stayed within the stated software budgets.
+It does not emulate or certify a named CPU, RAM allocation, GPU, SSD, HDD, VM, or physical device.
+Physical low-end-device testing has not been performed; any future observation is optional and
+non-gating under PWS-D041.
 
 ## PDF renderer comparison
 
-`pdf-renderer-windows-v1.json` binds the PWS-0106 comparison to the same low-spec Windows envelope,
+`pdf-renderer-windows-v1.json` binds the historical PWS-0106 comparison to a versioned Windows workload,
 15 independently calculated renderer goldens, two semantic cases, three stable failure outcomes,
 and exact pypdfium2/PDFium and Qt PDF identities. It is a record-only selection workload, not a
 product latency target.
 
-Validate every workload, fixture, golden, artifact, and reference-profile binding without loading
+Validate every workload, fixture, golden, artifact, and outcome binding without loading
 either native renderer:
 
 ```powershell
@@ -73,21 +54,9 @@ The Windows CI job also synchronizes this non-default group solely so the PWS-01
 tests can exercise both live adapters. Installing that group for tests does not grant Qt PDF a
 source-import boundary, product runtime scope, or enabled shipment relationship.
 
-The comparison requires a clean repository revision and a Windows process constrained to the
-profile's two logical processors. It also requires truthful 4096 MiB worker-envelope and integrated
-graphics attestations. On a host with more processors, set the invoking PowerShell process affinity
-for the duration of the command so every child inherits the same two-processor mask:
-
-```powershell
-$process = [System.Diagnostics.Process]::GetCurrentProcess()
-$previousAffinity = $process.ProcessorAffinity
-try {
-  $process.ProcessorAffinity = [IntPtr]3
-  uv run --locked --no-sync --group renderer-evaluation python -m tools.pdf_renderer_benchmark benchmark --scenario local-smoke --attest-memory-mib 4096 --attest-graphics integrated
-} finally {
-  $process.ProcessorAffinity = $previousAffinity
-}
-```
+The comparison requires a clean repository revision. Its accepted run remains historical renderer
+selection evidence; current low-resource qualification comes from the central constrained profile,
+not operator hardware attestations.
 
 The harness copies only its pinned Python runtime subset, exact renderer files, and hash-bound
 public synthetic corpus into a fresh authenticated fixed-drive stage. Tracked project code and
@@ -127,7 +96,7 @@ process does not treat a filename or self-written token as deletion authority, s
 preserved for explicit maintenance instead of risking deletion through an attacker-swapped path.
 
 The sanitized JSON report distinguishes the workload's declared published-wheel hashes from the
-observed installed `RECORD` and stage-closure hashes. It also records corpus/profile identities,
+observed installed `RECORD` and stage-closure hashes. It also records corpus/workload identities,
 isolated-worker readiness, imports, document-open and page-render timings, nearest-rank warm
 p50/p95/max values, and a parent-observed monotonic launch-through-exit envelope that bounds the
 strictly positive child timing evidence,
@@ -135,7 +104,8 @@ Job-reported process/job memory peaks, sampled private temporary-storage high-wa
 cancellation at the documented between-render checkpoint, idle-worker Job-tree termination, and
 stable malformed/high-dimension outcomes. It contains no source path, filename, page pixels,
 document content, user or machine identity, or native exception text. The benchmark does not claim
-that cooperative cancellation interrupts an in-flight native render.
+that cooperative cancellation interrupts an in-flight native render or certify its host as a
+particular physical device.
 
 ### Accepted PWS-0106 selection run
 
@@ -150,4 +120,4 @@ The complete sanitized JSON result was reviewed locally and is intentionally not
 [ADR 0005](../docs/adr/0005-pdf-renderer-selection.md) records the exact warm, cold, memory,
 cancellation, and Job-termination measurements and the functional, packaging, and license
 rationale for selecting pypdfium2/PDFium. This local smoke remains selection evidence only; it is
-not a product target or a prepared limited-storage/HDD qualification.
+not a product target or physical-device qualification.

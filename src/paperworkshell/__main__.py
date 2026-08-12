@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,17 +15,29 @@ from paperworkshell.app.export_history import (
     PdfExportRetryRecoveryService,
 )
 from paperworkshell.app.organizer import OrganizerBackend
+from paperworkshell.app.pdf_export import PdfExportService
 from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
 from paperworkshell.app.recovery import (
     StartupRecoveryDiagnosticSink,
     StartupRecoveryService,
 )
-from paperworkshell.app.source_ingest import SourceIngestService
+from paperworkshell.app.source_ingest import (
+    CommittedPdfSourceBatchStore,
+    SourceIngestService,
+)
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.import_precheck import ImportLimits
+from paperworkshell.domain.pdf_export import (
+    PdfExportErrorCode,
+    reject_pdf_export,
+)
 from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_FRAME_BYTES
 from paperworkshell.domain.recovery import RecoveryErrorCode, reject_recovery
+from paperworkshell.domain.resource_policy import ResourcePolicy, select_resource_policy
+from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
+from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.export_destination import WindowsExportDestination
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
@@ -37,19 +51,51 @@ from paperworkshell.ui.application import run_desktop_application
 from paperworkshell.worker.client.models import WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.desktop_composition import (
+    DesktopHeavyOperationCoordinator,
     DesktopWorkerCompositionConfig,
+    PdfExportWorkerComposition,
+    PdfExportWorkerCompositionConfig,
+    create_desktop_heavy_operation_coordinator,
     create_desktop_worker_composition,
     create_desktop_worker_composition_config,
+    create_pdf_export_worker_composition,
+    create_pdf_export_worker_composition_config,
 )
 from paperworkshell.worker.protocol.models import ResourceLimits
 
-_MAXIMUM_CASE_BYTES = 4 * 1024 * 1024 * 1024
-_MAXIMUM_CACHE_BYTES = 512 * 1024 * 1024
-_MAXIMUM_TEMP_BYTES = 1024 * 1024 * 1024
-_MAXIMUM_SOURCE_BYTES = 512 * 1024 * 1024
-_MAXIMUM_PAGES = 1_000
-_WORKER_MEMORY_BYTES = 768 * 1024 * 1024
-_WORKER_JOB_MEMORY_BYTES = 1024 * 1024 * 1024
+_PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
+_DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE = Path(r"C:\Program Files\qpdf 12.3.2\bin\qpdf.exe")
+
+
+@dataclass(frozen=True, slots=True)
+class DesktopApplicationResourceContext:
+    """App-scoped policy and heavy-work gate selected once at process startup."""
+
+    resource_policy: ResourcePolicy
+    heavy_operations: DesktopHeavyOperationCoordinator
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.resource_policy) is not ResourcePolicy
+            or type(self.heavy_operations) is not DesktopHeavyOperationCoordinator
+            or self.heavy_operations.snapshot().maximum_concurrency
+            != self.resource_policy.maximum_heavy_operation_concurrency
+        ):
+            raise ValueError("application resource context is invalid")
+
+
+def create_desktop_application_resource_context(
+    resource_policy: ResourcePolicy | None = None,
+) -> DesktopApplicationResourceContext:
+    """Select one policy and construct its sole app-scoped heavy-work gate."""
+
+    selected_policy = _require_resource_policy(resource_policy)
+    return DesktopApplicationResourceContext(
+        selected_policy,
+        create_desktop_heavy_operation_coordinator(
+            selected_policy.maximum_heavy_operation_concurrency
+        ),
+    )
 
 
 def _utc_now() -> datetime:
@@ -84,30 +130,83 @@ def build_windows_startup_recovery_service(
     )
 
 
-def build_backend() -> OrganizerBackend:
+def build_windows_pdf_export_service(
+    manager: CaseWorkspaceManager,
+    sources: CommittedPdfSourceBatchStore,
+    composition: PdfExportWorkerComposition,
+    *,
+    resources: DesktopApplicationResourceContext,
+) -> PdfExportService:
+    """Wire concrete Windows persistence around one export-only composition."""
+
+    if (
+        not isinstance(manager, CaseWorkspaceManager)
+        or not isinstance(sources, CommittedPdfSourceBatchStore)
+        or type(composition) is not PdfExportWorkerComposition
+        or composition.closed
+        or type(resources) is not DesktopApplicationResourceContext
+        or composition.heavy_operations is not resources.heavy_operations
+    ):
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.composition")
+    selected_policy = resources.resource_policy
+    manifests = WindowsManifestRepository(manager)
+    return PdfExportService(
+        manifests,
+        sources,
+        composition.pdf_exporter,
+        WindowsVerifiedPdfDestination(
+            WindowsExportDestination(
+                minimum_free_space_reserve_bytes=(
+                    selected_policy.minimum_export_free_space_reserve_bytes
+                )
+            )
+        ),
+        PdfExportHistoryService(
+            WindowsPdfExportHistoryRepository(manager),
+            manifests,
+        ),
+        WindowsPdfExportRetryRepository(manager),
+    )
+
+
+def build_backend(
+    resources: DesktopApplicationResourceContext | None = None,
+) -> OrganizerBackend:
     """Construct the complete backend on the caller's permanent owner thread."""
 
-    manager = CaseWorkspaceManager.for_current_user(quota=_workspace_quota())
-    return _build_backend(manager)
+    selected_resources = _require_application_resource_context(resources)
+    resource_policy = selected_resources.resource_policy
+    manager = CaseWorkspaceManager.for_current_user(
+        quota=_workspace_quota(resource_policy),
+        minimum_free_space_reserve_bytes=(resource_policy.minimum_export_free_space_reserve_bytes),
+    )
+    return _build_backend(manager, resources=selected_resources)
 
 
-def _build_backend(manager: CaseWorkspaceManager) -> OrganizerBackend:
+def _build_backend(
+    manager: CaseWorkspaceManager,
+    *,
+    resources: DesktopApplicationResourceContext | None = None,
+) -> OrganizerBackend:
     """Recover local cases before constructing document-worker resources."""
 
     startup_recovery = build_windows_startup_recovery_service(manager).recover_startup()
+    selected_resources = _require_application_resource_context(resources)
+    selected_policy = selected_resources.resource_policy
     lifecycle = CaseLifecycleService(WindowsCaseLifecycleStore(manager))
     repository = WindowsManifestRepository(manager)
     source_store = WindowsSourceIngestStore(
         manager,
-        WindowsSourcePrechecker(_import_limits()),
-        maximum_page_count=_MAXIMUM_PAGES,
+        WindowsSourcePrechecker(_import_limits(selected_policy)),
+        maximum_page_count=selected_policy.maximum_page_count,
     )
     thumbnail_cache = WindowsThumbnailCacheStore(manager)
     composition = create_desktop_worker_composition(
-        _desktop_worker_config(),
+        _desktop_worker_config(selected_policy),
         prepared_sources=source_store,
         committed_pages=source_store,
         thumbnail_cache=thumbnail_cache,
+        heavy_operations=selected_resources.heavy_operations,
     )
     try:
         source_ingest = SourceIngestService(
@@ -128,20 +227,23 @@ def _build_backend(manager: CaseWorkspaceManager) -> OrganizerBackend:
         raise
 
 
-def _workspace_quota() -> WorkspaceQuota:
+def _workspace_quota(resource_policy: ResourcePolicy | None = None) -> WorkspaceQuota:
+    selected_policy = _require_resource_policy(resource_policy)
     return WorkspaceQuota(
-        maximum_case_bytes=_MAXIMUM_CASE_BYTES,
-        maximum_cache_bytes=_MAXIMUM_CACHE_BYTES,
-        maximum_temp_bytes=_MAXIMUM_TEMP_BYTES,
+        maximum_case_bytes=selected_policy.maximum_case_bytes,
+        maximum_cache_bytes=selected_policy.maximum_cache_bytes,
+        maximum_temp_bytes=selected_policy.maximum_temporary_storage_bytes,
         maximum_entries=50_000,
         maximum_depth=32,
     )
 
 
-def _import_limits() -> ImportLimits:
+def _import_limits(resource_policy: ResourcePolicy | None = None) -> ImportLimits:
+    selected_policy = _require_resource_policy(resource_policy)
+    _import_io_chunk_bytes(selected_policy)
     return ImportLimits(
-        maximum_source_bytes=_MAXIMUM_SOURCE_BYTES,
-        maximum_pdf_pages=_MAXIMUM_PAGES,
+        maximum_source_bytes=selected_policy.maximum_source_bytes,
+        maximum_pdf_pages=selected_policy.maximum_page_count,
         maximum_image_width=32_768,
         maximum_image_height=32_768,
         maximum_image_pixels=268_435_456,
@@ -153,7 +255,195 @@ def _import_limits() -> ImportLimits:
     )
 
 
-def _desktop_worker_config() -> DesktopWorkerCompositionConfig:
+def _import_io_chunk_bytes(resource_policy: ResourcePolicy | None = None) -> int:
+    """Prove the central import budget is the storage adapter's enforced chunk."""
+
+    selected_policy = _require_resource_policy(resource_policy)
+    if selected_policy.import_io_chunk_bytes != MAXIMUM_STREAM_CHUNK_BYTES:
+        raise ValueError("resource policy does not match the bounded storage I/O adapter")
+    return MAXIMUM_STREAM_CHUNK_BYTES
+
+
+def build_windows_pdf_export_limits(
+    resource_policy: ResourcePolicy | None = None,
+) -> ResourceLimits:
+    """Return the fixed bounded production policy for one verified PDF export."""
+
+    selected_policy = _require_resource_policy(resource_policy)
+    output_bytes = min(
+        _PDF_EXPORT_OUTPUT_BYTES,
+        selected_policy.maximum_temporary_storage_bytes // 2,
+    )
+    return ResourceLimits(
+        wall_time_ms=120_000,
+        cpu_time_ms=90_000,
+        memory_bytes=min(512 * 1024 * 1024, selected_policy.worker_process_memory_bytes),
+        temporary_storage_bytes=selected_policy.maximum_temporary_storage_bytes,
+        output_bytes=output_bytes,
+        page_count=selected_policy.maximum_page_count,
+        pixel_count=1_048_576,
+    )
+
+
+def build_windows_pdf_export_worker_config(
+    qpdf_executable: Path | None = None,
+    *,
+    resource_policy: ResourcePolicy | None = None,
+) -> PdfExportWorkerCompositionConfig:
+    """Select the trusted qpdf path and compose the export-only worker policy."""
+
+    selected_policy = _require_resource_policy(resource_policy)
+    selected_qpdf = _configured_qpdf_executable(qpdf_executable)
+    (
+        worker_executable,
+        venv_launcher,
+        bootstrap_script,
+        runtime_roots,
+        code_roots,
+        working_directory,
+    ) = _worker_runtime_resources()
+    return create_pdf_export_worker_composition_config(
+        python_executable=worker_executable,
+        venv_launcher=venv_launcher,
+        bootstrap_script=bootstrap_script,
+        runtime_roots=runtime_roots,
+        code_roots=code_roots,
+        working_directory=working_directory,
+        qpdf_executable=selected_qpdf,
+        resource_policy=WorkerResourcePolicy(
+            process_memory_bytes=selected_policy.worker_process_memory_bytes,
+            job_memory_bytes=selected_policy.worker_job_memory_bytes,
+            cpu_time_ms=selected_policy.worker_cpu_time_ms,
+            maximum_processes=selected_policy.worker_maximum_processes,
+        ),
+        timeout_policy=WorkerTimeoutPolicy(
+            handshake_seconds=20.0,
+            cancellation_grace_seconds=(selected_policy.cancellation_acknowledgement_ms / 1_000),
+            shutdown_grace_seconds=10.0,
+        ),
+        maximum_heavy_operation_concurrency=(selected_policy.maximum_heavy_operation_concurrency),
+        export_limits=build_windows_pdf_export_limits(selected_policy),
+    )
+
+
+def build_windows_pdf_export_worker_composition(
+    resources: DesktopApplicationResourceContext,
+    qpdf_executable: Path | None = None,
+) -> PdfExportWorkerComposition:
+    """Compose export with the exact app-scoped policy and heavy-work gate."""
+
+    selected_resources = _require_application_resource_context(resources, required=True)
+    return create_pdf_export_worker_composition(
+        build_windows_pdf_export_worker_config(
+            qpdf_executable,
+            resource_policy=selected_resources.resource_policy,
+        ),
+        heavy_operations=selected_resources.heavy_operations,
+    )
+
+
+def _desktop_worker_config(
+    resource_policy: ResourcePolicy | None = None,
+) -> DesktopWorkerCompositionConfig:
+    selected_policy = _require_resource_policy(resource_policy)
+    (
+        worker_executable,
+        venv_launcher,
+        bootstrap_script,
+        runtime_roots,
+        code_roots,
+        working_directory,
+    ) = _worker_runtime_resources()
+    return create_desktop_worker_composition_config(
+        # A venv's python.exe is a launcher that creates the base interpreter as
+        # a child. The worker job deliberately permits one process, so launch the
+        # approved base interpreter directly. CPython consumes the fixed venv
+        # launcher hint before worker code audits the otherwise minimal environment.
+        python_executable=worker_executable,
+        venv_launcher=venv_launcher,
+        bootstrap_script=bootstrap_script,
+        runtime_roots=runtime_roots,
+        code_roots=code_roots,
+        working_directory=working_directory,
+        resource_policy=WorkerResourcePolicy(
+            process_memory_bytes=selected_policy.worker_process_memory_bytes,
+            job_memory_bytes=selected_policy.worker_job_memory_bytes,
+            cpu_time_ms=selected_policy.worker_cpu_time_ms,
+            maximum_processes=min(
+                selected_policy.worker_maximum_processes,
+                selected_policy.maximum_heavy_operation_concurrency,
+            ),
+        ),
+        timeout_policy=WorkerTimeoutPolicy(
+            handshake_seconds=20.0,
+            cancellation_grace_seconds=(selected_policy.cancellation_acknowledgement_ms / 1_000),
+            shutdown_grace_seconds=10.0,
+        ),
+        maximum_heavy_operation_concurrency=(selected_policy.maximum_heavy_operation_concurrency),
+        inspection_limits=ResourceLimits(
+            wall_time_ms=60_000,
+            cpu_time_ms=45_000,
+            memory_bytes=min(512 * 1024 * 1024, selected_policy.worker_process_memory_bytes),
+            temporary_storage_bytes=64 * 1024 * 1024,
+            output_bytes=MAX_PDF_INSPECTION_FRAME_BYTES,
+            page_count=selected_policy.maximum_page_count,
+            pixel_count=1,
+        ),
+        thumbnail_limits=ResourceLimits(
+            wall_time_ms=60_000,
+            cpu_time_ms=45_000,
+            memory_bytes=min(512 * 1024 * 1024, selected_policy.worker_process_memory_bytes),
+            temporary_storage_bytes=64 * 1024 * 1024,
+            output_bytes=4 * 1024 * 1024,
+            page_count=selected_policy.maximum_page_count,
+            pixel_count=min(1_048_576, selected_policy.maximum_preview_pixels_per_page),
+        ),
+    )
+
+
+def _require_resource_policy(resource_policy: ResourcePolicy | None) -> ResourcePolicy:
+    if resource_policy is None:
+        return select_resource_policy()
+    if type(resource_policy) is not ResourcePolicy:
+        raise ValueError("resource_policy must be a ResourcePolicy")
+    return resource_policy
+
+
+def _require_application_resource_context(
+    resources: DesktopApplicationResourceContext | None,
+    *,
+    required: bool = False,
+) -> DesktopApplicationResourceContext:
+    if resources is None:
+        if required:
+            raise ValueError("application resource context is required")
+        return create_desktop_application_resource_context()
+    if type(resources) is not DesktopApplicationResourceContext:
+        raise ValueError("resources must be a DesktopApplicationResourceContext")
+    return resources
+
+
+def _configured_qpdf_executable(explicit: Path | None) -> Path:
+    selected = explicit
+    if selected is None:
+        configured = os.environ.get("PWS_QPDF_EXECUTABLE")
+        try:
+            selected = Path(configured) if configured else _DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE
+        except OSError, TypeError, ValueError:
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
+    if not isinstance(selected, Path):
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
+    return selected
+
+
+def _worker_runtime_resources() -> tuple[
+    Path,
+    Path | None,
+    Path,
+    tuple[Path, ...],
+    tuple[Path, ...],
+    Path,
+]:
     package_root = Path(__file__).resolve().parent
     code_root = package_root.parent
     runtime_root = Path(sys.prefix).resolve()
@@ -163,53 +453,25 @@ def _desktop_worker_config() -> DesktopWorkerCompositionConfig:
     runtime_roots = (
         (runtime_root,) if base_runtime_root == runtime_root else (runtime_root, base_runtime_root)
     )
-    return create_desktop_worker_composition_config(
-        # A venv's python.exe is a launcher that creates the base interpreter as
-        # a child. The worker job deliberately permits one process, so launch the
-        # approved base interpreter directly. CPython consumes the fixed venv
-        # launcher hint before worker code audits the otherwise minimal environment.
-        python_executable=worker_executable,
-        venv_launcher=venv_launcher,
-        bootstrap_script=(package_root / "worker" / "host_bootstrap.py").resolve(),
-        runtime_roots=runtime_roots,
-        code_roots=(code_root,),
-        working_directory=code_root,
-        resource_policy=WorkerResourcePolicy(
-            process_memory_bytes=_WORKER_MEMORY_BYTES,
-            job_memory_bytes=_WORKER_JOB_MEMORY_BYTES,
-            cpu_time_ms=120_000,
-            maximum_processes=1,
-        ),
-        timeout_policy=WorkerTimeoutPolicy(
-            handshake_seconds=20.0,
-            cancellation_grace_seconds=5.0,
-            shutdown_grace_seconds=10.0,
-        ),
-        inspection_limits=ResourceLimits(
-            wall_time_ms=60_000,
-            cpu_time_ms=45_000,
-            memory_bytes=512 * 1024 * 1024,
-            temporary_storage_bytes=64 * 1024 * 1024,
-            output_bytes=MAX_PDF_INSPECTION_FRAME_BYTES,
-            page_count=_MAXIMUM_PAGES,
-            pixel_count=1,
-        ),
-        thumbnail_limits=ResourceLimits(
-            wall_time_ms=60_000,
-            cpu_time_ms=45_000,
-            memory_bytes=512 * 1024 * 1024,
-            temporary_storage_bytes=64 * 1024 * 1024,
-            output_bytes=4 * 1024 * 1024,
-            page_count=_MAXIMUM_PAGES,
-            pixel_count=1_048_576,
-        ),
+    return (
+        worker_executable,
+        venv_launcher,
+        (package_root / "worker" / "host_bootstrap.py").resolve(),
+        runtime_roots,
+        (code_root,),
+        code_root,
     )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the desktop application."""
 
-    return run_desktop_application(build_backend, sys.argv if argv is None else argv)
+    resources = create_desktop_application_resource_context()
+    return run_desktop_application(
+        lambda: build_backend(resources),
+        sys.argv if argv is None else argv,
+        resource_policy=resources.resource_policy,
+    )
 
 
 if __name__ == "__main__":
