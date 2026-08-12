@@ -249,9 +249,15 @@ manifest-first recovery, invalid-case isolation, source/thumbnail/temp cleanup, 
 before generic temp cleanup, independent manifest-to-history validation, authenticated unique
 retirement restoration before committed replay, strict-prefix retirement cleanup, committed replay
 without worker/destination calls, proven prepared settlement, retained ambiguous preparation, and
-exact marker cleanup. Security tests keep external and sibling sentinels unchanged, preserve all
-temp evidence for ambiguous or linked retirement owners, reject linked/aliased recovery candidates,
-and scan every public diagnostic seam and rendered output with distinct prohibited values.
+exact marker cleanup. A separate process-level desktop test opens the real offscreen PySide
+organizer, queues an autosave, pauses only after the durable checkpoint replaces the journal name
+but before manifest publication, and forcibly terminates that UI process. A fresh PySide process
+then runs the composed startup scan, reports the case as recovered with path-free fields, reopens
+the recovered revision, and proves the external source, case copy, outside sentinel, and bounded
+case cleanup state are unchanged. Security tests keep external and sibling sentinels unchanged,
+preserve all temp evidence for ambiguous or linked retirement owners, reject linked/aliased
+recovery candidates, and scan every public diagnostic seam and rendered output with distinct
+prohibited values.
 
 Separate worker ACL unit/integration/security suites prove its canonical path-private journal,
 pre-mutation durable phase, forced owner-process termination while holding a test-isolated mutex,

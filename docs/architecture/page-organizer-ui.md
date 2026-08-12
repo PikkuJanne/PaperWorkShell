@@ -191,6 +191,7 @@ a 1,000-page bounded visible/selected preview
 window, Qt pixmap eviction, stale-rotation invalidation, constrained 960 by 540 layout with
 200-percent text, operation correlation on a real `QThread`, preview preemption before autosave,
 preview resumption after cancelled import, recovered-state review announcements, orderly shutdown
-timeout behavior, autosave restart recovery, unknown-error sanitization, and import-source hash
+timeout behavior, a forcibly terminated PySide process at the durable autosave-checkpoint boundary,
+fresh-process recovery/reopen, unknown-error sanitization, and import-source hash
 preservation. The dated keyboard-only and NVDA procedure and its current evidence are recorded in
 [`../accessibility/pws-0111-nvda-smoke.md`](../accessibility/pws-0111-nvda-smoke.md).
