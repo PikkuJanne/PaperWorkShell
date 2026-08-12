@@ -78,7 +78,7 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
 
         self.assertIsNotNone(timeout)
         assert timeout is not None
-        self.assertEqual(45, int(timeout.group(1)))
+        self.assertEqual(90, int(timeout.group(1)))
 
     def test_gitleaks_download_is_versioned_and_hash_verified(self) -> None:
         self.assertIn("gitleaks_8.30.1_windows_x64.zip", self.text)
