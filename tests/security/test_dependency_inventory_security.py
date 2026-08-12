@@ -1194,13 +1194,13 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "DEPENDENCY_REPOSITORY_INPUT_INVALID",
             ),
             (
-                "    timeout-minutes: 45",
-                "    timeout-minutes: 44",
+                "    timeout-minutes: 90",
+                "    timeout-minutes: 89",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (
-                "    timeout-minutes: 45",
-                "    timeout-minutes: 45\n    permissions:\n      contents: write\n      id-token: write",
+                "    timeout-minutes: 90",
+                "    timeout-minutes: 90\n    permissions:\n      contents: write\n      id-token: write",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (
@@ -1217,9 +1217,21 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (
-                "          Invoke-WebRequest -Uri $uri -OutFile $archive",
+                "              Invoke-WebRequest -Uri $uri -OutFile $archive "
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
                 '          $uri = "https://example.invalid/unreviewed.zip"\n'
-                "          Invoke-WebRequest -Uri $uri -OutFile $archive",
+                "              Invoke-WebRequest -Uri $uri -OutFile $archive "
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+                "-ConnectionTimeoutSeconds 300 -OperationTimeoutSeconds 600",
+                "DEPENDENCY_CONFIG_PIN_MISMATCH",
+            ),
+            (
+                "          $maximumAttempts = 3",
+                "          $maximumAttempts = 300",
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
             ),
             (

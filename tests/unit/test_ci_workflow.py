@@ -87,6 +87,17 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
             self.text,
         )
         self.assertIn("Get-FileHash -Algorithm SHA256", self.text)
+        self.assertEqual(2, self.text.count("$maximumAttempts = 3"))
+        self.assertEqual(
+            2,
+            self.text.count("for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++)"),
+        )
+        self.assertEqual(
+            2,
+            self.text.count("Remove-Item -LiteralPath $archive -Force"),
+        )
+        self.assertEqual(2, self.text.count("-ConnectionTimeoutSeconds 30"))
+        self.assertEqual(2, self.text.count("-OperationTimeoutSeconds 60"))
 
     def test_qpdf_archive_is_verified_before_program_files_extraction(self) -> None:
         self.assertIn(

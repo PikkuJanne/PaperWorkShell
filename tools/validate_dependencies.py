@@ -3537,7 +3537,7 @@ def _workflow_reconciliation_issues(
         and set(jobs) == {"windows-quality"}
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
-        and quality_job.get("timeout-minutes") == 45
+        and quality_job.get("timeout-minutes") == 90
         and len(quality_steps) == 9
     )
     expected_command_steps = {
@@ -3827,11 +3827,26 @@ def _workflow_reconciliation_issues(
                 f'$destination = Join-Path $env:RUNNER_TEMP "gitleaks-{gitleaks_selected}"',
                 f'$uri = "{expected_gitleaks_uri}"',
                 f'$expected = "{inventory_gitleaks_hash}"',
-                "Invoke-WebRequest -Uri $uri -OutFile $archive",
-                "$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
+                "$maximumAttempts = 3",
+                "for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {",
+                "  try {",
+                "    Invoke-WebRequest -Uri $uri -OutFile $archive "
+                "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+                "    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
                 "$archive).Hash.ToLowerInvariant()",
-                "if ($actual -ne $expected) {",
-                '  throw "Gitleaks archive checksum mismatch."',
+                "    if ($actual -ne $expected) {",
+                '      throw "Gitleaks archive checksum mismatch."',
+                "    }",
+                "    break",
+                "  } catch {",
+                "    if (Test-Path -LiteralPath $archive) {",
+                "      Remove-Item -LiteralPath $archive -Force",
+                "    }",
+                "    if ($attempt -eq $maximumAttempts) {",
+                "      throw",
+                "    }",
+                "    Start-Sleep -Seconds (2 * $attempt)",
+                "  }",
                 "}",
                 "Expand-Archive -LiteralPath $archive -DestinationPath $destination",
                 "$destination | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append",
@@ -3848,7 +3863,8 @@ def _workflow_reconciliation_issues(
             and script.splitlines() == expected_script_lines
             and script.count("Invoke-WebRequest") == 1
             and re.search(
-                r"^\s*Invoke-WebRequest\s+-Uri\s+\$uri\s+-OutFile\s+\$archive\s*$",
+                r"^\s*Invoke-WebRequest\s+-Uri\s+\$uri\s+-OutFile\s+\$archive\s+"
+                r"-ConnectionTimeoutSeconds\s+30\s+-OperationTimeoutSeconds\s+60\s*$",
                 script,
                 re.MULTILINE,
             )
@@ -3922,11 +3938,26 @@ def _workflow_reconciliation_issues(
             ),
             f'$uri = "{qpdf_uri}"',
             f'$expected = "{qpdf_hash}"',
-            "Invoke-WebRequest -Uri $uri -OutFile $archive",
-            "$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
+            "$maximumAttempts = 3",
+            "for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {",
+            "  try {",
+            "    Invoke-WebRequest -Uri $uri -OutFile $archive "
+            "-ConnectionTimeoutSeconds 30 -OperationTimeoutSeconds 60",
+            "    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath "
             "$archive).Hash.ToLowerInvariant()",
-            "if ($actual -ne $expected) {",
-            '  throw "qpdf archive checksum mismatch."',
+            "    if ($actual -ne $expected) {",
+            '      throw "qpdf archive checksum mismatch."',
+            "    }",
+            "    break",
+            "  } catch {",
+            "    if (Test-Path -LiteralPath $archive) {",
+            "      Remove-Item -LiteralPath $archive -Force",
+            "    }",
+            "    if ($attempt -eq $maximumAttempts) {",
+            "      throw",
+            "    }",
+            "    Start-Sleep -Seconds (2 * $attempt)",
+            "  }",
             "}",
             "Expand-Archive -LiteralPath $archive -DestinationPath $destination",
             f'$qpdf = Join-Path $destination "qpdf-{qpdf_selected}-msvc64/bin/qpdf.exe"',
