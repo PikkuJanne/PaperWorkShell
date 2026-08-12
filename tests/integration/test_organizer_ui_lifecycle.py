@@ -13,7 +13,7 @@ from uuid import UUID
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFileDialog
 
@@ -41,9 +41,11 @@ from paperworkshell.domain.recovery import (
     StartupRecoveryResult,
 )
 from paperworkshell.domain.source_ingest import (
+    SourceImportProgress,
     SourceImportResult,
     SourceIngestError,
     SourceIngestErrorCode,
+    SourceProgressPhase,
 )
 from paperworkshell.ui.application import _ShutdownWaitOutcome, _wait_for_backend_shutdown
 from paperworkshell.ui.backend import (
@@ -52,6 +54,7 @@ from paperworkshell.ui.backend import (
     OrganizerBackendWorker,
 )
 from paperworkshell.ui.window import PaperWorkShellWindow
+from tests.helpers.storage_delay import DeterministicStorageDelay, StorageDelayOperation
 
 CASE_ID = UUID("81000000-0000-4000-8000-000000000001")
 PAGE_ID = UUID("82000000-0000-4000-8000-000000000001")
@@ -277,6 +280,94 @@ class _CleanupRefusalBackend(_BlockingOrganizerBackend):
                 raise CaseLifecycleError(CaseLifecycleErrorCode.CLOSE_FAILED, "case.test")
             raise RuntimeError("PRIVATE_SHUTDOWN_CLEANUP_CANARY")
         self.shutdown_finished.set()
+
+
+class _SlowAutosaveBackend(_BlockingOrganizerBackend):
+    def __init__(self, delay: DeterministicStorageDelay) -> None:
+        super().__init__(
+            state=replace(
+                _initial_state(),
+                pages=(replace(_initial_state().pages[0], preview_supported=False),),
+            )
+        )
+        self._delay = delay
+
+    def flush_autosave(self) -> OrganizerViewState:
+        self._delay.checkpoint(StorageDelayOperation.FLUSH)
+        return super().flush_autosave()
+
+
+class _SlowImportBackend(_BlockingOrganizerBackend):
+    def __init__(self, delay: DeterministicStorageDelay) -> None:
+        super().__init__(
+            state=replace(
+                _initial_state(),
+                pages=(replace(_initial_state().pages[0], preview_supported=False),),
+            )
+        )
+        self._delay = delay
+
+    def import_source(
+        self,
+        source_path: Path,
+        display_name: str,
+        *,
+        timeout_seconds: float = 30.0,
+        cancellation: Callable[[], bool] | None = None,
+        progress: object = None,
+    ) -> SourceImportResult:
+        del source_path, display_name, timeout_seconds
+        assert cancellation is not None
+        assert callable(progress)
+        self.import_calls += 1
+        self.timeline.append("import_started")
+        self.import_started.set()
+        progress(
+            SourceImportProgress(
+                UUID("83000000-0000-4000-8000-000000000002"),
+                SourceProgressPhase.COPYING,
+                1,
+                2,
+            )
+        )
+        if not self._delay.checkpoint(
+            StorageDelayOperation.WRITE,
+            cancellation=cancellation,
+        ):
+            self.timeline.append("import_cancelled")
+            self.import_cancelled.set()
+            raise SourceIngestError(SourceIngestErrorCode.CANCELLED, "test.slow_import")
+        raise AssertionError("slow import test unexpectedly released its write boundary")
+
+
+class _SlowReadBackend(_BlockingOrganizerBackend):
+    def __init__(self, delay: DeterministicStorageDelay) -> None:
+        super().__init__(
+            state=replace(
+                _initial_state(),
+                pages=(replace(_initial_state().pages[0], preview_supported=False),),
+            )
+        )
+        self._delay = delay
+        self.read_finished = Event()
+
+    def open_case(self, case_id: UUID) -> OrganizerViewState:
+        assert case_id == CASE_ID
+        self._delay.checkpoint(StorageDelayOperation.READ)
+        self.read_finished.set()
+        return self.state
+
+
+class _SlowDirectoryBackend(_BlockingOrganizerBackend):
+    def __init__(self, delay: DeterministicStorageDelay) -> None:
+        super().__init__()
+        self._delay = delay
+        self.scan_finished = Event()
+
+    def list_cases(self) -> CaseIndex:
+        self._delay.checkpoint(StorageDelayOperation.DIRECTORY)
+        self.scan_finished.set()
+        return super().list_cases()
 
 
 @contextmanager
@@ -548,6 +639,98 @@ def test_real_thread_cancels_preview_and_saves_before_renderer_timeout() -> None
             "autosave",
         ]
         assert backend.timeline[-1] == "preview_resumed"
+
+
+def test_artificially_slow_storage_flush_does_not_block_the_gui_event_loop() -> None:
+    delay = DeterministicStorageDelay(frozenset({StorageDelayOperation.FLUSH}))
+    backend = _SlowAutosaveBackend(delay)
+    heartbeat = Event()
+
+    with _threaded_window(backend) as (window, commands, _worker):
+        commands.create_case_requested.emit()
+        _wait_until(lambda: window._state is not None and window._state.case_id == CASE_ID)
+        window._rotate_selected()
+        _wait_until(delay.entered.is_set)
+
+        QTimer.singleShot(0, heartbeat.set)
+        _wait_until(heartbeat.is_set)
+        assert window.isVisible()
+
+        delay.release.set()
+        _wait_until(lambda: "autosave" in backend.timeline)
+        assert delay.observed == (StorageDelayOperation.FLUSH,)
+
+
+def test_slow_storage_import_keeps_progress_visible_and_cancellation_available(
+    tmp_path: Path,
+) -> None:
+    delay = DeterministicStorageDelay(frozenset({StorageDelayOperation.WRITE}))
+    backend = _SlowImportBackend(delay)
+    heartbeat = Event()
+
+    with _threaded_window(backend) as (window, commands, _worker):
+        commands.create_case_requested.emit()
+        _wait_until(lambda: window._state is not None and window._state.case_id == CASE_ID)
+        window._queue_import(tmp_path / "synthetic.pdf", "Synthetic.pdf")
+        _wait_until(delay.entered.is_set)
+
+        QTimer.singleShot(0, heartbeat.set)
+        _wait_until(heartbeat.is_set)
+        assert window._progress.isVisible()
+        assert window._progress.value() == 1
+        assert window._progress.maximum() == 2
+        assert window._cancel_button.isVisible()
+        assert window._cancel_button.isEnabled()
+
+        window._cancel_active_operation()
+        _wait_until(backend.import_cancelled.is_set)
+        _wait_until(lambda: window._active_operation is None)
+
+        assert not delay.release.is_set()
+        assert delay.observed == (StorageDelayOperation.WRITE,)
+        assert backend.timeline == ["import_started", "import_cancelled"]
+
+
+def test_artificially_slow_storage_read_does_not_block_the_gui_event_loop() -> None:
+    delay = DeterministicStorageDelay(frozenset({StorageDelayOperation.READ}))
+    backend = _SlowReadBackend(delay)
+    heartbeat = Event()
+
+    with _threaded_window(backend) as (window, commands, _worker):
+        commands.open_case_requested.emit(CASE_ID)
+        _wait_until(delay.entered.is_set)
+
+        try:
+            QTimer.singleShot(0, heartbeat.set)
+            _wait_until(heartbeat.is_set)
+            assert window.isVisible()
+            assert not backend.read_finished.is_set()
+        finally:
+            delay.release.set()
+
+        _wait_until(backend.read_finished.is_set)
+        _wait_until(lambda: window._state is not None and window._state.case_id == CASE_ID)
+        assert delay.observed == (StorageDelayOperation.READ,)
+
+
+def test_artificially_slow_directory_scan_does_not_block_the_gui_event_loop() -> None:
+    delay = DeterministicStorageDelay(frozenset({StorageDelayOperation.DIRECTORY}))
+    backend = _SlowDirectoryBackend(delay)
+    heartbeat = Event()
+
+    with _threaded_window(backend) as (window, _commands, _worker):
+        _wait_until(delay.entered.is_set)
+
+        try:
+            QTimer.singleShot(0, heartbeat.set)
+            _wait_until(heartbeat.is_set)
+            assert window.isVisible()
+            assert not backend.scan_finished.is_set()
+        finally:
+            delay.release.set()
+
+        _wait_until(backend.scan_finished.is_set)
+        assert delay.observed == (StorageDelayOperation.DIRECTORY,)
 
 
 def test_visible_preview_batches_remain_bounded_and_follow_keyboard_selection() -> None:

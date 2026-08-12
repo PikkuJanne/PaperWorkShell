@@ -11,6 +11,8 @@ import pytest
 
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.process import (
+    MAXIMUM_BUFFERED_TRANSPORT_PAYLOADS,
+    MAXIMUM_BUFFERED_TRANSPORT_WRITES,
     TransportReceiveKind,
     create_worker_transport,
 )
@@ -179,6 +181,35 @@ def test_blocked_worker_input_never_blocks_the_gui_sending_thread() -> None:
     assert writer.entered.wait(1.0)
     transport.close()
     thread.join(timeout=1.0)
+
+
+def test_blocked_worker_input_rejects_the_first_write_beyond_bounded_backpressure() -> None:
+    writer = BlockingWriter()
+    transport = create_worker_transport(BlockingReader(), writer)
+    transport.send_payload(b"active-write")
+    assert writer.entered.wait(1.0)
+    for index in range(MAXIMUM_BUFFERED_TRANSPORT_WRITES):
+        transport.send_payload(f"queued-{index}".encode("ascii"))
+
+    with pytest.raises(WorkerClientError) as raised:
+        transport.send_payload(b"over-capacity")
+
+    assert raised.value.code is WorkerClientErrorCode.TRANSPORT_FAILED
+    transport.close()
+
+
+def test_unconsumed_worker_output_fails_closed_at_the_bounded_payload_capacity() -> None:
+    framed = b"".join(
+        encode_frame(f"payload-{index}".encode("ascii"))
+        for index in range(MAXIMUM_BUFFERED_TRANSPORT_PAYLOADS + 1)
+    )
+    transport = create_worker_transport(io.BytesIO(framed), io.BytesIO())
+
+    with pytest.raises(WorkerClientError) as raised:
+        transport.receive_payload(1.0)
+
+    assert raised.value.code is WorkerClientErrorCode.TRANSPORT_FAILED
+    transport.close()
 
 
 def test_endpoint_close_failure_is_sanitized_sticky_and_attempts_both_ends() -> None:

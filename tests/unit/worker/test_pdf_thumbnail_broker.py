@@ -37,6 +37,7 @@ from paperworkshell.worker.client.models import (
     WorkerOperationResultSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_thumbnail_broker import (
     BrokeredPdfThumbnailGenerator,
     CancellationProbe,
@@ -440,6 +441,7 @@ def _system() -> tuple[
         sources,
         cache,
         _policy(),
+        heavy_operations=HeavyOperationCoordinator(1),
         id_factory=lambda: _uuid(10),
         output_buffer_factory=output_buffer_factory,
     )
@@ -653,6 +655,7 @@ def test_request_bounds_fail_before_stage_or_worker() -> None:
         sources,
         cache,
         _policy(pixel_count=1),
+        heavy_operations=HeavyOperationCoordinator(1),
         id_factory=lambda: _uuid(10),
     )
 

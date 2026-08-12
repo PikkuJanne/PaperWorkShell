@@ -34,6 +34,7 @@ from paperworkshell.worker.client.models import (
     WorkerOperationResultSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_source_inspector import (
     BrokeredPdfSourceInspector,
     PdfInspectionBrokerPolicy,
@@ -334,6 +335,7 @@ def _stack(
         worker,
         broker,
         PdfInspectionBrokerPolicy(_limits() if limits is None else limits),
+        heavy_operations=HeavyOperationCoordinator(1),
         pipe_factory=lambda: pipe,
         id_factory=lambda: _uuid(20),
     )

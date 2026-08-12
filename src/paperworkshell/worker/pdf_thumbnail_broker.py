@@ -43,6 +43,7 @@ from paperworkshell.worker.client.models import (
     WorkerOperationResultSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationLease
 from paperworkshell.worker.pdf_thumbnail_profile import (
     PDF_THUMBNAIL_RENDERER_PROFILE_SHA256,
 )
@@ -284,6 +285,7 @@ class BrokeredPdfThumbnailGenerator:
 
     __slots__ = (
         "_cache",
+        "_heavy_operations",
         "_id_factory",
         "_output_buffer_factory",
         "_policy",
@@ -298,6 +300,7 @@ class BrokeredPdfThumbnailGenerator:
         cache: ThumbnailCacheStore,
         policy: PdfThumbnailBrokerPolicy,
         *,
+        heavy_operations: HeavyOperationCoordinator,
         id_factory: Callable[[], UUID] = uuid4,
         output_buffer_factory: Callable[[int], BoundedThumbnailOutput] = (
             WindowsBoundedOutputBuffer.create
@@ -305,6 +308,7 @@ class BrokeredPdfThumbnailGenerator:
     ) -> None:
         if (
             type(policy) is not PdfThumbnailBrokerPolicy
+            or type(heavy_operations) is not HeavyOperationCoordinator
             or not callable(id_factory)
             or not callable(output_buffer_factory)
         ):
@@ -313,6 +317,7 @@ class BrokeredPdfThumbnailGenerator:
         self._sources = sources
         self._cache = cache
         self._policy = policy
+        self._heavy_operations = heavy_operations
         self._id_factory = id_factory
         self._output_buffer_factory = output_buffer_factory
 
@@ -329,12 +334,13 @@ class BrokeredPdfThumbnailGenerator:
         if type(request) is not PdfThumbnailRequest:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.MODEL_INVALID, "thumbnail.broker_request")
         try:
-            return self._get_or_generate(
-                request,
-                deadline=deadline,
-                cancellation=cancellation,
-                progress=progress,
-            )
+            with self._acquire_heavy_operation(deadline, cancellation):
+                return self._get_or_generate(
+                    request,
+                    deadline=deadline,
+                    cancellation=cancellation,
+                    progress=progress,
+                )
         except PdfThumbnailError:
             raise
         except SourceIngestError as error:
@@ -349,6 +355,17 @@ class BrokeredPdfThumbnailGenerator:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.WORKER_FAILED, "thumbnail.worker")
         except Exception:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.INTERNAL_ERROR, "thumbnail.broker")
+
+    def _acquire_heavy_operation(
+        self,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> HeavyOperationLease:
+        while True:
+            lease = self._heavy_operations.try_acquire(self._policy.pump_interval_seconds)
+            if lease is not None:
+                return lease
+            _require_active(deadline, cancellation)
 
     def _get_or_generate(
         self,

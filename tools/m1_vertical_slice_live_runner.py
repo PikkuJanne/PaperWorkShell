@@ -8,6 +8,7 @@ supported workload is the checked-in PWS-0114 integration scenario.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import hmac
 import json
@@ -18,6 +19,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass
@@ -32,6 +34,11 @@ from paperworkshell.__main__ import (
 )
 from paperworkshell.domain.manifest_repository import CURRENT_MANIFEST_SCHEMA_VERSION
 from paperworkshell.domain.pdf_export import PDF_EXPORT_PROFILE_VERSION
+from paperworkshell.domain.resource_policy import (
+    CONSTRAINED_RESOURCE_POLICY_V1,
+    RESOURCE_PROFILE_ENVIRONMENT_VARIABLE,
+    ResourcePolicy,
+)
 from paperworkshell.storage._windows import (
     FileIdentity,
     WindowsHandle,
@@ -52,7 +59,11 @@ from paperworkshell.worker.pdf_thumbnail_profile import (
 )
 from paperworkshell.worker.protocol.models import PROTOCOL_VERSION
 from tools.m1_vertical_slice_benchmark import (
+    BudgetId,
+    BudgetResult,
     CompletedRunEvidence,
+    FailedRunEvidence,
+    FailureStage,
     M1BenchmarkError,
     M1BenchmarkReport,
     M1Phase,
@@ -63,21 +74,46 @@ from tools.m1_vertical_slice_benchmark import (
     WorkerResourceMeasurement,
     WorkspaceCheckpoint,
     WorkspaceUsageMeasurement,
+    _ceil_milliseconds,
     _LiveM1ReportWriter,
     _open_live_m1_report_writer,
     build_m1_benchmark_report,
 )
-from tools.reference_profile import (
-    PROFILE_PATH,
-    ReferenceAttestations,
-    validate_profile,
-)
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
-LIVE_PROTOCOL_VERSION: Final = 1
+LIVE_PROTOCOL_VERSION: Final = 2
 LIVE_TEST_NODE: Final = (
     "tests/integration/test_m1_vertical_slice_windows.py::"
     "test_m1_vertical_slice_is_deterministic_recoverable_and_private"
+)
+LIVE_REQUIRED_TEST_NODES: Final = (
+    LIVE_TEST_NODE,
+    "tests/integration/test_source_ingest_windows.py::"
+    "test_disk_full_during_import_copy_removes_partial_stage_and_preserves_state",
+    "tests/integration/test_thumbnail_cache_storage_windows.py::"
+    "test_disk_full_during_thumbnail_write_cleans_partial_stage_and_restart_is_clean",
+    "tests/integration/test_export_destination_windows.py::"
+    "test_disk_full_after_prefix_removes_only_the_exact_stage",
+    "tests/integration/test_manifest_repository_windows.py::"
+    "test_slow_atomic_rename_keeps_prior_manifest_authoritative_until_commit",
+    "tests/integration/test_organizer_ui_lifecycle.py::"
+    "test_artificially_slow_storage_flush_does_not_block_the_gui_event_loop",
+    "tests/integration/test_organizer_ui_lifecycle.py::"
+    "test_slow_storage_import_keeps_progress_visible_and_cancellation_available",
+    "tests/integration/test_organizer_ui_lifecycle.py::"
+    "test_artificially_slow_storage_read_does_not_block_the_gui_event_loop",
+    "tests/integration/test_organizer_ui_lifecycle.py::"
+    "test_artificially_slow_directory_scan_does_not_block_the_gui_event_loop",
+    "tests/integration/test_pdf_thumbnail_worker_windows.py::"
+    "test_live_worker_termination_during_render_recovers_with_fresh_service",
+    "tests/integration/test_worker_windows_containment.py::"
+    "test_worker_client_real_launch_operation_cancel_restart_and_shutdown",
+    "tests/unit/worker/test_private_temp.py::"
+    "test_capacity_preflight_accepts_exact_boundary_and_rejects_one_byte_less",
+    "tests/unit/worker/test_pdf_thumbnail_worker_adapter.py::"
+    "test_mid_render_private_disk_full_cleans_partial_and_fresh_retry_recovers",
+    "tests/unit/worker/test_pdf_export_worker_adapter.py::"
+    "test_mid_export_private_disk_full_removes_partial_and_fresh_retry_recovers",
 )
 LIVE_OUTPUT_DIRECTORY: Final = PROJECT_ROOT / "benchmark-results"
 LIVE_FIXTURE_DIRECTORY: Final = PROJECT_ROOT / "tests" / "fixtures" / "synthetic" / "v1" / "pdf"
@@ -87,7 +123,6 @@ LIVE_FIXTURES: Final = (
 )
 LIVE_DERIVATIVE_FILENAME: Final = "PWS-0114-m1-vertical-slice.pdf"
 LIVE_REPORT_FILENAME: Final = "PWS-0114-m1-benchmark-report.json"
-_LIVE_REFERENCE_SCENARIO_ID: Final = "rotational-hdd"
 LIVE_CHILD_RESULT_FILENAME: Final = "result.json"
 LIVE_CHILD_DERIVATIVE_FILENAME: Final = "derivative.pdf"
 LIVE_ENV_PROTOCOL: Final = "PWS_M1_LIVE_PROTOCOL"
@@ -106,6 +141,8 @@ LIVE_RUN_TIMEOUT_SECONDS: Final = 2 * 60 * 60
 _DERIVATIVE_STAGE_PREFIX: Final = ".pws-0114-m1-derivative-"
 _DERIVATIVE_STAGE_SUFFIX: Final = ".tmp"
 _WINDOWS_ALREADY_EXISTS_ERRORS: Final = frozenset({80, 183})
+_WINDOWS_NO_MORE_FILES: Final = 18
+_PROCESS_TREE_SAMPLE_ATTEMPTS: Final = 3
 _SHA256_LENGTH: Final = 64
 _VERSION_IDENTITY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
 _GIT_EXECUTABLE: Final = Path(r"C:\Program Files\Git\cmd\git.exe")
@@ -212,6 +249,13 @@ _CHILD_EVIDENCE_FIELDS: Final = frozenset(
         "background_export_completed",
         "heartbeat_count",
         "maximum_heartbeat_gap_ns",
+        "input_bytes",
+        "peak_cache_bytes",
+        "peak_temp_bytes",
+        "max_heavy_operation_concurrency",
+        "cancellation_acknowledgement_ms",
+        "workers_terminated",
+        "worker_recycle_policy",
     }
 )
 
@@ -238,8 +282,21 @@ class _DuplicateKeyError(ValueError):
     pass
 
 
+class _FailedReportPublished(M1BenchmarkError):
+    """Internal marker preserving a failure already committed as evidence."""
+
+
 def _fail(code: str, message: str) -> NoReturn:
     error = M1BenchmarkError(code, message)
+    try:
+        raise error from None
+    finally:
+        error.__cause__ = None
+        error.__context__ = None
+
+
+def _fail_after_report(code: str, message: str) -> NoReturn:
+    error = _FailedReportPublished(code, message)
     try:
         raise error from None
     finally:
@@ -313,11 +370,13 @@ def _config_value(value: object) -> object:
 def production_worker_config_digest() -> str:
     """Bind every public validated field without serializing fixed resource paths."""
 
-    export_config = build_windows_pdf_export_worker_config()
+    export_config = build_windows_pdf_export_worker_config(
+        resource_policy=CONSTRAINED_RESOURCE_POLICY_V1
+    )
     with _open_qpdf_distribution_authority(export_config.qpdf_executable) as identity:
         return _identity_digest(
             (
-                _config_value(_desktop_worker_config()),
+                _config_value(_desktop_worker_config(CONSTRAINED_RESOURCE_POLICY_V1)),
                 _config_value(export_config),
                 identity,
             )
@@ -345,7 +404,9 @@ def _base_child_environment() -> dict[str, str]:
 def production_qpdf_version_identity() -> str:
     """Return the pinned export-engine version after binding its exact binary."""
 
-    executable = build_windows_pdf_export_worker_config().qpdf_executable
+    executable = build_windows_pdf_export_worker_config(
+        resource_policy=CONSTRAINED_RESOURCE_POLICY_V1
+    ).qpdf_executable
     with _open_qpdf_distribution_authority(executable):
         if _VERSION_IDENTITY.fullmatch(QPDF_EXPORT_ENGINE_VERSION) is None:
             _fail("M1_LIVE_CONFIG_INVALID", "The configured qpdf version is invalid.")
@@ -826,6 +887,7 @@ def _child_environment(*, run_id: UUID, stage: Path, key: bytes) -> dict[str, st
             LIVE_ENV_RUN_ID: str(run_id),
             LIVE_ENV_STAGE: str(stage),
             LIVE_ENV_HMAC_KEY: key.hex(),
+            RESOURCE_PROFILE_ENVIRONMENT_VARIABLE: CONSTRAINED_RESOURCE_POLICY_V1.profile.value,
         }
     )
     return environment
@@ -1105,10 +1167,12 @@ def _run_canonical_child(
     basetemp: Path,
     key: bytes,
     run_authority: WindowsHandle,
-) -> tuple[LiveChildResult, bytes]:
+) -> tuple[LiveChildResult, bytes, int]:
     try:
         try:
-            qpdf_executable = build_windows_pdf_export_worker_config().qpdf_executable
+            qpdf_executable = build_windows_pdf_export_worker_config(
+                resource_policy=CONSTRAINED_RESOURCE_POLICY_V1
+            ).qpdf_executable
         except Exception:
             _fail(
                 "M1_LIVE_CONFIG_INVALID",
@@ -1132,10 +1196,11 @@ def _execute_canonical_child(
     artifacts: Path,
     basetemp: Path,
     key: bytes,
-) -> tuple[LiveChildResult, bytes]:
+) -> tuple[LiveChildResult, bytes, int]:
     environment = _child_environment(run_id=run_id, stage=artifacts, key=key)
+    peak_process_tree_rss_bytes = 0
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             (
                 sys.executable,
                 "-I",
@@ -1146,23 +1211,35 @@ def _execute_canonical_child(
                 "no:cacheprovider",
                 "--basetemp",
                 str(basetemp),
-                LIVE_TEST_NODE,
+                *LIVE_REQUIRED_TEST_NODES,
             ),
             cwd=PROJECT_ROOT,
             env=environment,
-            check=False,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=LIVE_RUN_TIMEOUT_SECONDS,
             shell=False,
         )
+        deadline = time.monotonic() + LIVE_RUN_TIMEOUT_SECONDS
+        while process.poll() is None:
+            peak_process_tree_rss_bytes = max(
+                peak_process_tree_rss_bytes,
+                _windows_process_tree_rss_bytes(process),
+            )
+            if time.monotonic() >= deadline:
+                process.kill()
+                process.wait(timeout=30)
+                _fail(
+                    "M1_LIVE_CHILD_FAILED",
+                    "The canonical vertical-slice child did not finish safely.",
+                )
+            time.sleep(CONSTRAINED_RESOURCE_POLICY_V1.resource_sampling_interval_ms / 1_000)
     except OSError, subprocess.SubprocessError:
         _fail(
             "M1_LIVE_CHILD_FAILED",
             "The canonical vertical-slice child did not finish safely.",
         )
-    if completed.returncode != 0:
+    if process.returncode != 0:
         _fail("M1_LIVE_CHILD_FAILED", "The canonical vertical-slice child did not pass.")
     result_payload = _read_authenticated_file(
         artifacts / LIVE_CHILD_RESULT_FILENAME,
@@ -1177,7 +1254,150 @@ def _execute_canonical_child(
         expected_sha256=child.evidence.get("output_sha256"),
         expected_bytes=child.evidence.get("output_bytes"),
     )
-    return child, derivative
+    if peak_process_tree_rss_bytes <= 0:
+        _fail("M1_RESOURCE_MEASUREMENT_FAILED", "Process-tree memory could not be measured.")
+    return child, derivative, peak_process_tree_rss_bytes
+
+
+class _ProcessMemoryCounters(ctypes.Structure):
+    _fields_ = (
+        ("cb", ctypes.c_ulong),
+        ("page_fault_count", ctypes.c_ulong),
+        ("peak_working_set_size", ctypes.c_size_t),
+        ("working_set_size", ctypes.c_size_t),
+        ("quota_peak_paged_pool_usage", ctypes.c_size_t),
+        ("quota_paged_pool_usage", ctypes.c_size_t),
+        ("quota_peak_non_paged_pool_usage", ctypes.c_size_t),
+        ("quota_non_paged_pool_usage", ctypes.c_size_t),
+        ("pagefile_usage", ctypes.c_size_t),
+        ("peak_pagefile_usage", ctypes.c_size_t),
+    )
+
+
+class _ProcessEntry32W(ctypes.Structure):
+    _fields_ = (
+        ("dwSize", ctypes.c_ulong),
+        ("cntUsage", ctypes.c_ulong),
+        ("th32ProcessID", ctypes.c_ulong),
+        ("th32DefaultHeapID", ctypes.c_void_p),
+        ("th32ModuleID", ctypes.c_ulong),
+        ("cntThreads", ctypes.c_ulong),
+        ("th32ParentProcessID", ctypes.c_ulong),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_ulong),
+        ("szExeFile", ctypes.c_wchar * 260),
+    )
+
+
+def _descendant_process_ids(parent_by_pid: Mapping[int, int], root_pid: int) -> frozenset[int]:
+    """Resolve one whole process-snapshot ancestry closure."""
+
+    descendants = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent_pid in parent_by_pid.items():
+            if parent_pid in descendants and pid not in descendants:
+                descendants.add(pid)
+                changed = True
+    return frozenset(descendants)
+
+
+def _complete_process_tree_rss(
+    expected_pids: frozenset[int],
+    rss_by_pid: Mapping[int, int],
+) -> int | None:
+    """Reject a sample unless every snapshotted process has one valid RSS reading."""
+
+    if (
+        not expected_pids
+        or set(rss_by_pid) != set(expected_pids)
+        or any(type(value) is not int or value < 0 for value in rss_by_pid.values())
+    ):
+        return None
+    return sum(rss_by_pid.values())
+
+
+def _process_snapshot_enumeration_completed(last_error: object) -> bool:
+    """Accept only the documented Process32Next end-of-enumeration status."""
+
+    return type(last_error) is int and last_error == _WINDOWS_NO_MORE_FILES
+
+
+def _windows_process_tree_rss_bytes(process: subprocess.Popen[bytes]) -> int:
+    """Return one complete tree sample, retrying snapshots invalidated by process exit."""
+
+    if os.name != "nt":
+        _fail("M1_LIVE_PLATFORM_UNSUPPORTED", "Process-tree measurement requires Windows.")
+    for _attempt in range(_PROCESS_TREE_SAMPLE_ATTEMPTS):
+        measured = _windows_process_tree_rss_sample(process)
+        if measured is not None:
+            return measured
+    _fail("M1_RESOURCE_MEASUREMENT_FAILED", "Process-tree memory could not be measured.")
+
+
+def _windows_process_tree_rss_sample(process: subprocess.Popen[bytes]) -> int | None:
+    """Sum a whole Toolhelp snapshot, rejecting any incomplete enumeration or PID read."""
+
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_snapshot = kernel32.CreateToolhelp32Snapshot
+        create_snapshot.argtypes = (ctypes.c_ulong, ctypes.c_ulong)
+        create_snapshot.restype = ctypes.c_void_p
+        process_first = kernel32.Process32FirstW
+        process_first.argtypes = (ctypes.c_void_p, ctypes.POINTER(_ProcessEntry32W))
+        process_first.restype = ctypes.c_int
+        process_next = kernel32.Process32NextW
+        process_next.argtypes = (ctypes.c_void_p, ctypes.POINTER(_ProcessEntry32W))
+        process_next.restype = ctypes.c_int
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (ctypes.c_void_p,)
+        close_handle.restype = ctypes.c_int
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+        open_process.restype = ctypes.c_void_p
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        query = psapi.GetProcessMemoryInfo
+        query.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong)
+        query.restype = ctypes.c_int
+    except AttributeError, OSError:
+        _fail("M1_RESOURCE_MEASUREMENT_FAILED", "Process-tree memory could not be measured.")
+    snapshot = create_snapshot(0x00000002, 0)
+    if not snapshot or snapshot == ctypes.c_void_p(-1).value:
+        _fail("M1_RESOURCE_MEASUREMENT_FAILED", "Process-tree memory could not be measured.")
+    parents: dict[int, int] = {}
+    entry = _ProcessEntry32W()
+    entry.dwSize = ctypes.sizeof(entry)
+    try:
+        if not process_first(snapshot, ctypes.byref(entry)):
+            return None
+        while True:
+            parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+            entry.dwSize = ctypes.sizeof(entry)
+            ctypes.set_last_error(0)
+            if not process_next(snapshot, ctypes.byref(entry)):
+                break
+        if not _process_snapshot_enumeration_completed(ctypes.get_last_error()):
+            return None
+    finally:
+        close_handle(snapshot)
+    pids = _descendant_process_ids(parents, process.pid)
+    rss_by_pid: dict[int, int] = {}
+    for pid in pids:
+        owned = pid != process.pid
+        handle = open_process(0x0410, 0, pid) if owned else getattr(process, "_handle", 0)
+        if not handle:
+            return None
+        counters = _ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(counters)
+        try:
+            if not query(handle, ctypes.byref(counters), counters.cb):
+                return None
+            rss_by_pid[pid] = int(counters.working_set_size)
+        finally:
+            if owned:
+                close_handle(handle)
+    return _complete_process_tree_rss(pids, rss_by_pid)
 
 
 def _publish_fixed_bundle(
@@ -1218,17 +1438,83 @@ def _publish_fixed_bundle(
     return PublishedLiveArtifacts(derivative_destination, report_destination)
 
 
+def _failed_evidence(
+    *,
+    run_id: UUID,
+    failure_stage: FailureStage,
+    started_ns: int,
+    revision: str,
+    tree: str,
+    budget_results: tuple[BudgetResult, ...] = (),
+) -> FailedRunEvidence:
+    """Build path-free identity for one runner failure at an exact stage."""
+
+    return FailedRunEvidence(
+        run_id=run_id,
+        failure_stage=failure_stage,
+        total_elapsed_ns=max(1, time.perf_counter_ns() - started_ns),
+        repository_revision=revision,
+        repository_tree=tree,
+        repository_worktree_clean=True,
+        report_schema_sha256=_bounded_file_sha256(
+            PROJECT_ROOT / "schemas/m1-vertical-slice-benchmark-report-v2.schema.json"
+        ),
+        budget_results=budget_results,
+    )
+
+
+def _publish_failed_live_report(
+    *,
+    output_directory: Path,
+    policy_report: M1BenchmarkReport,
+    result_code: str,
+    failed_evidence: FailedRunEvidence,
+    phases: tuple[PhaseMeasurement, ...] = (),
+    workers: tuple[WorkerResourceMeasurement, ...] = (),
+    workspaces: tuple[WorkspaceUsageMeasurement, ...] = (),
+) -> Path:
+    """Publish one sanitized failed report and no derivative."""
+
+    with _open_live_m1_report_writer(output_directory) as writer:
+        report = writer._build_failed_report(
+            policy_report,
+            result_code=result_code,
+            phase_measurements=phases,
+            worker_resource_measurements=workers,
+            workspace_usage_measurements=workspaces,
+            failed_evidence=failed_evidence,
+        )
+        return writer._publish_failed_report(report)
+
+
+def _failure_stage_for_code(code: str) -> FailureStage:
+    """Classify only pre-workload configuration failures as setup failures."""
+
+    if code in {
+        "M1_LIVE_CONFIG_INVALID",
+        "M1_LIVE_WORK_INVALID",
+        "M1_RESOURCE_POLICY_INVALID",
+    }:
+        return FailureStage.SETUP
+    return FailureStage.WORKLOAD
+
+
 def run_live_m1_vertical_slice(
     *,
     work_directory: Path,
-    attestations: ReferenceAttestations,
+    resource_policy: ResourcePolicy = CONSTRAINED_RESOURCE_POLICY_V1,
 ) -> PublishedLiveArtifacts:
-    """Run the fixed scenario and publish its derivative/report without overwrite."""
+    """Run the fixed workload under enforced constrained resource budgets."""
 
     if os.name != "nt":
         _fail("M1_LIVE_PLATFORM_UNSUPPORTED", "The live M1 runner requires Windows.")
+    if resource_policy is not CONSTRAINED_RESOURCE_POLICY_V1:
+        _fail(
+            "M1_RESOURCE_POLICY_INVALID",
+            "The canonical M1 run requires the checked-in constrained policy.",
+        )
     revision_before, tree_before = _git_identity()
-    selected_work = _prepare_work_directory(work_directory)
+    run_started_ns = time.perf_counter_ns()
     output_directory = LIVE_OUTPUT_DIRECTORY
     try:
         output_directory.mkdir(exist_ok=True)
@@ -1236,6 +1522,52 @@ def run_live_m1_vertical_slice(
         _fail("M1_LIVE_OUTPUT_FAILED", "The fixed live output directory is unavailable.")
     _require_fixed_outputs_absent(output_directory)
     run_id = uuid4()
+    policy_report = build_m1_benchmark_report(resource_policy)
+    try:
+        return _run_live_m1_vertical_slice(
+            work_directory=work_directory,
+            resource_policy=resource_policy,
+            output_directory=output_directory,
+            policy_report=policy_report,
+            run_id=run_id,
+            run_started_ns=run_started_ns,
+            revision_before=revision_before,
+            tree_before=tree_before,
+        )
+    except M1BenchmarkError as error:
+        if not isinstance(error, _FailedReportPublished):
+            try:
+                _publish_failed_live_report(
+                    output_directory=output_directory,
+                    policy_report=policy_report,
+                    result_code=error.code,
+                    failed_evidence=_failed_evidence(
+                        run_id=run_id,
+                        failure_stage=_failure_stage_for_code(error.code),
+                        started_ns=run_started_ns,
+                        revision=revision_before,
+                        tree=tree_before,
+                    ),
+                )
+            except M1BenchmarkError:
+                pass
+        raise
+
+
+def _run_live_m1_vertical_slice(
+    *,
+    work_directory: Path,
+    resource_policy: ResourcePolicy,
+    output_directory: Path,
+    policy_report: M1BenchmarkReport,
+    run_id: UUID,
+    run_started_ns: int,
+    revision_before: str,
+    tree_before: str,
+) -> PublishedLiveArtifacts:
+    """Execute one authenticated live run after the publication boundary is ready."""
+
+    selected_work = _prepare_work_directory(work_directory)
     run_directory = selected_work / str(run_id)
     artifacts = run_directory / "artifacts"
     basetemp = run_directory / "pytest"
@@ -1271,7 +1603,7 @@ def run_live_m1_vertical_slice(
         raise
     assert run_authority is not None
     key = os.urandom(32)
-    child, derivative = _run_canonical_child(
+    child, derivative, peak_process_tree_rss_bytes = _run_canonical_child(
         run_id=run_id,
         run_directory=run_directory,
         work_directory=selected_work,
@@ -1283,16 +1615,75 @@ def run_live_m1_vertical_slice(
     revision_after, tree_after = _git_identity()
     if revision_after != revision_before or tree_after != tree_before:
         _fail("M1_LIVE_GIT_CHANGED", "The repository changed during the live run.")
-    profile, profile_issues = validate_profile()
-    if profile is None or profile_issues:
-        _fail("M1_REFERENCE_INVALID", "The checked-in reference profile is invalid.")
-    host_report = build_m1_benchmark_report(
-        profile,
-        _LIVE_REFERENCE_SCENARIO_ID,
-        selected_work,
-        attestations=attestations,
-    )
     evidence_payload = dict(child.evidence)
+    peak_cache_bytes = cast(int, evidence_payload["peak_cache_bytes"])
+    peak_temp_bytes = cast(int, evidence_payload["peak_temp_bytes"])
+    maximum_heartbeat_gap_ns = cast(int, evidence_payload["maximum_heartbeat_gap_ns"])
+    total_elapsed_ns = cast(int, evidence_payload["total_elapsed_ns"])
+    max_heavy_operation_concurrency = cast(int, evidence_payload["max_heavy_operation_concurrency"])
+    cancellation_acknowledgement_ms = cast(int, evidence_payload["cancellation_acknowledgement_ms"])
+    combined_cache_budget = (
+        resource_policy.maximum_cache_bytes + resource_policy.thumbnail_preview_cache_bytes
+    )
+    budget_results = (
+        BudgetResult(
+            BudgetId.PROCESS_TREE_RSS,
+            peak_process_tree_rss_bytes,
+            resource_policy.canonical_process_tree_rss_bytes,
+            peak_process_tree_rss_bytes <= resource_policy.canonical_process_tree_rss_bytes,
+        ),
+        BudgetResult(
+            BudgetId.CACHE_BYTES,
+            peak_cache_bytes,
+            combined_cache_budget,
+            peak_cache_bytes <= combined_cache_budget,
+        ),
+        BudgetResult(
+            BudgetId.TEMP_BYTES,
+            peak_temp_bytes,
+            resource_policy.maximum_temporary_storage_bytes,
+            peak_temp_bytes <= resource_policy.maximum_temporary_storage_bytes,
+        ),
+        BudgetResult(
+            BudgetId.HEAVY_CONCURRENCY,
+            max_heavy_operation_concurrency,
+            resource_policy.maximum_heavy_operation_concurrency,
+            max_heavy_operation_concurrency <= resource_policy.maximum_heavy_operation_concurrency,
+        ),
+        BudgetResult(
+            BudgetId.UI_HEARTBEAT,
+            _ceil_milliseconds(maximum_heartbeat_gap_ns),
+            resource_policy.maximum_ui_heartbeat_gap_ms,
+            maximum_heartbeat_gap_ns <= resource_policy.maximum_ui_heartbeat_gap_ms * 1_000_000,
+        ),
+        BudgetResult(
+            BudgetId.CANCELLATION_ACKNOWLEDGEMENT,
+            cancellation_acknowledgement_ms,
+            resource_policy.cancellation_acknowledgement_ms,
+            cancellation_acknowledgement_ms <= resource_policy.cancellation_acknowledgement_ms,
+        ),
+    )
+    if any(not result.passed for result in budget_results):
+        _publish_failed_live_report(
+            output_directory=output_directory,
+            policy_report=policy_report,
+            result_code="M1_RESOURCE_BUDGET_FAILED",
+            phases=child.phases,
+            workers=child.workers,
+            workspaces=child.workspaces,
+            failed_evidence=_failed_evidence(
+                run_id=run_id,
+                failure_stage=FailureStage.BUDGET_EVALUATION,
+                started_ns=run_started_ns,
+                revision=revision_before,
+                tree=tree_before,
+                budget_results=budget_results,
+            ),
+        )
+        _fail_after_report(
+            "M1_RESOURCE_BUDGET_FAILED",
+            "The canonical workload exceeded an enforced resource budget.",
+        )
     evidence_payload.update(
         {
             "run_id": str(run_id),
@@ -1300,10 +1691,22 @@ def run_live_m1_vertical_slice(
             "repository_revision": revision_before,
             "repository_tree": tree_before,
             "repository_worktree_clean": True,
-            "reference_profile_sha256": _bounded_file_sha256(PROJECT_ROOT / PROFILE_PATH),
             "report_schema_sha256": _bounded_file_sha256(
-                PROJECT_ROOT / "schemas/m1-vertical-slice-benchmark-report-v1.schema.json"
+                PROJECT_ROOT / "schemas/m1-vertical-slice-benchmark-report-v2.schema.json"
             ),
+            "peak_process_tree_rss_bytes": peak_process_tree_rss_bytes,
+            "peak_cache_bytes": peak_cache_bytes,
+            "peak_temp_bytes": peak_temp_bytes,
+            "max_heavy_operation_concurrency": max_heavy_operation_concurrency,
+            "cancellation_acknowledgement_ms": cancellation_acknowledgement_ms,
+            "low_disk_simulation_status": "passed",
+            "slow_io_simulation_status": "passed",
+            "worker_recovery_status": "passed",
+            "ui_heartbeat_violation_count": int(
+                maximum_heartbeat_gap_ns > resource_policy.maximum_ui_heartbeat_gap_ms * 1_000_000
+            ),
+            "duration_ms": max(1, total_elapsed_ns // 1_000_000),
+            "budget_results": [result.to_payload() for result in budget_results],
         }
     )
     completed_evidence = CompletedRunEvidence.from_payload(evidence_payload)
@@ -1312,7 +1715,7 @@ def run_live_m1_vertical_slice(
         _fail("M1_LIVE_GIT_CHANGED", "The repository changed before live publication.")
     with _open_live_m1_report_writer(output_directory) as writer:
         report = writer._build_completed_report(
-            host_report,
+            policy_report,
             phase_measurements=child.phases,
             worker_resource_measurements=child.workers,
             workspace_usage_measurements=child.workspaces,
@@ -1333,18 +1736,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         default=PROJECT_ROOT / ".paperworkshell-local" / "m1-live-work",
     )
-    parser.add_argument("--attest-memory-mib", type=int)
-    parser.add_argument("--attest-graphics", choices=("integrated",))
-    parser.add_argument("--attest-storage-media", choices=("hdd-or-validated-emulation",))
+    parser.add_argument("--profile", choices=("constrained",), default="constrained")
     arguments = parser.parse_args(argv)
     try:
         artifacts = run_live_m1_vertical_slice(
             work_directory=cast(Path, arguments.work_directory),
-            attestations=ReferenceAttestations(
-                memory_mib=cast(int | None, arguments.attest_memory_mib),
-                graphics_class=cast(str | None, arguments.attest_graphics),
-                storage_media=cast(str | None, arguments.attest_storage_media),
-            ),
+            resource_policy=CONSTRAINED_RESOURCE_POLICY_V1,
         )
     except M1BenchmarkError as error:
         print(f"ERROR [{error.code}] {error.safe_message}", file=sys.stderr)

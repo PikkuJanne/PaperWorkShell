@@ -50,6 +50,21 @@ class WindowsVerifiedPdfDestination:
     def __repr__(self) -> str:
         return "WindowsVerifiedPdfDestination()"
 
+    def require_capacity(self, destination: Path, *, estimated_byte_size: int) -> None:
+        """Preflight one conservative destination-space estimate before worker export."""
+
+        try:
+            self.destination.require_capacity(
+                destination,
+                estimated_byte_size=estimated_byte_size,
+            )
+        except PdfExportError:
+            raise
+        except ExportDestinationError as error:
+            _raise_destination_error(error)
+        except Exception:
+            reject_pdf_export(PdfExportErrorCode.DESTINATION_FAILED, "export.capacity")
+
     def commit(
         self,
         destination: Path,
@@ -99,6 +114,11 @@ def _raise_destination_error(error: ExportDestinationError) -> Never:
         reject_pdf_export(PdfExportErrorCode.CANCELLED, "export.destination")
     if error.code is ExportDestinationErrorCode.TIMED_OUT:
         reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "export.destination")
+    if error.code is ExportDestinationErrorCode.DESTINATION_FULL:
+        reject_pdf_export(
+            PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED,
+            "export.destination_capacity",
+        )
     if error.code in {
         ExportDestinationErrorCode.PATH_INVALID,
         ExportDestinationErrorCode.LOCATION_UNSUPPORTED,

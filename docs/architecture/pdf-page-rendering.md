@@ -257,8 +257,12 @@ arithmetic and fails before expensive work or allocation where possible:
    operation memory budget before creating a PDFium bitmap. The selected adapter uses a checked
    bitmap-allocation seam and streams/hashes rows to avoid a second full-raster copy; any smaller
    conversion scratch space still counts toward peak memory.
-6. Enforce Job Object memory/CPU bounds, the monotonic wall deadline, worker-private temporary
-   storage, and any broker output cap independently. One limit never substitutes for another.
+6. Authenticate the AppContainer-private temp root, require the complete operation temporary bound
+   plus the fixed 256 MiB volume reserve before staging, and prove source plus maximum raster fits
+   that operation bound. Enforce Job Object memory/CPU bounds, the monotonic wall deadline, and any
+   broker output cap independently. Anonymous private files close on every render/write failure;
+   one injected mid-render disk-full regression proves cleanup and a fresh-operation recovery. One
+   limit never substitutes for another.
 7. Validate returned width, height, stride, format, bytes written, digest, annotation profile, and
    correlations before accepting the metadata result. Partial or surplus bytes are failure.
 

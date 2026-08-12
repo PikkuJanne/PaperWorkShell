@@ -1,9 +1,9 @@
-"""Build and validate Milestone 1 vertical-slice measurement reports.
+"""Build and validate sanitized M1 constrained-resource evidence.
 
-The public builder, serializer, and CLI intentionally emit only host
-observations with a ``not-run`` workload status.  Completed live-run evidence
-is available only through an unsupported module-private boundary owned by the
-canonical runner.
+The report measures bounded software behaviour.  It deliberately contains no
+hardware observations or operator attestations and cannot certify a named
+processor, memory, graphics, or storage configuration.  Completed live-run
+evidence remains available only through the canonical runner's private writer.
 """
 
 from __future__ import annotations
@@ -25,6 +25,11 @@ from uuid import UUID, uuid4
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from paperworkshell.domain.resource_policy import (
+    ProcessingProfile,
+    ResourcePolicy,
+    select_resource_policy,
+)
 from paperworkshell.storage._windows import (
     FileIdentity,
     WindowsHandle,
@@ -34,18 +39,12 @@ from paperworkshell.storage._windows import (
     write_new_file,
 )
 from paperworkshell.storage.errors import WorkspaceError
-from tools.reference_profile import (
-    PROFILE_PATH,
-    SCENARIO_IDS,
-    BenchmarkError,
-    ReferenceAttestations,
-    evaluate_reference_environment,
-    observe_reference_environment,
-    validate_profile,
-)
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
-REPORT_SCHEMA_PATH: Final = Path("schemas/m1-vertical-slice-benchmark-report-v1.schema.json")
+HISTORICAL_REPORT_SCHEMA_PATH: Final = Path(
+    "schemas/m1-vertical-slice-benchmark-report-v1.schema.json"
+)
+REPORT_SCHEMA_PATH: Final = Path("schemas/m1-vertical-slice-benchmark-report-v2.schema.json")
 MAX_REPORT_BYTES: Final = 256 * 1024
 MAX_SCHEMA_BYTES: Final = 256 * 1024
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
@@ -99,6 +98,14 @@ class VerticalSliceRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class FailureStage(StrEnum):
+    """Closed stages at which the canonical runner may publish failure evidence."""
+
+    SETUP = "setup"
+    WORKLOAD = "workload"
+    BUDGET_EVALUATION = "budget-evaluation"
+
+
 class WorkerOperation(StrEnum):
     """Worker boundaries whose retained Job snapshots are measured."""
 
@@ -117,62 +124,20 @@ class WorkspaceCheckpoint(StrEnum):
     RECOVERED = "recovered"
 
 
-class ReferenceEvaluationStatus(StrEnum):
-    """Result vocabulary owned by the reference-profile evaluator."""
-
-    NOT_EVALUATED = "not-evaluated"
-    MATCHED = "matched"
-    MISMATCHED = "mismatched"
-
-
-class RequirementStatus(StrEnum):
-    """One requirement comparison from the reference-profile evaluator."""
-
-    MATCHED = "matched"
-    MISMATCHED = "mismatched"
-    UNKNOWN = "unknown"
-
-
-class RequirementId(StrEnum):
-    """Closed requirement identifiers emitted by reference-profile v1."""
-
-    OS_FAMILY = "os_family"
-    ARCHITECTURE = "architecture"
-    LOGICAL_PROCESSORS = "logical_processors"
-    MEMORY_MIB = "memory_mib"
-    GRAPHICS_CLASS = "graphics_class"
-    STORAGE_CAPACITY_BYTES = "storage_capacity_bytes"
-    STORAGE_FREE_BYTES = "storage_free_bytes"
-    STORAGE_MEDIA = "storage_media"
-
-
-class RequirementBoundary(StrEnum):
-    """How a profile requirement constrains an observed value."""
-
-    EXACT = "required"
-    MAXIMUM = "required_maximum"
-    MINIMUM = "required_minimum"
-
-
-class ActualValueSource(StrEnum):
-    """Where the compared value came from."""
-
-    OBSERVED = "observed"
-    ATTESTED = "attested"
-
-
-class VerificationMethod(StrEnum):
-    """Evidence source names pinned by the reference profile."""
-
-    RUNTIME = "runtime-observation"
-    OPERATOR_ALLOCATION = "operator-attested-allocation"
-    OPERATOR = "operator-attested"
-
-
 EXPECTED_PHASES: Final = tuple(M1Phase)
 EXPECTED_WORKER_OPERATIONS: Final = tuple(WorkerOperation)
 EXPECTED_WORKSPACE_CHECKPOINTS: Final = tuple(WorkspaceCheckpoint)
-REQUIREMENT_ORDER: Final = tuple(RequirementId)
+WORKLOAD_ID: Final = "m1-vertical-slice"
+WORKLOAD_VERSION: Final = 1
+HARDWARE_CLAIM_LIMITATION: Final = (
+    "This resource report does not certify a physical low-end hardware profile; physical "
+    "low-end hardware was not tested."
+)
+MEASUREMENT_LIMITATION: Final = (
+    "Peak collection samples the complete observed process-tree RSS and case-workspace usage "
+    "every 50 ms; shorter transients and worker-private temporary-storage peaks may not be "
+    "observed, while each worker operation enforces its configured temporary-storage limit."
+)
 
 
 class M1BenchmarkError(Exception):
@@ -435,9 +400,64 @@ class WorkspaceUsageMeasurement:
         )
 
 
+class BudgetId(StrEnum):
+    """Hard gates evaluated for the canonical constrained workload."""
+
+    PROCESS_TREE_RSS = "process-tree-rss"
+    CACHE_BYTES = "cache-bytes"
+    TEMP_BYTES = "temporary-storage-bytes"
+    HEAVY_CONCURRENCY = "heavy-operation-concurrency"
+    UI_HEARTBEAT = "ui-heartbeat-gap"
+    CANCELLATION_ACKNOWLEDGEMENT = "cancellation-acknowledgement"
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetResult:
+    """One sanitized observed/limit comparison."""
+
+    budget_id: BudgetId
+    observed: int
+    limit: int
+    passed: bool
+
+    def __post_init__(self) -> None:
+        if type(self.budget_id) is not BudgetId or type(self.passed) is not bool:
+            _reject("M1_MEASUREMENT_INVALID", "A resource-budget result is invalid.")
+        observed = _exact_integer(self.observed, "budget observed value")
+        limit = _exact_integer(self.limit, "budget limit", minimum=1)
+        if self.passed is not (observed <= limit):
+            _reject(
+                "M1_MEASUREMENT_INVALID",
+                "A resource-budget result does not match its observed value and limit.",
+            )
+
+    @classmethod
+    def from_payload(cls, value: Mapping[str, object]) -> BudgetResult:
+        if set(value) != {"budget_id", "observed", "limit", "passed"}:
+            _reject("M1_MEASUREMENT_INVALID", "A resource-budget result is invalid.")
+        try:
+            budget_id = BudgetId(cast(str, value["budget_id"]))
+        except TypeError, ValueError:
+            _reject("M1_MEASUREMENT_INVALID", "A resource-budget result is invalid.")
+        return cls(
+            budget_id,
+            cast(int, value["observed"]),
+            cast(int, value["limit"]),
+            cast(bool, value["passed"]),
+        )
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "budget_id": self.budget_id.value,
+            "observed": self.observed,
+            "limit": self.limit,
+            "passed": self.passed,
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class CompletedRunEvidence:
-    """Closed exact identity and result binding for a future direct live runner."""
+    """Closed identity, correctness, and hard resource-budget evidence."""
 
     run_id: UUID
     sample_count: int
@@ -445,7 +465,6 @@ class CompletedRunEvidence:
     repository_revision: str
     repository_tree: str
     repository_worktree_clean: bool
-    reference_profile_sha256: str
     report_schema_sha256: str
     fixture_set_sha256: str
     source_set_sha256: str
@@ -479,8 +498,22 @@ class CompletedRunEvidence:
     privacy_scan_status: str
     privacy_canary_count: int
     background_export_completed: bool
+    workers_terminated: bool
+    worker_recycle_policy: str
+    low_disk_simulation_status: str
+    slow_io_simulation_status: str
+    worker_recovery_status: str
     heartbeat_count: int
     maximum_heartbeat_gap_ns: int
+    peak_process_tree_rss_bytes: int
+    peak_cache_bytes: int
+    peak_temp_bytes: int
+    max_heavy_operation_concurrency: int
+    cancellation_acknowledgement_ms: int
+    ui_heartbeat_violation_count: int
+    duration_ms: int
+    input_bytes: int
+    budget_results: tuple[BudgetResult, ...]
 
     def __post_init__(self) -> None:
         if type(self.run_id) is not UUID or self.run_id.version != 4:
@@ -492,12 +525,11 @@ class CompletedRunEvidence:
         if sample_count != 1 or workload_version != 1 or output_count != 2:
             _reject(
                 "M1_MEASUREMENT_INVALID",
-                "Completed v1 evidence must use its exact sample, workload, and output counts.",
+                "Completed M1 evidence must use its exact sample, workload, and output counts.",
             )
         _exact_git_object_id(self.repository_revision, "repository_revision")
         _exact_git_object_id(self.repository_tree, "repository_tree")
         for digest_value, field in (
-            (self.reference_profile_sha256, "reference_profile_sha256"),
             (self.report_schema_sha256, "report_schema_sha256"),
             (self.fixture_set_sha256, "fixture_set_sha256"),
             (self.source_set_sha256, "source_set_sha256"),
@@ -529,8 +561,37 @@ class CompletedRunEvidence:
             (self.privacy_canary_count, "privacy_canary_count", 1),
             (self.heartbeat_count, "heartbeat_count", 1),
             (self.maximum_heartbeat_gap_ns, "maximum_heartbeat_gap_ns", 1),
+            (self.peak_process_tree_rss_bytes, "peak_process_tree_rss_bytes", 1),
+            (self.peak_cache_bytes, "peak_cache_bytes", 0),
+            (self.peak_temp_bytes, "peak_temp_bytes", 0),
+            (
+                self.max_heavy_operation_concurrency,
+                "max_heavy_operation_concurrency",
+                1,
+            ),
+            (self.ui_heartbeat_violation_count, "ui_heartbeat_violation_count", 0),
+            (self.duration_ms, "duration_ms", 1),
+            (self.input_bytes, "input_bytes", 1),
         ):
             _exact_integer(numeric_value, field, minimum=minimum)
+        _exact_integer(
+            self.cancellation_acknowledgement_ms,
+            "cancellation_acknowledgement_ms",
+        )
+        if type(self.budget_results) is not tuple or any(
+            type(item) is not BudgetResult for item in self.budget_results
+        ):
+            _reject(
+                "M1_RESOURCE_BUDGET_FAILED",
+                "Completed evidence requires every ordered hard resource budget to pass.",
+            )
+        if tuple(item.budget_id for item in self.budget_results) != tuple(BudgetId) or any(
+            not item.passed for item in self.budget_results
+        ):
+            _reject(
+                "M1_RESOURCE_BUDGET_FAILED",
+                "Completed evidence requires every ordered hard resource budget to pass.",
+            )
         if (
             self.repository_worktree_clean is not True
             or self.deterministic_semantic_equal is not True
@@ -538,6 +599,11 @@ class CompletedRunEvidence:
             or self.case_reopened is not True
             or self.reopened_sequence_equal is not True
             or self.background_export_completed is not True
+            or self.workers_terminated is not True
+            or self.worker_recycle_policy != "one-shot"
+            or self.low_disk_simulation_status != "passed"
+            or self.slow_io_simulation_status != "passed"
+            or self.worker_recovery_status != "passed"
             or self.verifier_codes != EXPECTED_VERIFIER_CODES
             or self.recovery_status not in {"current", "recovered"}
             or self.privacy_scan_status != "passed"
@@ -567,7 +633,6 @@ class CompletedRunEvidence:
             repository_revision=cast(str, value["repository_revision"]),
             repository_tree=cast(str, value["repository_tree"]),
             repository_worktree_clean=cast(bool, value["repository_worktree_clean"]),
-            reference_profile_sha256=cast(str, value["reference_profile_sha256"]),
             report_schema_sha256=cast(str, value["report_schema_sha256"]),
             fixture_set_sha256=cast(str, value["fixture_set_sha256"]),
             source_set_sha256=cast(str, value["source_set_sha256"]),
@@ -601,8 +666,25 @@ class CompletedRunEvidence:
             privacy_scan_status=cast(str, value["privacy_scan_status"]),
             privacy_canary_count=cast(int, value["privacy_canary_count"]),
             background_export_completed=cast(bool, value["background_export_completed"]),
+            workers_terminated=cast(bool, value["workers_terminated"]),
+            worker_recycle_policy=cast(str, value["worker_recycle_policy"]),
+            low_disk_simulation_status=cast(str, value["low_disk_simulation_status"]),
+            slow_io_simulation_status=cast(str, value["slow_io_simulation_status"]),
+            worker_recovery_status=cast(str, value["worker_recovery_status"]),
             heartbeat_count=cast(int, value["heartbeat_count"]),
             maximum_heartbeat_gap_ns=cast(int, value["maximum_heartbeat_gap_ns"]),
+            peak_process_tree_rss_bytes=cast(int, value["peak_process_tree_rss_bytes"]),
+            peak_cache_bytes=cast(int, value["peak_cache_bytes"]),
+            peak_temp_bytes=cast(int, value["peak_temp_bytes"]),
+            max_heavy_operation_concurrency=cast(int, value["max_heavy_operation_concurrency"]),
+            cancellation_acknowledgement_ms=cast(int, value["cancellation_acknowledgement_ms"]),
+            ui_heartbeat_violation_count=cast(int, value["ui_heartbeat_violation_count"]),
+            duration_ms=cast(int, value["duration_ms"]),
+            input_bytes=cast(int, value["input_bytes"]),
+            budget_results=tuple(
+                BudgetResult.from_payload(item)
+                for item in cast(list[Mapping[str, object]], value["budget_results"])
+            ),
         )
 
     def _to_payload(self) -> dict[str, object]:
@@ -613,7 +695,6 @@ class CompletedRunEvidence:
             "repository_revision": self.repository_revision,
             "repository_tree": self.repository_tree,
             "repository_worktree_clean": self.repository_worktree_clean,
-            "reference_profile_sha256": self.reference_profile_sha256,
             "report_schema_sha256": self.report_schema_sha256,
             "fixture_set_sha256": self.fixture_set_sha256,
             "source_set_sha256": self.source_set_sha256,
@@ -647,14 +728,119 @@ class CompletedRunEvidence:
             "privacy_scan_status": self.privacy_scan_status,
             "privacy_canary_count": self.privacy_canary_count,
             "background_export_completed": self.background_export_completed,
+            "workers_terminated": self.workers_terminated,
+            "worker_recycle_policy": self.worker_recycle_policy,
+            "low_disk_simulation_status": self.low_disk_simulation_status,
+            "slow_io_simulation_status": self.slow_io_simulation_status,
+            "worker_recovery_status": self.worker_recovery_status,
             "heartbeat_count": self.heartbeat_count,
             "maximum_heartbeat_gap_ns": self.maximum_heartbeat_gap_ns,
+            "peak_process_tree_rss_bytes": self.peak_process_tree_rss_bytes,
+            "peak_cache_bytes": self.peak_cache_bytes,
+            "peak_temp_bytes": self.peak_temp_bytes,
+            "max_heavy_operation_concurrency": self.max_heavy_operation_concurrency,
+            "cancellation_acknowledgement_ms": self.cancellation_acknowledgement_ms,
+            "ui_heartbeat_violation_count": self.ui_heartbeat_violation_count,
+            "duration_ms": self.duration_ms,
+            "input_bytes": self.input_bytes,
+            "budget_results": [item.to_payload() for item in self.budget_results],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FailedRunEvidence:
+    """Closed identity and available hard-budget facts for one failed live run."""
+
+    run_id: UUID
+    failure_stage: FailureStage
+    total_elapsed_ns: int
+    repository_revision: str
+    repository_tree: str
+    repository_worktree_clean: bool
+    report_schema_sha256: str
+    budget_results: tuple[BudgetResult, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.run_id) is not UUID or self.run_id.version != 4:
+            _reject("M1_MEASUREMENT_INVALID", "The run identity must be a UUIDv4 value.")
+        if type(self.failure_stage) is not FailureStage:
+            _reject("M1_MEASUREMENT_INVALID", "The failure stage is invalid.")
+        _exact_integer(self.total_elapsed_ns, "total_elapsed_ns", minimum=1)
+        _exact_git_object_id(self.repository_revision, "repository_revision")
+        _exact_git_object_id(self.repository_tree, "repository_tree")
+        _exact_digest(self.report_schema_sha256, "report_schema_sha256")
+        if (
+            self.repository_worktree_clean is not True
+            or type(self.budget_results) is not tuple
+            or any(type(item) is not BudgetResult for item in self.budget_results)
+        ):
+            _reject("M1_MEASUREMENT_INVALID", "Failed evidence identity is invalid.")
+        budget_ids = tuple(item.budget_id for item in self.budget_results)
+        if len(set(budget_ids)) != len(budget_ids) or not _ordered_subset(
+            budget_ids, tuple(BudgetId)
+        ):
+            _reject("M1_MEASUREMENT_INVALID", "Failed resource-budget evidence is invalid.")
+        if self.failure_stage is FailureStage.BUDGET_EVALUATION:
+            if budget_ids != tuple(BudgetId) or all(item.passed for item in self.budget_results):
+                _reject(
+                    "M1_MEASUREMENT_INVALID",
+                    "A budget-evaluation failure requires every ordered budget and a failure.",
+                )
+        elif self.budget_results:
+            _reject(
+                "M1_MEASUREMENT_INVALID",
+                "Pre-budget failure evidence cannot invent resource-budget results.",
+            )
+
+    @classmethod
+    def from_payload(cls, value: Mapping[str, object]) -> FailedRunEvidence:
+        expected = {
+            "run_id",
+            "failure_stage",
+            "total_elapsed_ns",
+            "repository_revision",
+            "repository_tree",
+            "repository_worktree_clean",
+            "report_schema_sha256",
+            "budget_results",
+        }
+        if set(value) != expected:
+            _reject("M1_MEASUREMENT_INVALID", "Failed evidence uses an invalid field set.")
+        try:
+            run_id = UUID(cast(str, value["run_id"]))
+            failure_stage = FailureStage(cast(str, value["failure_stage"]))
+        except ValueError, TypeError, AttributeError:
+            _reject("M1_MEASUREMENT_INVALID", "Failed evidence identity is invalid.")
+        return cls(
+            run_id=run_id,
+            failure_stage=failure_stage,
+            total_elapsed_ns=cast(int, value["total_elapsed_ns"]),
+            repository_revision=cast(str, value["repository_revision"]),
+            repository_tree=cast(str, value["repository_tree"]),
+            repository_worktree_clean=cast(bool, value["repository_worktree_clean"]),
+            report_schema_sha256=cast(str, value["report_schema_sha256"]),
+            budget_results=tuple(
+                BudgetResult.from_payload(item)
+                for item in cast(list[Mapping[str, object]], value["budget_results"])
+            ),
+        )
+
+    def _to_payload(self) -> dict[str, object]:
+        return {
+            "run_id": str(self.run_id),
+            "failure_stage": self.failure_stage.value,
+            "total_elapsed_ns": self.total_elapsed_ns,
+            "repository_revision": self.repository_revision,
+            "repository_tree": self.repository_tree,
+            "repository_worktree_clean": self.repository_worktree_clean,
+            "report_schema_sha256": self.report_schema_sha256,
+            "budget_results": [item.to_payload() for item in self.budget_results],
         }
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class VerticalSliceMeasurement:
-    """Decode-only workload evidence plus the public host-only non-run state.
+    """Decode-only workload evidence plus the public policy-only non-run state.
 
     Ordinary callers can only construct the explicit non-run value.  Completed
     evidence is assembled through the live-writer authority, while failed
@@ -667,6 +853,7 @@ class VerticalSliceMeasurement:
     worker_resource_measurements: tuple[WorkerResourceMeasurement, ...] = ()
     workspace_usage_measurements: tuple[WorkspaceUsageMeasurement, ...] = ()
     completed_evidence: CompletedRunEvidence | None = None
+    failed_evidence: FailedRunEvidence | None = None
 
     def __init__(self) -> None:
         object.__setattr__(self, "run_status", VerticalSliceRunStatus.NOT_RUN)
@@ -675,6 +862,7 @@ class VerticalSliceMeasurement:
         object.__setattr__(self, "worker_resource_measurements", ())
         object.__setattr__(self, "workspace_usage_measurements", ())
         object.__setattr__(self, "completed_evidence", None)
+        object.__setattr__(self, "failed_evidence", None)
         self._validate()
 
     @classmethod
@@ -687,6 +875,7 @@ class VerticalSliceMeasurement:
         worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
         workspace_usage_measurements: tuple[WorkspaceUsageMeasurement, ...],
         completed_evidence: CompletedRunEvidence | None,
+        failed_evidence: FailedRunEvidence | None,
     ) -> VerticalSliceMeasurement:
         instance = object.__new__(cls)
         object.__setattr__(instance, "run_status", run_status)
@@ -703,6 +892,7 @@ class VerticalSliceMeasurement:
             workspace_usage_measurements,
         )
         object.__setattr__(instance, "completed_evidence", completed_evidence)
+        object.__setattr__(instance, "failed_evidence", failed_evidence)
         instance._validate()
         return instance
 
@@ -725,6 +915,10 @@ class VerticalSliceMeasurement:
             or (
                 self.completed_evidence is not None
                 and type(self.completed_evidence) is not CompletedRunEvidence
+            )
+            or (
+                self.failed_evidence is not None
+                and type(self.failed_evidence) is not FailedRunEvidence
             )
         ):
             _reject("M1_MEASUREMENT_INVALID", "Workload measurements use an invalid type.")
@@ -749,6 +943,7 @@ class VerticalSliceMeasurement:
                 or self.worker_resource_measurements
                 or self.workspace_usage_measurements
                 or self.completed_evidence is not None
+                or self.failed_evidence is not None
             ):
                 _reject(
                     "M1_MEASUREMENT_INVALID",
@@ -766,6 +961,7 @@ class VerticalSliceMeasurement:
                 or workers != EXPECTED_WORKER_OPERATIONS
                 or checkpoints != EXPECTED_WORKSPACE_CHECKPOINTS
                 or type(self.completed_evidence) is not CompletedRunEvidence
+                or self.failed_evidence is not None
             ):
                 _reject(
                     "M1_MEASUREMENT_INVALID",
@@ -788,17 +984,61 @@ class VerticalSliceMeasurement:
             _reject("M1_MEASUREMENT_INVALID", "A failed run requires a stable failure code.")
         _stable_result_code(self.result_code)
         if (
-            not self.phase_measurements
-            or phases != EXPECTED_PHASES[: len(phases)]
-            or self.phase_measurements[-1].outcome is not PhaseOutcome.FAILED
-            or any(
-                item.outcome is not PhaseOutcome.COMPLETED for item in self.phase_measurements[:-1]
-            )
-            or self.completed_evidence is not None
+            self.completed_evidence is not None
+            or type(self.failed_evidence) is not FailedRunEvidence
         ):
             _reject(
                 "M1_MEASUREMENT_INVALID",
-                "A failed run requires a contiguous phase prefix ending in failure.",
+                "A failed run requires closed failure evidence.",
+            )
+        failed_evidence = self.failed_evidence
+        measured_phase_ns = sum(item.elapsed_ns for item in self.phase_measurements)
+        if failed_evidence.total_elapsed_ns < measured_phase_ns:
+            _reject("M1_MEASUREMENT_INVALID", "Failed timing evidence is not causally consistent.")
+        if failed_evidence.failure_stage is FailureStage.SETUP:
+            if self.phase_measurements or workers or checkpoints:
+                _reject(
+                    "M1_MEASUREMENT_INVALID",
+                    "A setup failure cannot contain invented workload measurements.",
+                )
+            return
+        if failed_evidence.failure_stage is FailureStage.BUDGET_EVALUATION:
+            if (
+                self.result_code != "M1_RESOURCE_BUDGET_FAILED"
+                or phases != EXPECTED_PHASES
+                or any(
+                    item.outcome is not PhaseOutcome.COMPLETED for item in self.phase_measurements
+                )
+                or workers != EXPECTED_WORKER_OPERATIONS
+                or checkpoints != EXPECTED_WORKSPACE_CHECKPOINTS
+            ):
+                _reject(
+                    "M1_MEASUREMENT_INVALID",
+                    "A budget-evaluation failure requires the complete measured workload.",
+                )
+            return
+        if phases != EXPECTED_PHASES[: len(phases)]:
+            _reject(
+                "M1_MEASUREMENT_INVALID",
+                "A workload failure requires a contiguous phase prefix.",
+            )
+        outcomes_are_truthful = (
+            not self.phase_measurements
+            or (
+                self.phase_measurements[-1].outcome is PhaseOutcome.FAILED
+                and all(
+                    item.outcome is PhaseOutcome.COMPLETED for item in self.phase_measurements[:-1]
+                )
+            )
+            or (
+                phases == EXPECTED_PHASES
+                and all(item.outcome is PhaseOutcome.COMPLETED for item in self.phase_measurements)
+            )
+        )
+        if not outcomes_are_truthful:
+            _reject(
+                "M1_MEASUREMENT_INVALID",
+                "A workload failure has an invalid phase outcome sequence.",
             )
         attempted_phases = frozenset(phases)
         worker_phase = {
@@ -828,7 +1068,7 @@ class VerticalSliceMeasurement:
             )
 
     def _to_payload(self) -> dict[str, object]:
-        """Return the closed v1 workload object."""
+        """Return the closed M1 workload object."""
 
         payload: dict[str, object] = {
             "run_status": self.run_status.value,
@@ -865,6 +1105,8 @@ class VerticalSliceMeasurement:
         }
         if self.completed_evidence is not None:
             payload["completed_evidence"] = self.completed_evidence._to_payload()
+        if self.failed_evidence is not None:
+            payload["failed_evidence"] = self.failed_evidence._to_payload()
         return payload
 
 
@@ -918,160 +1160,31 @@ def _elapsed_ns(started: int, finished_value: object) -> int:
 
 
 @dataclass(frozen=True, slots=True)
-class ObservedReferenceEnvironment:
-    """Closed path-free host observations from the reference-profile tool."""
-
-    os_family: str
-    architecture: str
-    logical_processors: int | None
-    memory_bytes: int | None
-    storage_capacity_bytes: int
-    storage_free_bytes: int
-    graphics: None
-    storage_media: None
-
-    @classmethod
-    def from_mapping(cls, value: Mapping[str, object]) -> ObservedReferenceEnvironment:
-        expected = {
-            "os_family",
-            "architecture",
-            "logical_processors",
-            "memory_bytes",
-            "storage_capacity_bytes",
-            "storage_free_bytes",
-            "graphics",
-            "storage_media",
-        }
-        if set(value) != expected:
-            _reject("M1_REFERENCE_INVALID", "Reference observations use an unexpected field set.")
-        os_family = value["os_family"]
-        architecture = value["architecture"]
-        if type(os_family) is not str or type(architecture) is not str:
-            _reject("M1_REFERENCE_INVALID", "Reference platform observations must be strings.")
-        logical_processors = _optional_integer(value["logical_processors"], minimum=1)
-        memory_bytes = _optional_integer(value["memory_bytes"])
-        capacity = _exact_integer(value["storage_capacity_bytes"], "storage_capacity_bytes")
-        free = _exact_integer(value["storage_free_bytes"], "storage_free_bytes")
-        if free > capacity or value["graphics"] is not None or value["storage_media"] is not None:
-            _reject("M1_REFERENCE_INVALID", "Reference observations violate the closed contract.")
-        return cls(
-            os_family=os_family,
-            architecture=architecture,
-            logical_processors=logical_processors,
-            memory_bytes=memory_bytes,
-            storage_capacity_bytes=capacity,
-            storage_free_bytes=free,
-            graphics=None,
-            storage_media=None,
-        )
-
-    def to_payload(self) -> dict[str, object]:
-        return {
-            "os_family": self.os_family,
-            "architecture": self.architecture,
-            "logical_processors": self.logical_processors,
-            "memory_bytes": self.memory_bytes,
-            "storage_capacity_bytes": self.storage_capacity_bytes,
-            "storage_free_bytes": self.storage_free_bytes,
-            "graphics": None,
-            "storage_media": None,
-        }
-
-
-def _optional_integer(value: object, *, minimum: int = 0) -> int | None:
-    if value is None:
-        return None
-    return _exact_integer(value, "optional observation", minimum=minimum)
-
-
-ScalarObservation = int | str | None
-
-
-@dataclass(frozen=True, slots=True)
-class ReferenceRequirementMeasurement:
-    """Typed representation of one existing reference-profile comparison."""
-
-    requirement_id: RequirementId
-    boundary: RequirementBoundary
-    required_value: int | str
-    actual_source: ActualValueSource
-    actual_value: ScalarObservation
-    verification: VerificationMethod
-    status: RequirementStatus
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.requirement_id) is not RequirementId
-            or type(self.boundary) is not RequirementBoundary
-            or type(self.actual_source) is not ActualValueSource
-            or type(self.verification) is not VerificationMethod
-            or type(self.status) is not RequirementStatus
-            or type(self.required_value) not in {int, str}
-            or type(self.actual_value) not in {int, str, type(None)}
-        ):
-            _reject("M1_REFERENCE_INVALID", "A reference requirement uses an invalid value.")
-        if type(self.required_value) is int:
-            _exact_integer(self.required_value, "reference required value")
-        if type(self.actual_value) is int:
-            _exact_integer(self.actual_value, "reference actual value")
-
-    def to_payload(self) -> dict[str, object]:
-        return {
-            self.boundary.value: self.required_value,
-            self.actual_source.value: self.actual_value,
-            "verification": self.verification.value,
-            "status": self.status.value,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class ReferenceEnvironmentMeasurement:
-    """Host observations plus the unchanged existing profile evaluation."""
-
-    observations: ObservedReferenceEnvironment
-    attestations: ReferenceAttestations
-    evaluation_status: ReferenceEvaluationStatus
-    requirements: tuple[ReferenceRequirementMeasurement, ...]
-
-    def to_payload(self) -> dict[str, object]:
-        return {
-            "observations": self.observations.to_payload(),
-            "attestations": {
-                "memory_mib": self.attestations.memory_mib,
-                "graphics_class": self.attestations.graphics_class,
-                "storage_media": self.attestations.storage_media,
-            },
-            "evaluation": {
-                "status": self.evaluation_status.value,
-                "requirements": {
-                    item.requirement_id.value: item.to_payload() for item in self.requirements
-                },
-            },
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class M1BenchmarkReport:
-    """A typed closed report that intentionally has no gate-pass field."""
+    """A closed resource report with no host identity or hardware claims."""
 
-    profile_id: str
-    scenario_id: str
-    reference_environment: ReferenceEnvironmentMeasurement
+    processing_profile: str
+    resource_policy_version: int
+    resource_limits: Mapping[str, int]
     vertical_slice: VerticalSliceMeasurement
 
     def __post_init__(self) -> None:
         if (
-            type(self.profile_id) is not str
-            or not self.profile_id
-            or type(self.reference_environment) is not ReferenceEnvironmentMeasurement
+            type(self.processing_profile) is not str
+            or not self.processing_profile
+            or type(self.resource_policy_version) is not int
+            or self.resource_policy_version < 1
+            or type(self.resource_limits) is not dict
+            or any(
+                type(key) is not str or type(value) is not int
+                for key, value in self.resource_limits.items()
+            )
             or type(self.vertical_slice) is not VerticalSliceMeasurement
         ):
-            _reject("M1_REPORT_INVALID", "The report profile identity is invalid.")
-        if self.scenario_id not in SCENARIO_IDS:
-            _reject("M1_REPORT_INVALID", "The report scenario identity is invalid.")
+            _reject("M1_REPORT_INVALID", "The report resource-policy identity is invalid.")
 
     def to_payload(self) -> dict[str, object]:
-        """Return only the supported public host-observation/non-run payload."""
+        """Return only the supported public policy-only non-run payload."""
 
         if self.vertical_slice.run_status is not VerticalSliceRunStatus.NOT_RUN:
             _reject(
@@ -1082,61 +1195,81 @@ class M1BenchmarkReport:
 
     def _to_payload(self) -> dict[str, object]:
         return {
-            "report_schema_version": 1,
-            "report_kind": "m1-vertical-slice-measurement",
-            "profile_id": self.profile_id,
-            "scenario_id": self.scenario_id,
-            "measurement_policy": {"status": "record-only", "product_targets": []},
-            "reference_environment": self.reference_environment.to_payload(),
+            "schema_version": 2,
+            "report_kind": "m1-resource-budget-measurement",
+            "workload": {"id": WORKLOAD_ID, "version": WORKLOAD_VERSION},
+            "processing_profile": self.processing_profile,
+            "resource_policy_version": self.resource_policy_version,
+            "resource_limits": dict(self.resource_limits),
+            "limitations": [HARDWARE_CLAIM_LIMITATION, MEASUREMENT_LIMITATION],
             "vertical_slice": self.vertical_slice._to_payload(),
         }
 
 
-def build_m1_benchmark_report(
-    profile: Mapping[str, Any],
-    scenario_id: str,
-    work_directory: Path,
-    *,
-    attestations: ReferenceAttestations,
-) -> M1BenchmarkReport:
-    """Build the supported host-only report with an explicit non-run workload."""
+@dataclass(frozen=True, slots=True)
+class HistoricalM1BenchmarkReport:
+    """Validated canonical v1 bytes retained for historical evidence reads only."""
 
-    if scenario_id not in SCENARIO_IDS:
-        _reject("M1_REPORT_INVALID", "The requested reference scenario is unknown.")
-    _validate_attestations(attestations)
-    try:
-        work_directory.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        _reject("M1_OBSERVATION_FAILED", "The reference work directory is unavailable.")
-    if not work_directory.is_dir():
-        _reject("M1_OBSERVATION_FAILED", "The reference work directory is unavailable.")
-    try:
-        observed = ObservedReferenceEnvironment.from_mapping(
-            observe_reference_environment(work_directory)
-        )
-        evaluation = evaluate_reference_environment(
-            profile,
-            scenario_id,
-            observed.to_payload(),
-            attestations,
-        )
-    except BenchmarkError:
-        _reject("M1_OBSERVATION_FAILED", "Reference environment observation failed safely.")
-    reference = _reference_measurement(observed, attestations, evaluation)
-    profile_id = profile.get("profile_id")
-    if type(profile_id) is not str:
-        _reject("M1_REPORT_INVALID", "The reference profile identity is invalid.")
+    canonical_payload: bytes
+    run_status: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.canonical_payload) is not bytes
+            or not self.canonical_payload
+            or self.run_status not in {"not-run", "completed", "failed"}
+        ):
+            _reject("M1_REPORT_INVALID", "The historical report is invalid.")
+
+
+def build_m1_benchmark_report(
+    resource_policy: ResourcePolicy,
+) -> M1BenchmarkReport:
+    """Build a constrained-profile non-run report without inspecting the host."""
+
+    if type(resource_policy) is not ResourcePolicy:
+        _reject("M1_RESOURCE_POLICY_INVALID", "The resource policy is invalid.")
     return M1BenchmarkReport(
-        profile_id,
-        scenario_id,
-        reference,
+        resource_policy.profile.value,
+        resource_policy.policy_version,
+        _resource_limits(resource_policy),
         VerticalSliceMeasurement(),
     )
 
 
+def _resource_limits(policy: ResourcePolicy) -> dict[str, int]:
+    """Serialize the complete numeric policy control set, excluding its top-level identity."""
+
+    return {
+        "maximum_case_bytes": policy.maximum_case_bytes,
+        "maximum_cache_bytes": policy.maximum_cache_bytes,
+        "maximum_temporary_storage_bytes": policy.maximum_temporary_storage_bytes,
+        "maximum_source_bytes": policy.maximum_source_bytes,
+        "maximum_page_count": policy.maximum_page_count,
+        "worker_process_memory_bytes": policy.worker_process_memory_bytes,
+        "worker_job_memory_bytes": policy.worker_job_memory_bytes,
+        "worker_cpu_time_ms": policy.worker_cpu_time_ms,
+        "worker_maximum_processes": policy.worker_maximum_processes,
+        "maximum_heavy_operation_concurrency": policy.maximum_heavy_operation_concurrency,
+        "maximum_preview_request_pages": policy.maximum_preview_request_pages,
+        "preview_prefetch_radius_pages": policy.preview_prefetch_radius_pages,
+        "thumbnail_preview_cache_bytes": policy.thumbnail_preview_cache_bytes,
+        "maximum_preview_pixels_per_page": policy.maximum_preview_pixels_per_page,
+        "import_io_chunk_bytes": policy.import_io_chunk_bytes,
+        "canonical_process_tree_rss_bytes": policy.canonical_process_tree_rss_bytes,
+        "minimum_export_free_space_reserve_bytes": policy.minimum_export_free_space_reserve_bytes,
+        "maximum_ui_heartbeat_gap_ms": policy.maximum_ui_heartbeat_gap_ms,
+        "cancellation_acknowledgement_ms": policy.cancellation_acknowledgement_ms,
+        "maximum_active_full_resolution_page_buffers": (
+            policy.maximum_active_full_resolution_page_buffers
+        ),
+        "resource_sampling_interval_ms": policy.resource_sampling_interval_ms,
+    }
+
+
 def _build_live_m1_completed_report(
     authority: _LiveM1ReportAuthority,
-    host_observation_report: M1BenchmarkReport,
+    policy_report: M1BenchmarkReport,
     *,
     phase_measurements: tuple[PhaseMeasurement, ...],
     worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
@@ -1147,20 +1280,18 @@ def _build_live_m1_completed_report(
 
     _require_live_m1_report_authority(authority)
     if (
-        type(host_observation_report) is not M1BenchmarkReport
-        or host_observation_report.vertical_slice.run_status is not VerticalSliceRunStatus.NOT_RUN
+        type(policy_report) is not M1BenchmarkReport
+        or policy_report.vertical_slice.run_status is not VerticalSliceRunStatus.NOT_RUN
         or type(completed_evidence) is not CompletedRunEvidence
     ):
         _reject(
             "M1_REPORT_INVALID",
-            "The live run is not bound to a valid host-observation report.",
+            "The live run is not bound to a valid policy report.",
         )
     try:
-        # This public encoder is deliberately reused as the authority check for
-        # the host-only portion.  It reopens the checked-in schema/profile and
-        # proves that the reference evaluation has not been forged before live
-        # evidence is attached.
-        encode_m1_benchmark_report(host_observation_report)
+        # Reuse the public encoder as the authority check for the policy-only
+        # portion before live evidence is attached.
+        encode_m1_benchmark_report(policy_report)
         measurement = VerticalSliceMeasurement._from_decoded(
             run_status=VerticalSliceRunStatus.COMPLETED,
             result_code=None,
@@ -1168,11 +1299,12 @@ def _build_live_m1_completed_report(
             worker_resource_measurements=worker_resource_measurements,
             workspace_usage_measurements=workspace_usage_measurements,
             completed_evidence=completed_evidence,
+            failed_evidence=None,
         )
         return M1BenchmarkReport(
-            host_observation_report.profile_id,
-            host_observation_report.scenario_id,
-            host_observation_report.reference_environment,
+            policy_report.processing_profile,
+            policy_report.resource_policy_version,
+            dict(policy_report.resource_limits),
             measurement,
         )
     except M1BenchmarkError:
@@ -1184,86 +1316,53 @@ def _build_live_m1_completed_report(
         )
 
 
-def _validate_attestations(attestations: ReferenceAttestations) -> None:
-    if type(attestations) is not ReferenceAttestations:
-        _reject("M1_REFERENCE_INVALID", "Reference attestations use an invalid type.")
-    if attestations.memory_mib is not None:
-        _exact_integer(attestations.memory_mib, "attested memory", minimum=1)
-    if attestations.graphics_class not in {None, "integrated"}:
-        _reject("M1_REFERENCE_INVALID", "The graphics attestation is unsupported.")
-    if attestations.storage_media not in {None, "hdd-or-validated-emulation"}:
-        _reject("M1_REFERENCE_INVALID", "The storage-media attestation is unsupported.")
+def _build_live_m1_failed_report(
+    authority: _LiveM1ReportAuthority,
+    policy_report: M1BenchmarkReport,
+    *,
+    result_code: str,
+    phase_measurements: tuple[PhaseMeasurement, ...],
+    worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
+    workspace_usage_measurements: tuple[WorkspaceUsageMeasurement, ...],
+    failed_evidence: FailedRunEvidence,
+) -> M1BenchmarkReport:
+    """Build one truthful failed report through the live runner's retained authority."""
 
-
-def _reference_measurement(
-    observations: ObservedReferenceEnvironment,
-    attestations: ReferenceAttestations,
-    evaluation: Mapping[str, object],
-) -> ReferenceEnvironmentMeasurement:
-    try:
-        status = ReferenceEvaluationStatus(cast(str, evaluation["status"]))
-        raw_requirements = cast(Mapping[str, object], evaluation["requirements"])
-    except KeyError, TypeError, ValueError:
-        _reject("M1_REFERENCE_INVALID", "Reference evaluation uses an invalid result contract.")
-    requirements: list[ReferenceRequirementMeasurement] = []
-    for requirement_id in REQUIREMENT_ORDER:
-        raw = raw_requirements.get(requirement_id.value)
-        if raw is None:
-            continue
-        if not isinstance(raw, Mapping):
-            _reject("M1_REFERENCE_INVALID", "A reference requirement uses an invalid contract.")
-        requirements.append(_reference_requirement(requirement_id, cast(Mapping[str, object], raw)))
-    if set(raw_requirements) != {item.requirement_id.value for item in requirements}:
-        _reject("M1_REFERENCE_INVALID", "Reference evaluation contains an unknown requirement.")
-    if status is ReferenceEvaluationStatus.NOT_EVALUATED and requirements:
-        _reject(
-            "M1_REFERENCE_INVALID", "A non-evaluated reference result cannot list requirements."
-        )
-    if status is not ReferenceEvaluationStatus.NOT_EVALUATED and not requirements:
-        _reject("M1_REFERENCE_INVALID", "An evaluated reference result must list requirements.")
-    return ReferenceEnvironmentMeasurement(observations, attestations, status, tuple(requirements))
-
-
-def _reference_requirement(
-    requirement_id: RequirementId,
-    raw: Mapping[str, object],
-) -> ReferenceRequirementMeasurement:
-    boundary_keys = [item for item in RequirementBoundary if item.value in raw]
-    source_keys = [item for item in ActualValueSource if item.value in raw]
+    _require_live_m1_report_authority(authority)
     if (
-        len(boundary_keys) != 1
-        or len(source_keys) != 1
-        or set(raw)
-        != {
-            boundary_keys[0].value,
-            source_keys[0].value,
-            "verification",
-            "status",
-        }
+        type(policy_report) is not M1BenchmarkReport
+        or policy_report.vertical_slice.run_status is not VerticalSliceRunStatus.NOT_RUN
+        or type(failed_evidence) is not FailedRunEvidence
     ):
-        _reject("M1_REFERENCE_INVALID", "A reference requirement uses an invalid field set.")
-    required_value = raw[boundary_keys[0].value]
-    actual_value = raw[source_keys[0].value]
-    if type(required_value) not in {int, str} or type(actual_value) not in {int, str, type(None)}:
-        _reject("M1_REFERENCE_INVALID", "A reference requirement uses an invalid scalar value.")
+        _reject("M1_REPORT_INVALID", "The failed live run is not bound to a valid policy report.")
     try:
-        verification = VerificationMethod(cast(str, raw["verification"]))
-        status = RequirementStatus(cast(str, raw["status"]))
-    except TypeError, ValueError:
-        _reject("M1_REFERENCE_INVALID", "A reference requirement uses an invalid status.")
-    return ReferenceRequirementMeasurement(
-        requirement_id=requirement_id,
-        boundary=boundary_keys[0],
-        required_value=cast(int | str, required_value),
-        actual_source=source_keys[0],
-        actual_value=cast(ScalarObservation, actual_value),
-        verification=verification,
-        status=status,
-    )
+        encode_m1_benchmark_report(policy_report)
+        measurement = VerticalSliceMeasurement._from_decoded(
+            run_status=VerticalSliceRunStatus.FAILED,
+            result_code=result_code,
+            phase_measurements=phase_measurements,
+            worker_resource_measurements=worker_resource_measurements,
+            workspace_usage_measurements=workspace_usage_measurements,
+            completed_evidence=None,
+            failed_evidence=failed_evidence,
+        )
+        return M1BenchmarkReport(
+            policy_report.processing_profile,
+            policy_report.resource_policy_version,
+            dict(policy_report.resource_limits),
+            measurement,
+        )
+    except M1BenchmarkError:
+        raise
+    except Exception:
+        _reject(
+            "M1_REPORT_INVALID",
+            "The failed measurement report could not be constructed safely.",
+        )
 
 
 def encode_m1_benchmark_report(report: M1BenchmarkReport) -> bytes:
-    """Encode only the supported host-observation/non-run report."""
+    """Encode only the supported policy-only non-run report."""
 
     if (
         type(report) is not M1BenchmarkReport
@@ -1313,6 +1412,39 @@ def _encode_live_m1_completed_report(
     return encoded
 
 
+def _encode_live_m1_failed_report(
+    authority: _LiveM1ReportAuthority,
+    report: M1BenchmarkReport,
+) -> bytes:
+    """Canonically encode and independently decode one trusted failed report."""
+
+    _require_live_m1_report_authority(authority)
+    if (
+        type(report) is not M1BenchmarkReport
+        or report.vertical_slice.run_status is not VerticalSliceRunStatus.FAILED
+    ):
+        _reject(
+            "M1_REPORT_INVALID",
+            "The trusted live serializer accepts only a failed workload report.",
+        )
+    try:
+        encoded = _canonical_report_bytes(report)
+        decoded, issues = decode_m1_benchmark_report(encoded)
+    except M1BenchmarkError:
+        raise
+    except Exception:
+        _reject(
+            "M1_REPORT_INVALID",
+            "The failed measurement report could not be validated safely.",
+        )
+    if issues or decoded != report:
+        _reject(
+            "M1_REPORT_INVALID",
+            "The failed measurement report failed canonical validation.",
+        )
+    return encoded
+
+
 def _canonical_report_bytes(report: M1BenchmarkReport) -> bytes:
     try:
         return (
@@ -1333,15 +1465,27 @@ def decode_m1_benchmark_report(
     payload: bytes,
     *,
     root: Path = PROJECT_ROOT,
-) -> tuple[M1BenchmarkReport | None, list[BenchmarkIssue]]:
-    """Validate a bounded closed report without attesting who produced it.
+) -> tuple[M1BenchmarkReport | HistoricalM1BenchmarkReport | None, list[BenchmarkIssue]]:
+    """Validate a bounded closed report without asserting hardware equivalence.
 
     Decoding supports the closed completed/failed shapes needed for audit and
     the trusted live writer, while the public serializer still refuses them.
     """
 
     loaded, issues = _load_report_object(payload)
-    schema, schema_issues = _load_schema(root)
+    if loaded is None:
+        return None, sorted(issues)
+    if loaded.get("report_schema_version") == 1 and "schema_version" not in loaded:
+        return _decode_historical_v1(payload, loaded, root, issues)
+    if loaded.get("schema_version") != 2 or "report_schema_version" in loaded:
+        return None, [
+            BenchmarkIssue(
+                "M1_REPORT_VERSION_UNSUPPORTED",
+                "$",
+                "report schema version is unsupported",
+            )
+        ]
+    schema, schema_issues = _load_schema(root, REPORT_SCHEMA_PATH)
     issues.extend(schema_issues)
     if loaded is None or schema is None or issues:
         return None, sorted(issues)
@@ -1354,7 +1498,7 @@ def decode_m1_benchmark_report(
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_INVALID",
                 _json_path(tuple(error.absolute_path)),
-                "report does not match the closed v1 schema",
+                "report does not match the closed v2 schema",
             )
             for error in validation_errors
         ]
@@ -1367,16 +1511,70 @@ def decode_m1_benchmark_report(
             BenchmarkIssue(
                 "M1_REPORT_NONCANONICAL",
                 "$",
-                "report bytes do not use the canonical v1 encoding",
+                "report bytes do not use the canonical v2 encoding",
             )
         ]
     return report, []
 
 
+def _decode_historical_v1(
+    payload: bytes,
+    loaded: dict[str, Any],
+    root: Path,
+    issues: list[BenchmarkIssue],
+) -> tuple[HistoricalM1BenchmarkReport | None, list[BenchmarkIssue]]:
+    """Validate immutable v1 evidence without offering a legacy writer."""
+
+    schema, schema_issues = _load_schema(root, HISTORICAL_REPORT_SCHEMA_PATH)
+    issues.extend(schema_issues)
+    if schema is None or issues:
+        return None, sorted(issues)
+    validation_errors = sorted(
+        Draft202012Validator(schema).iter_errors(loaded),
+        key=lambda error: tuple(str(item) for item in error.path),
+    )
+    if validation_errors:
+        return None, [
+            BenchmarkIssue(
+                "M1_REPORT_SCHEMA_INVALID",
+                _json_path(tuple(error.absolute_path)),
+                "historical report does not match the closed v1 schema",
+            )
+            for error in validation_errors
+        ]
+    canonical = _canonical_mapping_bytes(loaded)
+    if payload != canonical:
+        return None, [
+            BenchmarkIssue(
+                "M1_REPORT_NONCANONICAL",
+                "$",
+                "historical report bytes do not use the canonical v1 encoding",
+            )
+        ]
+    vertical = cast(Mapping[str, object], loaded["vertical_slice"])
+    return HistoricalM1BenchmarkReport(canonical, cast(str, vertical["run_status"])), []
+
+
+def _canonical_mapping_bytes(value: Mapping[str, object]) -> bytes:
+    try:
+        return (
+            json.dumps(
+                value,
+                ensure_ascii=True,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    except TypeError, ValueError:
+        _reject("M1_REPORT_INVALID", "The measurement report cannot be encoded safely.")
+
+
 def _load_report_object(payload: bytes) -> tuple[dict[str, Any] | None, list[BenchmarkIssue]]:
     if not 1 <= len(payload) <= MAX_REPORT_BYTES:
         return None, [
-            BenchmarkIssue("M1_REPORT_SIZE_INVALID", "$", "report exceeds the bounded v1 size")
+            BenchmarkIssue("M1_REPORT_SIZE_INVALID", "$", "report exceeds the bounded size")
         ]
     try:
         text = payload.decode("utf-8")
@@ -1417,15 +1615,18 @@ def _reject_json_constant(value: str) -> NoReturn:
     raise NonStandardJsonConstantError(value)
 
 
-def _load_schema(root: Path) -> tuple[dict[str, Any] | None, list[BenchmarkIssue]]:
-    path = root / REPORT_SCHEMA_PATH
+def _load_schema(
+    root: Path,
+    relative_path: Path,
+) -> tuple[dict[str, Any] | None, list[BenchmarkIssue]]:
+    path = root / relative_path
     try:
         payload = path.read_bytes()
     except OSError:
         return None, [
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_UNREADABLE",
-                REPORT_SCHEMA_PATH.as_posix(),
+                relative_path.as_posix(),
                 "schema is unavailable",
             )
         ]
@@ -1433,7 +1634,7 @@ def _load_schema(root: Path) -> tuple[dict[str, Any] | None, list[BenchmarkIssue
         return None, [
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_SIZE_INVALID",
-                REPORT_SCHEMA_PATH.as_posix(),
+                relative_path.as_posix(),
                 "schema size is invalid",
             )
         ]
@@ -1442,7 +1643,7 @@ def _load_schema(root: Path) -> tuple[dict[str, Any] | None, list[BenchmarkIssue
         return None, [
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_JSON_INVALID",
-                REPORT_SCHEMA_PATH.as_posix(),
+                relative_path.as_posix(),
                 "schema is not strict JSON",
             )
         ]
@@ -1452,7 +1653,7 @@ def _load_schema(root: Path) -> tuple[dict[str, Any] | None, list[BenchmarkIssue
         return None, [
             BenchmarkIssue(
                 "M1_REPORT_SCHEMA_DEFINITION_INVALID",
-                REPORT_SCHEMA_PATH.as_posix(),
+                relative_path.as_posix(),
                 "schema is not valid Draft 2020-12",
             )
         ]
@@ -1460,29 +1661,28 @@ def _load_schema(root: Path) -> tuple[dict[str, Any] | None, list[BenchmarkIssue
 
 
 def validate_report_schema(root: Path = PROJECT_ROOT) -> list[BenchmarkIssue]:
-    """Validate the bounded self-contained report schema."""
+    """Validate both immutable historical v1 and current v2 schemas."""
 
-    _, issues = _load_schema(root)
-    return issues
+    _, historical_issues = _load_schema(root, HISTORICAL_REPORT_SCHEMA_PATH)
+    _, current_issues = _load_schema(root, REPORT_SCHEMA_PATH)
+    return sorted([*historical_issues, *current_issues])
 
 
 def _report_from_payload(value: Mapping[str, Any], root: Path) -> M1BenchmarkReport:
-    reference = cast(Mapping[str, Any], value["reference_environment"])
-    observations = ObservedReferenceEnvironment.from_mapping(
-        cast(Mapping[str, object], reference["observations"])
-    )
-    raw_attestations = cast(Mapping[str, object], reference["attestations"])
-    attestations = ReferenceAttestations(
-        memory_mib=cast(int | None, raw_attestations["memory_mib"]),
-        graphics_class=cast(str | None, raw_attestations["graphics_class"]),
-        storage_media=cast(str | None, raw_attestations["storage_media"]),
-    )
-    _validate_attestations(attestations)
-    reference_measurement = _reference_measurement(
-        observations,
-        attestations,
-        cast(Mapping[str, object], reference["evaluation"]),
-    )
+    try:
+        selected_policy = select_resource_policy(
+            ProcessingProfile(cast(str, value["processing_profile"])),
+            environ={},
+        )
+    except TypeError, ValueError:
+        _reject("M1_RESOURCE_POLICY_INVALID", "The report resource-policy identity is invalid.")
+    if value["resource_policy_version"] != selected_policy.policy_version or value[
+        "resource_limits"
+    ] != _resource_limits(selected_policy):
+        _reject(
+            "M1_RESOURCE_POLICY_INVALID",
+            "The report limits do not match the checked-in resource policy.",
+        )
     vertical = cast(Mapping[str, Any], value["vertical_slice"])
     phase_measurements = tuple(
         PhaseMeasurement(
@@ -1519,6 +1719,12 @@ def _report_from_payload(value: Mapping[str, Any], root: Path) -> M1BenchmarkRep
         if raw_completed_evidence is None
         else CompletedRunEvidence.from_payload(cast(Mapping[str, object], raw_completed_evidence))
     )
+    raw_failed_evidence = vertical.get("failed_evidence")
+    failed_evidence = (
+        None
+        if raw_failed_evidence is None
+        else FailedRunEvidence.from_payload(cast(Mapping[str, object], raw_failed_evidence))
+    )
     result_code = vertical["result_code"]
     measurement = VerticalSliceMeasurement._from_decoded(
         run_status=VerticalSliceRunStatus(cast(str, vertical["run_status"])),
@@ -1527,42 +1733,102 @@ def _report_from_payload(value: Mapping[str, Any], root: Path) -> M1BenchmarkRep
         worker_resource_measurements=worker_measurements,
         workspace_usage_measurements=workspace_measurements,
         completed_evidence=completed_evidence,
+        failed_evidence=failed_evidence,
     )
     report = M1BenchmarkReport(
-        cast(str, value["profile_id"]),
-        cast(str, value["scenario_id"]),
-        reference_measurement,
+        cast(str, value["processing_profile"]),
+        cast(int, value["resource_policy_version"]),
+        cast(dict[str, int], value["resource_limits"]),
         measurement,
     )
     if measurement.completed_evidence is not None:
         evidence = measurement.completed_evidence
-        if evidence.reference_profile_sha256 != _checked_file_sha256(
-            root, PROFILE_PATH, context="reference profile"
-        ) or evidence.report_schema_sha256 != _checked_file_sha256(
+        if evidence.report_schema_sha256 != _checked_file_sha256(
             root, REPORT_SCHEMA_PATH, context="report schema"
         ):
             _reject(
                 "M1_IDENTITY_INVALID",
-                "Completed evidence is not bound to the checked-in profile and report schema.",
+                "Completed evidence is not bound to the checked-in report schema.",
             )
-    expected = evaluate_reference_environment(
-        _profile_for_decode(report.profile_id, root),
-        report.scenario_id,
-        observations.to_payload(),
-        attestations,
-    )
-    if reference_measurement.to_payload()["evaluation"] != expected:
-        _reject("M1_REFERENCE_INVALID", "Reference evaluation does not match the pinned evaluator.")
+        _validate_completed_resource_evidence(report, selected_policy)
+    if measurement.failed_evidence is not None:
+        if measurement.failed_evidence.report_schema_sha256 != _checked_file_sha256(
+            root, REPORT_SCHEMA_PATH, context="report schema"
+        ):
+            _reject(
+                "M1_IDENTITY_INVALID",
+                "Failed evidence is not bound to the checked-in report schema.",
+            )
     return report
 
 
-def _profile_for_decode(profile_id: str, root: Path) -> Mapping[str, Any]:
-    profile, issues = validate_profile(root)
-    if issues or profile is None or profile.get("profile_id") != profile_id:
+def _validate_completed_resource_evidence(
+    report: M1BenchmarkReport,
+    policy: ResourcePolicy,
+) -> None:
+    evidence = report.vertical_slice.completed_evidence
+    assert evidence is not None
+    checkpoint_cache = max(
+        item.cache_bytes for item in report.vertical_slice.workspace_usage_measurements
+    )
+    checkpoint_temp = max(
+        item.temp_bytes for item in report.vertical_slice.workspace_usage_measurements
+    )
+    expected_results = (
+        BudgetResult(
+            BudgetId.PROCESS_TREE_RSS,
+            evidence.peak_process_tree_rss_bytes,
+            policy.canonical_process_tree_rss_bytes,
+            evidence.peak_process_tree_rss_bytes <= policy.canonical_process_tree_rss_bytes,
+        ),
+        BudgetResult(
+            BudgetId.CACHE_BYTES,
+            evidence.peak_cache_bytes,
+            policy.maximum_cache_bytes + policy.thumbnail_preview_cache_bytes,
+            evidence.peak_cache_bytes
+            <= policy.maximum_cache_bytes + policy.thumbnail_preview_cache_bytes,
+        ),
+        BudgetResult(
+            BudgetId.TEMP_BYTES,
+            evidence.peak_temp_bytes,
+            policy.maximum_temporary_storage_bytes,
+            evidence.peak_temp_bytes <= policy.maximum_temporary_storage_bytes,
+        ),
+        BudgetResult(
+            BudgetId.HEAVY_CONCURRENCY,
+            evidence.max_heavy_operation_concurrency,
+            policy.maximum_heavy_operation_concurrency,
+            evidence.max_heavy_operation_concurrency <= policy.maximum_heavy_operation_concurrency,
+        ),
+        BudgetResult(
+            BudgetId.UI_HEARTBEAT,
+            _ceil_milliseconds(evidence.maximum_heartbeat_gap_ns),
+            policy.maximum_ui_heartbeat_gap_ms,
+            evidence.maximum_heartbeat_gap_ns <= policy.maximum_ui_heartbeat_gap_ms * 1_000_000,
+        ),
+        BudgetResult(
+            BudgetId.CANCELLATION_ACKNOWLEDGEMENT,
+            evidence.cancellation_acknowledgement_ms,
+            policy.cancellation_acknowledgement_ms,
+            evidence.cancellation_acknowledgement_ms <= policy.cancellation_acknowledgement_ms,
+        ),
+    )
+    if (
+        evidence.peak_cache_bytes < checkpoint_cache
+        or evidence.peak_temp_bytes < checkpoint_temp
+        or evidence.duration_ms != max(1, evidence.total_elapsed_ns // 1_000_000)
+        or evidence.ui_heartbeat_violation_count
+        != int(evidence.maximum_heartbeat_gap_ns > policy.maximum_ui_heartbeat_gap_ms * 1_000_000)
+        or evidence.budget_results != expected_results
+    ):
         _reject(
-            "M1_REFERENCE_INVALID", "The report is not bound to the checked-in reference profile."
+            "M1_RESOURCE_BUDGET_INVALID",
+            "Completed resource evidence is inconsistent with measured values.",
         )
-    return profile
+
+
+def _ceil_milliseconds(nanoseconds: int) -> int:
+    return (nanoseconds + 999_999) // 1_000_000
 
 
 def _checked_file_sha256(root: Path, relative_path: Path, *, context: str) -> str:
@@ -1576,7 +1842,7 @@ def _checked_file_sha256(root: Path, relative_path: Path, *, context: str) -> st
 
 
 class _LiveM1ReportWriter:
-    """Canonical-runner-only writer for a fixed, no-overwrite completed report.
+    """Canonical-runner-only writer for one fixed, no-overwrite live report.
 
     Opening retains an authenticated no-follow handle to an existing output
     directory.  Publication writes an opaque same-directory stage, validates
@@ -1707,7 +1973,7 @@ class _LiveM1ReportWriter:
 
     def _build_completed_report(
         self,
-        host_observation_report: M1BenchmarkReport,
+        policy_report: M1BenchmarkReport,
         *,
         phase_measurements: tuple[PhaseMeasurement, ...],
         worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
@@ -1720,7 +1986,7 @@ class _LiveM1ReportWriter:
         try:
             return _build_live_m1_completed_report(
                 self._authority,
-                host_observation_report,
+                policy_report,
                 phase_measurements=phase_measurements,
                 worker_resource_measurements=worker_resource_measurements,
                 workspace_usage_measurements=workspace_usage_measurements,
@@ -1748,8 +2014,67 @@ class _LiveM1ReportWriter:
                 "The completed measurement report could not be encoded safely.",
             )
 
+    def _build_failed_report(
+        self,
+        policy_report: M1BenchmarkReport,
+        *,
+        result_code: str,
+        phase_measurements: tuple[PhaseMeasurement, ...],
+        worker_resource_measurements: tuple[WorkerResourceMeasurement, ...],
+        workspace_usage_measurements: tuple[WorkspaceUsageMeasurement, ...],
+        failed_evidence: FailedRunEvidence,
+    ) -> M1BenchmarkReport:
+        """Bind one failed workload to only the evidence available at failure."""
+
+        self._require_open()
+        try:
+            return _build_live_m1_failed_report(
+                self._authority,
+                policy_report,
+                result_code=result_code,
+                phase_measurements=phase_measurements,
+                worker_resource_measurements=worker_resource_measurements,
+                workspace_usage_measurements=workspace_usage_measurements,
+                failed_evidence=failed_evidence,
+            )
+        except M1BenchmarkError:
+            raise
+        except Exception:
+            _reject(
+                "M1_REPORT_INVALID",
+                "The failed measurement report could not be constructed safely.",
+            )
+
+    def _encode_failed_report(self, report: M1BenchmarkReport) -> bytes:
+        """Encode a failed report through this writer's retained authority."""
+
+        self._require_open()
+        try:
+            return _encode_live_m1_failed_report(self._authority, report)
+        except M1BenchmarkError:
+            raise
+        except Exception:
+            _reject(
+                "M1_REPORT_INVALID",
+                "The failed measurement report could not be encoded safely.",
+            )
+
     def _publish_completed_report(self, report: M1BenchmarkReport) -> Path:
         """Atomically publish one validated report without replacing any object."""
+
+        return self._publish_report(report, self._encode_completed_report)
+
+    def _publish_failed_report(self, report: M1BenchmarkReport) -> Path:
+        """Atomically publish one failed report without publishing a derivative."""
+
+        return self._publish_report(report, self._encode_failed_report)
+
+    def _publish_report(
+        self,
+        report: M1BenchmarkReport,
+        encoder: Callable[[M1BenchmarkReport], bytes],
+    ) -> Path:
+        """Publish one authenticated canonical report through the shared commit boundary."""
 
         self._require_open()
         if self._published:
@@ -1757,7 +2082,7 @@ class _LiveM1ReportWriter:
                 LIVE_REPORT_ALREADY_EXISTS_CODE,
                 "This live-report writer has already published its fixed report.",
             )
-        encoded = self._encode_completed_report(report)
+        encoded = encoder(report)
         stage_path = self._output_directory / (
             f"{_LIVE_STAGE_PREFIX}{uuid4().hex}{_LIVE_STAGE_SUFFIX}"
         )
@@ -1784,13 +2109,13 @@ class _LiveM1ReportWriter:
                     )
                 _reject(
                     LIVE_REPORT_PUBLISH_FAILED_CODE,
-                    "The completed live report could not be published safely.",
+                    "The live report could not be published safely.",
                 )
             current = stage_handle.refresh_info()
             if current.identity != stage_identity or current.link_count != 1:
                 _reject(
                     LIVE_REPORT_PUBLISH_FAILED_CODE,
-                    "The completed live report changed during publication.",
+                    "The live report changed during publication.",
                 )
             require_expected_handle(
                 stage_handle,
@@ -1811,13 +2136,13 @@ class _LiveM1ReportWriter:
             self._settle_interrupted_publication(stage_handle)
             _reject(
                 LIVE_REPORT_PUBLISH_FAILED_CODE,
-                "The completed live report could not be published safely.",
+                "The live report could not be published safely.",
             )
         except Exception:
             self._settle_interrupted_publication(stage_handle)
             _reject(
                 LIVE_REPORT_PUBLISH_FAILED_CODE,
-                "The completed live report could not be published safely.",
+                "The live report could not be published safely.",
             )
         except BaseException:
             self._settle_interrupted_publication(stage_handle)
@@ -1955,27 +2280,16 @@ def _json_path(parts: Sequence[object]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Validate the schema or print an honest host-only observation report."""
+    """Validate the schema or print a constrained-profile non-run report."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate", help="validate the report schema")
-    observe = subparsers.add_parser(
-        "observe-host",
-        help="record host/reference observations without running the vertical slice",
+    describe = subparsers.add_parser(
+        "describe-policy",
+        help="print the enforced constrained software policy without inspecting hardware",
     )
-    observe.add_argument("--scenario", choices=sorted(SCENARIO_IDS), default="limited-storage")
-    observe.add_argument(
-        "--work-directory",
-        type=Path,
-        default=PROJECT_ROOT / ".paperworkshell-local" / "m1-benchmark-work",
-    )
-    observe.add_argument("--attest-memory-mib", type=int)
-    observe.add_argument("--attest-graphics", choices=("integrated",))
-    observe.add_argument(
-        "--attest-storage-media",
-        choices=("hdd-or-validated-emulation",),
-    )
+    describe.add_argument("--profile", choices=("normal", "constrained"), default="constrained")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "validate":
@@ -1984,27 +2298,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             for issue in issues:
                 print(issue.render(), file=sys.stderr)
             return 1
-        print(f"OK: validated record-only M1 report schema at {REPORT_SCHEMA_PATH.as_posix()}.")
+        print(
+            "OK: validated constrained-resource M1 report schema at "
+            f"{REPORT_SCHEMA_PATH.as_posix()}."
+        )
         return 0
 
-    profile, profile_issues = validate_profile()
-    if profile_issues or profile is None:
-        print(
-            "ERROR [M1_REFERENCE_INVALID] The checked-in reference profile is invalid.",
-            file=sys.stderr,
-        )
-        return 1
     try:
-        report = build_m1_benchmark_report(
-            profile,
-            cast(str, arguments.scenario),
-            cast(Path, arguments.work_directory),
-            attestations=ReferenceAttestations(
-                memory_mib=cast(int | None, arguments.attest_memory_mib),
-                graphics_class=cast(str | None, arguments.attest_graphics),
-                storage_media=cast(str | None, arguments.attest_storage_media),
-            ),
+        policy = select_resource_policy(
+            ProcessingProfile(cast(str, arguments.profile)),
+            environ={},
         )
+        report = build_m1_benchmark_report(policy)
         encoded = encode_m1_benchmark_report(report)
     except M1BenchmarkError as error:
         print(f"ERROR [{error.code}] {error.safe_message}", file=sys.stderr)

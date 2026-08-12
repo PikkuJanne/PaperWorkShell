@@ -40,6 +40,7 @@ from paperworkshell.worker.client.models import (
     WorkerOperationResultSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationLease
 from paperworkshell.worker.pdf_export_buffers import (
     WindowsPdfExportOutputBuffer,
     WindowsPdfExportPlanBuffer,
@@ -373,6 +374,7 @@ class BrokeredPdfExporter:
 
     __slots__ = (
         "_id_factory",
+        "_heavy_operations",
         "_output_buffer_factory",
         "_pipe_factory",
         "_plan_buffer_factory",
@@ -386,6 +388,7 @@ class BrokeredPdfExporter:
         worker: PdfExportWorkerCoordinator,
         policy: PdfExportBrokerPolicy,
         *,
+        heavy_operations: HeavyOperationCoordinator,
         pipe_factory: ResultPipeFactory = WindowsResultPipe.create,
         plan_buffer_factory: PlanBufferFactory = WindowsPdfExportPlanBuffer.create,
         output_buffer_factory: OutputBufferFactory = WindowsPdfExportOutputBuffer.create,
@@ -393,6 +396,7 @@ class BrokeredPdfExporter:
     ) -> None:
         if (
             type(policy) is not PdfExportBrokerPolicy
+            or type(heavy_operations) is not HeavyOperationCoordinator
             or not callable(pipe_factory)
             or not callable(plan_buffer_factory)
             or not callable(output_buffer_factory)
@@ -401,6 +405,7 @@ class BrokeredPdfExporter:
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.broker_configuration")
         self._worker = worker
         self._policy = policy
+        self._heavy_operations = heavy_operations
         self._pipe_factory = pipe_factory
         self._plan_buffer_factory = plan_buffer_factory
         self._output_buffer_factory = output_buffer_factory
@@ -432,13 +437,14 @@ class BrokeredPdfExporter:
         if self._revoked:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.composition_closed")
         try:
-            return self._export(
-                plan,
-                sources,
-                deadline=deadline,
-                cancellation=cancellation,
-                progress=progress,
-            )
+            with self._acquire_heavy_operation(deadline, cancellation):
+                return self._export(
+                    plan,
+                    sources,
+                    deadline=deadline,
+                    cancellation=cancellation,
+                    progress=progress,
+                )
         except PdfExportError:
             raise
         except SourceIngestError as error:
@@ -452,6 +458,17 @@ class BrokeredPdfExporter:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.worker")
         except Exception:
             reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.broker")
+
+    def _acquire_heavy_operation(
+        self,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> HeavyOperationLease:
+        while True:
+            lease = self._heavy_operations.try_acquire(self._policy.pump_interval_seconds)
+            if lease is not None:
+                return lease
+            _require_active(deadline, cancellation)
 
     def _export(
         self,

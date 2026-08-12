@@ -39,6 +39,7 @@ from paperworkshell.worker.client.models import (
     WorkerProgressSnapshot,
 )
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_export_broker import (
     MAX_PDF_EXPORT_CANDIDATE_READ_BYTES,
     PDF_EXPORT_VERIFICATION_PIXELS,
@@ -618,6 +619,7 @@ class _System:
         self.exporter = BrokeredPdfExporter(
             cast(PdfExportWorkerCoordinator, self.worker),
             self.policy,
+            heavy_operations=HeavyOperationCoordinator(1),
             pipe_factory=pipe_factory,
             plan_buffer_factory=plan_factory,
             output_buffer_factory=output_factory,

@@ -15,6 +15,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QApplication
 
+from paperworkshell.domain.resource_policy import ResourcePolicy
 from paperworkshell.ui.backend import (
     OrganizerBackendCommands,
     OrganizerBackendFactory,
@@ -77,6 +78,8 @@ def _wait_for_backend_shutdown(
 def run_desktop_application(
     factory: OrganizerBackendFactory,
     argv: Sequence[str] | None = None,
+    *,
+    resource_policy: ResourcePolicy,
 ) -> int:
     """Run the accessible desktop shell until its backend closes cleanly."""
 
@@ -101,7 +104,7 @@ def run_desktop_application(
     )
     backend_thread.finished.connect(application.quit)
 
-    window = PaperWorkShellWindow(commands, worker)
+    window = PaperWorkShellWindow(commands, worker, resource_policy=resource_policy)
     window.show()
     backend_thread.start()
     exit_code = application.exec()

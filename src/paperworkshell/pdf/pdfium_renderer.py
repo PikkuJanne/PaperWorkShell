@@ -32,6 +32,7 @@ from paperworkshell.domain.pdf_rendering import (
     reject_pdf_rendering,
     validate_pdf_render_request,
 )
+from paperworkshell.domain.resource_policy import NORMAL_RESOURCE_POLICY_V1
 from paperworkshell.pdf.page_geometry import PikePdfPageGeometryResolver
 from paperworkshell.pdf.renderer import (
     PdfRasterDestination,
@@ -282,11 +283,16 @@ class PdfiumPageRenderer:
     geometry_resolver: PikePdfPageGeometryResolver = field(
         default_factory=PikePdfPageGeometryResolver
     )
+    maximum_active_full_resolution_page_buffers: int = (
+        NORMAL_RESOURCE_POLICY_V1.maximum_active_full_resolution_page_buffers
+    )
 
     def __post_init__(self) -> None:
         if (
             type(self.geometry_limits) is not PdfPageGeometryLimits
             or type(self.geometry_resolver) is not PikePdfPageGeometryResolver
+            or type(self.maximum_active_full_resolution_page_buffers) is not int
+            or self.maximum_active_full_resolution_page_buffers != 1
         ):
             reject_pdf_rendering(PdfRenderErrorCode.MODEL_INVALID, "render.pdfium.adapter")
 

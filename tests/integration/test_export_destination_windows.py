@@ -56,6 +56,32 @@ def _stages(parent: Path) -> tuple[Path, ...]:
     return tuple(parent.glob(".*.pws-export.tmp"))
 
 
+@pytest.mark.parametrize("available_delta, succeeds", [(0, True), (-1, False)])
+def test_free_space_preflight_enforces_output_plus_reserve_boundary(
+    tmp_path: Path,
+    available_delta: int,
+    succeeds: bool,
+) -> None:
+    output_bytes = 4096
+    reserve_bytes = 8192
+    observed = output_bytes + reserve_bytes + available_delta
+    destination = tmp_path / "capacity-boundary.pdf"
+    selected = WindowsExportDestination(
+        ExportDestinationDependencies(available_space=lambda _parent: observed),
+        minimum_free_space_reserve_bytes=reserve_bytes,
+    )
+
+    if succeeds:
+        selected.require_capacity(destination, estimated_byte_size=output_bytes)
+    else:
+        with pytest.raises(ExportDestinationError) as raised:
+            selected.require_capacity(destination, estimated_byte_size=output_bytes)
+        assert raised.value.code is ExportDestinationErrorCode.DESTINATION_FULL
+        assert raised.value.context == "export.capacity"
+    assert not destination.exists()
+    assert _stages(tmp_path) == ()
+
+
 def test_real_commit_remains_durable_after_every_retained_handle_closes(
     tmp_path: Path,
 ) -> None:

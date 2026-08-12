@@ -32,8 +32,9 @@ py -3.14 tools/dev.py check
 `check` runs every non-mutating command marked `[check]` by `list`, in registry order. It covers
 formatting, linting, architecture boundaries, strict typing, unit/integration/security/
 accessibility lanes, public synthetic fixture regeneration/provenance, repository schemas, the task
-graph, the reference profile, the bound PDF-renderer comparison workload, secret scanning, offline
-documentation links/anchors/security references, and deliberate negative self-tests. Use
+graph, the constrained M1 evidence schema, the bound PDF-renderer comparison workload, secret
+scanning, offline documentation links/anchors/security references, and deliberate negative
+self-tests. Use
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
 
@@ -46,9 +47,9 @@ scaling, and announcement coverage for the first PySide6 organizer surface.
 py -3.14 tools/dev.py validate-schemas
 ```
 
-The registry validates the task graph, reference profile, case-manifest v1, declarative-template
-v1, worker-RPC v1, dependency-inventory v1, and synthetic-fixture-index v1 contracts. The dependency validator is also
-available directly:
+The registry validates the task graph, constrained M1 evidence, case-manifest v1,
+declarative-template v1, worker-RPC v1, dependency-inventory v1, and synthetic-fixture-index v1
+contracts. The dependency validator is also available directly:
 
 ```powershell
 py -3.14 tools/dev.py validate-dependencies
@@ -228,25 +229,25 @@ Neither the local suite nor CI uploads source, fixtures, scan reports, benchmark
 or artifacts. CI network use is limited to checkout and installation/bootstrap of pinned tools
 and dependencies before the suite runs.
 
-## Reference profile and measurements
+## Constrained-resource policy and measurements
 
-`benchmarks/reference-windows-v1.json` and
-`schemas/reference-profile.schema.json` define the Windows low-spec environment and generated-I/O
-workload. The ordinary suite validates the profile but does not treat mutable hosted CI hardware
-as the reference machine. See `benchmarks/README.md` for local smoke and prepared
-limited-storage/HDD runs. Reference runs compare observable OS, architecture, native process
-affinity, an at-most-8-GiB volume, and at least 4 MiB free; interpreter CPU-count overrides fail.
-Memory, graphics, and (for HDD) storage media remain explicit attestations. A mismatch exits
-nonzero and prints a sanitized structured evaluation showing each
-matched, mismatched, or unknown requirement. The generated-byte algorithm and expected checksum
-are pinned so the version-1 workload cannot drift silently. Measurements are record-only;
-version 1 contains no guessed product thresholds.
+PWS-D041 replaces the mandatory physical reference-machine gate with a central, versioned
+`ResourcePolicy`, bounded production composition, deterministic synthetic workloads, and numeric
+automated evidence. The constrained M1 run enforces worker, workspace, cache, temporary-storage,
+preview, concurrency, responsiveness, cancellation, and low-disk budgets. Schema validation checks
+the closed report contract; the live runner proves that the policy is operational rather than a
+report label. See [`LOW_RESOURCE_POLICY.md`](../performance/LOW_RESOURCE_POLICY.md) and
+[`benchmarks/README.md`](../../benchmarks/README.md).
+
+Passing constrained-profile evidence proves bounded software behavior for that exact revision and
+workload. It does not emulate or certify a CPU, RAM allocation, GPU, storage medium, VM, or physical
+machine. Physical low-end-device testing has not been performed and is optional/non-gating.
 
 PWS-0106 adds `benchmarks/pdf-renderer-windows-v1.json`. The ordinary non-mutating command validates
 its exact profile, corpus, golden, artifact, and outcome bindings; it does not itself synchronize
 the non-default Qt group or execute the complete benchmark command/report.
 `benchmark-pdf-renderers` is an explicit Windows-only, clean-revision operation using the
-`renderer-evaluation` dependency group and truthful reference attestations. Its isolation,
+`renderer-evaluation` dependency group. Its isolation,
 affinity, staging, and invocation contract is documented in `benchmarks/README.md`.
 
 The Windows CI workflow separately synchronizes the non-default `renderer-evaluation` group so the

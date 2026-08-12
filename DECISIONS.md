@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Register version | 0.1.0 |
+| Register version | 0.2.0 |
 | Status | **Frozen** |
 | Effective date | 2026-07-14 |
+| Last amended | 2026-08-12 |
 | Applies to | Product scope, architecture, security, release gates, and terminology |
 
 A frozen decision is binding on implementation and planning until the maintainer explicitly approves a replacement. A technical obstacle is not permission to bypass a decision. Changes use the procedure at the end of this file and must update `ROADMAP.md`, `TASKS.yaml`, and affected prompts or schemas in the same change.
@@ -61,6 +62,7 @@ Status vocabulary:
 | PWS-D038 | External tools receive structured arguments, never shell command strings |
 | PWS-D039 | Diagnostics are sanitized and previewable before export |
 | PWS-D040 | v0.1 ends at M4; v1.0 requires all release gates |
+| PWS-D041 | Low-resource compatibility is enforced through bounded architecture and automated resource budgets |
 
 ---
 
@@ -92,11 +94,11 @@ Status vocabulary:
 
 ## PWS-D004 — Windows-first desktop delivery
 
-**Status:** FROZEN
+**Status:** FROZEN (low-resource evidence consequence amended by `PWS-D041`)
 
 **Decision:** The first supported distribution target is a Windows desktop application. Architecture remains portable, but macOS and Linux packaging do not block v0.1.
 
-**Consequences:** Windows path behavior, signing, installer behavior, NVDA, display scaling, and low-spec Windows hardware are first-class test targets. Platform-specific code stays behind adapters.
+**Consequences:** Windows path behavior, signing, installer behavior, NVDA, display scaling, and low-resource behavior are first-class engineering targets. Platform-specific code stays behind adapters. `PWS-D041` replaces only the former mandatory physical-hardware interpretation of low-resource evidence; Windows-first delivery itself is unchanged.
 
 ## PWS-D005 — Offline-first, no account, no required service
 
@@ -386,6 +388,14 @@ Status vocabulary:
 
 **Consequences:** Permanent redaction is not a v0.1 promise. A public v1.0 label is not used while a required gate is incomplete.
 
+## PWS-D041 — Low-resource compatibility is enforced through bounded architecture and automated resource budgets
+
+**Status:** FROZEN
+
+**Decision:** PaperWorkShell remains Windows-first and must use conservative, bounded resource behavior by default. Automated suites enforce versioned memory, temporary-storage, cache, queue, concurrency, responsiveness, cancellation, and low-disk budgets with synthetic workloads and injectable constraints. Testing on physical low-end devices is useful when available but is not a milestone or release prerequisite.
+
+**Consequences:** Core functionality cannot require a discrete GPU. Heavy document work remains outside the GUI process. Full packets are not eagerly rasterized or retained at full resolution. Caches, queues, subprocesses, and temporary storage have explicit limits and fail safely when exceeded. Performance evidence distinguishes measured software budgets from physical-hardware certification. PaperWorkShell must not describe a named low-end device, processor count, RAM amount, GPU class, SSD, or HDD as verified or certified unless that physical configuration is actually tested later. The accepted rationale, migration, and affected surfaces are recorded in `docs/adr/0007-low-resource-budgets.md`.
+
 ---
 
 ## Deliberately variable implementation parameters
@@ -396,7 +406,7 @@ The following are implementation parameters rather than permission to change pro
 - Concrete PDF renderer, selected by `PWS-0106`
 - Exact Windows isolation primitives available at each release stage
 - Specific font family and embedding method for overlays, proven in `PWS-0303` and `PWS-0307`
-- Numeric resource limits and quality thresholds, measured against the reference corpus and hardware
+- Numeric resource limits and quality thresholds, measured against approved synthetic workloads and versioned resource policies
 - Exact installer technology and authenticated update mechanism, selected in Milestone 8
 
 Each selection requires an ADR in `docs/adr/`, evidence, tests, and no conflict with the frozen decisions above.

@@ -31,8 +31,9 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
 )
 from paperworkshell.storage import _windows as windows_module
-from paperworkshell.storage._windows import WindowsHandle
+from paperworkshell.storage._windows import WindowsHandle, WindowsPendingThumbnailFile
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
@@ -99,17 +100,43 @@ def _quota() -> WorkspaceQuota:
     )
 
 
-def _manager(tmp_path: Path) -> CaseWorkspaceManager:
+def _manager(
+    tmp_path: Path,
+    *,
+    available_space_probe: Callable[[Path], int] | None = None,
+    free_space_reserve_bytes: int = 0,
+) -> CaseWorkspaceManager:
     profile = tmp_path / "profile"
     profile.mkdir()
     manager = CaseWorkspaceManager(
         profile_root=profile,
         quota=_quota(),
         id_factory=lambda: CASE_ID,
+        minimum_free_space_reserve_bytes=free_space_reserve_bytes,
+        available_space_probe=available_space_probe,
     )
     lease = WindowsCaseLifecycleStore(manager, clock=lambda: NOW).create_case()
     lease.close()
     return manager
+
+
+def test_low_disk_rejects_thumbnail_stage_before_temp_artifact_creation(
+    tmp_path: Path,
+) -> None:
+    available = [16_000_000]
+    manager = _manager(
+        tmp_path,
+        available_space_probe=lambda _path: available[0],
+        free_space_reserve_bytes=900,
+    )
+    available[0] = 1_000
+    store = WindowsThumbnailCacheStore(manager, id_factory=_SequentialIds(0x6E000000))
+
+    with pytest.raises(PdfThumbnailError) as raised:
+        store.create_stage(_key())
+
+    assert raised.value.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
+    assert list(manager.layout(CASE_ID).thumbnails.iterdir()) == []
 
 
 def _key(
@@ -197,6 +224,45 @@ def test_trusted_stage_writer_enforces_exact_bound_and_one_shot_state(
         assert stage.publish().published
 
     assert layout.thumbnails.joinpath(key.internal_name).read_bytes() == payload
+
+
+def test_disk_full_during_thumbnail_write_cleans_partial_stage_and_restart_is_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager(tmp_path)
+    layout = manager.layout(CASE_ID)
+    manifest_before = layout.manifest.read_bytes()
+    store = WindowsThumbnailCacheStore(manager, id_factory=_SequentialIds(0x6F100000))
+    key = _key()
+    write_artifact = WindowsPendingThumbnailFile.write_artifact
+
+    def partial_then_full(stage: WindowsPendingThumbnailFile, payload: bytes) -> None:
+        write_artifact(stage, payload[: max(1, len(payload) // 2)])
+        raise WorkspaceError(
+            WorkspaceErrorCode.QUOTA_EXCEEDED,
+            "thumbnail_stage.synthetic_disk_full",
+            "The synthetic thumbnail storage budget was exhausted.",
+        )
+
+    monkeypatch.setattr(WindowsPendingThumbnailFile, "write_artifact", partial_then_full)
+    with pytest.raises(PdfThumbnailError) as raised:
+        with store.create_stage(key) as stage:
+            stage.write_artifact(_artifact_bytes(key, cache_object_id=stage.cache_object_id))
+
+    assert raised.value.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
+    assert list(layout.thumbnails.iterdir()) == []
+    assert layout.manifest.read_bytes() == manifest_before
+
+    monkeypatch.undo()
+    restarted = WindowsThumbnailCacheStore(
+        CaseWorkspaceManager(profile_root=manager.profile_root, quota=_quota())
+    )
+    cleanup = restarted.cleanup_stale_stages(CASE_ID)
+    assert cleanup.status is ThumbnailCleanupStatus.COMPLETE
+    assert cleanup.removed_entries == 0
+    assert restarted.lookup(key).status is ThumbnailCacheLookupStatus.MISS
+    assert layout.manifest.read_bytes() == manifest_before
 
 
 def test_stage_publish_lookup_corruption_rebuild_and_manifest_independence(

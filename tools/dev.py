@@ -173,13 +173,9 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.validate_docs"),
         "Validate local documentation links and security references offline.",
     ),
-    "validate-reference-profile": CommandSpec(
-        ("python", "-m", "tools.reference_profile", "validate"),
-        "Validate the reference Windows environment and workload profile.",
-    ),
     "validate-m1-benchmark-report": CommandSpec(
         ("python", "-m", "tools.m1_vertical_slice_benchmark", "validate"),
-        "Validate the record-only M1 vertical-slice measurement schema.",
+        "Validate the constrained-profile M1 vertical-slice evidence schema.",
     ),
     "validate-pdf-renderer-benchmark": CommandSpec(
         ("python", "-m", "tools.pdf_renderer_benchmark", "validate"),
@@ -194,19 +190,9 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.quality_self_test"),
         "Prove deliberate quality violations are rejected.",
     ),
-    "benchmark-reference": CommandSpec(
-        ("python", "-m", "tools.reference_profile", "benchmark"),
-        "Measure the baseline workload without applying guessed targets.",
-        include_in_check=False,
-    ),
-    "benchmark-m1-vertical-slice": CommandSpec(
-        ("python", "-m", "tools.m1_vertical_slice_benchmark", "observe-host"),
-        "Record host/reference observations without inventing vertical-slice measurements.",
-        include_in_check=False,
-    ),
     "run-m1-vertical-slice": CommandSpec(
         ("python", "-m", "tools.m1_vertical_slice_live_runner"),
-        "Run the fixed PWS-0114 scenario and publish its local derivative and report.",
+        "Run the constrained PWS-0114 scenario and publish its local derivative and report.",
         include_in_check=False,
     ),
     "benchmark-pdf-renderers": CommandSpec(

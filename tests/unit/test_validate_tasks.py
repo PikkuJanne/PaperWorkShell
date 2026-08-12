@@ -54,10 +54,10 @@ class TaskValidationTests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertIsNotNone(summary)
         assert summary is not None
-        self.assertEqual(80, summary.task_count)
-        self.assertEqual(238, summary.dependency_count)
+        self.assertEqual(81, summary.task_count)
+        self.assertEqual(240, summary.dependency_count)
         self.assertEqual(9, summary.milestone_count)
-        self.assertEqual(40, summary.decision_count)
+        self.assertEqual(41, summary.decision_count)
 
     def test_unknown_dependency_fails(self) -> None:
         data = copy.deepcopy(self.data)
@@ -162,7 +162,7 @@ class TaskValidationTests(unittest.TestCase):
             result = main(["--root", str(ROOT)])
 
         self.assertEqual(0, result)
-        self.assertIn("80 tasks, 238 dependencies", stdout.getvalue())
+        self.assertIn("81 tasks, 240 dependencies", stdout.getvalue())
         self.assertEqual("", stderr.getvalue())
 
     def test_schema_only_does_not_require_decisions_file(self) -> None:

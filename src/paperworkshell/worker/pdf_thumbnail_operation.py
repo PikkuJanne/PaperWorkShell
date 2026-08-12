@@ -7,7 +7,6 @@ import hashlib
 import hmac
 import os
 import stat
-import tempfile
 from contextlib import ExitStack
 from ctypes import wintypes
 from dataclasses import dataclass, field
@@ -47,6 +46,11 @@ from paperworkshell.worker.operations import (
 )
 from paperworkshell.worker.pdf_thumbnail_profile import (
     PDF_THUMBNAIL_RENDERER_PROFILE_SHA256,
+)
+from paperworkshell.worker.private_temp import (
+    OsWorkerPrivateTempStorage,
+    WorkerPrivateTempStorage,
+    WorkerPrivateTempStorageError,
 )
 from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CONTENT_KIND,
@@ -231,9 +235,16 @@ class WindowsPdfThumbnailAdapter:
     """Verify the source, render privately, then write one fixed cache artifact."""
 
     renderer: PdfPageRenderer = field(default_factory=PdfiumPageRenderer)
+    private_temp_storage: WorkerPrivateTempStorage = field(
+        default_factory=OsWorkerPrivateTempStorage,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
-        if not callable(getattr(self.renderer, "render", None)):
+        if not callable(getattr(self.renderer, "render", None)) or any(
+            not callable(getattr(self.private_temp_storage, member, None))
+            for member in ("require_capacity", "open_anonymous")
+        ):
             reject_pdf_thumbnail(PdfThumbnailErrorCode.MODEL_INVALID, "thumbnail.adapter")
 
     def discard_handles(self, source_handle: int, cache_handle: int) -> None:
@@ -356,21 +367,31 @@ class WindowsPdfThumbnailAdapter:
         control = _RenderControl(context)
         _require_active(control)
         temp_root = _materialize_worker_private_temp()
+        try:
+            self.private_temp_storage.require_capacity(
+                temp_root,
+                context.limits.temporary_storage_bytes,
+            )
+        except WorkerPrivateTempStorageError:
+            reject_pdf_thumbnail(
+                PdfThumbnailErrorCode.LIMIT_EXCEEDED,
+                "thumbnail.temp_capacity",
+            )
         with ExitStack() as temporary_files:
             try:
                 staged_source = temporary_files.enter_context(
-                    tempfile.TemporaryFile(mode="w+b", dir=temp_root)
+                    self.private_temp_storage.open_anonymous(temp_root)
                 )
                 raster = temporary_files.enter_context(
-                    tempfile.TemporaryFile(mode="w+b", dir=temp_root)
+                    self.private_temp_storage.open_anonymous(temp_root)
                 )
-            except OSError:
+            except WorkerPrivateTempStorageError, OSError:
                 reject_pdf_thumbnail(
                     PdfThumbnailErrorCode.LIMIT_EXCEEDED,
                     "thumbnail.temp_create",
                 )
-            source_copy = cast(BinaryIO, staged_source)
-            raster_copy = cast(BinaryIO, raster)
+            source_copy = staged_source
+            raster_copy = raster
             _copy_verified_source(
                 source,
                 source_copy,

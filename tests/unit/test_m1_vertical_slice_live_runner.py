@@ -6,14 +6,20 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import patch
 from uuid import UUID
 
 import pytest
 
+from paperworkshell.domain.resource_policy import (
+    CONSTRAINED_RESOURCE_POLICY_V1,
+    RESOURCE_PROFILE_ENVIRONMENT_VARIABLE,
+)
 from paperworkshell.storage._windows import WindowsHandle, open_handle
 from tools.m1_vertical_slice_benchmark import (
+    FailedRunEvidence,
+    FailureStage,
     M1BenchmarkError,
     M1BenchmarkReport,
     M1Phase,
@@ -27,7 +33,6 @@ from tools.m1_vertical_slice_benchmark import (
     _LiveM1ReportWriter,
 )
 from tools.m1_vertical_slice_live_runner import (
-    _LIVE_REFERENCE_SCENARIO_ID,
     _QPDF_BIN_FILE_SHA256,
     LIVE_CHILD_DERIVATIVE_FILENAME,
     LIVE_CHILD_RESULT_FILENAME,
@@ -39,21 +44,28 @@ from tools.m1_vertical_slice_live_runner import (
     LIVE_ENV_STAGE,
     LIVE_PROTOCOL_VERSION,
     LIVE_REPORT_FILENAME,
+    LIVE_REQUIRED_TEST_NODES,
     MAX_CHILD_RESULT_BYTES,
     PROJECT_ROOT,
     _child_environment,
     _cleanup_run_directory,
+    _complete_process_tree_rss,
     _decode_child_result,
+    _descendant_process_ids,
+    _failure_stage_for_code,
     _git_identity,
     _open_qpdf_distribution_authority,
+    _process_snapshot_enumeration_completed,
     _publish_derivative,
     _publish_fixed_bundle,
     _qpdf_bin_names,
     _read_authenticated_file,
     _require_fixed_outputs_absent,
     _require_live_qpdf_trusted_root,
+    _windows_process_tree_rss_bytes,
     emit_live_child_artifacts,
     production_qpdf_version_identity,
+    run_live_m1_vertical_slice,
 )
 
 _RUN_ID = UUID("50000000-0000-4000-8000-000000000114")
@@ -83,26 +95,65 @@ class _PostcommitInterruptWriter:
         raise KeyboardInterrupt
 
 
-def test_live_reference_scenario_requires_bounded_hdd_evidence() -> None:
-    profile = json.loads(
-        (PROJECT_ROOT / "benchmarks" / "reference-windows-v1.json").read_text(encoding="utf-8")
+def test_live_runner_uses_enforced_constrained_policy() -> None:
+    assert CONSTRAINED_RESOURCE_POLICY_V1.maximum_heavy_operation_concurrency == 1
+    assert CONSTRAINED_RESOURCE_POLICY_V1.maximum_cache_bytes == 64 * 1024 * 1024
+    assert CONSTRAINED_RESOURCE_POLICY_V1.thumbnail_preview_cache_bytes == 64 * 1024 * 1024
+    assert CONSTRAINED_RESOURCE_POLICY_V1.canonical_process_tree_rss_bytes == 1_280 * 1024 * 1024
+    assert len(LIVE_REQUIRED_TEST_NODES) == 14
+    assert any("disk_full_during_import" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("slow_storage_import" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("slow_storage_read" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("slow_directory_scan" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("termination_during_render" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("capacity_preflight" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("mid_render_private_disk_full" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("mid_export_private_disk_full" in node for node in LIVE_REQUIRED_TEST_NODES)
+    assert any("cancel_restart_and_shutdown" in node for node in LIVE_REQUIRED_TEST_NODES)
+
+
+def test_failure_stage_distinguishes_setup_from_started_workload() -> None:
+    assert _failure_stage_for_code("M1_LIVE_CONFIG_INVALID") is FailureStage.SETUP
+    assert _failure_stage_for_code("M1_LIVE_WORK_INVALID") is FailureStage.SETUP
+    assert _failure_stage_for_code("M1_LIVE_CHILD_FAILED") is FailureStage.WORKLOAD
+    assert _failure_stage_for_code("M1_RESOURCE_MEASUREMENT_FAILED") is FailureStage.WORKLOAD
+
+
+def test_live_runner_requests_a_sanitized_failed_report_on_workload_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    published: list[Mapping[str, object]] = []
+
+    def fail_workload(**_kwargs: object) -> None:
+        raise M1BenchmarkError("M1_LIVE_CHILD_FAILED", "The canonical child failed.")
+
+    def publish_failure(**kwargs: object) -> Path:
+        published.append(kwargs)
+        return tmp_path / LIVE_REPORT_FILENAME
+
+    monkeypatch.setattr("tools.m1_vertical_slice_live_runner.LIVE_OUTPUT_DIRECTORY", tmp_path)
+    monkeypatch.setattr(
+        "tools.m1_vertical_slice_live_runner._git_identity",
+        lambda: ("a" * 40, "b" * 40),
     )
-    selected = tuple(
-        scenario
-        for scenario in profile["storage_scenarios"]
-        if scenario["id"] == _LIVE_REFERENCE_SCENARIO_ID
+    monkeypatch.setattr(
+        "tools.m1_vertical_slice_live_runner._run_live_m1_vertical_slice",
+        fail_workload,
+    )
+    monkeypatch.setattr(
+        "tools.m1_vertical_slice_live_runner._publish_failed_live_report",
+        publish_failure,
     )
 
-    assert selected == (
-        {
-            "id": "rotational-hdd",
-            "capacity": "bounded",
-            "maximum_capacity_bytes": 8_589_934_592,
-            "minimum_free_bytes": 4_194_304,
-            "media": "hdd-or-validated-emulation",
-            "verification": "runtime-and-operator-attested",
-        },
-    )
+    with pytest.raises(M1BenchmarkError) as raised:
+        run_live_m1_vertical_slice(work_directory=tmp_path / "work")
+
+    assert raised.value.code == "M1_LIVE_CHILD_FAILED"
+    assert len(published) == 1
+    failed = cast(FailedRunEvidence, published[0]["failed_evidence"])
+    assert failed.failure_stage is FailureStage.WORKLOAD
+    assert published[0]["result_code"] == "M1_LIVE_CHILD_FAILED"
 
 
 def _phases() -> tuple[PhaseMeasurement, ...]:
@@ -125,6 +176,52 @@ def _workspaces() -> tuple[WorkspaceUsageMeasurement, ...]:
     )
 
 
+def test_process_tree_snapshot_closure_includes_overlapping_worker_descendants() -> None:
+    assert _descendant_process_ids(
+        {100: 1, 110: 100, 120: 100, 111: 110, 121: 120, 999: 1},
+        100,
+    ) == frozenset({100, 110, 111, 120, 121})
+
+
+def test_process_tree_snapshot_rejects_one_exited_or_unreadable_pid() -> None:
+    expected = frozenset({100, 110, 120})
+
+    assert _complete_process_tree_rss(expected, {100: 20, 110: 30}) is None
+    assert _complete_process_tree_rss(expected, {100: 20, 110: 30, 120: 40}) == 90
+
+
+@pytest.mark.parametrize("error_code", (0, 5, 87, None))
+def test_process_snapshot_rejects_nonterminal_enumeration_errors(error_code: object) -> None:
+    assert not _process_snapshot_enumeration_completed(error_code)
+    assert _process_snapshot_enumeration_completed(18)
+
+
+def test_process_tree_measurement_retries_the_whole_snapshot_after_a_pid_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    samples = iter((None, None, 1234))
+    monkeypatch.setattr(
+        "tools.m1_vertical_slice_live_runner._windows_process_tree_rss_sample",
+        lambda _process: next(samples),
+    )
+
+    assert _windows_process_tree_rss_bytes(cast(Any, object())) == 1234
+
+
+def test_process_tree_measurement_fails_when_every_whole_snapshot_is_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "tools.m1_vertical_slice_live_runner._windows_process_tree_rss_sample",
+        lambda _process: None,
+    )
+
+    with pytest.raises(M1BenchmarkError) as raised:
+        _windows_process_tree_rss_bytes(cast(Any, object()))
+
+    assert raised.value.code == "M1_RESOURCE_MEASUREMENT_FAILED"
+
+
 def _evidence(derivative: bytes) -> dict[str, object]:
     import hashlib
 
@@ -144,6 +241,7 @@ def _evidence(derivative: bytes) -> dict[str, object]:
         "workload_version": 1,
         "total_elapsed_ns": 100,
         "source_count": 2,
+        "input_bytes": 200,
         "source_page_count": 3,
         "active_page_count": 2,
         "preview_count": 3,
@@ -172,6 +270,12 @@ def _evidence(derivative: bytes) -> dict[str, object]:
         "background_export_completed": True,
         "heartbeat_count": 10,
         "maximum_heartbeat_gap_ns": 50_000_000,
+        "peak_cache_bytes": 20,
+        "peak_temp_bytes": 10,
+        "max_heavy_operation_concurrency": 1,
+        "cancellation_acknowledgement_ms": 100,
+        "workers_terminated": True,
+        "worker_recycle_policy": "one-shot",
     }
 
 
@@ -330,6 +434,7 @@ def test_child_environment_is_minimal_and_disables_external_pytest_control(
     assert environment["PWS_QPDF_EXECUTABLE"] == str(tmp_path / "qpdf.exe")
     assert environment[LIVE_ENV_RUN_ID] == str(_RUN_ID)
     assert environment[LIVE_ENV_HMAC_KEY] == _KEY.hex()
+    assert environment[RESOURCE_PROFILE_ENVIRONMENT_VARIABLE] == "constrained"
     assert "PYTEST_ADDOPTS" not in environment
     assert "PYTEST_PLUGINS" not in environment
     assert "GIT_DIR" not in environment

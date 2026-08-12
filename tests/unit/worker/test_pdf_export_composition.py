@@ -29,6 +29,7 @@ from paperworkshell.worker.desktop_composition import (
     create_pdf_export_worker_composition,
     create_pdf_export_worker_composition_config,
 )
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_export_broker import PdfExportBrokerPolicy
 from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
@@ -128,6 +129,7 @@ def _config(tmp_path: Path) -> PdfExportWorkerCompositionConfig:
             cancellation_grace_seconds=5.0,
             shutdown_grace_seconds=10.0,
         ),
+        maximum_heavy_operation_concurrency=1,
         export_limits=_operation_limits(),
         pump_interval_seconds=0.01,
     )
@@ -138,7 +140,10 @@ def _compose_with_fake_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[object, _FakeWorkerClient]:
     monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
-    composition = create_pdf_export_worker_composition(_config(tmp_path))
+    composition = create_pdf_export_worker_composition(
+        _config(tmp_path),
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
     worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
     return composition, worker
 
@@ -163,8 +168,21 @@ def test_factory_builds_a_separate_export_only_client_and_broker(
     assert worker.constructed_thread == threading.get_ident()
     assert composition.resource_snapshot() == worker.snapshot
     assert worker.resource_snapshot_calls == 1
-
+    assert cast(Any, export_port)._heavy_operations is cast(Any, composition)._heavy_operations
+    assert composition.heavy_operation_snapshot().maximum_concurrency == 1
     composition.close()
+
+
+def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(WorkerClientError) as caught:
+        create_pdf_export_worker_composition(
+            _config(tmp_path),
+            heavy_operations=HeavyOperationCoordinator(2),
+        )
+
+    assert caught.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
 
 
 def test_close_is_idempotent_and_rejects_a_non_owner_thread(
@@ -248,7 +266,10 @@ def test_configuration_and_composition_representations_never_disclose_paths(
 ) -> None:
     config = _config(tmp_path)
     monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
-    composition = create_pdf_export_worker_composition(config)
+    composition = create_pdf_export_worker_composition(
+        config,
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
     try:
         rendered = f"{config!r} {composition!r}"
         assert str(config.python_executable) not in rendered
@@ -276,6 +297,7 @@ def test_configuration_rejects_a_missing_qpdf_without_disclosing_its_path(
             qpdf_executable=missing,
             resource_policy=config.resource_policy,
             timeout_policy=config.timeout_policy,
+            maximum_heavy_operation_concurrency=1,
             export_limits=config.export_policy.limits,
         )
 

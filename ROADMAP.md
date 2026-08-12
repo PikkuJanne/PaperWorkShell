@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Roadmap version | 0.1.0 |
+| Roadmap version | 0.2.0 |
 | Status | **Binding** |
 | Product name | **PaperWorkShell** |
 | Planning model | Dependency-based milestones with explicit exit gates |
 | First pilot release | v0.1 after Milestone 4 |
 | Hardened public release target | v1.0 after Milestone 8 |
-| Last frozen | 2026-07-14 |
+| Last amended | 2026-08-12 |
 
 This roadmap is the main execution contract for PaperWorkShell. It converts the product concept into an implementation sequence that a coding agent can follow one task at a time. `TASKS.yaml` is the executable task graph; this document explains the intent, sequencing, gates, and non-negotiable outcomes behind that graph.
 
@@ -309,7 +309,7 @@ The primary critical path is:
 
 ```text
 PWS-0001 -> PWS-0002 -> PWS-0006/PWS-0008 -> PWS-0010
--> PWS-0107 -> PWS-0108 -> PWS-0111 -> PWS-0112 -> PWS-0114
+-> PWS-0107 -> PWS-0108 -> PWS-0111 -> PWS-0112 -> PWS-0115 -> PWS-0114
 -> PWS-0204 -> PWS-0206 -> PWS-0209
 -> PWS-0301 -> PWS-0303 -> PWS-0307 -> PWS-0308
 -> PWS-0401 -> PWS-0404 -> PWS-0407 -> PWS-0408 -> PWS-0409
@@ -373,7 +373,10 @@ A user creates a case, imports several PDFs, views thumbnails, reorders and rota
 - Killing the worker does not destroy or orphan the case.
 - Every exported PDF is reopened, structurally checked, page-count checked, and rendered.
 - Routine logs contain no prohibited content.
-- The reference vertical-slice test passes on the low-spec target.
+- The canonical vertical slice passes with the constrained software resource profile actually enforced.
+- Peak process-tree memory, preview/cache bytes, temporary workspace growth, and heavy-operation concurrency remain within the approved M1 budgets.
+- Slow-I/O simulation does not block the UI or corrupt the case, and low-disk/disk-full simulations fail safely.
+- Cancellation, worker termination, recovery, and sanitized resource reporting remain correct.
 
 ## M2 — Image intake and OCR
 
@@ -437,7 +440,7 @@ A first-time user completes the generic application packet without another PDF t
 - Export planner produces one PDF, multiple named PDFs, or ZIP according to template and user constraints.
 - A human-readable package summary states exactly what was checked and what still needs human review.
 - The primary workflow is usable without drag-only actions.
-- The v0.1 pilot corpus passes end-to-end tests on the reference machine.
+- The v0.1 pilot corpus passes end-to-end tests under the approved constrained software resource policy, including low-disk and slow-I/O simulations.
 
 ## M5 — Compression and compatibility
 
@@ -514,7 +517,8 @@ Produce a supportable, signed, updateable, and migratable Windows release.
 - Installation requires no development tools.
 - Uninstall behavior explains and preserves or removes remaining cases according to an explicit user choice.
 - Security reporting, vulnerability handling, user documentation, and support documentation are published.
-- The release-candidate matrix passes supported readers, reference hardware, low disk, interruption, migration, accessibility, and security tests.
+- The release-candidate matrix passes supported readers, packaged-build resource budgets, low disk, slow I/O, interruption, migration, accessibility, and security tests.
+- Optional physical-device observations may be recorded when available, but are non-gating and cannot be described as certification unless that exact hardware was tested.
 
 ---
 
@@ -553,7 +557,11 @@ A milestone gate additionally requires every milestone task to be complete or ex
 | Security | Path traversal, command injection, parser failures, resource limits, network egress, log content, redaction extraction |
 | Accessibility | Keyboard traversal, focus order, labels, announcements, scaling, no color-only state |
 | Compatibility | Adobe Reader, Edge, Chrome, Firefox, representative Android reader, later macOS Preview |
-| Performance | Two cores, 4 GB RAM, integrated graphics, limited disk, HDD scenario |
+| Resource efficiency | Constrained application profile; process-tree peak memory; byte-bounded caches and queues; temporary-disk growth; low-disk and slow-I/O injection; heavy-operation concurrency; UI heartbeat; cancellation acknowledgement; incremental page processing; optional non-gating physical-device observations |
+
+### 9.1.1 Resource evidence and hardware claims
+
+Automated constrained-profile testing is evidence that the tested software revision obeyed its versioned resource budgets for the approved synthetic workload. It is not evidence that a named processor count, RAM amount, GPU class, SSD, HDD, or physical computer was tested or certified. Core document work remains outside the GUI process, and large jobs continue to process incrementally rather than materializing full-resolution packets. Actual duration is recorded without a cross-machine wall-clock gate.
 
 ### 9.2 Required synthetic corpus classes
 

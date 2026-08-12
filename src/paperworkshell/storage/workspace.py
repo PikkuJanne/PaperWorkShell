@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import unicodedata
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, contextmanager
@@ -32,6 +33,7 @@ from paperworkshell.storage.permissions import (
     WindowsPrivateDirectoryPermissions,
 )
 from paperworkshell.storage.quotas import (
+    MAX_SAFE_QUOTA_INTEGER,
     QuotaArea,
     QuotaReservation,
     QuotaReservationBook,
@@ -656,6 +658,8 @@ class CaseWorkspaceManager:
         cases_root: Path | None = None,
         permissions: PermissionAdapter | None = None,
         id_factory: Callable[[], UUID] = new_case_id,
+        minimum_free_space_reserve_bytes: int = 0,
+        available_space_probe: Callable[[Path], int] | None = None,
     ) -> None:
         profile = _preflight_absolute_local_path(profile_root, context="profile.root")
         configured_cases = (
@@ -674,6 +678,23 @@ class CaseWorkspaceManager:
         self._quota = quota
         self._permissions = permissions or WindowsPrivateDirectoryPermissions()
         self._id_factory = id_factory
+        if (
+            type(minimum_free_space_reserve_bytes) is not int
+            or not 0 <= minimum_free_space_reserve_bytes <= MAX_SAFE_QUOTA_INTEGER
+        ):
+            reject(
+                WorkspaceErrorCode.QUOTA_INVALID,
+                "quota.free_space_reserve",
+                "The free-space safety reserve must be a bounded non-negative integer.",
+            )
+        if available_space_probe is not None and not callable(available_space_probe):
+            reject(
+                WorkspaceErrorCode.QUOTA_INVALID,
+                "quota.free_space_probe",
+                "The free-space probe must be callable.",
+            )
+        self._minimum_free_space_reserve_bytes = minimum_free_space_reserve_bytes
+        self._available_space_probe = available_space_probe
         self._reservation_states: dict[tuple[str, UUID], _CaseReservationState] = {}
         self._lifecycle_token = object()
 
@@ -683,6 +704,7 @@ class CaseWorkspaceManager:
         *,
         quota: WorkspaceQuota,
         permissions: PermissionAdapter | None = None,
+        minimum_free_space_reserve_bytes: int = 0,
     ) -> CaseWorkspaceManager:
         """Build the production convention from the OS-authenticated current profile."""
 
@@ -690,6 +712,7 @@ class CaseWorkspaceManager:
             profile_root=current_profile_root(),
             quota=quota,
             permissions=permissions,
+            minimum_free_space_reserve_bytes=minimum_free_space_reserve_bytes,
         )
 
     @property
@@ -949,6 +972,10 @@ class CaseWorkspaceManager:
                 )
             usage, identity = self._measure_usage_and_identity(layout)
             self._bind_case_identity(state, identity)
+            self._require_volume_capacity(
+                layout.case_root,
+                byte_count=byte_count + state.book.reserved_byte_count,
+            )
             reservation = state.book.reserve(
                 usage,
                 area,
@@ -967,6 +994,28 @@ class CaseWorkspaceManager:
             _reservation=reservation,
             _state=state,
         )
+
+    def _require_volume_capacity(self, case_root: Path, *, byte_count: int) -> None:
+        if self._available_space_probe is None and self._minimum_free_space_reserve_bytes == 0:
+            return
+        probe = self._available_space_probe
+        try:
+            available = shutil.disk_usage(case_root).free if probe is None else probe(case_root)
+        except Exception:
+            available = None
+        if type(available) is not int or not 0 <= available <= MAX_SAFE_QUOTA_INTEGER:
+            reject(
+                WorkspaceErrorCode.QUOTA_EXCEEDED,
+                "quota.volume_capacity",
+                "Available storage could not be verified safely.",
+            )
+        required = byte_count + self._minimum_free_space_reserve_bytes
+        if required > MAX_SAFE_QUOTA_INTEGER or available < required:
+            reject(
+                WorkspaceErrorCode.QUOTA_EXCEEDED,
+                "quota.volume_capacity",
+                "The case volume does not have enough available storage.",
+            )
 
     def cleanup_disposable(
         self,

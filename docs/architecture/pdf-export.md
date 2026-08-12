@@ -42,9 +42,11 @@ and terminates on its construction thread. Closing the composition permanently r
 previously exposed reference to its broker, so shutdown cannot be followed by a fresh worker
 launch. The application root wires its broker to the concrete
 manifest, committed-source, destination, history, and retry adapters through
-`build_windows_pdf_export_service`. The shared production operation policy is 120 seconds wall time,
-90 seconds CPU, 512 MiB memory, 1 GiB temporary storage, 512 MiB output, 1,000 pages, and a
-1,048,576-pixel verification bound. Exceeding any bound fails closed before destination commit.
+`build_windows_pdf_export_service`. The selected versioned resource policy drives worker memory,
+CPU, temporary storage, and output limits rather than relying on scattered constants. The normal
+profile permits 1 GiB temporary storage and 512 MiB output; the constrained profile permits
+512 MiB temporary storage and 256 MiB output. Both retain bounded wall time, page count, and
+verification pixels. Exceeding any bound fails closed before destination commit.
 
 ## Deterministic plan
 
@@ -75,11 +77,16 @@ The trusted broker performs the following sequence:
 6. Expose the bounded candidate stream to the trusted destination adapter. Closing the candidate
    revokes its volatile output authority.
 
-The worker copies each exact source handle into its generation-private temporary directory,
-rehashes it, and closes the case-source handle before pikepdf, qpdf, or PDFium parses the copy.
-Temporary source and candidate paths never cross RPC. The fixed qpdf executable, when explicitly
-configured by the launcher, is the only additional environment value admitted to the worker; no
-PATH search or shell is used.
+The worker authenticates its AppContainer-private temp root and requires the complete operation
+temporary-storage bound plus a fixed 256 MiB volume reserve before creating its per-operation
+directory. It then copies each exact source handle through the typed private-temp seam, rehashes it,
+and closes the case-source handle before pikepdf, qpdf, or PDFium parses the copy. Source totals plus
+the maximum candidate are arithmetically bounded by the operation limit. A partial source or
+candidate created before a disk-full failure is closed and removed with the pinned operation
+directory; a fresh operation can recover without worker-profile cleanup. Temporary source and
+candidate paths never cross RPC. The fixed qpdf executable, when explicitly configured by the
+launcher, is the only additional environment value admitted to the worker; no PATH search or shell
+is used.
 
 ## Assembly and verification
 
@@ -108,7 +115,11 @@ not returned. Failures are stable `PdfExportErrorCode` plus closed context.
 
 The GUI process accepts only a local, absolute Windows destination with a validated parent and
 safe final component. It rejects UNC/device/ADS/reserved/reparse paths and an already-existing
-destination before reading candidate bytes. It then:
+destination before reading candidate bytes. Before worker launch, the application conservatively
+estimates the derivative from validated source sizes; the destination adapter authenticates the
+parent and requires that estimate plus the selected policy's 256 MiB free-space reserve. An
+insufficient or failed capacity probe produces a stable path-free failure before expensive work.
+It then:
 
 1. opens and authenticates the parent directory;
 2. creates an exclusive random stage in that exact directory;

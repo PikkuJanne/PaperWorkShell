@@ -17,6 +17,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QPixmap
 
 from paperworkshell.app.organizer import OrganizerPageView, OrganizerViewState
+from paperworkshell.domain.resource_policy import NORMAL_RESOURCE_POLICY_V1
 
 
 class PreviewState(StrEnum):
@@ -40,10 +41,21 @@ class OrganizerPageListModel(QAbstractListModel):
     PageIdRole: Final = _PAGE_ID_ROLE
     PreviewStateRole: Final = _PREVIEW_STATE_ROLE
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        maximum_preview_cache_bytes: int = (
+            NORMAL_RESOURCE_POLICY_V1.thumbnail_preview_cache_bytes
+        ),
+    ) -> None:
+        if type(maximum_preview_cache_bytes) is not int or maximum_preview_cache_bytes <= 0:
+            raise ValueError("maximum_preview_cache_bytes must be a positive integer")
         super().__init__()
+        self._maximum_preview_cache_bytes = maximum_preview_cache_bytes
         self._pages: tuple[OrganizerPageView, ...] = ()
         self._previews: OrderedDict[UUID, QPixmap] = OrderedDict()
+        self._preview_costs: dict[UUID, int] = {}
+        self._retained_preview_bytes = 0
         self._preview_states: dict[UUID, PreviewState] = {}
 
     def rowCount(  # noqa: N802
@@ -113,6 +125,12 @@ class OrganizerPageListModel(QAbstractListModel):
         self._previews = OrderedDict(
             (page_id, preview) for page_id, preview in self._previews.items() if page_id in retained
         )
+        self._preview_costs = {
+            page_id: byte_cost
+            for page_id, byte_cost in self._preview_costs.items()
+            if page_id in self._previews
+        }
+        self._retained_preview_bytes = sum(self._preview_costs.values())
         self._preview_states = {
             page_id: preview_state
             for page_id, preview_state in self._preview_states.items()
@@ -125,7 +143,7 @@ class OrganizerPageListModel(QAbstractListModel):
                 or prior.preview_supported != page.preview_supported
             )
             if preview_changed or not page.preview_supported:
-                self._previews.pop(page.page_id, None)
+                self._discard_preview(page.page_id)
                 self._preview_states.pop(page.page_id, None)
             self._preview_states.setdefault(
                 page.page_id,
@@ -148,6 +166,7 @@ class OrganizerPageListModel(QAbstractListModel):
         """Attach one already detached GUI-thread pixmap to its matching page."""
 
         self._set_preview_state(page_id, PreviewState.READY, preview)
+        self.evict_previews()
 
     def set_preview_unavailable(self, page_id: UUID) -> None:
         """Show a textual unavailable state and discard any prior pixels."""
@@ -183,17 +202,21 @@ class OrganizerPageListModel(QAbstractListModel):
 
     def evict_previews(
         self,
-        maximum_count: int,
+        maximum_bytes: int | None = None,
         *,
         protected_page_ids: tuple[UUID, ...] = (),
     ) -> tuple[UUID, ...]:
-        """Evict least-recently-used pixmaps outside the current viewport budget."""
+        """Evict LRU pixmaps until their measured decoded byte cost is bounded."""
 
-        if type(maximum_count) is not int or maximum_count < 0:
-            raise ValueError("maximum_count must be a non-negative integer")
+        if maximum_bytes is None:
+            byte_budget = self._maximum_preview_cache_bytes
+        elif type(maximum_bytes) is int and maximum_bytes >= 0:
+            byte_budget = min(maximum_bytes, self._maximum_preview_cache_bytes)
+        else:
+            raise ValueError("maximum_bytes must be a non-negative integer")
         protected = frozenset(protected_page_ids)
         evicted: list[UUID] = []
-        while len(self._previews) > maximum_count:
+        while self._retained_preview_bytes > byte_budget:
             candidate = next(
                 (page_id for page_id in self._previews if page_id not in protected),
                 None,
@@ -214,6 +237,18 @@ class OrganizerPageListModel(QAbstractListModel):
         """Return the number of GUI-memory pixmaps currently retained."""
 
         return len(self._previews)
+
+    @property
+    def retained_preview_bytes(self) -> int:
+        """Return the deterministic decoded-pixel cost charged to the LRU."""
+
+        return self._retained_preview_bytes
+
+    @property
+    def maximum_preview_cache_bytes(self) -> int:
+        """Return the immutable upper bound applied by this model."""
+
+        return self._maximum_preview_cache_bytes
 
     def page_id_at(self, row: int) -> UUID | None:
         """Return a row's internal page identifier without exposing source details."""
@@ -247,9 +282,13 @@ class OrganizerPageListModel(QAbstractListModel):
             return
         self._preview_states[page_id] = preview_state
         if preview is None:
-            self._previews.pop(page_id, None)
+            self._discard_preview(page_id)
         else:
+            self._discard_preview(page_id)
             self._previews[page_id] = preview
+            byte_cost = _preview_byte_cost(preview)
+            self._preview_costs[page_id] = byte_cost
+            self._retained_preview_bytes += byte_cost
             self._previews.move_to_end(page_id)
         index = self.index(row, 0)
         self.dataChanged.emit(
@@ -262,3 +301,14 @@ class OrganizerPageListModel(QAbstractListModel):
                 self.PreviewStateRole,
             ],
         )
+
+    def _discard_preview(self, page_id: UUID) -> None:
+        self._previews.pop(page_id, None)
+        self._retained_preview_bytes -= self._preview_costs.pop(page_id, 0)
+
+
+def _preview_byte_cost(preview: QPixmap) -> int:
+    """Charge decoded pixels without creating a duplicate image buffer."""
+
+    bytes_per_pixel = max(1, (preview.depth() + 7) // 8)
+    return preview.width() * preview.height() * bytes_per_pixel

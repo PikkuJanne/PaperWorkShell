@@ -23,6 +23,7 @@ from paperworkshell.worker.client.models import (
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationSnapshot
 from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
     PdfExportBrokerPolicy,
@@ -63,6 +64,7 @@ class DesktopWorkerCompositionConfig:
     working_directory: Path = field(repr=False)
     resource_policy: WorkerResourcePolicy
     timeout_policy: WorkerTimeoutPolicy
+    maximum_heavy_operation_concurrency: int
     inspection_policy: PdfInspectionBrokerPolicy
     thumbnail_policy: PdfThumbnailBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
@@ -74,6 +76,10 @@ class DesktopWorkerCompositionConfig:
             or type(self.code_roots) is not tuple
             or type(self.resource_policy) is not WorkerResourcePolicy
             or type(self.timeout_policy) is not WorkerTimeoutPolicy
+            or type(self.maximum_heavy_operation_concurrency) is not int
+            or not 1
+            <= self.maximum_heavy_operation_concurrency
+            <= self.resource_policy.maximum_processes
             or type(self.inspection_policy) is not PdfInspectionBrokerPolicy
             or type(self.thumbnail_policy) is not PdfThumbnailBrokerPolicy
         ):
@@ -107,6 +113,7 @@ class PdfExportWorkerCompositionConfig:
     qpdf_executable: Path = field(repr=False)
     resource_policy: WorkerResourcePolicy
     timeout_policy: WorkerTimeoutPolicy
+    maximum_heavy_operation_concurrency: int
     export_policy: PdfExportBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
@@ -117,6 +124,10 @@ class PdfExportWorkerCompositionConfig:
             or type(self.code_roots) is not tuple
             or type(self.resource_policy) is not WorkerResourcePolicy
             or type(self.timeout_policy) is not WorkerTimeoutPolicy
+            or type(self.maximum_heavy_operation_concurrency) is not int
+            or not 1
+            <= self.maximum_heavy_operation_concurrency
+            <= self.resource_policy.maximum_processes
             or type(self.export_policy) is not PdfExportBrokerPolicy
         ):
             reject_client(
@@ -143,6 +154,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
 
     __slots__ = (
         "_closed",
+        "_heavy_operations",
         "_owner_thread_id",
         "_source_inspector",
         "_thumbnail_generator",
@@ -154,10 +166,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         worker: WorkerClient,
         source_inspector: BrokeredPdfSourceInspector,
         thumbnail_generator: BrokeredPdfThumbnailGenerator,
+        heavy_operations: HeavyOperationCoordinator,
     ) -> None:
         self._worker = worker
         self._source_inspector = source_inspector
         self._thumbnail_generator = thumbnail_generator
+        self._heavy_operations = heavy_operations
         self._owner_thread_id = threading.get_ident()
         self._closed = False
 
@@ -178,6 +192,17 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
 
         self._require_owner()
         return self._worker.resource_snapshot()
+
+    def heavy_operation_snapshot(self) -> HeavyOperationSnapshot:
+        """Expose shared content-free backpressure accounting."""
+
+        return self._heavy_operations.snapshot()
+
+    @property
+    def heavy_operations(self) -> HeavyOperationCoordinator:
+        """Share the application-wide gate with a separate export composition."""
+
+        return self._heavy_operations
 
     @property
     def closed(self) -> bool:
@@ -220,6 +245,7 @@ class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposit
 
     __slots__ = (
         "_closed",
+        "_heavy_operations",
         "_owner_thread_id",
         "_pdf_exporter",
         "_worker",
@@ -229,9 +255,11 @@ class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposit
         self,
         worker: WorkerClient,
         pdf_exporter: BrokeredPdfExporter,
+        heavy_operations: HeavyOperationCoordinator,
     ) -> None:
         self._worker = worker
         self._pdf_exporter = pdf_exporter
+        self._heavy_operations = heavy_operations
         self._owner_thread_id = threading.get_ident()
         self._closed = False
 
@@ -246,6 +274,17 @@ class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposit
 
         self._require_owner()
         return self._worker.resource_snapshot()
+
+    def heavy_operation_snapshot(self) -> HeavyOperationSnapshot:
+        """Expose shared content-free backpressure accounting."""
+
+        return self._heavy_operations.snapshot()
+
+    @property
+    def heavy_operations(self) -> HeavyOperationCoordinator:
+        """Expose only the app-scoped gate identity used by this composition."""
+
+        return self._heavy_operations
 
     @property
     def closed(self) -> bool:
@@ -290,6 +329,7 @@ def create_desktop_worker_composition(
     prepared_sources: PreparedSourceHandleBroker,
     committed_pages: CommittedPdfPageStore,
     thumbnail_cache: ThumbnailCacheStore,
+    heavy_operations: HeavyOperationCoordinator,
 ) -> DesktopWorkerComposition:
     """Build the fixed launcher, shared client, and both desktop broker ports."""
 
@@ -298,6 +338,7 @@ def create_desktop_worker_composition(
             WorkerClientErrorCode.CONFIGURATION_INVALID,
             WorkerClientContext.CONFIGURATION,
         )
+    _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
     _require_port(prepared_sources, ("borrow_prepared_source",))
     _require_port(committed_pages, ("borrow_committed_pdf_page",))
     _require_port(thumbnail_cache, ("lookup", "create_stage"))
@@ -313,14 +354,16 @@ def create_desktop_worker_composition(
         worker,
         prepared_sources,
         config.inspection_policy,
+        heavy_operations=heavy_operations,
     )
     generator = BrokeredPdfThumbnailGenerator(
         worker,
         committed_pages,
         thumbnail_cache,
         config.thumbnail_policy,
+        heavy_operations=heavy_operations,
     )
-    return DesktopWorkerComposition(worker, inspector, generator)
+    return DesktopWorkerComposition(worker, inspector, generator, heavy_operations)
 
 
 def create_desktop_worker_composition_config(
@@ -332,6 +375,7 @@ def create_desktop_worker_composition_config(
     working_directory: Path,
     resource_policy: WorkerResourcePolicy,
     timeout_policy: WorkerTimeoutPolicy,
+    maximum_heavy_operation_concurrency: int,
     inspection_limits: ResourceLimits,
     thumbnail_limits: ResourceLimits,
     venv_launcher: Path | None = None,
@@ -346,6 +390,7 @@ def create_desktop_worker_composition_config(
         working_directory=working_directory,
         resource_policy=resource_policy,
         timeout_policy=timeout_policy,
+        maximum_heavy_operation_concurrency=maximum_heavy_operation_concurrency,
         inspection_policy=PdfInspectionBrokerPolicy(inspection_limits),
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
         venv_launcher=venv_launcher,
@@ -354,6 +399,8 @@ def create_desktop_worker_composition_config(
 
 def create_pdf_export_worker_composition(
     config: PdfExportWorkerCompositionConfig,
+    *,
+    heavy_operations: HeavyOperationCoordinator,
 ) -> PdfExportWorkerComposition:
     """Build a separate export-only client with explicit qpdf authority."""
 
@@ -362,6 +409,7 @@ def create_pdf_export_worker_composition(
             WorkerClientErrorCode.CONFIGURATION_INVALID,
             WorkerClientContext.CONFIGURATION,
         )
+    _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
     launcher = WindowsProcessLauncher(config._launch_config)
     worker = WorkerClient(
         launcher,
@@ -371,7 +419,12 @@ def create_pdf_export_worker_composition(
     )
     return PdfExportWorkerComposition(
         worker,
-        BrokeredPdfExporter(worker, config.export_policy),
+        BrokeredPdfExporter(
+            worker,
+            config.export_policy,
+            heavy_operations=heavy_operations,
+        ),
+        heavy_operations,
     )
 
 
@@ -385,6 +438,7 @@ def create_pdf_export_worker_composition_config(
     qpdf_executable: Path,
     resource_policy: WorkerResourcePolicy,
     timeout_policy: WorkerTimeoutPolicy,
+    maximum_heavy_operation_concurrency: int,
     export_limits: ResourceLimits,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
@@ -400,6 +454,7 @@ def create_pdf_export_worker_composition_config(
         qpdf_executable=qpdf_executable,
         resource_policy=resource_policy,
         timeout_policy=timeout_policy,
+        maximum_heavy_operation_concurrency=maximum_heavy_operation_concurrency,
         export_policy=PdfExportBrokerPolicy(
             export_limits,
             pump_interval_seconds=pump_interval_seconds,
@@ -414,6 +469,17 @@ def _require_port(value: object, methods: tuple[str, ...]) -> None:
     except BaseException:
         valid = False
     if not valid:
+        reject_client(
+            WorkerClientErrorCode.CONFIGURATION_INVALID,
+            WorkerClientContext.CONFIGURATION,
+        )
+
+
+def _require_heavy_operations(value: object, expected_maximum: int) -> None:
+    if (
+        type(value) is not HeavyOperationCoordinator
+        or value.snapshot().maximum_concurrency != expected_maximum
+    ):
         reject_client(
             WorkerClientErrorCode.CONFIGURATION_INVALID,
             WorkerClientContext.CONFIGURATION,

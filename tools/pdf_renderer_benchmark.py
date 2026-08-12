@@ -200,11 +200,6 @@ PUBLIC_FAILURE_MESSAGES: Final[Mapping[str, str]] = {
     OUTCOME_PLATFORM_UNSUPPORTED: "the renderer comparison requires Windows",
     OUTCOME_REPOSITORY_DIRTY: "the benchmark requires a clean repository tree",
     OUTCOME_CLEANUP_FAILED: "benchmark cleanup failed",
-    "PDF_RENDER_BENCHMARK_REFERENCE_INVALID": "the reference profile is invalid",
-    "PDF_RENDER_BENCHMARK_REFERENCE_MISMATCH": (
-        "the selected environment does not match the reference profile"
-    ),
-    "PDF_RENDER_BENCHMARK_SCENARIO_INVALID": "the reference scenario is invalid",
     "PDF_RENDER_BENCHMARK_TOOL_UNAVAILABLE": "a required benchmark tool is unavailable",
     "PDF_RENDER_BENCHMARK_TOOL_FAILED": "a required benchmark tool failed",
     "PDF_RENDER_BENCHMARK_WORK_SCOPE_INVALID": "the benchmark work scope is invalid",
@@ -227,6 +222,10 @@ STAGED_DISTRIBUTIONS: Final = (
     "PySide6-Essentials",
     "shiboken6",
 )
+EXECUTION_BUDGET_ID: Final = "paperworkshell-pdf-renderer-software-budget-v1"
+EXECUTION_LOGICAL_PROCESSOR_LIMIT: Final = 2
+EXECUTION_MEMORY_LIMIT_BYTES: Final = 1_342_177_280
+EXECUTION_MAXIMUM_PROCESSES: Final = 1
 
 
 @dataclass(frozen=True, order=True)
@@ -393,10 +392,11 @@ class BenchmarkMeasurementPolicy:
 class BenchmarkWorkload:
     workload_id: str
     workload_sha256: str
-    reference_profile_id: str
-    reference_profile_sha256: str
-    reference_logical_processors: int
-    reference_memory_bytes: int
+    execution_budget_id: str
+    logical_processor_limit: int
+    process_memory_limit_bytes: int
+    job_memory_limit_bytes: int
+    maximum_processes: int
     fixture_index_sha256: str
     golden_index_sha256: str
     render_profile_id: str
@@ -1249,7 +1249,6 @@ def _stage_distribution_closures(
 def _staged_data_sources(workload: BenchmarkWorkload) -> tuple[Path, ...]:
     sources = {
         PROJECT_ROOT / WORKLOAD_PATH,
-        PROJECT_ROOT / "benchmarks/reference-windows-v1.json",
         PROJECT_ROOT / "tests/fixtures/synthetic/v1/index.json",
         PROJECT_ROOT / "tests/golden/renderer-v1/index.json",
     }
@@ -2741,7 +2740,7 @@ def validate_workload(
                 "schema_version",
                 "workload_id",
                 "task_id",
-                "reference_profile",
+                "execution_budget",
                 "corpus",
                 "render_profile",
                 "renderers",
@@ -2755,7 +2754,7 @@ def validate_workload(
     if root_object is None:
         return None, sorted(issues)
     if (
-        root_object.get("schema_version") != 1
+        root_object.get("schema_version") != 2
         or root_object.get("workload_id") != "paperworkshell-pdf-renderer-windows-v1"
         or root_object.get("task_id") != "PWS-0106"
     ):
@@ -2763,61 +2762,87 @@ def validate_workload(
             BenchmarkIssue(
                 "BENCHMARK_WORKLOAD_IDENTITY",
                 "$",
-                "workload identity does not match version 1",
+                "workload identity does not match schema version 2",
             )
         )
 
-    reference_binding = _strict_object(
-        root_object.get("reference_profile"),
-        frozenset({"id", "path", "sha256"}),
-        "$.reference_profile",
+    execution_budget = _strict_object(
+        root_object.get("execution_budget"),
+        frozenset(
+            {
+                "id",
+                "classification",
+                "logical_processor_limit",
+                "process_memory_limit_bytes",
+                "job_memory_limit_bytes",
+                "maximum_processes",
+                "hardware_equivalence_claim",
+            }
+        ),
+        "$.execution_budget",
         issues,
     )
-    reference_profile: Mapping[str, object] | None = None
-    reference_sha256: str | None = None
-    reference_logical_processors: int | None = None
-    reference_memory_bytes: int | None = None
-    if reference_binding is not None:
-        reference_profile, reference_sha256 = _load_bound_json(
-            root,
-            {"path": reference_binding["path"], "sha256": reference_binding["sha256"]},
-            prefix="benchmarks",
-            location="$.reference_profile",
+    execution_budget_values: tuple[int, int, int, int] | None = None
+    if execution_budget is not None:
+        logical_processor_limit = _required_int(
+            execution_budget.get("logical_processor_limit"),
+            minimum=1,
+            maximum=64,
+            location="$.execution_budget.logical_processor_limit",
             issues=issues,
         )
+        process_memory_limit_bytes = _required_int(
+            execution_budget.get("process_memory_limit_bytes"),
+            minimum=64 * 1024 * 1024,
+            maximum=16 * 1024 * 1024 * 1024,
+            location="$.execution_budget.process_memory_limit_bytes",
+            issues=issues,
+        )
+        job_memory_limit_bytes = _required_int(
+            execution_budget.get("job_memory_limit_bytes"),
+            minimum=64 * 1024 * 1024,
+            maximum=16 * 1024 * 1024 * 1024,
+            location="$.execution_budget.job_memory_limit_bytes",
+            issues=issues,
+        )
+        maximum_processes = _required_int(
+            execution_budget.get("maximum_processes"),
+            minimum=1,
+            maximum=64,
+            location="$.execution_budget.maximum_processes",
+            issues=issues,
+        )
+        if None not in {
+            logical_processor_limit,
+            process_memory_limit_bytes,
+            job_memory_limit_bytes,
+            maximum_processes,
+        }:
+            execution_budget_values = (
+                cast(int, logical_processor_limit),
+                cast(int, process_memory_limit_bytes),
+                cast(int, job_memory_limit_bytes),
+                cast(int, maximum_processes),
+            )
         if (
-            reference_binding.get("id") != "windows-low-spec-v1"
-            or reference_profile is None
-            or reference_profile.get("profile_id") != reference_binding.get("id")
+            execution_budget.get("id") != EXECUTION_BUDGET_ID
+            or execution_budget.get("classification") != "software-enforced"
+            or execution_budget.get("hardware_equivalence_claim") is not False
+            or execution_budget_values
+            != (
+                EXECUTION_LOGICAL_PROCESSOR_LIMIT,
+                EXECUTION_MEMORY_LIMIT_BYTES,
+                EXECUTION_MEMORY_LIMIT_BYTES,
+                EXECUTION_MAXIMUM_PROCESSES,
+            )
         ):
             issues.append(
                 BenchmarkIssue(
-                    "BENCHMARK_REFERENCE_PROFILE",
-                    "$.reference_profile",
-                    "reference profile binding is invalid",
+                    "BENCHMARK_EXECUTION_BUDGET",
+                    "$.execution_budget",
+                    "software execution budget is invalid",
                 )
             )
-        if reference_profile is not None:
-            environment = reference_profile.get("environment")
-            if isinstance(environment, dict):
-                logical_processors = environment.get("logical_processors")
-                memory_mib = environment.get("memory_mib")
-                if (
-                    type(logical_processors) is int
-                    and logical_processors > 0
-                    and type(memory_mib) is int
-                    and memory_mib > 0
-                ):
-                    reference_logical_processors = logical_processors
-                    reference_memory_bytes = memory_mib * 1024 * 1024
-            if reference_logical_processors is None or reference_memory_bytes is None:
-                issues.append(
-                    BenchmarkIssue(
-                        "BENCHMARK_REFERENCE_ENVELOPE",
-                        "$.reference_profile",
-                        "processor and memory envelope is invalid",
-                    )
-                )
 
     corpus = _strict_object(
         root_object.get("corpus"),
@@ -3053,9 +3078,7 @@ def validate_workload(
 
     if issues:
         return None, sorted(set(issues))
-    assert reference_sha256 is not None
-    assert reference_logical_processors is not None
-    assert reference_memory_bytes is not None
+    assert execution_budget_values is not None
     assert fixture_index_sha256 is not None
     assert golden_index_sha256 is not None
     assert render_profile is not None
@@ -3065,10 +3088,11 @@ def validate_workload(
         BenchmarkWorkload(
             workload_id=cast(str, root_object["workload_id"]),
             workload_sha256=_sha256(workload_content),
-            reference_profile_id="windows-low-spec-v1",
-            reference_profile_sha256=reference_sha256,
-            reference_logical_processors=reference_logical_processors,
-            reference_memory_bytes=reference_memory_bytes,
+            execution_budget_id=EXECUTION_BUDGET_ID,
+            logical_processor_limit=execution_budget_values[0],
+            process_memory_limit_bytes=execution_budget_values[1],
+            job_memory_limit_bytes=execution_budget_values[2],
+            maximum_processes=execution_budget_values[3],
             fixture_index_sha256=fixture_index_sha256,
             golden_index_sha256=golden_index_sha256,
             render_profile_id=cast(str, render_profile["id"]),
@@ -4271,9 +4295,7 @@ def _isolated_child_main(
     sampler: _TemporaryDirectorySampler | None = None
     sampler_stopped = False
     try:
-        process_affinity_count = _limit_process_affinity_count(
-            workload.reference_logical_processors
-        )
+        process_affinity_count = _limit_process_affinity_count(workload.logical_processor_limit)
         _write_child_payload(
             writer,
             {
@@ -4490,11 +4512,11 @@ class _IsolatedChildSession:
     process_affinity_count: int
 
 
-def _validate_reference_affinity(
+def _validate_budget_affinity(
     affinity: object,
     workload: BenchmarkWorkload,
 ) -> int:
-    if type(affinity) is not int or affinity != workload.reference_logical_processors:
+    if type(affinity) is not int or affinity != workload.logical_processor_limit:
         raise BenchmarkFailure(OUTCOME_PROTOCOL_INVALID, "renderer child protocol is invalid")
     return affinity
 
@@ -4588,10 +4610,10 @@ def _start_isolated_child(
             worker_instance_id=worker_instance_id,
             session_capability=SessionCapability(secrets.token_hex(32)),
             resource_policy=WorkerResourcePolicy(
-                process_memory_bytes=workload.reference_memory_bytes,
-                job_memory_bytes=workload.reference_memory_bytes,
+                process_memory_bytes=workload.process_memory_limit_bytes,
+                job_memory_bytes=workload.job_memory_limit_bytes,
                 cpu_time_ms=max(1, workload.measurement.child_timeout_milliseconds * 4),
-                maximum_processes=1,
+                maximum_processes=workload.maximum_processes,
             ),
         )
         launcher = WindowsProcessLauncher(config)
@@ -4639,7 +4661,7 @@ def _start_isolated_child(
             or ready.get("isolation") != expected_isolation
         ):
             raise BenchmarkFailure(OUTCOME_PROTOCOL_INVALID, "renderer child protocol is invalid")
-        affinity = _validate_reference_affinity(affinity, workload)
+        affinity = _validate_budget_affinity(affinity, workload)
         return _IsolatedChildSession(
             process,
             correlation_id,
@@ -4689,8 +4711,8 @@ def _validated_resource_snapshot(
     )
     if (
         any(type(value) is not int for value in values)
-        or values[0] != workload.reference_memory_bytes
-        or values[1] != workload.reference_memory_bytes
+        or values[0] != workload.process_memory_limit_bytes
+        or values[1] != workload.job_memory_limit_bytes
         or not 0 < values[2] <= values[0]
         or not 0 < values[3] <= values[1]
         or values[3] < values[2]
@@ -4736,7 +4758,7 @@ def _capture_child(
     process = session.process
     primary_failure: BaseException | None = None
     try:
-        _validate_reference_affinity(session.process_affinity_count, workload)
+        _validate_budget_affinity(session.process_affinity_count, workload)
         _send_transport(
             process,
             {
@@ -4784,7 +4806,7 @@ def _measure_cooperative_cancellation(
     process = session.process
     primary_failure: BaseException | None = None
     try:
-        _validate_reference_affinity(session.process_affinity_count, workload)
+        _validate_budget_affinity(session.process_affinity_count, workload)
         _send_transport(
             process,
             {
@@ -4878,7 +4900,7 @@ def _measure_idle_worker_tree_termination(
     process = session.process
     primary_failure: BaseException | None = None
     try:
-        _validate_reference_affinity(session.process_affinity_count, workload)
+        _validate_budget_affinity(session.process_affinity_count, workload)
         _send_transport(
             process,
             {
@@ -5111,7 +5133,7 @@ def _validated_measurement_result(
     child_elapsed = payload.get("child_elapsed_ns")
     output_high_water = payload.get("output_bytes_high_water")
     temporary_high_water = payload.get("temporary_bytes_high_water")
-    _validate_reference_affinity(capture.process_affinity_count, workload)
+    _validate_budget_affinity(capture.process_affinity_count, workload)
     capture_resource_values = (
         capture.isolated_worker_ready_elapsed_ns,
         capture.parent_observed_elapsed_ns,
@@ -5132,8 +5154,8 @@ def _validated_measurement_result(
         or capture.parent_observed_elapsed_ns <= 0
         or capture.parent_observed_elapsed_ns < capture.isolated_worker_ready_elapsed_ns
         or child_elapsed > capture.parent_observed_elapsed_ns
-        or capture.process_memory_limit_bytes != workload.reference_memory_bytes
-        or capture.job_memory_limit_bytes != workload.reference_memory_bytes
+        or capture.process_memory_limit_bytes != workload.process_memory_limit_bytes
+        or capture.job_memory_limit_bytes != workload.job_memory_limit_bytes
         or not 0 < capture.peak_process_memory_used_bytes <= capture.process_memory_limit_bytes
         or not 0 < capture.peak_job_memory_used_bytes <= capture.job_memory_limit_bytes
         or capture.peak_job_memory_used_bytes < capture.peak_process_memory_used_bytes
@@ -5570,64 +5592,6 @@ def _require_same_repository_revision(expected: str) -> None:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class BenchmarkAttestations:
-    memory_mib: int | None = None
-    graphics_class: str | None = None
-    storage_media: str | None = None
-
-
-def _reference_environment(
-    scenario_id: str,
-    work_directory: Path,
-    attestations: BenchmarkAttestations,
-) -> dict[str, object]:
-    try:
-        reference = importlib.import_module("tools.reference_profile")
-        profile, issues = reference.validate_profile()
-        if issues or profile is None:
-            raise BenchmarkFailure(
-                "PDF_RENDER_BENCHMARK_REFERENCE_INVALID",
-                "the reference profile is invalid",
-            )
-        observations = cast(
-            Mapping[str, object],
-            reference._observed_environment(work_directory),
-        )
-        reference_attestations = reference.ReferenceAttestations(
-            memory_mib=attestations.memory_mib,
-            graphics_class=attestations.graphics_class,
-            storage_media=attestations.storage_media,
-        )
-        evaluation = cast(
-            Mapping[str, object],
-            reference._evaluate_reference_environment(
-                profile,
-                scenario_id,
-                observations,
-                reference_attestations,
-            ),
-        )
-    except BenchmarkFailure:
-        raise
-    except Exception as error:
-        raise BenchmarkFailure(
-            "PDF_RENDER_BENCHMARK_REFERENCE_INVALID",
-            "the reference profile could not be evaluated",
-        ) from error
-    if evaluation.get("status") == "mismatched":
-        raise BenchmarkFailure(
-            "PDF_RENDER_BENCHMARK_REFERENCE_MISMATCH",
-            "the selected environment does not match the reference profile",
-        )
-    return {
-        "profile_id": "windows-low-spec-v1",
-        "scenario_id": scenario_id,
-        "evaluation": dict(evaluation),
-        "observations": dict(observations),
-    }
-
-
 def _windows_runtime_identity() -> dict[str, object]:
     if sys.platform != "win32" or not hasattr(sys, "getwindowsversion"):
         raise BenchmarkFailure(
@@ -5806,9 +5770,7 @@ def assert_sanitized_report(report: Mapping[str, object]) -> None:
 def benchmark_report(
     workload: BenchmarkWorkload,
     *,
-    scenario_id: str,
     work_directory: Path,
-    attestations: BenchmarkAttestations,
 ) -> dict[str, object]:
     """Run both child-only renderers and return one sanitized comparison report."""
 
@@ -5816,19 +5778,6 @@ def benchmark_report(
         raise BenchmarkFailure(
             OUTCOME_PLATFORM_UNSUPPORTED,
             "the renderer comparison requires Windows",
-        )
-    if scenario_id not in {"local-smoke", "limited-storage", "rotational-hdd"}:
-        raise BenchmarkFailure(
-            "PDF_RENDER_BENCHMARK_SCENARIO_INVALID",
-            "the reference scenario is invalid",
-        )
-    if (
-        attestations.memory_mib != workload.reference_memory_bytes // (1024 * 1024)
-        or attestations.graphics_class != "integrated"
-    ):
-        raise BenchmarkFailure(
-            "PDF_RENDER_BENCHMARK_REFERENCE_MISMATCH",
-            "the selected environment does not match the reference profile",
         )
     try:
         work_directory.mkdir(parents=True, exist_ok=True)
@@ -5844,17 +5793,6 @@ def benchmark_report(
             "the benchmark work scope is invalid",
         ) from error
     revision = _repository_revision()
-    environment = _reference_environment(scenario_id, work_directory, attestations)
-    observations = environment.get("observations")
-    if (
-        not isinstance(observations, dict)
-        or observations.get("logical_processors") != workload.reference_logical_processors
-        or attestations.memory_mib * 1024 * 1024 != workload.reference_memory_bytes
-    ):
-        raise BenchmarkFailure(
-            "PDF_RENDER_BENCHMARK_REFERENCE_MISMATCH",
-            "the selected environment does not match the reference profile",
-        )
     windows_identity = _windows_runtime_identity()
 
     probe_identities: dict[str, Mapping[str, object]] = {}
@@ -5912,7 +5850,7 @@ def benchmark_report(
         raise BenchmarkFailure(OUTCOME_CHILD_FAILED, "renderer child failed")
 
     report: dict[str, object] = {
-        "report_schema_version": 1,
+        "report_schema_version": 2,
         "status": "complete",
         "measurement_policy": "record-only",
         "task_id": "PWS-0106",
@@ -5926,18 +5864,22 @@ def benchmark_report(
             "python_version": platform.python_version(),
             "windows": windows_identity,
         },
-        "reference_environment": environment,
-        "execution_envelope": {
-            "logical_processors": workload.reference_logical_processors,
+        "execution_budget": {
+            "id": workload.execution_budget_id,
+            "classification": "software-enforced",
+            "logical_processor_limit": workload.logical_processor_limit,
             "processor_limit_source": "isolated-child-affinity-mask",
-            "job_memory_limit_bytes": workload.reference_memory_bytes,
-            "memory_limit_source": "bound-reference-profile",
+            "process_memory_limit_bytes": workload.process_memory_limit_bytes,
+            "job_memory_limit_bytes": workload.job_memory_limit_bytes,
+            "memory_limit_source": "windows-job-object",
+            "maximum_processes": workload.maximum_processes,
+            "process_limit_source": "windows-job-object",
+            "hardware_equivalence_claim": False,
         },
         "workload_binding": {
             "workload_id": workload.workload_id,
             "workload_sha256": workload.workload_sha256,
-            "reference_profile_id": workload.reference_profile_id,
-            "reference_profile_sha256": workload.reference_profile_sha256,
+            "execution_budget_id": workload.execution_budget_id,
         },
         "stage_binding": {
             "manifest_schema_version": 1,
@@ -6012,7 +5954,7 @@ def _failure_report(error: BenchmarkFailure) -> dict[str, object]:
     code = error.code if error.code in PUBLIC_FAILURE_MESSAGES else OUTCOME_BENCHMARK_FAILED
     message = PUBLIC_FAILURE_MESSAGES.get(code, "renderer benchmark failed")
     report: dict[str, object] = {
-        "report_schema_version": 1,
+        "report_schema_version": 2,
         "status": "failed",
         "task_id": "PWS-0106",
         "error": {"code": code, "message": message},
@@ -6026,7 +5968,7 @@ def _failure_report(error: BenchmarkFailure) -> dict[str, object]:
         assert_sanitized_report(report)
     except BenchmarkFailure:
         return {
-            "report_schema_version": 1,
+            "report_schema_version": 2,
             "status": "failed",
             "task_id": "PWS-0106",
             "error": {
@@ -6048,20 +5990,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="run the child-only Windows renderer comparison",
     )
     benchmark.add_argument(
-        "--scenario",
-        choices=("local-smoke", "limited-storage", "rotational-hdd"),
-        default="local-smoke",
-    )
-    benchmark.add_argument(
         "--work-directory",
         type=Path,
         default=PROJECT_ROOT / ".paperworkshell-local" / "renderer-benchmark-work",
-    )
-    benchmark.add_argument("--attest-memory-mib", type=int)
-    benchmark.add_argument("--attest-graphics", choices=("integrated",))
-    benchmark.add_argument(
-        "--attest-storage-media",
-        choices=("hdd-or-validated-emulation",),
     )
     arguments = parser.parse_args(argv)
 
@@ -6074,20 +6005,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             "OK: pdf-renderer-windows-v1 binds 15 analytical goldens, "
             "2 semantic comparisons, 3 stable outcomes, 2 renderer identities, and the "
-            "windows-low-spec-v1 profile."
+            "software-enforced renderer budget."
         )
         return 0
 
     try:
         report = benchmark_report(
             workload,
-            scenario_id=cast(str, arguments.scenario),
             work_directory=cast(Path, arguments.work_directory),
-            attestations=BenchmarkAttestations(
-                memory_mib=cast(int | None, arguments.attest_memory_mib),
-                graphics_class=cast(str | None, arguments.attest_graphics),
-                storage_media=cast(str | None, arguments.attest_storage_media),
-            ),
         )
     except BenchmarkFailure as error:
         print(json.dumps(_failure_report(error), indent=2, sort_keys=True), file=sys.stderr)

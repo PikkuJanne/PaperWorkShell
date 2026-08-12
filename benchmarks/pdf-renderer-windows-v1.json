@@ -1,11 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "workload_id": "paperworkshell-pdf-renderer-windows-v1",
   "task_id": "PWS-0106",
-  "reference_profile": {
-    "id": "windows-low-spec-v1",
-    "path": "benchmarks/reference-windows-v1.json",
-    "sha256": "0f89f728b18015276c19cb5439757823c02cd19db32c415be76d9d3e632f21a1"
+  "execution_budget": {
+    "id": "paperworkshell-pdf-renderer-software-budget-v1",
+    "classification": "software-enforced",
+    "logical_processor_limit": 2,
+    "process_memory_limit_bytes": 1342177280,
+    "job_memory_limit_bytes": 1342177280,
+    "maximum_processes": 1,
+    "hardware_equivalence_claim": false
   },
   "corpus": {
     "id": "paperworkshell-public-synthetic-v1",

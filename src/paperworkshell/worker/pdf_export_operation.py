@@ -8,7 +8,6 @@ import hmac
 import math
 import os
 import stat
-import tempfile
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
@@ -63,6 +62,11 @@ from paperworkshell.worker.pdf_export_report import (
     MAX_PDF_EXPORT_WORKER_REPORT_BYTES,
     PdfExportWorkerReport,
     encode_pdf_export_worker_report,
+)
+from paperworkshell.worker.private_temp import (
+    OsWorkerPrivateTempStorage,
+    WorkerPrivateTempStorage,
+    WorkerPrivateTempStorageError,
 )
 from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
@@ -161,9 +165,16 @@ class WindowsPdfExportOperationAdapter:
         default_factory=PdfCandidateAdapter,
         repr=False,
     )
+    private_temp_storage: WorkerPrivateTempStorage = field(
+        default_factory=OsWorkerPrivateTempStorage,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
-        if not callable(getattr(self.candidate_adapter, "assemble_and_verify", None)):
+        if not callable(getattr(self.candidate_adapter, "assemble_and_verify", None)) or any(
+            not callable(getattr(self.private_temp_storage, member, None))
+            for member in ("require_capacity", "open_named")
+        ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.worker_adapter")
 
     def discard_handles(
@@ -227,12 +238,20 @@ class WindowsPdfExportOperationAdapter:
             )
 
             temp_root = _materialize_worker_private_temp()
+            try:
+                self.private_temp_storage.require_capacity(
+                    temp_root,
+                    context.limits.temporary_storage_bytes,
+                )
+            except WorkerPrivateTempStorageError:
+                reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.temp_capacity")
             with _worker_private_operation_temp(temp_root) as operation_temp:
                 staged_sources = _stage_sources(
                     context,
                     worker_plan,
                     source_references,
                     authorities,
+                    private_temp_storage=self.private_temp_storage,
                     operation_temp=operation_temp,
                     absolute_deadline=absolute_deadline,
                 )
@@ -399,6 +418,7 @@ def _stage_sources(
     references: Mapping[UUID, CaseObjectReference],
     authorities: _OwnedAuthorities,
     *,
+    private_temp_storage: WorkerPrivateTempStorage,
     operation_temp: Path,
     absolute_deadline: float,
 ) -> dict[UUID, Path]:
@@ -411,6 +431,7 @@ def _stage_sources(
             worker_source,
             references[worker_source.source.source_id],
             handle,
+            private_temp_storage=private_temp_storage,
             operation_temp=operation_temp,
             absolute_deadline=absolute_deadline,
         )
@@ -423,12 +444,12 @@ def _stage_source_handle(
     reference: CaseObjectReference,
     handle: int,
     *,
+    private_temp_storage: WorkerPrivateTempStorage,
     operation_temp: Path,
     absolute_deadline: float,
 ) -> Path:
     owned_handle = handle
     source_descriptor: int | None = None
-    staged_descriptor: int | None = None
     staged_path: Path | None = None
     try:
         _require_non_inheritable(handle, context="export.source_handle")
@@ -438,25 +459,23 @@ def _stage_source_handle(
         except OSError, OverflowError, ValueError:
             reject_pdf_export(PdfExportErrorCode.SOURCE_CHANGED, "export.source_handle")
         try:
-            staged_descriptor, staged_name = tempfile.mkstemp(
+            staged_stream = private_temp_storage.open_named(
+                operation_temp,
                 suffix=".pdf",
-                dir=operation_temp,
             )
-            staged_path = Path(staged_name)
-        except OSError:
+            staged_file, staged_path = staged_stream
+        except WorkerPrivateTempStorageError, OSError:
             reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.source_temp")
 
         with ExitStack() as stack:
             source_stream = os.fdopen(source_descriptor, "rb", buffering=0, closefd=True)
             source_descriptor = None
             source = stack.enter_context(source_stream)
-            staged_stream = os.fdopen(staged_descriptor, "w+b", buffering=0, closefd=True)
-            staged_descriptor = None
-            destination = stack.enter_context(staged_stream)
+            destination = stack.enter_context(staged_file)
             _copy_and_verify_source(
                 context,
                 cast(BinaryIO, source),
-                cast(BinaryIO, destination),
+                destination,
                 expected_size=worker_source.source.byte_size,
                 expected_digest=worker_source.source.sha256,
                 reference=reference,
@@ -470,8 +489,6 @@ def _stage_source_handle(
             _close_descriptor_no_raise(source_descriptor)
         elif owned_handle > 0:
             _close_native_handle_no_raise(owned_handle)
-        if staged_descriptor is not None:
-            _close_descriptor_no_raise(staged_descriptor)
 
 
 def _copy_and_verify_source(

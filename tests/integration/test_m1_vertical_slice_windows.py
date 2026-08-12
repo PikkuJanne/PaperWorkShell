@@ -23,9 +23,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pikepdf
 import pytest
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer, qVersion
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from paperworkshell.__main__ import (
+    DesktopApplicationResourceContext,
     _desktop_worker_config,
     _import_limits,
     _workspace_quota,
@@ -48,8 +50,15 @@ from paperworkshell.domain.pdf_export import (
     PdfExportOutcomeStatus,
     build_pdf_export_plan,
 )
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult
+from paperworkshell.domain.pdf_thumbnails import (
+    PdfThumbnailError,
+    PdfThumbnailErrorCode,
+    PdfThumbnailProgress,
+    PdfThumbnailProgressPhase,
+    PdfThumbnailResult,
+)
 from paperworkshell.domain.recovery import CaseRecoveryStatus, StartupRecoveryStatus
+from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
@@ -57,12 +66,14 @@ from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
 from paperworkshell.storage.workspace import CaseWorkspaceManager
+from paperworkshell.ui.models import OrganizerPageListModel
 from paperworkshell.worker.client.models import WorkerResourceSnapshot
 from paperworkshell.worker.desktop_composition import (
     DesktopWorkerComposition,
     create_desktop_worker_composition,
     create_pdf_export_worker_composition,
 )
+from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_thumbnail_profile import (
     PDF_THUMBNAIL_RENDERER_PROFILE_SHA256,
 )
@@ -123,6 +134,8 @@ class _ResponsiveExportResult:
     heartbeat_count: int
     maximum_heartbeat_gap_ns: int
     worker_resource_snapshot: WorkerResourceSnapshot
+    peak_cache_bytes: int
+    peak_temp_bytes: int
 
 
 def _build_stack(
@@ -130,8 +143,14 @@ def _build_stack(
     *,
     diagnostics: SanitizedDiagnosticLogger,
 ) -> _VerticalSliceStack:
-    manager = CaseWorkspaceManager(profile_root=profile, quota=_workspace_quota())
-    limits = _import_limits()
+    manager = CaseWorkspaceManager(
+        profile_root=profile,
+        quota=_workspace_quota(CONSTRAINED_RESOURCE_POLICY_V1),
+        minimum_free_space_reserve_bytes=(
+            CONSTRAINED_RESOURCE_POLICY_V1.minimum_export_free_space_reserve_bytes
+        ),
+    )
+    limits = _import_limits(CONSTRAINED_RESOURCE_POLICY_V1)
     sources = WindowsSourceIngestStore(
         manager,
         WindowsSourcePrechecker(limits),
@@ -143,10 +162,13 @@ def _build_stack(
         clock=lambda: _DIAGNOSTIC_TIME,
     ).recover_startup()
     desktop = create_desktop_worker_composition(
-        _desktop_worker_config(),
+        _desktop_worker_config(CONSTRAINED_RESOURCE_POLICY_V1),
         prepared_sources=sources,
         committed_pages=sources,
         thumbnail_cache=WindowsThumbnailCacheStore(manager),
+        heavy_operations=HeavyOperationCoordinator(
+            CONSTRAINED_RESOURCE_POLICY_V1.maximum_heavy_operation_concurrency
+        ),
     )
     try:
         backend = OrganizerBackend(
@@ -169,6 +191,8 @@ def _export_pdf_while_event_loop_remains_responsive(
     sources: WindowsSourceIngestStore,
     case_id: UUID,
     destination: Path,
+    heavy_operations: HeavyOperationCoordinator,
+    gui_cache_bytes: int,
 ) -> _ResponsiveExportResult:
     """Run one production-composed export off-thread while sampling the UI loop."""
 
@@ -187,6 +211,8 @@ def _export_pdf_while_event_loop_remains_responsive(
     export_thread_ids: list[int] = []
     heartbeat_thread_ids: list[int] = []
     composition_closed_states: list[bool] = []
+    workspace_samples: list[tuple[int, int]] = []
+    sampler_errors: list[BaseException] = []
     main_thread_id = threading.get_ident()
     timeline_lock = threading.Lock()
 
@@ -194,12 +220,19 @@ def _export_pdf_while_event_loop_remains_responsive(
         try:
             export_thread_ids.append(threading.get_ident())
             with create_pdf_export_worker_composition(
-                build_windows_pdf_export_worker_config()
+                build_windows_pdf_export_worker_config(
+                    resource_policy=CONSTRAINED_RESOURCE_POLICY_V1
+                ),
+                heavy_operations=heavy_operations,
             ) as export_composition:
                 service = build_windows_pdf_export_service(
                     manager,
                     sources,
                     export_composition,
+                    resources=DesktopApplicationResourceContext(
+                        CONSTRAINED_RESOURCE_POLICY_V1,
+                        heavy_operations,
+                    ),
                 )
                 outcomes.append(
                     service.export_pdf(
@@ -232,15 +265,33 @@ def _export_pdf_while_event_loop_remains_responsive(
         if should_quit:
             event_loop.quit()
 
+    def sample_workspace_usage() -> None:
+        try:
+            while True:
+                usage = manager.measure_usage(case_id)
+                workspace_samples.append((usage.cache_bytes, usage.temp_bytes))
+                if export_finished.wait(
+                    CONSTRAINED_RESOURCE_POLICY_V1.resource_sampling_interval_ms / 1_000
+                ):
+                    break
+        except BaseException as error:
+            sampler_errors.append(error)
+
     export_thread = threading.Thread(
         target=run_export,
         name="pws-m1-export-gate",
+        daemon=False,
+    )
+    sampler_thread = threading.Thread(
+        target=sample_workspace_usage,
+        name="pws-m1-workspace-sampler",
         daemon=False,
     )
     timer.timeout.connect(record_responsive_tick)
     timer.start()
     started_at_ns = time.monotonic_ns()
     try:
+        sampler_thread.start()
         export_thread.start()
         event_loop.exec()
     finally:
@@ -248,9 +299,13 @@ def _export_pdf_while_event_loop_remains_responsive(
 
     assert export_finished.is_set()
     export_thread.join()
+    sampler_thread.join()
     assert not export_thread.is_alive(), "the completed background export did not join"
+    assert not sampler_thread.is_alive(), "the workspace resource sampler did not join"
     if errors:
         raise errors[0]
+    if sampler_errors:
+        raise sampler_errors[0]
     assert len(outcomes) == 1
     assert len(resource_snapshots) == 1
     assert len(finished_times_ns) == 1
@@ -261,6 +316,7 @@ def _export_pdf_while_event_loop_remains_responsive(
     assert heartbeat_times_ns[-1] <= finished_times_ns[0]
     assert set(heartbeat_thread_ids) == {main_thread_id}
     assert composition_closed_states == [True]
+    assert workspace_samples
     responsiveness_samples_ns = (
         started_at_ns,
         *heartbeat_times_ns,
@@ -274,7 +330,59 @@ def _export_pdf_while_event_loop_remains_responsive(
         heartbeat_count=len(heartbeat_times_ns),
         maximum_heartbeat_gap_ns=max(heartbeat_gaps_ns),
         worker_resource_snapshot=resource_snapshots[0],
+        peak_cache_bytes=max(item[0] + gui_cache_bytes for item in workspace_samples),
+        peak_temp_bytes=max(item[1] for item in workspace_samples),
     )
+
+
+def _measure_active_thumbnail_cancellation(
+    stack: _VerticalSliceStack,
+    case_id: UUID,
+    page_id: UUID,
+) -> int:
+    """Cancel one active worker render and measure its bounded acknowledgement."""
+
+    cancellation = threading.Event()
+    rendering_started_ns = 0
+    failure: PdfThumbnailError | None = None
+    acknowledged_ns = 0
+    cache_before = frozenset(stack.manager.layout(case_id).thumbnails.iterdir())
+
+    def progress(observation: PdfThumbnailProgress) -> None:
+        nonlocal rendering_started_ns
+        if observation.phase is PdfThumbnailProgressPhase.RENDERING and rendering_started_ns == 0:
+            rendering_started_ns = time.perf_counter_ns()
+            cancellation.set()
+
+    try:
+        stack.backend.get_thumbnails(
+            2_000,
+            2_000,
+            page_ids=(page_id,),
+            timeout_seconds=30.0,
+            cancellation=cancellation.is_set,
+            progress=progress,
+        )
+    except PdfThumbnailError as error:
+        failure = error
+        acknowledged_ns = time.perf_counter_ns()
+    else:
+        raise AssertionError("the active thumbnail render ignored cancellation")
+
+    assert rendering_started_ns > 0
+    assert failure is not None
+    assert failure.code is PdfThumbnailErrorCode.CANCELLED
+    acknowledgement_ms = max(
+        1,
+        (acknowledged_ns - rendering_started_ns + 999_999) // 1_000_000,
+    )
+    assert acknowledgement_ms <= CONSTRAINED_RESOURCE_POLICY_V1.cancellation_acknowledgement_ms
+    assert stack.desktop.resource_snapshot() is not None
+    coordinator = stack.desktop.heavy_operation_snapshot()
+    assert coordinator.active_operations == 0
+    assert coordinator.waiting_operations == 0
+    assert frozenset(stack.manager.layout(case_id).thumbnails.iterdir()) == cache_before
+    return acknowledgement_ms
 
 
 def _write_source_with_content_and_metadata_canaries(destination: Path) -> None:
@@ -291,6 +399,28 @@ def _write_source_with_content_and_metadata_canaries(destination: Path) -> None:
         )
         document.docinfo[pikepdf.Name("/Title")] = _METADATA_CANARY
         document.save(destination, deterministic_id=True)
+
+
+def _retain_gui_previews(
+    model: OrganizerPageListModel,
+    state: OrganizerViewState,
+    results: tuple[PdfThumbnailResult, ...],
+) -> int:
+    """Exercise the production QPixmap LRU and return its decoded-byte charge."""
+
+    model.set_organizer_state(state)
+    for result in results:
+        snapshot = result.snapshot
+        image = QImage(
+            snapshot.pixels,
+            snapshot.width_pixels,
+            snapshot.height_pixels,
+            snapshot.row_stride_bytes,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
+        assert not image.isNull()
+        model.set_preview(snapshot.page_id, QPixmap.fromImage(image))
+    return model.retained_preview_bytes
 
 
 def _privacy_forms(value: str) -> tuple[str, ...]:
@@ -421,6 +551,10 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
     observed_safe_objects: list[object] = []
     phase_measurements: list[PhaseMeasurement] = []
     workspace_measurements: list[WorkspaceUsageMeasurement] = []
+    combined_cache_measurements: list[int] = []
+    preview_model = OrganizerPageListModel(
+        maximum_preview_cache_bytes=(CONSTRAINED_RESOURCE_POLICY_V1.thumbnail_preview_cache_bytes)
+    )
 
     try:
         phase_started_ns = time.perf_counter_ns()
@@ -476,6 +610,10 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
             result.snapshot.width_pixels <= 96 and result.snapshot.height_pixels <= 96
             for result in initial_previews
         )
+        gui_cache_bytes = _retain_gui_previews(preview_model, initial, initial_previews)
+        combined_cache_measurements.append(
+            stack.manager.measure_usage(case_id).cache_bytes + gui_cache_bytes
+        )
         assert all(
             result.cache_key.renderer_profile_sha256 == PDF_THUMBNAIL_RENDERER_PROFILE_SHA256
             for result in initial_previews
@@ -508,6 +646,10 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
         assert _page_state(saved) == expected_page_state
         final_previews = stack.backend.get_thumbnails(96, 96, page_ids=final_ids)
         final_thumbnail_fingerprints = _thumbnail_fingerprints(final_previews)
+        gui_cache_bytes = _retain_gui_previews(preview_model, saved, final_previews)
+        combined_cache_measurements.append(
+            stack.manager.measure_usage(case_id).cache_bytes + gui_cache_bytes
+        )
         thumbnail_worker_snapshot = stack.desktop.resource_snapshot()
         assert thumbnail_worker_snapshot is not None
         phase_measurements.append(_measurement(M1Phase.ORGANIZE, phase_started_ns))
@@ -555,6 +697,8 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
             stack.sources,
             case_id,
             first_output,
+            stack.desktop.heavy_operations,
+            gui_cache_bytes,
         )
         first_export = first_export_result.outcome
         _assert_verified(first_export, page_count=2)
@@ -570,6 +714,7 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
 
         phase_started_ns = time.perf_counter_ns()
         stack.backend.shutdown()
+        preview_model.evict_previews(0)
         restarted = _build_stack(profile, diagnostics=diagnostics)
         recovery = restarted.backend.startup_recovery_result
         assert recovery.status is StartupRecoveryStatus.COMPLETE
@@ -584,6 +729,15 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
         assert not reopened.recovery_review_required
         recovered_previews = restarted.backend.get_thumbnails(96, 96, page_ids=final_ids)
         assert _thumbnail_fingerprints(recovered_previews) == final_thumbnail_fingerprints
+        preview_model = OrganizerPageListModel(
+            maximum_preview_cache_bytes=(
+                CONSTRAINED_RESOURCE_POLICY_V1.thumbnail_preview_cache_bytes
+            )
+        )
+        gui_cache_bytes = _retain_gui_previews(preview_model, reopened, recovered_previews)
+        combined_cache_measurements.append(
+            restarted.manager.measure_usage(case_id).cache_bytes + gui_cache_bytes
+        )
 
         recovered_snapshot = WindowsManifestRepository(restarted.manager).load(case_id).snapshot
         recovered_plan = build_pdf_export_plan(recovered_snapshot)
@@ -602,12 +756,19 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
             restarted.sources,
             case_id,
             second_output,
+            restarted.desktop.heavy_operations,
+            gui_cache_bytes,
         )
         second_export = second_export_result.outcome
         _assert_verified(second_export, page_count=2)
         assert second_export.report.semantic_fingerprint == first_plan.semantic_fingerprint
         assert second_export.report.output_sha256 == first_export.report.output_sha256
         assert second_output.read_bytes() == first_output.read_bytes()
+        cancellation_acknowledgement_ms = _measure_active_thumbnail_cancellation(
+            restarted,
+            case_id,
+            final_ids[0],
+        )
         observed_safe_objects.extend(
             (recovery, reopened, recovered_previews, recovered_plan, second_export_result)
         )
@@ -725,6 +886,7 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
             "workload_version": 1,
             "total_elapsed_ns": max(1, time.perf_counter_ns() - overall_started_ns),
             "source_count": 2,
+            "input_bytes": first_source.stat().st_size + second_source.stat().st_size,
             "source_page_count": 3,
             "active_page_count": 2,
             "preview_count": len(initial_previews),
@@ -749,6 +911,24 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
             "maximum_heartbeat_gap_ns": max(
                 first_export_result.maximum_heartbeat_gap_ns,
                 second_export_result.maximum_heartbeat_gap_ns,
+            ),
+            "peak_cache_bytes": max(
+                *combined_cache_measurements,
+                *(item.cache_bytes for item in workspace_measurements),
+                first_export_result.peak_cache_bytes,
+                second_export_result.peak_cache_bytes,
+            ),
+            "max_heavy_operation_concurrency": max(
+                stack.desktop.heavy_operation_snapshot().maximum_observed_concurrency,
+                restarted.desktop.heavy_operation_snapshot().maximum_observed_concurrency,
+            ),
+            "cancellation_acknowledgement_ms": cancellation_acknowledgement_ms,
+            "workers_terminated": True,
+            "worker_recycle_policy": "one-shot",
+            "peak_temp_bytes": max(
+                *(item.temp_bytes for item in workspace_measurements),
+                first_export_result.peak_temp_bytes,
+                second_export_result.peak_temp_bytes,
             ),
         },
         derivative_source=second_output,

@@ -34,7 +34,9 @@ authoritative source.
 ### Phase 1 — quarantine and verify bytes
 
 1. PWS-0103 opens and prechecks the external source through one retained read-only handle. The
-   selected path is never reopened for the copy.
+   selected path is never reopened for the copy. Before staging, the workspace reserves the
+   bounded source size against both logical case/temp quotas and the policy's physical free-space
+   reserve; insufficient space fails before copying begins.
 2. The operation allocates distinct random pending and source UUIDv4 identities. While the lease is
    live, the ingest adapter streams the exact default stream into the pending case file and
    calculates SHA-256. Reads and writes are bounded; cancellation and the immutable monotonic
@@ -51,9 +53,10 @@ authoritative source.
 
 Cancellation, timeout, a changed or short source, storage failure, staged-copy mismatch, or failed
 terminal source check leaves no authoritative source record. The external source is never opened
-for writing and its display path does not become case authority. Operating-system disk-full and
-Win32 write/flush fault injection remain explicit integration evidence to add; current tests prove
-quota rejection and the other named exercised paths.
+for writing and its display path does not become case authority. Deterministic integration evidence
+now covers low-space preflight and a disk-full failure after a bounded copy chunk: the partial stage
+is removed, the external original remains byte-identical, and the authoritative manifest is
+unchanged.
 
 ### Inspection between phases
 
