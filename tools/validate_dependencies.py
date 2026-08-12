@@ -65,6 +65,10 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
         "tesseract",
     }
 )
+APPROVED_NATIVE_RUNTIME_BOUNDARIES: Final[dict[str, str]] = {
+    "pyside6-essentials": "gui-process",
+    "shiboken6": "gui-process",
+}
 EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "ghostscript": "native-tool",
     "lxml": "python-package",
@@ -123,9 +127,9 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "pypdfium2": frozenset({"PWS-0106"}),
     "pyside6": frozenset({"PWS-0111"}),
     "pyside6-addons": frozenset({"PWS-0106"}),
-    "pyside6-essentials": frozenset({"PWS-0106"}),
+    "pyside6-essentials": frozenset({"PWS-0106", "PWS-0111"}),
     "qpdf": frozenset({"PWS-0105"}),
-    "shiboken6": frozenset({"PWS-0106"}),
+    "shiboken6": frozenset({"PWS-0106", "PWS-0111"}),
     "tesseract": frozenset({"PWS-0204"}),
     "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
 }
@@ -304,7 +308,10 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     ),
     "pyside6": "https://doc.qt.io/qtforpython-6/licenses.html",
     "pyside6-addons": "https://doc.qt.io/qtforpython-6/licenses.html",
-    "pyside6-essentials": "https://doc.qt.io/qtforpython-6/licenses.html",
+    "pyside6-essentials": (
+        "https://raw.githubusercontent.com/pyside/pyside-setup/"
+        "73fb12a067c2e8f7a464a310aaee2860fa2b64d2/LICENSES/LGPL-3.0-only.txt"
+    ),
     "pytest": "https://github.com/pytest-dev/pytest/blob/9.1.1/LICENSE",
     "pyyaml": "https://github.com/yaml/pyyaml/blob/6.0.3/LICENSE",
     "qpdf": "https://github.com/qpdf/qpdf/blob/v12.3.2/LICENSE.txt",
@@ -312,7 +319,10 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "referencing": "https://github.com/python-jsonschema/referencing/blob/v0.37.0/COPYING",
     "rpds-py": "https://github.com/crate-py/rpds/blob/v2026.6.3/LICENSE",
     "ruff": "https://github.com/astral-sh/ruff/blob/0.15.22/LICENSE",
-    "shiboken6": "https://doc.qt.io/qtforpython-6/licenses.html",
+    "shiboken6": (
+        "https://raw.githubusercontent.com/pyside/pyside-setup/"
+        "73fb12a067c2e8f7a464a310aaee2860fa2b64d2/LICENSES/LGPL-3.0-only.txt"
+    ),
     "tesseract": "https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE",
     "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
     "types-jsonschema": "https://github.com/python/typeshed/blob/main/LICENSE",
@@ -389,7 +399,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     ),
     "pyside6-essentials": (
         "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-        None,
+        "LGPL-3.0-only",
         True,
         True,
         True,
@@ -411,7 +421,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "ruff": ("MIT", None, True, False, False, False),
     "shiboken6": (
         "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-        None,
+        "LGPL-3.0-only",
         True,
         True,
         True,
@@ -800,9 +810,9 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "pyside6": (
         "framework",
         "direct",
-        "planned",
+        "deferred",
         (),
-        "planned",
+        "not-shipped",
         True,
         True,
         False,
@@ -825,16 +835,16 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "pyside6-essentials": (
         "python-package",
-        "transitive",
-        "evaluated",
-        (),
-        "candidate",
+        "direct",
+        "approved",
+        ("runtime",),
+        "planned",
         True,
         True,
         False,
-        "worker-process",
-        False,
-        False,
+        "gui-process",
+        True,
+        True,
     ),
     "pytest": (
         "python-package",
@@ -930,13 +940,13 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "shiboken6": (
         "python-package",
         "transitive",
-        "evaluated",
-        (),
-        "candidate",
+        "approved",
+        ("runtime",),
+        "planned",
         True,
         False,
         False,
-        "worker-process",
+        "gui-process",
         False,
         False,
     ),
@@ -2247,7 +2257,7 @@ def _component_semantic_issues(
                         "hostile document processors require an isolated boundary, adapter, and tests",
                     ),
                 )
-        if (
+        is_non_document_native_runtime = (
             status == "approved"
             and active_scopes.intersection({"data", "runtime", "worker"})
             and (
@@ -2255,6 +2265,10 @@ def _component_semantic_issues(
                 or component["ecosystem"] in {"framework", "native-library"}
             )
             and component_id not in KNOWN_DOCUMENT_PROCESSOR_IDS
+        )
+        expected_native_boundary = APPROVED_NATIVE_RUNTIME_BOUNDARIES.get(component_id)
+        if is_non_document_native_runtime and (
+            expected_native_boundary is None or security["boundary"] != expected_native_boundary
         ):
             _add_issue(
                 issues,
@@ -3509,8 +3523,8 @@ def _workflow_reconciliation_issues(
         and set(jobs) == {"windows-quality"}
         and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
         and quality_job.get("runs-on") == "windows-2025"
-        and quality_job.get("timeout-minutes") == 30
-        and len(quality_steps) == 8
+        and quality_job.get("timeout-minutes") == 45
+        and len(quality_steps) == 9
     )
     expected_command_steps = {
         "Bootstrap locked environment": "python tools/dev.py bootstrap",
@@ -3522,6 +3536,57 @@ def _workflow_reconciliation_issues(
     for step_name, command in expected_command_steps.items():
         matches = [step for step in quality_steps if step.get("name") == step_name]
         if matches != [{"name": step_name, "run": command}]:
+            workflow_shape_valid = False
+    expected_step_names = [
+        "Check out full history",
+        "Set up CPython",
+        "Set up pinned uv without cache upload",
+        "Stage copy-owned worker CPython",
+        "Install and verify Gitleaks 8.30.1",
+        "Install and verify qpdf 12.3.2",
+        "Bootstrap locked environment",
+        "Install renderer comparison dependencies",
+        "Run local-equivalent quality suite",
+    ]
+    if [step.get("name") for step in quality_steps] != expected_step_names:
+        workflow_shape_valid = False
+    copy_runtime_steps = [
+        step for step in quality_steps if step.get("name") == "Stage copy-owned worker CPython"
+    ]
+    expected_copy_runtime_script = [
+        '$ErrorActionPreference = "Stop"',
+        '$source = (& python -I -S -c "import sys; print(sys.base_prefix)").Trim()',
+        "if (-not [IO.Path]::IsPathFullyQualified($source)) {",
+        '  throw "The setup-python runtime root is not absolute."',
+        "}",
+        '$destination = Join-Path $env:RUNNER_TEMP "PaperWorkShell-ci-python"',
+        "if (Test-Path -LiteralPath $destination) {",
+        '  throw "The copy-owned worker runtime destination already exists."',
+        "}",
+        "Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force",
+        '$python = Join-Path $destination "python.exe"',
+        "if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {",
+        '  throw "The copy-owned worker interpreter was not staged."',
+        "}",
+        '$reported = (& $python -I -S -c "import sys; print(sys.base_prefix)").Trim()',
+        "$expectedRoot = [IO.Path]::GetFullPath($destination)",
+        "$reportedRoot = [IO.Path]::GetFullPath($reported)",
+        "if (-not [StringComparer]::OrdinalIgnoreCase.Equals($expectedRoot, $reportedRoot)) {",
+        '  throw "The staged interpreter did not bind to the copy-owned runtime."',
+        "}",
+        '"UV_PYTHON=$python" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append',
+    ]
+    if len(copy_runtime_steps) != 1:
+        workflow_shape_valid = False
+    else:
+        copy_runtime_step = copy_runtime_steps[0]
+        copy_runtime_script = copy_runtime_step.get("run")
+        if (
+            set(copy_runtime_step) != {"name", "shell", "run"}
+            or copy_runtime_step.get("shell") != "pwsh"
+            or not isinstance(copy_runtime_script, str)
+            or copy_runtime_script.splitlines() != expected_copy_runtime_script
+        ):
             workflow_shape_valid = False
     if not workflow_shape_valid:
         _add_issue(

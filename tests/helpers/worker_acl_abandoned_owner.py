@@ -20,7 +20,13 @@ def main() -> int:
     ready_path = Path(sys.argv[3])
     mutex_name = sys.argv[4]
     approved_roots = tuple(Path(value) for value in sys.argv[5:])
-    if cutpoint not in {"active", "prepared", "partial_grant", "revoking"}:
+    if cutpoint not in {
+        "active",
+        "prepared",
+        "partial_guard",
+        "partial_grant",
+        "revoking",
+    }:
         return 2
     windows_module._acl_recovery_directory_path = lambda: recovery_root
     vars(windows_module)["_ACL_MUTATION_MUTEX_NAME"] = mutex_name
@@ -45,24 +51,45 @@ def main() -> int:
         mutex.__enter__()
         hold_until_killed()
 
-    original_change = windows_module._change_sid_access
+    original_change = windows_module._change_sid_access_handle
+    original_append_guard = windows_module._append_exact_deny_ace_handle
+    original_remove_guard = windows_module._remove_one_exact_deny_ace_handle
     grant_calls = 0
+    guard_calls = 0
 
-    def interrupt_change(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
+    def interrupt_change(
+        handle: int,
+        sid: ctypes.c_void_p,
+        mode: int,
+        *,
+        inheritance: int = windows_module._NO_INHERITANCE,
+    ) -> None:
         nonlocal grant_calls
         if mode == windows_module._GRANT_ACCESS:
             grant_calls += 1
-            if cutpoint == "prepared" and grant_calls == 1:
-                hold_until_killed()
-            original_change(path, sid, mode)
+            original_change(handle, sid, mode, inheritance=inheritance)
             if cutpoint == "partial_grant" and grant_calls == 1:
                 hold_until_killed()
             return
-        original_change(path, sid, mode)
-        if cutpoint == "revoking" and mode == windows_module._REVOKE_ACCESS:
+        original_change(handle, sid, mode, inheritance=inheritance)
+
+    def interrupt_guard_add(handle: int, sid: ctypes.c_void_p, mask: int) -> None:
+        nonlocal guard_calls
+        if cutpoint == "prepared":
+            hold_until_killed()
+        original_append_guard(handle, sid, mask)
+        guard_calls += 1
+        if cutpoint == "partial_guard" and guard_calls == 1:
             hold_until_killed()
 
-    windows_module._change_sid_access = interrupt_change
+    def interrupt_guard_remove(handle: int, sid: ctypes.c_void_p, mask: int) -> None:
+        original_remove_guard(handle, sid, mask)
+        if cutpoint == "revoking":
+            hold_until_killed()
+
+    windows_module._change_sid_access_handle = interrupt_change
+    windows_module._append_exact_deny_ace_handle = interrupt_guard_add
+    windows_module._remove_one_exact_deny_ace_handle = interrupt_guard_remove
     if cutpoint in {"prepared", "partial_grant"}:
         profile.grant_read_execute(approved_roots)
     else:

@@ -12,7 +12,7 @@ from uuid import UUID
 
 import pytest
 
-from paperworkshell.app.recovery import build_windows_startup_recovery_service
+from paperworkshell.__main__ import build_windows_startup_recovery_service
 from paperworkshell.diagnostics.logging import SanitizedDiagnosticLogger
 from paperworkshell.diagnostics.models import (
     DiagnosticCountKind,

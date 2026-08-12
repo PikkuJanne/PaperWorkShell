@@ -11,11 +11,11 @@ from uuid import UUID
 
 import pytest
 
+from paperworkshell.__main__ import build_windows_startup_recovery_service
 from paperworkshell.app.export_history import (
     PdfExportHistoryService,
     PdfExportRetryRecoveryService,
 )
-from paperworkshell.app.recovery import build_windows_startup_recovery_service
 from paperworkshell.domain.pdf_export import (
     PdfExportHistoryRetryReceipt,
     PdfExportOutcomeStatus,

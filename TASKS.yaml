@@ -1140,7 +1140,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0108
@@ -1175,10 +1175,57 @@ tasks:
   - state-management
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-10'
+    revision: "663c966"
+    commands:
+    - uv run --locked --no-sync python tools/dev.py check - passed; 1,987 unit tests, 351 integration
+      tests with 2 disclosed local link-capability skips, 256 security tests with 6 disclosed local
+      capability skips, 19 accessibility tests, and every formatter, linter, type, boundary,
+      schema, dependency, documentation, task-graph, fixture, reference, secret, and quality
+      self-test gate
+    - uv run --locked --no-sync pytest on the focused qpdf, venv, ACL-recovery, containment, and
+      worker-isolation cache matrix - passed; 53 tests
+    - uv run --locked --no-sync pytest -q tests/unit/test_ci_workflow.py - passed; 7 workflow-policy
+      tests, including copy-owned CPython staging before locked bootstrap and the 45-minute full-job
+      budget
+    - Bounded copy-owned CPython runtime probe - passed; the staged interpreter reported its copied
+      root as sys.base_prefix and a derived virtual environment retained that copied base
+    - uv run --locked --no-sync python tools/dev.py test-security - passed; 256 tests with 6 disclosed
+      local capability skips, including exact path-independent PySide wheel-payload and installed-file
+      RECORD verification
+    - Production exact-object ACL-authority inventory on the rebuilt current-user environment -
+      passed; 12,091 resources authenticated
+    - uv run --locked --no-sync pytest -q tests/integration/test_organizer_ui_windows.py - passed;
+      2 live production-composition tests in 258.52 seconds
+    - Agent-operated Windows UI Automation smoke with NVDA 2026.1.1 running - passed; native
+      chooser import, keyboard organizer actions, cancellation, clean close/reopen, and full process
+      restart preserved revision 8, two pages, and Page 2 at 90-degree rotation
+    - Maintainer-operated keyboard-only and NVDA 2026.1.1 Speech Viewer scenario at actual 100-percent
+      and 200-percent Windows display/text scaling - passed; native chooser, organizer actions,
+      progress, cancellation, safe recovery, close/reopen, process restart, focus, reachability,
+      roles, states, and announcements had no observed issue
+    notes:
+    - The desktop vertical slice provides keyboard-only case/import/organizer actions, logical visible
+      focus, textual and announced cancelable progress/failures, adapter-free UI boundaries, and exact
+      autosaved restart reconstruction. The human NVDA and 100/200-percent scaling gate passed.
+    - Empty, queued, running, cancelled, failed, reopen-required, and closing guidance stays prominent,
+      path-free, operation-correlated, and focused on an actionable recovery control.
+    - Future worker inventories omit Python bytecode caches. A retained, mutation-guarded private
+      profile cache plus fixed raw option and in-worker self-audit proves source wins over a readable
+      stale cache, blocks same-user launch races, and remains write-inaccessible to worker descendants.
+      Pre-exclusion recovery journals retain strict exact-object identity semantics.
+    - Hosted Windows quality runs retain the same production runtime-admission policy; the pinned
+      setup-python interpreter is copied into a fresh runner-owned tree, rebound through UV_PYTHON,
+      and verified before the locked environment is created. No worker security check is weakened.
+      Installed PySide identity is bound to the canonical wheel payload and every RECORD-listed file,
+      while only exact metadata-declared path-dependent entry-point launchers are excluded from the
+      payload fingerprint.
+    - The observed local inspection failure was remediated only after an exhaustive 12,339-object
+      ACL/journal residue audit reported zero target-SID or guard residue and an empty journal; the
+      subsequent synthetic import committed one source and two pages. No generalized cache-path
+      replacement migration is supported.
+    - Independent UI, completion-evidence, and hostile worker-security reviews found no remaining
+      P0-P2 issue. PWS-0114 is now dependency-ready.
 - id: PWS-0112
   milestone: M1
   title: Implement deterministic PDF assembly, export, reopen, and verification
@@ -1285,9 +1332,11 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: '2026-08-09'
-    revision: "8a0b80c"
+    completed_at: '2026-08-12'
+    revision: "67c2663"
     commands:
+    - "uv run --locked --no-sync python tools/dev.py check at 67c2663 - passed; 270 files formatted/linted/strictly typed, 13 import layers across 103 source files, 1988 unit tests, 352 integration tests with 2 disclosed Windows link-capability skips, 256 security tests with 6 disclosed capability/privilege skips, 19 accessibility tests, all registered validators and scans, and all 5 deliberate quality violations"
+    - "uv run --locked --no-sync pytest -q tests/integration/test_desktop_startup_recovery_windows.py at 67c2663 - passed; 3 desktop composition/recovery tests, including a real offscreen PySide process forcibly terminated after durable autosave checkpoint publication and a separate fresh PySide process that recovered and reopened the exact revision"
     - "uv run --no-sync python tools/dev.py check at 8a0b80c - passed; 249 files formatted/linted/typed, 12 import layers across 94 source files, 1919 unit tests, 318 integration tests with 2 disclosed Windows link-capability skips, 240 security tests with 6 disclosed capability/privilege skips, 2 accessibility tests, all registered validators and scans, and all 5 deliberate quality violations"
     - "uv run --locked --no-sync pytest -q tests/integration/test_startup_recovery_windows.py tests/integration/test_export_retry_storage_windows.py tests/integration/test_worker_acl_recovery_windows.py tests/integration/test_pdf_thumbnail_worker_windows.py::test_live_worker_termination_during_render_recovers_with_fresh_service tests/integration/test_pdf_export_worker_windows.py::test_live_worker_termination_never_publishes_destination 'tests/integration/test_manifest_repository_windows.py::test_stage_failure_never_replaces_last_valid_manifest[disk_full]' tests/security/test_startup_recovery_security.py tests/security/test_diagnostics_privacy.py - passed; 60 acceptance-focused tests with 1 disclosed local symlink-capability skip"
     - "uv run --no-sync python tools/dev.py scan-secrets at 8a0b80c - passed; reachable Git history and source-path bytes, 1164 historical blobs, 168 commit/tag objects, 1193 historical path/blob pairs, 419 index blobs, and 443 tracked working-tree files contained no secret finding"
@@ -1297,8 +1346,9 @@ tasks:
     - The worker broker records bounded per-profile ACL mutation intent before every grant/revoke, validates current resource identity, hardlink count, profile-name/SID binding, and owner liveness, and repairs PREPARED, partial-grant, ACTIVE, and REVOKING cut points after real child-process termination and WAIT_ABANDONED observation.
     - Diagnostics accept only closed typed records containing internal UUIDv4 identifiers, version components, numeric counts/resources, and stable codes; canonical JSONL, bounded logging, deterministic summaries, import boundaries, and prohibited-token tests exclude document content, paths, names, metadata, thumbnails, signatures, and raw exceptions.
     - Live restricted-worker tests terminate an accepted thumbnail render and an active export, preserve imported sources and the byte-identical last valid manifest, run cold-composed application/storage recovery, and succeed through fresh worker/service composition without publishing an interrupted destination.
+    - A process-level desktop cut point queues a real organizer rotation, pauses after its durable autosave checkpoint replaces the journal name but before manifest publication, forcibly kills that PySide process, and starts a separate fresh PySide process. Startup recovery reports the case recovered, reopens revision 2 with the intended 90-degree rotation, preserves the external and case-copy source bytes and outside sentinel, leaves bounded temp state empty, and emits only path-free result fields.
     - Cleanup accounting preserves every confirmed deletion and released-byte count across later ordinary item or context-finalization failures, stops subsequent mutation when authority is uncertain, keeps process-control BaseException propagation, and emits only sanitized phase-specific plus generic failure codes.
-    - PWS-0113 does not claim a real PySide UI-process kill or automatic deletion of abandoned AppContainer profiles/temp trees; PWS-0111 owns desktop composition, while this task proves deterministic cold application-service restart and durable ACL repair.
+    - PWS-0113 now proves a real PySide UI-process kill at the autosave checkpoint plus deterministic fresh-process desktop recovery. It still does not claim automatic deletion of abandoned AppContainer profiles/temp trees; durable ACL repair remains a separate exact-object boundary.
     - Independent recovery, privacy, cleanup-finalization, export-history, ACL, documentation, and completion audits found no remaining P0-P2 issue.
 - id: PWS-0114
   milestone: M1
@@ -1306,7 +1356,7 @@ tasks:
   kind: gate
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0101

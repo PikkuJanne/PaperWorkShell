@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Task: PWS-0107
-- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output; PWS-0113 persistent worker ACL recovery
+- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output; PWS-0111 desktop composition startup; PWS-0112 verified PDF export; PWS-0113 persistent worker ACL recovery
 - Decisions: PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
 
 ## Context
@@ -30,43 +30,83 @@ checks its own token before protocol negotiation and refuses to send `session.re
 an AppContainer, its capability count is zero, it is in a job, and its environment matches the
 closed allowlist.
 
-The profile SID receives inherited read/execute access only to the approved Python runtime and
-PaperWorkShell code roots needed to start the fixed host. No AppContainer access-control entry is
-added to a cases root, an external source, a destination, or another user path.
+The profile SID receives direct, non-inheritable read/execute entries only on the enumerated Python
+runtime, PaperWorkShell code, and configured fixed-tool objects needed to start and operate the
+host. A child created after the inventory scan receives no worker SID entry. No AppContainer
+access-control entry is added to a cases root, an external source, a destination, or another user
+path.
 
 The launcher preflights a bounded resource inventory before the first ACL mutation and rejects an
-absent or NULL DACL. SID-specific grant/revoke operations use a protected Global mutex across
-Windows sessions and do not restore a stale whole descriptor over another launch. The mutex owner
-is the current user; its protected DACL grants only that user and LocalSystem; the handle is
-non-inheritable; and an existing object's owner/DACL must match exactly. Concurrent profiles
-therefore preserve one another's entries; after the final lease closes, the temporary profile SID
-is absent and each observed object's original auto-inheritance state is restored without writing a
-stale retained descriptor over concurrent entries.
+absent or NULL DACL. It retains an authenticated `GENERIC_READ` handle without delete sharing for
+every approved object and lexical ancestor, rejects reparse/delete-pending objects, and requires
+every enumerated file's Windows link count to be exactly one. Those handles prevent an after-scan
+replacement, ancestor-junction pivot, rename, or alias removal through verified cleanup. Because a
+share-read handle does not itself stop an outward `CreateHardLink`, every retained file participates
+in one direct, non-inheritable current-user deny ACE for `FILE_WRITE_ATTRIBUTES` before any
+AppContainer grant. The launcher rechecks handle link count after the deny, after grant, before
+resume, and before accepting each fixed startup resource. If the narrow pre-guard race detects a
+new alias, grant fails; exact-handle cleanup intentionally revokes/removes PaperWorkShell's entries
+despite that link-count mismatch so it does not strand the profile or user policy.
+Because a hardlink shares its security descriptor with names outside the approved tree, a
+pre-existing aliased file is rejected rather than receiving a SID entry. A new object created after
+the scan receives no entry because grants are direct and non-inheritable.
 
-PWS-0113 extends this lease with a durable, bounded per-profile recovery record beneath an
-authenticated private directory in the trusted Windows LocalAppData known folder. The record is
-canonical and path-private: it contains the exact profile/SID, owner PID and process-creation time,
-approved grant roots, authenticated resource identities/types, and original auto-inheritance
-states needed to revoke only that interrupted grant. It contains no case path and never crosses
-RPC, routine diagnostics, UI results, or representations.
+SID-specific grant/revoke operations use handle-based `GetSecurityInfo`/`SetSecurityInfo` under a
+protected Global mutex across Windows sessions and do not re-resolve paths or restore a stale whole
+descriptor over another launch. The mutex owner is the current user; its protected DACL grants only
+that user and LocalSystem; the handle is non-inheritable; and an existing object's owner/DACL must
+match exactly. Concurrent profiles therefore preserve one another's direct AppContainer entries.
+For hardlink protection, the first authenticated v2 lease records the existing matching-deny count
+as its baseline and adds one shared guard; an overlapping `ACTIVE` v2 lease authenticates and reuses
+that same baseline and guard. Cleanup retains the guard while another authenticated active lease
+covers the exact object. The final cleanup removes exactly one guard and proves the original
+baseline, preserving every matching ACE that predated PaperWorkShell. It also proves the temporary
+profile SID absent and restores each observed object's original auto-inheritance state through its
+retained exact-object handle.
 
-The launcher flushes `PREPARED` before the first ACL mutation, publishes `ACTIVE` after the grant
-is fully established, and publishes `REVOKING` before cleanup. Before every new worker profile, it
-inventories this journal under the protected Global mutex. A live exact owner with `ACTIVE` state
-is left alone. A dead owner or interrupted phase is repaired only when its roots remain within the
-current approved launcher allowlist and every resource still has its recorded identity. Repair
-removes the exact SID, restores recorded auto-inheritance state without replaying a stale whole
-DACL, proves the SID absent, and then clears the exact record.
+PWS-0113 extends this lease with a durable, bounded, versioned per-profile recovery record beneath
+an authenticated private directory in the trusted Windows LocalAppData known folder. A new v2
+record is canonical and path-private: it contains the exact profile/AppContainer SID, owner PID and
+process-creation time, current-user peer SID, approved grant roots, and every resource's trusted
+path, type, Windows volume serial/file ID, original auto-inheritance state, and nullable exact-deny
+baseline. Directories have no guard baseline. These values are needed only to revoke an interrupted
+grant; they contain no case path and never cross RPC, routine diagnostics, UI results, or
+representations. Legacy v1 records remain strictly decodable and recoverable with their original
+inherited-root semantics, but new grants emit only v2.
 
-Every mutation is preceded under the mutex by its own durable `PREPARED` or `REVOKING` record.
-`WAIT_ABANDONED` recovery repairs every validated dead/interrupted entry while retaining mutex
-ownership and blocks if it can repair none. Windows exposes no prior mutex-owner identity, so this
-is deliberately an aggregate cutpoint invariant, not a claimed one-to-one correlation: an
-abandonment before its record is pre-mutation, while an abandonment after mutation necessarily
-leaves that record. Insecure, corrupt, unknown, mismatched, identity-changed, or incompletely
-repaired state blocks later ACL work and worker launch. The launcher never guesses which
-unrecorded ACE to remove, deletes recovery evidence to make startup pass, or treats ACL repair as
-worker-operation replay.
+Before creating a new profile, the launcher inventories and repairs dead records under the
+protected Global mutex. For a v2 grant it authenticates and opens the complete exact-object
+inventory, captures identities, inheritance state, and shared-guard baselines, then flushes
+`PREPARED` before the first guard or AppContainer mutation. It establishes or reuses each shared
+guard, adds one direct non-inheritable AppContainer entry through every retained object handle,
+restores the recorded inheritance-control bits, verifies the grant, and publishes `ACTIVE`.
+Mutable Python `__pycache__` directories and `.pyc`/`.pyo` leaves are excluded from new inventories.
+The broker binds `pycache_prefix` to a fresh, empty, reparse-free directory inside the ephemeral
+profile, grants that profile only direct non-inheritable read/execute access to the empty root, and
+revalidates it at launch. The worker self-audits the raw profile binding and active namespace before
+negotiation. Together with fixed `-B`, this consumes authenticated source/runtime objects without
+reading or creating source-tree bytecode caches.
+
+Cleanup publishes `REVOKING`, removes and verifies the exact AppContainer SID on every recorded
+object, and then evaluates the shared guard. An authenticated live `ACTIVE` v2 record for the same
+object and baseline keeps that guard in place; otherwise cleanup removes exactly one matching guard
+and proves the recorded baseline. Only after it restores and verifies every auto-inheritance state
+does it delete the exact ledger and close the retained handles. Dead-owner recovery follows the
+same order after reopening and authenticating every recorded object by Windows identity.
+
+Pre-exclusion v2 records do not receive an identity exception for cache-shaped paths. A missing or
+replacement path cannot prove that the recorded object was destroyed rather than renamed with its
+profile SID or peer guard intact. Recovery retains the profile/journal evidence and blocks launch
+on that mismatch. New records avoid the condition by omitting mutable caches from their inventory.
+
+On `WAIT_ABANDONED`, recovery inventories and repairs every validated dead/interrupted entry while
+retaining mutex ownership and blocks if it can repair none. Windows exposes no prior mutex-owner
+identity, so this is deliberately an aggregate cutpoint invariant, not a claimed one-to-one
+correlation: an abandonment before its record is pre-mutation, while an abandonment after mutation
+necessarily leaves that record. Insecure, corrupt, unknown-version, peer-SID-mismatched,
+allowlist-mismatched, identity-changed, conflicting-baseline, or incompletely repaired state blocks
+later ACL work and worker launch. The launcher never guesses which unrecorded ACE to remove, deletes
+recovery evidence to make startup pass, or treats ACL repair as worker-operation replay.
 
 Python startup requires writable profile and temporary locations. `LOCALAPPDATA`, `TEMP`, and
 `TMP` are therefore constructed as paths inside the new per-launch AppContainer profile. They are
@@ -75,18 +115,31 @@ sandbox storage, not case workspace authority. The broker retains the profile un
 tree has exited, then revokes the temporary runtime/code grants and deletes the profile. Cleanup
 failure is a stable launch-cleanup failure rather than a silent success.
 
-The environment allowlist is limited to `SYSTEMROOT`/`WINDIR`, `LOCALAPPDATA`, `TEMP`, `TMP`, and
-the fixed Python encoding controls `PYTHONIOENCODING` and `PYTHONUTF8`. User `PATH`, `PATHEXT`,
-`PYTHONPATH`, proxy variables, cloud credentials, command-processor variables, and other inherited
-state do not cross the launch boundary.
+The environment allowlist is limited to `SYSTEMROOT`/`WINDIR`, `LOCALAPPDATA`, `TEMP`, `TMP`, the
+fixed Python encoding controls `PYTHONIOENCODING` and `PYTHONUTF8`, and the configured fixed startup
+or tool inputs described below. User `PATH`, `PATHEXT`, `PYTHONPATH`, proxy variables, cloud
+credentials, command-processor variables, and other inherited state do not cross the launch
+boundary.
+
+For source-tree execution from a Windows virtual environment, the constructed child environment
+also carries one trusted CPython startup input: `__PYVENV_LAUNCHER__` names the separately
+validated, absolute virtual-environment launcher inside an approved runtime root. This value is not
+copied from the parent environment. CPython consumes and removes it during interpreter
+initialization, before PaperWorkShell worker code runs, so the worker-side environment allowlist
+above remains unchanged. A non-virtual-environment runtime omits the input.
+
+PWS-0112 may add `PWS_QPDF_EXECUTABLE` as one separately validated absolute qpdf path. The value is
+constructed from launcher configuration, never inherited or PATH-discovered, and its bounded
+non-reparse executable/DLL/resource closure is included in the same exact-object grant and recovery
+inventory. The worker still invokes qpdf with a fixed argument vector and no shell.
 
 ### Create suspended, contain, then resume
 
-The trusted launcher uses an absolute approved Python executable, an absolute approved bootstrap
-script, an approved working directory, and this fixed argument vector:
+The trusted launcher uses an absolute approved base Python executable, an absolute approved
+bootstrap script, an approved working directory, and this fixed argument vector:
 
 ```text
-<python.exe> -I -S -B -X utf8 <host_bootstrap.py>
+<python.exe> -I -S -B -X utf8 -X pycache_prefix=<profile-root>\PyCache <host_bootstrap.py>
 ```
 
 It uses `CreateProcessW` directly with no shell. The worker is created suspended and without a
@@ -95,6 +148,13 @@ Object. The job applies per-process and whole-job memory limits, process and job
 an active-process limit, and `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. The launcher does not enable a
 breakaway policy. It retains the process and job handles so timeout, fault, forced termination, and
 cleanup address the complete descendant tree rather than only the first Python process.
+
+PWS-0111 preserves the product's active-process limit of one by launching the base interpreter
+directly. It does not execute the virtual-environment `python.exe`, because that launcher would
+need to create a second process before the Job could run the host. The consumed startup input gives
+the one base-interpreter process the approved virtual-environment identity without weakening the
+Job limit. Access preflight and post-grant verification include both the base executable and the
+optional launcher file.
 
 Only after job assignment succeeds does the broker provision the one-shot grant and resume the
 primary thread. A failure before resume removes the profile/grants only after the broker proves the
@@ -200,8 +260,9 @@ retries can drain quarantine, but they cannot retroactively report the earlier l
 
 Case binding in the bootstrap and RPC identifies the active logical case but grants no filesystem
 access. The PWS-0107 `protocol.noop` operation has no inputs, outputs, or document handles. Its
-AppContainer profile storage is intentionally writable and approved runtime/code roots receive
-read/execute grants; no broader filesystem-authority claim follows from those facts.
+AppContainer profile storage is intentionally writable, and only the authenticated exact objects
+in the approved runtime/code/fixed-tool inventory receive direct read/execute grants; no broader
+filesystem-authority claim follows from those facts.
 
 PWS-0105 is the first narrow fulfillment of this rule. The trusted storage broker registers an
 already sealed and independently verified pending PDF under its complete path-free summary. A
@@ -265,6 +326,13 @@ turning uncertain worker termination into authority over a cache file.
 
 Task completion requires live Windows evidence, not launcher flags or this ADR alone:
 
+- product-like virtual-environment startup through the direct base interpreter, with the fixed
+  startup input consumed before audit and the active-process limit still set to one;
+- fail-closed rejection of a hardlinked approved-runtime file before any ACL grant;
+- fail-closed blocking of an after-scan hardlink replacement, an ancestor-junction pivot, and alias
+  removal before exact-handle ACL cleanup;
+- fail-closed detection and complete exact-handle cleanup when an outward hardlink wins the narrow
+  pre-guard window, with no AppContainer ACE applied;
 - a real Python host negotiates inside a zero-capability AppContainer;
 - independent IPv4 and IPv6 TCP and UDP probes from the worker and a descendant cannot reach a
   controlled listener that a non-isolated control process can reach;
@@ -275,13 +343,18 @@ Task completion requires live Windows evidence, not launcher flags or this ADR a
   descendant receives none of them; live tests compare kernel-object identity rather than raw
   process-local `HANDLE` numbers, which Windows may reuse for unrelated objects;
 - path opens for another case, case-authoritative records, external source/destination, and user
-  temporary locations fail; and
-- runtime/code access grants and the per-launch profile are removed only after the job tree exits.
+  temporary locations fail;
+- runtime/code access grants and the per-launch profile are removed only after the job tree exits;
 - a real helper owner is forcibly terminated while retaining the mutex at durable `PREPARED`,
   partial-grant, `ACTIVE`, and `REVOKING` cutpoints; separate-process recovery observes
-  `WAIT_ABANDONED`, repairs the exact grant before a new profile/grant, and verifies SID absence and
-  auto-inheritance before journal deletion; insecure, hardlinked, corrupt, unknown, allowlist-
-  mismatched, or identity-changed recovery state blocks launch without widening authority.
+  `WAIT_ABANDONED`, repairs the exact-object grant before a new profile/grant, and verifies SID
+  absence, guard baseline, and auto-inheritance before journal deletion;
+- overlapping live v2 ledgers share one authenticated hardlink guard, interrupted cleanup retains
+  it while another `ACTIVE` lease covers the object, and final cleanup restores the recorded
+  pre-PaperWorkShell baseline; and
+- legacy v1 recovery remains bounded, while insecure, hardlinked, corrupt, unknown-version,
+  peer-SID/allowlist-mismatched, conflicting-baseline, or identity-changed state blocks launch
+  without widening authority.
 
 Successful case-object handle brokerage is not PWS-0107 evidence because `protocol.noop` receives no
 such handle. PWS-0105 is the first consuming operation and separately proves that only its
@@ -355,9 +428,11 @@ controls on the supported Windows target.
 
 - The production worker launcher is Windows-specific and uses a narrow standard-library `ctypes`
   adapter. Pure protocol, host, and client state remain testable with injected adapters.
-- Starting source-tree Python requires temporary read/execute ACL entries on approved runtime/code
-  roots. Their exact scope and revocation are security evidence. Packaged builds should narrow this
-  to app-owned immutable runtime resources.
+- Starting source-tree Python requires temporary direct read/execute ACL entries on the exact
+  objects enumerated beneath approved runtime/code/fixed-tool roots. Their scope and revocation are
+  security evidence. Runtime files must be independent objects rather than hardlinks; the
+  development environment uses uv copy mode, and packaged builds should narrow this further to
+  app-owned immutable runtime resources.
 - Persistent ACL recovery necessarily stores approved runtime/code paths and object identities in
   a protected current-user/LocalSystem launcher journal. That path-private security state is not a
   case artifact, routine log, or diagnostic bundle input. If it cannot be authenticated, launch
@@ -378,8 +453,9 @@ controls on the supported Windows target.
 - PWS-0107 itself added no document parser, renderer, OCR engine, UI, case mutation, or publish
   operation. The PWS-0105 extension adds only worker-side structural inspection of one prepared PDF
   and cannot publish case state. PWS-0108 adds bounded one-page rendering, but trusted storage alone
-  publishes its disposable cache. Later adapters must preserve this boundary and add their own
-  handle-broker contract tests.
+  publishes its disposable cache. PWS-0112 adds exact source/plan/candidate/report authorities for
+  one verified export, but only the trusted desktop adapter can publish to an external destination.
+  Later adapters must preserve this boundary and add their own handle-broker contract tests.
 - Stable plain-language client failures support later accessible announcements and recovery
   actions. PWS-0111 still owns the UI focus and announcement behavior.
 
@@ -387,6 +463,7 @@ controls on the supported Windows target.
 
 - [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md)
 - [Bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md)
+- [Deterministic verified PDF-export contract](../architecture/pdf-export.md)
 - [Startup recovery and sanitized diagnostics](../architecture/startup-recovery-and-diagnostics.md)
 - [Microsoft: Implementing an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)
 - [Microsoft: CreateFileMappingW](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw)

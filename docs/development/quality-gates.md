@@ -37,9 +37,8 @@ documentation links/anchors/security references, and deliberate negative self-te
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
 
-The accessibility lane currently contains a foundation sentinel: it proves that no PySide6 UI
-surface exists without widget-level tests. The first UI task must replace that sentinel with real
-keyboard, focus, label, scaling, and announcement coverage.
+PWS-0111 replaces the no-UI accessibility sentinel with widget-level keyboard, focus, label,
+scaling, and announcement coverage for the first PySide6 organizer surface.
 
 ## Schema validation
 
@@ -251,10 +250,10 @@ the non-default Qt group or execute the complete benchmark command/report.
 affinity, staging, and invocation contract is documented in `benchmarks/README.md`.
 
 The Windows CI workflow separately synchronizes the non-default `renderer-evaluation` group so the
-PWS-0106 unit/integration comparison tests can exercise both live renderer adapters. This is a
-test-only installation: Qt PDF and its Addons/Essentials closure retain no product runtime scope,
-source-import authorization, or enabled shipment relationship. CI does not run or upload the
-mutable-host benchmark report.
+PWS-0106 unit/integration comparison tests can exercise both live renderer adapters. Essentials and
+shiboken6 are ordinary PWS-0111 runtime dependencies, but the group-only Qt PDF/Addons surface
+retains no product runtime scope, source-import authorization, or enabled shipment relationship. CI
+does not run or upload the mutable-host benchmark report.
 
 ## CI supply-chain controls
 

@@ -15,9 +15,9 @@ import pypdfium2  # type: ignore[import-untyped]
 import pypdfium2_raw  # type: ignore[import-untyped]
 import pytest
 
+from paperworkshell.__main__ import build_windows_startup_recovery_service
 from paperworkshell.app.export_history import PdfExportHistoryService
 from paperworkshell.app.pdf_export import PdfExportService
-from paperworkshell.app.recovery import build_windows_startup_recovery_service
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_export import (

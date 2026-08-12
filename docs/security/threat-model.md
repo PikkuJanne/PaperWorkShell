@@ -110,7 +110,10 @@ The model does not assume an unprivileged input can break Windows kernel securit
 a parser can be compromised and therefore treats worker output and child-process output as
 untrusted. A same-user peer without arbitrary account-file or memory access is addressed by
 capability-bound IPC and handle-based path checks; malware with unrestricted access to the current
-account remains outside the confidentiality/integrity guarantee.
+account remains outside the confidentiality/integrity guarantee. In particular, the Windows worker
+runtime guard denies the ordinary same-user path-race peer the file right required to create a new
+hardlink during a lease. Malware able to rewrite account-owned DACLs and remove that guard is the
+unrestricted same-account case outside this guarantee.
 
 ## Trust boundaries
 
@@ -143,9 +146,17 @@ per-launch capability. It is not an argument, environment value, endpoint name, 
 
 The launch environment is constructed from a closed allowlist. `LOCALAPPDATA`, `TEMP`, and `TMP`
 point inside the per-launch AppContainer profile rather than inheriting user locations. That
-ephemeral sandbox storage is writable so Python can start; it is not case authority. Only approved
-runtime/code roots receive temporary read/execute access. The exact job tree exits before those
-grants and profile are removed. See the
+ephemeral sandbox storage is writable so Python can start; it is not case authority. The launcher
+authenticates a bounded runtime/code/fixed-tool inventory and grants the profile SID direct,
+non-inheritable read/execute access only on those exact objects. Each file has one current-user
+hardlink guard shared by authenticated overlapping v2 leases. A protected versioned journal
+supports legacy-v1 inherited-root cleanup and v2 exact-object/SID/guard-baseline recovery after a
+crash. Mutable Python bytecode caches are excluded from new authority, and every worker generation
+uses a freshly authenticated empty profile-private `pycache_prefix` plus `-B`, so an ambient valid
+source-tree cache is neither read nor replaced. Old records remain
+exact-identity fail-closed because a missing/replacement cache path does not prove that the old
+object was not renamed with residual authority. The exact job tree exits before a live lease's
+grants, final shared guard, and profile are removed. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [Windows isolation ADR](../adr/0004-windows-worker-isolation.md).
 

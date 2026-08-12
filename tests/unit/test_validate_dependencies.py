@@ -346,8 +346,8 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             "pdfium": "PWS-0106",
             "pyside6": "PWS-0111",
             "pyside6-addons": "PWS-0106",
-            "pyside6-essentials": "PWS-0106",
-            "shiboken6": "PWS-0106",
+            "pyside6-essentials": "PWS-0111",
+            "shiboken6": "PWS-0111",
             "qt-pdf": "PWS-0106",
             "lxml": "PWS-0105",
             "pikepdf": "PWS-0105",
@@ -415,7 +415,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
                     self._codes(data, repository_checks=True),
                 )
 
-    def test_qt_evaluation_lock_edges_are_recorded_but_remain_disabled(self) -> None:
+    def test_qt_runtime_and_evaluation_lock_edges_have_distinct_scope(self) -> None:
         expected_edges = {
             ("pyside6-addons", "pyside6-essentials"),
             ("pyside6-addons", "shiboken6"),
@@ -430,8 +430,9 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         }
 
         self.assertEqual(expected_edges, actual_edges)
-        for source, target in expected_edges:
-            self.assertFalse(_relationship(data, source, target)["enabled"])
+        self.assertFalse(_relationship(data, "pyside6-addons", "pyside6-essentials")["enabled"])
+        self.assertFalse(_relationship(data, "pyside6-addons", "shiboken6")["enabled"])
+        self.assertTrue(_relationship(data, "pyside6-essentials", "shiboken6")["enabled"])
 
         data = _load_inventory()
         relationships = cast(list[dict[str, Any]], data["relationships"])
@@ -447,7 +448,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         self.assertIn("DEPENDENCY_RELATIONSHIP_ADMISSION_INVALID", codes)
         self.assertIn("DEPENDENCY_LOCK_RELATIONSHIP_MISMATCH", codes)
 
-    def test_qt_evaluation_artifacts_are_exact_and_scope_free(self) -> None:
+    def test_qt_runtime_and_evaluation_artifacts_are_exact(self) -> None:
         expected = {
             "pyside6-addons": (
                 168816308,
@@ -466,15 +467,29 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         for component_id, (size_bytes, sha256) in expected.items():
             with self.subTest(component_id=component_id):
                 component = _component(data, component_id)
-                self.assertEqual("evaluated", component["admission_status"])
-                self.assertEqual([], component["active_scopes"])
-                self.assertEqual("candidate", component["packaging"]["ship_state"])
                 self.assertEqual("6.11.1", component["version"]["selected"])
                 self.assertEqual(size_bytes, component["artifact_evidence"]["size_bytes"])
                 self.assertEqual(sha256, component["artifact_evidence"]["sha256"])
 
-        qt_pdf = _component(data, "qt-pdf")
+        meta_package = _component(data, "pyside6")
+        self.assertEqual("deferred", meta_package["admission_status"])
+        self.assertEqual([], meta_package["active_scopes"])
+        self.assertEqual("not-shipped", meta_package["packaging"]["ship_state"])
+
         addons = _component(data, "pyside6-addons")
+        self.assertEqual("evaluated", addons["admission_status"])
+        self.assertEqual([], addons["active_scopes"])
+        self.assertEqual("candidate", addons["packaging"]["ship_state"])
+
+        for component_id in ("pyside6-essentials", "shiboken6"):
+            with self.subTest(component_id=component_id):
+                component = _component(data, component_id)
+                self.assertEqual("approved", component["admission_status"])
+                self.assertEqual(["runtime"], component["active_scopes"])
+                self.assertEqual("planned", component["packaging"]["ship_state"])
+                self.assertEqual("LGPL-3.0-only", component["license"]["selected_route"])
+
+        qt_pdf = _component(data, "qt-pdf")
         self.assertEqual("evaluated", qt_pdf["admission_status"])
         self.assertEqual([], qt_pdf["active_scopes"])
         self.assertEqual("candidate", qt_pdf["packaging"]["ship_state"])
@@ -493,6 +508,24 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         self.assertIn(
             "DEPENDENCY_LOCK_HASH_MISMATCH",
             self._codes(data, repository_checks=True),
+        )
+
+    def test_native_gui_runtime_capability_classification_is_explicit(self) -> None:
+        data = _load_inventory()
+        self.assertNotIn("DEPENDENCY_SECURITY_CAPABILITY_UNREVIEWED", self._codes(data))
+
+        wrong_boundary = copy.deepcopy(data)
+        _component(wrong_boundary, "pyside6-essentials")["security"]["boundary"] = "worker-process"
+        self.assertIn(
+            "DEPENDENCY_SECURITY_CAPABILITY_UNREVIEWED",
+            self._codes(wrong_boundary),
+        )
+
+        unknown_capability = copy.deepcopy(data)
+        _component(unknown_capability, "shiboken6")["component_id"] = "unreviewed-native-runtime"
+        self.assertIn(
+            "DEPENDENCY_SECURITY_CAPABILITY_UNREVIEWED",
+            self._codes(unknown_capability),
         )
 
     def test_project_declarations_and_tool_pins_are_reconciled(self) -> None:

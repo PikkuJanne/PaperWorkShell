@@ -8,6 +8,7 @@ import pytest
 
 from paperworkshell.worker.client._acl_recovery import (
     ACL_RECOVERY_JOURNAL_VERSION,
+    ACL_RECOVERY_LEGACY_VERSION,
     MAX_ACL_RECOVERY_GRANT_ROOTS,
     MAX_ACL_RECOVERY_OBJECTS,
     AclRecoveryEntry,
@@ -22,11 +23,17 @@ from paperworkshell.worker.client._acl_recovery import (
 PROFILE_ID = "0123456789abcdef01234567"
 PROFILE_NAME = f"PaperWorkShell.Worker.{PROFILE_ID}"
 APP_CONTAINER_SID = "S-1-15-2-1-2-3-4-5-6-7"
+PEER_SID = "S-1-5-21-1-2-3-1001"
 
 
-def _entry(*, phase: AclRecoveryPhase = AclRecoveryPhase.PREPARED) -> AclRecoveryEntry:
+def _entry(
+    *,
+    phase: AclRecoveryPhase = AclRecoveryPhase.PREPARED,
+    journal_version: int = ACL_RECOVERY_JOURNAL_VERSION,
+) -> AclRecoveryEntry:
     root = Path("C:/approved/runtime")
     child = root / "python.exe"
+    exact = journal_version == ACL_RECOVERY_JOURNAL_VERSION
     return AclRecoveryEntry(
         profile_id=PROFILE_ID,
         profile_name=PROFILE_NAME,
@@ -42,6 +49,8 @@ def _entry(*, phase: AclRecoveryPhase = AclRecoveryPhase.PREPARED) -> AclRecover
                 inode=20,
                 is_directory=True,
                 auto_inherited=False,
+                volume_serial=10 if exact else None,
+                file_id="00000000000000000000000000000014" if exact else None,
             ),
             AclRecoveryObject(
                 path=child,
@@ -49,8 +58,13 @@ def _entry(*, phase: AclRecoveryPhase = AclRecoveryPhase.PREPARED) -> AclRecover
                 inode=21,
                 is_directory=False,
                 auto_inherited=True,
+                volume_serial=10 if exact else None,
+                file_id="00000000000000000000000000000015" if exact else None,
+                guard_baseline=2 if exact else None,
             ),
         ),
+        peer_sid=PEER_SID if exact else None,
+        journal_version=journal_version,
     )
 
 
@@ -80,6 +94,32 @@ def test_acl_recovery_codec_rejects_future_noncanonical_and_misbound_records() -
         decode_acl_recovery_entry(payload, expected_profile_id="fedcba9876543210fedcba98")
 
 
+def test_acl_recovery_codec_preserves_legacy_root_grant_records_without_reinterpretation() -> None:
+    entry = _entry(journal_version=ACL_RECOVERY_LEGACY_VERSION)
+
+    payload = encode_acl_recovery_entry(entry)
+    document = json.loads(payload)
+
+    assert decode_acl_recovery_entry(payload) == entry
+    assert document["journal_version"] == ACL_RECOVERY_LEGACY_VERSION
+    assert "peer_sid" not in document
+    assert all("guard_baseline" not in item for item in document["objects"])
+
+
+def test_acl_recovery_codec_rejects_v2_with_missing_or_invalid_guard_fields() -> None:
+    document = json.loads(encode_acl_recovery_entry(_entry()))
+    del document["peer_sid"]
+    missing_peer = json.dumps(document, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    with pytest.raises(AclRecoveryJournalError):
+        decode_acl_recovery_entry(missing_peer)
+
+    document = json.loads(encode_acl_recovery_entry(_entry()))
+    document["objects"][1]["guard_baseline"] = None
+    invalid_guard = json.dumps(document, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    with pytest.raises(AclRecoveryJournalError):
+        decode_acl_recovery_entry(invalid_guard)
+
+
 def test_acl_recovery_codec_roundtrips_the_exact_object_and_root_boundary() -> None:
     roots = tuple(
         Path(f"C:/approved/runtime-{index:02d}") for index in range(MAX_ACL_RECOVERY_GRANT_ROOTS)
@@ -91,6 +131,8 @@ def test_acl_recovery_codec_roundtrips_the_exact_object_and_root_boundary() -> N
             inode=index + 1,
             is_directory=True,
             auto_inherited=False,
+            volume_serial=10,
+            file_id=f"{index + 1:032x}",
         )
         for index, root in enumerate(roots)
     ) + tuple(
@@ -100,6 +142,9 @@ def test_acl_recovery_codec_roundtrips_the_exact_object_and_root_boundary() -> N
             inode=MAX_ACL_RECOVERY_GRANT_ROOTS + index + 1,
             is_directory=False,
             auto_inherited=True,
+            volume_serial=10,
+            file_id=f"{MAX_ACL_RECOVERY_GRANT_ROOTS + index + 1:032x}",
+            guard_baseline=0,
         )
         for index in range(MAX_ACL_RECOVERY_OBJECTS - MAX_ACL_RECOVERY_GRANT_ROOTS)
     )
@@ -112,6 +157,7 @@ def test_acl_recovery_codec_roundtrips_the_exact_object_and_root_boundary() -> N
         phase=AclRecoveryPhase.ACTIVE,
         grant_roots=roots,
         objects=objects,
+        peer_sid=PEER_SID,
     )
 
     payload = encode_acl_recovery_entry(entry)

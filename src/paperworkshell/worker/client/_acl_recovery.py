@@ -19,24 +19,27 @@ from pathlib import Path
 from secrets import token_hex
 from typing import Final
 
-ACL_RECOVERY_JOURNAL_VERSION: Final = 1
+ACL_RECOVERY_LEGACY_VERSION: Final = 1
+ACL_RECOVERY_JOURNAL_VERSION: Final = 2
 MAX_ACL_RECOVERY_ENTRIES: Final = 128
 MAX_ACL_RECOVERY_GRANT_ROOTS: Final = 32
 MAX_ACL_RECOVERY_OBJECTS: Final = 20_000
 MAX_ACL_RECOVERY_BYTES: Final = 32 * 1024 * 1024
 MAX_ACL_RECOVERY_PATH_CODEPOINTS: Final = 32_767
 MAX_ACL_RECOVERY_JSON_NODES: Final = (
-    10 + MAX_ACL_RECOVERY_GRANT_ROOTS + (6 * MAX_ACL_RECOVERY_OBJECTS)
+    12 + MAX_ACL_RECOVERY_GRANT_ROOTS + (9 * MAX_ACL_RECOVERY_OBJECTS)
 )
 MAX_ACL_RECOVERY_JSON_DEPTH: Final = 8
 
 _PROFILE_ID = re.compile(r"[0-9a-f]{24}\Z")
 _PROFILE_NAME = re.compile(r"PaperWorkShell\.Worker\.[0-9a-f]{24}\Z")
 _APP_CONTAINER_SID = re.compile(r"S-1-15-2(?:-[0-9]{1,10}){7}\Z")
+_WINDOWS_SID = re.compile(r"S-1-[0-9]{1,20}(?:-[0-9]{1,10}){1,15}\Z")
+_FILE_ID = re.compile(r"[0-9a-f]{32}\Z")
 _LEDGER_NAME = re.compile(r"worker-acl-([0-9a-f]{24})\.json\Z")
 _STAGE_NAME = re.compile(r"worker-acl-([0-9a-f]{24})\.([0-9a-f]{24})\.tmp\Z")
 _REPARSE_ATTRIBUTE: Final = 0x0000_0400
-_EXACT_FIELDS: Final = frozenset(
+_V1_FIELDS: Final = frozenset(
     {
         "journal_version",
         "profile_id",
@@ -49,9 +52,13 @@ _EXACT_FIELDS: Final = frozenset(
         "objects",
     }
 )
-_EXACT_OBJECT_FIELDS: Final = frozenset(
-    {"path", "device", "inode", "is_directory", "auto_inherited"}
-)
+_V2_FIELDS: Final = _V1_FIELDS | {"peer_sid"}
+_V1_OBJECT_FIELDS: Final = frozenset({"path", "device", "inode", "is_directory", "auto_inherited"})
+_V2_OBJECT_FIELDS: Final = _V1_OBJECT_FIELDS | {
+    "file_id",
+    "guard_baseline",
+    "volume_serial",
+}
 
 
 class AclRecoveryPhase(StrEnum):
@@ -71,6 +78,9 @@ class AclRecoveryObject:
     inode: int
     is_directory: bool
     auto_inherited: bool
+    volume_serial: int | None = None
+    file_id: str | None = None
+    guard_baseline: int | None = None
 
     def __post_init__(self) -> None:
         rendered = os.fspath(self.path)
@@ -86,6 +96,18 @@ class AclRecoveryObject:
             or self.inode < 1
             or type(self.is_directory) is not bool
             or type(self.auto_inherited) is not bool
+            or (
+                self.volume_serial is not None
+                and (type(self.volume_serial) is not int or self.volume_serial < 0)
+            )
+            or (
+                self.file_id is not None
+                and (type(self.file_id) is not str or _FILE_ID.fullmatch(self.file_id) is None)
+            )
+            or (
+                self.guard_baseline is not None
+                and (type(self.guard_baseline) is not int or not 0 <= self.guard_baseline <= 0xFFFF)
+            )
         ):
             raise ValueError("invalid ACL recovery object")
 
@@ -105,6 +127,7 @@ class AclRecoveryEntry:
     phase: AclRecoveryPhase
     grant_roots: tuple[Path, ...]
     objects: tuple[AclRecoveryObject, ...]
+    peer_sid: str | None = None
     journal_version: int = ACL_RECOVERY_JOURNAL_VERSION
 
     def __post_init__(self) -> None:
@@ -112,7 +135,8 @@ class AclRecoveryEntry:
         object_paths = tuple(os.fspath(item.path) for item in self.objects)
         if (
             type(self.journal_version) is not int
-            or self.journal_version != ACL_RECOVERY_JOURNAL_VERSION
+            or self.journal_version
+            not in {ACL_RECOVERY_LEGACY_VERSION, ACL_RECOVERY_JOURNAL_VERSION}
             or type(self.profile_id) is not str
             or _PROFILE_ID.fullmatch(self.profile_id) is None
             or type(self.profile_name) is not str
@@ -138,6 +162,27 @@ class AclRecoveryEntry:
             or not set(roots) <= set(object_paths)
         ):
             raise ValueError("invalid ACL recovery entry")
+        if self.journal_version == ACL_RECOVERY_LEGACY_VERSION:
+            if self.peer_sid is not None or any(
+                item.volume_serial is not None
+                or item.file_id is not None
+                or item.guard_baseline is not None
+                for item in self.objects
+            ):
+                raise ValueError("invalid legacy ACL recovery entry")
+            return
+        if (
+            type(self.peer_sid) is not str
+            or _WINDOWS_SID.fullmatch(self.peer_sid) is None
+            or any(
+                type(item.volume_serial) is not int
+                or type(item.file_id) is not str
+                or (item.is_directory and item.guard_baseline is not None)
+                or (not item.is_directory and type(item.guard_baseline) is not int)
+                for item in self.objects
+            )
+        ):
+            raise ValueError("invalid exact-object ACL recovery entry")
 
     def __repr__(self) -> str:
         return (
@@ -162,19 +207,10 @@ def encode_acl_recovery_entry(entry: AclRecoveryEntry) -> bytes:
 
     if type(entry) is not AclRecoveryEntry:
         raise AclRecoveryJournalError("encode.type")
-    document = {
+    document: dict[str, object] = {
         "grant_roots": [os.fspath(path) for path in entry.grant_roots],
         "journal_version": entry.journal_version,
-        "objects": [
-            {
-                "auto_inherited": item.auto_inherited,
-                "device": item.device,
-                "inode": item.inode,
-                "is_directory": item.is_directory,
-                "path": os.fspath(item.path),
-            }
-            for item in entry.objects
-        ],
+        "objects": [],
         "owner_created_100ns": entry.owner_created_100ns,
         "owner_pid": entry.owner_pid,
         "phase": entry.phase.value,
@@ -182,6 +218,27 @@ def encode_acl_recovery_entry(entry: AclRecoveryEntry) -> bytes:
         "profile_name": entry.profile_name,
         "sid": entry.sid,
     }
+    encoded_objects: list[dict[str, object]] = []
+    for item in entry.objects:
+        encoded: dict[str, object] = {
+            "auto_inherited": item.auto_inherited,
+            "device": item.device,
+            "inode": item.inode,
+            "is_directory": item.is_directory,
+            "path": os.fspath(item.path),
+        }
+        if entry.journal_version == ACL_RECOVERY_JOURNAL_VERSION:
+            encoded.update(
+                {
+                    "file_id": item.file_id,
+                    "guard_baseline": item.guard_baseline,
+                    "volume_serial": item.volume_serial,
+                }
+            )
+        encoded_objects.append(encoded)
+    document["objects"] = encoded_objects
+    if entry.journal_version == ACL_RECOVERY_JOURNAL_VERSION:
+        document["peer_sid"] = entry.peer_sid
     try:
         payload = (
             json.dumps(
@@ -241,7 +298,18 @@ def decode_acl_recovery_entry(
     except (UnicodeError, ValueError, json.JSONDecodeError, RecursionError) as error:
         raise AclRecoveryJournalError("decode.json") from error
     _require_bounded_json_shape(document)
-    if type(document) is not dict or frozenset(document) != _EXACT_FIELDS:
+    if type(document) is not dict:
+        raise AclRecoveryJournalError("decode.fields")
+    version = document.get("journal_version")
+    if version == ACL_RECOVERY_LEGACY_VERSION:
+        expected_fields = _V1_FIELDS
+        expected_object_fields = _V1_OBJECT_FIELDS
+    elif version == ACL_RECOVERY_JOURNAL_VERSION:
+        expected_fields = _V2_FIELDS
+        expected_object_fields = _V2_OBJECT_FIELDS
+    else:
+        raise AclRecoveryJournalError("decode.version")
+    if frozenset(document) != expected_fields:
         raise AclRecoveryJournalError("decode.fields")
     roots_value = document["grant_roots"]
     objects_value = document["objects"]
@@ -258,7 +326,7 @@ def decode_acl_recovery_entry(
             raise ValueError("invalid roots")
         objects: list[AclRecoveryObject] = []
         for value in objects_value:
-            if type(value) is not dict or frozenset(value) != _EXACT_OBJECT_FIELDS:
+            if type(value) is not dict or frozenset(value) != expected_object_fields:
                 raise ValueError("invalid object fields")
             path_value = value["path"]
             if type(path_value) is not str:
@@ -270,6 +338,9 @@ def decode_acl_recovery_entry(
                     inode=value["inode"],
                     is_directory=value["is_directory"],
                     auto_inherited=value["auto_inherited"],
+                    volume_serial=value.get("volume_serial"),
+                    file_id=value.get("file_id"),
+                    guard_baseline=value.get("guard_baseline"),
                 )
             )
         entry = AclRecoveryEntry(
@@ -281,6 +352,7 @@ def decode_acl_recovery_entry(
             phase=AclRecoveryPhase(document["phase"]),
             grant_roots=roots,
             objects=tuple(objects),
+            peer_sid=document.get("peer_sid"),
             journal_version=document["journal_version"],
         )
     except (ValueError, TypeError) as error:

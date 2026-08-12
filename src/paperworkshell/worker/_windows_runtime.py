@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sys
 from ctypes import wintypes
 from dataclasses import dataclass
 from enum import StrEnum
@@ -21,11 +22,13 @@ _STANDARD_HANDLE_IDS: Final = (_STD_INPUT_HANDLE, _STD_OUTPUT_HANDLE, _STD_ERROR
 _HANDLE_FLAG_INHERIT: Final = 0x0000_0001
 _INVALID_HANDLE_VALUE: Final = ctypes.c_void_p(-1).value
 _ERROR_BROKEN_PIPE: Final = 109
+_PRIVATE_PYCACHE_DIRECTORY_NAME: Final = "PyCache"
 _ALLOWED_ENVIRONMENT: Final = frozenset(
     {
         "SYSTEMROOT",
         "WINDIR",
         "LOCALAPPDATA",
+        "PWS_PROFILE_ROOT",
         "TEMP",
         "TMP",
         "PWS_QPDF_EXECUTABLE",
@@ -44,6 +47,7 @@ class IsolationAuditCode(StrEnum):
     NETWORK_CAPABILITY_PRESENT = "WORKER_ISOLATION_NETWORK_CAPABILITY_PRESENT"
     JOB_REQUIRED = "WORKER_ISOLATION_JOB_REQUIRED"
     ENVIRONMENT_INVALID = "WORKER_ISOLATION_ENVIRONMENT_INVALID"
+    BYTECODE_POLICY_INVALID = "WORKER_ISOLATION_BYTECODE_POLICY_INVALID"
     STANDARD_HANDLE_POLICY_INVALID = "WORKER_ISOLATION_STANDARD_HANDLE_POLICY_INVALID"
     BOOTSTRAP_UNAVAILABLE = "WORKER_BOOTSTRAP_UNAVAILABLE"
 
@@ -66,11 +70,57 @@ class RuntimeIsolationEvidence:
     zero_capabilities: bool
     in_job: bool
     minimal_environment: bool
+    private_bytecode_cache: bool
     standard_handles_non_inheritable: bool
 
 
 def _fail(code: IsolationAuditCode) -> None:
     raise IsolationAuditError(code) from None
+
+
+def _private_bytecode_configuration_is_valid(
+    profile_root: object,
+    local_app_data: object,
+    configured_prefix: object,
+    active_prefix: object,
+) -> bool:
+    """Bind the raw fixed option to the profile despite Windows path aliases."""
+
+    if (
+        type(profile_root) is not str
+        or not profile_root
+        or type(local_app_data) is not str
+        or not local_app_data
+        or type(configured_prefix) is not str
+        or not configured_prefix
+        or type(active_prefix) is not str
+        or not active_prefix
+        or "\x00" in configured_prefix
+        or "\x00" in active_prefix
+        or "\x00" in profile_root
+        or not os.path.isabs(profile_root)
+        or not os.path.isabs(configured_prefix)
+        or not os.path.isabs(active_prefix)
+    ):
+        return False
+    normalized_profile = os.path.normcase(os.path.abspath(profile_root))
+    normalized_local = os.path.normcase(os.path.abspath(local_app_data))
+    normalized_expected = os.path.normcase(
+        os.path.abspath(os.path.join(profile_root, _PRIVATE_PYCACHE_DIRECTORY_NAME))
+    )
+    normalized_configured = os.path.normcase(os.path.abspath(configured_prefix))
+    normalized_active = os.path.normcase(os.path.abspath(active_prefix))
+    try:
+        local_is_scoped = (
+            os.path.commonpath((normalized_profile, normalized_local)) == normalized_profile
+        )
+    except ValueError:
+        return False
+    return (
+        local_is_scoped
+        and normalized_configured == normalized_expected
+        and normalized_active == normalized_expected
+    )
 
 
 def _clear_and_verify_standard_handle_inheritance(kernel32: Any) -> None:
@@ -219,4 +269,27 @@ def verify_runtime_isolation() -> RuntimeIsolationEvidence:
         _fail(IsolationAuditCode.JOB_REQUIRED)
     if any(name.upper() not in _ALLOWED_ENVIRONMENT for name in os.environ):
         _fail(IsolationAuditCode.ENVIRONMENT_INVALID)
-    return RuntimeIsolationEvidence(True, True, True, True, True)
+    profile_root = os.environ.get("PWS_PROFILE_ROOT")
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    configured_prefix = sys._xoptions.get("pycache_prefix")
+    pycache_prefix = sys.pycache_prefix
+    if (
+        not _private_bytecode_configuration_is_valid(
+            profile_root,
+            local_app_data,
+            configured_prefix,
+            pycache_prefix,
+        )
+        or not sys.dont_write_bytecode
+    ):
+        _fail(IsolationAuditCode.BYTECODE_POLICY_INVALID)
+    assert type(pycache_prefix) is str
+    try:
+        if not os.path.isdir(pycache_prefix):
+            _fail(IsolationAuditCode.BYTECODE_POLICY_INVALID)
+        with os.scandir(pycache_prefix) as entries:
+            if next(entries, None) is not None:
+                _fail(IsolationAuditCode.BYTECODE_POLICY_INVALID)
+    except OSError:
+        _fail(IsolationAuditCode.BYTECODE_POLICY_INVALID)
+    return RuntimeIsolationEvidence(True, True, True, True, True, True)

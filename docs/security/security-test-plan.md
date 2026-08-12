@@ -210,6 +210,12 @@ recovery result; process-control exceptions remain process control.
 Windows startup integration first exercises PWS-0109 manifest recovery, independently validates or
 restores stable export history from one authenticated retirement, then settles durable PDF export
 receipts, and only afterward performs source-orphan, thumbnail-stage, and generic temp cleanup.
+The desktop-process cut point uses an isolated profile and real offscreen PySide organizer: after
+one edit reaches the durable autosave checkpoint but before manifest replacement, the parent
+forcibly terminates the UI process and launches a fresh one. The restart must report one recovered
+case, reopen the exact checkpoint revision, preserve both external and case-copy source bytes, keep
+an outside sentinel unchanged, and expose no profile, filename, or display-name value in its closed
+result.
 It proves a valid checkpoint is authoritative before deletion, a corrupt case is reported without
 artifact mutation, an exact UUID-named unreferenced source can be removed, a concurrent manifest
 advance forces a reload before cleanup, and repeated stale-authority checks retain the candidate
@@ -250,17 +256,33 @@ bundle writing, and cancel/permission/partial-write/prohibited-token verificatio
 bundle.
 
 PWS-0113's persistent worker runtime/code ACL repair is separate from the case scan and does not
-replay a worker operation. Codec/journal tests prove canonical bounded phase records, atomic update,
-exact-stage cleanup, corruption retention, and path-private representations. A Windows helper
-process publishes `PREPARED`, partial-grant, `ACTIVE`, and `REVOKING` cut points while retaining a
-test-isolated protected mutex and is then forcibly killed. Recovery in the separate parent process
-must observe `WAIT_ABANDONED`, authenticate the dead owner and profile/SID binding, remove the
-recorded SID, restore auto-inheritance, clear the journal only after verification, and permit a
-replacement grant. Separate tests prove that an insecure directory, hardlinked resource, corrupt
-record, or object-identity mismatch blocks new ACL work without mutating unproven state. The
-complete live worker/descendant containment suite remains required and passes with recovery on the
-production pre-launch path. This does not claim general ACL repair, recovery from an unrecorded mutation, or
-automatic cold deletion of the abandoned AppContainer profile/local temporary tree.
+replay a worker operation. Codec/journal tests must prove canonical bounded phase records, atomic
+update, exact-stage cleanup, corruption retention, path-private representations, strict legacy-v1
+decoding, and new v2 fields for the current-user peer SID plus each object's Windows volume
+serial/file ID, inheritance state, and nullable per-file guard baseline.
+
+A Windows helper process publishes v2 `PREPARED`, partial-grant, `ACTIVE`, and `REVOKING` cutpoints
+while retaining a test-isolated protected mutex and is then forcibly killed. Recovery in the
+separate parent process must observe `WAIT_ABANDONED`, authenticate the dead owner and
+profile/AppContainer/peer-SID binding, reopen every exact object by the recorded identity, revoke
+and verify the AppContainer SID per object, and restore the guard and inheritance baselines before
+deleting the ledger and permitting a replacement grant. Overlap tests must prove two authenticated
+live v2 leases share one guard, interrupted cleanup retains it while another `ACTIVE` ledger covers
+the object, and final cleanup removes exactly one PaperWorkShell guard without removing any matching
+ACE represented by the recorded baseline. Legacy v1 recovery must retain its original bounded
+inherited-root behavior rather than being reinterpreted as an exact-object grant.
+
+Separate tests must prove that an insecure directory, hardlinked resource, corrupt or unknown
+record, peer-SID/allowlist mismatch, conflicting guard baseline, or object-identity mismatch blocks
+new ACL work without mutating unproven state. New inventories must omit `__pycache__`, `.pyc`, and
+`.pyo` objects and reject those objects as explicit roots. A cache-path identity mismatch in an old
+v2 journal must retain the exact evidence and perform no unproved mutation, just like every other
+identity mismatch. A valid conflicting cache is made explicitly readable to the live restricted
+profile; both the initial worker and its descendant must still import the authenticated source,
+leave the source cache byte-identical, and keep the fresh profile-private prefix empty under `-B`.
+The complete live worker/descendant containment suite remains required on the
+production pre-launch path. This does not claim general ACL repair, recovery from an unrecorded
+mutation, or automatic cold deletion of abandoned AppContainer profiles/local temporary trees.
 
 ## Milestone evidence progression
 

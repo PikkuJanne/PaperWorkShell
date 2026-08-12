@@ -7,7 +7,7 @@ from uuid import UUID
 
 import pytest
 
-from paperworkshell.app.recovery import build_windows_startup_recovery_service
+from paperworkshell.__main__ import build_windows_startup_recovery_service
 from paperworkshell.domain.pdf_export_history import PdfExportHistoryError
 from paperworkshell.domain.recovery import RecoveryIssueCode
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore

@@ -8,9 +8,9 @@ PaperWorkShell is a local-first desktop application that converts mixed PDFs and
 
 The repository has completed its foundation gate and is implementing the Milestone 1 architecture
 proof. It now contains the restricted worker, immutable PDF ingest/inspection boundaries, and the
-worker-only pikepdf and pypdfium2 adapters. It does not yet contain the PySide6 UI or any image,
-OCR, installer, cloud, or signing integration. PySide6-Addons is locked only in a non-default
-renderer-evaluation group and is not a product runtime dependency.
+worker-only pikepdf and pypdfium2 adapters. The first PySide6 Widgets organizer admits exact
+PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
+repository does not yet contain image, OCR, installer, cloud, or signing integration.
 
 Prerequisites:
 
@@ -18,6 +18,8 @@ Prerequisites:
 - Standard CPython 3.14 (not the experimental free-threaded build)
 - `uv` 0.11.32
 - Gitleaks 8.30.1
+- qpdf 12.3.2 for live verified-export tests, selected through the fixed
+  `PWS_QPDF_EXECUTABLE` path
 
 Install the pinned `uv` release with WinGet when it is not already available:
 
@@ -46,10 +48,38 @@ renderer benchmark:
 uv sync --locked --group renderer-evaluation
 ```
 
-This evaluation group is intentionally excluded from ordinary bootstrap because the broad
-Addons/Essentials wheel set is not the selected renderer or UI dependency. Windows CI installs it
-only for the PWS-0106 live comparison tests; that test installation does not activate Qt PDF in the
-product runtime or shipment graph.
+The restricted worker rejects runtime files that are hardlinked outside the approved runtime
+roots. This repository therefore sets uv's install mode to `copy`. Run environment commands from a
+standard, non-administrator PowerShell so the desktop broker retains current-user ACL authority.
+Rebuild an existing default environment created before the copy-only policy with:
+
+```powershell
+uv sync --locked --link-mode copy --reinstall
+```
+
+If the non-default renderer-evaluation group is also needed, rebuild that locked closure with:
+
+```powershell
+uv sync --locked --group renderer-evaluation --link-mode copy --reinstall
+```
+
+If the worker still reports `config.resource_identity` because an older/elevated environment kept
+Administrator-owned runtime files, recreate only the derived environment while no Python or test
+process is using it:
+
+```powershell
+Remove-Item -LiteralPath .venv -Recurse -Force
+if (Test-Path -LiteralPath .venv) { throw ".venv is still in use" }
+uv sync --locked --group renderer-evaluation --link-mode copy
+```
+
+Ordinary bootstrap already installs the selected Essentials/shiboken UI runtime. This non-default
+group adds only the broad Addons surface needed by the PWS-0106 live Qt PDF comparison; it does not
+activate Qt PDF or Addons in the product runtime, source-import boundary, or shipment graph.
+Use a disposable evaluation environment when possible. The upstream Addons and Essentials wheels
+share PySide namespace files, so removing Addons from an in-place environment can remove their
+shared bootstrap file. Recreate the environment after evaluation, or restore the default closure
+with `uv sync --locked --reinstall-package pyside6-essentials --reinstall-package shiboken6`.
 
 `pyproject.toml` restricts development to CPython 3.14 and requires the exact supported `uv` release. `uv.lock` is committed and must change only as part of an intentional dependency update.
 
@@ -96,10 +126,22 @@ record in [`docs/adr/0002-local-quality-gates.md`](docs/adr/0002-local-quality-g
 
 ## Architecture baseline
 
+Run the first desktop organizer from the locked environment with:
+
+```powershell
+uv run paperworkshell
+```
+
+Its keyboard controls, autosave/threading model, bounded import/preview behavior, and current NVDA
+verification status are documented in
+[`docs/architecture/page-organizer-ui.md`](docs/architecture/page-organizer-ui.md) and
+[`docs/accessibility/pws-0111-nvda-smoke.md`](docs/accessibility/pws-0111-nvda-smoke.md).
+
 The source tree separates pure domain rules, toolkit-free application orchestration, worker
 lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized
 diagnostics. Admitted document engines are confined to worker-side PDF adapters, while package
-initializers remain passive and UI-facing layers do not import those implementations.
+initializers remain passive and UI-facing layers do not import those implementations. The concrete
+`ui` layer alone may import the fully qualified PySide6 QtCore, QtGui, and QtWidgets modules.
 
 `tools/check_import_boundaries.py` statically validates the required package layout, rejects unapproved third-party imports, prevents domain and reverse-UI dependencies, and stops application code from reaching PDF, imaging, or OCR adapters directly. The binding policy and its evolution procedure are documented in [`docs/architecture/dependency-boundaries.md`](docs/architecture/dependency-boundaries.md).
 
@@ -150,6 +192,11 @@ comparison with Qt PDF, and residual staging-cleanup behavior are recorded in
 [`docs/adr/0005-pdf-renderer-selection.md`](docs/adr/0005-pdf-renderer-selection.md). Qt PDF remains
 an evaluation-only test candidate and is not a product dependency.
 
+The desktop UI runtime selection, exact import surface, LGPL route, and file-by-file Windows
+packaging obligations are recorded in
+[`docs/adr/0006-pyside6-ui-runtime.md`](docs/adr/0006-pyside6-ui-runtime.md). PySide6-Addons and the
+convenience PySide6 meta-package remain outside the ordinary runtime dependency closure.
+
 The bounded PDF-thumbnail service resolves current internal page IDs, authenticates immutable
 sources even on cache hits, renders one page per restricted worker generation, and publishes only
 fully validated fixed-layout RGBA8 artifacts under case-scoped internal cache names. Its cache key,
@@ -163,6 +210,14 @@ checks, compares every planned page with a PDFium render, then publishes only th
 through an authenticated no-replace destination commit. Its exact claims, handle boundary,
 resource limits, post-commit history state, and failure semantics are documented in
 [`docs/architecture/pdf-export.md`](docs/architecture/pdf-export.md).
+
+Desktop startup now runs bounded case recovery before worker composition, promotes only
+authenticated manifest checkpoints, reconciles exact export-history/retry evidence, cleans only
+proven disposable artifacts, and surfaces a path-free recovery result. The typed diagnostics
+baseline accepts only closed codes, internal IDs, versions, counts, and numeric resource values.
+The exact ordering, interruption behavior, privacy schema, and intentionally deferred diagnostic
+bundle are documented in
+[`docs/architecture/startup-recovery-and-diagnostics.md`](docs/architecture/startup-recovery-and-diagnostics.md).
 
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in

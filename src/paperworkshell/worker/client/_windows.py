@@ -18,13 +18,15 @@ import threading
 import time
 from contextlib import AbstractContextManager
 from ctypes import wintypes
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from secrets import token_hex
 from typing import TYPE_CHECKING, Any, Final, Never, Self
 
 from paperworkshell.worker.client._acl_recovery import (
+    ACL_RECOVERY_JOURNAL_VERSION,
+    ACL_RECOVERY_LEGACY_VERSION,
     MAX_ACL_RECOVERY_GRANT_ROOTS,
     AclRecoveryEntry,
     AclRecoveryJournal,
@@ -83,6 +85,7 @@ _GRANT_ACCESS: Final = 1
 _REVOKE_ACCESS: Final = 4
 _TRUSTEE_IS_SID: Final = 0
 _TRUSTEE_IS_UNKNOWN: Final = 0
+_NO_INHERITANCE: Final = 0
 _SUB_CONTAINERS_AND_OBJECTS_INHERIT: Final = 0x3
 _FILE_GENERIC_READ: Final = 0x0012_0089
 _FILE_GENERIC_WRITE: Final = 0x0012_0116
@@ -104,6 +107,7 @@ _SECTION_MAP_WRITE: Final = 0x0000_0002
 _SECTION_MAP_READ: Final = 0x0000_0004
 _DELETE: Final = 0x0001_0000
 _READ_CONTROL: Final = 0x0002_0000
+_WRITE_DAC: Final = 0x0004_0000
 _SYNCHRONIZE: Final = 0x0010_0000
 _PRIVATE_TEMP_ACCESS: Final = (
     _FILE_READ_DATA
@@ -116,8 +120,13 @@ _PRIVATE_TEMP_ACCESS: Final = (
     | _READ_CONTROL
     | _SYNCHRONIZE
 )
+_PRIVATE_PYCACHE_DIRECTORY_NAME: Final = "PyCache"
+_PRIVATE_PYCACHE_MUTATION_ACCESS: Final = (
+    _FILE_WRITE_DATA | _FILE_APPEND_DATA | _FILE_DELETE_CHILD | _FILE_WRITE_ATTRIBUTES | _DELETE
+)
 _ACCESS_ALLOWED_ACE_TYPE: Final = 0
 _ACCESS_DENIED_ACE_TYPE: Final = 1
+_ACL_REVISION_DS: Final = 4
 _ACCESS_DENIED_OBJECT_ACE_TYPE: Final = 6
 _ACCESS_DENIED_CALLBACK_ACE_TYPE: Final = 10
 _ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE: Final = 12
@@ -144,6 +153,16 @@ _WIN_BUILTIN_ANY_PACKAGE_SID: Final = 84
 _SECURITY_MAX_SID_SIZE: Final = 68
 _INVALID_FILE_ATTRIBUTES: Final = 0xFFFF_FFFF
 _FILE_ATTRIBUTE_REPARSE_POINT: Final = 0x0000_0400
+_FILE_ATTRIBUTE_DIRECTORY: Final = 0x0000_0010
+_FILE_SHARE_READ: Final = 0x0000_0001
+_FILE_SHARE_WRITE: Final = 0x0000_0002
+_FILE_SHARE_DELETE: Final = 0x0000_0004
+_OPEN_EXISTING: Final = 3
+_FILE_FLAG_BACKUP_SEMANTICS: Final = 0x0200_0000
+_FILE_FLAG_OPEN_REPARSE_POINT: Final = 0x0020_0000
+_FILE_STANDARD_INFO_CLASS: Final = 1
+_FILE_ATTRIBUTE_TAG_INFO_CLASS: Final = 9
+_FILE_ID_INFO_CLASS: Final = 18
 _DRIVE_FIXED: Final = 3
 _TOKEN_USER_INFORMATION_CLASS: Final = 1
 _CURRENT_PROCESS_TOKEN: Final = -4
@@ -165,6 +184,7 @@ _PROFILE_CLEANUP_ATTEMPTS: Final = 3
 _HANDLE_CLOSE_ATTEMPTS: Final = 3
 _ACL_MUTATION_MUTEX_NAME: Final = "Global\\PaperWorkShell.WorkerResourceAcl.v1"
 _ACL_RECOVERY_DIRECTORY_NAME: Final = "PaperWorkShell.WorkerAclRecovery.v1"
+_MUTABLE_PYTHON_CACHE_SUFFIXES: Final = frozenset({".pyc", ".pyo"})
 _ACL_MUTATION_WAIT_MILLISECONDS: Final = 120_000
 _PROCESS_CREATION_WAIT_SECONDS: Final = 10.0
 _MAX_WINDOWS_CPU_TIME_MS: Final = ((1 << 63) - 1) // 10_000
@@ -254,7 +274,12 @@ def _reject(
     context: str,
     safe_message: str,
 ) -> Never:
-    raise WindowsLaunchError(code=code, context=context, safe_message=safe_message)
+    error = WindowsLaunchError(code=code, context=context, safe_message=safe_message)
+    try:
+        raise error from None
+    finally:
+        error.__context__ = None
+        error.__cause__ = None
 
 
 class _SecurityAttributes(ctypes.Structure):
@@ -262,6 +287,34 @@ class _SecurityAttributes(ctypes.Structure):
         ("length", wintypes.DWORD),
         ("security_descriptor", ctypes.c_void_p),
         ("inherit_handle", wintypes.BOOL),
+    ]
+
+
+class _FileStandardInfo(ctypes.Structure):
+    _fields_ = [
+        ("allocation_size", ctypes.c_longlong),
+        ("end_of_file", ctypes.c_longlong),
+        ("number_of_links", wintypes.DWORD),
+        ("delete_pending", wintypes.BOOLEAN),
+        ("directory", wintypes.BOOLEAN),
+    ]
+
+
+class _FileAttributeTagInfo(ctypes.Structure):
+    _fields_ = [
+        ("file_attributes", wintypes.DWORD),
+        ("reparse_tag", wintypes.DWORD),
+    ]
+
+
+class _FileId128(ctypes.Structure):
+    _fields_ = [("identifier", wintypes.BYTE * 16)]
+
+
+class _FileIdInfo(ctypes.Structure):
+    _fields_ = [
+        ("volume_serial_number", ctypes.c_ulonglong),
+        ("file_id", _FileId128),
     ]
 
 
@@ -1323,9 +1376,11 @@ class WindowsLaunchConfig:
     runtime_roots: tuple[Path, ...]
     code_roots: tuple[Path, ...]
     working_directory: Path
+    venv_launcher: Path | None = None
     qpdf_executable: Path | None = None
 
     def __post_init__(self) -> None:
+        venv_paths = () if self.venv_launcher is None else (self.venv_launcher,)
         qpdf_paths = () if self.qpdf_executable is None else (self.qpdf_executable,)
         paths = (
             self.python_executable,
@@ -1333,6 +1388,7 @@ class WindowsLaunchConfig:
             self.working_directory,
             *self.runtime_roots,
             *self.code_roots,
+            *venv_paths,
             *qpdf_paths,
         )
         if (
@@ -1340,6 +1396,7 @@ class WindowsLaunchConfig:
             or not self.code_roots
             or any(not isinstance(path, Path) or not path.is_absolute() for path in paths)
             or any("\x00" in os.fspath(path) for path in paths)
+            or any(_has_named_data_stream(path) for path in paths)
         ):
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
@@ -1358,6 +1415,7 @@ class WindowsLaunchConfig:
                 and self.bootstrap_script.is_file()
                 and self.working_directory.is_dir()
                 and all(path.is_dir() for path in (*self.runtime_roots, *self.code_roots))
+                and all(path.is_file() for path in venv_paths)
                 and (self.qpdf_executable is None or self.qpdf_executable.is_file())
             )
         except OSError:
@@ -1375,6 +1433,15 @@ class WindowsLaunchConfig:
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
                 "config.executable",
                 "The worker executable is outside the approved runtime roots.",
+            )
+        if self.venv_launcher is not None and (
+            self.venv_launcher == self.python_executable
+            or not any(_is_within(self.venv_launcher, root) for root in self.runtime_roots)
+        ):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.venv_launcher",
+                "The worker virtual-environment launcher is not an approved fixed resource.",
             )
         if not any(_is_within(self.bootstrap_script, root) for root in self.code_roots):
             _reject(
@@ -1403,7 +1470,30 @@ class WindowsLaunchConfig:
     def qpdf_access_resources(self) -> tuple[Path, ...]:
         if self.qpdf_executable is None:
             return ()
-        return _approved_resource_tree(self.qpdf_executable.parent)
+        resources = _approved_resource_tree(
+            self.qpdf_executable.parent,
+            acl_authority=False,
+        )
+        approved = {_normalized_path(path) for path in resources}
+        if _normalized_path(self.qpdf_executable) not in approved:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.qpdf_inventory",
+                "The configured qpdf executable is not an approved fixed resource.",
+            )
+        return resources
+
+    @property
+    def required_startup_resources(self) -> tuple[Path, ...]:
+        startup_hint = () if self.venv_launcher is None else (self.venv_launcher,)
+        return (
+            *self.runtime_roots,
+            *self.code_roots,
+            self.python_executable,
+            self.bootstrap_script,
+            self.working_directory,
+            *startup_hint,
+        )
 
     @property
     def fixed_argv(self) -> tuple[str, ...]:
@@ -1415,6 +1505,17 @@ class WindowsLaunchConfig:
             "-X",
             "utf8",
             os.fspath(self.bootstrap_script),
+        )
+
+    def fixed_argv_for_profile(self, local_app_data: Path) -> tuple[str, ...]:
+        """Bind cache lookup to the launch profile's fresh private namespace."""
+
+        pycache_prefix = _require_private_pycache_prefix(local_app_data)
+        return (
+            *self.fixed_argv[:-1],
+            "-X",
+            f"pycache_prefix={os.fspath(pycache_prefix)}",
+            self.fixed_argv[-1],
         )
 
     def __repr__(self) -> str:
@@ -1429,6 +1530,11 @@ def _is_remote_or_device_path(path: Path) -> bool:
         or rendered.startswith("\\\\.\\")
         or rendered.startswith("\\??\\")
     )
+
+
+def _has_named_data_stream(path: Path) -> bool:
+    _drive, tail = os.path.splitdrive(os.fspath(path))
+    return ":" in tail
 
 
 def _normalized_path(path: Path) -> str:
@@ -1446,8 +1552,8 @@ def _is_within(path: Path, root: Path) -> bool:
 
 def _require_no_reparse_local_path(path: Path) -> None:
     rendered = _normalized_path(path)
-    drive, _tail = os.path.splitdrive(rendered)
-    if not drive:
+    drive, tail = os.path.splitdrive(rendered)
+    if not drive or ":" in tail:
         _reject(
             WindowsLaunchErrorCode.CONFIGURATION_INVALID,
             "config.location",
@@ -1484,9 +1590,64 @@ def _require_no_reparse_local_path(path: Path) -> None:
             )
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _RetainedResourceInfo:
+    identity: tuple[int, bytes] = field(repr=False)
+    is_directory: bool
+    is_reparse_point: bool
+    delete_pending: bool
+    link_count: int
+
+
+@dataclass(slots=True, repr=False)
+class _RetainedResource:
+    path: Path = field(repr=False)
+    handle: _OwnedHandle = field(repr=False)
+    info: _RetainedResourceInfo = field(repr=False)
+    original_auto_inherited: bool | None = None
+    grant_started: bool = False
+    hardlink_guard_baseline: int | None = None
+    hardlink_guard_shared: bool = False
+    hardlink_guard_added: bool = False
+    hardlink_guard_uncertain: bool = False
+
+
+@dataclass(slots=True, repr=False)
+class _RetainedResourceGuard:
+    path: Path = field(repr=False)
+    handle: _OwnedHandle = field(repr=False)
+    info: _RetainedResourceInfo = field(repr=False)
+
+
+@dataclass(slots=True, repr=False)
+class _ApprovedResourceInventory:
+    resources: list[_RetainedResource] = field(default_factory=list, repr=False)
+    guards: list[_RetainedResourceGuard] = field(default_factory=list, repr=False)
+    resources_by_path: dict[str, _RetainedResource] = field(default_factory=dict, repr=False)
+    guards_by_path: dict[str, _RetainedResourceGuard] = field(default_factory=dict, repr=False)
+
+    def close_no_raise(self) -> bool:
+        success = True
+        for resource in reversed(self.resources):
+            if not _close_owned_handle_bounded(resource.handle):
+                success = False
+        for guard in reversed(self.guards):
+            if not _close_owned_handle_bounded(guard.handle):
+                success = False
+        if success:
+            self.resources.clear()
+            self.guards.clear()
+            self.resources_by_path.clear()
+            self.guards_by_path.clear()
+        return success
+
+
 @dataclass(slots=True, repr=False)
 class _AccessGrantLease:
     sid: ctypes.c_void_p = field(repr=False)
+    inventory: _ApprovedResourceInventory | None = field(default=None, repr=False)
+    peer_sid_string: str | None = field(default=None, repr=False)
+    cleanup_verified: bool = False
     profile_id: str = field(default_factory=lambda: token_hex(12), repr=False)
     profile_name: str | None = field(default=None, repr=False)
     recovery_roots: tuple[Path, ...] = field(default=(), repr=False)
@@ -1496,57 +1657,250 @@ class _AccessGrantLease:
     recovery_objects: dict[Path, AclRecoveryObject] = field(default_factory=dict, repr=False)
     owner_pid: int = field(default=0, repr=False)
     owner_created_100ns: int = field(default=0, repr=False)
+    prepared_publication_attempted: bool = field(default=False, repr=False)
+
+    def _discard_unmutated_inventory(self, inventory: _ApprovedResourceInventory) -> None:
+        if any(
+            resource.grant_started
+            or resource.hardlink_guard_added
+            or resource.hardlink_guard_uncertain
+            for resource in inventory.resources
+        ):
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "access.cleanup_state",
+                "Windows could not safely discard worker resource access state.",
+            )
+        if not inventory.close_no_raise():
+            _close_failed_inventory(inventory)
+        self.inventory = None
+        self.peer_sid_string = None
+        self.cleanup_verified = False
+        self._clear()
 
     def grant_all(self, paths: tuple[Path, ...]) -> None:
-        discovered: list[Path] = []
-        for path in paths:
-            for descendant in _approved_resource_tree(path):
-                if descendant not in discovered:
-                    discovered.append(descendant)
-        allowed = _normalized_unique_roots((*self.recovery_roots, *self.paths, *paths))
-        mutex = _AclMutationMutex(recover_abandoned=True)
-        with mutex:
-            _recover_acl_entries_locked(
-                allowed,
-                mutex_was_abandoned=mutex.was_abandoned,
+        if self.inventory is not None:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.state",
+                "Worker resource access has already been configured.",
             )
-            for descendant in discovered:
-                if descendant not in self.recovery_objects:
-                    captured = _capture_acl_recovery_object(descendant)
-                    self.recovery_objects[descendant] = captured
-                    self.original_auto_inherited[descendant] = captured.auto_inherited
-                if descendant not in self.observed_objects:
-                    self.observed_objects.append(descendant)
-            new_paths = [path for path in paths if path not in self.paths]
-            for path in paths:
-                if path in self.paths:
-                    continue
-                self.paths.append(path)
-            journal = self._journal()
-            self._write_entry(journal, AclRecoveryPhase.PREPARED)
-            for item in self.recovery_objects.values():
-                _require_acl_recovery_object_identity(item)
-            for path in new_paths:
-                _change_sid_access(path, self.sid, _GRANT_ACCESS)
-            for descendant in discovered:
-                _require_acl_recovery_object_identity(self.recovery_objects[descendant])
-                _restore_dacl_auto_inherited(
-                    descendant,
-                    self.original_auto_inherited[descendant],
+        inventory = _open_approved_resource_inventory(paths)
+        self.inventory = inventory
+        self.peer_sid_string = _current_process_user_sid_string()
+        peer_sid = _convert_string_sid(self.peer_sid_string)
+        try:
+            allowed = _normalized_unique_roots((*self.recovery_roots, *paths))
+            mutex = _AclMutationMutex(recover_abandoned=True)
+            with mutex:
+                _recover_acl_entries_locked(
+                    allowed,
+                    mutex_was_abandoned=mutex.was_abandoned,
                 )
-            self._write_entry(journal, AclRecoveryPhase.ACTIVE)
+                active_entries = _validated_active_acl_entries_locked(allowed)
+                for resource in inventory.resources:
+                    resource.original_auto_inherited = _dacl_auto_inherited_handle(
+                        resource.handle.value
+                    )
+                for resource in inventory.resources:
+                    baseline: int | None = None
+                    if resource.info.is_directory:
+                        resource.hardlink_guard_baseline = None
+                    else:
+                        _require_retained_resource_unchanged(resource)
+                        shared_baseline = _shared_guard_baseline(
+                            resource,
+                            self.peer_sid_string,
+                            active_entries,
+                        )
+                        resource.hardlink_guard_shared = shared_baseline is not None
+                        if shared_baseline is None:
+                            baseline = _exact_deny_ace_count_handle(
+                                resource.handle.value,
+                                peer_sid,
+                                _FILE_WRITE_ATTRIBUTES,
+                            )
+                        else:
+                            baseline = shared_baseline
+                            if (
+                                _exact_deny_ace_count_handle(
+                                    resource.handle.value,
+                                    peer_sid,
+                                    _FILE_WRITE_ATTRIBUTES,
+                                )
+                                != baseline + 1
+                            ):
+                                self._discard_unmutated_inventory(inventory)
+                                _reject(
+                                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                                    "access.guard_verify",
+                                    "Windows could not verify an approved shared resource guard.",
+                                )
+                        resource.hardlink_guard_baseline = baseline
+                    auto_inherited = resource.original_auto_inherited
+                    if auto_inherited is None:
+                        _reject(
+                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                            "access.recovery_inventory",
+                            "Worker access recovery could not authenticate inheritance state.",
+                        )
+                    captured = _capture_exact_acl_recovery_object(
+                        resource,
+                        guard_baseline=baseline,
+                        auto_inherited=auto_inherited,
+                    )
+                    if captured.auto_inherited is not auto_inherited:
+                        _reject(
+                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                            "access.recovery_inventory",
+                            "Worker access recovery could not authenticate inheritance state.",
+                        )
+                    self.recovery_objects[resource.path] = captured
+                    self.original_auto_inherited[resource.path] = captured.auto_inherited
+                    self.observed_objects.append(resource.path)
+                self.paths.extend(path for path in paths if path not in self.paths)
+                journal = self._journal()
+                self.prepared_publication_attempted = True
+                self._write_entry(journal, AclRecoveryPhase.PREPARED)
+                for resource in inventory.resources:
+                    if resource.info.is_directory:
+                        continue
+                    _require_retained_resource_unchanged(resource)
+                    baseline = resource.hardlink_guard_baseline
+                    if baseline is None:
+                        _reject(
+                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                            "access.recovery_inventory",
+                            "Worker access recovery could not prepare a complete inventory.",
+                        )
+                    current = _exact_deny_ace_count_handle(
+                        resource.handle.value,
+                        peer_sid,
+                        _FILE_WRITE_ATTRIBUTES,
+                    )
+                    if resource.hardlink_guard_shared:
+                        if current != baseline + 1:
+                            resource.hardlink_guard_uncertain = True
+                            _reject(
+                                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                                "access.guard_verify",
+                                "Windows could not verify an approved shared resource guard.",
+                            )
+                    elif current == baseline:
+                        _append_exact_deny_ace_handle(
+                            resource.handle.value,
+                            peer_sid,
+                            _FILE_WRITE_ATTRIBUTES,
+                        )
+                        resource.hardlink_guard_added = True
+                    elif current != baseline + 1:
+                        resource.hardlink_guard_uncertain = True
+                        _reject(
+                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                            "access.guard_verify",
+                            "Windows could not verify an approved worker resource guard.",
+                        )
+                    if (
+                        _exact_deny_ace_count_handle(
+                            resource.handle.value,
+                            peer_sid,
+                            _FILE_WRITE_ATTRIBUTES,
+                        )
+                        != baseline + 1
+                    ):
+                        resource.hardlink_guard_uncertain = True
+                        _reject(
+                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                            "access.guard_verify",
+                            "Windows could not verify an approved worker resource guard.",
+                        )
+                    _require_retained_resource_unchanged(resource)
+                for resource in inventory.resources:
+                    _require_retained_resource_unchanged(resource)
+                    resource.grant_started = True
+                    _change_sid_access_handle(
+                        resource.handle.value,
+                        self.sid,
+                        _GRANT_ACCESS,
+                    )
+                for resource in inventory.resources:
+                    expected = resource.original_auto_inherited
+                    if expected is None:
+                        continue
+                    _restore_dacl_auto_inherited_handle(resource.handle.value, expected)
+                for resource in inventory.resources:
+                    _require_retained_resource_unchanged(resource)
+                    if (
+                        _sid_access_mask_handle(resource.handle.value, self.sid)
+                        & _FILE_GENERIC_READ_EXECUTE
+                        != _FILE_GENERIC_READ_EXECUTE
+                    ):
+                        _reject(
+                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                            "access.verify",
+                            "Windows could not verify worker access to an approved resource.",
+                        )
+                self._write_entry(journal, AclRecoveryPhase.ACTIVE)
+        finally:
+            _local_free(peer_sid)
 
     def require_read_execute(self, paths: tuple[Path, ...]) -> None:
+        inventory = self.inventory
+        if inventory is None:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.state",
+                "Worker resource access has not been configured.",
+            )
+        peer_sid_string = self.peer_sid_string
+        if peer_sid_string is None:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.state",
+                "Worker resource access has not been configured.",
+            )
+        peer_sid = _convert_string_sid(peer_sid_string)
+        try:
+            for resource in inventory.resources:
+                _require_retained_resource_unchanged(resource)
+                if resource.info.is_directory:
+                    continue
+                baseline = resource.hardlink_guard_baseline
+                if (
+                    baseline is None
+                    or _exact_deny_ace_count_handle(
+                        resource.handle.value,
+                        peer_sid,
+                        _FILE_WRITE_ATTRIBUTES,
+                    )
+                    != baseline + 1
+                ):
+                    _reject(
+                        WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                        "access.guard_verify",
+                        "Windows could not verify an approved worker resource guard.",
+                    )
+        finally:
+            _local_free(peer_sid)
         for path in paths:
-            mask = _sid_access_mask(path, self.sid)
-            if mask & _FILE_GENERIC_READ_EXECUTE != _FILE_GENERIC_READ_EXECUTE:
+            requested_resource = inventory.resources_by_path.get(_normalized_path(path))
+            if requested_resource is None:
                 _reject(
                     WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
                     "access.verify",
                     "Windows could not verify worker access to an approved resource.",
                 )
-            if path not in self.observed_objects:
-                self.observed_objects.append(path)
+            _require_retained_resource_unchanged(requested_resource)
+            if (
+                _sid_access_mask_handle(requested_resource.handle.value, self.sid)
+                & _FILE_GENERIC_READ_EXECUTE
+                != _FILE_GENERIC_READ_EXECUTE
+            ):
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.verify",
+                    "Windows could not verify worker access to an approved resource.",
+                )
 
     def ensure_read_execute(
         self,
@@ -1568,54 +1922,170 @@ class _AccessGrantLease:
             )
 
     def close_no_raise(self) -> bool:
-        if not self.paths:
+        inventory = self.inventory
+        if inventory is None:
             return True
-        success = True
-        try:
-            allowed = _normalized_unique_roots((*self.recovery_roots, *self.paths))
-            mutex = _AclMutationMutex(recover_abandoned=True)
-            with mutex:
-                _recover_acl_entries_locked(
-                    allowed,
-                    mutex_was_abandoned=mutex.was_abandoned,
-                )
-                journal = self._journal()
-                if not journal.exists(self.profile_id):
-                    self._clear()
-                    return True
-                self._write_entry(journal, AclRecoveryPhase.REVOKING)
-                for item in self.recovery_objects.values():
-                    _require_acl_recovery_object_identity(item)
-                for path in reversed(self.paths):
-                    try:
-                        _change_sid_access(path, self.sid, _REVOKE_ACCESS)
-                    except WindowsLaunchError:
-                        success = False
-                for path in self.observed_objects:
-                    try:
-                        expected = self.original_auto_inherited[path]
-                        _restore_dacl_auto_inherited(path, expected)
-                        if _sid_access_mask(path, self.sid):
+        if not self.prepared_publication_attempted:
+            try:
+                self._discard_unmutated_inventory(inventory)
+            except WindowsLaunchError:
+                return False
+            return True
+        if not self.cleanup_verified:
+            success = True
+            try:
+                allowed = _normalized_unique_roots((*self.recovery_roots, *self.paths))
+                mutex = _AclMutationMutex(recover_abandoned=True)
+                with mutex:
+                    _recover_acl_entries_locked(
+                        allowed,
+                        mutex_was_abandoned=mutex.was_abandoned,
+                    )
+                    journal = self._journal()
+                    self._write_entry(journal, AclRecoveryPhase.REVOKING)
+                    active_entries = _validated_active_acl_entries_locked(
+                        allowed,
+                        exclude_profile_id=self.profile_id,
+                    )
+                    for resource in reversed(inventory.resources):
+                        try:
+                            _require_retained_resource_unchanged(
+                                resource,
+                                require_single_link=False,
+                            )
+                            _change_sid_access_handle(
+                                resource.handle.value,
+                                self.sid,
+                                _REVOKE_ACCESS,
+                            )
+                        except WindowsLaunchError:
                             success = False
-                    except KeyError, WindowsLaunchError:
+                    for resource in inventory.resources:
+                        try:
+                            _require_retained_resource_unchanged(
+                                resource,
+                                require_single_link=False,
+                            )
+                            if _sid_access_mask_handle(resource.handle.value, self.sid):
+                                success = False
+                        except WindowsLaunchError:
+                            success = False
+                    peer_sid_string = self.peer_sid_string
+                    peer_sid = (
+                        None if peer_sid_string is None else _convert_string_sid(peer_sid_string)
+                    )
+                    try:
+                        if peer_sid is None:
+                            success = False
+                        elif success:
+                            assert peer_sid_string is not None
+                            for resource in reversed(inventory.resources):
+                                if resource.info.is_directory:
+                                    continue
+                                try:
+                                    _require_retained_resource_unchanged(
+                                        resource,
+                                        require_single_link=False,
+                                    )
+                                    baseline = resource.hardlink_guard_baseline
+                                    if baseline is None:
+                                        raise WindowsLaunchError(
+                                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                                            "access.recovery_inventory",
+                                            "Worker access recovery has an incomplete guard inventory.",
+                                        )
+                                    current = _exact_deny_ace_count_handle(
+                                        resource.handle.value,
+                                        peer_sid,
+                                        _FILE_WRITE_ATTRIBUTES,
+                                    )
+                                    covered = _active_guard_covers(
+                                        resource,
+                                        baseline,
+                                        peer_sid_string,
+                                        active_entries,
+                                    )
+                                    if covered:
+                                        if current != baseline + 1:
+                                            raise WindowsLaunchError(
+                                                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                                                "access.guard_verify",
+                                                "Windows could not verify an approved worker resource guard.",
+                                            )
+                                    elif current == baseline + 1:
+                                        _remove_one_exact_deny_ace_handle(
+                                            resource.handle.value,
+                                            peer_sid,
+                                            _FILE_WRITE_ATTRIBUTES,
+                                        )
+                                        if (
+                                            _exact_deny_ace_count_handle(
+                                                resource.handle.value,
+                                                peer_sid,
+                                                _FILE_WRITE_ATTRIBUTES,
+                                            )
+                                            != baseline
+                                        ):
+                                            raise WindowsLaunchError(
+                                                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                                                "access.guard_remove",
+                                                "Windows could not remove an approved worker resource guard.",
+                                            )
+                                    elif current != baseline:
+                                        raise WindowsLaunchError(
+                                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                                            "access.guard_verify",
+                                            "Windows could not verify an approved worker resource guard.",
+                                        )
+                                except WindowsLaunchError:
+                                    success = False
+                    finally:
+                        if peer_sid is not None:
+                            _local_free(peer_sid)
+                    if success:
+                        for resource in inventory.resources:
+                            expected = resource.original_auto_inherited
+                            if expected is None:
+                                success = False
+                                continue
+                            try:
+                                _restore_dacl_auto_inherited_handle(
+                                    resource.handle.value,
+                                    expected,
+                                )
+                                if (
+                                    _dacl_auto_inherited_handle(resource.handle.value)
+                                    is not expected
+                                ):
+                                    success = False
+                            except WindowsLaunchError:
+                                success = False
+                    if success:
+                        journal.delete(self.profile_id)
+                    if success and journal.exists(self.profile_id):
                         success = False
-                if success:
-                    journal.delete(self.profile_id)
-        except WindowsLaunchError, AclRecoveryJournalError:
-            success = False
-        if success:
-            self._clear()
-        return success
+            except WindowsLaunchError, AclRecoveryJournalError:
+                success = False
+            if not success:
+                return False
+            self.cleanup_verified = True
+        if not inventory.close_no_raise():
+            return False
+        self.inventory = None
+        self.peer_sid_string = None
+        self.cleanup_verified = False
+        self._clear()
+        return True
 
     def _journal(self) -> AclRecoveryJournal:
         try:
             return AclRecoveryJournal(_ensure_acl_recovery_directory())
         except AclRecoveryJournalError:
-            raise WindowsLaunchError(
+            _reject(
                 WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
                 "access.recovery_journal",
                 "Worker access recovery records are invalid or unavailable.",
-            ) from None
+            )
 
     def _entry(self, phase: AclRecoveryPhase) -> AclRecoveryEntry:
         if not self.owner_pid or not self.owner_created_100ns:
@@ -1636,6 +2106,8 @@ class _AccessGrantLease:
                 phase=phase,
                 grant_roots=tuple(self.paths),
                 objects=objects,
+                peer_sid=self.peer_sid_string,
+                journal_version=ACL_RECOVERY_JOURNAL_VERSION,
             )
         except ValueError:
             _reject(
@@ -1652,24 +2124,25 @@ class _AccessGrantLease:
         try:
             journal.write(self._entry(phase))
         except AclRecoveryJournalError:
-            raise WindowsLaunchError(
+            _reject(
                 WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
                 "access.recovery_journal",
                 "Worker access recovery records could not be persisted.",
-            ) from None
+            )
 
     def _clear(self) -> None:
         self.paths.clear()
         self.observed_objects.clear()
         self.original_auto_inherited.clear()
         self.recovery_objects.clear()
+        self.prepared_publication_attempted = False
 
 
-def _capture_security_descriptor(path: Path) -> bytes:
+def _capture_security_descriptor_handle(handle: int) -> bytes:
     advapi32 = _advapi32()
-    get_security_info = advapi32.GetNamedSecurityInfoW
+    get_security_info = advapi32.GetSecurityInfo
     get_security_info.argtypes = (
-        wintypes.LPWSTR,
+        wintypes.HANDLE,
         ctypes.c_int,
         wintypes.DWORD,
         ctypes.POINTER(ctypes.c_void_p),
@@ -1683,9 +2156,8 @@ def _capture_security_descriptor(path: Path) -> bytes:
     get_length.argtypes = (ctypes.c_void_p,)
     get_length.restype = wintypes.DWORD
     descriptor = ctypes.c_void_p()
-    mutable_path = ctypes.create_unicode_buffer(os.fspath(path))
     status = get_security_info(
-        mutable_path,
+        wintypes.HANDLE(handle),
         _SE_FILE_OBJECT,
         _DACL_SECURITY_INFORMATION,
         None,
@@ -1740,31 +2212,31 @@ def _require_non_null_dacl(descriptor: bytes | bytearray) -> None:
         )
 
 
-def _dacl_auto_inherited(path: Path) -> bool:
-    descriptor = _capture_security_descriptor(path)
+def _dacl_auto_inherited_handle(handle: int) -> bool:
+    descriptor = _capture_security_descriptor_handle(handle)
     _require_non_null_dacl(descriptor)
     return bool(_descriptor_control(descriptor) & _SE_DACL_AUTO_INHERITED)
 
 
-def _restore_dacl_auto_inherited(path: Path, expected: bool) -> None:
-    descriptor = bytearray(_capture_security_descriptor(path))
+def _restore_dacl_auto_inherited_handle(handle: int, expected: bool) -> None:
+    descriptor = bytearray(_capture_security_descriptor_handle(handle))
     _require_non_null_dacl(descriptor)
     control = _descriptor_control(descriptor)
     desired = control | _SE_DACL_AUTO_INHERITED if expected else control & ~_SE_DACL_AUTO_INHERITED
     if desired == control:
         return
     descriptor[2:4] = desired.to_bytes(2, "little")
-    set_security = _advapi32().SetFileSecurityW
-    set_security.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p)
+    set_security = _advapi32().SetKernelObjectSecurity
+    set_security.argtypes = (wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p)
     set_security.restype = wintypes.BOOL
     storage = ctypes.create_string_buffer(bytes(descriptor))
     if (
         not set_security(
-            os.fspath(path),
+            wintypes.HANDLE(handle),
             _DACL_SECURITY_INFORMATION,
             ctypes.cast(storage, ctypes.c_void_p),
         )
-        or _dacl_auto_inherited(path) is not expected
+        or _dacl_auto_inherited_handle(handle) is not expected
     ):
         _reject(
             WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
@@ -1773,72 +2245,648 @@ def _restore_dacl_auto_inherited(path: Path, expected: bool) -> None:
         )
 
 
-def _approved_resource_tree(root: Path) -> tuple[Path, ...]:
-    discovered: list[Path] = []
-    pending: list[tuple[Path, int]] = [(root, 0)]
-    while pending:
-        current, depth = pending.pop()
-        if depth > _MAX_APPROVED_RESOURCE_DEPTH:
+def _convert_string_sid(value: str) -> ctypes.c_void_p:
+    convert = _advapi32().ConvertStringSidToSidW
+    convert.argtypes = (wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p))
+    convert.restype = wintypes.BOOL
+    sid = ctypes.c_void_p()
+    if not convert(value, ctypes.byref(sid)) or not sid.value:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_identity",
+            "Windows could not authenticate the worker resource guard.",
+        )
+    return sid
+
+
+def _live_handle_dacl(handle: int) -> tuple[ctypes.c_void_p, ctypes.c_void_p]:
+    get_security_info = _advapi32().GetSecurityInfo
+    get_security_info.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    get_security_info.restype = wintypes.DWORD
+    descriptor = ctypes.c_void_p()
+    dacl = ctypes.c_void_p()
+    status = get_security_info(
+        wintypes.HANDLE(handle),
+        _SE_FILE_OBJECT,
+        _DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        ctypes.byref(dacl),
+        None,
+        ctypes.byref(descriptor),
+    )
+    if status != _ERROR_SUCCESS or not descriptor.value or not dacl.value:
+        _local_free(descriptor)
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_read",
+            "Windows could not authenticate an approved worker resource guard.",
+        )
+    return descriptor, dacl
+
+
+def _acl_size_information(dacl: ctypes.c_void_p) -> _AclSizeInformation:
+    get_information = _advapi32().GetAclInformation
+    get_information.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_int,
+    )
+    get_information.restype = wintypes.BOOL
+    information = _AclSizeInformation()
+    if not get_information(
+        dacl,
+        ctypes.byref(information),
+        ctypes.sizeof(information),
+        _ACL_SIZE_INFORMATION_CLASS,
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_read",
+            "Windows could not authenticate an approved worker resource guard.",
+        )
+    return information
+
+
+def _acl_ace_pointer(dacl: ctypes.c_void_p, index: int) -> ctypes.c_void_p:
+    get_ace = _advapi32().GetAce
+    get_ace.argtypes = (
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    get_ace.restype = wintypes.BOOL
+    pointer = ctypes.c_void_p()
+    if not get_ace(dacl, index, ctypes.byref(pointer)) or not pointer.value:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_read",
+            "Windows could not authenticate an approved worker resource guard.",
+        )
+    header = _AceHeader.from_address(pointer.value)
+    if int(header.ace_size) < _AccessAllowedAce.sid_start.offset + 4:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_read",
+            "Windows could not authenticate an approved worker resource guard.",
+        )
+    return pointer
+
+
+def _is_exact_deny_ace(
+    pointer: ctypes.c_void_p,
+    sid: ctypes.c_void_p,
+    mask: int,
+) -> bool:
+    address = pointer.value
+    if address is None:
+        return False
+    ace = _AccessAllowedAce.from_address(address)
+    if (
+        int(ace.header.ace_type) != _ACCESS_DENIED_ACE_TYPE
+        or int(ace.header.ace_flags) != _NO_INHERITANCE
+        or int(ace.mask) != mask
+    ):
+        return False
+    equal_sid = _advapi32().EqualSid
+    equal_sid.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+    equal_sid.restype = wintypes.BOOL
+    ace_sid = ctypes.c_void_p(address + _AccessAllowedAce.sid_start.offset)
+    return bool(equal_sid(ace_sid, sid))
+
+
+def _exact_deny_ace_count_handle(
+    handle: int,
+    sid: ctypes.c_void_p,
+    mask: int,
+) -> int:
+    descriptor, dacl = _live_handle_dacl(handle)
+    try:
+        information = _acl_size_information(dacl)
+        return sum(
+            _is_exact_deny_ace(_acl_ace_pointer(dacl, index), sid, mask)
+            for index in range(int(information.ace_count))
+        )
+    finally:
+        _local_free(descriptor)
+
+
+def _initialize_acl_buffer(size: int) -> tuple[ctypes.Array[ctypes.c_char], ctypes.c_void_p]:
+    if size < 8 or size > 65_535:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_build",
+            "Windows could not construct an approved worker resource guard.",
+        )
+    storage = ctypes.create_string_buffer(size)
+    pointer = ctypes.cast(storage, ctypes.c_void_p)
+    initialize = _advapi32().InitializeAcl
+    initialize.argtypes = (ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD)
+    initialize.restype = wintypes.BOOL
+    if not initialize(pointer, size, _ACL_REVISION_DS):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_build",
+            "Windows could not construct an approved worker resource guard.",
+        )
+    return storage, pointer
+
+
+def _copy_ace_to_acl(destination: ctypes.c_void_p, source: ctypes.c_void_p) -> None:
+    address = source.value
+    if address is None:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_build",
+            "Windows could not construct an approved worker resource guard.",
+        )
+    header = _AceHeader.from_address(address)
+    add_ace = _advapi32().AddAce
+    add_ace.argtypes = (
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    add_ace.restype = wintypes.BOOL
+    if not add_ace(
+        destination,
+        _ACL_REVISION_DS,
+        0xFFFF_FFFF,
+        source,
+        int(header.ace_size),
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_build",
+            "Windows could not construct an approved worker resource guard.",
+        )
+
+
+def _set_handle_dacl(handle: int, dacl: ctypes.c_void_p) -> None:
+    set_security_info = _advapi32().SetSecurityInfo
+    set_security_info.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    )
+    set_security_info.restype = wintypes.DWORD
+    if (
+        set_security_info(
+            wintypes.HANDLE(handle),
+            _SE_FILE_OBJECT,
+            _DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            dacl,
+            None,
+        )
+        != _ERROR_SUCCESS
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_apply",
+            "Windows could not apply an approved worker resource guard.",
+        )
+
+
+def _append_exact_deny_ace_handle(
+    handle: int,
+    sid: ctypes.c_void_p,
+    mask: int,
+) -> None:
+    descriptor, old_dacl = _live_handle_dacl(handle)
+    try:
+        information = _acl_size_information(old_dacl)
+        get_length_sid = _advapi32().GetLengthSid
+        get_length_sid.argtypes = (ctypes.c_void_p,)
+        get_length_sid.restype = wintypes.DWORD
+        sid_size = int(get_length_sid(sid))
+        ace_size = (_AccessAllowedAce.sid_start.offset + sid_size + 3) & ~3
+        storage, new_dacl = _initialize_acl_buffer(int(information.acl_bytes_in_use) + ace_size)
+        add_deny = _advapi32().AddAccessDeniedAceEx
+        add_deny.argtypes = (
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+        )
+        add_deny.restype = wintypes.BOOL
+        if not add_deny(
+            new_dacl,
+            _ACL_REVISION_DS,
+            _NO_INHERITANCE,
+            mask,
+            sid,
+        ):
             _reject(
-                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                "config.resource_depth",
-                "The approved worker resource tree exceeds its safe depth.",
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.guard_build",
+                "Windows could not construct an approved worker resource guard.",
             )
-        _require_no_reparse_local_path(current)
-        observed: os.stat_result | None = None
-        try:
-            observed = current.stat(follow_symlinks=False)
-        except OSError:
-            pass
-        if observed is None:
+        for index in range(int(information.ace_count)):
+            _copy_ace_to_acl(new_dacl, _acl_ace_pointer(old_dacl, index))
+        _set_handle_dacl(handle, new_dacl)
+        _ = storage
+    finally:
+        _local_free(descriptor)
+
+
+def _remove_one_exact_deny_ace_handle(
+    handle: int,
+    sid: ctypes.c_void_p,
+    mask: int,
+) -> None:
+    descriptor, old_dacl = _live_handle_dacl(handle)
+    before = 0
+    try:
+        information = _acl_size_information(old_dacl)
+        storage, new_dacl = _initialize_acl_buffer(int(information.acl_bytes_in_use))
+        removed = False
+        for index in range(int(information.ace_count)):
+            ace = _acl_ace_pointer(old_dacl, index)
+            if _is_exact_deny_ace(ace, sid, mask):
+                before += 1
+                if not removed:
+                    removed = True
+                    continue
+            _copy_ace_to_acl(new_dacl, ace)
+        if not removed:
             _reject(
-                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                "config.resources",
-                "An approved worker runtime resource is unavailable.",
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.guard_remove",
+                "Windows could not remove an approved worker resource guard.",
             )
-        attributes = int(getattr(observed, "st_file_attributes", 0))
-        is_directory = stat.S_ISDIR(observed.st_mode)
-        if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
-            _reject(
-                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                "config.reparse",
-                "Linked or redirected worker runtime resources are not supported.",
-            )
-        if not is_directory and (not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1):
+        _set_handle_dacl(handle, new_dacl)
+        _ = storage
+    finally:
+        _local_free(descriptor)
+    if _exact_deny_ace_count_handle(handle, sid, mask) != before - 1:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.guard_remove",
+            "Windows could not remove an approved worker resource guard.",
+        )
+
+
+def _query_retained_resource_info(handle: int) -> _RetainedResourceInfo:
+    kernel32 = _kernel32()
+    get_information = kernel32.GetFileInformationByHandleEx
+    get_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    get_information.restype = wintypes.BOOL
+    standard = _FileStandardInfo()
+    attributes = _FileAttributeTagInfo()
+    identity = _FileIdInfo()
+    for information_class, destination in (
+        (_FILE_STANDARD_INFO_CLASS, standard),
+        (_FILE_ATTRIBUTE_TAG_INFO_CLASS, attributes),
+        (_FILE_ID_INFO_CLASS, identity),
+    ):
+        if not get_information(
+            wintypes.HANDLE(handle),
+            information_class,
+            ctypes.byref(destination),
+            ctypes.sizeof(destination),
+        ):
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
                 "config.resource_identity",
-                "Hardlinked or special worker runtime resources are not supported.",
+                "An approved worker runtime resource could not be authenticated.",
             )
-        discovered.append(current)
-        if len(discovered) > _MAX_APPROVED_RESOURCE_ENTRIES:
+    file_attributes = int(attributes.file_attributes)
+    return _RetainedResourceInfo(
+        identity=(
+            int(identity.volume_serial_number),
+            bytes(identity.file_id.identifier),
+        ),
+        is_directory=bool(bool(standard.directory) or file_attributes & _FILE_ATTRIBUTE_DIRECTORY),
+        is_reparse_point=bool(file_attributes & _FILE_ATTRIBUTE_REPARSE_POINT),
+        delete_pending=bool(standard.delete_pending),
+        link_count=int(standard.number_of_links),
+    )
+
+
+def _open_retained_resource(
+    path: Path,
+    *,
+    acl_authority: bool,
+    require_single_link: bool = True,
+) -> tuple[_OwnedHandle, _RetainedResourceInfo]:
+    kernel32 = _kernel32()
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    desired_access = _GENERIC_READ | _FILE_READ_ATTRIBUTES
+    if acl_authority:
+        desired_access |= _READ_CONTROL | _WRITE_DAC
+    raw_handle = create_file(
+        os.fspath(path),
+        desired_access,
+        _FILE_SHARE_READ,
+        None,
+        _OPEN_EXISTING,
+        _FILE_FLAG_BACKUP_SEMANTICS | _FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+    )
+    value = int(raw_handle) if raw_handle else 0
+    if not value or value == _INVALID_HANDLE_VALUE:
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.resource_identity",
+            "An approved worker runtime resource could not be authenticated.",
+        )
+    handle = _OwnedHandle(value)
+    try:
+        info = _query_retained_resource_info(handle.value)
+    except BaseException:
+        if not _close_owned_handle_bounded(handle):
+            _quarantine_owned_handle(handle)
             _reject(
-                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                "config.resource_entries",
-                "The approved worker resource tree exceeds its safe entry limit.",
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "config.resource_handle",
+                "Windows could not close a worker resource verification handle.",
             )
-        if not is_directory:
+        raise
+    if info.is_reparse_point or info.delete_pending:
+        if not _close_owned_handle_bounded(handle):
+            _quarantine_owned_handle(handle)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "config.resource_handle",
+                "Windows could not close a worker resource verification handle.",
+            )
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.reparse",
+            "Linked or redirected worker runtime resources are not supported.",
+        )
+    if require_single_link and not info.is_directory and info.link_count != 1:
+        if not _close_owned_handle_bounded(handle):
+            _quarantine_owned_handle(handle)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "config.resource_handle",
+                "Windows could not close a worker resource verification handle.",
+            )
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.resource_links",
+            "Approved worker runtime files must not have filesystem aliases.",
+        )
+    return handle, info
+
+
+def _absolute_path_prefixes(path: Path) -> tuple[Path, ...]:
+    absolute = Path(os.path.abspath(path))
+    anchor = Path(absolute.anchor)
+    if not absolute.anchor:
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.location",
+            "Worker resources must be on a supported fixed local drive.",
+        )
+    prefixes = [anchor]
+    current = anchor
+    try:
+        relative = absolute.relative_to(anchor)
+    except ValueError:
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.location",
+            "Worker resources must be on a supported fixed local drive.",
+        )
+    for component in relative.parts:
+        current /= component
+        prefixes.append(current)
+    return tuple(prefixes)
+
+
+def _close_failed_inventory(inventory: _ApprovedResourceInventory) -> None:
+    if inventory.close_no_raise():
+        return
+    for resource in inventory.resources:
+        if resource.handle.is_open:
+            _quarantine_owned_handle(resource.handle)
+    for guard in inventory.guards:
+        if guard.handle.is_open:
+            _quarantine_owned_handle(guard.handle)
+    _reject(
+        WindowsLaunchErrorCode.CLEANUP_FAILED,
+        "config.resource_handle",
+        "Windows could not close worker resource verification handles.",
+    )
+
+
+def _retain_ancestor_guards(
+    parent: Path,
+    inventory: _ApprovedResourceInventory,
+) -> None:
+    for ancestor in _absolute_path_prefixes(parent):
+        key = _normalized_path(ancestor)
+        if key in inventory.resources_by_path or key in inventory.guards_by_path:
             continue
-        children: list[Path] | None = None
-        try:
-            children = sorted(current.iterdir(), key=lambda child: child.name.casefold())
-        except OSError:
-            pass
-        if children is None:
+        handle, info = _open_retained_resource(ancestor, acl_authority=False)
+        if not info.is_directory:
+            if not _close_owned_handle_bounded(handle):
+                _quarantine_owned_handle(handle)
+                _reject(
+                    WindowsLaunchErrorCode.CLEANUP_FAILED,
+                    "config.resource_handle",
+                    "Windows could not close a worker resource verification handle.",
+                )
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                "config.resources",
-                "An approved worker runtime resource is unavailable.",
+                "config.resource_identity",
+                "An approved worker runtime resource could not be authenticated.",
             )
-        pending.extend((child, depth + 1) for child in reversed(children))
-    return tuple(discovered)
+        guard = _RetainedResourceGuard(ancestor, handle, info)
+        inventory.guards.append(guard)
+        inventory.guards_by_path[key] = guard
 
 
-def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
+def _retain_approved_resource(
+    path: Path,
+    inventory: _ApprovedResourceInventory,
+    *,
+    acl_authority: bool = True,
+    require_single_link: bool = True,
+) -> _RetainedResource:
+    key = _normalized_path(path)
+    existing = inventory.resources_by_path.get(key)
+    if existing is not None:
+        return existing
+    handle, info = _open_retained_resource(
+        path,
+        acl_authority=acl_authority,
+        require_single_link=require_single_link,
+    )
+    guard = inventory.guards_by_path.get(key)
+    if guard is not None and guard.info.identity != info.identity:
+        if not _close_owned_handle_bounded(handle):
+            _quarantine_owned_handle(handle)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "config.resource_handle",
+                "Windows could not close a worker resource verification handle.",
+            )
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.resource_identity",
+            "An approved worker runtime resource could not be authenticated.",
+        )
+    resource = _RetainedResource(path, handle, info)
+    inventory.resources.append(resource)
+    inventory.resources_by_path[key] = resource
+    return resource
+
+
+def _open_approved_resource_inventory(
+    roots: tuple[Path, ...],
+    *,
+    acl_authority: bool = True,
+) -> _ApprovedResourceInventory:
+    inventory = _ApprovedResourceInventory()
+    try:
+        for root in sorted(roots, key=lambda candidate: len(_absolute_path_prefixes(candidate))):
+            if _is_mutable_python_cache_entry(root):
+                _reject(
+                    WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                    "config.resources",
+                    "A mutable Python cache cannot be a worker resource root.",
+                )
+            _require_no_reparse_local_path(root)
+            _retain_ancestor_guards(root.parent, inventory)
+            pending: list[tuple[Path, int]] = [(root, 0)]
+            while pending:
+                current, depth = pending.pop()
+                if depth > _MAX_APPROVED_RESOURCE_DEPTH:
+                    _reject(
+                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                        "config.resource_depth",
+                        "The approved worker resource tree exceeds its safe depth.",
+                    )
+                key = _normalized_path(current)
+                if key in inventory.resources_by_path:
+                    continue
+                resource = _retain_approved_resource(
+                    current,
+                    inventory,
+                    acl_authority=acl_authority,
+                )
+                if len(inventory.resources) > _MAX_APPROVED_RESOURCE_ENTRIES:
+                    _reject(
+                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                        "config.resource_entries",
+                        "The approved worker resource tree exceeds its safe entry limit.",
+                    )
+                if not resource.info.is_directory:
+                    continue
+                children: list[Path] | None = None
+                try:
+                    children = sorted(current.iterdir(), key=lambda child: child.name.casefold())
+                except OSError:
+                    pass
+                if children is None:
+                    _reject(
+                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                        "config.resources",
+                        "An approved worker runtime resource is unavailable.",
+                    )
+                pending.extend(
+                    (child, depth + 1)
+                    for child in reversed(children)
+                    if not _is_mutable_python_cache_entry(child)
+                )
+        return inventory
+    except BaseException:
+        _close_failed_inventory(inventory)
+        raise
+
+
+def _is_mutable_python_cache_entry(path: Path) -> bool:
+    """Exclude interpreter caches that trusted GUI imports may replace at runtime."""
+
+    return (
+        path.name.casefold() == "__pycache__"
+        or path.suffix.casefold() in _MUTABLE_PYTHON_CACHE_SUFFIXES
+    )
+
+
+def _require_retained_resource_unchanged(
+    resource: _RetainedResource,
+    *,
+    require_single_link: bool = True,
+) -> None:
+    current = _query_retained_resource_info(resource.handle.value)
+    if (
+        current.identity != resource.info.identity
+        or current.is_directory is not resource.info.is_directory
+        or current.is_reparse_point
+        or current.delete_pending
+        or (require_single_link and not current.is_directory and current.link_count != 1)
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.identity",
+            "Windows could not authenticate an approved worker resource.",
+        )
+
+
+def _approved_resource_tree(
+    root: Path,
+    *,
+    acl_authority: bool = True,
+) -> tuple[Path, ...]:
+    inventory = _open_approved_resource_inventory(
+        (root,),
+        acl_authority=acl_authority,
+    )
+    paths = tuple(resource.path for resource in inventory.resources)
+    if not inventory.close_no_raise():
+        _close_failed_inventory(inventory)
+    return paths
+
+
+def _change_sid_access_handle(
+    handle: int,
+    sid: ctypes.c_void_p,
+    mode: int,
+    *,
+    inheritance: int = _NO_INHERITANCE,
+) -> None:
     advapi32 = _advapi32()
-    get_security_info = advapi32.GetNamedSecurityInfoW
+    get_security_info = advapi32.GetSecurityInfo
     get_security_info.argtypes = (
-        wintypes.LPWSTR,
+        wintypes.HANDLE,
         ctypes.c_int,
         wintypes.DWORD,
         ctypes.POINTER(ctypes.c_void_p),
@@ -1856,9 +2904,9 @@ def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
         ctypes.POINTER(ctypes.c_void_p),
     )
     set_entries.restype = wintypes.DWORD
-    set_security_info = advapi32.SetNamedSecurityInfoW
+    set_security_info = advapi32.SetSecurityInfo
     set_security_info.argtypes = (
-        wintypes.LPWSTR,
+        wintypes.HANDLE,
         ctypes.c_int,
         wintypes.DWORD,
         ctypes.c_void_p,
@@ -1871,9 +2919,8 @@ def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
     descriptor = ctypes.c_void_p()
     old_dacl = ctypes.c_void_p()
     new_dacl = ctypes.c_void_p()
-    mutable_path = ctypes.create_unicode_buffer(os.fspath(path))
     status = get_security_info(
-        mutable_path,
+        wintypes.HANDLE(handle),
         _SE_FILE_OBJECT,
         _DACL_SECURITY_INFORMATION,
         None,
@@ -1892,7 +2939,7 @@ def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
         entry = _ExplicitAccessW(
             access_permissions=_FILE_GENERIC_READ_EXECUTE,
             access_mode=mode,
-            inheritance=_SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+            inheritance=inheritance,
             trustee=_TrusteeW(
                 multiple_trustee=None,
                 multiple_trustee_operation=0,
@@ -1909,7 +2956,7 @@ def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
                 "Windows could not construct the approved worker resource policy.",
             )
         status = set_security_info(
-            mutable_path,
+            wintypes.HANDLE(handle),
             _SE_FILE_OBJECT,
             _DACL_SECURITY_INFORMATION,
             None,
@@ -1925,6 +2972,97 @@ def _change_sid_access(path: Path, sid: ctypes.c_void_p, mode: int) -> None:
             )
     finally:
         _local_free(new_dacl)
+        _local_free(descriptor)
+
+
+def _sid_access_mask_handle(handle: int, sid: ctypes.c_void_p) -> int:
+    advapi32 = _advapi32()
+    get_security_info = advapi32.GetSecurityInfo
+    get_security_info.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    get_security_info.restype = wintypes.DWORD
+    get_acl_information = advapi32.GetAclInformation
+    get_acl_information.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_int,
+    )
+    get_acl_information.restype = wintypes.BOOL
+    get_ace = advapi32.GetAce
+    get_ace.argtypes = (
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    get_ace.restype = wintypes.BOOL
+    equal_sid = advapi32.EqualSid
+    equal_sid.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+    equal_sid.restype = wintypes.BOOL
+
+    descriptor = ctypes.c_void_p()
+    dacl = ctypes.c_void_p()
+    status = get_security_info(
+        wintypes.HANDLE(handle),
+        _SE_FILE_OBJECT,
+        _DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        ctypes.byref(dacl),
+        None,
+        ctypes.byref(descriptor),
+    )
+    if status != _ERROR_SUCCESS or not descriptor.value or not dacl.value:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.inspect",
+            "Windows could not inspect an approved worker resource policy.",
+        )
+    try:
+        information = _AclSizeInformation()
+        if not get_acl_information(
+            dacl,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+            _ACL_SIZE_INFORMATION_CLASS,
+        ):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.inspect",
+                "Windows could not inspect an approved worker resource policy.",
+            )
+        mask = 0
+        for index in range(int(information.ace_count)):
+            pointer = ctypes.c_void_p()
+            if not get_ace(dacl, index, ctypes.byref(pointer)) or not pointer.value:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.inspect",
+                    "Windows could not inspect an approved worker resource policy.",
+                )
+            address = pointer.value
+            if address is None:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.inspect",
+                    "Windows could not inspect an approved worker resource policy.",
+                )
+            ace = _AccessAllowedAce.from_address(address)
+            if int(ace.header.ace_type) != _ACCESS_ALLOWED_ACE_TYPE:
+                continue
+            ace_sid = ctypes.c_void_p(address + _AccessAllowedAce.sid_start.offset)
+            if equal_sid(ace_sid, sid):
+                mask |= int(ace.mask)
+        return mask
+    finally:
         _local_free(descriptor)
 
 
@@ -2087,7 +3225,17 @@ def _capture_acl_recovery_object(path: Path) -> AclRecoveryObject:
             "access.recovery_object",
             "An approved worker resource cannot be authenticated for recovery.",
         )
-    expected_auto_inherited = _dacl_auto_inherited(canonical)
+    retained_handle, retained_info = _open_retained_resource(canonical, acl_authority=True)
+    try:
+        expected_auto_inherited = _dacl_auto_inherited_handle(retained_handle.value)
+    finally:
+        if not _close_owned_handle_bounded(retained_handle):
+            _quarantine_owned_handle(retained_handle)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "access.recovery_handle",
+                "Windows could not close a worker recovery verification handle.",
+            )
     try:
         after = canonical.stat(follow_symlinks=False)
     except OSError:
@@ -2105,6 +3253,7 @@ def _capture_acl_recovery_object(path: Path) -> AclRecoveryObject:
         or before_identity[1] < 1
         or before.st_mode != after.st_mode
         or before_is_directory is not after_is_directory
+        or before_is_directory is not retained_info.is_directory
         or int(getattr(before, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
         or int(getattr(after, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
         or (
@@ -2133,6 +3282,71 @@ def _capture_acl_recovery_object(path: Path) -> AclRecoveryObject:
         )
 
 
+def _capture_exact_acl_recovery_object(
+    resource: _RetainedResource,
+    *,
+    guard_baseline: int | None,
+    auto_inherited: bool,
+) -> AclRecoveryObject:
+    _require_retained_resource_unchanged(resource)
+    canonical = Path(os.path.abspath(resource.path))
+    try:
+        observed = canonical.stat(follow_symlinks=False)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource cannot be authenticated for recovery.",
+        )
+    is_directory = stat.S_ISDIR(observed.st_mode)
+    if (
+        int(observed.st_ino) < 1
+        or is_directory is not resource.info.is_directory
+        or int(getattr(observed, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
+        or (not is_directory and (not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1))
+        or (is_directory and guard_baseline is not None)
+        or (not is_directory and guard_baseline is None)
+        or type(auto_inherited) is not bool
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource changed during recovery preparation.",
+        )
+    _require_retained_resource_unchanged(resource)
+    try:
+        return AclRecoveryObject(
+            path=canonical,
+            device=int(observed.st_dev),
+            inode=int(observed.st_ino),
+            is_directory=is_directory,
+            auto_inherited=auto_inherited,
+            volume_serial=resource.info.identity[0],
+            file_id=resource.info.identity[1].hex(),
+            guard_baseline=guard_baseline,
+        )
+    except ValueError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_object",
+            "An approved worker resource cannot be authenticated for recovery.",
+        )
+
+
+def _recovery_object_matches_resource(
+    expected: AclRecoveryObject,
+    resource: _RetainedResource,
+) -> bool:
+    return bool(
+        expected.volume_serial is not None
+        and expected.file_id is not None
+        and _normalized_path(expected.path) == _normalized_path(resource.path)
+        and expected.volume_serial == resource.info.identity[0]
+        and expected.file_id == resource.info.identity[1].hex()
+        and expected.is_directory is resource.info.is_directory
+    )
+
+
 def _require_acl_recovery_object_identity(expected: AclRecoveryObject) -> None:
     _require_no_reparse_local_path(expected.path)
     try:
@@ -2149,13 +3363,45 @@ def _require_acl_recovery_object_identity(expected: AclRecoveryObject) -> None:
         or int(observed.st_ino) != expected.inode
         or is_directory is not expected.is_directory
         or int(getattr(observed, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
-        or (not is_directory and (not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1))
+        or (
+            not is_directory
+            and (
+                not stat.S_ISREG(observed.st_mode)
+                or (expected.file_id is None and observed.st_nlink != 1)
+            )
+        )
     ):
         _reject(
             WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
             "access.recovery_identity",
             "An approved worker recovery resource no longer has its recorded identity.",
         )
+    if expected.file_id is None:
+        return
+    handle, info = _open_retained_resource(
+        expected.path,
+        acl_authority=False,
+        require_single_link=expected.file_id is None,
+    )
+    try:
+        if (
+            expected.volume_serial != info.identity[0]
+            or expected.file_id != info.identity[1].hex()
+            or expected.is_directory is not info.is_directory
+        ):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_identity",
+                "An approved worker recovery resource no longer has its recorded identity.",
+            )
+    finally:
+        if not _close_owned_handle_bounded(handle):
+            _quarantine_owned_handle(handle)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "access.recovery_handle",
+                "Windows could not close a worker recovery verification handle.",
+            )
 
 
 def _normalized_unique_roots(paths: tuple[Path, ...]) -> tuple[Path, ...]:
@@ -2213,6 +3459,15 @@ def _require_acl_recovery_entry_authority(
             "access.recovery_inventory",
             "Worker access recovery has an incomplete resource inventory.",
         )
+    if (
+        entry.journal_version == ACL_RECOVERY_JOURNAL_VERSION
+        and entry.peer_sid != _current_process_user_sid_string()
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_identity",
+            "Worker access recovery guard identity does not match the current user.",
+        )
     for item in entry.objects:
         _require_acl_recovery_object_identity(item)
     sid = _derive_app_container_sid(entry.profile_name)
@@ -2229,34 +3484,286 @@ def _require_acl_recovery_entry_authority(
     return sid
 
 
-def _repair_acl_recovery_entry(
+def _validated_active_acl_entries_locked(
+    allowed_roots: tuple[Path, ...],
+    *,
+    exclude_profile_id: str | None = None,
+) -> tuple[AclRecoveryEntry, ...]:
+    try:
+        entries = AclRecoveryJournal(_ensure_acl_recovery_directory()).inventory()
+    except AclRecoveryJournalError:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_journal",
+            "Worker access recovery records are invalid or unavailable.",
+        )
+    active: list[AclRecoveryEntry] = []
+    for entry in entries:
+        sid = _require_acl_recovery_entry_authority(entry, allowed_roots)
+        try:
+            if entry.profile_id == exclude_profile_id:
+                continue
+            if not _ledger_owner_is_active(entry.owner_pid, entry.owner_created_100ns):
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_state",
+                    "Worker access recovery found an unrepaired owner record.",
+                )
+            if entry.phase is not AclRecoveryPhase.ACTIVE:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_state",
+                    "Worker access recovery found an incomplete live record.",
+                )
+            active.append(entry)
+        finally:
+            _free_derived_app_container_sid(sid)
+    return tuple(active)
+
+
+def _shared_guard_baseline(
+    resource: _RetainedResource,
+    peer_sid_string: str,
+    active_entries: tuple[AclRecoveryEntry, ...],
+) -> int | None:
+    baselines = {
+        item.guard_baseline
+        for entry in active_entries
+        if entry.journal_version == ACL_RECOVERY_JOURNAL_VERSION
+        and entry.peer_sid == peer_sid_string
+        for item in entry.objects
+        if not item.is_directory and _recovery_object_matches_resource(item, resource)
+    }
+    baselines.discard(None)
+    if len(baselines) > 1:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_inventory",
+            "Worker access recovery found conflicting resource guard baselines.",
+        )
+    return next(iter(baselines), None)
+
+
+def _active_guard_covers(
+    resource: _RetainedResource,
+    baseline: int,
+    peer_sid_string: str,
+    active_entries: tuple[AclRecoveryEntry, ...],
+) -> bool:
+    observed = _shared_guard_baseline(resource, peer_sid_string, active_entries)
+    if observed is None:
+        return False
+    if observed != baseline:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_inventory",
+            "Worker access recovery found conflicting resource guard baselines.",
+        )
+    return True
+
+
+def _repair_legacy_acl_recovery_entry(
     journal: AclRecoveryJournal,
     entry: AclRecoveryEntry,
     sid: ctypes.c_void_p,
 ) -> None:
     by_path = {_normalized_path(item.path): item for item in entry.objects}
-    for root in reversed(entry.grant_roots):
-        expected_root = by_path.get(_normalized_path(root))
-        if expected_root is None:
+    inventory = _ApprovedResourceInventory()
+    try:
+        for item in entry.objects:
+            _require_acl_recovery_object_identity(item)
+            _retain_ancestor_guards(item.path.parent, inventory)
+            resource = _retain_approved_resource(item.path, inventory)
+            _require_acl_recovery_object_identity(item)
+            if resource.info.is_directory is not item.is_directory:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_identity",
+                    "An approved worker recovery resource no longer has its recorded identity.",
+                )
+        if len(inventory.resources) != len(entry.objects):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.recovery_inventory",
+                "Worker access recovery has an ambiguous resource inventory.",
+            )
+        for root in reversed(entry.grant_roots):
+            expected_root = by_path.get(_normalized_path(root))
+            root_resource = inventory.resources_by_path.get(_normalized_path(root))
+            if expected_root is None or root_resource is None:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_inventory",
+                    "Worker access recovery has an incomplete resource inventory.",
+                )
+            _change_sid_access_handle(
+                root_resource.handle.value,
+                sid,
+                _REVOKE_ACCESS,
+                inheritance=_SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+            )
+        for resource in inventory.resources:
+            recovery_item = by_path.get(_normalized_path(resource.path))
+            if recovery_item is None:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_inventory",
+                    "Worker access recovery has an incomplete resource inventory.",
+                )
+            _restore_dacl_auto_inherited_handle(
+                resource.handle.value,
+                recovery_item.auto_inherited,
+            )
+            if _sid_access_mask_handle(resource.handle.value, sid):
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_verify",
+                    "Worker access recovery could not prove complete SID removal.",
+                )
+        journal.delete(entry.profile_id)
+    finally:
+        if not inventory.close_no_raise():
+            _close_failed_inventory(inventory)
+
+
+def _open_exact_acl_recovery_inventory(
+    entry: AclRecoveryEntry,
+) -> _ApprovedResourceInventory:
+    inventory = _ApprovedResourceInventory()
+    try:
+        for item in entry.objects:
+            _require_acl_recovery_object_identity(item)
+            _retain_ancestor_guards(item.path.parent, inventory)
+            resource = _retain_approved_resource(
+                item.path,
+                inventory,
+                require_single_link=False,
+            )
+            if not _recovery_object_matches_resource(item, resource):
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_identity",
+                    "An approved worker recovery resource no longer has its recorded identity.",
+                )
+        if len(inventory.resources) != len(entry.objects):
             _reject(
                 WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
                 "access.recovery_inventory",
                 "Worker access recovery has an incomplete resource inventory.",
             )
-        _require_acl_recovery_object_identity(expected_root)
-        _change_sid_access(root, sid, _REVOKE_ACCESS)
-    for item in entry.objects:
-        _require_acl_recovery_object_identity(item)
-        _restore_dacl_auto_inherited(item.path, item.auto_inherited)
-    for item in entry.objects:
-        _require_acl_recovery_object_identity(item)
-        if _sid_access_mask(item.path, sid):
-            _reject(
-                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-                "access.recovery_verify",
-                "Worker access recovery could not prove complete SID removal.",
+        return inventory
+    except BaseException:
+        _close_failed_inventory(inventory)
+        raise
+
+
+def _repair_exact_acl_recovery_entry(
+    journal: AclRecoveryJournal,
+    entry: AclRecoveryEntry,
+    sid: ctypes.c_void_p,
+    active_entries: tuple[AclRecoveryEntry, ...],
+) -> None:
+    peer_sid_string = entry.peer_sid
+    if peer_sid_string is None:
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.recovery_inventory",
+            "Worker access recovery has an incomplete guard inventory.",
+        )
+    inventory = _open_exact_acl_recovery_inventory(entry)
+    peer_sid = _convert_string_sid(peer_sid_string)
+    try:
+        by_path = {_normalized_path(item.path): item for item in entry.objects}
+        for resource in reversed(inventory.resources):
+            _require_retained_resource_unchanged(resource, require_single_link=False)
+            _change_sid_access_handle(resource.handle.value, sid, _REVOKE_ACCESS)
+        for resource in inventory.resources:
+            _require_retained_resource_unchanged(resource, require_single_link=False)
+            if _sid_access_mask_handle(resource.handle.value, sid):
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_verify",
+                    "Worker access recovery could not prove complete SID removal.",
+                )
+        for resource in reversed(inventory.resources):
+            if resource.info.is_directory:
+                continue
+            item = by_path.get(_normalized_path(resource.path))
+            baseline = None if item is None else item.guard_baseline
+            if baseline is None:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_inventory",
+                    "Worker access recovery has an incomplete guard inventory.",
+                )
+            current = _exact_deny_ace_count_handle(
+                resource.handle.value,
+                peer_sid,
+                _FILE_WRITE_ATTRIBUTES,
             )
-    journal.delete(entry.profile_id)
+            covered = _active_guard_covers(
+                resource,
+                baseline,
+                peer_sid_string,
+                active_entries,
+            )
+            if covered:
+                if current != baseline + 1:
+                    _reject(
+                        WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                        "access.recovery_verify",
+                        "Worker access recovery could not verify a shared resource guard.",
+                    )
+                continue
+            if current == baseline + 1:
+                _remove_one_exact_deny_ace_handle(
+                    resource.handle.value,
+                    peer_sid,
+                    _FILE_WRITE_ATTRIBUTES,
+                )
+                current = _exact_deny_ace_count_handle(
+                    resource.handle.value,
+                    peer_sid,
+                    _FILE_WRITE_ATTRIBUTES,
+                )
+            if current != baseline:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_verify",
+                    "Worker access recovery could not restore a resource guard baseline.",
+                )
+        for resource in inventory.resources:
+            item = by_path.get(_normalized_path(resource.path))
+            if item is None:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_inventory",
+                    "Worker access recovery has an incomplete resource inventory.",
+                )
+            _restore_dacl_auto_inherited_handle(resource.handle.value, item.auto_inherited)
+            if _dacl_auto_inherited_handle(resource.handle.value) is not item.auto_inherited:
+                _reject(
+                    WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                    "access.recovery_verify",
+                    "Worker access recovery could not restore resource inheritance state.",
+                )
+        journal.delete(entry.profile_id)
+    finally:
+        _local_free(peer_sid)
+        if not inventory.close_no_raise():
+            _close_failed_inventory(inventory)
+
+
+def _repair_acl_recovery_entry(
+    journal: AclRecoveryJournal,
+    entry: AclRecoveryEntry,
+    sid: ctypes.c_void_p,
+    active_entries: tuple[AclRecoveryEntry, ...],
+) -> None:
+    if entry.journal_version == ACL_RECOVERY_LEGACY_VERSION:
+        _repair_legacy_acl_recovery_entry(journal, entry, sid)
+        return
+    _repair_exact_acl_recovery_entry(journal, entry, sid, active_entries)
 
 
 def _recover_acl_entries_locked(
@@ -2268,6 +3775,7 @@ def _recover_acl_entries_locked(
     entries: tuple[AclRecoveryEntry, ...] = ()
     active = 0
     repaired = 0
+    validated: list[tuple[AclRecoveryEntry, ctypes.c_void_p, bool]] = []
     try:
         journal = AclRecoveryJournal(_ensure_acl_recovery_directory())
         entries = journal.inventory()
@@ -2278,15 +3786,30 @@ def _recover_acl_entries_locked(
                     entry.owner_pid,
                     entry.owner_created_100ns,
                 )
-                if owner_active and entry.phase is AclRecoveryPhase.ACTIVE:
-                    active += 1
-                    continue
-                _repair_acl_recovery_entry(journal, entry, sid)
-                repaired += 1
-            finally:
+            except BaseException:
                 _free_derived_app_container_sid(sid)
+                raise
+            validated.append((entry, sid, owner_active))
+        active_entries = tuple(
+            entry
+            for entry, _sid, owner_active in validated
+            if owner_active and entry.phase is AclRecoveryPhase.ACTIVE
+        )
+        active = len(active_entries)
+        for entry, sid, owner_active in validated:
+            if owner_active and entry.phase is AclRecoveryPhase.ACTIVE:
+                continue
+            repairing = entry
+            if entry.phase is not AclRecoveryPhase.REVOKING:
+                repairing = replace(entry, phase=AclRecoveryPhase.REVOKING)
+                journal.write(repairing)
+            _repair_acl_recovery_entry(journal, repairing, sid, active_entries)
+            repaired += 1
     except AclRecoveryJournalError:
         journal_failed = True
+    finally:
+        for _entry, sid, _owner_active in validated:
+            _free_derived_app_container_sid(sid)
     if journal_failed:
         _reject(
             WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
@@ -2384,11 +3907,219 @@ def _has_effective_app_container_read_execute(
 
 
 @dataclass(slots=True, repr=False)
+class _PrivatePycacheGuard:
+    """Retain one empty cache namespace and deny peer/profile mutation."""
+
+    path: Path = field(repr=False)
+    handle: _OwnedHandle = field(repr=False)
+    info: _RetainedResourceInfo = field(repr=False)
+    ancestor_guards: _ApprovedResourceInventory = field(repr=False)
+    peer_sid_string: str = field(repr=False)
+    peer_guard_baseline: int
+    profile_guard_baseline: int
+    peer_guard_started: bool = False
+    profile_guard_started: bool = False
+    profile_access_started: bool = False
+    _closed: bool = False
+
+    @classmethod
+    def open(cls, path: Path, profile_sid: ctypes.c_void_p) -> Self:
+        ancestors = _ApprovedResourceInventory()
+        handle = _OwnedHandle.empty()
+        try:
+            _retain_ancestor_guards(path.parent, ancestors)
+            opened, info = _open_retained_resource(path, acl_authority=True)
+            handle = opened
+            if not info.is_directory:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_identity",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+            peer_sid_string = _current_process_user_sid_string()
+            peer_sid = _convert_string_sid(peer_sid_string)
+            try:
+                peer_baseline = _exact_deny_ace_count_handle(
+                    handle.value,
+                    peer_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                profile_baseline = _exact_deny_ace_count_handle(
+                    handle.value,
+                    profile_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+            finally:
+                _local_free(peer_sid)
+            return cls(
+                path=path,
+                handle=handle,
+                info=info,
+                ancestor_guards=ancestors,
+                peer_sid_string=peer_sid_string,
+                peer_guard_baseline=peer_baseline,
+                profile_guard_baseline=profile_baseline,
+            )
+        except BaseException:
+            cleanup_failed = False
+            if handle.is_open and not _close_owned_handle_bounded(handle):
+                _quarantine_owned_handle(handle)
+                cleanup_failed = True
+            if not ancestors.close_no_raise():
+                for guard in ancestors.guards:
+                    if guard.handle.is_open:
+                        _quarantine_owned_handle(guard.handle)
+                cleanup_failed = True
+            if cleanup_failed:
+                raise WindowsLaunchError(
+                    WindowsLaunchErrorCode.CLEANUP_FAILED,
+                    "profile.pycache_partial_cleanup",
+                    "Windows could not clean up private worker bytecode authority.",
+                ) from None
+            raise
+
+    def activate(self, profile_sid: ctypes.c_void_p) -> None:
+        peer_sid = _convert_string_sid(self.peer_sid_string)
+        try:
+            if (
+                _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    peer_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.peer_guard_baseline
+                or _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    profile_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.profile_guard_baseline
+            ):
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_guard",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+            self.peer_guard_started = True
+            _append_exact_deny_ace_handle(
+                self.handle.value,
+                peer_sid,
+                _PRIVATE_PYCACHE_MUTATION_ACCESS,
+            )
+            self.profile_guard_started = True
+            _append_exact_deny_ace_handle(
+                self.handle.value,
+                profile_sid,
+                _PRIVATE_PYCACHE_MUTATION_ACCESS,
+            )
+            self.profile_access_started = True
+            _change_sid_access_handle(self.handle.value, profile_sid, _GRANT_ACCESS)
+            self.require_ready(profile_sid)
+        finally:
+            _local_free(peer_sid)
+
+    def require_ready(self, profile_sid: ctypes.c_void_p) -> None:
+        peer_sid = _convert_string_sid(self.peer_sid_string)
+        try:
+            if (
+                _query_retained_resource_info(self.handle.value) != self.info
+                or _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    peer_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.peer_guard_baseline + 1
+                or _exact_deny_ace_count_handle(
+                    self.handle.value,
+                    profile_sid,
+                    _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                )
+                != self.profile_guard_baseline + 1
+                or _sid_access_mask_handle(self.handle.value, profile_sid)
+                & _FILE_GENERIC_READ_EXECUTE
+                != _FILE_GENERIC_READ_EXECUTE
+            ):
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_guard",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+            if _require_private_pycache_prefix(self.path.parent) != self.path:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_identity",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+        finally:
+            _local_free(peer_sid)
+
+    def close_no_raise(self, profile_sid: ctypes.c_void_p) -> bool:
+        if self._closed:
+            return True
+        try:
+            peer_sid = _convert_string_sid(self.peer_sid_string)
+        except WindowsLaunchError:
+            return False
+        try:
+            if self.profile_access_started:
+                try:
+                    _change_sid_access_handle(self.handle.value, profile_sid, _REVOKE_ACCESS)
+                except WindowsLaunchError:
+                    return False
+                self.profile_access_started = False
+            if self.profile_guard_started:
+                try:
+                    current = _exact_deny_ace_count_handle(
+                        self.handle.value,
+                        profile_sid,
+                        _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                    )
+                    if current == self.profile_guard_baseline + 1:
+                        _remove_one_exact_deny_ace_handle(
+                            self.handle.value,
+                            profile_sid,
+                            _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                        )
+                    elif current != self.profile_guard_baseline:
+                        return False
+                except WindowsLaunchError:
+                    return False
+                self.profile_guard_started = False
+            if self.peer_guard_started:
+                try:
+                    current = _exact_deny_ace_count_handle(
+                        self.handle.value,
+                        peer_sid,
+                        _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                    )
+                    if current == self.peer_guard_baseline + 1:
+                        _remove_one_exact_deny_ace_handle(
+                            self.handle.value,
+                            peer_sid,
+                            _PRIVATE_PYCACHE_MUTATION_ACCESS,
+                        )
+                    elif current != self.peer_guard_baseline:
+                        return False
+                except WindowsLaunchError:
+                    return False
+                self.peer_guard_started = False
+        finally:
+            _local_free(peer_sid)
+        if not _close_owned_handle_bounded(self.handle):
+            return False
+        if not self.ancestor_guards.close_no_raise():
+            return False
+        self._closed = True
+        return True
+
+
+@dataclass(slots=True, repr=False)
 class _AppContainerProfile:
     name: str = field(repr=False)
     sid: ctypes.c_void_p = field(repr=False)
     local_app_data: Path = field(repr=False)
     access: _AccessGrantLease = field(repr=False)
+    pycache_guard: _PrivatePycacheGuard | None = field(default=None, repr=False)
     _deleted: bool = False
     _closed: bool = False
 
@@ -2426,11 +4157,21 @@ class _AppContainerProfile:
                 "profile.create",
                 "Windows could not create an isolated worker profile.",
             )
+        pycache_guard: _PrivatePycacheGuard | None = None
         try:
             local_app_data = _app_container_folder_path(sid)
             _prepare_app_container_temp(local_app_data, sid)
+            pycache_guard = _PrivatePycacheGuard.open(
+                local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME,
+                sid,
+            )
+            pycache_guard.activate(sid)
         except BaseException:
-            partial = _PartialAppContainerProfile(name=name, sid=sid)
+            partial = _PartialAppContainerProfile(
+                name=name,
+                sid=sid,
+                pycache_guard=pycache_guard,
+            )
             if not _close_profile_bounded(partial):
                 _quarantine_profile(partial, cleanup_allowed=True)
                 raise WindowsLaunchError(
@@ -2449,10 +4190,25 @@ class _AppContainerProfile:
                 profile_name=name,
                 recovery_roots=recovery_roots,
             ),
+            pycache_guard=pycache_guard,
         )
 
     def grant_read_execute(self, paths: tuple[Path, ...]) -> None:
         self.access.grant_all(paths)
+
+    @property
+    def pycache_prefix(self) -> Path:
+        return self.local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+
+    def require_private_pycache(self) -> None:
+        guard = self.pycache_guard
+        if guard is None:
+            _reject(
+                WindowsLaunchErrorCode.PROFILE_FAILED,
+                "profile.pycache_guard",
+                "Windows could not authenticate private worker bytecode isolation.",
+            )
+        guard.require_ready(self.sid)
 
     def require_read_execute(self, paths: tuple[Path, ...]) -> None:
         self.access.require_read_execute(paths)
@@ -2468,6 +4224,9 @@ class _AppContainerProfile:
         if self._closed:
             return True
         if not self.access.close_no_raise():
+            return False
+        guard = self.pycache_guard
+        if guard is not None and not guard.close_no_raise(self.sid):
             return False
         if not self._deleted:
             delete_profile = _userenv().DeleteAppContainerProfile
@@ -2497,12 +4256,16 @@ class _PartialAppContainerProfile:
 
     name: str = field(repr=False)
     sid: ctypes.c_void_p = field(repr=False)
+    pycache_guard: _PrivatePycacheGuard | None = field(default=None, repr=False)
     _deleted: bool = False
     _closed: bool = False
 
     def close_no_raise(self) -> bool:
         if self._closed:
             return True
+        guard = self.pycache_guard
+        if guard is not None and not guard.close_no_raise(self.sid):
+            return False
         if not self._deleted:
             delete_profile = _userenv().DeleteAppContainerProfile
             delete_profile.argtypes = (wintypes.LPCWSTR,)
@@ -2597,7 +4360,7 @@ def _app_container_folder_path(sid: ctypes.c_void_p) -> Path:
 
 
 def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> None:
-    """Provision and verify one reparse-free, profile-private writable temp root."""
+    """Provision verified profile-private temp and bytecode lookup roots."""
 
     if (
         not local_app_data.is_absolute()
@@ -2632,6 +4395,49 @@ def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> N
             "profile.temp_access",
             "Windows could not verify private worker temporary-storage access.",
         )
+    pycache_prefix = local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+    try:
+        pycache_prefix.mkdir(mode=0o700, parents=False, exist_ok=False)
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.pycache_create",
+            "Windows could not provision private worker bytecode isolation.",
+        )
+    _require_private_pycache_prefix(local_app_data)
+
+
+def _require_private_pycache_prefix(local_app_data: Path) -> Path:
+    """Return one exact, empty, reparse-free profile-private cache namespace."""
+
+    prefix = local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+    if (
+        not local_app_data.is_absolute()
+        or _is_remote_or_device_path(local_app_data)
+        or not prefix.is_dir()
+        or not _is_within(prefix, local_app_data)
+    ):
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.pycache_identity",
+            "Windows could not authenticate private worker bytecode isolation.",
+        )
+    _require_no_reparse_local_path(prefix)
+    try:
+        with os.scandir(prefix) as entries:
+            if next(entries, None) is not None:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.pycache_empty",
+                    "Windows could not authenticate private worker bytecode isolation.",
+                )
+    except OSError:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.pycache_identity",
+            "Windows could not authenticate private worker bytecode isolation.",
+        )
+    return prefix
 
 
 @dataclass(slots=True, repr=False)
@@ -3751,21 +5557,25 @@ class WindowsProcessLauncher:
         transport: WorkerTransport | None = None
         try:
             core_access_roots = self._config.runtime_roots + self._config.code_roots
-            profile.grant_read_execute(core_access_roots)
-            profile.require_read_execute(
-                (
-                    *core_access_roots,
-                    self._config.python_executable,
-                    self._config.bootstrap_script,
-                    self._config.working_directory,
-                )
-            )
+            grant_roots = core_access_roots
+            qpdf_resources: tuple[Path, ...] = ()
+            if self._config.qpdf_executable is not None:
+                qpdf_executable = self._config.qpdf_executable
+                qpdf_resources = self._config.qpdf_access_resources
+                if not all(
+                    _has_effective_app_container_read_execute(path, profile.sid)
+                    for path in qpdf_resources
+                ):
+                    grant_roots = (*grant_roots, qpdf_executable.parent)
+            profile.grant_read_execute(grant_roots)
+            profile.require_read_execute(self._config.required_startup_resources)
             if self._config.qpdf_executable is not None:
                 qpdf_executable = self._config.qpdf_executable
                 profile.ensure_read_execute(
                     (qpdf_executable.parent,),
-                    self._config.qpdf_access_resources,
+                    qpdf_resources,
                 )
+            profile.require_private_pycache()
             job = _Job(request.resource_policy)
             bootstrap = encode_bootstrap_grant(
                 BootstrapGrant(
@@ -3836,6 +5646,7 @@ class WindowsProcessLauncher:
                     )
             _write_exact(pipes.bootstrap_write.value, bootstrap)
             pipes.bootstrap_write.close()
+            profile.require_private_pycache()
             _resume_thread(thread.value)
             thread.close()
             reader = _WindowsPipeReader(pipes.client_read)
@@ -3938,11 +5749,12 @@ class WindowsProcessLauncher:
         startup.startup_info.standard_error = wintypes.HANDLE(pipes.bootstrap_read.value)
         startup.attribute_list = attributes.pointer
         command_line = ctypes.create_unicode_buffer(
-            subprocess.list2cmdline(self._config.fixed_argv)
+            subprocess.list2cmdline(self._config.fixed_argv_for_profile(local_app_data))
         )
         environment = _minimal_environment_block(
             local_app_data,
-            self._config.qpdf_executable,
+            venv_launcher=self._config.venv_launcher,
+            qpdf_executable=self._config.qpdf_executable,
         )
         create_process = _kernel32().CreateProcessW
         create_process.argtypes = (
@@ -4012,6 +5824,8 @@ class WindowsProcessLauncher:
 
 def _minimal_environment_block(
     local_app_data: Path,
+    *,
+    venv_launcher: Path | None = None,
     qpdf_executable: Path | None = None,
 ) -> ctypes.Array[ctypes.c_wchar]:
     get_windows_directory = _kernel32().GetWindowsDirectoryW
@@ -4028,11 +5842,28 @@ def _minimal_environment_block(
     temp = local_app_data / "Temp"
     entries = {
         "LOCALAPPDATA": os.fspath(local_app_data),
+        "PWS_PROFILE_ROOT": os.fspath(local_app_data),
         "SystemRoot": buffer.value,
         "TEMP": os.fspath(temp),
         "TMP": os.fspath(temp),
         "WINDIR": buffer.value,
     }
+    for configured in (venv_launcher, qpdf_executable):
+        if configured is None:
+            continue
+        if (
+            not isinstance(configured, Path)
+            or not configured.is_absolute()
+            or _is_remote_or_device_path(configured)
+            or _has_named_data_stream(configured)
+        ):
+            _reject(
+                WindowsLaunchErrorCode.ISOLATION_UNAVAILABLE,
+                "environment.values",
+                "Windows could not construct the minimal worker environment.",
+            )
+    if venv_launcher is not None:
+        entries["__PYVENV_LAUNCHER__"] = os.fspath(venv_launcher)
     if qpdf_executable is not None:
         entries["PWS_QPDF_EXECUTABLE"] = os.fspath(qpdf_executable)
     if any("\x00" in entry for pair in entries.items() for entry in pair):

@@ -41,12 +41,13 @@ history, and diagnostic implementations through structural ports. The diagnostic
 import storage, UI, worker, document adapters, networking, subprocess, path APIs, or Python's
 general-purpose logging framework.
 
-`build_windows_startup_recovery_service` is the one temporary app-local composition seam while the
-PWS-0111 desktop composition branch remains separate. It wires the complete Windows history,
-retry, manifest, and startup stores so export settlement cannot be omitted; integration tests call
-this factory for committed-receipt restart. When the desktop branch converges, desktop composition
-must own this concrete wiring and continue injecting only the structural startup port into the
-toolkit-free service.
+`paperworkshell.__main__.build_windows_startup_recovery_service` owns the complete concrete Windows
+history, retry, manifest, and startup-store wiring at the desktop composition root, so export
+settlement cannot be omitted. `app.recovery` remains storage-agnostic and receives only its
+structural startup store plus an optional already-sanitized diagnostic sink. Desktop backend
+construction completes this recovery before creating worker resources and passes the path-free
+result into the organizer backend. Committed-receipt restart integration calls the same composition
+factory.
 
 ## Startup order and authoritative state
 
@@ -221,18 +222,23 @@ existing worker lifecycle remain responsible for terminating a generation and it
 fresh work uses a new profile, process, protocol identities, and capabilities. Persistent
 runtime/code ACL repair is a separate Windows-launcher recovery boundary and finishes under its
 protected cross-process mutex before a new grant or launch can proceed. Its private persistent
-record is durable before the first SID mutation and binds only approved host resources, exact
-object identities, the profile SID, exact owner identity, and original auto-inheritance states. No
-case path or case ACL belongs in that ledger.
+record is durable before the first guard or SID mutation. New v2 ledgers bind only approved host
+resources, exact Windows object identities, the profile SID, exact owner identity, current-user
+peer SID, original auto-inheritance states, and per-file shared-guard baselines. Strictly decoded
+legacy v1 ledgers retain their inherited-root recovery meaning. No case path or case ACL belongs in
+either ledger version.
 
 Windows ACL integration evidence forcibly terminates a real helper owner at `PREPARED`,
 partial-grant, `ACTIVE`, and `REVOKING` cut points while it retains the mutex, observes
 `WAIT_ABANDONED` from recovery in the separate parent process, and proves repair before a new
-grant. It also proves exact SID absence and auto-inheritance restoration before the journal
-clears, plus fail-closed handling of insecure, corrupt, or mismatched state. The test deletes the
-abandoned profile separately for test hygiene; production cold recovery repairs only the recorded
-runtime/code ACL lease. It is not general ACL repair or worker-operation replay. Complete details
-are in the [worker lifecycle](worker-lifecycle.md) and [ADR 0004](../adr/0004-windows-worker-isolation.md).
+grant. The exact-object v2 cases must prove SID absence, retention of one shared guard while
+another authenticated `ACTIVE` lease covers the object, final restoration of its recorded guard
+baseline, and auto-inheritance restoration before the ledger clears. Legacy-v1 and insecure,
+corrupt, unknown-version, peer-SID/allowlist, conflicting-baseline, and object-identity cases remain
+fail closed. The test deletes the abandoned profile separately for test hygiene; production cold
+recovery repairs only the recorded runtime/code ACL lease. It is not general ACL repair or
+worker-operation replay. Complete details are in the [worker lifecycle](worker-lifecycle.md) and
+[ADR 0004](../adr/0004-windows-worker-isolation.md).
 
 ## Verification ownership
 
@@ -243,9 +249,15 @@ manifest-first recovery, invalid-case isolation, source/thumbnail/temp cleanup, 
 before generic temp cleanup, independent manifest-to-history validation, authenticated unique
 retirement restoration before committed replay, strict-prefix retirement cleanup, committed replay
 without worker/destination calls, proven prepared settlement, retained ambiguous preparation, and
-exact marker cleanup. Security tests keep external and sibling sentinels unchanged, preserve all
-temp evidence for ambiguous or linked retirement owners, reject linked/aliased recovery candidates,
-and scan every public diagnostic seam and rendered output with distinct prohibited values.
+exact marker cleanup. A separate process-level desktop test opens the real offscreen PySide
+organizer, queues an autosave, pauses only after the durable checkpoint replaces the journal name
+but before manifest publication, and forcibly terminates that UI process. A fresh PySide process
+then runs the composed startup scan, reports the case as recovered with path-free fields, reopens
+the recovered revision, and proves the external source, case copy, outside sentinel, and bounded
+case cleanup state are unchanged. Security tests keep external and sibling sentinels unchanged,
+preserve all temp evidence for ambiguous or linked retirement owners, reject linked/aliased
+recovery candidates, and scan every public diagnostic seam and rendered output with distinct
+prohibited values.
 
 Separate worker ACL unit/integration/security suites prove its canonical path-private journal,
 pre-mutation durable phase, forced owner-process termination while holding a test-isolated mutex,

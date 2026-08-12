@@ -45,6 +45,30 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
         )
         self.assertIn("run: python tools/dev.py check", self.text)
 
+    def test_ci_stages_copy_owned_worker_python_before_bootstrap(self) -> None:
+        stage = self.text.index("- name: Stage copy-owned worker CPython")
+        bootstrap = self.text.index("- name: Bootstrap locked environment")
+
+        self.assertLess(stage, bootstrap)
+        self.assertIn(
+            '$source = (& python -I -S -c "import sys; print(sys.base_prefix)").Trim()',
+            self.text,
+        )
+        self.assertIn(
+            '$destination = Join-Path $env:RUNNER_TEMP "PaperWorkShell-ci-python"',
+            self.text,
+        )
+        self.assertIn(
+            "Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force",
+            self.text,
+        )
+        self.assertIn(
+            '$reported = (& $python -I -S -c "import sys; print(sys.base_prefix)").Trim()',
+            self.text,
+        )
+        self.assertIn('"UV_PYTHON=$python"', self.text)
+        self.assertNotIn("Remove-Item -LiteralPath $source", self.text)
+
     def test_quality_job_timeout_covers_the_full_hosted_suite(self) -> None:
         timeout = re.search(
             r"^\s*timeout-minutes:\s*(\d+)\s*$",
@@ -54,7 +78,7 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
 
         self.assertIsNotNone(timeout)
         assert timeout is not None
-        self.assertEqual(30, int(timeout.group(1)))
+        self.assertEqual(45, int(timeout.group(1)))
 
     def test_gitleaks_download_is_versioned_and_hash_verified(self) -> None:
         self.assertIn("gitleaks_8.30.1_windows_x64.zip", self.text)

@@ -16,8 +16,8 @@ import pypdfium2_raw  # type: ignore[import-untyped]
 import pytest
 from PIL import Image
 
+from paperworkshell.__main__ import build_windows_startup_recovery_service
 from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
-from paperworkshell.app.recovery import build_windows_startup_recovery_service
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation

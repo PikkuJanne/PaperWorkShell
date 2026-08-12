@@ -97,6 +97,33 @@ def test_qpdf_configuration_rejects_reparse_file_without_disclosure(
     assert link.name not in rendered
 
 
+def test_qpdf_configuration_rejects_named_data_stream_without_disclosure(
+    tmp_path: Path,
+) -> None:
+    qpdf_root = tmp_path / "approved-tools"
+    qpdf_root.mkdir()
+    base = qpdf_root / "qpdf.exe"
+    base.write_bytes(b"synthetic qpdf marker")
+    stream_token = "private-stream-canary"
+    stream = Path(f"{base}:{stream_token}")
+    try:
+        stream.write_bytes(b"hidden synthetic stream")
+    except OSError as error:
+        pytest.skip(
+            f"alternate data streams are unavailable on this test volume ({error.winerror})"
+        )
+    assert stream.is_file()
+
+    with pytest.raises(WindowsLaunchError) as caught:
+        _base_configuration(tmp_path, stream)
+
+    rendered = f"{caught.value!s} {caught.value!r}"
+    assert caught.value.code is WindowsLaunchErrorCode.CONFIGURATION_INVALID
+    assert caught.value.context == "config.paths"
+    assert stream_token not in rendered
+    assert stream.read_bytes() == b"hidden synthetic stream"
+
+
 def test_worker_environment_allowlist_remains_closed() -> None:
     assert _ALLOWED_ENVIRONMENT == frozenset(
         {
@@ -106,6 +133,7 @@ def test_worker_environment_allowlist_remains_closed() -> None:
             "TEMP",
             "TMP",
             "PWS_QPDF_EXECUTABLE",
+            "PWS_PROFILE_ROOT",
             "PYTHONIOENCODING",
             "PYTHONUTF8",
         }

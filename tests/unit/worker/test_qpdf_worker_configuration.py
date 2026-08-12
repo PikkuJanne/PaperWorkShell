@@ -17,6 +17,8 @@ from paperworkshell.pdf.qpdf_checker import (
 )
 from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
+    WindowsLaunchError,
+    WindowsLaunchErrorCode,
     _AccessGrantLease,
     _minimal_environment_block,
 )
@@ -107,7 +109,55 @@ def test_optional_qpdf_is_a_fixed_sanitized_launch_resource(tmp_path: Path) -> N
         "utf8",
         os.fspath(config.bootstrap_script),
     )
+    profile_root = tmp_path / "profile"
+    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix.mkdir(parents=True)
+    assert config.fixed_argv_for_profile(profile_root) == (
+        os.fspath(config.python_executable),
+        "-I",
+        "-S",
+        "-B",
+        "-X",
+        "utf8",
+        "-X",
+        f"pycache_prefix={pycache_prefix}",
+        os.fspath(config.bootstrap_script),
+    )
     assert os.fspath(qpdf_executable) not in repr(config)
+
+
+def test_qpdf_inventory_requires_the_exact_configured_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _launch_config(tmp_path, include_qpdf=True)
+    qpdf_executable = config.qpdf_executable
+    assert qpdf_executable is not None
+    monkeypatch.setattr(
+        windows_launcher,
+        "_approved_resource_tree",
+        lambda _root, *, acl_authority: (qpdf_executable.parent,),
+    )
+
+    with pytest.raises(WindowsLaunchError) as raised:
+        _ = config.qpdf_access_resources
+
+    assert raised.value.code is WindowsLaunchErrorCode.CONFIGURATION_INVALID
+    assert raised.value.context == "config.qpdf_inventory"
+
+
+def test_profile_argv_rejects_a_nonempty_bytecode_namespace(tmp_path: Path) -> None:
+    config = _launch_config(tmp_path, include_qpdf=False)
+    profile_root = tmp_path / "profile"
+    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix.mkdir(parents=True)
+    (pycache_prefix / "unexpected.pyc").write_bytes(b"synthetic cache")
+
+    with pytest.raises(WindowsLaunchError) as raised:
+        config.fixed_argv_for_profile(profile_root)
+
+    assert raised.value.code is WindowsLaunchErrorCode.PROFILE_FAILED
+    assert raised.value.context == "profile.pycache_empty"
 
 
 def test_default_launch_configuration_is_unchanged(tmp_path: Path) -> None:
@@ -122,11 +172,12 @@ def test_minimal_environment_adds_only_explicit_qpdf(tmp_path: Path) -> None:
     qpdf_executable = tmp_path / "approved tools" / "qpdf.exe"
     default_entries = _environment_entries(_minimal_environment_block(local_app_data))
     configured_entries = _environment_entries(
-        _minimal_environment_block(local_app_data, qpdf_executable)
+        _minimal_environment_block(local_app_data, qpdf_executable=qpdf_executable)
     )
 
     assert set(default_entries) == {
         "LOCALAPPDATA",
+        "PWS_PROFILE_ROOT",
         "SYSTEMROOT",
         "TEMP",
         "TMP",
