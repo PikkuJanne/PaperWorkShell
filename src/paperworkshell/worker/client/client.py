@@ -449,7 +449,16 @@ class WorkerClient:
             pass
         if message is None:
             self._protocol_fault()
-        self._dispatch_inbound(message)
+        try:
+            self._dispatch_inbound(message)
+        except WorkerClientError as error:
+            # The authenticated peer has already consumed this frame.  Any
+            # failure while applying it makes rollback impossible, so never
+            # leave a live generation in partially advanced lifecycle state.
+            if self._last_failure is not None:
+                raise
+            failure = self._fault(error.code, error.context, terminate=True)
+            reject_client(failure.code, failure.context)
 
     def duplicate_handle(
         self,

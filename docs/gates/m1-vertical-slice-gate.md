@@ -1,9 +1,9 @@
 # Milestone 1 reliable vertical-slice gate — PWS-0114
 
-- Review status: Contract migration in progress; final constrained-profile run pending
-- Gate conclusion: IN PROGRESS
+- Review status: Complete
+- Gate conclusion: PASS
 - Review date: 2026-08-12
-- Evidence revision: pending final PWS-0115 verification
+- Evidence revision: `0b44884558b47aeda60294b5e8cba2f0702f0291`
 - Review branch: `codex/pws-0114-m1-gate`
 - Frozen decisions: PWS-D003, PWS-D009, PWS-D012, PWS-D013, PWS-D027, PWS-D029,
   PWS-D030, PWS-D041
@@ -66,13 +66,13 @@ Authoritative sources are [ROADMAP.md](../../ROADMAP.md), [TASKS.yaml](../../TAS
 | PWS-0111 | Done | `663c966` | Accessible desktop organizer and manual NVDA evidence |
 | PWS-0112 | Done | `77972df` | Deterministic verified export and history |
 | PWS-0113 | Done | `8a0b80c` | Cold startup recovery and sanitized diagnostics |
-| PWS-0115 | In progress | Pending implementation checkpoint | Enforced constrained resource policy and machine-readable evidence |
+| PWS-0115 | Done | `0b44884558b47aeda60294b5e8cba2f0702f0291` | Enforced constrained resource policy and machine-readable evidence |
 
 ## Gate criteria
 
 | Criterion | Current result | Required evidence |
 |---|---|---|
-| Every M1 prerequisite is done | Pending closure | PWS-0101 through PWS-0113 are `done`; PWS-0115 must pass and close before PWS-0114 |
+| Every M1 prerequisite is done | Pass | PWS-0101 through PWS-0113 and PWS-0115 are `done` |
 | Originals remain byte-for-byte unchanged | Pass | External and committed-source bytes plus SHA-256 agree before and after export/restart |
 | The same manifest produces the same semantic result | Pass | Fresh-worker replay preserves semantic fingerprint, order, rotation, renders, and output bytes |
 | Malformed input and worker termination fail cleanly | Pass | Live malformed render/export, forced termination, cold recovery, and no failed publication |
@@ -80,8 +80,8 @@ Authoritative sources are [ROADMAP.md](../../ROADMAP.md), [TASKS.yaml](../../TAS
 | Routine logs contain no prohibited content | Pass | Diagnostic JSONL, summary, logging, stdout, and stderr reject raw and escaped canaries |
 | Primary organizer path works without a mouse | Pass | Maintainer keyboard-only/NVDA scenario at actual 100% and 200% scaling |
 | UI remains responsive for worker operations | Pass | Export runs off the Qt owner thread with measured heartbeats |
-| Constrained resource policy is enforced | Pending final run | Report records policy identity, configured limits, observations, per-budget results, and overall pass |
-| Low-disk/cancellation/cleanup paths preserve state | Pending final suite | Deterministic injected failures reject or recover without corrupting originals/manifests |
+| Constrained resource policy is enforced | Pass | Report records policy identity, configured limits, observations, six passing budget results, and overall completion |
+| Low-disk/cancellation/cleanup paths preserve state | Pass | Deterministic injected failures reject or recover without corrupting originals/manifests |
 
 ## Gate-owned scenario
 
@@ -142,6 +142,24 @@ focused low-disk, slow-I/O, and worker restart nodes before its authenticated re
 Worker-private temporary-storage peaks remain prospectively bounded by per-operation limits rather
 than sampled separately in report v2. Missing or unknown required evidence fails the gate.
 
+The canonical report at revision `0b44884558b47aeda60294b5e8cba2f0702f0291` decoded with zero
+issues and recorded:
+
+| Hard budget | Observed | Limit | Result |
+|---|---:|---:|---|
+| Complete process-tree RSS | 249,077,760 bytes | 1,342,177,280 bytes | Pass |
+| Combined thumbnail/preview cache | 166,296 bytes | 134,217,728 bytes | Pass |
+| Case-workspace temporary storage | 6,242 bytes | 536,870,912 bytes | Pass |
+| Heavy-operation concurrency | 1 | 1 | Pass |
+| Maximum controlled UI heartbeat gap | 141 ms | 250 ms | Pass |
+| Protocol cancellation acknowledgement | 4 ms | 2,000 ms | Pass |
+
+The run took 809,864 ms; duration is record-only, not a heterogeneous-machine hard gate. It also
+recorded zero heartbeat violations, one-shot worker recycling with all workers terminated, passing
+low-disk/slow-I/O/recovery/privacy outcomes, deterministic repeated output, two output pages, and
+the retained output SHA-256
+`8825cbc568f339ffa86fccf7f8f64400c69b2c82c09d651e903f6d2529bdc6ea`.
+
 The earlier successful functional run at revision `77adff38e467cd033881e006c3c08408d3b33cd7`
 remains historical architecture evidence: unchanged sources, deterministic two-page exports,
 successful cold recovery, seven export checks, clean routine surfaces, and agent-rendered visual
@@ -152,11 +170,12 @@ record-only observations are not substituted for the new constrained-profile run
 
 | Command | Required result |
 |---|---|
-| `uv run --locked --no-sync python tools/dev.py validate-m1-benchmark-report` | Pass the closed constrained-report schema |
-| Focused constrained-profile unit/integration/security/accessibility tests | Pass success, over-budget, low-disk, cancellation, cleanup, and privacy paths |
-| `uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice` | Publish a passing exact-revision constrained report and retained synthetic derivative |
-| `uv run --locked --no-sync python tools/dev.py check` | Pass once on the final exact revision |
-| Poppler `pdfinfo` plus all-page `pdftoppm` rendering | Retained derivative reopens and every page renders as expected |
+| `uv run --locked --no-sync python tools/dev.py validate-m1-benchmark-report` | Pass |
+| Focused constrained-profile unit/integration/security/accessibility tests | Pass: 414 tests and 350 subtests; focused real cancellation regression also passes |
+| `uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice` | Pass; published the exact-revision report and retained derivative |
+| `tools/dev.py test-unit`, `test-integration`, `test-security`, and `test-accessibility` | Pass: 2,114 unit; 368 integration with 2 disclosed capability skips; 268 security with 6 disclosed capability skips; 19 accessibility |
+| Registered format, lint, boundary, type, fixture, schema, task, docs, report, renderer, secret, and quality-self-test commands | Pass; the commands were preserved individually because the monolithic wrapper's external 30-minute ceiling was shorter than the combined lanes |
+| Poppler `pdfinfo` plus all-page `pdftoppm` rendering | Pass; two unencrypted pages, legible Letter text followed by a 72×96-pt calibration page rotated 90°, with no clipping, overlap, blank corruption, or unreadable output |
 
 ## Known limitations and owned future work
 
@@ -171,9 +190,9 @@ record-only observations are not substituted for the new constrained-profile run
 
 ## Gate conclusion
 
-**IN PROGRESS.** PWS-D041 removes the unavailable physical-hardware blocker without weakening the
-software resource contract. Prerequisites, manual keyboard/NVDA evidence, the production scenario,
-privacy, recovery, deterministic verified export, and historical derivative inspection pass. Gate
-closure now requires one final constrained-profile report, focused failure-path results, the final
-quality suite, and exact-revision artifact inspection. No physical-machine or VM attestation is
-required.
+**PASS.** PWS-D041 removes the unavailable physical-hardware blocker without weakening the
+software resource contract. Every prerequisite, the maintainer keyboard/NVDA evidence, production
+scenario, privacy and recovery checks, deterministic verified export, constrained resource report,
+focused failure paths, final quality suite, and exact-revision artifact inspection pass. Physical
+low-end hardware was not tested and is optional/non-gating; this result proves bounded software
+behavior for the recorded revision and synthetic workload, not hardware certification.

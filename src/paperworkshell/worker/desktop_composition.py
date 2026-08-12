@@ -52,6 +52,19 @@ _REQUIRED_DESKTOP_CAPABILITIES = (
 )
 _REQUIRED_PDF_EXPORT_CAPABILITIES = (PDF_EXPORT_CAPABILITY,)
 
+# The desktop composition root may import this GUI-safe client module, but it
+# must not import the worker-host coordinator module directly.  Keep creation
+# and the public type alias at this established seam.
+DesktopHeavyOperationCoordinator = HeavyOperationCoordinator
+
+
+def create_desktop_heavy_operation_coordinator(
+    maximum_concurrency: int,
+) -> DesktopHeavyOperationCoordinator:
+    """Create the app-scoped heavy-work gate behind the desktop seam."""
+
+    return HeavyOperationCoordinator(maximum_concurrency)
+
 
 @dataclass(frozen=True, slots=True, repr=False)
 class DesktopWorkerCompositionConfig:

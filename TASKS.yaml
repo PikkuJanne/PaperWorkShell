@@ -1357,7 +1357,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0113
@@ -1406,21 +1406,34 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
+    completed_at: '2026-08-12'
+    revision: 0b44884558b47aeda60294b5e8cba2f0702f0291
     commands:
     - Focused constrained-profile verification - passed; Ruff format/lint, strict mypy on 285 files,
       414 tests plus 350 subtests, real worker recovery/cancellation, and schema/task/docs/benchmark validators.
+    - uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice - passed on the clean evidence
+      revision; published the constrained report and two-page derivative with all six hard budgets passing.
+    - Poppler pdfinfo and 144-DPI all-page pdftoppm rendering plus strict pikepdf inspection - passed;
+      two unencrypted pages, expected order/rotation, legible output, and no clipping or blank corruption.
+    - Repository quality commands passed on the final implementation tree; 2114 unit tests, 368 integration
+      tests with 2 disclosed Windows capability skips, 268 security tests with 6 disclosed capability skips,
+      and 19 accessibility tests passed, together with format, lint, 13-layer import boundaries, strict mypy
+      over 285 files, every registered validator, reachable-history secret scanning, and all 5 negative
+      quality self-tests. The monolithic wrapper's external 30-minute ceiling expired because unit plus
+      integration alone took 28 minutes 44 seconds; the same registered commands were preserved individually.
     notes:
-    - Implementation and focused failure-path verification are complete. Canonical constrained-profile evidence,
-      retained derivative inspection, and the one final repository quality pass remain before closure.
+    - PWS-D041 replaces unavailable hardware attestation with enforced software budgets. The canonical report
+      recorded 249077760-byte process-tree RSS, 166296-byte combined cache, 6242-byte case temp, concurrency 1,
+      141-ms maximum heartbeat gap, and 4-ms protocol cancellation acknowledgement; every hard budget passed.
+    - Physical low-end hardware was not tested. The result proves bounded behavior for the recorded synthetic
+      workload and revision, not certification of any processor, RAM, GPU, SSD, HDD, VM, or physical device.
 - id: PWS-0114
   milestone: M1
   title: Run Milestone 1 vertical-slice gate
   kind: gate
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0101
@@ -1472,19 +1485,34 @@ tasks:
   - resource-limits
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
+    completed_at: '2026-08-12'
+    revision: 0b44884558b47aeda60294b5e8cba2f0702f0291
+    commands:
+    - uv run --locked --no-sync python tools/dev.py run-m1-vertical-slice - passed; exact-revision canonical
+      import, thumbnails, organize/autosave, two verified exports, cold reopen/recovery, privacy scan, low-disk,
+      slow-I/O, active cancellation, worker restart, and six resource budgets all passed.
+    - Repository quality commands passed on the final implementation tree; 2114 unit tests, 368 integration
+      tests with 2 disclosed Windows capability skips, 268 security tests with 6 disclosed capability skips,
+      and 19 accessibility tests passed, together with every registered static, validation, secret-scan, and
+      negative-self-test gate. The same commands were run individually after the monolithic wrapper exceeded
+      its external 30-minute ceiling.
+    - Poppler pdfinfo/pdftoppm and strict pikepdf artifact inspection - passed; output SHA-256
+      8825cbc568f339ffa86fccf7f8f64400c69b2c82c09d651e903f6d2529bdc6ea, two unencrypted pages,
+      expected Letter text page and 72x96-pt page rotated 90 degrees, with no visual corruption.
     notes:
     - The earlier current-host functional run remains historical evidence only; its physical-host mismatch and
       operator-attestation fields are not reinterpreted as constrained-profile evidence.
+    - Maintainer keyboard-only and NVDA Speech Viewer testing at actual 100% and 200% scaling passed previously
+      with no reported focus, announcement, reachability, privacy, or scaling issue.
+    - Physical low-end hardware was not tested and is no longer required. The constrained result is bounded
+      software evidence, not a physical-hardware equivalence or certification claim.
 - id: PWS-0201
   milestone: M2
   title: Implement JPEG/PNG intake and page normalization
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0114

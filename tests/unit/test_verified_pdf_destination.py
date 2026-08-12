@@ -164,6 +164,8 @@ def _mapped_error(code: ExportDestinationErrorCode) -> PdfExportErrorCode:
         return PdfExportErrorCode.CANCELLED
     if code is ExportDestinationErrorCode.TIMED_OUT:
         return PdfExportErrorCode.TIMED_OUT
+    if code is ExportDestinationErrorCode.DESTINATION_FULL:
+        return PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED
     if code in _INVALID_DESTINATION_ERRORS:
         return PdfExportErrorCode.DESTINATION_INVALID
     if code in _INVALID_SOURCE_ERRORS:
@@ -198,6 +200,43 @@ def test_every_storage_error_code_has_one_exact_sanitized_mapping(
     assert canary not in str(raised.value)
     assert str(DESTINATION) not in str(raised.value)
     assert DIGEST not in repr(raised.value.args)
+
+
+def test_capacity_preflight_forwards_estimate_and_maps_full_safely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, backend = _adapter()
+    canary = "private capacity probe detail"
+    calls = 0
+
+    def require_capacity(
+        selected: WindowsExportDestination,
+        destination: Path,
+        *,
+        estimated_byte_size: int,
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        assert selected is backend
+        assert destination == DESTINATION
+        assert estimated_byte_size == len(PAYLOAD)
+        raise ExportDestinationError(
+            ExportDestinationErrorCode.DESTINATION_FULL,
+            canary,
+        )
+
+    monkeypatch.setattr(WindowsExportDestination, "require_capacity", require_capacity)
+
+    with pytest.raises(PdfExportError) as raised:
+        adapter.require_capacity(
+            DESTINATION,
+            estimated_byte_size=len(PAYLOAD),
+        )
+
+    assert calls == 1
+    assert raised.value.code is PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED
+    assert canary not in str(raised.value)
+    assert str(DESTINATION) not in str(raised.value)
 
 
 @dataclass(slots=True)

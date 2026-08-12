@@ -51,15 +51,16 @@ from paperworkshell.ui.application import run_desktop_application
 from paperworkshell.worker.client.models import WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.desktop_composition import (
+    DesktopHeavyOperationCoordinator,
     DesktopWorkerCompositionConfig,
     PdfExportWorkerComposition,
     PdfExportWorkerCompositionConfig,
+    create_desktop_heavy_operation_coordinator,
     create_desktop_worker_composition,
     create_desktop_worker_composition_config,
     create_pdf_export_worker_composition,
     create_pdf_export_worker_composition_config,
 )
-from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.protocol.models import ResourceLimits
 
 _PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
@@ -71,12 +72,12 @@ class DesktopApplicationResourceContext:
     """App-scoped policy and heavy-work gate selected once at process startup."""
 
     resource_policy: ResourcePolicy
-    heavy_operations: HeavyOperationCoordinator
+    heavy_operations: DesktopHeavyOperationCoordinator
 
     def __post_init__(self) -> None:
         if (
             type(self.resource_policy) is not ResourcePolicy
-            or type(self.heavy_operations) is not HeavyOperationCoordinator
+            or type(self.heavy_operations) is not DesktopHeavyOperationCoordinator
             or self.heavy_operations.snapshot().maximum_concurrency
             != self.resource_policy.maximum_heavy_operation_concurrency
         ):
@@ -91,7 +92,9 @@ def create_desktop_application_resource_context(
     selected_policy = _require_resource_policy(resource_policy)
     return DesktopApplicationResourceContext(
         selected_policy,
-        HeavyOperationCoordinator(selected_policy.maximum_heavy_operation_concurrency),
+        create_desktop_heavy_operation_coordinator(
+            selected_policy.maximum_heavy_operation_concurrency
+        ),
     )
 
 
