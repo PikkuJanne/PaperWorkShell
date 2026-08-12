@@ -51,6 +51,7 @@ from paperworkshell.domain.pdf_export import (
     build_pdf_export_plan,
 )
 from paperworkshell.domain.pdf_thumbnails import (
+    PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES,
     PdfThumbnailError,
     PdfThumbnailErrorCode,
     PdfThumbnailProgress,
@@ -109,6 +110,7 @@ _DOCUMENT_TEXT_CANARY = "PRIVATE-M1-DOCUMENT-TEXT-B607"
 _METADATA_CANARY = "PRIVATE-M1-METADATA-E214"
 _DIAGNOSTIC_TIME = datetime(2026, 8, 10, 12, 0, tzinfo=UTC)
 _EXPORT_TIMER_INTERVAL_MILLISECONDS = 50
+_CANCELLATION_RENDER_DIMENSION_PIXELS = 900
 _VERIFIED_CHECKS = (
     PdfExportCheckCode.PDF_REOPENED,
     PdfExportCheckCode.STRUCTURE_CLEAN,
@@ -345,7 +347,6 @@ def _measure_active_thumbnail_cancellation(
     cancellation = threading.Event()
     rendering_started_ns = 0
     failure: PdfThumbnailError | None = None
-    acknowledged_ns = 0
     cache_before = frozenset(stack.manager.layout(case_id).thumbnails.iterdir())
 
     def progress(observation: PdfThumbnailProgress) -> None:
@@ -356,26 +357,27 @@ def _measure_active_thumbnail_cancellation(
 
     try:
         stack.backend.get_thumbnails(
-            2_000,
-            2_000,
+            _CANCELLATION_RENDER_DIMENSION_PIXELS,
+            _CANCELLATION_RENDER_DIMENSION_PIXELS,
             page_ids=(page_id,),
-            timeout_seconds=30.0,
+            # AppContainer profile construction and authenticated resource
+            # inventory are outside the cancellation acknowledgement window.
+            # Give startup its production-sized budget, then start the measured
+            # two-second window only at the RENDERING progress boundary.
+            timeout_seconds=120.0,
             cancellation=cancellation.is_set,
             progress=progress,
         )
     except PdfThumbnailError as error:
         failure = error
-        acknowledged_ns = time.perf_counter_ns()
     else:
         raise AssertionError("the active thumbnail render ignored cancellation")
 
-    assert rendering_started_ns > 0
     assert failure is not None
+    assert rendering_started_ns > 0, (failure.code.value, failure.context)
     assert failure.code is PdfThumbnailErrorCode.CANCELLED
-    acknowledgement_ms = max(
-        1,
-        (acknowledged_ns - rendering_started_ns + 999_999) // 1_000_000,
-    )
+    acknowledgement_ms = stack.desktop.last_cancellation_acknowledgement_ms()
+    assert acknowledgement_ms is not None
     assert acknowledgement_ms <= CONSTRAINED_RESOURCE_POLICY_V1.cancellation_acknowledgement_ms
     assert stack.desktop.resource_snapshot() is not None
     coordinator = stack.desktop.heavy_operation_snapshot()
@@ -512,6 +514,51 @@ def test_vertical_slice_event_loop_uses_widget_capable_process_application() -> 
 
     assert QCoreApplication.instance() is application
     assert isinstance(application, QApplication)
+
+
+def test_active_cancellation_probe_fits_the_production_thumbnail_output_budget() -> None:
+    """Keep the active-worker probe below every pre-render allocation gate."""
+
+    limits = _desktop_worker_config(CONSTRAINED_RESOURCE_POLICY_V1).thumbnail_policy.limits
+    raster_bytes = _CANCELLATION_RENDER_DIMENSION_PIXELS**2 * 4
+
+    assert _CANCELLATION_RENDER_DIMENSION_PIXELS > 96
+    assert raster_bytes <= limits.memory_bytes
+    assert raster_bytes + PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES <= limits.output_bytes
+    assert _CANCELLATION_RENDER_DIMENSION_PIXELS**2 <= limits.pixel_count
+
+
+def test_active_thumbnail_worker_cancellation_is_acknowledged_within_policy(
+    tmp_path: Path,
+) -> None:
+    """Prove the canonical cancellation probe reaches and cancels a real worker."""
+
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    source = tmp_path / "source.pdf"
+    shutil.copyfile(_FIRST_FIXTURE, source)
+    stack = _build_stack(
+        profile,
+        diagnostics=SanitizedDiagnosticLogger(sink=io.BytesIO()),
+    )
+    try:
+        created = stack.backend.create_case()
+        assert created.case_id is not None
+        imported = stack.backend.import_source(source, "Synthetic source.pdf").committed_import
+
+        acknowledgement_ms = _measure_active_thumbnail_cancellation(
+            stack,
+            created.case_id,
+            imported.page_ids[0],
+        )
+
+        assert (
+            1
+            <= acknowledgement_ms
+            <= (CONSTRAINED_RESOURCE_POLICY_V1.cancellation_acknowledgement_ms)
+        )
+    finally:
+        stack.backend.shutdown()
 
 
 def test_m1_vertical_slice_is_deterministic_recoverable_and_private(

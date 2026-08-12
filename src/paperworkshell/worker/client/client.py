@@ -184,6 +184,8 @@ class WorkerClient:
         self._peer: ProtocolPeer | None = None
         self._active_operation: _ActiveOperation | None = None
         self._pending_cancel_request_ids: set[UUID] = set()
+        self._pending_cancel_started: dict[UUID, float] = {}
+        self._last_cancellation_acknowledgement_ms: int | None = None
         self._last_result: WorkerOperationResultSnapshot | None = None
         self._last_failure: WorkerFailure | None = None
         self._last_resource_snapshot: WorkerResourceSnapshot | None = None
@@ -264,6 +266,8 @@ class WorkerClient:
         self._peer = peer
         self._active_operation = None
         self._pending_cancel_request_ids.clear()
+        self._pending_cancel_started.clear()
+        self._last_cancellation_acknowledgement_ms = None
         self._last_result = None
         self._last_failure = None
         self._last_resource_snapshot = None
@@ -366,6 +370,7 @@ class WorkerClient:
             last_result=self._last_result,
             last_failure=self._last_failure,
             last_resource_snapshot=self._last_resource_snapshot,
+            last_cancellation_acknowledgement_ms=(self._last_cancellation_acknowledgement_ms),
         )
 
     def resource_snapshot(self) -> WorkerResourceSnapshot | None:
@@ -559,6 +564,7 @@ class WorkerClient:
         self._capabilities = ()
         self._active_operation = None
         self._pending_cancel_request_ids.clear()
+        self._pending_cancel_started.clear()
         self._clear_deadlines()
         self._shutdown_after_operation = False
         self._pending_shutdown_reason = None
@@ -596,6 +602,7 @@ class WorkerClient:
         self._capabilities = ()
         self._active_operation = None
         self._pending_cancel_request_ids.clear()
+        self._pending_cancel_started.clear()
         self._clear_deadlines()
         self._shutdown_after_operation = False
         self._pending_shutdown_reason = None
@@ -673,6 +680,16 @@ class WorkerClient:
         if message_type is MessageType.OPERATION_CANCEL_ACK:
             if type(payload) is not OperationCancelAckPayload or message.request_id is None:
                 self._protocol_fault()
+            started = self._pending_cancel_started.pop(message.request_id, None)
+            if started is None:
+                self._protocol_fault()
+            elapsed_seconds = self._now() - started
+            if elapsed_seconds < 0:
+                self._protocol_fault()
+            acknowledgement_ms = math.ceil(elapsed_seconds * 1_000)
+            if acknowledgement_ms > MAX_SAFE_INTEGER:
+                self._protocol_fault()
+            self._last_cancellation_acknowledgement_ms = acknowledgement_ms
             self._pending_cancel_request_ids.discard(message.request_id)
             if (
                 self._shutdown_after_operation
@@ -788,11 +805,17 @@ class WorkerClient:
         }:
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.CANCELLATION)
         request_id = self._new_id()
+        cancellation_started = self._now()
         cancellation_deadline = self._cancellation_deadline
         if cancellation_deadline is None:
-            cancellation_deadline = self._deadline_after(
-                self._timeout_policy.cancellation_grace_seconds
+            cancellation_deadline = (
+                cancellation_started + self._timeout_policy.cancellation_grace_seconds
             )
+            if not math.isfinite(cancellation_deadline):
+                reject_client(
+                    WorkerClientErrorCode.CONFIGURATION_INVALID,
+                    WorkerClientContext.CONFIGURATION,
+                )
         self._send_outbound(
             MessageType.OPERATION_CANCEL,
             OperationCancelPayload(reason),
@@ -800,6 +823,7 @@ class WorkerClient:
             operation_id=active.operation_id,
         )
         self._pending_cancel_request_ids.add(request_id)
+        self._pending_cancel_started[request_id] = cancellation_started
         active.cancellation_requested = True
         self._phase = WorkerLifecyclePhase.CANCELLING
         if self._cancellation_deadline is None:
@@ -897,6 +921,7 @@ class WorkerClient:
         self._capabilities = ()
         self._active_operation = None
         self._pending_cancel_request_ids.clear()
+        self._pending_cancel_started.clear()
         self._clear_deadlines()
         self._shutdown_after_operation = False
         self._pending_shutdown_reason = None

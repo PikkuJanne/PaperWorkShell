@@ -668,7 +668,8 @@ def test_operation_accept_progress_and_success_are_protocol_authoritative() -> N
 
 
 def test_cancel_ack_is_nonterminal_and_success_may_win_the_race() -> None:
-    client, _launcher, record, _generation = _ready_client()
+    clock = FakeClock()
+    client, _launcher, record, _generation = _ready_client(clock=clock)
     operation_id, start = _start_and_accept(client, record)
 
     cancel_request = client.cancel()
@@ -681,8 +682,10 @@ def test_cancel_ack_is_nonterminal_and_success_may_win_the_race() -> None:
         operation_id=operation_id,
     )
     _queue(record, acknowledgement)
+    clock.value += 0.125
     client.pump()
     assert client.query().phase is WorkerLifecyclePhase.CANCELLING
+    assert client.query().last_cancellation_acknowledgement_ms == 125
 
     result = record.worker_peer.prepare_outbound(
         MessageType.OPERATION_RESULT,

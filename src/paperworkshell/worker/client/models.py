@@ -252,6 +252,7 @@ class WorkerClientSnapshot:
     last_result: WorkerOperationResultSnapshot | None
     last_failure: WorkerFailure | None
     last_resource_snapshot: WorkerResourceSnapshot | None = None
+    last_cancellation_acknowledgement_ms: int | None = None
 
     def __post_init__(self) -> None:
         if type(self.generation) is not int or not 0 <= self.generation <= MAX_SAFE_INTEGER:
@@ -302,6 +303,14 @@ class WorkerClientSnapshot:
         if (
             self.last_resource_snapshot is not None
             and type(self.last_resource_snapshot) is not WorkerResourceSnapshot
+        ):
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.STATE,
+            )
+        if self.last_cancellation_acknowledgement_ms is not None and (
+            type(self.last_cancellation_acknowledgement_ms) is not int
+            or not 0 <= self.last_cancellation_acknowledgement_ms <= MAX_SAFE_INTEGER
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,

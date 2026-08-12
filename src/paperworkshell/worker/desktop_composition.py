@@ -193,6 +193,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         self._require_owner()
         return self._worker.resource_snapshot()
 
+    def last_cancellation_acknowledgement_ms(self) -> int | None:
+        """Return the last protocol acknowledgement latency, excluding teardown."""
+
+        self._require_owner()
+        return self._worker.query().last_cancellation_acknowledgement_ms
+
     def heavy_operation_snapshot(self) -> HeavyOperationSnapshot:
         """Expose shared content-free backpressure accounting."""
 
@@ -274,6 +280,12 @@ class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposit
 
         self._require_owner()
         return self._worker.resource_snapshot()
+
+    def last_cancellation_acknowledgement_ms(self) -> int | None:
+        """Return the last protocol acknowledgement latency, excluding teardown."""
+
+        self._require_owner()
+        return self._worker.query().last_cancellation_acknowledgement_ms
 
     def heavy_operation_snapshot(self) -> HeavyOperationSnapshot:
         """Expose shared content-free backpressure accounting."""
