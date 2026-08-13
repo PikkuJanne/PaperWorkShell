@@ -130,9 +130,19 @@ def _read_after_process_exit(path: Path) -> bytes:
             time.sleep(0.05)
 
 
+class _UnusedWorkerPort:
+    def inspect(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not inspect a source")
+
+    def get_or_generate(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not generate a preview")
+
+
 class _Composition:
-    source_inspector = object()
-    thumbnail_generator = object()
+    source_inspector = _UnusedWorkerPort()
+    image_source_inspector = _UnusedWorkerPort()
+    thumbnail_generator = _UnusedWorkerPort()
+    image_page_generator = _UnusedWorkerPort()
 
     def __init__(self) -> None:
         self.closed = False
