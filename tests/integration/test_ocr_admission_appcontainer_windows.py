@@ -131,6 +131,7 @@ def test_exact_ocr_admission_succeeds_inside_appcontainer(
         "audit_event_allowed": True,
         "audit_event_seen": True,
         "english_available": True,
+        "engine_smoke": True,
         "environment_complete": True,
         "error_code": "",
         "executable_absolute": True,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
 
 import pytest
@@ -13,6 +14,21 @@ from paperworkshell.worker.protocol.models import OCR_PROCESS_CAPABILITY
 @dataclass(frozen=True, slots=True)
 class _AdmittedOcrHandler:
     descriptor = OCR_PROCESS_CAPABILITY
+
+
+def test_host_caches_verified_windows_family_without_command_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(platform, "_uname_cache", None)
+
+    def forbidden_probe(*_arguments: object) -> tuple[str, str, str]:
+        raise AssertionError("ambient command probe must not run")
+
+    monkeypatch.setattr(platform, "_syscmd_ver", forbidden_probe)
+
+    host._cache_windows_platform_family()
+
+    assert platform.system() == "Windows"
 
 
 def test_host_registers_only_an_admitted_ocr_handler(monkeypatch: pytest.MonkeyPatch) -> None:

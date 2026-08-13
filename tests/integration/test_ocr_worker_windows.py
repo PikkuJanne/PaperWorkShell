@@ -15,18 +15,14 @@ import pytest
 from packaging.requirements import Requirement
 from PIL import Image, ImageDraw, ImageFont
 
+from paperworkshell.app.ocr import OcrService
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.ocr import (
-    DEFAULT_OCR_PROFILE_ID,
     TRUSTED_OCR_ENGINE_PROFILE_SHA256,
     OcrError,
-    OcrProcessRequest,
     OcrProgress,
     OcrProgressPhase,
-    OcrSourceEncryptionState,
-    OcrSourceKind,
-    OcrSourceSignatureState,
 )
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
@@ -36,10 +32,7 @@ from paperworkshell.domain.source_ingest import (
 )
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.quotas import WorkspaceQuota
-from paperworkshell.storage.source_ingest import (
-    CommittedSourcePageReadLease,
-    WindowsSourceIngestStore,
-)
+from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.workspace import CaseWorkspaceManager
 from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsProcessLauncher
@@ -92,52 +85,6 @@ class _ImageInspector:
             signature_state=SourceSignatureState.NOT_APPLICABLE,
             encryption_state=SourceEncryptionState.NOT_APPLICABLE,
         )
-
-
-@dataclass(frozen=True, slots=True)
-class _OcrImageLease:
-    source: CommittedSourcePageReadLease
-
-    @property
-    def case_id(self) -> UUID:
-        return self.source.case_id
-
-    @property
-    def source_id(self) -> UUID:
-        return self.source.source_id
-
-    @property
-    def source_kind(self) -> OcrSourceKind:
-        return OcrSourceKind.PNG
-
-    @property
-    def byte_size(self) -> int:
-        return self.source.source_byte_size
-
-    @property
-    def page_count(self) -> int:
-        return self.source.source_page_count
-
-    @property
-    def sha256(self) -> str:
-        return self.source.source_sha256
-
-    @property
-    def signature_state(self) -> OcrSourceSignatureState:
-        return OcrSourceSignatureState.NOT_APPLICABLE
-
-    @property
-    def encryption_state(self) -> OcrSourceEncryptionState:
-        return OcrSourceEncryptionState.NOT_APPLICABLE
-
-    @property
-    def handle_value(self) -> int:
-        return self.source.handle_value
-
-    def revalidate(self, *, deadline: object, cancellation: object) -> None:
-        assert callable(deadline)
-        assert callable(cancellation)
-        self.source.revalidate(deadline=deadline, cancellation=cancellation)
 
 
 def _stage_ocr_python_closure(resources: WorkerTestResources) -> None:
@@ -308,46 +255,33 @@ def test_live_ocr_worker_emits_verified_volatile_candidate_and_preserves_case(
         id_factory=_SequentialUuidFactory(0x20430000),
     )
     progress: list[OcrProgress] = []
-    with sources.borrow_committed_image_page(
-        _CASE_ID,
-        imported.page_ids[0],
-        cancellation=lambda: False,
-        deadline=lambda: False,
-    ) as source:
-        request = OcrProcessRequest(
-            case_id=_CASE_ID,
-            source_id=imported.source_id,
-            source_kind=OcrSourceKind.PNG,
-            source_byte_size=len(case_bytes),
-            source_page_count=1,
-            source_sha256=hashlib.sha256(case_bytes).hexdigest(),
-            signature_state=OcrSourceSignatureState.NOT_APPLICABLE,
-            encryption_state=OcrSourceEncryptionState.NOT_APPLICABLE,
-            language_set_id="latin-default-v1",
-            profile_id=DEFAULT_OCR_PROFILE_ID,
+    try:
+        candidate_context = OcrService(sources, processor).process_page(
+            _CASE_ID,
+            imported.page_ids[0],
+            "latin-default-v1",
+            deadline=lambda: False,
+            cancellation=lambda: False,
+            progress=progress.append,
         )
-        try:
-            candidate_context = processor.process(
-                request,
-                _OcrImageLease(source),
-                deadline=lambda: False,
-                cancellation=lambda: False,
-                progress=progress.append,
-            )
-        except OcrError:
-            snapshot = worker.query()
-            pytest.fail(f"OCR worker failed at {snapshot.phase.value}: {snapshot.last_failure!r}")
-        with candidate_context as candidate:
-            payload = bytearray()
-            while True:
-                block = candidate.read(1_048_576)
-                if not block:
-                    break
-                payload.extend(block)
-            assert bytes(payload).startswith(b"%PDF-")
-            assert hashlib.sha256(payload).hexdigest() == candidate.report.output_sha256
-            assert candidate.report.engine_profile_sha256 == TRUSTED_OCR_ENGINE_PROFILE_SHA256
-            assert candidate.report.page_count == 1
+    except OcrError:
+        snapshot = worker.query()
+        phases = tuple(item.phase.value for item in progress)
+        pytest.fail(
+            f"OCR worker failed at {snapshot.phase.value}: {snapshot.last_failure!r}; "
+            f"content-free phases={phases!r}"
+        )
+    with candidate_context as candidate:
+        payload = bytearray()
+        while True:
+            block = candidate.read(1_048_576)
+            if not block:
+                break
+            payload.extend(block)
+        assert bytes(payload).startswith(b"%PDF-")
+        assert hashlib.sha256(payload).hexdigest() == candidate.report.output_sha256
+        assert candidate.report.engine_profile_sha256 == TRUSTED_OCR_ENGINE_PROFILE_SHA256
+        assert candidate.report.page_count == 1
 
     assert progress[0].phase is OcrProgressPhase.PREPARING
     assert progress[-1].phase is OcrProgressPhase.COMPLETE

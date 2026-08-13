@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import sys
 
 from paperworkshell.worker._windows_runtime import (
@@ -22,6 +23,12 @@ from paperworkshell.worker.protocol.bootstrap import BootstrapError, decode_boot
 from paperworkshell.worker.runtime import HostExitCode, WorkerHostRuntime
 
 
+def _cache_windows_platform_family() -> None:
+    """Prevent the stdlib from attempting its blocked ``cmd /c ver`` fallback."""
+
+    platform._uname_cache = platform.uname_result("Windows", "", "", "", "")  # type: ignore[attr-defined]
+
+
 def main() -> int:
     """Start one isolated worker session without emitting sensitive diagnostics."""
 
@@ -32,6 +39,10 @@ def main() -> int:
         return int(HostExitCode.BOOTSTRAP_FAILED)
     try:
         verify_runtime_isolation()
+        # The AppContainer blocks the stdlib uname fallback's ambient
+        # ``cmd /c ver`` probe. Cache only the already-proven OS family before
+        # the immutable process allowlist is installed and adapters import.
+        _cache_windows_platform_family()
         install_worker_process_creation_policy()
     except IsolationAuditError, WorkerProcessCreationDenied:
         return int(HostExitCode.ISOLATION_FAILED)

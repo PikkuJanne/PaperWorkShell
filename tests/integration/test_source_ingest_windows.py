@@ -844,7 +844,20 @@ def test_committed_image_page_lease_authenticates_media_mapping_and_source_bytes
         assert lease.source_page_count == 1
         assert lease.source_byte_size == len(payload)
         assert lease.source_sha256 == hashlib.sha256(payload).hexdigest()
+        assert lease.signature_state is SourceSignatureState.NOT_APPLICABLE
+        assert lease.encryption_state is SourceEncryptionState.NOT_APPLICABLE
         assert lease.handle.read_exact(2) == b"\xff\xd8"
+
+    with stack.store.borrow_committed_source_page(
+        CASE_ID,
+        result.page_ids[0],
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    ) as lease:
+        assert lease.source_id == result.source_id
+        assert lease.source_media_type is DetectedMediaType.JPEG
+        assert lease.signature_state is SourceSignatureState.NOT_APPLICABLE
+        assert lease.encryption_state is SourceEncryptionState.NOT_APPLICABLE
 
     with pytest.raises(SourceIngestError) as wrong_decoder:
         stack.store.borrow_committed_pdf_page(
@@ -854,6 +867,28 @@ def test_committed_image_page_lease_authenticates_media_mapping_and_source_bytes
             cancellation=lambda: False,
         )
     assert wrong_decoder.value.code is SourceIngestErrorCode.SOURCE_UNAVAILABLE
+
+
+def test_committed_pdf_page_lease_retains_manifest_inspection_states(tmp_path: Path) -> None:
+    stack = _stack(tmp_path)
+    result = _import_pdf(
+        stack,
+        tmp_path,
+        name="synthetic-ocr-source.pdf",
+        marker=b"ocr-source-state",
+    )
+
+    with stack.store.borrow_committed_source_page(
+        CASE_ID,
+        result.page_ids[0],
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    ) as lease:
+        assert lease.source_id == result.source_id
+        assert lease.source_media_type is DetectedMediaType.PDF
+        assert lease.source_page_count == 2
+        assert lease.signature_state is SourceSignatureState.NONE_DETECTED
+        assert lease.encryption_state is SourceEncryptionState.UNENCRYPTED
 
 
 @pytest.mark.parametrize("interrupt_after_replace", [False, True])

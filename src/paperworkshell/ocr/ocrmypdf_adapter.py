@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -18,9 +19,11 @@ from enum import StrEnum
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Final, Literal, Protocol, cast
+from uuid import uuid4
 
 import ocrmypdf
 from ocrmypdf import pluginspec as _ocrmypdf_pluginspec
+from ocrmypdf._pipelines import ocr as _ocrmypdf_pipeline
 from ocrmypdf._plugin_manager import OcrmypdfPluginManager as _OcrmypdfPluginManager
 from ocrmypdf.builtin_plugins import concurrency as _ocrmypdf_concurrency
 from ocrmypdf.builtin_plugins import default_filters as _ocrmypdf_default_filters
@@ -69,6 +72,7 @@ _HOOKIMPL: Final = HookimplMarker("ocrmypdf")
 _TEMP_MONITOR_POLL_SECONDS: Final = 0.05
 _TEMP_MONITOR_JOIN_SECONDS: Final = 1.0
 _MAXIMUM_TEMP_ENTRIES: Final = 100_000
+_PRIVATE_TEMP_CREATE_ATTEMPTS: Final = 32
 _OCRMY_PDF_VERSION: Final = TRUSTED_OCRMYPDF_VERSION
 _TESSERACT_VERSION: Final = TRUSTED_TESSERACT_VERSION
 
@@ -604,19 +608,104 @@ def _private_ocrmypdf_temp_directory(root: Path) -> Iterator[None]:
     """Force OCRmyPDF's work tree below the authenticated operation root."""
 
     original = tempfile.TemporaryDirectory
+    original_mkdtemp_value = _ocrmypdf_pipeline.__dict__.get("mkdtemp")
+    if not callable(original_mkdtemp_value):
+        reject_ocr(OcrErrorCode.ENGINE_UNAVAILABLE, "ocr.ocrmypdf_temp_api")
+    original_mkdtemp = cast(Callable[..., str], original_mkdtemp_value)
 
-    def private_temporary_directory(*args: Any, **kwargs: Any) -> tempfile.TemporaryDirectory[str]:
-        requested = kwargs.get("dir")
-        if requested is not None and Path(requested) != root:
+    def private_mkdtemp(
+        suffix: str | None = None,
+        prefix: str | None = None,
+        dir: str | None = None,
+    ) -> str:
+        if suffix not in {None, ""} or (dir is not None and Path(dir) != root):
             reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
-        kwargs["dir"] = root
-        return original(*args, **kwargs)
+        return os.fspath(_create_inherited_private_temp(root, prefix))
+
+    def private_temporary_directory(
+        suffix: str | None = None,
+        prefix: str | None = None,
+        dir: str | None = None,
+        *,
+        ignore_cleanup_errors: bool = False,
+        delete: bool = True,
+    ) -> _InheritedAclTemporaryDirectory:
+        if ignore_cleanup_errors or not delete:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+        return _InheritedAclTemporaryDirectory(
+            _create_inherited_private_temp(
+                root,
+                prefix,
+                suffix=suffix,
+                requested_root=dir,
+            )
+        )
 
     tempfile.__dict__["TemporaryDirectory"] = private_temporary_directory
+    _ocrmypdf_pipeline.__dict__["mkdtemp"] = private_mkdtemp
     try:
         yield
     finally:
+        _ocrmypdf_pipeline.__dict__["mkdtemp"] = original_mkdtemp
         tempfile.__dict__["TemporaryDirectory"] = original
+
+
+class _InheritedAclTemporaryDirectory:
+    """TemporaryDirectory-compatible owner for one inherited-ACL work folder."""
+
+    __slots__ = ("_closed", "_path", "name")
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self.name = os.fspath(path)
+        self._closed = False
+
+    def __enter__(self) -> str:
+        return self.name
+
+    def __exit__(self, *_exc: object) -> None:
+        self.cleanup()
+
+    def cleanup(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            shutil.rmtree(self._path)
+            os.lstat(self._path)
+        except FileNotFoundError:
+            return
+        except OSError:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp_cleanup")
+        reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp_cleanup")
+
+
+def _create_inherited_private_temp(
+    root: Path,
+    prefix: str | None,
+    *,
+    suffix: str | None = None,
+    requested_root: str | None = None,
+) -> Path:
+    if (
+        suffix not in {None, ""}
+        or (requested_root is not None and Path(requested_root) != root)
+        or (prefix is not None and (type(prefix) is not str or len(prefix) > 64))
+    ):
+        reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+    for _attempt in range(_PRIVATE_TEMP_CREATE_ATTEMPTS):
+        candidate = root / f"pws-ocrmypdf-{uuid4().hex}"
+        try:
+            candidate.mkdir()
+            info = os.lstat(candidate)
+        except FileExistsError:
+            continue
+        except OSError:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+        if candidate.parent != root or not stat.S_ISDIR(info.st_mode) or _is_reparse(info):
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+        return candidate
+    reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
 
 
 @contextmanager

@@ -12,6 +12,7 @@ from tools.validate_dependencies import (
     INVALID_FIXTURE_DIRECTORY,
     INVENTORY_PATH,
     DependencyIssue,
+    _authority_reference_issues,
     _tesseract_runtime_closure_issues,
     load_dependency_schema,
     validate_dependency_data,
@@ -273,7 +274,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
                         {
                             "from": "jsonschema",
                             "type": "depends-on",
-                            "to": "ocrmypdf",
+                            "to": "ghostscript",
                             "enabled": True,
                         }
                     )
@@ -406,6 +407,69 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         self.assertIn(
             "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
             self._codes(missing_image_gate, repository_checks=True),
+        )
+
+        missing_language_management_ref = _load_inventory()
+        _component(missing_language_management_ref, "tesseract-language-data")["task_refs"].remove(
+            "PWS-0205"
+        )
+        self.assertIn(
+            "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+            self._codes(missing_language_management_ref, repository_checks=True),
+        )
+
+    def test_initial_english_data_admission_does_not_wait_for_pack_management(self) -> None:
+        data = _load_inventory()
+        components = {
+            component["component_id"]: component
+            for component in cast(list[dict[str, Any]], data["components"])
+        }
+        task_ids = {
+            task_ref
+            for component in components.values()
+            for task_ref in cast(list[str], component["task_refs"])
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            authority_root = Path(temporary_directory)
+            (authority_root / "DECISIONS.md").write_text(
+                (ROOT / "DECISIONS.md").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            tasks = [
+                {
+                    "id": task_id,
+                    "status": "planned" if task_id == "PWS-0205" else "done",
+                }
+                for task_id in sorted(task_ids)
+            ]
+            (authority_root / "TASKS.yaml").write_text(
+                json.dumps({"tasks": tasks}),
+                encoding="utf-8",
+            )
+
+            issues = _authority_reference_issues(
+                authority_root,
+                components,
+                "dependency-inventory.json",
+            )
+            self.assertEqual([], issues)
+
+            additional_pack = copy.deepcopy(components["tesseract-language-data"])
+            additional_pack["component_id"] = "additional-tesseract-language-data"
+            components["additional-tesseract-language-data"] = additional_pack
+            additional_pack_issues = _authority_reference_issues(
+                authority_root,
+                components,
+                "dependency-inventory.json",
+            )
+
+        self.assertTrue(
+            any(
+                issue.message
+                == "dependency admission requires completed implementation-task evidence"
+                for issue in additional_pack_issues
+            )
         )
 
     def test_pikepdf_native_and_lock_closure_relationships_fail_closed(self) -> None:

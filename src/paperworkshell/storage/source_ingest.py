@@ -322,7 +322,9 @@ class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageRe
     __slots__ = (
         "_case_id",
         "_closed",
+        "_encryption_state",
         "_page_id",
+        "_signature_state",
         "_source_media_type",
         "_source_byte_size",
         "_source_handle",
@@ -346,6 +348,8 @@ class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageRe
         source_page_count: int,
         source_byte_size: int,
         source_sha256: str,
+        signature_state: SourceSignatureState,
+        encryption_state: SourceEncryptionState,
     ) -> None:
         self._stack = stack
         self._source_handle = source_handle
@@ -357,6 +361,8 @@ class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageRe
         self._source_page_count = source_page_count
         self._source_byte_size = source_byte_size
         self._source_sha256 = source_sha256
+        self._signature_state = signature_state
+        self._encryption_state = encryption_state
         self._closed = False
 
     def __repr__(self) -> str:
@@ -431,6 +437,18 @@ class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageRe
     @property
     def source_sha256(self) -> str:
         return self._source_sha256
+
+    @property
+    def signature_state(self) -> SourceSignatureState:
+        """Return the signature-marker state authenticated from the retained manifest."""
+
+        return self._signature_state
+
+    @property
+    def encryption_state(self) -> SourceEncryptionState:
+        """Return the encryption state authenticated from the retained manifest."""
+
+        return self._encryption_state
 
     def close(self) -> None:
         if self._closed:
@@ -769,6 +787,30 @@ class WindowsSourceIngestStore:
             deadline=deadline,
         )
 
+    def borrow_committed_source_page(
+        self,
+        case_id: UUID,
+        page_id: UUID,
+        *,
+        cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
+    ) -> CommittedSourcePageReadLease:
+        """Retain one manifest-authenticated PDF, JPEG, or PNG source page for OCR."""
+
+        return self._borrow_committed_page(
+            case_id,
+            page_id,
+            allowed_media_types=frozenset(
+                {
+                    DetectedMediaType.PDF,
+                    DetectedMediaType.JPEG,
+                    DetectedMediaType.PNG,
+                }
+            ),
+            cancellation=cancellation,
+            deadline=deadline,
+        )
+
     def borrow_committed_image_page(
         self,
         case_id: UUID,
@@ -890,6 +932,8 @@ class WindowsSourceIngestStore:
                 source_page_count=record.page_count,
                 source_byte_size=record.byte_size,
                 source_sha256=record.sha256,
+                signature_state=record.signature_state,
+                encryption_state=record.encryption_state,
             )
             borrowed = True
             return lease

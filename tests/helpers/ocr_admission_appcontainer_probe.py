@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import sys
 import time
 from importlib import import_module
@@ -69,6 +70,12 @@ class _AuditObservation:
             self.allowed = True
 
 
+def _cache_windows_platform_family() -> None:
+    """Prevent the stdlib from attempting its blocked ``cmd /c ver`` fallback."""
+
+    platform._uname_cache = platform.uname_result("Windows", "", "", "", "")  # type: ignore[attr-defined]
+
+
 def _empty_result() -> dict[str, bool | str]:
     return {
         "ok": False,
@@ -92,6 +99,7 @@ def _empty_result() -> dict[str, bool | str]:
         "version_exact": False,
         "english_available": False,
         "handler_available": False,
+        "engine_smoke": False,
     }
 
 
@@ -110,6 +118,7 @@ def _run_probe() -> dict[str, bool | str]:
                 "minimal_environment": isolation.minimal_environment,
             }
         )
+        _cache_windows_platform_family()
         result["stage"] = "process_policy"
         observation = _AuditObservation(
             WorkerProcessCreationAuditHook(configured_process_authorities())
@@ -200,6 +209,34 @@ def _run_probe() -> dict[str, bool | str]:
         result["handler_available"] = build_handler() is not None
         if not result["handler_available"]:
             raise ValueError
+        result["stage"] = "engine_smoke"
+        adapter_type = getattr(adapter_module, "OcrMyPdfAdapter", None)
+        operation_temp = getattr(operation_module, "_private_operation_temp", None)
+        if not callable(adapter_type) or not callable(operation_temp):
+            raise ValueError
+        from PIL import Image
+
+        with operation_temp(temporary) as engine_root:
+            source = engine_root / "source.png"
+            output = engine_root / "candidate.pdf"
+            with Image.new("RGB", (32, 16), "white") as image:
+                image.putpixel((4, 4), (0, 0, 0))
+                image.putpixel((5, 4), (0, 0, 0))
+                image.save(source, format="PNG")
+            adapter_type(executable, tessdata).process(
+                source,
+                output,
+                temporary_directory=engine_root,
+                languages=("eng",),
+                profile_id="searchable-pdf-v1",
+                expected_page_count=1,
+                maximum_output_bytes=16 * 1024 * 1024,
+                maximum_image_pixels=16_000_000,
+                maximum_temporary_storage_bytes=128 * 1024 * 1024,
+                control=_AdmissionControl(),
+                progress=lambda _phase, _completed, _total: None,
+            )
+        result["engine_smoke"] = True
         result.update({"ok": True, "stage": "complete", "error_code": ""})
     except WorkerProcessCreationDenied:
         result["error_code"] = "PROCESS_POLICY_DENIED"
@@ -207,6 +244,9 @@ def _run_probe() -> dict[str, bool | str]:
         result["error_code"] = "PACKAGE_METADATA_UNAVAILABLE"
     except BaseException as error:
         code = "PROBE_STAGE_FAILED"
+        domain_code = getattr(getattr(error, "code", None), "value", None)
+        if type(domain_code) is str:
+            code = domain_code
         if result["stage"] in {"version", "languages"}:
             error_code = getattr(error, "code", None)
             error_value = getattr(error_code, "value", None)

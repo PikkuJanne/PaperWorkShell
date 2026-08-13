@@ -141,6 +141,11 @@ directory, or child environment differs from the fixed launch authority. Tool st
 are merged into one byte-counted stream, retained only for bounded version/language probes, and
 otherwise discarded.
 
+Before that immutable hook is installed, the host seeds Python's platform cache with only the
+already-proven Windows OS family. This prevents the standard library from attempting its ambient
+`cmd.exe /c ver` fallback while the pinned PDFium rasterizer imports; no command output or broader
+host-platform discovery is admitted.
+
 The repository dependency inventory and runtime-closure manifest provide current admission and
 redistribution evidence for PWS-0204. PWS-0801 still owns the release-grade lock comparison,
 complete packaged-content/SBOM match, final notice bundle, and release-input hash verification.
@@ -167,6 +172,13 @@ The worker then:
    entries, or inventory uncertainty, and performs strict stage-boundary inventories; and
 6. closes and removes the complete pinned operation tree on success, cancellation, timeout, and
    failure; cleanup uncertainty becomes an authoritative failure.
+
+Python 3.14 gives a Windows directory created with mode `0o700` an explicit ACL that is unsuitable
+for later AppContainer access. OCRmyPDF 17.10 imports `mkdtemp` directly for its work folder, so the
+version-bound adapter temporarily replaces that exact callable, plus `TemporaryDirectory`, with a
+closed inherited-ACL factory beneath the authenticated operation root. The adapter rejects API or
+argument drift, restores both callables in `finally`, and leaves final no-follow deletion to the
+pinned operation owner. This compatibility seam does not permit an ambient temp path or plugin.
 
 This is a prospective and stage-verified operation bound, not a claim that the canonical resource
 report continuously measures every worker-private byte. The report limitation is documented in

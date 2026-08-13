@@ -14,6 +14,7 @@ from typing import Any, cast
 import ocrmypdf
 import pikepdf
 import pytest
+from ocrmypdf._pipelines import ocr as _ocrmypdf_pipeline
 from PIL import Image
 
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode
@@ -106,6 +107,7 @@ def test_lazy_boundary_uses_only_allowlisted_plugins_and_fixed_profile(
     monkeypatch.setenv("APPDATA", os.fspath(ambient_profile / "roaming"))
     monkeypatch.setenv("PATH", os.fspath(ambient_profile / "bin"))
     original_tesseract_run = __import__("ocrmypdf._exec.tesseract", fromlist=["run"]).run
+    original_mkdtemp = _ocrmypdf_pipeline.__dict__["mkdtemp"]
 
     def fake_ocr(input_path: Path, output_path: Path, **kwargs: object) -> int:
         assert input_path == source
@@ -123,6 +125,9 @@ def test_lazy_boundary_uses_only_allowlisted_plugins_and_fixed_profile(
         assert all(not path.is_relative_to(ambient_profile) for path in font_directories)
         with tempfile.TemporaryDirectory(prefix="ocrmypdf.io.") as generated:
             assert Path(generated).is_relative_to(tmp_path)
+        generated_work = Path(_ocrmypdf_pipeline.__dict__["mkdtemp"](prefix="ocrmypdf.io."))
+        assert generated_work.is_relative_to(tmp_path)
+        generated_work.rmdir()
         captured.update(kwargs)
         manager = cast(Any, kwargs["plugin_manager"])
         names = {name for name, _plugin in manager.pluggy_manager.list_name_plugin()}
@@ -166,6 +171,7 @@ def test_lazy_boundary_uses_only_allowlisted_plugins_and_fixed_profile(
     assert canary not in caplog.text
     tesseract_module = __import__("ocrmypdf._exec.tesseract", fromlist=["run"])
     assert tesseract_module.run is original_tesseract_run
+    assert _ocrmypdf_pipeline.__dict__["mkdtemp"] is original_mkdtemp
 
 
 def test_supported_engine_builds_exact_hocr_argv_without_user_configuration(

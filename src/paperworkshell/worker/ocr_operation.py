@@ -543,16 +543,38 @@ def _materialize_private_temp() -> Path:
             )
         ):
             reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.temp_scope")
-        temp_root.mkdir(exist_ok=True)
+        parent_spelling_matches = _same_absolute_spelling(
+            temp_root.parent, local_root
+        ) and _same_absolute_spelling(tmp_root.parent, local_root)
+        parent_before: tuple[os.stat_result, os.stat_result, os.stat_result] | None = None
+        if not parent_spelling_matches:
+            parent_before = (
+                _private_directory_info(local_root),
+                _private_directory_info(temp_root.parent),
+                _private_directory_info(tmp_root.parent),
+            )
+            if not (
+                os.path.samestat(parent_before[0], parent_before[1])
+                and os.path.samestat(parent_before[0], parent_before[2])
+            ):
+                reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.temp_scope")
+        temp_root.mkdir(parents=parent_spelling_matches, exist_ok=True)
         local_info = _private_directory_info(local_root)
-        temp_parent = _private_directory_info(temp_root.parent)
-        tmp_parent = _private_directory_info(tmp_root.parent)
+        if parent_before is not None:
+            temp_parent = _private_directory_info(temp_root.parent)
+            tmp_parent = _private_directory_info(tmp_root.parent)
+            if not (
+                os.path.samestat(parent_before[0], local_info)
+                and os.path.samestat(parent_before[1], temp_parent)
+                and os.path.samestat(parent_before[2], tmp_parent)
+                and os.path.samestat(local_info, temp_parent)
+                and os.path.samestat(local_info, tmp_parent)
+            ):
+                reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.temp_identity")
         temp_info = _private_directory_info(temp_root)
         tmp_info = _private_directory_info(tmp_root)
         if not (
-            os.path.samestat(local_info, temp_parent)
-            and os.path.samestat(local_info, tmp_parent)
-            and os.path.samestat(temp_info, tmp_info)
+            _same_absolute_spelling(temp_root, tmp_root) or os.path.samestat(temp_info, tmp_info)
         ):
             reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.temp_scope")
         return temp_root
@@ -560,6 +582,10 @@ def _materialize_private_temp() -> Path:
         raise
     except OSError, TypeError, ValueError:
         reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.temp_unavailable")
+
+
+def _same_absolute_spelling(first: Path, second: Path) -> bool:
+    return os.path.abspath(first) == os.path.abspath(second)
 
 
 def _private_directory_info(path: Path) -> os.stat_result:

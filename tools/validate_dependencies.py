@@ -221,12 +221,13 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "rich": frozenset({"PWS-0204"}),
     "shiboken6": frozenset({"PWS-0106", "PWS-0111"}),
     "tesseract": frozenset({"PWS-0204"}),
-    "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
+    "tesseract-language-data": frozenset({"PWS-0204"}),
     "typing-inspection": frozenset({"PWS-0204"}),
     "uharfbuzz": frozenset({"PWS-0204"}),
 }
 REQUIRED_USAGE_TASK_REFERENCES: Final[dict[str, frozenset[str]]] = {
     "pillow": frozenset({"PWS-0201"}),
+    "tesseract-language-data": frozenset({"PWS-0205"}),
 }
 REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
     {
@@ -3294,7 +3295,11 @@ def _authority_reference_issues(
                 ),
             )
         admission_gates = set(ADMISSION_TASK_GATES.get(component_id, frozenset()))
-        if "PWS-D016" in component_decisions and component["ecosystem"] == "data":
+        if (
+            "PWS-D016" in component_decisions
+            and component["ecosystem"] == "data"
+            and component_id != "tesseract-language-data"
+        ):
             admission_gates.update({"PWS-0204", "PWS-0205"})
         if not admission_gates.issubset(component_tasks):
             _add_issue(
