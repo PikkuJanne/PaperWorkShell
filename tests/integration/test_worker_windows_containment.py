@@ -3075,19 +3075,17 @@ def _process_creation_guard_findings(
     *,
     path: Path,
     broker: Path,
-    worker_tool_adapter: Path | None = None,
+    subprocess_authorities: frozenset[Path] = frozenset(),
 ) -> tuple[list[str], set[str]]:
     findings: list[str] = []
     broker_subprocess_calls: set[str] = set()
-    subprocess_authorities = {broker}
-    if worker_tool_adapter is not None:
-        subprocess_authorities.add(worker_tool_adapter)
+    admitted_subprocess_modules = {broker, *subprocess_authorities}
     tree = ast.parse(source, filename=os.fspath(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "subprocess":
-                    if path not in subprocess_authorities or alias.asname is not None:
+                    if path not in admitted_subprocess_modules or alias.asname is not None:
                         findings.append("subprocess import")
                 elif alias.name == "_winapi" or alias.name.startswith("multiprocessing"):
                     findings.append(f"{alias.name} import")
@@ -3117,7 +3115,7 @@ def _process_creation_guard_findings(
         ):
             findings.append(f"dynamic process API {node.value}")
         if (
-            path in subprocess_authorities
+            path in admitted_subprocess_modules
             and isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name)
@@ -3127,24 +3125,44 @@ def _process_creation_guard_findings(
     return findings, broker_subprocess_calls
 
 
-def test_production_windows_process_creation_has_one_locked_broker() -> None:
+def test_production_windows_process_creation_has_only_locked_authorities() -> None:
     source_root = _REPOSITORY_ROOT / "src" / "paperworkshell"
     broker = source_root / "worker" / "client" / "_windows.py"
-    worker_tool_adapter = source_root / "pdf" / "qpdf_checker.py"
+    subprocess_authorities = frozenset(
+        {
+            source_root / "pdf" / "qpdf_checker.py",
+            source_root / "ocr" / "ocrmypdf_adapter.py",
+            source_root / "ocr" / "tesseract_runner.py",
+            source_root / "worker" / "process_creation_policy.py",
+        }
+    )
+    expected_calls = {
+        broker: {"list2cmdline"},
+        source_root / "pdf" / "qpdf_checker.py": {"Popen"},
+        source_root / "ocr" / "ocrmypdf_adapter.py": set(),
+        source_root / "ocr" / "tesseract_runner.py": {
+            "CalledProcessError",
+            "CompletedProcess",
+            "Popen",
+            "TimeoutExpired",
+        },
+        source_root / "worker" / "process_creation_policy.py": {"list2cmdline"},
+    }
     findings: list[tuple[Path, str]] = []
-    broker_subprocess_calls: set[str] = set()
+    subprocess_calls_by_module: dict[Path, set[str]] = {}
     for path in source_root.rglob("*.py"):
         path_findings, subprocess_calls = _process_creation_guard_findings(
             path.read_text(encoding="utf-8"),
             path=path,
             broker=broker,
-            worker_tool_adapter=worker_tool_adapter,
+            subprocess_authorities=subprocess_authorities,
         )
         findings.extend((path, finding) for finding in path_findings)
-        broker_subprocess_calls.update(subprocess_calls)
+        if path in expected_calls:
+            subprocess_calls_by_module[path] = subprocess_calls
 
     assert not findings
-    assert broker_subprocess_calls == {"Popen", "list2cmdline"}
+    assert subprocess_calls_by_module == expected_calls
 
 
 @pytest.mark.parametrize(
