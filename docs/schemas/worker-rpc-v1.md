@@ -12,7 +12,8 @@ operation through the existing typed operation registry. PWS-0108 adds the exact
 `pdf.thumbnail` operation and staging-output reference under the same additive-operation rules.
 PWS-0201 adds the exact `image.normalize` operation and bounded volatile artifact. None of these
 extensions adds paths or shell command text to messages. PWS-0202 adds a separate exact
-`image.transform` operation; it does not widen `image.normalize` version 1. See the
+`image.transform` operation; it does not widen `image.normalize` version 1. PWS-0204 adds the
+separate `ocr.process` operation for one bounded volatile OCR PDF candidate. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md), and
 [bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md), and
@@ -103,6 +104,14 @@ result contains one `image-transformed-rgba-v1` staging artifact whose header bi
 intent, engine profile, cache key, operation/output identities, layout, and pixel digest. The
 worker receives no manifest, path, external-source writer, or persistent cache authority.
 
+PWS-0204 adds `ocr.process` version 1. Its start has exactly one authenticated PDF, JPEG, or PNG
+`source_read` input; distinct positive worker-local source, output-section, and result-pipe handle
+parameters; a distinct output UUID; a bounded page count; and opaque trusted language-set and OCR
+profile identifiers. A succeeded result has exactly one bounded `operation_staging` output with
+content kind `ocr-pdf-candidate-v1`, exact operation/output correlation, byte size, and SHA-256.
+The separate canonical result frame carries only IDs, counts, fixed profile/version tokens, and
+digests. It carries no recognized text, filename, path, raw engine message, or command argument.
+
 ## Messages and lifecycle
 
 | Message | Direction | Payload |
@@ -156,6 +165,7 @@ Validation is intentionally split:
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
 version 1, `pdf.export` version 1, `image.normalize` version 1, and `image.transform` version 1.
+The registry also includes `ocr.process` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
 out-of-policy value fails closed.
@@ -284,6 +294,36 @@ operation/page/output UUIDs, canonical transform-intent digest, engine-profile d
 output geometry, and pixel digest. Cancellation, timeout, malformed input, resource exhaustion,
 and invalid output return no reference. The trusted broker confirms whole-tree termination and
 revalidates every binding before exposing a path-free typed result.
+
+### `ocr.process` volatile PDF-candidate result
+
+`ocr.process` version 1 accepts one exact immutable PDF, JPEG, or PNG source reference plus this
+closed parameter set:
+
+- distinct positive integer `source_handle`, `output_handle`, and `result_handle` values;
+- UUID `output_object_id`, pairwise distinct from the case, operation, and source UUIDs;
+- positive `page_count`, equal to the requested page limit and equal to one for JPEG/PNG; and
+- token `language_set_id` and `profile_id` values selected from trusted local configuration.
+
+The source bytes plus the complete output bound must fit the operation temporary-storage limit.
+The worker receives reduced read authority for the source, map-write authority for one fixed-size
+anonymous output section, and write-only authority for one bounded report pipe. It receives no case
+path, manifest handle, cache writer, external destination, raw OCR text sink, language path, or
+caller-supplied command fragment.
+
+On success, the staging output names `ocr-pdf-candidate-v1` and binds the operation/output UUID,
+exact size, and digest. A separate canonical report frame binds those facts to source UUID/kind,
+page counts, opaque profile IDs, fixed OCRmyPDF/Tesseract version tokens, and an engine-profile
+digest. The broker terminates the complete worker Job—including its sole Tesseract descendant—then
+re-hashes the retained original, validates the report and output bytes, and only then exposes a
+closeable volatile candidate. PWS-0204 does not publish it, mutate the manifest, claim that it is a
+final searchable export, or override signed-source review; those are later gated workflows.
+
+The worker launches Tesseract only through its fixed authenticated absolute executable, an argument
+array, a minimal environment, a fixed tessdata root, and `shell=False`. The Job permits exactly the
+Python worker and one Tesseract descendant. OCR progress remains numeric `processing/pages`; the
+broker translates it into content-free prepare/recognize/validate/complete application phases.
+Cancellation, timeout, malformed output, engine failure, or uncertain cleanup returns no reference.
 
 ## Limits and bounded decoding
 

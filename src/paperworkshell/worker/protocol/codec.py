@@ -21,6 +21,7 @@ from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
     MESSAGE_VERSION,
     NOOP_CAPABILITY,
+    OCR_PROCESS_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
@@ -62,6 +63,7 @@ from paperworkshell.worker.protocol.models import (
     WorkerFaultPayload,
     validate_image_normalize_start,
     validate_image_transform_start,
+    validate_ocr_process_start,
     validate_pdf_export_start,
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_start,
@@ -573,6 +575,7 @@ class OperationRegistry:
             NOOP_CAPABILITY,
             IMAGE_NORMALIZE_CAPABILITY,
             IMAGE_TRANSFORM_CAPABILITY,
+            OCR_PROCESS_CAPABILITY,
             PDF_INSPECT_CAPABILITY,
             PDF_THUMBNAIL_CAPABILITY,
             PDF_EXPORT_CAPABILITY,
@@ -605,6 +608,8 @@ class OperationRegistry:
             validate_image_normalize_start(payload)
         if payload.operation_kind == IMAGE_TRANSFORM_CAPABILITY.capability_id:
             validate_image_transform_start(payload)
+        if payload.operation_kind == OCR_PROCESS_CAPABILITY.capability_id:
+            validate_ocr_process_start(payload)
         if payload.operation_kind == PDF_INSPECT_CAPABILITY.capability_id:
             validate_pdf_inspect_start(payload)
         if payload.operation_kind == PDF_THUMBNAIL_CAPABILITY.capability_id:

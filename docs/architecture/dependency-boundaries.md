@@ -6,8 +6,8 @@
   structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle;
   PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
-  export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake
-  and PWS-0202 non-destructive image transformations
+  export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
+  PWS-0202 non-destructive image transformations; and PWS-0204 bounded local OCR
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -32,10 +32,10 @@ worker host -> domain
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
-| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), and [deterministic verified PDF-export contract](pdf-export.md) |
+| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), and [deterministic verified PDF-export contract](pdf-export.md) |
 | `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), and [deterministic verified PDF-export contract](pdf-export.md) |
 | `imaging` | Worker-only image inspection and transformation adapters; Pillow and its native objects never enter domain, app, or UI code |
-| `ocr` | OCR interfaces and worker-side OCRmyPDF/Tesseract implementations |
+| `ocr` | Worker-only OCRmyPDF/Tesseract orchestration and its exact private PDF-candidate reopen seam; third-party objects and recognized text never cross into domain, app, UI, storage, or GUI-safe worker modules; see the [bounded local OCR contract](ocr-worker.md) |
 | `overlays` | Normalized visual-overlay intent and rendering boundaries |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
@@ -59,12 +59,17 @@ worker host -> domain
    `PySide6.QtGui`, and `PySide6.QtWidgets` imports in the `ui` layer; the root `PySide6` import,
    every other PySide6 module, and every non-UI PySide6 import remain rejected. PWS-0201 admits
    only the `PIL` package in the worker-only `imaging` adapter layer; domain, app, UI, storage,
-   PDF, OCR, and worker orchestration remain unable to import it. The alternative
-   standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected. Future
-   ownership is reserved—but not approved—for OCRmyPDF/Tesseract integration in `ocr`. The
-   non-default PySide6-Addons renderer-evaluation group grants no source import boundary or product
-   scope.
-6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. A later adapter task may add a narrow, tested exception only when an admitted dependency requires one.
+   PDF, OCR, and worker orchestration remain unable to import it. PWS-0204 admits OCRmyPDF plus its
+   required `pluggy` and `pydantic` imports only in the exact
+   `paperworkshell.ocr.ocrmypdf_adapter` module, and admits `packaging.version` only in the exact
+   `paperworkshell.ocr.tesseract_runner` module. Sibling OCR modules and every other layer remain
+   unable to import those dependencies. Pikepdf remains confined to `pdf`; the exact
+   `ocr` → `pdf.ocr_candidate_verifier` edge returns only a positive page count or closed failure
+   after reopening the private candidate. No pikepdf object or general PDF feature crosses that
+   seam. Every other layer retains its prior prohibition. The alternative
+   standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected. The non-default
+   PySide6-Addons renderer-evaluation group grants no source import boundary or product scope.
+6. Calls through Python's standard dynamic-import APIs are rejected because they bypass static ownership checks. PWS-0204 uses static imports after the restricted host has completed isolation; the host catches an unavailable optional OCR dependency and omits that capability rather than discovering another implementation.
 7. Every package initializer is a passive namespace: it must not import or re-export product layers or implementation modules. Consequently, every package namespace remains importable without optional UI or document engines.
 8. `diagnostics` may import only the standard library, the root identity package, and its own
    modules. It cannot import case storage, worker, UI, document adapters, export implementations,
@@ -167,6 +172,23 @@ domain module imports Pillow, storage, worker orchestration, or UI code. Current
 separately fingerprinted schema, while storage alone owns the copy-only transactional migration
 from fully validated frozen v1 input.
 
+PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
+`domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,
+one-shot lifecycle, and broker-side candidate authentication; it imports no OCR engine.
+`worker.ocr_operation` owns the restricted host operation and invokes the worker-only
+`ocr.ocrmypdf_adapter`, which statically imports the exact admitted OCRmyPDF/Tesseract support
+closure. The adapter calls only `pdf.ocr_candidate_verifier` to reopen its private candidate; that
+narrow PDF seam converts pikepdf state to a page count or closed failure, and no third-party object
+crosses it. The operation produces only a bounded broker-owned volatile PDF candidate, not OCR
+text, a case artifact, manifest mutation, searchable-output claim, or export. Exact execution and
+deferrals are specified in the [bounded local OCR worker contract](ocr-worker.md).
+
+`worker.client.tesseract_runtime` is a standard-library-only helper for the private Windows
+launcher. It authenticates the code-owned manifest fingerprint and one explicitly configured
+runtime closure before those paths can join the launcher's exact-object grant. It does not import
+an OCR/PDF adapter, accept a case/document path, start a process, or weaken the GUI-safe client's
+prohibition on host/document-engine imports.
+
 PWS-0107 makes the worker split concrete. GUI-safe `worker.client` modules own only cached lifecycle
 state and abstract process/transport contracts; `worker.protocol` owns bounded framing, bootstrap,
 typed messages, and pure conversation state. The private Windows launcher, host composition,
@@ -223,7 +245,9 @@ exact stage handles, fixed artifact readback, no-replace publication, invalidati
 Storage does not import a worker implementation, and the worker broker does not acquire a general
 storage manager or case path. The host operation invokes the existing renderer-neutral PDF adapter
 through an exact source handle and exact write-only stage handle; the `pdf` package remains
-independent of worker/storage code and is still the only layer that imports pikepdf/pypdfium2.
+independent of worker/storage code. PWS-0204 adds only the exact
+`ocr` → `pdf.ocr_candidate_verifier` page-count seam; it does not grant the OCR layer renderer
+ownership or a general PDF API.
 
 For the PWS-0108 slice, `worker.protocol` owns the additive `pdf.thumbnail` capability, closed
 scalar/reference contract, and output correlation. The present registry also contains the exact

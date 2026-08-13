@@ -32,6 +32,8 @@ _ALLOWED_ENVIRONMENT: Final = frozenset(
         "TEMP",
         "TMP",
         "PWS_QPDF_EXECUTABLE",
+        "PWS_TESSERACT_EXECUTABLE",
+        "PWS_TESSDATA_ROOT",
         "PYTHONIOENCODING",
         "PYTHONUTF8",
     }

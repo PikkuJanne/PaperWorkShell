@@ -49,6 +49,7 @@ REPOSITORY_POLICY_INPUTS = (
     Path("DECISIONS.md"),
     Path("TASKS.yaml"),
     Path("docs/development/dependency-policy.md"),
+    Path("packaging/tesseract-runtime-closure-v1.json"),
     Path("pyproject.toml"),
     Path("tools/dev.py"),
     Path("uv.lock"),

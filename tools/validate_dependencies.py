@@ -25,6 +25,7 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 INVENTORY_PATH: Final = Path("packaging/dependency-inventory-v1.json")
+TESSERACT_RUNTIME_CLOSURE_PATH: Final = Path("packaging/tesseract-runtime-closure-v1.json")
 INVENTORY_SCHEMA_PATH: Final = Path("schemas/dependency-inventory-v1.schema.json")
 INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/dependencies/v1/invalid")
 SUPPORTED_SCHEMA_VERSION: Final = 1
@@ -36,6 +37,7 @@ CANONICAL_SCHEMA_FINGERPRINT: Final = (
 
 MAX_INVENTORY_BYTES: Final = 2 * 1024 * 1024
 MAX_SCHEMA_BYTES: Final = 1024 * 1024
+MAX_RUNTIME_CLOSURE_BYTES: Final = 512 * 1024
 MAX_JSON_DEPTH: Final = 64
 MAX_JSON_NODES: Final = 100_000
 MAX_JSON_STRING_CODEPOINTS: Final = 1_048_576
@@ -43,6 +45,13 @@ MAX_JSON_COLLECTION_ITEMS: Final = 1_024
 MAX_FIXTURE_FILES: Final = 256
 MAX_REPORTED_ISSUES: Final = 512
 MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
+EXPECTED_TESSERACT_SIGNER_FINGERPRINT: Final = "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+EXPECTED_TESSERACT_RUNTIME_PACKAGE_COUNT: Final = 30
+EXPECTED_TESSERACT_RUNTIME_FILE_COUNT: Final = 39
+EXPECTED_TESSERACT_RUNTIME_FILE_BYTES: Final = 27_588_734
+CANONICAL_TESSERACT_RUNTIME_CLOSURE_FINGERPRINT: Final = (
+    "1ffb85724770b4c30aa4d982564d548dadf466ebd5861cd827d2836198119c0a"
+)
 
 RENDERER_COMPONENT_IDS: Final = frozenset(
     {"mupdf", "pdfium", "poppler", "pypdfium2", "pyside6-addons", "qt-pdf"}
@@ -50,11 +59,18 @@ RENDERER_COMPONENT_IDS: Final = frozenset(
 HARD_GATED_COMPONENT_IDS: Final = frozenset({"ghostscript", "mupdf", "poppler"})
 KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
     {
+        "charset-normalizer",
+        "cryptography",
+        "defusedxml",
+        "fpdf2",
         "ghostscript",
+        "img2pdf",
         "lxml",
         "mupdf",
         "ocrmypdf",
+        "pdfminer-six",
         "pdfium",
+        "pi-heif",
         "pikepdf",
         "pillow",
         "poppler",
@@ -63,19 +79,30 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
         "qpdf",
         "qt-pdf",
         "tesseract",
+        "uharfbuzz",
     }
 )
 APPROVED_NATIVE_RUNTIME_BOUNDARIES: Final[dict[str, str]] = {
+    "cffi": "worker-process",
+    "fonttools": "worker-process",
+    "pydantic-core": "worker-process",
     "pyside6-essentials": "gui-process",
     "shiboken6": "gui-process",
 }
 EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
+    "charset-normalizer": "python-package",
+    "cryptography": "python-package",
+    "defusedxml": "python-package",
+    "fpdf2": "python-package",
     "ghostscript": "native-tool",
+    "img2pdf": "python-package",
     "lxml": "python-package",
     "mupdf": "native-library",
     "ocrmypdf": "python-package",
+    "pdfminer-six": "python-package",
     "pdfium": "native-library",
     "pikepdf": "python-package",
+    "pi-heif": "python-package",
     "pillow": "python-package",
     "poppler": "native-library",
     "pypdfium2": "python-package",
@@ -84,27 +111,46 @@ EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "qt-pdf": "framework",
     "tesseract": "native-tool",
     "tesseract-language-data": "data",
+    "uharfbuzz": "python-package",
 }
 REQUIRED_COMPONENT_IDS: Final = frozenset(
     {
         "actions-checkout",
         "actions-setup-python",
+        "annotated-types",
         "astral-setup-uv",
+        "cffi",
+        "charset-normalizer",
+        "cryptography",
         "cpython",
+        "defusedxml",
+        "fonttools",
+        "fpdf2",
         "ghostscript",
         "git",
         "gitleaks",
+        "img2pdf",
+        "markdown-it-py",
+        "mdurl",
         "lxml",
         "ocrmypdf",
+        "pdfminer-six",
+        "pi-heif",
         "pikepdf",
         "pillow",
+        "pycparser",
+        "pydantic",
+        "pydantic-core",
         "pyside6",
         "pyside6-addons",
         "pyside6-essentials",
         "qpdf",
+        "rich",
         "shiboken6",
         "tesseract",
         "tesseract-language-data",
+        "typing-inspection",
+        "uharfbuzz",
         "uv",
         "uv-build",
         *RENDERER_COMPONENT_IDS,
@@ -118,13 +164,52 @@ REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
         {"cpython", "pyside6", "pyside6-addons", "pyside6-essentials", "shiboken6"}
     ),
     "PWS-D015": frozenset({"lxml", "pikepdf", "pillow", "qpdf"}),
-    "PWS-D016": frozenset({"ocrmypdf", "tesseract", "tesseract-language-data"}),
+    "PWS-D016": frozenset(
+        {
+            "annotated-types",
+            "cffi",
+            "charset-normalizer",
+            "cryptography",
+            "defusedxml",
+            "fonttools",
+            "fpdf2",
+            "img2pdf",
+            "markdown-it-py",
+            "mdurl",
+            "ocrmypdf",
+            "pdfminer-six",
+            "pi-heif",
+            "pycparser",
+            "pydantic",
+            "pydantic-core",
+            "rich",
+            "tesseract",
+            "tesseract-language-data",
+            "typing-inspection",
+            "uharfbuzz",
+        }
+    ),
     "PWS-D017": RENDERER_COMPONENT_IDS,
     "PWS-D034": frozenset({"pillow"}),
 }
 ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
+    "annotated-types": frozenset({"PWS-0204"}),
+    "cffi": frozenset({"PWS-0204"}),
+    "charset-normalizer": frozenset({"PWS-0204"}),
+    "cryptography": frozenset({"PWS-0204"}),
+    "defusedxml": frozenset({"PWS-0204"}),
+    "fonttools": frozenset({"PWS-0204"}),
+    "fpdf2": frozenset({"PWS-0204"}),
+    "img2pdf": frozenset({"PWS-0204"}),
+    "markdown-it-py": frozenset({"PWS-0204"}),
+    "mdurl": frozenset({"PWS-0204"}),
     "pdfium": frozenset({"PWS-0106"}),
     "ocrmypdf": frozenset({"PWS-0204"}),
+    "pdfminer-six": frozenset({"PWS-0204"}),
+    "pi-heif": frozenset({"PWS-0204"}),
+    "pycparser": frozenset({"PWS-0204"}),
+    "pydantic": frozenset({"PWS-0204"}),
+    "pydantic-core": frozenset({"PWS-0204"}),
     "lxml": frozenset({"PWS-0105"}),
     "pikepdf": frozenset({"PWS-0105"}),
     "pillow": frozenset({"PWS-0105"}),
@@ -133,19 +218,25 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "pyside6-addons": frozenset({"PWS-0106"}),
     "pyside6-essentials": frozenset({"PWS-0106", "PWS-0111"}),
     "qpdf": frozenset({"PWS-0105"}),
+    "rich": frozenset({"PWS-0204"}),
     "shiboken6": frozenset({"PWS-0106", "PWS-0111"}),
     "tesseract": frozenset({"PWS-0204"}),
     "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
+    "typing-inspection": frozenset({"PWS-0204"}),
+    "uharfbuzz": frozenset({"PWS-0204"}),
 }
 REQUIRED_USAGE_TASK_REFERENCES: Final[dict[str, frozenset[str]]] = {
     "pillow": frozenset({"PWS-0201"}),
 }
 REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
     {
+        ("ocrmypdf", "optional-tool", "ghostscript", False),
+        ("ocrmypdf", "required-tool", "tesseract", True),
         ("pikepdf", "contains", "qpdf", True),
         ("pypdfium2", "contains", "pdfium", True),
         ("pyside6", "contains", "qt-pdf", False),
         ("pyside6-addons", "contains", "qt-pdf", False),
+        ("tesseract", "uses-data", "tesseract-language-data", True),
     }
 )
 EXPECTED_NEGATIVE_CODES: Final[dict[str, str]] = {
@@ -166,14 +257,20 @@ KNOWN_LICENSE_IDS: Final = frozenset(
         "GPL-3.0-only",
         "LGPL-3.0-only",
         "MIT",
+        "MIT-0",
         "MIT-CMU",
         "MPL-2.0",
+        "OFL-1.1",
         "PSF-2.0",
+        "Zlib",
     }
 )
 EXPECTED_LICENSE_REF_REVIEW_STATUS: Final[dict[str, str]] = {
     "LicenseRef-Artifex-Commercial": "decision-required",
+    "LicenseRef-ICC-Profile": "notice-closure-required",
+    "LicenseRef-MSYS2-UCRT64-Closure": "notice-closure-required",
     "LicenseRef-PDFium-Third-Party": "notice-closure-required",
+    "LicenseRef-Pi-Heif-Native-Closure": "notice-closure-required",
     "LicenseRef-Qt-Commercial": "candidate-only",
 }
 EXPECTED_LICENSE_REF_IDENTITIES: Final[dict[str, tuple[str, str, str]]] = {
@@ -182,9 +279,24 @@ EXPECTED_LICENSE_REF_IDENTITIES: Final[dict[str, tuple[str, str, str]]] = {
         "https://artifex.com/licensing/commercial/",
         "decision-required",
     ),
+    "LicenseRef-ICC-Profile": (
+        "ICC sRGB profile redistribution terms",
+        "https://www.color.org/profiles2.xalter",
+        "notice-closure-required",
+    ),
+    "LicenseRef-MSYS2-UCRT64-Closure": (
+        "MSYS2 UCRT64 Tesseract runtime license and notice closure",
+        "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-ocr",
+        "notice-closure-required",
+    ),
     "LicenseRef-PDFium-Third-Party": (
         "PDFium revision-specific third-party license closure",
         "https://pdfium.googlesource.com/pdfium/+/refs/heads/main/third_party/",
+        "notice-closure-required",
+    ),
+    "LicenseRef-Pi-Heif-Native-Closure": (
+        "pi-heif Windows wheel native runtime closure",
+        "https://github.com/bigcat88/pillow_heif/blob/v1.4.0/LICENSES_bundled.txt",
         "notice-closure-required",
     ),
     "LicenseRef-Qt-Commercial": (
@@ -198,6 +310,24 @@ EXPECTED_TOOL_ARTIFACTS: Final[dict[str, str]] = {
     "pdfium": "pdfium-win-x64.tgz",
     "qt-pdf": "pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl",
     "uv": "uv-x86_64-pc-windows-msvc.zip",
+}
+EXPECTED_INTEGRITY_ARTIFACTS: Final[dict[str, frozenset[str]]] = {
+    "tesseract": frozenset(
+        {
+            "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst",
+            "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst.sig",
+            "tesseract.exe",
+            "libtesseract-5.5.dll",
+            "osd.traineddata",
+        }
+    ),
+    "tesseract-language-data": frozenset(
+        {
+            "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst",
+            "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst.sig",
+            "eng.traineddata",
+        }
+    ),
 }
 EXPECTED_QPDF_BIN_FILES: Final[tuple[str, ...]] = (
     "concrt140.dll",
@@ -223,10 +353,22 @@ EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
         "8adc4d350b3b363f3dfc8fccdcf5bfed25f7e36c2fff30c64e106f4f1572/"
         "pyside6_addons-6.11.1-cp310-abi3-win_amd64.whl"
     ),
+    "tesseract": (
+        "https://mirror.msys2.org/mingw/ucrt64/"
+        "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst"
+    ),
+    "tesseract-language-data": (
+        "https://mirror.msys2.org/mingw/ucrt64/"
+        "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst"
+    ),
 }
 EXPECTED_RELEASE_URLS: Final[dict[str, str]] = {
     "pdfium": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947",
     "qt-pdf": "https://pypi.org/project/PySide6-Addons/6.11.1/",
+    "tesseract": ("https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-ocr"),
+    "tesseract-language-data": (
+        "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-eng"
+    ),
 }
 EXPECTED_PIN_VERIFICATION: Final[dict[str, str]] = {
     "exact": "sha256",
@@ -249,30 +391,45 @@ EXPECTED_PURL_BASES: Final[dict[str, str]] = {
 EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "actions-checkout": "https://github.com/actions/checkout",
     "actions-setup-python": "https://github.com/actions/setup-python",
+    "annotated-types": "https://github.com/annotated-types/annotated-types",
     "ast-serialize": "https://github.com/mypyc/ast_serialize",
     "astral-setup-uv": "https://github.com/astral-sh/setup-uv",
     "attrs": "https://github.com/python-attrs/attrs",
     "colorama": "https://github.com/tartley/colorama",
+    "cffi": "https://github.com/python-cffi/cffi",
+    "charset-normalizer": "https://github.com/jawah/charset_normalizer",
+    "cryptography": "https://github.com/pyca/cryptography",
     "cpython": "https://www.python.org/",
+    "defusedxml": "https://github.com/tiran/defusedxml",
+    "fonttools": "https://github.com/fonttools/fonttools",
+    "fpdf2": "https://github.com/py-pdf/fpdf2",
     "ghostscript": "https://ghostscript.com/",
     "git": "https://git-scm.com/",
     "gitleaks": "https://github.com/gitleaks/gitleaks",
     "iniconfig": "https://github.com/pytest-dev/iniconfig",
+    "img2pdf": "https://gitlab.mister-muffin.de/josch/img2pdf",
     "jsonschema": "https://github.com/python-jsonschema/jsonschema",
     "jsonschema-specifications": ("https://github.com/python-jsonschema/jsonschema-specifications"),
     "librt": "https://github.com/mypyc/librt",
     "lxml": "https://github.com/lxml/lxml",
+    "markdown-it-py": "https://github.com/executablebooks/markdown-it-py",
+    "mdurl": "https://github.com/executablebooks/mdurl",
     "mupdf": "https://mupdf.com/",
     "mypy": "https://github.com/python/mypy",
     "mypy-extensions": "https://github.com/python/mypy_extensions",
     "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF",
     "packaging": "https://github.com/pypa/packaging",
     "pathspec": "https://github.com/cpburnz/python-pathspec",
+    "pdfminer-six": "https://github.com/pdfminer/pdfminer.six",
     "pdfium": "https://pdfium.googlesource.com/pdfium/",
     "pikepdf": "https://github.com/pikepdf/pikepdf",
+    "pi-heif": "https://github.com/bigcat88/pillow_heif",
     "pillow": "https://github.com/python-pillow/Pillow",
     "pluggy": "https://github.com/pytest-dev/pluggy",
     "poppler": "https://poppler.freedesktop.org/",
+    "pycparser": "https://github.com/eliben/pycparser",
+    "pydantic": "https://github.com/pydantic/pydantic",
+    "pydantic-core": "https://github.com/pydantic/pydantic",
     "pygments": "https://github.com/pygments/pygments",
     "pypdfium2": "https://github.com/pypdfium2-team/pypdfium2",
     "pyside6": "https://doc.qt.io/qtforpython-6/",
@@ -281,48 +438,66 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "pytest": "https://github.com/pytest-dev/pytest",
     "pyyaml": "https://github.com/yaml/pyyaml",
     "qpdf": "https://github.com/qpdf/qpdf",
+    "rich": "https://github.com/Textualize/rich",
     "qt-pdf": "https://doc.qt.io/qt-6/qtpdf-index.html",
     "referencing": "https://github.com/python-jsonschema/referencing",
     "rpds-py": "https://github.com/crate-py/rpds",
     "ruff": "https://github.com/astral-sh/ruff",
     "shiboken6": "https://doc.qt.io/qtforpython-6/shiboken6/",
     "tesseract": "https://github.com/tesseract-ocr/tesseract",
-    "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata",
+    "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata_fast",
     "types-jsonschema": "https://github.com/python/typeshed",
     "types-pyyaml": "https://github.com/python/typeshed",
     "typing-extensions": "https://github.com/python/typing_extensions",
+    "typing-inspection": "https://github.com/pydantic/typing-inspection",
+    "uharfbuzz": "https://github.com/harfbuzz/uharfbuzz",
     "uv": "https://github.com/astral-sh/uv",
     "uv-build": "https://github.com/astral-sh/uv",
 }
 EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "actions-checkout": "https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/LICENSE",
     "actions-setup-python": "https://github.com/actions/setup-python/blob/5fda3b95a4ea91299a34e894583c3862153e4b97/LICENSE",
+    "annotated-types": "https://github.com/annotated-types/annotated-types/blob/v0.8.0/LICENSE",
     "ast-serialize": "https://github.com/mypyc/ast_serialize/blob/main/LICENSE",
     "astral-setup-uv": "https://github.com/astral-sh/setup-uv/blob/c771a70e6277c0a99b617c7a806ffedaca235ff9/LICENSE",
     "attrs": "https://github.com/python-attrs/attrs/blob/26.1.0/LICENSE",
     "colorama": "https://github.com/tartley/colorama/blob/0.4.6/LICENSE.txt",
+    "cffi": "https://github.com/python-cffi/cffi/blob/v2.1.1/LICENSE",
+    "charset-normalizer": "https://github.com/jawah/charset_normalizer/blob/3.5.0/LICENSE",
+    "cryptography": "https://github.com/pyca/cryptography/blob/50.0.0/LICENSE",
     "cpython": "https://docs.python.org/3/license.html",
+    "defusedxml": "https://github.com/tiran/defusedxml/blob/v0.7.1/LICENSE",
+    "fonttools": "https://github.com/fonttools/fonttools/blob/4.63.0/LICENSE",
+    "fpdf2": "https://github.com/py-pdf/fpdf2/blob/2.8.8/LICENSE",
     "ghostscript": "https://ghostscript.com/faq/index.html",
     "git": "https://github.com/git/git/blob/master/COPYING",
     "gitleaks": "https://github.com/gitleaks/gitleaks/blob/v8.30.1/LICENSE",
     "iniconfig": "https://github.com/pytest-dev/iniconfig/blob/2.3.0/LICENSE",
+    "img2pdf": "https://gitlab.mister-muffin.de/josch/img2pdf/-/blob/0.6.3/LICENSE",
     "jsonschema": "https://github.com/python-jsonschema/jsonschema/blob/v4.26.0/COPYING",
     "jsonschema-specifications": "https://github.com/python-jsonschema/jsonschema-specifications/blob/v2025.9.1/COPYING",
     "librt": "https://github.com/mypyc/librt/blob/main/LICENSE",
     "lxml": "https://github.com/lxml/lxml/blob/lxml-6.1.1/LICENSES.txt",
+    "markdown-it-py": "https://github.com/executablebooks/markdown-it-py/blob/v4.2.0/LICENSE",
+    "mdurl": "https://github.com/executablebooks/mdurl/blob/0.1.2/LICENSE",
     "mupdf": "https://mupdf.com/releases",
     "mypy": "https://github.com/python/mypy/blob/v2.3.0/LICENSE",
     "mypy-extensions": "https://github.com/python/mypy_extensions/blob/1.1.0/LICENSE",
-    "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF/blob/main/LICENSE",
+    "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF/blob/v17.10.0/LICENSE",
     "packaging": "https://github.com/pypa/packaging/blob/26.2/LICENSE",
     "pathspec": "https://github.com/cpburnz/python-pathspec/blob/v1.1.1/LICENSE",
+    "pdfminer-six": "https://github.com/pdfminer/pdfminer.six/blob/20260107/LICENSE",
     "pdfium": (
         "https://pdfium.googlesource.com/pdfium/+/d3e62278db7489af9e0b686835d1c8aca218c3d7/LICENSE"
     ),
     "pikepdf": "https://github.com/pikepdf/pikepdf/blob/v10.10.0/LICENSE.txt",
+    "pi-heif": "https://github.com/bigcat88/pillow_heif/blob/v1.4.0/LICENSES_bundled.txt",
     "pillow": "https://github.com/python-pillow/Pillow/blob/12.3.0/LICENSE",
     "pluggy": "https://github.com/pytest-dev/pluggy/blob/1.6.0/LICENSE",
     "poppler": "https://cgit.freedesktop.org/poppler/poppler/tree/README-XPDF",
+    "pycparser": "https://github.com/eliben/pycparser/blob/release_v3.00/LICENSE",
+    "pydantic": "https://github.com/pydantic/pydantic/blob/v2.13.4/LICENSE",
+    "pydantic-core": ("https://github.com/pydantic/pydantic/blob/v2.13.4/pydantic-core/LICENSE"),
     "pygments": "https://github.com/pygments/pygments/blob/2.20.0/LICENSE",
     "pypdfium2": (
         "https://github.com/pypdfium2-team/pypdfium2/blob/5.12.1/LICENSES/Apache-2.0.txt"
@@ -336,6 +511,7 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "pytest": "https://github.com/pytest-dev/pytest/blob/9.1.1/LICENSE",
     "pyyaml": "https://github.com/yaml/pyyaml/blob/6.0.3/LICENSE",
     "qpdf": "https://github.com/qpdf/qpdf/blob/v12.3.2/LICENSE.txt",
+    "rich": "https://github.com/Textualize/rich/blob/v15.0.0/LICENSE",
     "qt-pdf": "https://doc.qt.io/qt-6/qtpdf-licensing.html",
     "referencing": "https://github.com/python-jsonschema/referencing/blob/v0.37.0/COPYING",
     "rpds-py": "https://github.com/crate-py/rpds/blob/v2026.6.3/LICENSE",
@@ -344,22 +520,45 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
         "https://raw.githubusercontent.com/pyside/pyside-setup/"
         "73fb12a067c2e8f7a464a310aaee2860fa2b64d2/LICENSES/LGPL-3.0-only.txt"
     ),
-    "tesseract": "https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE",
-    "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata/blob/main/LICENSE",
+    "tesseract": "https://github.com/tesseract-ocr/tesseract/blob/5.5.3/LICENSE",
+    "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata_fast/blob/4.1.0/LICENSE",
     "types-jsonschema": "https://github.com/python/typeshed/blob/main/LICENSE",
     "types-pyyaml": "https://github.com/python/typeshed/blob/main/LICENSE",
     "typing-extensions": "https://github.com/python/typing_extensions/blob/4.16.0/LICENSE",
+    "typing-inspection": "https://github.com/pydantic/typing-inspection/blob/v0.4.4/LICENSE",
+    "uharfbuzz": "https://github.com/harfbuzz/uharfbuzz/blob/v0.56.0/LICENSE",
     "uv": "https://github.com/astral-sh/uv/blob/0.11.32/LICENSE-MIT",
     "uv-build": "https://github.com/astral-sh/uv/blob/0.11.32/LICENSE-MIT",
 }
 EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bool, bool]]] = {
     "actions-checkout": ("MIT", None, True, False, False, False),
     "actions-setup-python": ("MIT", None, True, False, False, False),
+    "annotated-types": ("MIT", None, True, False, False, False),
     "ast-serialize": ("MIT", None, True, False, False, False),
     "astral-setup-uv": ("MIT", None, True, False, False, False),
     "attrs": ("MIT", None, True, False, False, False),
     "colorama": ("BSD-3-Clause", None, True, False, False, False),
+    "cffi": ("MIT-0", None, True, False, False, False),
+    "charset-normalizer": ("MIT", None, True, False, False, False),
+    "cryptography": (
+        "Apache-2.0 OR BSD-3-Clause",
+        "Apache-2.0",
+        True,
+        False,
+        False,
+        False,
+    ),
     "cpython": ("PSF-2.0", None, True, False, False, False),
+    "defusedxml": ("PSF-2.0", None, True, False, False, False),
+    "fonttools": ("MIT", None, True, False, False, False),
+    "fpdf2": (
+        "LGPL-3.0-only AND LicenseRef-ICC-Profile",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
     "ghostscript": (
         "AGPL-3.0-or-later OR LicenseRef-Artifex-Commercial",
         None,
@@ -371,16 +570,27 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "git": ("GPL-2.0-only", None, True, True, False, False),
     "gitleaks": ("MIT", None, True, False, False, False),
     "iniconfig": ("MIT", None, True, False, False, False),
+    "img2pdf": ("LGPL-3.0-only", None, True, True, True, False),
     "jsonschema": ("MIT", None, True, False, False, False),
     "jsonschema-specifications": ("MIT", None, True, False, False, False),
     "librt": ("MIT", None, True, False, False, False),
     "lxml": ("BSD-3-Clause", None, True, False, False, False),
+    "markdown-it-py": ("MIT", None, True, False, False, False),
+    "mdurl": ("MIT", None, True, False, False, False),
     "mupdf": ("AGPL-3.0-or-later OR LicenseRef-Artifex-Commercial", None, True, True, False, True),
     "mypy": ("MIT", None, True, False, False, False),
     "mypy-extensions": ("MIT", None, True, False, False, False),
-    "ocrmypdf": ("MPL-2.0", None, True, True, False, False),
+    "ocrmypdf": (
+        "MPL-2.0 AND Apache-2.0 AND OFL-1.1 AND Zlib",
+        None,
+        True,
+        True,
+        False,
+        False,
+    ),
     "packaging": ("Apache-2.0 OR BSD-2-Clause", "Apache-2.0", True, False, False, False),
     "pathspec": ("MPL-2.0", None, True, True, False, False),
+    "pdfminer-six": ("MIT", None, True, False, False, False),
     "pdfium": (
         "MIT AND BSD-3-Clause AND LicenseRef-PDFium-Third-Party",
         None,
@@ -390,9 +600,20 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
         False,
     ),
     "pikepdf": ("MPL-2.0", None, True, True, False, False),
+    "pi-heif": (
+        "BSD-3-Clause AND LGPL-3.0-only AND LicenseRef-Pi-Heif-Native-Closure",
+        None,
+        True,
+        True,
+        True,
+        False,
+    ),
     "pillow": ("MIT-CMU", None, True, False, False, False),
     "pluggy": ("MIT", None, True, False, False, False),
     "poppler": ("GPL-2.0-only OR GPL-3.0-only", None, True, True, False, True),
+    "pycparser": ("BSD-3-Clause", None, True, False, False, False),
+    "pydantic": ("MIT", None, True, False, False, False),
+    "pydantic-core": ("MIT", None, True, False, False, False),
     "pygments": ("BSD-2-Clause", None, True, False, False, False),
     "pypdfium2": (
         "(Apache-2.0 OR BSD-3-Clause) AND CC-BY-4.0 AND LicenseRef-PDFium-Third-Party",
@@ -429,6 +650,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "pytest": ("MIT", None, True, False, False, False),
     "pyyaml": ("MIT", None, True, False, False, False),
     "qpdf": ("Apache-2.0 OR Artistic-2.0", "Apache-2.0", True, False, False, False),
+    "rich": ("MIT", None, True, False, False, False),
     "qt-pdf": (
         "(LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only) AND LicenseRef-PDFium-Third-Party",
         None,
@@ -448,11 +670,20 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
         True,
         False,
     ),
-    "tesseract": ("Apache-2.0", None, True, False, False, False),
+    "tesseract": (
+        "Apache-2.0 AND LicenseRef-MSYS2-UCRT64-Closure",
+        None,
+        True,
+        False,
+        False,
+        False,
+    ),
     "tesseract-language-data": ("Apache-2.0", None, True, False, False, False),
     "types-jsonschema": ("Apache-2.0", None, True, False, False, False),
     "types-pyyaml": ("Apache-2.0", None, True, False, False, False),
     "typing-extensions": ("PSF-2.0", None, True, False, False, False),
+    "typing-inspection": ("MIT", None, True, False, False, False),
+    "uharfbuzz": ("Apache-2.0", None, True, False, False, False),
     "uv": ("MIT OR Apache-2.0", "MIT", True, False, False, False),
     "uv-build": ("MIT OR Apache-2.0", "MIT", True, False, False, False),
 }
@@ -487,6 +718,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         False,
         "ci-runner",
+        False,
+        False,
+    ),
+    "annotated-types": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        False,
+        "worker-process",
         False,
         False,
     ),
@@ -542,6 +786,45 @@ EXPECTED_ADMISSION_PROFILES: Final[
         False,
         False,
     ),
+    "cffi": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        True,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
+    "charset-normalizer": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "cryptography": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
     "cpython": (
         "interpreter",
         "external",
@@ -554,6 +837,45 @@ EXPECTED_ADMISSION_PROFILES: Final[
         "developer-host",
         False,
         False,
+    ),
+    "defusedxml": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
+    "fonttools": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        True,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
+    "fpdf2": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
     ),
     "ghostscript": (
         "native-tool",
@@ -607,6 +929,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         False,
         False,
     ),
+    "img2pdf": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        True,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
     "jsonschema": (
         "python-package",
         "direct",
@@ -659,6 +994,32 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         True,
     ),
+    "markdown-it-py": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        True,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
+    "mdurl": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
     "mupdf": (
         "native-library",
         "candidate",
@@ -701,8 +1062,8 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "ocrmypdf": (
         "python-package",
         "direct",
-        "planned",
-        (),
+        "approved",
+        ("worker",),
         "planned",
         False,
         True,
@@ -737,6 +1098,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         False,
         False,
     ),
+    "pdfminer-six": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
     "pdfium": (
         "native-library",
         "transitive",
@@ -763,6 +1137,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         True,
     ),
+    "pi-heif": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
+    ),
     "pillow": (
         "python-package",
         "direct",
@@ -780,12 +1167,12 @@ EXPECTED_ADMISSION_PROFILES: Final[
         "python-package",
         "transitive",
         "approved",
-        ("development", "test"),
-        "not-shipped",
+        ("development", "test", "worker"),
+        "planned",
         False,
         False,
         False,
-        "developer-host",
+        "worker-process",
         False,
         False,
     ),
@@ -802,16 +1189,55 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         True,
     ),
+    "pycparser": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
+    "pydantic": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
+    "pydantic-core": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        False,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
     "pygments": (
         "python-package",
         "transitive",
         "approved",
-        ("development", "test"),
-        "not-shipped",
+        ("development", "test", "worker"),
+        "planned",
         False,
         True,
         False,
-        "developer-host",
+        "worker-process",
         False,
         False,
     ),
@@ -906,6 +1332,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         True,
     ),
+    "rich": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
     "qt-pdf": (
         "framework",
         "candidate",
@@ -974,8 +1413,8 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "tesseract": (
         "native-tool",
         "direct",
-        "planned",
-        (),
+        "approved",
+        ("worker",),
         "planned",
         True,
         True,
@@ -987,8 +1426,8 @@ EXPECTED_ADMISSION_PROFILES: Final[
     "tesseract-language-data": (
         "data",
         "direct",
-        "planned",
-        (),
+        "approved",
+        ("data", "worker"),
         "planned",
         False,
         False,
@@ -1027,14 +1466,40 @@ EXPECTED_ADMISSION_PROFILES: Final[
         "python-package",
         "transitive",
         "approved",
-        ("development", "validation"),
-        "not-shipped",
+        ("development", "validation", "worker"),
+        "planned",
         False,
         False,
         False,
-        "developer-host",
+        "worker-process",
         False,
         False,
+    ),
+    "typing-inspection": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        False,
+        False,
+        False,
+        "worker-process",
+        False,
+        False,
+    ),
+    "uharfbuzz": (
+        "python-package",
+        "transitive",
+        "approved",
+        ("worker",),
+        "planned",
+        True,
+        False,
+        True,
+        "worker-process",
+        True,
+        True,
     ),
     "uv": (
         "native-tool",
@@ -1072,6 +1537,12 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
         "GitHub",
         "upstream-release-inventory",
     ),
+    "annotated-types": (
+        "annotated-types",
+        "library",
+        "annotated-types contributors",
+        "uv.lock",
+    ),
     "ast-serialize": ("ast-serialize", "library", "mypyc contributors", "uv.lock"),
     "astral-setup-uv": (
         "astral-sh/setup-uv",
@@ -1080,13 +1551,29 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
         "upstream-release-inventory",
     ),
     "attrs": ("attrs", "library", "attrs contributors", "uv.lock"),
+    "cffi": ("cffi", "library", "cffi contributors", "uv.lock"),
+    "charset-normalizer": (
+        "charset-normalizer",
+        "library",
+        "charset-normalizer contributors",
+        "uv.lock",
+    ),
     "colorama": ("colorama", "library", "Colorama contributors", "uv.lock"),
+    "cryptography": (
+        "cryptography",
+        "library",
+        "Python Cryptographic Authority",
+        "uv.lock",
+    ),
     "cpython": (
         "CPython",
         "application",
         "Python Software Foundation",
         "upstream-release-inventory",
     ),
+    "defusedxml": ("defusedxml", "library", "defusedxml contributors", "uv.lock"),
+    "fonttools": ("fonttools", "library", "fonttools contributors", "uv.lock"),
+    "fpdf2": ("fpdf2", "library", "fpdf2 contributors", "uv.lock"),
     "ghostscript": (
         "Ghostscript",
         "application",
@@ -1096,6 +1583,7 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     "git": ("Git", "application", "Git project", "upstream-release-inventory"),
     "gitleaks": ("Gitleaks", "application", "Gitleaks contributors", "upstream-release-inventory"),
     "iniconfig": ("iniconfig", "library", "pytest contributors", "uv.lock"),
+    "img2pdf": ("img2pdf", "library", "img2pdf contributors", "uv.lock"),
     "jsonschema": ("jsonschema", "library", "jsonschema contributors", "uv.lock"),
     "jsonschema-specifications": (
         "jsonschema-specifications",
@@ -1105,17 +1593,34 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     ),
     "librt": ("librt", "library", "mypyc contributors", "uv.lock"),
     "lxml": ("lxml", "library", "lxml contributors", "upstream-release-inventory"),
+    "markdown-it-py": (
+        "markdown-it-py",
+        "library",
+        "Executable Books contributors",
+        "uv.lock",
+    ),
+    "mdurl": ("mdurl", "library", "Executable Books contributors", "uv.lock"),
     "mupdf": ("MuPDF", "library", "Artifex Software Inc.", "upstream-release-inventory"),
     "mypy": ("mypy", "application", "mypy contributors", "uv.lock"),
     "mypy-extensions": ("mypy-extensions", "library", "mypy contributors", "uv.lock"),
     "ocrmypdf": ("OCRmyPDF", "application", "OCRmyPDF contributors", "upstream-release-inventory"),
     "packaging": ("packaging", "library", "Python Packaging Authority", "uv.lock"),
     "pathspec": ("pathspec", "library", "pathspec contributors", "uv.lock"),
+    "pdfminer-six": ("pdfminer.six", "library", "pdfminer.six contributors", "uv.lock"),
     "pdfium": ("PDFium", "library", "PDFium Authors", "upstream-release-inventory"),
+    "pi-heif": ("pi-heif", "library", "pillow-heif contributors", "upstream-release-inventory"),
     "pikepdf": ("pikepdf", "library", "pikepdf contributors", "upstream-release-inventory"),
     "pillow": ("Pillow", "library", "Pillow contributors", "upstream-release-inventory"),
     "pluggy": ("pluggy", "library", "pytest contributors", "uv.lock"),
     "poppler": ("Poppler", "library", "Poppler contributors", "upstream-release-inventory"),
+    "pycparser": ("pycparser", "library", "pycparser contributors", "uv.lock"),
+    "pydantic": ("pydantic", "library", "Pydantic Services Inc.", "uv.lock"),
+    "pydantic-core": (
+        "pydantic-core",
+        "library",
+        "Pydantic Services Inc.",
+        "uv.lock",
+    ),
     "pygments": ("Pygments", "library", "Pygments contributors", "uv.lock"),
     "pypdfium2": ("pypdfium2", "library", "pypdfium2 contributors", "upstream-release-inventory"),
     "pyside6": (
@@ -1146,6 +1651,7 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
         "upstream-release-inventory",
     ),
     "referencing": ("referencing", "library", "jsonschema contributors", "uv.lock"),
+    "rich": ("Rich", "library", "Textualize contributors", "uv.lock"),
     "rpds-py": ("rpds-py", "library", "rpds-py contributors", "uv.lock"),
     "ruff": ("Ruff", "application", "Astral Software Inc.", "uv.lock"),
     "shiboken6": (
@@ -1157,18 +1663,25 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     "tesseract": (
         "Tesseract OCR",
         "application",
-        "Tesseract OCR contributors",
+        "Tesseract OCR contributors and MSYS2",
         "upstream-release-inventory",
     ),
     "tesseract-language-data": (
-        "Tesseract language data",
+        "Tesseract fast English language data",
         "data",
-        "Tesseract OCR contributors",
+        "Tesseract OCR contributors and MSYS2",
         "upstream-release-inventory",
+    ),
+    "typing-inspection": (
+        "typing-inspection",
+        "library",
+        "Pydantic Services Inc.",
+        "uv.lock",
     ),
     "types-jsonschema": ("types-jsonschema", "library", "typeshed contributors", "uv.lock"),
     "types-pyyaml": ("types-PyYAML", "library", "typeshed contributors", "uv.lock"),
     "typing-extensions": ("typing-extensions", "library", "Python Software Foundation", "uv.lock"),
+    "uharfbuzz": ("uharfbuzz", "library", "uharfbuzz contributors", "uv.lock"),
     "uv": ("uv", "application", "Astral Software Inc.", "upstream-release-inventory"),
     "uv-build": ("uv-build", "library", "Astral Software Inc.", "upstream-release-inventory"),
 }
@@ -2556,6 +3069,7 @@ def _component_semantic_issues(
                 )
         if verification in {"sha256", "uv-lock"} and selected is not None:
             expected_artifact = EXPECTED_TOOL_ARTIFACTS.get(component_id)
+            expected_artifacts = EXPECTED_INTEGRITY_ARTIFACTS.get(component_id)
             artifact_identity_pattern = re.compile(
                 rf"^{re.escape(component_id.casefold().replace('_', '-'))}-"
                 rf"{re.escape(selected.casefold().replace('_', '-'))}(?:[.-]|$)"
@@ -2564,16 +3078,16 @@ def _component_semantic_issues(
                 cast(str, hash_record["artifact"])
                 for hash_record in cast(list[Mapping[str, Any]], integrity["hashes"])
             }
-            artifact_identity_valid = (
-                artifact_names == {expected_artifact}
-                if expected_artifact is not None
-                else bool(artifact_names)
-                and all(
+            if expected_artifacts is not None:
+                artifact_identity_valid = artifact_names == expected_artifacts
+            elif expected_artifact is not None:
+                artifact_identity_valid = artifact_names == {expected_artifact}
+            else:
+                artifact_identity_valid = bool(artifact_names) and all(
                     artifact_identity_pattern.match(artifact.casefold().replace("_", "-"))
                     is not None
                     for artifact in artifact_names
                 )
-            )
             if not artifact_identity_valid:
                 _add_issue(
                     issues,
@@ -4088,6 +4602,7 @@ def _repository_semantic_issues(
         _lock_reconciliation_issues(root, data, components, document),
         _declaration_reconciliation_issues(root, components, document),
         _workflow_reconciliation_issues(root, components, document),
+        _tesseract_runtime_closure_issues(root, components, document),
     ):
         for issue in collection:
             _add_issue(issues, issue)
@@ -4139,6 +4654,226 @@ def _repository_semantic_issues(
                 document,
                 "$.relationships",
                 "PySide6 meta-package, Addons, and Qt PDF product containment must remain disabled without conflating PDFium builds",
+            ),
+        )
+    return _sorted_issues(issues)
+
+
+def _tesseract_runtime_closure_issues(
+    root: Path,
+    components: Mapping[str, Mapping[str, Any]],
+    document: str,
+) -> list[DependencyIssue]:
+    """Bind the admitted OCR engine to one closed, hash-addressed Windows file set."""
+
+    path = root / TESSERACT_RUNTIME_CLOSURE_PATH
+    closure_document = TESSERACT_RUNTIME_CLOSURE_PATH.as_posix()
+    try:
+        raw = path.read_bytes()
+        if not raw or len(raw) > MAX_RUNTIME_CLOSURE_BYTES:
+            raise ValueError
+        closure = json.loads(raw.decode("utf-8"))
+    except OSError, UnicodeError, ValueError, json.JSONDecodeError:
+        return [
+            _issue(
+                "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                closure_document,
+                "$",
+                "Tesseract runtime closure must be a bounded UTF-8 JSON document",
+            )
+        ]
+    if not isinstance(closure, dict):
+        return [
+            _issue(
+                "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                closure_document,
+                "$",
+                "Tesseract runtime closure must be an object",
+            )
+        ]
+    issues: list[DependencyIssue] = []
+    if hashlib.sha256(raw).hexdigest() != CANONICAL_TESSERACT_RUNTIME_CLOSURE_FINGERPRINT:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                closure_document,
+                "$",
+                "runtime closure document must match the reviewed canonical fingerprint",
+            ),
+        )
+    engine = closure.get("engine")
+    language_data = closure.get("language_data")
+    layout = closure.get("layout")
+    trust = closure.get("trust")
+    evidence = closure.get("closure_evidence")
+    packages = closure.get("packages")
+    files = closure.get("files")
+    tesseract = components.get("tesseract")
+    language = components.get("tesseract-language-data")
+    header_valid = (
+        closure.get("schema_version") == 1
+        and closure.get("manifest_id") == "paperworkshell-tesseract-runtime-windows-x86_64"
+        and closure.get("task_id") == "PWS-0204"
+        and isinstance(engine, dict)
+        and isinstance(language_data, dict)
+        and isinstance(layout, dict)
+        and isinstance(trust, dict)
+        and isinstance(evidence, dict)
+        and isinstance(packages, list)
+        and isinstance(files, list)
+        and tesseract is not None
+        and language is not None
+        and engine.get("version") == "5.5.3"
+        and engine.get("distribution_package_version")
+        == cast(Mapping[str, Any], tesseract["version"])["selected"]
+        and language_data.get("distribution_package_version")
+        == cast(Mapping[str, Any], language["version"])["selected"]
+        and layout
+        == {
+            "entrypoint": "bin/tesseract.exe",
+            "tessdata_directory": "share/tessdata",
+            "allow_unlisted_files": False,
+            "allow_reparse_points": False,
+        }
+        and trust.get("required_key_fingerprint") == EXPECTED_TESSERACT_SIGNER_FINGERPRINT
+        and trust.get("keyring_artifact") == "msys2-keyring-1~20260214-1-any.pkg.tar.zst"
+        and trust.get("keyring_url")
+        == ("https://mirror.msys2.org/msys/x86_64/msys2-keyring-1~20260214-1-any.pkg.tar.zst")
+        and trust.get("keyring_size_bytes") == 42_159
+        and trust.get("keyring_sha256")
+        == "c93044188c49f6f75e6f75709017ffa9234c2bdd8fe7c6a4c47d62a9cd8bfb1f"
+        and trust.get("upstream_installer_status") == "rejected"
+    )
+    if not header_valid:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                closure_document,
+                "$",
+                "runtime identity, layout, trust policy, and admitted component versions must agree",
+            ),
+        )
+        return _sorted_issues(issues)
+
+    evidence_record = cast(dict[str, object], evidence)
+
+    package_ids: set[str] = set()
+    for index, item in enumerate(cast(list[object], packages)):
+        valid = isinstance(item, dict)
+        package = cast(dict[str, object], item) if valid else {}
+        package_id = package.get("package_id")
+        artifact = package.get("artifact")
+        signature_artifact = package.get("signature_artifact")
+        package_hash = package.get("sha256")
+        signature_hash = package.get("signature_sha256")
+        package_url = package.get("url")
+        signature_url = package.get("signature_url")
+        valid = (
+            valid
+            and isinstance(package_id, str)
+            and package_id.startswith("mingw-w64-ucrt-x86_64-")
+            and package_id not in package_ids
+            and isinstance(package.get("version"), str)
+            and isinstance(artifact, str)
+            and artifact.startswith(f"{package_id}-")
+            and artifact.endswith("-any.pkg.tar.zst")
+            and signature_artifact == f"{artifact}.sig"
+            and package_url == f"https://mirror.msys2.org/mingw/ucrt64/{artifact}"
+            and signature_url == f"https://mirror.msys2.org/mingw/ucrt64/{signature_artifact}"
+            and type(package.get("size_bytes")) is int
+            and cast(int, package["size_bytes"]) > 0
+            and package.get("signature_size_bytes") == 566
+            and isinstance(package_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", package_hash) is not None
+            and isinstance(signature_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", signature_hash) is not None
+            and package.get("expected_signer_fingerprint") == EXPECTED_TESSERACT_SIGNER_FINGERPRINT
+        )
+        if not valid:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                    closure_document,
+                    f"$.packages[{index}]",
+                    "package provenance must bind one exact signed MSYS2 UCRT64 artifact",
+                ),
+            )
+        if isinstance(package_id, str):
+            package_ids.add(package_id)
+
+    file_paths: set[str] = set()
+    total_size = 0
+    roles: dict[str, str] = {}
+    for index, item in enumerate(cast(list[object], files)):
+        valid = isinstance(item, dict)
+        file_record = cast(dict[str, object], item) if valid else {}
+        relative_path = file_record.get("path")
+        role = file_record.get("role")
+        owner = file_record.get("package_id")
+        size = file_record.get("size_bytes")
+        digest = file_record.get("sha256")
+        safe_path = False
+        if isinstance(relative_path, str):
+            candidate = Path(relative_path)
+            safe_path = (
+                relative_path == candidate.as_posix()
+                and not candidate.is_absolute()
+                and bool(candidate.parts)
+                and all(part not in {"", ".", ".."} for part in candidate.parts)
+                and relative_path.casefold() not in {item.casefold() for item in file_paths}
+            )
+        valid = (
+            valid
+            and safe_path
+            and role in {"entrypoint", "runtime-library", "output-config", "language-data"}
+            and owner in package_ids
+            and type(size) is int
+            and size > 0
+            and isinstance(digest, str)
+            and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
+        )
+        if not valid:
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                    closure_document,
+                    f"$.files[{index}]",
+                    "selected runtime files require unique safe paths, owners, sizes, roles, and SHA-256",
+                ),
+            )
+        if isinstance(relative_path, str):
+            file_paths.add(relative_path)
+            if isinstance(role, str):
+                roles[relative_path] = role
+        if type(size) is int:
+            total_size += size
+    file_profile_valid = (
+        len(package_ids) == EXPECTED_TESSERACT_RUNTIME_PACKAGE_COUNT
+        and len(file_paths) == EXPECTED_TESSERACT_RUNTIME_FILE_COUNT
+        and total_size == EXPECTED_TESSERACT_RUNTIME_FILE_BYTES
+        and roles.get("bin/tesseract.exe") == "entrypoint"
+        and roles.get("share/tessdata/eng.traineddata") == "language-data"
+        and roles.get("share/tessdata/configs/hocr") == "output-config"
+        and roles.get("share/tessdata/configs/pdf") == "output-config"
+        and roles.get("share/tessdata/configs/txt") == "output-config"
+        and sum(role == "entrypoint" for role in roles.values()) == 1
+        and evidence_record.get("selected_file_count") == len(file_paths)
+        and evidence_record.get("selected_file_bytes") == total_size
+        and evidence_record.get("package_count") == len(package_ids)
+        and evidence_record.get("license_notice_status") == "planned-PWS-0801"
+    )
+    if not file_profile_valid:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+                closure_document,
+                "$.files",
+                "selected runtime closure must retain its reviewed closed file profile",
             ),
         )
     return _sorted_issues(issues)

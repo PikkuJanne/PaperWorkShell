@@ -13,6 +13,7 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_SAFE_INTEGER,
     NOOP_CAPABILITY,
+    OCR_PROCESS_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
@@ -26,6 +27,7 @@ from paperworkshell.worker.protocol.models import (
     OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
+    ProgressUnit,
     ProtocolEnvelope,
     ProtocolErrorPayload,
     ResourceLimits,
@@ -36,12 +38,15 @@ from paperworkshell.worker.protocol.models import (
     WorkerFaultPayload,
     image_normalize_bound_object_ids,
     image_transform_bound_object_ids,
+    ocr_process_bound_object_ids,
     pdf_export_bound_object_ids,
     pdf_thumbnail_bound_object_ids,
     validate_image_normalize_result,
     validate_image_normalize_start,
     validate_image_transform_result,
     validate_image_transform_start,
+    validate_ocr_process_result,
+    validate_ocr_process_start,
     validate_pdf_export_result,
     validate_pdf_export_start,
     validate_pdf_inspect_start,
@@ -73,6 +78,7 @@ class _ActiveOperation:
     requested_limits: ResourceLimits
     image_normalize_output_object_id: UUID | None = None
     image_transform_output_object_id: UUID | None = None
+    ocr_output_object_id: UUID | None = None
     thumbnail_cache_object_id: UUID | None = None
     export_output_object_id: UUID | None = None
     accepted: bool = False
@@ -332,6 +338,7 @@ class ConversationState:
             validate_pdf_inspect_start(payload)
         image_normalize_output_object_id: UUID | None = None
         image_transform_output_object_id: UUID | None = None
+        ocr_output_object_id: UUID | None = None
         thumbnail_cache_object_id: UUID | None = None
         export_output_object_id: UUID | None = None
         if descriptor == IMAGE_NORMALIZE_CAPABILITY:
@@ -364,6 +371,21 @@ class ConversationState:
                     "image.transform case, operation, and object identifiers must be distinct",
                 )
             image_transform_output_object_id = transform_bound_object_ids[2]
+        if descriptor == OCR_PROCESS_CAPABILITY:
+            validate_ocr_process_start(payload)
+            ocr_bound_object_ids = ocr_process_bound_object_ids(payload)
+            ocr_correlated_ids = (
+                self.case_id,
+                message.operation_id,
+                *ocr_bound_object_ids,
+            )
+            if len(set(ocr_correlated_ids)) != len(ocr_correlated_ids):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "ocr.process case, operation, and object identifiers must be distinct",
+                )
+            ocr_output_object_id = ocr_bound_object_ids[1]
         if descriptor == PDF_THUMBNAIL_CAPABILITY:
             validate_pdf_thumbnail_start(payload)
             thumbnail_bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
@@ -407,6 +429,7 @@ class ConversationState:
                 requested_limits=payload.requested_limits,
                 image_normalize_output_object_id=image_normalize_output_object_id,
                 image_transform_output_object_id=image_transform_output_object_id,
+                ocr_output_object_id=ocr_output_object_id,
                 thumbnail_cache_object_id=thumbnail_cache_object_id,
                 export_output_object_id=export_output_object_id,
             ),
@@ -471,6 +494,15 @@ class ConversationState:
         if message.request_id != active.start_request_id:
             reject(
                 "RPC_REQUEST_MISMATCH", "request_id", "progress does not match the start request"
+            )
+        if active.operation_kind == OCR_PROCESS_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.PAGES
+            or payload.total_units != active.requested_limits.page_count
+        ):
+            reject(
+                "RPC_INVALID_PROGRESS",
+                "payload",
+                "ocr.process progress must use its exact numeric page total",
             )
         if active.progress_seen:
             if payload.completed_units < active.completed_units:
@@ -659,6 +691,22 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 output_object_id=active.image_transform_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if (
+            CapabilityDescriptor(active.operation_kind, active.operation_version)
+            == OCR_PROCESS_CAPABILITY
+        ):
+            if active.ocr_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "ocr.process result binding is unavailable",
+                )
+            validate_ocr_process_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.ocr_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         if active.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:

@@ -947,11 +947,9 @@ def _contains_valid_pan(content: bytes) -> bool:
     for candidate_start in _PAN_CANDIDATE_START_PATTERN.finditer(content):
         if _pan_start_is_within_uuid(content, candidate_start.start()):
             continue
-        candidate_count += 1
-        if candidate_count > _MAX_PAN_CANDIDATE_STARTS:
-            return True
         digits = bytearray()
         position = candidate_start.start()
+        candidate_counted = False
         while len(digits) < 19:
             group_match = _PAN_DIGIT_GROUP_PATTERN.match(content, position)
             if group_match is None:
@@ -965,6 +963,11 @@ def _contains_valid_pan(content: bytes) -> bool:
                 content[position]
             )
             compact = bytes(digits)
+            if len(compact) >= 13 and not candidate_counted:
+                candidate_count += 1
+                candidate_counted = True
+                if candidate_count > _MAX_PAN_CANDIDATE_STARTS:
+                    return True
             if (
                 ends_at_boundary
                 and 13 <= len(compact) <= 19

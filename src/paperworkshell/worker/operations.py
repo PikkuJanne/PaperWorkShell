@@ -10,6 +10,7 @@ from typing import Final, Protocol
 from uuid import UUID
 
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
+from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_inspection import PdfInspectionError, PdfInspectionErrorCode
 from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
@@ -40,6 +41,16 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER,
     IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER,
     NOOP_CAPABILITY,
+    OCR_PROCESS_CAPABILITY,
+    OCR_PROCESS_LANGUAGE_SET_ID_PARAMETER,
+    OCR_PROCESS_OUTPUT_CONTENT_KIND,
+    OCR_PROCESS_OUTPUT_HANDLE_PARAMETER,
+    OCR_PROCESS_OUTPUT_OBJECT_ID_PARAMETER,
+    OCR_PROCESS_PAGE_COUNT_PARAMETER,
+    OCR_PROCESS_PROFILE_ID_PARAMETER,
+    OCR_PROCESS_RESULT_HANDLE_PARAMETER,
+    OCR_PROCESS_SOURCE_CONTENT_KINDS,
+    OCR_PROCESS_SOURCE_HANDLE_PARAMETER,
     PDF_EXPORT_CAPABILITY,
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
     PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
@@ -531,6 +542,150 @@ class PdfThumbnailOperationHandler:
             OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
         )
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class OcrProcessOperationRequest:
+    """Path-free authority and opaque configuration for one local OCR run."""
+
+    source_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    result_handle: int = field(repr=False)
+    output_object_id: UUID
+    source_content_kind: str
+    page_count: int
+    language_set_id: str
+    profile_id: str
+
+    def __post_init__(self) -> None:
+        handles = (self.source_handle, self.output_handle, self.result_handle)
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+            or type(self.source_content_kind) is not str
+            or self.source_content_kind not in OCR_PROCESS_SOURCE_CONTENT_KINDS
+            or type(self.page_count) is not int
+            or self.page_count <= 0
+            or type(self.language_set_id) is not str
+            or type(self.profile_id) is not str
+        ):
+            raise ValueError("validated OCR-process parameters are unavailable")
+
+    def __repr__(self) -> str:
+        return (
+            "OcrProcessOperationRequest("
+            f"output_object_id={self.output_object_id!r}, "
+            f"source_content_kind={self.source_content_kind!r}, "
+            f"page_count={self.page_count!r})"
+        )
+
+
+class OcrProcessAdapter(Protocol):
+    """Injected OCR adapter that consumes every transferred handle."""
+
+    def discard_handles(
+        self,
+        context: OperationContext,
+        request: OcrProcessOperationRequest,
+    ) -> None:
+        """Consume transferred handles when terminal state prevents OCR."""
+
+    def process(
+        self,
+        context: OperationContext,
+        request: OcrProcessOperationRequest,
+    ) -> CaseObjectReference:
+        """Write one bounded report and opaque PDF candidate through brokered handles."""
+
+
+@dataclass(frozen=True, slots=True)
+class OcrProcessOperationHandler:
+    """Coordinate the closed ``ocr.process`` operation around one adapter."""
+
+    adapter: OcrProcessAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return OCR_PROCESS_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _ocr_process_operation_request(context)
+        total_pages = request.page_count
+        context.report_progress(
+            OperationProgressPayload(
+                ProgressStage.PROCESSING,
+                0,
+                total_pages,
+                ProgressUnit.PAGES,
+            )
+        )
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+
+        try:
+            output = self.adapter.process(context, request)
+        except OcrError as error:
+            if error.code is OcrErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is OcrErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            raise
+
+        # Successful adapters have consumed and closed every transferred handle.
+        # Late terminal state suppresses the untrusted candidate reference.
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_ocr_process_output(context, request, output)
+        context.report_progress(
+            OperationProgressPayload(
+                ProgressStage.PROCESSING,
+                total_pages,
+                total_pages,
+                ProgressUnit.PAGES,
+            )
+        )
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+def _ocr_process_operation_request(context: OperationContext) -> OcrProcessOperationRequest:
+    if len(context.inputs) != 1:
+        raise ValueError("validated OCR-process source is unavailable")
+    return OcrProcessOperationRequest(
+        source_handle=_positive_integer_parameter(context, OCR_PROCESS_SOURCE_HANDLE_PARAMETER),
+        output_handle=_positive_integer_parameter(context, OCR_PROCESS_OUTPUT_HANDLE_PARAMETER),
+        result_handle=_positive_integer_parameter(context, OCR_PROCESS_RESULT_HANDLE_PARAMETER),
+        output_object_id=_uuid_parameter(context, OCR_PROCESS_OUTPUT_OBJECT_ID_PARAMETER),
+        source_content_kind=context.inputs[0].content_kind,
+        page_count=_positive_integer_parameter(context, OCR_PROCESS_PAGE_COUNT_PARAMETER),
+        language_set_id=_token_parameter(context, OCR_PROCESS_LANGUAGE_SET_ID_PARAMETER),
+        profile_id=_token_parameter(context, OCR_PROCESS_PROFILE_ID_PARAMETER),
+    )
+
+
+def _require_ocr_process_output(
+    context: OperationContext,
+    request: OcrProcessOperationRequest,
+    output: CaseObjectReference,
+) -> None:
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != OCR_PROCESS_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+    ):
+        raise ValueError("OCR-process adapter returned an invalid staging reference")
 
 
 @dataclass(frozen=True, slots=True)

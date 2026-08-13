@@ -647,6 +647,68 @@ def test_only_imaging_adapter_may_import_pillow() -> None:
         assert {violation.code for violation in violations} == {expected}
 
 
+@pytest.mark.parametrize(
+    ("dependency", "approved_module"),
+    (
+        ("ocrmypdf", "paperworkshell.ocr.ocrmypdf_adapter"),
+        ("pluggy", "paperworkshell.ocr.ocrmypdf_adapter"),
+        ("pydantic", "paperworkshell.ocr.ocrmypdf_adapter"),
+        ("packaging.version", "paperworkshell.ocr.tesseract_runner"),
+    ),
+)
+def test_only_exact_ocr_adapter_may_import_pinned_dependency(
+    dependency: str,
+    approved_module: str,
+) -> None:
+    assert (
+        inspect_source(
+            f"import {dependency}\n",
+            module=approved_module,
+            package="paperworkshell.ocr",
+            path=f"{approved_module.rpartition('.')[2]}.py",
+        )
+        == ()
+    )
+    for rejected_module, rejected_package in (
+        ("paperworkshell.ocr.unapproved_adapter", "paperworkshell.ocr"),
+        ("paperworkshell.app.ocr", "paperworkshell.app"),
+    ):
+        violations = inspect_source(
+            f"import {dependency}\n",
+            module=rejected_module,
+            package=rejected_package,
+            path="ocr_dependency_violation.py",
+        )
+        assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+
+    unapproved = inspect_source(
+        "import requests\n",
+        module="paperworkshell.ocr.ocrmypdf_adapter",
+        package="paperworkshell.ocr",
+        path="ocr_dependency_violation.py",
+    )
+    assert {violation.code for violation in unapproved} == {"ARCH_EXTERNAL_IMPORT"}
+
+
+def test_ocr_pdf_reopen_stays_behind_the_pdf_adapter_boundary() -> None:
+    violations = inspect_source(
+        "import pikepdf\n",
+        module="paperworkshell.ocr.ocrmypdf_adapter",
+        package="paperworkshell.ocr",
+        path="ocrmypdf_adapter.py",
+    )
+    assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+    assert (
+        inspect_source(
+            "import pikepdf\n",
+            module="paperworkshell.pdf.ocr_candidate_verifier",
+            package="paperworkshell.pdf",
+            path="ocr_candidate_verifier.py",
+        )
+        == ()
+    )
+
+
 def test_invalid_source_and_relative_import_fail_closed() -> None:
     parse_violations = inspect_source(
         "def broken(:\n",

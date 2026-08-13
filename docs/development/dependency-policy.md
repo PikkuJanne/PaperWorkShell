@@ -325,9 +325,10 @@ file, stage all licenses and notices, and generate the final SBOM and packaged-f
 ### OCRmyPDF, Tesseract, and Ghostscript
 
 `PWS-D016` fixes OCR orchestration as OCRmyPDF with Tesseract behind the OCR adapter. `PWS-0204`
-must select compatible exact Python and native artifacts, enumerate every executable and library,
-and prove local worker-only operation with network denied, fixed paths, bounded resources,
-progress, cancellation, timeout, cleanup, and sanitized errors.
+selects OCRmyPDF 17.10.0 and its exact `uv.lock` closure for worker-only use. The supported route
+forces ordinary PDF output, the pypdfium rasterizer, the fpdf2 text renderer, optimization level
+zero, and one job. The adapter supplies a fixed Tesseract path through a project-owned plugin;
+neither OCRmyPDF nor the worker may discover executables from ambient `PATH`.
 
 Ghostscript is not admitted as an implicit fallback, ambient executable, optional optimizer, or
 PDF/A provider. Its current route is distribution-changing or requires unreviewed commercial
@@ -336,12 +337,37 @@ environment must prevent accidental PATH discovery and include a test that the s
 does not invoke Ghostscript. Enabling it requires the decision-change or approved commercial-route
 process above.
 
-Tesseract upstream does not currently supply the modern official Windows installer needed as
-release provenance. Before admission, `PWS-0204` must select a trusted signed distribution or a
-reproducible project-controlled build, pin the exact revision, verify every artifact, and inventory
-Leptonica, image/compression libraries, compiler runtimes, and other native closure. A locally
-installed `tesseract.exe` discovered on PATH is capability evidence only, not an approved release
-input.
+The admitted engine is Tesseract 5.5.3 from the signed MSYS2 UCRT64 repository package
+`mingw-w64-ucrt-x86_64-tesseract-ocr 5.5.3-1`. Its 6,509,584-byte package SHA-256 is
+`7e797396b34e2f0c78c9b9ff4b90d66c068c053d60bded81fc5232892b2b1caf`; its detached signature
+SHA-256 is `039fb4d142caa2471f74ed4205b5b7925f4d80f7e05806b558a32ee2c62557bf`.
+Acquisition must validate the signature with the reviewed MSYS2 keyring and expected signer
+fingerprint `5F944B027F7FE2091985AA2EFA11531AA0AA7F57` before extraction. A digest alone does not
+substitute for that signature verification.
+
+PaperWorkShell does not install or stage the complete repository packages. The machine-readable
+[`packaging/tesseract-runtime-closure-v1.json`](../../packaging/tesseract-runtime-closure-v1.json)
+records the recursive PE import closure selected from 30 exact signed packages: one executable,
+34 DLLs, three output configs, and the English model, 39 files and 27,588,734 bytes in total. Each
+entry binds its safe relative path, byte size, SHA-256, and owning package. Before granting access
+or launching Tesseract, packaging/runtime validation must reject missing files, extra files,
+reparse points, case-colliding names, and any size or digest mismatch. The executable is exactly
+`bin/tesseract.exe`; `TESSDATA_PREFIX` is exactly `share/tessdata`. Training tools, headers,
+libraries not reached by the selected executable, and all other package files are excluded.
+
+The upstream `tesseract-ocr-w64-setup-5.5.3.20260724.exe` installer is explicitly rejected even
+though its SHA-256 (`bee9e3434bd94fd65387d9be28cd467a41f61b1275383b55b0f59a1331270ae4`)
+matches the GitHub asset digest. Its Universität Mannheim Authenticode signer certificate expired
+in 2023; a 2026 timestamp made with that expired signer does not establish a valid trusted
+signature. A locally installed executable or any alternative distribution remains only capability
+evidence, not an approved runtime input.
+
+The native file identity and launch closure are admitted for PWS-0204 integration. Shipment remains
+`planned`: PWS-0801 must reconcile the exact licenses and notices for all 30 native packages,
+provide applicable corresponding source/relinking material, and map every staged file into the
+release inventory and SBOM. The Python closure has the same shipment gate, including OCRmyPDF's
+embedded fonts/ICC profile and pi-heif's native MinGW/libheif/libde265 notice closure. These are
+release-package obligations, not permission to weaken the closed worker runtime.
 
 ### OCR language data
 
@@ -350,10 +376,19 @@ Trained data is executable-adjacent input and receives component-level provenanc
 byte size, SHA-256, and license evidence. Fast, best, and legacy-capable model families are not
 interchangeable versions of one opaque language pack.
 
-Language packs remain modular under `PWS-0205`. They may be bundled or installed from a separately
-authenticated offline package after review, but the document worker never downloads them and
-never receives network access. Missing or mismatched data produces a stable remediation error; it
-does not trigger a silent download or fallback.
+The initial English data is admitted from the signed MSYS2 UCRT64 package
+`mingw-w64-ucrt-x86_64-tesseract-data-eng 4.1.0-3`. The package SHA-256 is
+`543111e842aeebe248839902945b3883f9bf79b58787a1696d6ac211c13f7029`, its signature SHA-256 is
+`380afbdc4fccc03ddac5944d63d8b8a86b1ad87623b39818207bfed6ab7d9d87`, and the staged
+`eng.traineddata` SHA-256 is
+`7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`.
+It is the Apache-2.0 `tessdata_fast` 4.1.0 model family, not an interchangeable `best` or legacy
+model.
+
+Additional language packs remain modular under `PWS-0205`. They may be bundled or installed from
+a separately authenticated offline package after review, but the document worker never downloads
+them and never receives network access. Missing or mismatched data produces a stable remediation
+error; it does not trigger a silent download or fallback.
 
 ### PDF renderer candidates
 

@@ -28,6 +28,27 @@ The initial constrained budgets are:
 | Active full-resolution page buffers | 1 |
 | Resource sampling interval | 50 ms |
 
+The PWS-0204 constrained OCR composition derives these additional operation limits without
+changing policy version 1:
+
+| OCR resource | Constrained-v1 limit |
+|---|---:|
+| Worker plus OCR child | 2 active processes |
+| OCRmyPDF page concurrency | 1 job |
+| Worker process memory | 536,870,912 bytes |
+| Complete Job memory | 805,306,368 bytes |
+| Job CPU time | 120,000 ms |
+| OCR operation wall time | 300,000 ms |
+| Direct Tesseract call | 180 seconds |
+| Complete worker-private temporary storage | 536,870,912 bytes |
+| Volatile PDF candidate | 134,217,728 bytes |
+| OCR request pages | 1,000 maximum |
+| OCR raster pixel limit | 134,217,728 pixels |
+
+The output limit is the smaller of 128 MiB and one quarter of the selected policy's temporary
+limit. The pixel limit is the smaller of 268,435,456 pixels and one quarter of worker-process
+memory bytes. These formulas are production composition, not separate profile constants.
+
 The authorized 128-MiB thumbnail-plus-preview cache ceiling is a combined hard gate, not two
 independent 128-MiB allowances. The constrained profile divides it evenly between the reproducible
 case-scoped thumbnail cache and the decoded in-memory preview LRU; the canonical measurement sums
@@ -51,6 +72,13 @@ native-allocation headroom. A no-op stage may reuse its input, but a profile lab
 additional buffer. The worker must release each superseded raster at the earliest deterministic
 stage boundary. If the pinned adapter cannot satisfy the selected central policy for the requested
 geometry, the request fails before publication; the resource policy is not raised to admit it.
+
+PWS-0204 sets OCRmyPDF `jobs=1`, Tesseract `OMP_THREAD_LIMIT=1`, one worker plus one child, and the
+same application-wide single-heavy-operation gate. This prevents process/page fan-out and overlap
+with another heavy document operation. OCRmyPDF may retain bounded multi-page private
+intermediates, so PWS-0204 claims the complete operation temp/Job ceilings and cleanup behavior,
+not an unevidenced per-page resident-memory profile. PWS-0208 owns the incremental mixed-job
+scheduler and measured large-job process-tree evidence.
 
 ## Lazy work
 
@@ -120,6 +148,25 @@ decoder work, force a disk-full failure after an identity-matched partial write,
 reservation release, and then complete a fresh retry. Cancellation and timeout keep the original
 and authoritative manifest unchanged. These tests demonstrate bounded software behavior; they do
 not emulate rotational storage or certify a VM or physical device.
+
+The OCR operation applies the private-volume rule before source staging or OCR processing. Its
+prospective amount is the complete selected temporary-storage limit, and the broker additionally
+proves that the immutable source plus maximum volatile PDF candidate fit inside it. The worker
+copies and hashes the source beneath one pinned random operation root, closes the case-source
+handle, forces OCRmyPDF/Python/Tesseract temp below that root, and monitors the complete tree at
+50-millisecond intervals while also checking strict inventories at stage boundaries. The monitor
+tolerates only a private entry that disappears during legitimate engine churn; reparse/special
+entries, excess bytes/entry count, or other inventory uncertainty fail closed. Candidate bytes
+move only to a fixed volatile section, never a persistent case stage. Success, cancellation,
+timeout, engine failure, and output rejection all require pinned-tree cleanup; uncertainty makes
+the operation fail and no candidate is published.
+
+This prospective check protects against an operation beginning when the private volume cannot
+honor its configured ceiling. It does not reserve physical disk space or guarantee that an
+unrelated process cannot consume capacity afterward. Focused OCR tests reject a prospective
+capacity shortfall before staging, inject disk-full after a partial private source write, prove
+pinned-tree cleanup, and then complete a fresh retry. Exact/over-limit adapter coverage remains
+part of the boundary suite, and PWS-0208 still owns the measured constrained workload.
 
 ## Deterministic slow-I/O and low-disk testing
 

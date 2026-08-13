@@ -103,6 +103,7 @@ _ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
         ("pdf.export", 1),
         ("image.normalize", 1),
         ("image.transform", 1),
+        ("ocr.process", 1),
     }
 )
 _OFFLINE_START_CAPABILITIES: Final = frozenset(
@@ -110,6 +111,7 @@ _OFFLINE_START_CAPABILITIES: Final = frozenset(
         ("protocol.noop", 1),
         ("image.normalize", 1),
         ("image.transform", 1),
+        ("ocr.process", 1),
     }
 )
 
@@ -1173,6 +1175,130 @@ def _operation_registry_issues(data: Mapping[str, Any], document: str) -> list[R
     elif message_type == "operation.start" and descriptor == ("image.transform", 1):
         for issue in _image_transform_start_issues(data, payload, document):
             _add_issue(issues, issue)
+    elif message_type == "operation.start" and descriptor == ("ocr.process", 1):
+        for issue in _ocr_process_start_issues(data, payload, document):
+            _add_issue(issues, issue)
+    return _sorted_issues(issues)
+
+
+def _ocr_process_start_issues(
+    data: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    document: str,
+) -> list[RpcIssue]:
+    """Validate the exact additive OCR operation without widening schema v1."""
+
+    issues: list[RpcIssue] = []
+    inputs = payload.get("inputs")
+    source: Mapping[str, Any] | None = None
+    if isinstance(inputs, list) and len(inputs) == 1 and isinstance(inputs[0], Mapping):
+        source = inputs[0]
+    if source is None or (
+        source.get("area") != "source_read"
+        or source.get("operation_id") is not None
+        or source.get("content_kind") not in {"pdf", "jpeg", "png"}
+        or type(source.get("expected_byte_size")) is not int
+        or cast(int, source.get("expected_byte_size")) < 1
+        or not isinstance(source.get("expected_sha256"), str)
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.inputs",
+                "ocr.process requires one authenticated PDF, JPEG, or PNG source reference",
+            ),
+        )
+
+    expected_types = {
+        "source_handle": "integer",
+        "output_handle": "integer",
+        "result_handle": "integer",
+        "output_object_id": "uuid",
+        "page_count": "integer",
+        "language_set_id": "token",
+        "profile_id": "token",
+    }
+    parameters = payload.get("parameters")
+    parameter_map: dict[str, Mapping[str, Any]] = {}
+    if isinstance(parameters, list):
+        for value in parameters:
+            if isinstance(value, Mapping) and isinstance(value.get("name"), str):
+                parameter_map[cast(str, value["name"])] = value
+    if (
+        not isinstance(parameters, list)
+        or len(parameters) != len(expected_types)
+        or set(parameter_map) != set(expected_types)
+        or any(
+            parameter_map[name].get("value_type") != value_type
+            for name, value_type in expected_types.items()
+            if name in parameter_map
+        )
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.parameters",
+                "ocr.process requires its exact closed parameter set",
+            ),
+        )
+        return _sorted_issues(issues)
+
+    handles = tuple(
+        parameter_map[name].get("value")
+        for name in (
+            "source_handle",
+            "output_handle",
+            "result_handle",
+        )
+    )
+    output_id = parameter_map["output_object_id"].get("value")
+    page_count = parameter_map["page_count"].get("value")
+    language_set_id = parameter_map["language_set_id"].get("value")
+    profile_id = parameter_map["profile_id"].get("value")
+    limits = payload.get("requested_limits")
+    limit_pages = limits.get("page_count") if isinstance(limits, Mapping) else None
+    temporary_bytes = limits.get("temporary_storage_bytes") if isinstance(limits, Mapping) else None
+    output_bytes = limits.get("output_bytes") if isinstance(limits, Mapping) else None
+    source_bytes = None if source is None else source.get("expected_byte_size")
+    correlated_ids = (
+        data.get("case_id"),
+        data.get("operation_id"),
+        None if source is None else source.get("object_id"),
+        output_id,
+    )
+    invalid = (
+        any(type(value) is not int or value < 1 for value in handles)
+        or len(set(handles)) != 3
+        or any(not _canonical_uuid_v4(value) for value in correlated_ids)
+        or len(set(cast(tuple[str, str, str, str], correlated_ids))) != 4
+        or type(page_count) is not int
+        or not 1 <= page_count <= 4_096
+        or page_count != limit_pages
+        or (
+            source is not None and source.get("content_kind") in {"jpeg", "png"} and page_count != 1
+        )
+        or not isinstance(language_set_id, str)
+        or not isinstance(profile_id, str)
+        or type(source_bytes) is not int
+        or type(temporary_bytes) is not int
+        or type(output_bytes) is not int
+        or source_bytes > temporary_bytes
+        or output_bytes > temporary_bytes - source_bytes
+    )
+    if invalid:
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload",
+                "ocr.process identities, handles, page count, tokens, and limits must be bounded",
+            ),
+        )
     return _sorted_issues(issues)
 
 

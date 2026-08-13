@@ -35,6 +35,21 @@ from paperworkshell.worker.image_transform_broker import (
     BrokeredImagePageTransformer,
     ImageTransformBrokerPolicy,
 )
+from paperworkshell.worker.ocr_composition import (
+    OCR_WORKER_MAXIMUM_PROCESSES as OCR_WORKER_MAXIMUM_PROCESSES,
+)
+from paperworkshell.worker.ocr_composition import (
+    OcrWorkerComposition as OcrWorkerComposition,
+)
+from paperworkshell.worker.ocr_composition import (
+    OcrWorkerCompositionConfig as OcrWorkerCompositionConfig,
+)
+from paperworkshell.worker.ocr_composition import (
+    create_ocr_worker_composition as create_ocr_worker_composition,
+)
+from paperworkshell.worker.ocr_composition import (
+    create_ocr_worker_composition_config as create_ocr_worker_composition_config,
+)
 from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
     PdfExportBrokerPolicy,

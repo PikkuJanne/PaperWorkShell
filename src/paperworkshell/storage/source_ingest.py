@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import hmac
 import os
 import re
 from collections.abc import Callable
@@ -436,6 +437,63 @@ class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageRe
             return
         self._closed = True
         self._stack.close()
+
+    @property
+    def handle_value(self) -> int:
+        """Return the authenticated source handle solely for reduced-right duplication."""
+
+        value = self.handle.value
+        if type(value) is not int or value <= 0:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_handle")
+        return value
+
+    def revalidate(
+        self,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> None:
+        """Re-hash the exact retained source after the one-shot worker has terminated."""
+
+        if self._closed:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_lease")
+        _require_active(
+            cancellation,
+            deadline,
+            cancel_context="source.page_cancel",
+            timeout_context="source.page_timeout",
+        )
+        previous = self.handle.info
+        self.handle.rewind()
+        digest = hashlib.sha256()
+        completed = 0
+        try:
+            while completed < self._source_byte_size:
+                _require_active(
+                    cancellation,
+                    deadline,
+                    cancel_context="source.page_cancel",
+                    timeout_context="source.page_timeout",
+                )
+                count = min(MAXIMUM_STREAM_CHUNK_BYTES, self._source_byte_size - completed)
+                digest.update(self.handle.read_exact(count))
+                completed += count
+            current = self.handle.require_eof()
+        except SourceIngestError:
+            raise
+        except BaseException:
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_revalidate")
+        finally:
+            try:
+                self.handle.rewind()
+            except BaseException:
+                pass
+        if (
+            current.identity != previous.identity
+            or current.logical_size != self._source_byte_size
+            or not hmac.compare_digest(digest.hexdigest(), self._source_sha256)
+        ):
+            reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_revalidate")
 
 
 # Retain the released PDF-facing name while image intake consumes the canonical

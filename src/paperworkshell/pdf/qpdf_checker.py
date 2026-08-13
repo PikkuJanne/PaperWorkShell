@@ -151,6 +151,7 @@ class QpdfCommandChecker:
         try:
             process = subprocess.Popen(
                 arguments,
+                executable=os.fspath(self.executable),
                 # AppContainer launches cannot rely on opening the NUL device.
                 # A dedicated anonymous pipe is closed immediately instead.
                 stdin=subprocess.PIPE,

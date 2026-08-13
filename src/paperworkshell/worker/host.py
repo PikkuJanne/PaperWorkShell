@@ -14,6 +14,10 @@ from paperworkshell.worker.operations import (
     OperationHandler,
     RuntimeOperationRegistry,
 )
+from paperworkshell.worker.process_creation_policy import (
+    WorkerProcessCreationDenied,
+    install_worker_process_creation_policy,
+)
 from paperworkshell.worker.protocol.bootstrap import BootstrapError, decode_bootstrap_grant
 from paperworkshell.worker.runtime import HostExitCode, WorkerHostRuntime
 
@@ -28,13 +32,22 @@ def main() -> int:
         return int(HostExitCode.BOOTSTRAP_FAILED)
     try:
         verify_runtime_isolation()
-    except IsolationAuditError:
+        install_worker_process_creation_policy()
+    except IsolationAuditError, WorkerProcessCreationDenied:
         return int(HostExitCode.ISOLATION_FAILED)
     reader = getattr(sys.stdin.buffer, "raw", sys.stdin.buffer)
     writer = getattr(sys.stdout.buffer, "raw", sys.stdout.buffer)
     # Delay optional native-engine imports until bootstrap and isolation succeed.
     # Each capability is loaded independently, so one unavailable adapter cannot
     # cause a different, working document capability to be advertised or hidden.
+    operations = _build_operation_registry()
+    runtime = WorkerHostRuntime(grant, reader, writer, operations=operations)
+    return int(runtime.run())
+
+
+def _build_operation_registry() -> RuntimeOperationRegistry:
+    """Load only independently admitted document-operation handlers."""
+
     handlers: list[OperationHandler] = [NoopOperationHandler()]
     try:
         from paperworkshell.worker.image_normalize_operation import (
@@ -76,11 +89,19 @@ def main() -> int:
         handlers.append(build_pdf_export_operation_handler())
     except Exception:
         pass
+    try:
+        from paperworkshell.worker.ocr_operation import (
+            build_ocr_process_operation_handler,
+        )
+
+        ocr_handler = build_ocr_process_operation_handler()
+        if ocr_handler is not None:
+            handlers.append(ocr_handler)
+    except Exception:
+        pass
     # Never advertise a document capability whose adapter failed to load. The
     # client rejects negotiation when its required capability is unavailable.
-    operations = RuntimeOperationRegistry(tuple(handlers))
-    runtime = WorkerHostRuntime(grant, reader, writer, operations=operations)
-    return int(runtime.run())
+    return RuntimeOperationRegistry(tuple(handlers))
 
 
 if __name__ == "__main__":

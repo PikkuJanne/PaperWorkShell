@@ -91,9 +91,18 @@ explicit frozen-decision change.
   `PWS_QPDF_EXECUTABLE`; it does not add qpdf to `PATH` or execute the unsigned installer.
 - Keep OCRmyPDF, Tesseract, and all document-processing helpers in the network-denied worker with
   fixed executable paths. Ghostscript remains prohibited unless the required decision or approved
-  commercial route exists.
+  commercial route exists. PWS-0204 admits OCRmyPDF 17.10.0 and Tesseract 5.5.3 from the signed
+  MSYS2 UCRT64 package revision `5.5.3-1`. The exact 30-package, 39-file Windows selection is
+  recorded in [`tesseract-runtime-closure-v1.json`](tesseract-runtime-closure-v1.json); a runtime
+  root is acceptable only when it has exactly those relative files, byte sizes, and SHA-256 values,
+  contains no reparse points, and has no unlisted files. The upstream Windows installer is rejected
+  because its signer certificate expired before it was signed.
 - Treat every Tesseract `.traineddata` file as a separate, versioned, hashed, licensed data
-  component. The worker must not download language data.
+  component. The initial closure contains only the pinned `tessdata_fast` English model from the
+  signed MSYS2 `tesseract-data-eng 4.1.0-3` package. The worker must not download language data.
+- Keep the OCR native and Python components at `planned` shipment state until PWS-0801 stages all
+  license texts, notices, corresponding source/relinking material, and reconciles the final package
+  and SBOM. The file identity is closed by PWS-0204; redistribution-notice closure is not.
 - Admit a renderer only after concrete security, license, fidelity, performance, and Windows
   packaging evidence is accepted and its exact artifacts are added to the inventory.
 

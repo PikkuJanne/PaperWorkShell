@@ -21,6 +21,7 @@ from tools.generate_synthetic_fixtures import (
 )
 from tools.validate_synthetic_fixtures import (
     _IBAN_LENGTHS,
+    _MAX_PAN_CANDIDATE_STARTS,
     RepositoryPrivacyFinding,
     _contains_prohibited_pattern,
     _repository_inspector,
@@ -154,9 +155,13 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             self.assertFalse(_contains_prohibited_pattern(b"9-" * 100_000))
         classify.assert_not_called()
 
+        with patch("tools.validate_synthetic_fixtures._plausible_pan_issuer") as classify:
+            self.assertFalse(_contains_prohibited_pattern(b"version=1.2.3;" * 10_000))
+        classify.assert_not_called()
+
         with patch("tools.validate_synthetic_fixtures._luhn_valid", return_value=False) as checksum:
-            self.assertTrue(_contains_prohibited_pattern(b"1 " * 4_097))
-        self.assertLessEqual(checksum.call_count, 4_096)
+            self.assertTrue(_contains_prohibited_pattern(b"1 " * (_MAX_PAN_CANDIDATE_STARTS + 13)))
+        self.assertLessEqual(checksum.call_count, _MAX_PAN_CANDIDATE_STARTS)
 
         oversized_digit_group = b"|" + (b"4" * 1_048_576) + b"|"
         tracemalloc.start()

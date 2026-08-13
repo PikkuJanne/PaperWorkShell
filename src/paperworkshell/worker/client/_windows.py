@@ -35,6 +35,10 @@ from paperworkshell.worker.client._acl_recovery import (
     AclRecoveryPhase,
 )
 from paperworkshell.worker.client.models import WorkerResourceSnapshot
+from paperworkshell.worker.client.tesseract_runtime import (
+    TesseractRuntimeAdmissionError,
+    admit_packaged_tesseract_runtime,
+)
 from paperworkshell.worker.protocol.bootstrap import (
     BOOTSTRAP_BYTES,
     BootstrapGrant,
@@ -1375,10 +1379,26 @@ class WindowsLaunchConfig:
     working_directory: Path
     venv_launcher: Path | None = None
     qpdf_executable: Path | None = None
+    tesseract_executable: Path | None = None
+    tessdata_root: Path | None = None
+    _tesseract_runtime_root: Path | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         venv_paths = () if self.venv_launcher is None else (self.venv_launcher,)
         qpdf_paths = () if self.qpdf_executable is None else (self.qpdf_executable,)
+        tesseract_paths = () if self.tesseract_executable is None else (self.tesseract_executable,)
+        tessdata_paths = () if self.tessdata_root is None else (self.tessdata_root,)
+        if (self.tesseract_executable is None) != (self.tessdata_root is None):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.tesseract_pair",
+                "The OCR executable and language resources must be configured together.",
+            )
         paths = (
             self.python_executable,
             self.bootstrap_script,
@@ -1387,6 +1407,8 @@ class WindowsLaunchConfig:
             *self.code_roots,
             *venv_paths,
             *qpdf_paths,
+            *tesseract_paths,
+            *tessdata_paths,
         )
         if (
             not self.runtime_roots
@@ -1414,6 +1436,8 @@ class WindowsLaunchConfig:
                 and all(path.is_dir() for path in (*self.runtime_roots, *self.code_roots))
                 and all(path.is_file() for path in venv_paths)
                 and (self.qpdf_executable is None or self.qpdf_executable.is_file())
+                and (self.tesseract_executable is None or self.tesseract_executable.is_file())
+                and (self.tessdata_root is None or self.tessdata_root.is_dir())
             )
         except OSError:
             valid_types = False
@@ -1455,13 +1479,30 @@ class WindowsLaunchConfig:
                 "config.working_directory",
                 "The worker working directory is outside approved resources.",
             )
+        if self.tesseract_executable is not None and self.tessdata_root is not None:
+            try:
+                admission = admit_packaged_tesseract_runtime(
+                    self.tesseract_executable,
+                    self.tessdata_root,
+                )
+            except TesseractRuntimeAdmissionError:
+                _reject(
+                    WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                    "config.tesseract_runtime",
+                    "The configured OCR runtime does not match the approved fixed closure.",
+                )
+            object.__setattr__(self, "_tesseract_runtime_root", admission.root)
 
     @property
     def access_roots(self) -> tuple[Path, ...]:
-        roots = self.runtime_roots + self.code_roots
-        if self.qpdf_executable is None or self.qpdf_executable.parent in roots:
-            return roots
-        return (*roots, self.qpdf_executable.parent)
+        candidates = [*self.runtime_roots, *self.code_roots]
+        for optional_root in (
+            None if self.qpdf_executable is None else self.qpdf_executable.parent,
+            self._tesseract_runtime_root,
+        ):
+            if optional_root is not None and optional_root not in candidates:
+                candidates.append(optional_root)
+        return tuple(candidates)
 
     @property
     def qpdf_access_resources(self) -> tuple[Path, ...]:
@@ -1479,6 +1520,33 @@ class WindowsLaunchConfig:
                 "The configured qpdf executable is not an approved fixed resource.",
             )
         return resources
+
+    @property
+    def tesseract_access_resources(self) -> tuple[Path, ...]:
+        """Return the closed executable and language-data resource inventory."""
+
+        if self.tesseract_executable is None or self.tessdata_root is None:
+            return ()
+        try:
+            admission = admit_packaged_tesseract_runtime(
+                self.tesseract_executable,
+                self.tessdata_root,
+            )
+        except TesseractRuntimeAdmissionError:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.tesseract_runtime",
+                "The configured OCR runtime does not match the approved fixed closure.",
+            )
+        if self._tesseract_runtime_root is None or _normalized_path(
+            admission.root
+        ) != _normalized_path(self._tesseract_runtime_root):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.tesseract_runtime",
+                "The configured OCR runtime does not match the approved fixed closure.",
+            )
+        return admission.resources
 
     @property
     def required_startup_resources(self) -> tuple[Path, ...]:
@@ -5571,6 +5639,24 @@ class WindowsProcessLauncher:
                     for path in qpdf_resources
                 ):
                     grant_roots = (*grant_roots, qpdf_executable.parent)
+            tesseract_resources: tuple[Path, ...] = ()
+            if (
+                self._config.tesseract_executable is not None
+                and self._config.tessdata_root is not None
+            ):
+                tesseract_resources = self._config.tesseract_access_resources
+                tesseract_runtime_root = self._config._tesseract_runtime_root
+                if tesseract_runtime_root is None:
+                    _reject(
+                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                        "config.tesseract_runtime",
+                        "The configured OCR runtime does not match the approved fixed closure.",
+                    )
+                if not all(
+                    _has_effective_app_container_read_execute(path, profile.sid)
+                    for path in tesseract_resources
+                ):
+                    grant_roots = (*grant_roots, tesseract_runtime_root)
             profile.grant_read_execute(grant_roots)
             profile.require_read_execute(self._config.required_startup_resources)
             if self._config.qpdf_executable is not None:
@@ -5579,6 +5665,27 @@ class WindowsProcessLauncher:
                     (qpdf_executable.parent,),
                     qpdf_resources,
                 )
+            if (
+                self._config.tesseract_executable is not None
+                and self._config.tessdata_root is not None
+            ):
+                tesseract_runtime_root = self._config._tesseract_runtime_root
+                if tesseract_runtime_root is None:
+                    _reject(
+                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                        "config.tesseract_runtime",
+                        "The configured OCR runtime does not match the approved fixed closure.",
+                    )
+                profile.ensure_read_execute(
+                    (tesseract_runtime_root,),
+                    tesseract_resources,
+                )
+                if self._config.tesseract_access_resources != tesseract_resources:
+                    _reject(
+                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                        "config.tesseract_runtime",
+                        "The configured OCR runtime does not match the approved fixed closure.",
+                    )
             profile.require_private_pycache()
             job = _Job(request.resource_policy)
             bootstrap = encode_bootstrap_grant(
@@ -5759,6 +5866,8 @@ class WindowsProcessLauncher:
             local_app_data,
             venv_launcher=self._config.venv_launcher,
             qpdf_executable=self._config.qpdf_executable,
+            tesseract_executable=self._config.tesseract_executable,
+            tessdata_root=self._config.tessdata_root,
         )
         create_process = _kernel32().CreateProcessW
         create_process.argtypes = (
@@ -5831,6 +5940,8 @@ def _minimal_environment_block(
     *,
     venv_launcher: Path | None = None,
     qpdf_executable: Path | None = None,
+    tesseract_executable: Path | None = None,
+    tessdata_root: Path | None = None,
 ) -> ctypes.Array[ctypes.c_wchar]:
     get_windows_directory = _kernel32().GetWindowsDirectoryW
     get_windows_directory.argtypes = (wintypes.LPWSTR, wintypes.UINT)
@@ -5852,7 +5963,18 @@ def _minimal_environment_block(
         "TMP": os.fspath(temp),
         "WINDIR": buffer.value,
     }
-    for configured in (venv_launcher, qpdf_executable):
+    if (tesseract_executable is None) != (tessdata_root is None):
+        _reject(
+            WindowsLaunchErrorCode.ISOLATION_UNAVAILABLE,
+            "environment.tesseract_pair",
+            "Windows could not construct the minimal worker environment.",
+        )
+    for configured in (
+        venv_launcher,
+        qpdf_executable,
+        tesseract_executable,
+        tessdata_root,
+    ):
         if configured is None:
             continue
         if (
@@ -5870,6 +5992,9 @@ def _minimal_environment_block(
         entries["__PYVENV_LAUNCHER__"] = os.fspath(venv_launcher)
     if qpdf_executable is not None:
         entries["PWS_QPDF_EXECUTABLE"] = os.fspath(qpdf_executable)
+    if tesseract_executable is not None and tessdata_root is not None:
+        entries["PWS_TESSERACT_EXECUTABLE"] = os.fspath(tesseract_executable)
+        entries["PWS_TESSDATA_ROOT"] = os.fspath(tessdata_root)
     if any("\x00" in entry for pair in entries.items() for entry in pair):
         _reject(
             WindowsLaunchErrorCode.ISOLATION_UNAVAILABLE,

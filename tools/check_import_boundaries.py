@@ -49,6 +49,16 @@ APPROVED_EXTERNAL_IMPORT_PREFIXES: Final = {
         }
     ),
 }
+APPROVED_EXTERNAL_IMPORT_MODULE_PREFIXES: Final = {
+    f"{PROJECT_PACKAGE}.ocr.ocrmypdf_adapter": frozenset(
+        {
+            "ocrmypdf",
+            "pluggy",
+            "pydantic",
+        }
+    ),
+    f"{PROJECT_PACKAGE}.ocr.tesseract_runner": frozenset({"packaging.version"}),
+}
 FORBIDDEN_UI_TOOLKIT_ROOTS: Final = frozenset(("_tkinter", "tkinter", "turtle"))
 WORKER_PACKAGE: Final = f"{PROJECT_PACKAGE}.worker"
 EXPORT_PACKAGE: Final = f"{PROJECT_PACKAGE}.export"
@@ -154,9 +164,14 @@ def _target_violation(
     if _is_standard_library(target):
         return None
 
-    approved_external_prefixes = (
-        frozenset() if owner is None else APPROVED_EXTERNAL_IMPORT_PREFIXES.get(owner, frozenset())
+    approved_external_prefixes = APPROVED_EXTERNAL_IMPORT_MODULE_PREFIXES.get(
+        importer,
+        frozenset(),
     )
+    if owner is not None:
+        approved_external_prefixes = approved_external_prefixes.union(
+            APPROVED_EXTERNAL_IMPORT_PREFIXES.get(owner, frozenset())
+        )
     if any(_is_within(target, prefix) for prefix in approved_external_prefixes):
         return None
 

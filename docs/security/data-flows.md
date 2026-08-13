@@ -52,7 +52,9 @@ no case data. The `protocol.noop` operation receives no document handles. PWS-01
 one-shot `pdf.inspect` generation receives only one deliberately brokered
 prepared-source read handle and one write-only result-pipe handle. PWS-0108 receives one committed
 source reader and one fixed-size volatile section mapping; only the broker can write persistent
-cache staging.
+cache staging. PWS-0204's separate OCR-only generation receives one immutable-source reader, one
+bounded volatile PDF-section writer, and one bounded report writer. It may start only the exact
+Tesseract child; the broker exposes no OCR text or persistent/searchable derivative.
 
 ## Boundary inventory
 
@@ -62,7 +64,7 @@ cache staging.
 | TB-02 | Application → worker | Versioned request, per-launch capability, internal IDs, logical case-object references, limits | Fresh AppContainer/job generation; explicit inherited pipes and fixed bootstrap grant; bind worker, case, operation, sequence, and request; schema/type/version/size/state validation; replay rejection |
 | TB-02 | Worker → application | Progress, typed result, capability, stable error | Validate explicit transport/session binding, envelope, IDs, sequence/state transition, size, references, counts, and sanitized parameters |
 | TB-03 | Trusted broker → worker | Exact opened read-only input, bounded result-pipe writer, or fixed-size volatile output-section handle | Authenticate object type, identity, case/operation scope, access, containment where applicable, size/digest/logical cap, and lifetime before transfer; no persistent cache writer; broker-only authoritative publication |
-| TB-04 | Worker adapter → local tool/resource | Executable, arguments, input/output handles, controlled environment/search paths | Approved path/version/identity, fixed working directory, no shell, bounded I/O/time/resources/descendants, network denial |
+| TB-04 | Worker adapter → local tool/resource | Executable, arguments, input/output handles, controlled environment/search paths | Approved path/version/identity and exact runtime closure, fixed working directory, no shell or ambient search, bounded I/O/time/resources/descendants, worker-wide process audit, network denial |
 | TB-05 | Import adapter → external source | One read-only handle and bounded byte stream | Classify local/device/network location before open; supported regular-file identity; never request write access |
 | TB-06 | Verified staging → export destination | Exact verified PDF/ZIP/summary bytes, size/digest, and safe name | Classify destination; reject original/prior-output aliases; destination-local temporary file, collision policy, terminal identity/digest recheck, per-artifact atomic commit |
 | TB-07 | Diagnostics → bundle destination | Frozen allowlisted entry snapshot and generated safe files | Preview and confirm the exact snapshot/digests; no recollection; prohibited-content scan; local write only |
@@ -338,38 +340,76 @@ Primary threats: TM-001, TM-002, TM-003, TM-006, TM-011, TM-012, TM-022, TM-023.
 
 ```mermaid
 sequenceDiagram
-    participant App as Application
+    participant App as Trusted broker/application
     participant Worker as Restricted worker
-    participant OCR as OCR adapter
-    participant Tool as OCRmyPDF/Tesseract
-    participant Temp as Case temp/cache
-    App->>Worker: Versioned operation, logical page IDs, language/profile, limits
-    Worker->>OCR: Validated request and approved resources
-    OCR->>Tool: Explicit executable and argument array
-    Tool->>Temp: Bounded partial output
-    Tool-->>OCR: Bounded status/output
-    OCR-->>Worker: Typed result/progress or sanitized error
-    Worker-->>App: Validated progress/result
+    participant OCR as OCRmyPDF 17.10.0 adapter
+    participant Tool as Tesseract 5.5.3 child
+    participant Temp as AppContainer-private temp
+    participant Volatile as Broker-owned bounded section
+    App->>Worker: Source-read, section-write, report-write handles and closed request
+    Worker->>Temp: Copy and rehash immutable source; close case handle
+    Worker->>OCR: Fixed profile, private paths, limits, cancellation/progress seams
+    OCR->>Tool: Approved absolute executable and fixed argument array
+    Tool-->>OCR: Bounded/discarded status and private generated files
+    OCR->>Temp: Standard PDF candidate; reopen, page-count, size and SHA-256 check
+    Worker->>Volatile: Copy exact candidate bytes
+    Worker-->>App: Content-free progress, correlated reference and report
+    App->>Worker: Terminate and confirm complete Job tree
+    App->>App: Revalidate source, report, profile, section size and SHA-256
 ```
 
-1. TB-02 validates logical page IDs, canonical upstream transform intent, operation/profile
-   versions, language IDs, limits, and cancellation. TB-03 separately requires exact brokered
-   input/temp/output handles; none is inferred from a case path or identifier. OCR consumes the
-   PWS-0202 stage order rather than privately reordering crop, rotation, deskew, contrast, or
-   background cleanup.
-2. TB-04 starts only approved local executables/resources with fixed identities, fixed argument
-   arrays and working directory, controlled DLL/plugin/config/font/language search paths, a
-   minimal environment, bounded I/O/time/resources, no shell interpolation, and processing
-   network denial. The same job, egress, termination, and output limits cover all descendants.
-3. Partial output remains inside case temp/cache and is not authoritative. OCR text, filenames, and
-   tool stderr do not enter routine logs or raw UI errors.
-4. The worker validates returned files/results before publishing a typed result. Cancellation,
-   timeout, missing language data, protocol fault, or crash cleans/isolates partial output and does
-   not change originals or the last valid manifest.
-5. OCR confidence and quality signals say “Needs review”; they do not confirm correctness or a
-   checklist requirement.
+1. TB-02 accepts only a version-1 `ocr.process` request bound to internal case/source/operation IDs,
+   a content-derived source kind, exact source size/page count/SHA-256, the fixed language/profile
+   tokens, explicit resource limits, and cancellation. The initial language token resolves only to
+   `eng`; it is never an argument fragment. No source path, filename, OCR text, manifest content,
+   or executable value appears in RPC.
+2. TB-03 separately authenticates a retained immutable PDF/JPEG/PNG source lease and transfers
+   only three distinct reduced handles: source read, bounded volatile-section write, and bounded
+   report-pipe write. The worker has no case ACL/path, source-write, manifest/journal/history,
+   persistent cache/stage, or external-destination authority. It copies and rehashes the exact
+   source in private temp and closes the case handle before native processing.
+3. A PDF request proceeds only when upstream inspection reports confirmed unencrypted state and no
+   signature markers. Marker-present, unknown-signature, encrypted, and unknown-encryption states
+   fail before worker launch. This is a conservative fail-closed gate, not cryptographic signature
+   validation; PWS-0208 owns an explicit derivative-warning/confirmation workflow.
+4. TB-04 admits only OCRmyPDF `17.10.0`, Tesseract `5.5.3`, `eng`, and the fixed profile digest:
+   `image_dpi=300`, standard PDF, `mode="skip"`, pypdfium rasterization, fpdf2 text rendering,
+   `optimize=0`, `jobs=1`, and disabled OCRmyPDF cleanup transforms. The packaged Tesseract
+   manifest authenticates the exact 39-file executable/DLL/language closure and rejects missing,
+   changed, hardlinked, special, reparse, or unlisted resources.
+5. The only OCR child starts with the approved absolute executable, fixed working directory,
+   structured arguments, `shell=False`, no `PATH`/`PATHEXT`/`COMSPEC`, and a minimal private
+   environment. A worker-wide process audit hook rejects any other process-creation shape.
+   Worker and child remain in one zero-capability, no-breakaway Job with a two-process limit, egress
+   denial, CPU/memory/wall limits, and complete-tree termination.
+6. OCRmyPDF, Tesseract, Python temporary files, and the candidate stay under one pinned random
+   AppContainer-private operation root. Capacity is checked prospectively against the complete
+   operation temp limit plus safety reserve; a concurrent no-follow monitor and stage-boundary
+   inventories enforce bytes, entry type, and reparse rules. A prospective capacity shortfall
+   fails before staging, while a later disk-full write removes its partial private tree and permits
+   a fresh retry. Cleanup uncertainty is failure. No
+   OCR partial is written to case temp/cache or treated as authoritative.
+7. Progress contains only a closed phase and bounded monotonic page counts. Cancellation/deadline
+   checkpoints cover source copy, OCR progress, child wait/termination, temp monitoring, candidate
+   copy, and broker validation. Success, cancel, timeout, engine/language absence, malformed
+   request/report/output, process crash, source race, and resource fault all terminate the complete
+   one-shot Job before report/section readback or source-authority release.
+8. The worker first requires a private regular `%PDF-` file within output size, SHA-256, and expected
+   page-count bounds after a no-recovery, unencrypted pikepdf reopen through the narrow PDF seam.
+   After confirmed Job termination, the broker reauthenticates the
+   immutable source, validates every report/request/profile/version/output correlation, and hashes
+   the exact section bytes independently. Only then does it expose a single-pass, broker-owned
+   volatile PDF candidate. PWS-0204 exposes neither OCR text nor a final searchable export;
+   PWS-0206 owns searchability and derivative verification/publication.
+9. Tool output, OCR/document text, filenames, full paths, digests, metadata, candidate bytes, and
+   third-party exceptions never enter routine logs, progress, representations, or UI errors.
+   Later confidence/quality signals must say “Needs review” and cannot satisfy a checklist item.
 
-Primary threats: TM-001, TM-002, TM-004, TM-009, TM-011, TM-012, TM-022, TM-024.
+The complete implementation contract is the
+[bounded local OCR worker](../architecture/ocr-worker.md).
+
+Primary threats: TM-001, TM-002, TM-003, TM-004, TM-005, TM-006, TM-008, TM-009, TM-011, TM-012,
+TM-016, TM-020, TM-022, TM-023, TM-024.
 
 ## DF-EXPORT — plan, build, reopen, verify, and commit derivative
 

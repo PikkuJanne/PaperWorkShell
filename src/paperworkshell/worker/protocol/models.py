@@ -247,6 +247,7 @@ PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
 IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
+OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
 
 IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
@@ -271,6 +272,17 @@ IMAGE_TRANSFORM_DESKEW_PARAMETER: Final = "deskew_millidegrees_clockwise"
 IMAGE_TRANSFORM_CONTRAST_PARAMETER: Final = "contrast_factor_millionths"
 IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER: Final = "background_cleanup_strength_millionths"
 IMAGE_TRANSFORM_OUTPUT_CONTENT_KIND: Final = "image-transformed-rgba-v1"
+
+OCR_PROCESS_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
+OCR_PROCESS_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
+OCR_PROCESS_RESULT_HANDLE_PARAMETER: Final = "result_handle"
+OCR_PROCESS_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
+OCR_PROCESS_PAGE_COUNT_PARAMETER: Final = "page_count"
+OCR_PROCESS_LANGUAGE_SET_ID_PARAMETER: Final = "language_set_id"
+OCR_PROCESS_PROFILE_ID_PARAMETER: Final = "profile_id"
+OCR_PROCESS_OUTPUT_CONTENT_KIND: Final = "ocr-pdf-candidate-v1"
+OCR_PROCESS_SOURCE_CONTENT_KINDS: Final = frozenset({"pdf", "jpeg", "png"})
+MAX_OCR_PROCESS_PAGES: Final = 4_096
 
 PDF_INSPECT_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 PDF_INSPECT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
@@ -562,6 +574,182 @@ class OperationStartPayload:
         )
         if type(self.requested_limits) is not ResourceLimits:
             reject("RPC_INVALID_OBJECT", "payload.requested_limits", "resource limits are required")
+
+
+def validate_ocr_process_start(payload: OperationStartPayload) -> None:
+    """Validate the exact, path-free ``ocr.process`` version-1 contract."""
+
+    if len(payload.inputs) != 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "ocr.process version 1 requires exactly one source reference",
+        )
+    source = payload.inputs[0]
+    if (
+        source.area is not ReferenceArea.SOURCE_READ
+        or source.operation_id is not None
+        or source.content_kind not in OCR_PROCESS_SOURCE_CONTENT_KINDS
+        or source.expected_byte_size is None
+        or source.expected_byte_size < 1
+        or source.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "ocr.process requires one authenticated PDF, JPEG, or PNG source reference",
+        )
+
+    expected_names = {
+        OCR_PROCESS_SOURCE_HANDLE_PARAMETER,
+        OCR_PROCESS_OUTPUT_HANDLE_PARAMETER,
+        OCR_PROCESS_RESULT_HANDLE_PARAMETER,
+        OCR_PROCESS_OUTPUT_OBJECT_ID_PARAMETER,
+        OCR_PROCESS_PAGE_COUNT_PARAMETER,
+        OCR_PROCESS_LANGUAGE_SET_ID_PARAMETER,
+        OCR_PROCESS_PROFILE_ID_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.process version 1 requires its exact closed parameter set",
+        )
+
+    handles = tuple(
+        parameters[name]
+        for name in (
+            OCR_PROCESS_SOURCE_HANDLE_PARAMETER,
+            OCR_PROCESS_OUTPUT_HANDLE_PARAMETER,
+            OCR_PROCESS_RESULT_HANDLE_PARAMETER,
+        )
+    )
+    if any(
+        parameter.value_type is not ScalarValueType.INTEGER
+        or type(parameter.value) is not int
+        or parameter.value <= 0
+        for parameter in handles
+    ) or len({parameter.value for parameter in handles}) != len(handles):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.process brokered handles must be distinct positive integers",
+        )
+
+    output_object = parameters[OCR_PROCESS_OUTPUT_OBJECT_ID_PARAMETER]
+    if (
+        output_object.value_type is not ScalarValueType.UUID
+        or type(output_object.value) is not UUID
+        or output_object.value == source.object_id
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.process output identity must be a distinct UUID",
+        )
+
+    page_count = parameters[OCR_PROCESS_PAGE_COUNT_PARAMETER]
+    if (
+        page_count.value_type is not ScalarValueType.INTEGER
+        or type(page_count.value) is not int
+        or not 1 <= page_count.value <= MAX_OCR_PROCESS_PAGES
+        or page_count.value != payload.requested_limits.page_count
+        or (source.content_kind in {"jpeg", "png"} and page_count.value != 1)
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.process page count must exactly match its source and requested limit",
+        )
+
+    for name in (OCR_PROCESS_LANGUAGE_SET_ID_PARAMETER, OCR_PROCESS_PROFILE_ID_PARAMETER):
+        parameter = parameters[name]
+        if parameter.value_type is not ScalarValueType.TOKEN or type(parameter.value) is not str:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.parameters",
+                "ocr.process configuration identifiers must be opaque protocol tokens",
+            )
+
+    source_size = source.expected_byte_size
+    limits = payload.requested_limits
+    if (
+        limits.page_count > MAX_OCR_PROCESS_PAGES
+        or source_size > limits.temporary_storage_bytes
+        or limits.output_bytes > limits.temporary_storage_bytes - source_size
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "ocr.process temporary storage cannot hold its source and output bounds",
+        )
+
+
+def ocr_process_bound_object_ids(payload: OperationStartPayload) -> tuple[UUID, UUID]:
+    """Return source and output UUIDs from an already validated OCR start."""
+
+    validate_ocr_process_start(payload)
+    for parameter in payload.parameters:
+        if parameter.name == OCR_PROCESS_OUTPUT_OBJECT_ID_PARAMETER:
+            if parameter.value_type is ScalarValueType.UUID and type(parameter.value) is UUID:
+                return payload.inputs[0].object_id, parameter.value
+            break
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "ocr.process output object identifier is unavailable",
+    )
+
+
+def ocr_process_output_object_id(payload: OperationStartPayload) -> UUID:
+    """Return the staging output UUID from an already validated OCR start."""
+
+    return ocr_process_bound_object_ids(payload)[1]
+
+
+def validate_ocr_process_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    output_object_id: UUID,
+    maximum_output_bytes: int,
+) -> None:
+    """Bind a successful OCR result to its exact bounded opaque PDF candidate."""
+
+    _require_uuid4(operation_id, "operation_id")
+    _require_uuid4(output_object_id, "payload.outputs.object_id")
+    _require_int(maximum_output_bytes, "payload.requested_limits.output_bytes", minimum=1)
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful ocr.process results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 1:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful ocr.process results require exactly one staging output",
+        )
+    output = payload.outputs[0]
+    if (
+        output_object_id == operation_id
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != output_object_id
+        or output.operation_id != operation_id
+        or output.content_kind != OCR_PROCESS_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "ocr.process output is not bound to its requested staging object and limit",
+        )
 
 
 def validate_pdf_inspect_start(payload: OperationStartPayload) -> None:

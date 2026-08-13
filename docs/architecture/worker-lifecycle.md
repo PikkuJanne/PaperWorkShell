@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, and PWS-0202 scan-transform extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, and PWS-0204 OCR extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204
 - Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -14,11 +14,14 @@ anonymous-pipe transport, operation runtime, cancellation/deadline lifecycle, fo
 termination, and restart behavior. The Windows launcher uses a zero-capability AppContainer and a
 retained Job Object. Core protocol, client, launch, and lifecycle components remain
 standard-library-only and are injected behind process/transport interfaces for deterministic
-tests. After bootstrap isolation succeeds, host composition may load the admitted worker-side PDF
-or image adapter from the exact staged runtime; third-party types still do not enter the core contracts.
+tests. After bootstrap isolation succeeds, host composition may load an admitted worker-side PDF,
+image, or OCR adapter from the exact staged runtime; third-party types still do not enter the core
+contracts. An unavailable optional adapter is omitted rather than discovered through ambient
+plugins or advertised as a capability.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `image.normalize` version 1, `image.transform` version 1, and `pdf.export` version 1. The no-op still proves process/protocol lifecycle without
+version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` version 1, and
+`ocr.process` version 1 when its exact resources pass admission. The no-op still proves process/protocol lifecycle without
 document authority. PWS-0105 proves exact prepared-source read-handle transfer, a write-only
 bounded result pipe, worker-private copy verification, pikepdf/libqpdf structural inspection, and
 one-shot worker revocation. PWS-0108 adds one committed-source read handle and one fixed-size
@@ -30,7 +33,8 @@ filesystem access. See
 the [PDF structural-inspection contract](pdf-structural-inspection.md),
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md),
 [bounded JPEG/PNG intake contract](image-intake.md),
-[non-destructive scan-transform contract](image-transform-pipeline.md), and
+[non-destructive scan-transform contract](image-transform-pipeline.md),
+[bounded local OCR worker contract](ocr-worker.md), and
 [deterministic verified PDF-export contract](pdf-export.md).
 
 ## Component ownership
@@ -54,15 +58,21 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 | `worker.image_normalize_operation` | Adopt one read-only immutable-source handle and one bounded output section, invoke the admitted Pillow adapter under explicit limits, and write one fixed artifact | Host-side only; worker-private raster storage is anonymous and cleaned before terminal success |
 | `worker.image_transform_broker` | Reauthenticate one manifest-resolved JPEG/PNG source, broker one bounded output section, terminate one-shot processing, and validate exact source/intent/profile/result correlation | Structural ports only; no path, decoder object, manifest writer, or persistent raster writer crosses the boundary |
 | `worker.image_transform_operation` | Adopt one immutable-source handle and one fixed-size output section, normalize and transform one page under the canonical eight-checkpoint profile, and write one correlated artifact | Host-side only; closes reduced authorities on success, cancellation, timeout, and failure |
+| `worker.ocr_broker` | Authenticate one immutable source lease, broker one reader plus bounded output/report writers, terminate the one-shot Job, revalidate source/report/bytes, and expose a volatile candidate | Structural ports only; no source path, OCR library object, recognized text, manifest writer, or persistent output writer |
+| `worker.ocr_operation` | Copy and rehash one source in private temp, invoke the exact OCR adapter, write one correlated report and volatile PDF candidate, and clean every private intermediate | Host-side only; closes the case handle before native parsing and never publishes a case or external artifact |
+| `worker.client.tesseract_runtime` | Authenticate the packaged runtime-manifest fingerprint and the exact 39-file closure before launch authority | Standard-library-only admission; missing, extra, changed, linked, special, or reparse entries fail closed |
+| `worker.process_creation_policy` | Install a worker-wide audit hook that permits only the exact configured qpdf/Tesseract subprocess shape | Loaded after isolation and before optional engines; shell/spawn and ambient executable discovery are denied |
 | `worker.pdf_export_broker` | Authenticate one manifest-bound source batch, broker exact plan/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; never receives or publishes a destination path |
 | `worker.pdf_export_operation` | Adopt exact source/plan/output/report handles, copy and rehash sources in one private operation directory, assemble and verify, and write one correlated report | Host-side only; receives no case, manifest, history, or destination authority |
 | `worker._windows_broker` | Non-inheritable bounded anonymous result pipe and fixed-size pagefile-backed output section | GUI-process-side private primitives; no path or document value |
 | `storage.prepared_source_registry` | Register/revoke one sealed pending source and lend an exact independently positioned read handle | Storage owns source identity and publication; no worker-host import |
 | `storage.source_ingest` / `storage.thumbnail_cache` | Lend one manifest-bound committed PDF/JPEG/PNG handle; authenticate, stage, validate, publish, invalidate, and clean disposable thumbnails | Storage owns handle identity and cache publication; no worker implementation import |
 | `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
+| `pdf.ocr_candidate_verifier` | Reopen one private OCR PDF without recovery and return only a positive page count | Narrow worker-side PDF seam; encrypted/invalid state is a closed failure and no pikepdf object crosses |
 | `pdf.export_adapter` | Assemble, strictly reopen, qpdf-check, and PDFium-compare one worker-private candidate | Third-party objects, native output, and paths remain inside the restricted worker |
 | `imaging.pillow_decoder` | Perform bounded JPEG/PNG metadata inspection, EXIF interpretation, decode, color/alpha normalization, and fit | Pillow/native objects, metadata values, and raw exceptions remain worker-local |
 | `imaging.pillow_transformer` | Apply crop, quarter-turn, deskew, contrast, cleanup, fit, and opaque RGBA8 serialization to one normalized page | Pinned worker-only pixel profile; checks cancellation between bounded stages and never owns manifest intent |
+| `ocr.ocrmypdf_adapter` / `ocr.tesseract_runner` | Run the fixed OCRmyPDF 17.10.0 profile through the exact Tesseract 5.5.3 executable, monitor private temp, map progress, and request narrow PDF verification | Worker-only; one absolute child, no shell/PATH/plugin discovery, bounded discarded tool output, and no third-party object or text crossing |
 
 Package initializers remain passive. Application/UI code may import explicit `worker.client` and
 `worker.protocol` modules but cannot import the host, Windows launcher implementation, operation
@@ -78,6 +88,15 @@ environment may additionally supply its fixed launcher path as a startup identit
 executable and optional launcher must be files inside approved runtime roots; the launcher must be
 distinct from the executable, and the bootstrap must be inside an approved code root. Remote,
 device, relative, missing, and reparse-point locations fail before process creation.
+
+The separate PWS-0204 OCR composition additionally requires an absolute packaged Tesseract
+executable and its exact `share/tessdata` directory. Before either becomes launch authority, the
+launcher authenticates the code-owned runtime manifest fingerprint and every file in its 39-file
+closure by layout, type, link count, size, and SHA-256; missing, changed, reparse, or unlisted
+objects, including a hardlinked or special entry, fail before process creation. The OCR Job
+permits exactly two active processes—one Python
+worker and one Tesseract child—while the non-OCR compositions retain their narrower process
+profiles. See the [bounded local OCR worker contract](ocr-worker.md).
 
 Before the first ACL mutation, the launcher retains an authenticated `GENERIC_READ` handle that
 denies delete sharing for every approved object and every lexical ancestor. It identifies each
@@ -147,15 +166,17 @@ One generation is created in this order:
    object identity, auto-inheritance state, current-user peer SID, and shared-guard baseline. Mutable
    `__pycache__` directories and `.pyc`/`.pyo` cache leaves are not worker authority. The fixed
    profile-private `pycache_prefix` prevents source-tree cache lookup, while `-B` prevents cache
-   writes, so the worker uses the authenticated source/runtime objects. Durably
+   writes, so the worker uses the authenticated source/runtime objects. For OCR, the complete
+   Tesseract runtime closure is part of this exact object set. Durably
    publish `PREPARED` before mutation.
 5. Establish or reuse one shared hardlink guard per file, add the profile SID's direct,
    non-inheritable read/execute entry to every exact object, restore inheritance-control bits, and
    verify every fixed startup resource before publishing `ACTIVE`. The optional virtual-environment
-   launcher hint and qpdf closure remain fixed, validated resources.
-6. Construct an environment containing only the approved Windows/Python names and the configured
-   fixed virtual-environment/qpdf hints. Construct `LOCALAPPDATA`, `TEMP`, and `TMP` beneath that
-   per-launch profile rather than inheriting them.
+   launcher hint, qpdf closure, and OCR-only Tesseract closure remain fixed, validated resources.
+6. Construct an environment containing only the approved Windows/Python names and configured fixed
+   virtual-environment/qpdf/Tesseract hints. OCR adds only the exact executable and tessdata paths;
+   it does not add `PATH`, `PATHEXT`, or a user plugin/profile search path. Construct `LOCALAPPDATA`,
+   `TEMP`, and `TMP` beneath that per-launch profile rather than inheriting them.
 7. Create three anonymous pipes and make only the worker ends inheritable.
 8. Build an explicit process-attribute handle list and zero-capability security descriptor.
 9. Create the fixed process suspended, with no window and no shell.
@@ -333,6 +354,16 @@ complete pixel digest, opaque-alpha invariant, and RPC correlation before return
 Cancellation, timeout, malformed output, disk/capacity refusal, or source mutation returns no
 authoritative result and never changes the manifest or immutable source.
 
+For `ocr.process`, RPC success proves only that the worker claims to have filled one bounded
+volatile PDF section and written one content-free correlated report. It does not prove recognized
+text, searchability, case publication, or export validity. The broker first terminates and confirms
+the complete two-process Job, reauthenticates the retained immutable source, then validates the
+closed report, exact OCRmyPDF/Tesseract versions and profile digest, operation/source/output IDs,
+page count, size, and an independently recomputed candidate SHA-256. Only a validated single-pass
+candidate is exposed, and closing it releases the volatile section. Cancellation, timeout, crash,
+engine/language absence, malformed output, source mutation, or cleanup uncertainty returns no
+candidate and never changes the manifest or immutable source.
+
 Graceful shutdown during active work first requests cancellation, waits for the terminal result and
 any pending acknowledgement correlation, then sends `session.shutdown`. Only the correlated,
 validated `session.closed` yields a normal stopped state. Forced termination does not wait for
@@ -431,6 +462,15 @@ before terminal output. The result remains volatile and disposable. No transform
 a case path, manifest/journal handle, persistent cache writer, or permission to replace a source.
 See the [non-destructive scan-transform contract](image-transform-pipeline.md).
 
+PWS-0204 follows the same one-shot authority rule for one authenticated PDF/JPEG/PNG source. The
+broker transfers only source-read, bounded output-section map-write, and bounded result-pipe write
+authority. The worker copies and rehashes the source under an operation-scoped private temp limit,
+closes the case handle, and permits one exact Tesseract child. The output remains broker-owned,
+volatile, and disposable; neither OCRmyPDF nor Tesseract receives a case path, manifest/journal
+handle, persistent candidate writer, external destination, or source-write authority. The complete
+profile, validation, and signed-source fail-closed rules are in the
+[bounded local OCR worker contract](ocr-worker.md).
+
 These are operation-specific handle claims only. The worker still has no general access to an
 active case, originals directory, cache directory, manifest, journal, export history, external
 source, or destination. A later operation that needs another object must preserve all of these
@@ -510,6 +550,20 @@ fixed layout, size, and digests; every success/failure/cancel/timeout path must 
 termination before trusted section readback or persistent stage write. An unconfirmed tree must
 leave no persistent writer and block another generation rather than manufacture cleanup evidence.
 
+PWS-0204 adds required supported-Windows evidence for one real OCRmyPDF 17.10.0/Tesseract 5.5.3
+operation through the production AppContainer/Job launcher. The test must authenticate the exact
+39-file Tesseract closure, negotiate `ocr.process`, transfer only the three reduced operation
+handles, preserve the external and committed source hashes plus the authoritative manifest, and
+receive a structurally reopened one-page volatile PDF candidate after confirmed two-process Job
+termination. Focused tests separately cover progress, cancellation, timeout, worker crash, missing
+engine/language, malformed request/report/output, injection strings, decoy runtime/plugin/search
+paths, output/temp/tool-output boundaries, prospective capacity refusal before OCR, partial
+disk-full cleanup followed by a fresh retry, direct-child timeout terminate-to-kill escalation,
+strict no-recovery/unencrypted PDF reopen, runtime hardlink/special-entry refusal, and prohibited
+log canaries. Generic
+PWS-0107 live containment tests remain the evidence that the real worker and descendants cannot
+egress or escape the Job; unit doubles alone do not prove that property.
+
 PWS-0113 adds required supported-Windows evidence for the persistent ACL-recovery boundary:
 
 - a canonical v2 `PREPARED` record with peer SID, exact Windows object identities, inheritance
@@ -555,6 +609,12 @@ does not enable ordinary `site` startup, `.pth` execution, user packages, or amb
 discovery. The copied engine files remain inside the validated runtime tree and receive the same
 temporary AppContainer runtime grant.
 
+PWS-0204's live OCR proof additionally stages only the locked OCRmyPDF Python closure and the
+manifest-authenticated Tesseract runtime. It must use the same production host, process audit hook,
+two-process Job, zero-capability token, minimal environment, and exact-object ACL grant path; a
+developer `PATH` installation or unrestricted direct adapter run is useful diagnosis but is not
+the supported-Windows isolation claim.
+
 The PWS-0107 no-op must not fake handle evidence with a test-only production RPC operation. Tests
 may inject fixed launch/operation adapters, but release claims require the real launcher and host.
 Successful case-object handle brokerage was not a PWS-0107 completion criterion. PWS-0105 is the
@@ -564,6 +624,8 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 
 ## Explicit deferrals
 
-- PWS-0106: renderer operations behind a replaceable worker adapter.
-- PWS-0109: authoritative manifest/journal persistence and recovery.
-- PWS-0204: external OCR descendant/resource policy and cancellation integration.
+- PWS-0205: offline verification, installation, and selection of additional OCR language packs.
+- PWS-0206: mixed-document page eligibility, searchable-output verification, and derivative
+  publication.
+- PWS-0208: explicit signed-source derivative warning/confirmation and incremental OCR scheduling.
+- PWS-0801: release-grade packaged-content/SBOM/license-notice and release-input verification.

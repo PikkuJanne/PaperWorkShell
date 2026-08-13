@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -11,6 +12,7 @@ from tools.validate_dependencies import (
     INVALID_FIXTURE_DIRECTORY,
     INVENTORY_PATH,
     DependencyIssue,
+    _tesseract_runtime_closure_issues,
     load_dependency_schema,
     validate_dependency_data,
     validate_dependency_document,
@@ -338,6 +340,40 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         self.assertIn(
             "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
             self._codes(data, repository_checks=True),
+        )
+
+    def test_tesseract_runtime_closure_is_closed_and_hash_addressed(self) -> None:
+        data = _load_inventory()
+        components = {
+            component["component_id"]: component
+            for component in cast(list[dict[str, Any]], data["components"])
+        }
+        self.assertEqual(
+            [],
+            _tesseract_runtime_closure_issues(ROOT, components, "dependency-inventory.json"),
+        )
+
+        closure = json.loads(
+            (ROOT / "packaging/tesseract-runtime-closure-v1.json").read_text(encoding="utf-8")
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            packaging = temporary_root / "packaging"
+            packaging.mkdir()
+            closure["files"][0]["sha256"] = "0" * 64
+            (packaging / "tesseract-runtime-closure-v1.json").write_text(
+                json.dumps(closure),
+                encoding="utf-8",
+            )
+            issues = _tesseract_runtime_closure_issues(
+                temporary_root,
+                components,
+                "dependency-inventory.json",
+            )
+
+        self.assertIn(
+            "DEPENDENCY_TESSERACT_CLOSURE_INVALID",
+            {issue.code for issue in issues},
         )
 
     def test_selected_families_reference_their_actual_implementation_tasks(self) -> None:
