@@ -30,6 +30,7 @@ from paperworkshell.worker.client.process import (
     WorkerResourcePolicy,
 )
 from paperworkshell.worker.protocol.models import (
+    IMAGE_NORMALIZE_CAPABILITY,
     MAX_MESSAGE_BYTES,
     NOOP_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
@@ -323,6 +324,7 @@ def _ready_client(
                 PDF_INSPECT_CAPABILITY,
                 PDF_THUMBNAIL_CAPABILITY,
                 PDF_EXPORT_CAPABILITY,
+                IMAGE_NORMALIZE_CAPABILITY,
             ),
             max_message_bytes=MAX_MESSAGE_BYTES,
         ),
@@ -385,6 +387,7 @@ def test_start_negotiates_and_query_is_local_and_secret_free() -> None:
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         PDF_EXPORT_CAPABILITY,
+        IMAGE_NORMALIZE_CAPABILITY,
     )
     assert record.process.transport.receive_calls == before_receive
     assert record.process.poll_calls == before_poll
