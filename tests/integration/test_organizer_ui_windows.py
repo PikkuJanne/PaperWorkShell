@@ -17,18 +17,19 @@ from PySide6.QtWidgets import QApplication
 from paperworkshell.__main__ import _desktop_worker_config
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
-from paperworkshell.app.pdf_thumbnails import (
-    DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-    PdfThumbnailService,
-    ThumbnailProgressSink,
+from paperworkshell.app.page_previews import (
+    DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
+    PagePreviewProgressSink,
+    PagePreviewRequest,
+    PagePreviewResult,
+    PagePreviewService,
 )
-from paperworkshell.app.pdf_thumbnails import (
-    CancellationProbe as ThumbnailCancellationProbe,
+from paperworkshell.app.page_previews import (
+    CancellationProbe as PreviewCancellationProbe,
 )
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.import_precheck import DetectedMediaType, ImportLimits
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest, PdfThumbnailResult
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -85,15 +86,15 @@ class _TwoPagePdfInspector:
         )
 
 
-class _EmptyThumbnailService:
-    def get_thumbnails(
+class _EmptyPreviewService:
+    def get_previews(
         self,
-        requests: tuple[PdfThumbnailRequest, ...],
+        requests: tuple[PagePreviewRequest, ...],
         *,
-        timeout_seconds: float = DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-        cancellation: ThumbnailCancellationProbe | None = None,
-        progress: ThumbnailProgressSink | None = None,
-    ) -> tuple[PdfThumbnailResult, ...]:
+        timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
+        cancellation: PreviewCancellationProbe | None = None,
+        progress: PagePreviewProgressSink | None = None,
+    ) -> tuple[PagePreviewResult, ...]:
         del requests, timeout_seconds, cancellation, progress
         return ()
 
@@ -134,7 +135,7 @@ def _backend(profile: Path) -> OrganizerBackend:
         CaseLifecycleService(WindowsCaseLifecycleStore(manager)),
         WindowsManifestRepository(manager),
         SourceIngestService(source_store, _TwoPagePdfInspector()),
-        _EmptyThumbnailService(),
+        _EmptyPreviewService(),
     )
 
 
@@ -221,8 +222,17 @@ def test_live_composition_imports_and_renders_bounded_organizer_previews(tmp_pat
     backend = OrganizerBackend(
         CaseLifecycleService(WindowsCaseLifecycleStore(manager)),
         WindowsManifestRepository(manager),
-        SourceIngestService(source_store, SourceInspectorRouter(composition.source_inspector)),
-        PdfThumbnailService(composition.thumbnail_generator),
+        SourceIngestService(
+            source_store,
+            SourceInspectorRouter(
+                composition.source_inspector,
+                composition.image_source_inspector,
+            ),
+        ),
+        PagePreviewService(
+            composition.thumbnail_generator,
+            composition.image_page_generator,
+        ),
         close_resources=composition.close,
     )
     source_before = FIXTURE.read_bytes()

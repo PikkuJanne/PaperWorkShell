@@ -10,10 +10,12 @@ framing, worker creation, capability provisioning, network denial, process limit
 cleanup without changing the released v1 envelope. PWS-0105 adds the first exact opened-handle
 operation through the existing typed operation registry. PWS-0108 adds the exact one-page
 `pdf.thumbnail` operation and staging-output reference under the same additive-operation rules.
-None of these extensions adds paths or shell command text to messages. See the
+PWS-0201 adds the exact `image.normalize` operation and bounded volatile artifact. None of these
+extensions adds paths or shell command text to messages. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md), and
-[bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md).
+[bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md), and
+[bounded JPEG/PNG intake contract](../architecture/image-intake.md).
 
 ## Common envelope
 
@@ -84,6 +86,14 @@ correlation, byte size, and SHA-256. Other outcomes have no outputs. The worker 
 capability only when the hello requested it, so adding it does not break an older peer's ready
 allowlist.
 
+PWS-0201 adds `image.normalize` version 1. Its start has exactly one authenticated JPEG or PNG
+`source_read` input; distinct positive worker-local source and output-section handle parameters;
+a distinct output UUID; bounded maximum width/height; and a quarter-turn of 0, 90, 180, or 270
+degrees. A succeeded result has exactly one bounded `operation_staging` output with content kind
+`image-normalized-rgba-v1`, exact operation/output correlation, byte size, and SHA-256. The worker
+receives no path or persistent cache authority. Other outcomes retain the released generic v1
+failure/timeout contract and have no outputs.
+
 ## Messages and lifecycle
 
 | Message | Direction | Payload |
@@ -135,8 +145,8 @@ Validation is intentionally split:
    its input, parameter, output, limit, and state rules before dispatch.
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
-registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, and `pdf.thumbnail`
-version 1. Each document operation's exact source reference, handle parameters, correlations, and
+registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
+version 1, `pdf.export` version 1, and `image.normalize` version 1. Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
 out-of-policy value fails closed.
 
@@ -218,6 +228,34 @@ broker-only cache stage and ask storage for no-replace publication. An unconfirm
 never allowed to populate persistent staging; its section remains volatile and fixed-size.
 This uses existing protocol-v1 message and reference semantics; it does not add a result-byte field
 or authorize the worker to choose a path.
+
+### `image.normalize` volatile artifact result
+
+`image.normalize` version 1 uses the same generic protocol output-reference semantics. Its exact
+start contains one authenticated `source_read` reference whose content kind is `jpeg` or `png`,
+exact byte count, and SHA-256, plus this closed parameter set:
+
+- distinct positive integer `source_handle` and `output_handle` values;
+- UUID `output_object_id`, distinct from the case, operation, and source UUIDs;
+- positive `maximum_width_pixels` and `maximum_height_pixels` within the requested pixel limit; and
+- integer `additional_rotation` equal to 0, 90, 180, or 270 degrees clockwise.
+
+The broker duplicates only reduced file-read authority for the immutable committed source and
+map-write authority for one fixed-size anonymous output section. Neither handle is a path or a
+persistent case writer. The worker validates source type, size, digest, JPEG/PNG grammar, dimensions,
+decompression, metadata, memory, temporary storage, and output bounds before returning success.
+
+On success, the sole output has area `operation_staging`, object ID equal to the requested output
+object, operation ID equal to the envelope operation, content kind `image-normalized-rgba-v1`, and
+an exact non-null size and SHA-256 within the operation output limit. The digest covers the fixed,
+versioned image-page header and its packed opaque RGBA8 payload. Cancelled, failed, and timed-out
+results have no output and continue to use the released protocol-v1 terminal/error forms.
+
+The broker accepts the output only after confirming whole-tree termination and then revalidates the
+bounded artifact's version, operation/output IDs, source facts, dimensions, stride, byte counts,
+orientation, color/alpha policy, pixel digest, and whole-artifact digest. Validated pixels may enter
+only the GUI-owned byte-budgeted disposable preview cache; the worker never receives cache or
+manifest publication authority. See [Image intake and page normalization](../architecture/image-intake.md).
 
 ## Limits and bounded decoding
 

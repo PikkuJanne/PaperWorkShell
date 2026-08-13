@@ -30,3 +30,15 @@ def test_runtime_audit_failure_removes_random_fixed_drive_stage(
     finally:
         if os.path.lexists(stage_root):
             worker_resources._remove_stage_root(stage_root)
+
+
+def test_pillow_stage_source_requires_the_exact_admitted_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = worker_resources._pillow_package_source()
+    assert package_root.name == "PIL"
+    assert (package_root / "__init__.py").is_file()
+
+    monkeypatch.setattr("tests.worker_resources.PIL.__version__", "12.3.1")
+    with pytest.raises(RuntimeError, match="admitted Windows Pillow test runtime"):
+        worker_resources._pillow_package_source()

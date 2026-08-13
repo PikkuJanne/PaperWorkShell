@@ -11,6 +11,7 @@ from uuid import UUID
 
 from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
+    IMAGE_NORMALIZE_CAPABILITY,
     MAX_JSON_COLLECTION_ITEMS,
     MAX_JSON_DEPTH,
     MAX_JSON_NODES,
@@ -58,6 +59,7 @@ from paperworkshell.worker.protocol.models import (
     ShutdownReason,
     TaggedScalar,
     WorkerFaultPayload,
+    validate_image_normalize_start,
     validate_pdf_export_start,
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_start,
@@ -567,6 +569,7 @@ class OperationRegistry:
     def capabilities(self) -> tuple[CapabilityDescriptor, ...]:
         return (
             NOOP_CAPABILITY,
+            IMAGE_NORMALIZE_CAPABILITY,
             PDF_INSPECT_CAPABILITY,
             PDF_THUMBNAIL_CAPABILITY,
             PDF_EXPORT_CAPABILITY,
@@ -595,6 +598,8 @@ class OperationRegistry:
                 "payload",
                 "protocol.noop version 1 accepts no inputs or parameters",
             )
+        if payload.operation_kind == IMAGE_NORMALIZE_CAPABILITY.capability_id:
+            validate_image_normalize_start(payload)
         if payload.operation_kind == PDF_INSPECT_CAPABILITY.capability_id:
             validate_pdf_inspect_start(payload)
         if payload.operation_kind == PDF_THUMBNAIL_CAPABILITY.capability_id:

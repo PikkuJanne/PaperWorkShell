@@ -57,7 +57,11 @@ from paperworkshell.app.organizer import (
     OrganizerViewState,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult
+from paperworkshell.domain.image_pages import (
+    ImagePagePreviewResult,
+    ImagePagePreviewSnapshot,
+)
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult, PdfThumbnailSnapshot
 from paperworkshell.domain.recovery import (
     CaseRecoveryStatus,
     StartupRecoveryResult,
@@ -832,16 +836,21 @@ class PaperWorkShellWindow(QMainWindow):
             self._reject_preview_result(operation_id)
             return
         expected = self._active_preview_page_ids
-        received = tuple(
-            result.snapshot.page_id for result in results if type(result) is PdfThumbnailResult
-        )
-        if len(received) != len(results) or received != expected:
+        snapshots: list[PdfThumbnailSnapshot | ImagePagePreviewSnapshot] = []
+        for result in results:
+            if type(result) is PdfThumbnailResult:
+                snapshots.append(result.snapshot)
+            elif type(result) is ImagePagePreviewResult:
+                snapshots.append(result.snapshot)
+            else:
+                self._reject_preview_result(operation_id)
+                return
+        received = tuple(snapshot.page_id for snapshot in snapshots)
+        if received != expected:
             self._reject_preview_result(operation_id)
             return
         images_valid = True
-        for result in results:
-            assert type(result) is PdfThumbnailResult
-            snapshot = result.snapshot
+        for snapshot in snapshots:
             image = QImage(
                 snapshot.pixels,
                 snapshot.width_pixels,

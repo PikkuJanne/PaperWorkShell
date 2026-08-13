@@ -820,6 +820,42 @@ def test_prepared_source_registry_lends_only_independent_read_authority(
     _assert_no_staged_files(stack)
 
 
+def test_committed_image_page_lease_authenticates_media_mapping_and_source_bytes(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "synthetic-image.jpg").resolve()
+    payload = _jpeg_of_size(8_192, fill=b"image-page-lease-")
+    source.write_bytes(payload)
+    result = stack.service.import_source(CASE_ID, source, "Synthetic image.jpg")
+
+    with stack.store.borrow_committed_image_page(
+        CASE_ID,
+        result.page_ids[0],
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    ) as lease:
+        assert repr(lease) == "CommittedImagePageReadLease(<redacted>)"
+        assert lease.case_id == CASE_ID
+        assert lease.source_id == result.source_id
+        assert lease.source_media_type is DetectedMediaType.JPEG
+        assert lease.page_id == result.page_ids[0]
+        assert lease.source_page_index == 0
+        assert lease.source_page_count == 1
+        assert lease.source_byte_size == len(payload)
+        assert lease.source_sha256 == hashlib.sha256(payload).hexdigest()
+        assert lease.handle.read_exact(2) == b"\xff\xd8"
+
+    with pytest.raises(SourceIngestError) as wrong_decoder:
+        stack.store.borrow_committed_pdf_page(
+            CASE_ID,
+            result.page_ids[0],
+            deadline=lambda: False,
+            cancellation=lambda: False,
+        )
+    assert wrong_decoder.value.code is SourceIngestErrorCode.SOURCE_UNAVAILABLE
+
+
 @pytest.mark.parametrize("interrupt_after_replace", [False, True])
 def test_confirmed_manifest_replace_wins_over_late_cancellation_or_interruption(
     tmp_path: Path,

@@ -54,7 +54,8 @@ alternate. The profile has `desc`, `cprt`, `wtpt`, three colorant, and three sha
 records and is capability-checked through the installed Pillow/lcms boundary. CMYK-to-RGB values
 depend on the selected color-management implementation, so the corpus records the structures and
 swatch relationships without inventing an exact RGB golden. Predictable CMYK behavior for
-standalone JPEG/PNG intake remains part of PWS-0201 and is not claimed by these fixtures.
+standalone JPEG/PNG intake is proved separately by PWS-0201's algorithmic in-memory image corpus;
+it is not claimed by these PDF renderer fixtures.
 
 The Unicode category is committed as an NFC Unicode-named PDF path, which needs no font or feature
 engine. It does not claim rendered Unicode page content; that distinct behavior remains with the

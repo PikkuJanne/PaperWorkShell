@@ -5,6 +5,7 @@
 - Decisions: PWS-D007, PWS-D013, PWS-D038
 - Data flow: [DF-IMPORT](../security/data-flows.md#df-import--select-precheck-copy-inspect-and-commit-source)
 - Next boundary: [Immutable source-ingest contract](immutable-ingest.md)
+- Full image boundary: [Bounded JPEG/PNG intake](image-intake.md)
 
 ## Scope
 
@@ -78,8 +79,8 @@ result therefore reports page count as unknown and encryption/signature as not c
 PDF encryption contract can represent `encrypted`, `unencrypted`, `not_checked`, and
 `not_applicable`, but this precheck emits only `not_checked` for PDF. PWS-0105 owns the observation
 that produces distinct malformed, encrypted, signed-marker, and ordinary structural outcomes in the
-restricted worker. Image results remain `needs_worker_inspection` until an owning image adapter
-decodes them.
+restricted worker. Image precheck results remain `needs_worker_inspection`; PWS-0201 now resolves
+that state only after the exact immutable pending copy completes a restricted-worker decode.
 
 Unsupported content, truncated framing, malformed headers, excessive resources, and unavailable or
 changed sources are distinct typed failure families. No precheck success means that content is safe
@@ -126,7 +127,7 @@ manifest entry, journal record, cache object, or partial valid document. The
 [immutable ingest boundary](immutable-ingest.md) owns same-lease copy/hash, pending-file cleanup,
 verified publication, and the narrow complete source/page manifest append. PWS-0105 owns PDF
 structural classification; PWS-0107 owns restricted worker process resources; and PWS-0201 owns full
-JPEG/PNG decode and normalization.
+JPEG/PNG decode and normalization through the [bounded image-intake contract](image-intake.md).
 
 ## Verification evidence
 

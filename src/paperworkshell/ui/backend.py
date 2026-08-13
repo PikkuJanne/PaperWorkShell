@@ -13,13 +13,18 @@ from uuid import UUID
 from PySide6.QtCore import QObject, Signal, Slot
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
+from paperworkshell.app.page_previews import (
+    PagePreviewError,
+    PagePreviewErrorCode,
+    PagePreviewProgress,
+)
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
+from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.manifest_repository import ManifestRepositoryError
 from paperworkshell.domain.page_operations import PageOperationError
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
     PdfThumbnailErrorCode,
-    PdfThumbnailProgress,
 )
 from paperworkshell.domain.recovery import RecoveryError
 from paperworkshell.domain.source_ingest import (
@@ -87,7 +92,9 @@ class OperationCancellation:
 
 _KNOWN_FAILURES: Final = (
     CaseLifecycleError,
+    ImagePageError,
     ManifestRepositoryError,
+    PagePreviewError,
     PageOperationError,
     PdfThumbnailError,
     RecoveryError,
@@ -106,7 +113,15 @@ def sanitize_ui_failure(
         return UiFailure(
             code=error.code.value,
             message=error.safe_message,
-            retryable=isinstance(error, (ManifestRepositoryError, PdfThumbnailError)),
+            retryable=isinstance(
+                error,
+                (
+                    ImagePageError,
+                    ManifestRepositoryError,
+                    PagePreviewError,
+                    PdfThumbnailError,
+                ),
+            ),
             operation_id=operation_id,
         )
     return UiFailure(
@@ -264,7 +279,7 @@ class OrganizerBackendWorker(QObject):
             self.thumbnails_ready.emit(operation_id, generation, results)
             self.operation_status_changed.emit(
                 operation_id,
-                f"Preview update complete for {len(results)} PDF pages.",
+                f"Preview update complete for {len(results)} pages.",
             )
 
         self._run_long(operation_id, "Preview", action)
@@ -405,7 +420,7 @@ class OrganizerBackendWorker(QObject):
             )
         )
 
-    def _thumbnail_progress(self, operation_id: int, progress: PdfThumbnailProgress) -> None:
+    def _thumbnail_progress(self, operation_id: int, progress: PagePreviewProgress) -> None:
         self.progress_changed.emit(
             UiProgress(
                 operation="Preview",
@@ -476,6 +491,22 @@ class OrganizerBackendWorker(QObject):
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
         except PdfThumbnailError as error:
             if error.code is PdfThumbnailErrorCode.CANCELLED:
+                if operation_id is not None:
+                    self.operation_cancelled.emit(operation_id, "Preview update cancelled.")
+                else:
+                    self.failed.emit(sanitize_ui_failure(error))
+                return
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
+        except ImagePageError as error:
+            if error.code is ImagePageErrorCode.CANCELLED:
+                if operation_id is not None:
+                    self.operation_cancelled.emit(operation_id, "Preview update cancelled.")
+                else:
+                    self.failed.emit(sanitize_ui_failure(error))
+                return
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
+        except PagePreviewError as error:
+            if error.code is PagePreviewErrorCode.CANCELLED:
                 if operation_id is not None:
                     self.operation_cancelled.emit(operation_id, "Preview update cancelled.")
                 else:

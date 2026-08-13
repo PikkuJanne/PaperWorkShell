@@ -9,6 +9,7 @@ from uuid import UUID
 
 from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
+    IMAGE_NORMALIZE_CAPABILITY,
     MAX_SAFE_INTEGER,
     NOOP_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
@@ -32,8 +33,11 @@ from paperworkshell.worker.protocol.models import (
     SessionHelloPayload,
     SessionReadyPayload,
     WorkerFaultPayload,
+    image_normalize_bound_object_ids,
     pdf_export_bound_object_ids,
     pdf_thumbnail_bound_object_ids,
+    validate_image_normalize_result,
+    validate_image_normalize_start,
     validate_pdf_export_result,
     validate_pdf_export_start,
     validate_pdf_inspect_start,
@@ -63,6 +67,7 @@ class _ActiveOperation:
     operation_kind: str
     operation_version: int
     requested_limits: ResourceLimits
+    image_normalize_output_object_id: UUID | None = None
     thumbnail_cache_object_id: UUID | None = None
     export_output_object_id: UUID | None = None
     accepted: bool = False
@@ -320,8 +325,24 @@ class ConversationState:
             )
         if descriptor == PDF_INSPECT_CAPABILITY:
             validate_pdf_inspect_start(payload)
+        image_normalize_output_object_id: UUID | None = None
         thumbnail_cache_object_id: UUID | None = None
         export_output_object_id: UUID | None = None
+        if descriptor == IMAGE_NORMALIZE_CAPABILITY:
+            validate_image_normalize_start(payload)
+            image_bound_object_ids = image_normalize_bound_object_ids(payload)
+            correlated_ids = (
+                self.case_id,
+                message.operation_id,
+                *image_bound_object_ids,
+            )
+            if len(set(correlated_ids)) != len(correlated_ids):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "image.normalize case, operation, and object identifiers must be distinct",
+                )
+            image_normalize_output_object_id = image_bound_object_ids[1]
         if descriptor == PDF_THUMBNAIL_CAPABILITY:
             validate_pdf_thumbnail_start(payload)
             thumbnail_bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
@@ -363,6 +384,7 @@ class ConversationState:
                 operation_kind=payload.operation_kind,
                 operation_version=payload.operation_version,
                 requested_limits=payload.requested_limits,
+                image_normalize_output_object_id=image_normalize_output_object_id,
                 thumbnail_cache_object_id=thumbnail_cache_object_id,
                 export_output_object_id=export_output_object_id,
             ),
@@ -583,6 +605,22 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 cache_object_id=active.thumbnail_cache_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if (
+            CapabilityDescriptor(active.operation_kind, active.operation_version)
+            == IMAGE_NORMALIZE_CAPABILITY
+        ):
+            if active.image_normalize_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "image.normalize result binding is unavailable",
+                )
+            validate_image_normalize_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.image_normalize_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         if active.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:

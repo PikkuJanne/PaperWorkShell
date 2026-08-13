@@ -6,11 +6,11 @@ PaperWorkShell is a local-first desktop application that converts mixed PDFs and
 
 ## Development bootstrap
 
-The repository has completed its foundation gate and is implementing the Milestone 1 architecture
-proof. It now contains the restricted worker, immutable PDF ingest/inspection boundaries, and the
-worker-only pikepdf and pypdfium2 adapters. The first PySide6 Widgets organizer admits exact
+The repository has completed its foundation and Milestone 1 vertical-slice gates and is implementing
+Milestone 2 image-processing capabilities. It contains the restricted worker, immutable
+PDF/JPEG/PNG ingest boundaries, and worker-only pikepdf, pypdfium2, and Pillow adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
-repository does not yet contain image, OCR, installer, cloud, or signing integration.
+repository does not yet contain OCR, installer, cloud, or signing integration.
 
 Prerequisites:
 
@@ -210,6 +210,14 @@ fully validated fixed-layout RGBA8 artifacts under case-scoped internal cache na
 RPC/handle correlation, atomic publication, cancellation/quarantine, cleanup, progress, limits, and
 privacy contracts are documented in
 [`docs/architecture/pdf-thumbnails.md`](docs/architecture/pdf-thumbnails.md).
+
+The bounded JPEG/PNG intake path content-detects and immutably copies each source before complete
+worker-only decode, preserves all eight EXIF orientations as intrinsic intent, normalizes CMYK and
+alpha-bearing images to correlated opaque RGBA8 previews, and feeds the organizer's byte-budgeted
+pixmap cache without rewriting the original or publishing a worker-writable raster cache. Its
+limits, one-shot RPC/handle boundary, Pillow dependency, failure semantics, and privacy rules are
+documented in
+[`docs/architecture/image-intake.md`](docs/architecture/image-intake.md).
 
 The deterministic PDF-export service turns validated manifest page order and rotation intent into
 a new derivative inside the restricted worker, strictly reopens it, runs pikepdf/qpdf structure

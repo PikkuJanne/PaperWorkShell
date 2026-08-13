@@ -115,14 +115,17 @@ separate case-scoped disposable-thumbnail share is also 64 MiB so the combined c
 remains reusable.
 
 The toolkit-free organizer validates each preview subset as an exact tuple of unique, active UUIDv4
-page IDs within the selected policy cap before constructing a worker request. Its outer shared deadline
-scales only with PDF pages actually requested. The worker renders and validates those pages through
-pypdfium2 and the existing thumbnail cache, and the GUI accepts only exact ordered result
-correlation before converting fixed RGBA8 snapshots to detached `QImage`/`QPixmap` objects.
+page IDs within the selected policy cap before constructing typed PDF or image worker requests. One
+outer deadline, cancellation signal, progress sequence, and heavy-operation slot cover the ordered
+mixed batch. PDF pages render through pypdfium2 and the reusable thumbnail cache; JPEG and PNG
+pages normalize through the one-shot Pillow worker from their authenticated immutable case copies.
+The GUI accepts only exact ordered result correlation before converting either result type's fixed,
+opaque RGBA8 snapshot to a detached `QImage`/`QPixmap` object.
 Supported rows distinguish “not loaded,” “loading,” “ready,” and “failed”; eviction and cancellation
 return rows to “not loaded,” while a failed batch remains “failed” instead of automatically looping.
-Rotation invalidates retained pixels before autosave suppresses new preview work. JPEG and PNG
-preview decode belongs to PWS-0201, so those rows remain explicitly “Preview unavailable.”
+Rotation invalidates retained pixels before autosave suppresses new preview work. Unsupported media
+remain explicitly “Preview unavailable”; admitted PDF, JPEG, and PNG pages share the same visible
+preview states and decoded-pixel cache budget.
 
 The composition root selects one immutable, versioned resource policy and applies it to source/page,
 pixel, case/cache/temp, preview-cache, worker-memory/CPU/process, and cancellation limits. The

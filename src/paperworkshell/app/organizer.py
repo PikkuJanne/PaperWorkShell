@@ -16,13 +16,17 @@ from typing import Final, Protocol
 from uuid import UUID
 
 from paperworkshell.app.manifest_repository import ManifestAutosaveService
-from paperworkshell.app.pdf_thumbnails import (
-    DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-    MAX_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-    ThumbnailProgressSink,
+from paperworkshell.app.page_previews import (
+    DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
+    MAX_PAGE_PREVIEW_TIMEOUT_SECONDS,
+    PagePreviewErrorCode,
+    PagePreviewProgressSink,
+    PagePreviewRequest,
+    PagePreviewResult,
+    reject_page_preview,
 )
-from paperworkshell.app.pdf_thumbnails import (
-    CancellationProbe as ThumbnailCancellationProbe,
+from paperworkshell.app.page_previews import (
+    CancellationProbe as PreviewCancellationProbe,
 )
 from paperworkshell.app.source_ingest import (
     DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
@@ -38,6 +42,11 @@ from paperworkshell.domain.case_lifecycle import (
     CaseLifecycleErrorCode,
     CaseSummary,
     reject_case_lifecycle,
+)
+from paperworkshell.domain.image_pages import (
+    MAX_IMAGE_DIMENSION_PIXELS,
+    ImagePagePreviewRequest,
+    ImageQuarterTurn,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import (
@@ -59,16 +68,8 @@ from paperworkshell.domain.page_operations import (
     SequenceChangeReason,
     reject_page_operation,
 )
-from paperworkshell.domain.pdf_rendering import (
-    MAX_PDF_RENDER_DIMENSION_PIXELS,
-    PdfRenderRotation,
-)
-from paperworkshell.domain.pdf_thumbnails import (
-    PdfThumbnailErrorCode,
-    PdfThumbnailRequest,
-    PdfThumbnailResult,
-    reject_pdf_thumbnail,
-)
+from paperworkshell.domain.pdf_rendering import PdfRenderRotation
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
 from paperworkshell.domain.recovery import (
     RecoveryErrorCode,
     StartupRecoveryResult,
@@ -76,7 +77,7 @@ from paperworkshell.domain.recovery import (
 )
 from paperworkshell.domain.source_ingest import SourceImportResult
 
-_DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS
+_DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS
 MAX_ORGANIZER_PREVIEW_BATCH_PAGES: Final = 8
 
 
@@ -106,15 +107,15 @@ class _SourceIngestPort(Protocol):
     ) -> SourceImportResult: ...
 
 
-class _ThumbnailServicePort(Protocol):
-    def get_thumbnails(
+class _PagePreviewServicePort(Protocol):
+    def get_previews(
         self,
-        requests: tuple[PdfThumbnailRequest, ...],
+        requests: tuple[PagePreviewRequest, ...],
         *,
-        timeout_seconds: float = DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-        cancellation: ThumbnailCancellationProbe | None = None,
-        progress: ThumbnailProgressSink | None = None,
-    ) -> tuple[PdfThumbnailResult, ...]: ...
+        timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
+        cancellation: PreviewCancellationProbe | None = None,
+        progress: PagePreviewProgressSink | None = None,
+    ) -> tuple[PagePreviewResult, ...]: ...
 
 
 def _close_nothing() -> None:
@@ -283,7 +284,7 @@ class OrganizerBackend:
         lifecycle: _CaseLifecyclePort,
         repository: ManifestRepository,
         source_ingest: _SourceIngestPort,
-        thumbnails: _ThumbnailServicePort,
+        thumbnails: _PagePreviewServicePort,
         *,
         close_resources: Callable[[], None] = _close_nothing,
         startup_recovery: StartupRecoveryResult | None = None,
@@ -536,38 +537,51 @@ class OrganizerBackend:
         *,
         page_ids: tuple[UUID, ...],
         timeout_seconds: float | None = None,
-        cancellation: ThumbnailCancellationProbe | None = None,
-        progress: ThumbnailProgressSink | None = None,
-    ) -> tuple[PdfThumbnailResult, ...]:
+        cancellation: PreviewCancellationProbe | None = None,
+        progress: PagePreviewProgressSink | None = None,
+    ) -> tuple[PagePreviewResult, ...]:
         """Render one bounded, ordered active-page subset.
 
-        The thumbnail service uses one shared batch deadline while its secure broker launches a
-        fresh, one-shot worker for every cache miss.  The organizer therefore derives its default
-        batch budget from the requested PDF page count, without changing the independently bounded
-        worker-operation limit.  An explicit caller timeout remains exact.  Non-PDF page IDs are
-        valid members of the subset but remain explicit placeholders and produce no result.
+        The preview service uses one shared batch deadline while its secure brokers launch fresh,
+        one-shot workers for cache misses and image normalization. The organizer derives its
+        default batch budget from the selected page count without changing the independently
+        bounded worker-operation limits. An explicit caller timeout remains exact.
         """
 
         session = self._require_session()
-        _require_thumbnail_dimension(maximum_width_pixels, "organizer.thumbnail_width")
-        _require_thumbnail_dimension(maximum_height_pixels, "organizer.thumbnail_height")
-        preview_by_source = _preview_support_by_source(session.snapshot)
-        requests: list[PdfThumbnailRequest] = []
+        _require_thumbnail_dimension(maximum_width_pixels, "preview.organizer_width")
+        _require_thumbnail_dimension(maximum_height_pixels, "preview.organizer_height")
+        media_by_source = _preview_media_by_source(session.snapshot)
+        requests: list[PagePreviewRequest] = []
         projection = session.history.projection
         selected_page_ids = _require_preview_page_subset(projection, page_ids)
         for page_id in selected_page_ids:
             page = projection.state_for(page_id)
-            if not preview_by_source.get(page.page.source_id, False):
-                continue
-            requests.append(
-                PdfThumbnailRequest(
+            try:
+                media_type = media_by_source[page.page.source_id]
+            except KeyError:
+                reject_page_operation(
+                    PageOperationErrorCode.MANIFEST_INVALID,
+                    "organizer.page_source",
+                )
+            rotation_degrees = page.quarter_turns_clockwise * 90
+            if media_type is DetectedMediaType.PDF:
+                request: PagePreviewRequest = PdfThumbnailRequest(
                     case_id=session.snapshot.case_id,
                     page_id=page_id,
                     maximum_width_pixels=maximum_width_pixels,
                     maximum_height_pixels=maximum_height_pixels,
-                    additional_rotation=PdfRenderRotation(page.quarter_turns_clockwise * 90),
+                    additional_rotation=PdfRenderRotation(rotation_degrees),
                 )
-            )
+            else:
+                request = ImagePagePreviewRequest(
+                    case_id=session.snapshot.case_id,
+                    page_id=page_id,
+                    maximum_width_pixels=maximum_width_pixels,
+                    maximum_height_pixels=maximum_height_pixels,
+                    additional_rotation=ImageQuarterTurn(rotation_degrees),
+                )
+            requests.append(request)
         if not requests:
             return ()
         selected_timeout = (
@@ -575,7 +589,7 @@ class OrganizerBackend:
             if timeout_seconds is None
             else timeout_seconds
         )
-        return self._thumbnails.get_thumbnails(
+        return self._thumbnails.get_previews(
             tuple(requests),
             timeout_seconds=selected_timeout,
             cancellation=cancellation,
@@ -732,13 +746,11 @@ def _require_committed_import(
 
 def _view_state(session: _OrganizerSession) -> OrganizerViewState:
     projection = session.history.projection
-    preview_by_source = _preview_support_by_source(session.snapshot)
+    media_by_source = _preview_media_by_source(session.snapshot)
     pages: list[OrganizerPageView] = []
     for position, page_id in enumerate(projection.page_sequence, start=1):
         page = projection.state_for(page_id)
-        try:
-            preview_supported = preview_by_source[page.page.source_id]
-        except KeyError:
+        if page.page.source_id not in media_by_source:
             reject_page_operation(
                 PageOperationErrorCode.MANIFEST_INVALID,
                 "organizer.page_source",
@@ -748,7 +760,7 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
                 page_id=page_id,
                 position=position,
                 rotation_degrees=page.quarter_turns_clockwise * 90,
-                preview_supported=preview_supported,
+                preview_supported=True,
             )
         )
     return OrganizerViewState(
@@ -762,12 +774,12 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
     )
 
 
-def _preview_support_by_source(snapshot: ManifestSnapshot) -> dict[UUID, bool]:
+def _preview_media_by_source(snapshot: ManifestSnapshot) -> dict[UUID, DetectedMediaType]:
     document = snapshot.document
     sources = document.get("sources")
     if type(sources) is not list:
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "organizer.sources")
-    result: dict[UUID, bool] = {}
+    result: dict[UUID, DetectedMediaType] = {}
     for value in sources:
         if not isinstance(value, Mapping):
             reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "organizer.source")
@@ -785,7 +797,7 @@ def _preview_support_by_source(snapshot: ManifestSnapshot) -> dict[UUID, bool]:
             detected_media_type = DetectedMediaType(media_type)
         except ValueError:
             reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "organizer.media_type")
-        result[source_id] = detected_media_type is DetectedMediaType.PDF
+        result[source_id] = detected_media_type
     return result
 
 
@@ -796,8 +808,8 @@ def _require_active_page(projection: OrganizerProjection, page_id: UUID) -> None
 
 
 def _require_thumbnail_dimension(value: object, context: str) -> None:
-    if type(value) is not int or not 1 <= value <= MAX_PDF_RENDER_DIMENSION_PIXELS:
-        reject_pdf_thumbnail(PdfThumbnailErrorCode.MODEL_INVALID, context)
+    if type(value) is not int or not 1 <= value <= MAX_IMAGE_DIMENSION_PIXELS:
+        reject_page_preview(PagePreviewErrorCode.MODEL_INVALID, context)
 
 
 def _require_preview_page_subset(
@@ -835,7 +847,7 @@ def _default_organizer_preview_timeout(request_count: int) -> float:
     """Bound the serial batch without weakening any per-render worker limit."""
 
     return min(
-        MAX_PDF_THUMBNAIL_TIMEOUT_SECONDS,
+        MAX_PAGE_PREVIEW_TIMEOUT_SECONDS,
         _DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS * request_count,
     )
 

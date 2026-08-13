@@ -81,7 +81,8 @@ explicit frozen-decision change.
   namespace/type-support paths, so uninstalling Addons is not an acceptable packaging-pruning
   method; the release inventory must assign and stage every selected file explicitly.
 - PWS-0105 selects pikepdf 10.10.0 with Pillow 12.3.0, lxml 6.1.1, packaging 26.2, and qpdf
-  12.3.2. Keep pikepdf, Pillow, lxml, and packaging at `planned` shipment state until PWS-0801
+  12.3.2; PWS-0201 additionally admits that exact Pillow build as the direct worker-only JPEG/PNG
+  decoder. Keep pikepdf, Pillow, lxml, and packaging at `planned` shipment state until PWS-0801
   reconciles their native files, licenses, notices, source obligations, and final SBOM. In
   particular, the two lxml Schematron resources identified as unlicensed by the wheel's own
   inventory require maintainer or legal clearance before redistribution.

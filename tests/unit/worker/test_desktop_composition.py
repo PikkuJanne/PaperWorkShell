@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import pytest
 
+from paperworkshell.app.page_previews import ImagePagePreviewGenerator
 from paperworkshell.app.pdf_thumbnails import ThumbnailPageGenerator
 from paperworkshell.app.source_ingest import SourceInspector
 from paperworkshell.worker import desktop_composition as composition_module
@@ -26,6 +27,7 @@ from paperworkshell.worker.desktop_composition import (
     create_desktop_worker_composition,
 )
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
+from paperworkshell.worker.image_page_broker import ImageNormalizeBrokerPolicy
 from paperworkshell.worker.pdf_source_inspector import (
     PdfInspectionBrokerPolicy,
     PreparedSourceHandleBroker,
@@ -36,6 +38,7 @@ from paperworkshell.worker.pdf_thumbnail_broker import (
     ThumbnailCacheStore,
 )
 from paperworkshell.worker.protocol.models import (
+    IMAGE_NORMALIZE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     CapabilityDescriptor,
@@ -50,6 +53,9 @@ class _PreparedSources:
 
 class _CommittedPages:
     def borrow_committed_pdf_page(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def borrow_committed_image_page(self, *_args: object, **_kwargs: object) -> None:
         return None
 
 
@@ -137,6 +143,17 @@ def _config(tmp_path: Path) -> DesktopWorkerCompositionConfig:
         ),
         maximum_heavy_operation_concurrency=1,
         inspection_policy=PdfInspectionBrokerPolicy(_operation_limits()),
+        image_policy=ImageNormalizeBrokerPolicy(
+            ResourceLimits(
+                wall_time_ms=15_000,
+                cpu_time_ms=10_000,
+                memory_bytes=256 * 1024 * 1024,
+                temporary_storage_bytes=40_000_000,
+                output_bytes=40_000_256,
+                page_count=1,
+                pixel_count=10_000_000,
+            )
+        ),
         thumbnail_policy=PdfThumbnailBrokerPolicy(_operation_limits()),
     )
 
@@ -179,15 +196,20 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
 
     source_port: SourceInspector = composition.source_inspector
     thumbnail_port: ThumbnailPageGenerator = composition.thumbnail_generator
+    image_port: ImagePagePreviewGenerator = composition.image_page_generator
     assert isinstance(source_port, SourceInspector)
     assert callable(thumbnail_port.get_or_generate)
+    assert callable(image_port.get_or_generate)
+    assert callable(composition.image_source_inspector.inspect)
     assert isinstance(worker.launcher, WindowsProcessLauncher)
     assert worker.required_capabilities == (
+        IMAGE_NORMALIZE_CAPABILITY,
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
     )
     assert cast(Any, source_port)._worker is worker
     assert cast(Any, thumbnail_port)._worker is worker
+    assert cast(Any, image_port)._worker is worker
     assert cast(Any, source_port)._heavy_operations is cast(Any, thumbnail_port)._heavy_operations
     assert composition.heavy_operation_snapshot().maximum_concurrency == 1
     assert worker.constructed_thread == threading.get_ident()

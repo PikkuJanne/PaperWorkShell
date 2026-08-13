@@ -111,12 +111,16 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
     }
 )
 REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
+    "PWS-D007": frozenset({"pillow"}),
+    "PWS-D012": frozenset({"pillow"}),
+    "PWS-D013": frozenset({"pillow"}),
     "PWS-D014": frozenset(
         {"cpython", "pyside6", "pyside6-addons", "pyside6-essentials", "shiboken6"}
     ),
     "PWS-D015": frozenset({"lxml", "pikepdf", "pillow", "qpdf"}),
     "PWS-D016": frozenset({"ocrmypdf", "tesseract", "tesseract-language-data"}),
     "PWS-D017": RENDERER_COMPONENT_IDS,
+    "PWS-D034": frozenset({"pillow"}),
 }
 ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "pdfium": frozenset({"PWS-0106"}),
@@ -132,6 +136,9 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "shiboken6": frozenset({"PWS-0106", "PWS-0111"}),
     "tesseract": frozenset({"PWS-0204"}),
     "tesseract-language-data": frozenset({"PWS-0204", "PWS-0205"}),
+}
+REQUIRED_USAGE_TASK_REFERENCES: Final[dict[str, frozenset[str]]] = {
+    "pillow": frozenset({"PWS-0201"}),
 }
 REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
     {
@@ -758,7 +765,7 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "pillow": (
         "python-package",
-        "transitive",
+        "direct",
         "approved",
         ("runtime", "worker"),
         "planned",
@@ -2795,6 +2802,17 @@ def _authority_reference_issues(
                     document,
                     "$.components[*].admission_status",
                     "dependency admission requires completed implementation-task evidence",
+                ),
+            )
+        required_usage_tasks = REQUIRED_USAGE_TASK_REFERENCES.get(component_id, frozenset())
+        if not required_usage_tasks.issubset(component_tasks):
+            _add_issue(
+                issues,
+                _issue(
+                    "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+                    document,
+                    "$.components[*].task_refs",
+                    "direct product use must reference every owning implementation task",
                 ),
             )
     missing = REQUIRED_COMPONENT_IDS.difference(components)

@@ -6,7 +6,7 @@ import threading
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self
+from typing import Self, cast
 
 from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
@@ -24,6 +24,13 @@ from paperworkshell.worker.client.models import (
 )
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationSnapshot
+from paperworkshell.worker.image_page_broker import (
+    BrokeredImagePageGenerator,
+    BrokeredImageSourceInspector,
+    CommittedImagePageStore,
+    ImageNormalizeBrokerPolicy,
+    create_image_page_brokers,
+)
 from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
     PdfExportBrokerPolicy,
@@ -40,6 +47,7 @@ from paperworkshell.worker.pdf_thumbnail_broker import (
     ThumbnailCacheStore,
 )
 from paperworkshell.worker.protocol.models import (
+    IMAGE_NORMALIZE_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
@@ -47,6 +55,7 @@ from paperworkshell.worker.protocol.models import (
 )
 
 _REQUIRED_DESKTOP_CAPABILITIES = (
+    IMAGE_NORMALIZE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
 )
@@ -79,6 +88,7 @@ class DesktopWorkerCompositionConfig:
     timeout_policy: WorkerTimeoutPolicy
     maximum_heavy_operation_concurrency: int
     inspection_policy: PdfInspectionBrokerPolicy
+    image_policy: ImageNormalizeBrokerPolicy
     thumbnail_policy: PdfThumbnailBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
@@ -94,6 +104,7 @@ class DesktopWorkerCompositionConfig:
             <= self.maximum_heavy_operation_concurrency
             <= self.resource_policy.maximum_processes
             or type(self.inspection_policy) is not PdfInspectionBrokerPolicy
+            or type(self.image_policy) is not ImageNormalizeBrokerPolicy
             or type(self.thumbnail_policy) is not PdfThumbnailBrokerPolicy
         ):
             reject_client(
@@ -168,6 +179,8 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
     __slots__ = (
         "_closed",
         "_heavy_operations",
+        "_image_page_generator",
+        "_image_source_inspector",
         "_owner_thread_id",
         "_source_inspector",
         "_thumbnail_generator",
@@ -179,11 +192,15 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         worker: WorkerClient,
         source_inspector: BrokeredPdfSourceInspector,
         thumbnail_generator: BrokeredPdfThumbnailGenerator,
+        image_source_inspector: BrokeredImageSourceInspector,
+        image_page_generator: BrokeredImagePageGenerator,
         heavy_operations: HeavyOperationCoordinator,
     ) -> None:
         self._worker = worker
         self._source_inspector = source_inspector
         self._thumbnail_generator = thumbnail_generator
+        self._image_source_inspector = image_source_inspector
+        self._image_page_generator = image_page_generator
         self._heavy_operations = heavy_operations
         self._owner_thread_id = threading.get_ident()
         self._closed = False
@@ -199,6 +216,18 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         """Expose the page-thumbnail application port without launcher details."""
 
         return self._thumbnail_generator
+
+    @property
+    def image_source_inspector(self) -> BrokeredImageSourceInspector:
+        """Expose worker-decoded JPEG/PNG inspection without launcher details."""
+
+        return self._image_source_inspector
+
+    @property
+    def image_page_generator(self) -> BrokeredImagePageGenerator:
+        """Expose bounded committed-image preview generation."""
+
+        return self._image_page_generator
 
     def resource_snapshot(self) -> WorkerResourceSnapshot | None:
         """Forward safe worker accounting without exposing process authority."""
@@ -353,6 +382,7 @@ def create_desktop_worker_composition(
     *,
     prepared_sources: PreparedSourceHandleBroker,
     committed_pages: CommittedPdfPageStore,
+    committed_image_pages: CommittedImagePageStore | None = None,
     thumbnail_cache: ThumbnailCacheStore,
     heavy_operations: HeavyOperationCoordinator,
 ) -> DesktopWorkerComposition:
@@ -366,6 +396,12 @@ def create_desktop_worker_composition(
     _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
     _require_port(prepared_sources, ("borrow_prepared_source",))
     _require_port(committed_pages, ("borrow_committed_pdf_page",))
+    selected_image_pages = (
+        cast(CommittedImagePageStore, committed_pages)
+        if committed_image_pages is None
+        else committed_image_pages
+    )
+    _require_port(selected_image_pages, ("borrow_committed_image_page",))
     _require_port(thumbnail_cache, ("lookup", "create_stage"))
 
     launcher = WindowsProcessLauncher(config._launch_config)
@@ -388,7 +424,21 @@ def create_desktop_worker_composition(
         config.thumbnail_policy,
         heavy_operations=heavy_operations,
     )
-    return DesktopWorkerComposition(worker, inspector, generator, heavy_operations)
+    image_inspector, image_generator = create_image_page_brokers(
+        worker,
+        prepared_sources,
+        selected_image_pages,
+        config.image_policy,
+        heavy_operations=heavy_operations,
+    )
+    return DesktopWorkerComposition(
+        worker,
+        inspector,
+        generator,
+        image_inspector,
+        image_generator,
+        heavy_operations,
+    )
 
 
 def create_desktop_worker_composition_config(
@@ -402,6 +452,7 @@ def create_desktop_worker_composition_config(
     timeout_policy: WorkerTimeoutPolicy,
     maximum_heavy_operation_concurrency: int,
     inspection_limits: ResourceLimits,
+    image_limits: ResourceLimits,
     thumbnail_limits: ResourceLimits,
     venv_launcher: Path | None = None,
 ) -> DesktopWorkerCompositionConfig:
@@ -417,6 +468,7 @@ def create_desktop_worker_composition_config(
         timeout_policy=timeout_policy,
         maximum_heavy_operation_concurrency=maximum_heavy_operation_concurrency,
         inspection_policy=PdfInspectionBrokerPolicy(inspection_limits),
+        image_policy=ImageNormalizeBrokerPolicy(image_limits),
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
         venv_launcher=venv_launcher,
     )

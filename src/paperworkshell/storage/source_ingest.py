@@ -315,13 +315,14 @@ class WindowsPreparedSourceLease(AbstractContextManager["WindowsPreparedSourceLe
             pass
 
 
-class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLease"]):
-    """Retain one manifest-bound immutable PDF source through an exact read handle."""
+class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageReadLease"]):
+    """Retain one manifest-bound immutable source page through an exact read handle."""
 
     __slots__ = (
         "_case_id",
         "_closed",
         "_page_id",
+        "_source_media_type",
         "_source_byte_size",
         "_source_handle",
         "_source_id",
@@ -338,6 +339,7 @@ class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLeas
         source_handle: WindowsHandle,
         case_id: UUID,
         source_id: UUID,
+        source_media_type: DetectedMediaType,
         page_id: UUID,
         source_page_index: int,
         source_page_count: int,
@@ -348,6 +350,7 @@ class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLeas
         self._source_handle = source_handle
         self._case_id = case_id
         self._source_id = source_id
+        self._source_media_type = source_media_type
         self._page_id = page_id
         self._source_page_index = source_page_index
         self._source_page_count = source_page_count
@@ -356,7 +359,12 @@ class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLeas
         self._closed = False
 
     def __repr__(self) -> str:
-        return "CommittedPdfPageReadLease(<redacted>)"
+        label = (
+            "CommittedPdfPageReadLease"
+            if self._source_media_type is DetectedMediaType.PDF
+            else "CommittedImagePageReadLease"
+        )
+        return f"{label}(<redacted>)"
 
     def __enter__(self) -> Self:
         if self._closed:
@@ -400,6 +408,10 @@ class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLeas
         return self._source_id
 
     @property
+    def source_media_type(self) -> DetectedMediaType:
+        return self._source_media_type
+
+    @property
     def page_id(self) -> UUID:
         return self._page_id
 
@@ -424,6 +436,11 @@ class CommittedPdfPageReadLease(AbstractContextManager["CommittedPdfPageReadLeas
             return
         self._closed = True
         self._stack.close()
+
+
+# Retain the released PDF-facing name while image intake consumes the canonical
+# source-page lease structurally through its narrower worker port.
+CommittedPdfPageReadLease = CommittedSourcePageReadLease
 
 
 class CommittedPdfSourceReadLease:
@@ -686,6 +703,43 @@ class WindowsSourceIngestStore:
     ) -> CommittedPdfPageReadLease:
         """Retain a current manifest mapping and integrity-checked PDF source handle."""
 
+        return self._borrow_committed_page(
+            case_id,
+            page_id,
+            allowed_media_types=frozenset({DetectedMediaType.PDF}),
+            cancellation=cancellation,
+            deadline=deadline,
+        )
+
+    def borrow_committed_image_page(
+        self,
+        case_id: UUID,
+        page_id: UUID,
+        *,
+        cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
+    ) -> CommittedSourcePageReadLease:
+        """Retain one immutable JPEG/PNG page and its exact read-only source handle."""
+
+        return self._borrow_committed_page(
+            case_id,
+            page_id,
+            allowed_media_types=frozenset({DetectedMediaType.JPEG, DetectedMediaType.PNG}),
+            cancellation=cancellation,
+            deadline=deadline,
+        )
+
+    def _borrow_committed_page(
+        self,
+        case_id: UUID,
+        page_id: UUID,
+        *,
+        allowed_media_types: frozenset[DetectedMediaType],
+        cancellation: CancellationProbe,
+        deadline: DeadlineProbe,
+    ) -> CommittedSourcePageReadLease:
+        """Authenticate, rehash, and retain one permitted source-page mapping."""
+
         selected_case = require_internal_id(case_id, context="source.page_case")
         selected_page = require_internal_id(page_id, context="source.page_id")
         if selected_case == selected_page:
@@ -717,7 +771,11 @@ class WindowsSourceIngestStore:
             )
             snapshot, manifest_handle = _read_retained_manifest_snapshot(authority)
             stack.enter_context(manifest_handle)
-            record, source_page_index = _resolve_pdf_page(snapshot, selected_page)
+            record, source_page_index = _resolve_source_page(
+                snapshot,
+                selected_page,
+                allowed_media_types=allowed_media_types,
+            )
 
             originals_root = stack.enter_context(open_handle(authority.layout.originals))
             require_expected_handle(
@@ -763,11 +821,12 @@ class WindowsSourceIngestStore:
                 reject_source_ingest(SourceIngestErrorCode.SOURCE_CHANGED, "source.page_integrity")
             source_handle.rewind()
 
-            lease = CommittedPdfPageReadLease(
+            lease = CommittedSourcePageReadLease(
                 stack=stack,
                 source_handle=source_handle,
                 case_id=selected_case,
                 source_id=record.source_id,
+                source_media_type=record.media_type,
                 page_id=selected_page,
                 source_page_index=source_page_index,
                 source_page_count=record.page_count,
@@ -1678,9 +1737,11 @@ def _close_batch_no_raise(close: Callable[[], None]) -> None:
         pass
 
 
-def _resolve_pdf_page(
+def _resolve_source_page(
     snapshot: _ManifestSnapshot,
     page_id: UUID,
+    *,
+    allowed_media_types: frozenset[DetectedMediaType],
 ) -> tuple[_StoredSource, int]:
     """Resolve one page through the strict current manifest without exposing display data."""
 
@@ -1692,7 +1753,7 @@ def _resolve_pdf_page(
     for source in snapshot.sources:
         next_page = first_page + source.page_count
         if catalogue_index < next_page:
-            if source.media_type is not DetectedMediaType.PDF:
+            if source.media_type not in allowed_media_types:
                 reject_source_ingest(SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.page_media")
             return source, catalogue_index - first_page
         first_page = next_page

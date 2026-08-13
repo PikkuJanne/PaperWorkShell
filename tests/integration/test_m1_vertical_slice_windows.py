@@ -37,7 +37,12 @@ from paperworkshell.__main__ import (
 )
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
-from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
+from paperworkshell.app.page_previews import (
+    PagePreviewProgress,
+    PagePreviewProgressPhase,
+    PagePreviewResult,
+    PagePreviewService,
+)
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.diagnostics.logging import SanitizedDiagnosticLogger
@@ -54,8 +59,6 @@ from paperworkshell.domain.pdf_thumbnails import (
     PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES,
     PdfThumbnailError,
     PdfThumbnailErrorCode,
-    PdfThumbnailProgress,
-    PdfThumbnailProgressPhase,
     PdfThumbnailResult,
 )
 from paperworkshell.domain.recovery import CaseRecoveryStatus, StartupRecoveryStatus
@@ -195,8 +198,17 @@ def _build_stack(
         backend = OrganizerBackend(
             CaseLifecycleService(WindowsCaseLifecycleStore(manager)),
             WindowsManifestRepository(manager),
-            SourceIngestService(sources, SourceInspectorRouter(desktop.source_inspector)),
-            PdfThumbnailService(desktop.thumbnail_generator),
+            SourceIngestService(
+                sources,
+                SourceInspectorRouter(
+                    desktop.source_inspector,
+                    desktop.image_source_inspector,
+                ),
+            ),
+            PagePreviewService(
+                desktop.thumbnail_generator,
+                desktop.image_page_generator,
+            ),
             close_resources=desktop.close,
             startup_recovery=startup_recovery,
         )
@@ -362,9 +374,9 @@ def _measure_active_thumbnail_cancellation(
     failure: PdfThumbnailError | None = None
     cache_before = frozenset(stack.manager.layout(case_id).thumbnails.iterdir())
 
-    def progress(observation: PdfThumbnailProgress) -> None:
+    def progress(observation: PagePreviewProgress) -> None:
         nonlocal rendering_started_ns
-        if observation.phase is PdfThumbnailProgressPhase.RENDERING and rendering_started_ns == 0:
+        if observation.phase is PagePreviewProgressPhase.GENERATING and rendering_started_ns == 0:
             rendering_started_ns = time.perf_counter_ns()
             cancellation.set()
 
@@ -436,6 +448,18 @@ def _retain_gui_previews(
         assert not image.isNull()
         model.set_preview(snapshot.page_id, QPixmap.fromImage(image))
     return model.retained_preview_bytes
+
+
+def _require_pdf_previews(
+    results: tuple[PagePreviewResult, ...],
+) -> tuple[PdfThumbnailResult, ...]:
+    """Narrow the canonical PDF-only M1 result batch at its runtime boundary."""
+
+    narrowed: list[PdfThumbnailResult] = []
+    for result in results:
+        assert type(result) is PdfThumbnailResult
+        narrowed.append(result)
+    return tuple(narrowed)
 
 
 def _privacy_forms(value: str) -> tuple[str, ...]:
@@ -681,10 +705,12 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
         initial = stack.backend.state
         assert tuple(page.page_id for page in initial.pages) == initial_ids
         phase_started_ns = time.perf_counter_ns()
-        initial_previews = stack.backend.get_thumbnails(
-            96,
-            96,
-            page_ids=initial_ids,
+        initial_previews = _require_pdf_previews(
+            stack.backend.get_thumbnails(
+                96,
+                96,
+                page_ids=initial_ids,
+            )
         )
         assert tuple(result.snapshot.page_id for result in initial_previews) == initial_ids
         assert all(result.snapshot.pixels for result in initial_previews)
@@ -726,7 +752,9 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
             (first.page_ids[1], 2, 90),
         )
         assert _page_state(saved) == expected_page_state
-        final_previews = stack.backend.get_thumbnails(96, 96, page_ids=final_ids)
+        final_previews = _require_pdf_previews(
+            stack.backend.get_thumbnails(96, 96, page_ids=final_ids)
+        )
         final_thumbnail_fingerprints = _thumbnail_fingerprints(final_previews)
         gui_cache_bytes = _retain_gui_previews(preview_model, saved, final_previews)
         combined_cache_measurements.append(
@@ -809,7 +837,9 @@ def test_m1_vertical_slice_is_deterministic_recoverable_and_private(
         assert _page_state(reopened) == expected_page_state
         assert not reopened.autosave_pending
         assert not reopened.recovery_review_required
-        recovered_previews = restarted.backend.get_thumbnails(96, 96, page_ids=final_ids)
+        recovered_previews = _require_pdf_previews(
+            restarted.backend.get_thumbnails(96, 96, page_ids=final_ids)
+        )
         assert _thumbnail_fingerprints(recovered_previews) == final_thumbnail_fingerprints
         preview_model = OrganizerPageListModel(
             maximum_preview_cache_bytes=(

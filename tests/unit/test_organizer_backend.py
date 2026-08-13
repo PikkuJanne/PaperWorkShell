@@ -16,13 +16,15 @@ from paperworkshell.app.organizer import (
     OrganizerViewState,
     _default_organizer_preview_timeout,
 )
-from paperworkshell.app.pdf_thumbnails import (
-    DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-    MAX_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-    ThumbnailProgressSink,
+from paperworkshell.app.page_previews import (
+    DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
+    MAX_PAGE_PREVIEW_TIMEOUT_SECONDS,
+    PagePreviewProgressSink,
+    PagePreviewRequest,
+    PagePreviewResult,
 )
-from paperworkshell.app.pdf_thumbnails import (
-    CancellationProbe as ThumbnailCancellationProbe,
+from paperworkshell.app.page_previews import (
+    CancellationProbe as PreviewCancellationProbe,
 )
 from paperworkshell.app.source_ingest import (
     DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
@@ -34,6 +36,7 @@ from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseSummary
+from paperworkshell.domain.image_pages import ImagePagePreviewRequest, ImageQuarterTurn
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import (
     ManifestLoadResult,
@@ -48,7 +51,7 @@ from paperworkshell.domain.manifest_repository import (
 )
 from paperworkshell.domain.page_operations import PageOperationError, PageOperationErrorCode
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest, PdfThumbnailResult
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
 from paperworkshell.domain.recovery import StartupRecoveryResult
 from paperworkshell.domain.source_ingest import SourceImportResult
 
@@ -337,20 +340,20 @@ class _SourceIngest:
 
 class _Thumbnails:
     def __init__(self) -> None:
-        self.requests: tuple[PdfThumbnailRequest, ...] = ()
+        self.requests: tuple[PagePreviewRequest, ...] = ()
         self.timeout_seen: float | None = None
-        self.cancellation_seen: ThumbnailCancellationProbe | None = None
-        self.progress_seen: ThumbnailProgressSink | None = None
-        self.results: tuple[PdfThumbnailResult, ...] = ()
+        self.cancellation_seen: PreviewCancellationProbe | None = None
+        self.progress_seen: PagePreviewProgressSink | None = None
+        self.results: tuple[PagePreviewResult, ...] = ()
 
-    def get_thumbnails(
+    def get_previews(
         self,
-        requests: tuple[PdfThumbnailRequest, ...],
+        requests: tuple[PagePreviewRequest, ...],
         *,
-        timeout_seconds: float = DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS,
-        cancellation: ThumbnailCancellationProbe | None = None,
-        progress: ThumbnailProgressSink | None = None,
-    ) -> tuple[PdfThumbnailResult, ...]:
+        timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
+        cancellation: PreviewCancellationProbe | None = None,
+        progress: PagePreviewProgressSink | None = None,
+    ) -> tuple[PagePreviewResult, ...]:
         self.requests = requests
         self.timeout_seen = timeout_seconds
         self.cancellation_seen = cancellation
@@ -640,11 +643,11 @@ def test_repeated_refresh_failure_restarts_from_the_single_committed_import() ->
     assert source_ingest.calls == 1
 
 
-def test_thumbnail_requests_cover_only_pdf_pages_and_forward_controls() -> None:
+def test_preview_requests_cover_pdf_and_image_pages_in_order_and_forward_controls() -> None:
     backend, _, _, _, thumbnails = _backend(_document(page_count=1, include_image=True))
     backend.open_case(CASE_ID)
     state = backend.rotate_clockwise(PAGE_IDS[0])
-    assert tuple(page.preview_supported for page in state.pages) == (True, False)
+    assert tuple(page.preview_supported for page in state.pages) == (True, True)
 
     def cancellation() -> bool:
         return False
@@ -664,12 +667,18 @@ def test_thumbnail_requests_cover_only_pdf_pages_and_forward_controls() -> None:
         == ()
     )
 
-    assert len(thumbnails.requests) == 1
-    request = thumbnails.requests[0]
-    assert request.page_id == PAGE_IDS[0]
-    assert request.maximum_width_pixels == 320
-    assert request.maximum_height_pixels == 240
-    assert request.additional_rotation is PdfRenderRotation.DEGREES_90
+    assert len(thumbnails.requests) == 2
+    pdf_request, image_request = thumbnails.requests
+    assert type(pdf_request) is PdfThumbnailRequest
+    assert pdf_request.page_id == PAGE_IDS[0]
+    assert pdf_request.maximum_width_pixels == 320
+    assert pdf_request.maximum_height_pixels == 240
+    assert pdf_request.additional_rotation is PdfRenderRotation.DEGREES_90
+    assert type(image_request) is ImagePagePreviewRequest
+    assert image_request.page_id == IMAGE_PAGE_ID
+    assert image_request.maximum_width_pixels == 320
+    assert image_request.maximum_height_pixels == 240
+    assert image_request.additional_rotation is ImageQuarterTurn.DEGREES_0
     assert thumbnails.timeout_seen == 4.5
     assert thumbnails.cancellation_seen is cancellation
     assert thumbnails.progress_seen is progress
@@ -684,7 +693,7 @@ def test_thumbnail_subset_preserves_organizer_order_and_scales_for_requested_pdf
         PAGE_IDS[0],
         PAGE_IDS[2],
     )
-    assert thumbnails.timeout_seen == DEFAULT_PDF_THUMBNAIL_TIMEOUT_SECONDS * 2
+    assert thumbnails.timeout_seen == DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS * 2
 
 
 def test_thumbnail_subset_rejects_duplicates_unknown_order_and_over_cap() -> None:
@@ -710,7 +719,7 @@ def test_thumbnail_subset_rejects_duplicates_unknown_order_and_over_cap() -> Non
 
 
 def test_default_thumbnail_deadline_helper_remains_service_capped() -> None:
-    assert _default_organizer_preview_timeout(31) == MAX_PDF_THUMBNAIL_TIMEOUT_SECONDS
+    assert _default_organizer_preview_timeout(31) == MAX_PAGE_PREVIEW_TIMEOUT_SECONDS
 
 
 def test_restart_reconstructs_saved_projection_without_session_undo() -> None:

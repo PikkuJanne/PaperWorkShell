@@ -9,11 +9,20 @@ from types import MappingProxyType
 from typing import Final, Protocol
 from uuid import UUID
 
+from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_inspection import PdfInspectionError, PdfInspectionErrorCode
 from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError, PdfThumbnailErrorCode
 from paperworkshell.worker.protocol.models import (
+    IMAGE_NORMALIZE_ADDITIONAL_ROTATION_PARAMETER,
+    IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_NORMALIZE_MAXIMUM_HEIGHT_PARAMETER,
+    IMAGE_NORMALIZE_MAXIMUM_WIDTH_PARAMETER,
+    IMAGE_NORMALIZE_OUTPUT_CONTENT_KIND,
+    IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER,
+    IMAGE_NORMALIZE_OUTPUT_OBJECT_ID_PARAMETER,
+    IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER,
     NOOP_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
@@ -98,6 +107,146 @@ class NoopOperationHandler:
             OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.STEPS)
         )
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (), None)
+
+
+@dataclass(frozen=True, slots=True)
+class ImageNormalizeOperationRequest:
+    """Path-free authority and bounds for one normalized image-page artifact."""
+
+    source_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    output_object_id: UUID
+    maximum_width_pixels: int
+    maximum_height_pixels: int
+    additional_rotation: int
+
+    def __post_init__(self) -> None:
+        handles = (self.source_handle, self.output_handle)
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+            or type(self.maximum_width_pixels) is not int
+            or self.maximum_width_pixels <= 0
+            or type(self.maximum_height_pixels) is not int
+            or self.maximum_height_pixels <= 0
+            or type(self.additional_rotation) is not int
+            or self.additional_rotation not in {0, 90, 180, 270}
+        ):
+            raise ValueError("validated image-normalize parameters are unavailable")
+
+
+class ImageNormalizeAdapter(Protocol):
+    """Injected image adapter that consumes both transferred handles."""
+
+    def discard_handles(
+        self,
+        context: OperationContext,
+        request: ImageNormalizeOperationRequest,
+    ) -> None:
+        """Consume handles when terminal state prevents normalization."""
+
+    def normalize(
+        self,
+        context: OperationContext,
+        request: ImageNormalizeOperationRequest,
+    ) -> CaseObjectReference:
+        """Normalize one source into a bounded authenticated staging artifact."""
+
+
+@dataclass(frozen=True, slots=True)
+class ImageNormalizeOperationHandler:
+    """Coordinate the closed ``image.normalize`` operation around one adapter."""
+
+    adapter: ImageNormalizeAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return IMAGE_NORMALIZE_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _image_normalize_operation_request(context)
+        context.report_progress(
+            OperationProgressPayload(ProgressStage.PROCESSING, 0, 1, ProgressUnit.PAGES)
+        )
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+
+        try:
+            output = self.adapter.normalize(context, request)
+        except ImagePageError as error:
+            if error.code is ImagePageErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is ImagePageErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            raise
+
+        # The adapter has consumed both handles. Late terminal state suppresses
+        # the staging reference; the broker removes it after worker termination.
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_image_normalize_output(context, request, output)
+        context.report_progress(
+            OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
+        )
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+def _image_normalize_operation_request(
+    context: OperationContext,
+) -> ImageNormalizeOperationRequest:
+    return ImageNormalizeOperationRequest(
+        source_handle=_positive_integer_parameter(
+            context,
+            IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER,
+        ),
+        output_handle=_positive_integer_parameter(
+            context,
+            IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER,
+        ),
+        output_object_id=_uuid_parameter(
+            context,
+            IMAGE_NORMALIZE_OUTPUT_OBJECT_ID_PARAMETER,
+        ),
+        maximum_width_pixels=_positive_integer_parameter(
+            context,
+            IMAGE_NORMALIZE_MAXIMUM_WIDTH_PARAMETER,
+        ),
+        maximum_height_pixels=_positive_integer_parameter(
+            context,
+            IMAGE_NORMALIZE_MAXIMUM_HEIGHT_PARAMETER,
+        ),
+        additional_rotation=_integer_parameter(
+            context,
+            IMAGE_NORMALIZE_ADDITIONAL_ROTATION_PARAMETER,
+            minimum=0,
+        ),
+    )
+
+
+def _require_image_normalize_output(
+    context: OperationContext,
+    request: ImageNormalizeOperationRequest,
+    output: CaseObjectReference,
+) -> None:
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != IMAGE_NORMALIZE_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+    ):
+        raise ValueError("image-normalize adapter returned an invalid staging reference")
 
 
 @dataclass(frozen=True, slots=True)

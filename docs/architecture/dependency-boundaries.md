@@ -6,7 +6,7 @@
   structural inspection; PWS-0106 PDF page rendering; PWS-0107 restricted worker lifecycle;
   PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
-  export; PWS-0113 startup recovery and sanitized diagnostics
+  export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -31,9 +31,9 @@ worker host -> domain
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
-| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md) and [deterministic verified PDF-export contract](pdf-export.md) |
+| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), and [deterministic verified PDF-export contract](pdf-export.md) |
 | `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), and [deterministic verified PDF-export contract](pdf-export.md) |
-| `imaging` | Image inspection and transformation interfaces/implementations |
+| `imaging` | Worker-only image inspection and transformation adapters; Pillow and its native objects never enter domain, app, or UI code |
 | `ocr` | OCR interfaces and worker-side OCRmyPDF/Tesseract implementations |
 | `overlays` | Normalized visual-overlay intent and rendering boundaries |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
@@ -56,7 +56,9 @@ worker host -> domain
    `pdf` layer; `domain`, application/UI, GUI-safe worker client/protocol, storage, and every other
    adapter layer reject both engines. PWS-0111 admits only fully qualified `PySide6.QtCore`,
    `PySide6.QtGui`, and `PySide6.QtWidgets` imports in the `ui` layer; the root `PySide6` import,
-   every other PySide6 module, and every non-UI PySide6 import remain rejected. The alternative
+   every other PySide6 module, and every non-UI PySide6 import remain rejected. PWS-0201 admits
+   only the `PIL` package in the worker-only `imaging` adapter layer; domain, app, UI, storage,
+   PDF, OCR, and worker orchestration remain unable to import it. The alternative
    standard-library GUI roots `tkinter`, `_tkinter`, and `turtle` are also rejected. Future
    ownership is reserved—but not approved—for OCRmyPDF/Tesseract integration in `ocr`. The
    non-default PySide6-Addons renderer-evaluation group grants no source import boundary or product
@@ -215,8 +217,10 @@ storage manager or case path. The host operation invokes the existing renderer-n
 through an exact source handle and exact write-only stage handle; the `pdf` package remains
 independent of worker/storage code and is still the only layer that imports pikepdf/pypdfium2.
 
-`worker.protocol` knows only the additive `pdf.thumbnail` capability, closed scalar/reference
-contract, and output correlation. The GUI-safe profile-identity module contains only fixed project
+For the PWS-0108 slice, `worker.protocol` owns the additive `pdf.thumbnail` capability, closed
+scalar/reference contract, and output correlation. The present registry also contains the exact
+`pdf.inspect`, `pdf.export`, and `image.normalize` operations described by their owning contracts;
+none loosens the shared envelope or reference grammar. The GUI-safe profile-identity module contains only fixed project
 metadata and SHA-256 computation; it imports no native engine. Concrete stage creation, Windows
 handle reduction, worker-private source copying, rendering, and publication stay behind their
 existing private/platform boundaries. The full split is specified in the

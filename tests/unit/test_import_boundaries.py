@@ -616,6 +616,37 @@ def test_only_pdf_adapter_may_import_pinned_pdf_engines(engine: str) -> None:
         assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
 
 
+def test_only_imaging_adapter_may_import_pillow() -> None:
+    assert (
+        inspect_source(
+            "import PIL\nfrom PIL import Image\n",
+            module="paperworkshell.imaging.pillow_decoder",
+            package="paperworkshell.imaging",
+            path="pillow_decoder.py",
+        )
+        == ()
+    )
+    for module, package in (
+        ("paperworkshell.domain.image_pages", "paperworkshell.domain"),
+        ("paperworkshell.app.page_previews", "paperworkshell.app"),
+        ("paperworkshell.ui.window", "paperworkshell.ui"),
+        ("paperworkshell.worker.operations", "paperworkshell.worker"),
+        ("paperworkshell.pdf.pikepdf_adapter", "paperworkshell.pdf"),
+    ):
+        violations = inspect_source(
+            "import PIL\n",
+            module=module,
+            package=package,
+            path="pillow_boundary.py",
+        )
+        expected = (
+            "ARCH_DOMAIN_EXTERNAL"
+            if module.startswith("paperworkshell.domain")
+            else "ARCH_EXTERNAL_IMPORT"
+        )
+        assert {violation.code for violation in violations} == {expected}
+
+
 def test_invalid_source_and_relative_import_fail_closed() -> None:
     parse_violations = inspect_source(
         "def broken(:\n",

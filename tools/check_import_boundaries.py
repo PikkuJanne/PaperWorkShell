@@ -39,6 +39,7 @@ ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
 UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
 APPROVED_EXTERNAL_IMPORT_PREFIXES: Final = {
+    "imaging": frozenset({"PIL"}),
     "pdf": frozenset({"pikepdf", "pypdfium2"}),
     "ui": frozenset(
         {

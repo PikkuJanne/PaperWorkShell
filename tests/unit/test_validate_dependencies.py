@@ -206,7 +206,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 data = _load_inventory()
                 if mutation == "component-review-after-inventory":
-                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-06"
+                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-14"
                 elif mutation == "future-inventory-review":
                     data["reviewed_on"] = "9999-12-31"
                 else:
@@ -351,7 +351,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             "qt-pdf": "PWS-0106",
             "lxml": "PWS-0105",
             "pikepdf": "PWS-0105",
-            "pillow": "PWS-0105",
+            "pillow": "PWS-0201",
             "pypdfium2": "PWS-0106",
             "qpdf": "PWS-0105",
             "ocrmypdf": "PWS-0204",
@@ -362,6 +362,15 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         for component_id, task_id in expected.items():
             with self.subTest(component_id=component_id):
                 self.assertIn(task_id, _component(data, component_id)["task_refs"])
+        self.assertIn("PWS-0105", _component(data, "pillow")["task_refs"])
+        self.assertIn("PWS-D015", _component(data, "pillow")["decision_refs"])
+
+        missing_image_gate = _load_inventory()
+        _component(missing_image_gate, "pillow")["task_refs"].remove("PWS-0201")
+        self.assertIn(
+            "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+            self._codes(missing_image_gate, repository_checks=True),
+        )
 
     def test_pikepdf_native_and_lock_closure_relationships_fail_closed(self) -> None:
         cases: tuple[tuple[str, str, str], ...] = (

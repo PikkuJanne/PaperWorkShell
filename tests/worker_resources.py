@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+import PIL
+
 from paperworkshell.worker.client._windows import _approved_resource_tree
 
 _REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
@@ -22,6 +24,7 @@ _REPARSE_POINT_ATTRIBUTE: Final = 0x0000_0400
 _RUNTIME_DIRECTORIES: Final = ("DLLs", "Lib")
 _RUNTIME_IGNORED_DIRECTORIES: Final = frozenset({"site-packages"})
 _STAGE_PREFIX: Final = "pws-worker-resources-"
+_EXPECTED_PILLOW_VERSION: Final = "12.3.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +103,7 @@ def _stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
         raise RuntimeError("Windows worker resources may only be staged on Windows")
 
     runtime_source = Path(sys.base_prefix)
+    pillow_source = _pillow_package_source()
     source_source = _REPOSITORY_ROOT / "src"
     helper_source = _REPOSITORY_ROOT / "tests" / "helpers"
     budget = _CopyBudget()
@@ -113,6 +117,7 @@ def _stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
                 _RUNTIME_IGNORED_DIRECTORIES if directory.name.casefold() == "lib" else frozenset()
             ),
         )
+    _audit_copy_source(pillow_source, budget)
     _audit_copy_source(source_source, budget)
     _audit_copy_source(helper_source, budget)
 
@@ -133,6 +138,14 @@ def _stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
                 ),
                 copy_function=shutil.copyfile,
             )
+        pillow_destination = runtime_root / "Lib" / "site-packages" / "PIL"
+        pillow_destination.parent.mkdir(exist_ok=True)
+        shutil.copytree(
+            pillow_source,
+            pillow_destination,
+            ignore=_copy_ignore(frozenset()),
+            copy_function=shutil.copyfile,
+        )
         shutil.copytree(
             source_source,
             source_root,
@@ -160,6 +173,20 @@ def _stage_worker_test_resources(stage_root: Path) -> WorkerTestResources:
         except OSError:
             raise RuntimeError("Windows worker test-resource cleanup failed") from None
         raise
+
+
+def _pillow_package_source() -> Path:
+    """Return the exact admitted Pillow package tree before staging begins."""
+
+    if PIL.__version__ != _EXPECTED_PILLOW_VERSION:
+        raise RuntimeError("the admitted Windows Pillow test runtime is unavailable")
+    package_file = getattr(PIL, "__file__", None)
+    if not isinstance(package_file, str) or not package_file:
+        raise RuntimeError("the admitted Windows Pillow test runtime is unavailable")
+    package_root = Path(package_file).parent
+    if not package_root.is_absolute() or package_root.name != "PIL":
+        raise RuntimeError("the admitted Windows Pillow test runtime is unavailable")
+    return package_root
 
 
 def cleanup_worker_test_resources(resources: WorkerTestResources) -> None:

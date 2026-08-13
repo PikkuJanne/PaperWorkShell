@@ -15,8 +15,8 @@ from paperworkshell.app.export_history import (
     PdfExportRetryRecoveryService,
 )
 from paperworkshell.app.organizer import OrganizerBackend
+from paperworkshell.app.page_previews import PagePreviewService
 from paperworkshell.app.pdf_export import PdfExportService
-from paperworkshell.app.pdf_thumbnails import PdfThumbnailService
 from paperworkshell.app.recovery import (
     StartupRecoveryDiagnosticSink,
     StartupRecoveryService,
@@ -26,6 +26,7 @@ from paperworkshell.app.source_ingest import (
     SourceIngestService,
 )
 from paperworkshell.app.source_inspection import SourceInspectorRouter
+from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_export import (
     PdfExportErrorCode,
@@ -211,9 +212,15 @@ def _build_backend(
     try:
         source_ingest = SourceIngestService(
             source_store,
-            SourceInspectorRouter(composition.source_inspector),
+            SourceInspectorRouter(
+                composition.source_inspector,
+                composition.image_source_inspector,
+            ),
         )
-        thumbnails = PdfThumbnailService(composition.thumbnail_generator)
+        thumbnails = PagePreviewService(
+            composition.thumbnail_generator,
+            composition.image_page_generator,
+        )
         return OrganizerBackend(
             lifecycle,
             repository,
@@ -388,6 +395,21 @@ def _desktop_worker_config(
             output_bytes=MAX_PDF_INSPECTION_FRAME_BYTES,
             page_count=selected_policy.maximum_page_count,
             pixel_count=1,
+        ),
+        image_limits=ResourceLimits(
+            wall_time_ms=60_000,
+            cpu_time_ms=45_000,
+            memory_bytes=min(512 * 1024 * 1024, selected_policy.worker_process_memory_bytes),
+            temporary_storage_bytes=(selected_policy.maximum_preview_pixels_per_page * 4),
+            output_bytes=(
+                IMAGE_PAGE_ARTIFACT_HEADER_BYTES
+                + selected_policy.maximum_preview_pixels_per_page * 4
+            ),
+            page_count=1,
+            pixel_count=min(
+                268_435_456,
+                selected_policy.worker_process_memory_bytes // 4,
+            ),
         ),
         thumbnail_limits=ResourceLimits(
             wall_time_ms=60_000,

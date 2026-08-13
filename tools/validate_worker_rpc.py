@@ -95,6 +95,21 @@ _UUID_MEMBER_NAMES: Final = frozenset(
     }
 )
 _SESSION_CAPABILITY: Final = re.compile(r"^[0-9a-f]{64}$")
+_ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
+    {
+        ("protocol.noop", 1),
+        ("pdf.inspect", 1),
+        ("pdf.thumbnail", 1),
+        ("pdf.export", 1),
+        ("image.normalize", 1),
+    }
+)
+_OFFLINE_START_CAPABILITIES: Final = frozenset(
+    {
+        ("protocol.noop", 1),
+        ("image.normalize", 1),
+    }
+)
 
 _SAFE_PATH_TOKEN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INVALID_JSON_POINTER_ESCAPE: Final = re.compile(r"~(?:[^01]|$)")
@@ -1018,7 +1033,10 @@ def _capability_issues(data: Mapping[str, Any], document: str) -> list[RpcIssue]
                         ),
                     )
                 seen_capabilities.add(descriptor)
-                if message_type == "session.ready" and descriptor != ("protocol.noop", 1):
+                if (
+                    message_type == "session.ready"
+                    and descriptor not in _ADVERTISED_OPERATION_CAPABILITIES
+                ):
                     _add_issue(
                         issues,
                         _issue(
@@ -1120,17 +1138,23 @@ def _operation_registry_issues(data: Mapping[str, Any], document: str) -> list[R
     if not isinstance(payload, Mapping):
         return []
     issues: list[RpcIssue] = []
-    if payload.get("operation_kind") != "protocol.noop" or payload.get("operation_version") != 1:
+    descriptor = (payload.get("operation_kind"), payload.get("operation_version"))
+    admitted = (
+        _OFFLINE_START_CAPABILITIES
+        if message_type == "operation.start"
+        else _ADVERTISED_OPERATION_CAPABILITIES
+    )
+    if descriptor not in admitted:
         _add_issue(
             issues,
             _issue(
                 "RPC_OPERATION_UNSUPPORTED",
                 document,
                 "$.payload.operation_kind",
-                "operation kind or version is not registered",
+                "operation kind or version has no exact local validation contract",
             ),
         )
-    if message_type == "operation.start":
+    if message_type == "operation.start" and descriptor == ("protocol.noop", 1):
         if payload.get("inputs") != [] or payload.get("parameters") != []:
             _add_issue(
                 issues,
@@ -1141,6 +1165,121 @@ def _operation_registry_issues(data: Mapping[str, Any], document: str) -> list[R
                     "protocol.noop does not accept inputs or parameters",
                 ),
             )
+    elif message_type == "operation.start" and descriptor == ("image.normalize", 1):
+        for issue in _image_normalize_start_issues(data, payload, document):
+            _add_issue(issues, issue)
+    return _sorted_issues(issues)
+
+
+def _image_normalize_start_issues(
+    data: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    document: str,
+) -> list[RpcIssue]:
+    """Validate the exact additive image operation without changing schema v1."""
+
+    issues: list[RpcIssue] = []
+    inputs = payload.get("inputs")
+    source: Mapping[str, Any] | None = None
+    if isinstance(inputs, list) and len(inputs) == 1 and isinstance(inputs[0], Mapping):
+        source = inputs[0]
+    if source is None or (
+        source.get("area") != "source_read"
+        or source.get("operation_id") is not None
+        or source.get("content_kind") not in {"jpeg", "png"}
+        or type(source.get("expected_byte_size")) is not int
+        or cast(int, source.get("expected_byte_size")) < 1
+        or not isinstance(source.get("expected_sha256"), str)
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.inputs",
+                "image.normalize requires one authenticated JPEG or PNG source reference",
+            ),
+        )
+
+    parameters = payload.get("parameters")
+    expected_types = {
+        "source_handle": "integer",
+        "output_handle": "integer",
+        "output_object_id": "uuid",
+        "maximum_width_pixels": "integer",
+        "maximum_height_pixels": "integer",
+        "additional_rotation": "integer",
+    }
+    parameter_map: dict[str, Mapping[str, Any]] = {}
+    if isinstance(parameters, list):
+        for value in parameters:
+            if isinstance(value, Mapping) and isinstance(value.get("name"), str):
+                parameter_map[cast(str, value["name"])] = value
+    parameter_count = len(parameters) if isinstance(parameters, list) else -1
+    if (
+        parameter_count != len(expected_types)
+        or set(parameter_map) != set(expected_types)
+        or any(
+            parameter_map[name].get("value_type") != value_type
+            for name, value_type in expected_types.items()
+            if name in parameter_map
+        )
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.parameters",
+                "image.normalize requires its exact closed parameter set",
+            ),
+        )
+        return _sorted_issues(issues)
+
+    source_handle = parameter_map["source_handle"].get("value")
+    output_handle = parameter_map["output_handle"].get("value")
+    output_id = parameter_map["output_object_id"].get("value")
+    maximum_width = parameter_map["maximum_width_pixels"].get("value")
+    maximum_height = parameter_map["maximum_height_pixels"].get("value")
+    rotation = parameter_map["additional_rotation"].get("value")
+    limits = payload.get("requested_limits")
+    pixel_limit = limits.get("pixel_count") if isinstance(limits, Mapping) else None
+    invalid_values = (
+        type(source_handle) is not int
+        or source_handle < 1
+        or type(output_handle) is not int
+        or output_handle < 1
+        or source_handle == output_handle
+        or not _canonical_uuid_v4(output_id)
+        or type(maximum_width) is not int
+        or maximum_width < 1
+        or type(maximum_height) is not int
+        or maximum_height < 1
+        or type(pixel_limit) is not int
+        or maximum_width * maximum_height > pixel_limit
+        or type(rotation) is not int
+        or rotation not in {0, 90, 180, 270}
+    )
+    correlated_ids = (
+        data.get("case_id"),
+        data.get("operation_id"),
+        None if source is None else source.get("object_id"),
+        output_id,
+    )
+    invalid_correlations = (
+        any(not _canonical_uuid_v4(value) for value in correlated_ids)
+        or len(set(cast(tuple[str, str, str, str], correlated_ids))) != 4
+    )
+    if invalid_values or invalid_correlations:
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.parameters",
+                "image.normalize parameters and identities must be bounded and distinct",
+            ),
+        )
     return _sorted_issues(issues)
 
 

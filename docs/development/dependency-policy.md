@@ -276,10 +276,24 @@ and replacement or relinking information. Static or opaque one-file packaging is
 compliant. A commercial route would require separately approved maintainer-controlled terms. See
 [ADR 0006](../adr/0006-pyside6-ui-runtime.md) for the artifact and source evidence.
 
+### Pillow image decoder
+
+PWS-0201 promotes the already locked Pillow 12.3.0 Windows x64 wheel from a pikepdf transitive
+dependency to the direct worker-only JPEG/PNG decoder. The standard library is sufficient for the
+bounded preliminary framing checks but not for complete entropy/deflate decode, EXIF orientation,
+CMYK conversion, palette/alpha handling, or deterministic resampling. The exact version is checked
+before source access and remains behind `paperworkshell.imaging.pillow_decoder`; UI and application
+modules receive only closed domain models and validated opaque RGBA8 bytes.
+
+The inventory retains the exact wheel/source hashes, MIT-CMU route, native-code and untrusted-input
+classification, disabled optional libimagequant proof, and PWS-0801 codec/DLL/notice/SBOM work. It
+adds no runtime network need. Moving Pillow into another process, enabling another codec component,
+or changing the selected artifact requires a fresh dependency and parser-boundary review.
+
 ### pikepdf and qpdf
 
 `PWS-D015` fixes the structure layer as pikepdf/qpdf behind the internal PDF adapter. `PWS-0105`
-admits pikepdf 10.10.0, Pillow 12.3.0, lxml 6.1.1, and packaging 26.2 from the exact `uv.lock`
+admits pikepdf 10.10.0, lxml 6.1.1, packaging 26.2, and the then-transitive Pillow 12.3.0 from the exact `uv.lock`
 resolution. The selected `pikepdf-10.10.0-cp314-abi3-win_amd64.whl` is 3,414,578 bytes with
 SHA-256 `66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c`.
 It embeds qpdf 12.3.2 and the Microsoft C++ runtime; security tests bind the inspected `_core.pyd`,

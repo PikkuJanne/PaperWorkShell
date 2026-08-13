@@ -5,6 +5,7 @@
 - Decisions: PWS-D009, PWS-D010, PWS-D011, PWS-D028, PWS-D036
 - Depends on: PWS-0102 local case lifecycle; PWS-0103 bounded import prechecks
 - Data flow: [DF-IMPORT](../security/data-flows.md#df-import--select-precheck-copy-inspect-and-commit-source)
+- Image inspection: [Bounded JPEG/PNG intake](image-intake.md)
 
 ## Scope and ownership
 
@@ -68,9 +69,10 @@ Commit requires complete trusted metadata for the exact prepared copy:
 - media-appropriate signature and encryption states; and
 - a bounded, normalized display name for protected presentation only.
 
-JPEG and PNG prechecks establish one source page and use `not_applicable` signature/encryption
-states. A PDF precheck intentionally has no page count and reports both states as `not_checked`.
-Those preliminary PDF values cannot be promoted into a source record. PWS-0105 inspects the same
+JPEG and PNG prechecks provisionally identify one source page and use `not_applicable`
+signature/encryption states, but PWS-0201 must completely decode the exact pending copy before
+those facts can be committed. A PDF precheck intentionally has no page count and reports both
+states as `not_checked`. Those preliminary PDF values cannot be promoted into a source record. PWS-0105 inspects the same
 prepared case copy through an exact brokered read-only handle and returns the bounded page count,
 encryption state, and conservative signature-marker state required before PDF commit. `unknown`
 remains a real inspection result; it is never fabricated to bypass `not_checked`.
@@ -83,13 +85,19 @@ streams. It never resolves the random pending name again. The trusted worker bro
 read-data/read-attributes/synchronize rights into one isolated generation; a stale or mismatched
 summary fails. Registration is revoked before pending publication, deletion, or close.
 
-Inside the worker, the exact case handle is bounded-copy rehashed into worker-private ephemeral
+For PDF inspection, the exact case handle is bounded-copy rehashed into worker-private ephemeral
 storage and closed before pikepdf parses the stream. One separately brokered write-only anonymous
 pipe returns a length-bounded result correlated to both operation and pending IDs. The broker
 terminates the one-shot worker tree before the prepared-source borrow is released, then validates
 the complete frame and typed result. No case path, write-capable source handle, pikepdf object, raw
 tool output, or exception crosses into application/storage code. See the
 [PDF structural-inspection contract](pdf-structural-inspection.md).
+
+For JPEG/PNG inspection, the broker transfers the same reduced read authority plus one fixed-size
+anonymous output-section authority. The worker rehashes and fully decodes the immutable pending
+copy, writes a one-pixel correlated normalization artifact, closes all authorities, and ends before
+the trusted broker accepts the one-page inspection result. It receives no source-publication or
+manifest authority. See the [bounded image-intake contract](image-intake.md).
 
 Worker output is treated as untrusted typed input. The trusted application/storage boundary checks
 its case/source binding and limits before commit. The worker cannot publish an original, manifest,

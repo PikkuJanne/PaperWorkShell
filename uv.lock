@@ -231,6 +231,7 @@ version = "0.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "pikepdf" },
+    { name = "pillow" },
     { name = "pypdfium2" },
     { name = "pyside6-essentials" },
 ]
@@ -265,6 +266,7 @@ validation = [
 [package.metadata]
 requires-dist = [
     { name = "pikepdf", specifier = "==10.10.0" },
+    { name = "pillow", specifier = "==12.3.0" },
     { name = "pypdfium2", specifier = "==5.12.1" },
     { name = "pyside6-essentials", specifier = "==6.11.1" },
 ]

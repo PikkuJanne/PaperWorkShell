@@ -180,7 +180,9 @@ record.
   must confirm that row boundaries and selection state are understandable.
 - Preview pixels have no semantic document-content description. Rows announce only page position,
   rotation, and preview availability because document text and imagery must not enter UI metadata.
-- JPEG and PNG previews are explicitly unavailable until PWS-0201, although those pages remain
-  keyboard-organizable.
+- This historical PWS-0111 run preceded PWS-0201, so JPEG and PNG previews were unavailable then.
+  PWS-0201 now routes validated image previews through the same keyboard-operable rows, progress,
+  cancellation, focus, and byte-budgeted cache behavior; the next milestone smoke should include
+  one synthetic image page without reinterpreting the earlier manual evidence.
 - Announcement throttling is phase/count based. The smoke must identify any repeated or missed Qt
   accessibility announcements under real worker timing.

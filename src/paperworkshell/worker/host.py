@@ -37,6 +37,14 @@ def main() -> int:
     # cause a different, working document capability to be advertised or hidden.
     handlers: list[OperationHandler] = [NoopOperationHandler()]
     try:
+        from paperworkshell.worker.image_normalize_operation import (
+            build_image_normalize_operation_handler,
+        )
+
+        handlers.append(build_image_normalize_operation_handler())
+    except Exception:
+        pass
+    try:
         from paperworkshell.worker.pdf_operation import (
             build_pdf_inspection_operation_handler,
         )

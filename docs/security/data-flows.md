@@ -228,10 +228,12 @@ sequenceDiagram
    for exact size/digest verification. It remains non-authoritative until the source context exits
    normally and its terminal identity check succeeds. A changing/truncated source, cancellation,
    limit, disk-full, or write failure leaves no valid source record.
-4. TB-02/TB-03: complex inspection follows DF-PDF-INSPECTION. It receives only a logical prepared
-   reference, case/operation binding, explicit limits, an exact broker-authenticated read-only
-   handle, and a write-only bounded result pipe. It returns typed complete metadata for that copy.
-   PDF `not_checked` values and a missing page count cannot be promoted into a source record. The
+4. TB-02/TB-03: complex inspection follows DF-PDF-INSPECTION or the bounded image-intake flow. It
+   receives only a logical prepared reference, case/operation binding, explicit limits, an exact
+   broker-authenticated read-only handle, and one purpose-limited bounded output authority. PDF
+   returns typed structural metadata; JPEG/PNG must complete one full decode and correlated
+   normalization before its provisional one-page facts are accepted. PDF `not_checked` values, a
+   missing page count, or any incomplete image decode cannot be promoted into a source record. The
    one-shot worker ends before storage releases the borrow and cannot write the pending copy,
    manifest, journal, source records, or page records; raw third-party exceptions are discarded.
 5. The trusted broker validates the complete metadata and serializes duplicate detection against
@@ -260,60 +262,65 @@ TM-023, TM-026.
 
 ```mermaid
 flowchart LR
-    UI["UI requests internal page ID"] --> App["Serial thumbnail service"]
+    UI["UI requests internal page ID"] --> App["Serial mixed-preview service"]
     App --> Broker["Trusted source/cache broker"]
     Manifest["Current manifest"] ==> Broker
     Source["Immutable case source"] ==> Broker
     Broker ==> Worker["One-shot restricted worker"]
-    Worker ==> Renderer["Renderer adapter"]
+    Worker ==> Renderer["PDF renderer or image decoder adapter"]
     Renderer ==> Buffer["Fixed-size volatile output section"]
     Worker --> Stop["Confirm complete Job-tree termination"]
     Stop --> Validate["Read section, validate exact bytes"]
     Buffer ==> Validate
-    Validate ==> Stage["Broker-only cache stage"]
-    Stage --> App["Validate again, publish atomically"]
+    Validate ==> Stage["Optional broker-only PDF cache stage"]
+    Stage --> App["Validate and optionally publish PDF cache"]
     App --> UI["Fixed-layout bounded RGBA8 pixels"]
 ```
 
 1. The UI names internal case/page IDs, desired bounded dimensions/quarter-turn, and cancellation
    intent; it never opens the source document. A multi-page request is scheduled serially as one
    bounded worker operation per page. Aggregate progress contains only phase and page counts.
-2. TB-02/TB-03: before a cache hit or render, the trusted broker resolves the page through the
-   current manifest and authenticates one exact committed PDF handle, including file identity,
+2. TB-02/TB-03: before a cache hit, render, or image normalization, the trusted broker resolves the
+   page through the current manifest and authenticates one exact committed PDF/JPEG/PNG handle, including file identity,
    containment, type, size, SHA-256, link/reparse/sparse/stream state, and retained lifetime. A
    cache key, path, case/page UUID, or existing filename alone never authorizes access.
-3. The versioned cache key covers internal case/source/page IDs, source index/size/SHA-256,
+3. For PDF, the versioned cache key covers internal case/source/page IDs, source index/size/SHA-256,
    dimensions/rotation, fixed RGBA8/white/CropBox/annotation choices, and renderer-profile digest.
    Final and staging names contain only random internal IDs and a full key digest. Source
-   authentication precedes lookup, so cached state cannot conceal a changed source.
-4. On a miss, storage reserves the worst-case artifact size against the case-cache quota and creates
+   authentication precedes lookup, so cached state cannot conceal a changed source. Image previews
+   do not publish a persistent raster cache: each miss is regenerated from the authenticated source
+   and only the UI's byte-budgeted pixmap LRU is reusable.
+4. On a PDF miss, storage reserves the worst-case artifact size against the case-cache quota and creates
    one random broker-only stage. The broker also creates an unnamed pagefile-backed section from
    the exact logical operation output limit; its volatile backing may be rounded by less than one
    memory page, while the adapter enforces the logical cap. It duplicates only source-read and
    section map-write rights into a fresh worker. The worker receives no persistent cache-file
    handle, case/cache path, directory, manifest, delete, rename, or publication authority.
-5. The worker verifies/copies/hashes the source, closes the case handle, renders one page under
-   page/pixel/output/temp/memory/CPU/wall limits, and writes a fixed binary header plus exact raw
-   RGBA8 payload. Its success references the exact operation/cache-object IDs, artifact size,
-   whole-artifact SHA-256, and content kind; other outcomes reference no output.
+5. The worker rehashes the exact source and renders a PDF page or fully decodes one JPEG/PNG under
+   page/pixel/decompression/metadata/output/temp/memory/CPU/wall limits. Image orientation applies
+   all eight intrinsic EXIF intents before the manifest quarter-turn; alpha is composited on white.
+   The operation writes a fixed binary header plus exact opaque raw RGBA8 payload. Success references
+   exact operation/output IDs, artifact size, whole-artifact SHA-256, and content kind; other outcomes
+   reference no output.
 6. RPC success is untrusted. The broker first confirms complete one-shot Job-tree termination,
    then reads only the claimed bounded byte count through its read-only section view and validates
    RPC correlation, key/header versions, reserved fields, IDs, dimensions, stride, profile, exact
-   lengths, digests, and opaque alpha. Only then may the trusted broker write the bytes to the
-   persistent stage; storage seals, reads back, validates again, and no-replace renames it to the
-   final internal name. The UI never decodes arbitrary worker-produced PNG/JPEG/PDF bytes or
-   follows a raced cache path.
+   lengths, digests, and opaque alpha. Only a validated PDF artifact may be written to its persistent
+   broker stage; storage seals, reads back, validates again, and no-replace renames it. A validated
+   image artifact goes directly to the bounded UI snapshot/LRU. The UI never decodes arbitrary
+   worker-produced PNG/JPEG/PDF bytes or follows a raced cache path.
 7. Cancellation, parser fault, invalid output, or quota failure leaves the manifest unchanged.
-   Before validation, the only worker-writable object is volatile and OS-capped; the persistent
-   stage remains empty and broker-only. Unconfirmed worker termination therefore cannot leave a
-   live persistent writer. Only an indeterminate publication state quarantines a random stage;
+   Before validation, the only worker-writable output is volatile and OS-capped; any PDF persistent
+   stage remains empty and broker-only. Unconfirmed worker termination therefore cannot leave a live
+   persistent writer. Only an indeterminate PDF-cache publication state quarantines a random stage;
    earlier complete page entries remain safely reusable.
 8. Paths, filenames, source/cache/pixel digests, text, metadata, rendered bytes, thumbnails, raw
    RPC, handles, and third-party exceptions never enter routine logs. Fixed pixels reach only the
    requested UI snapshot after complete validation.
 
-The complete implementation contract is the
-[bounded PDF-thumbnail service](../architecture/pdf-thumbnails.md).
+The complete implementation contracts are the
+[bounded PDF-thumbnail service](../architecture/pdf-thumbnails.md) and
+[bounded JPEG/PNG intake](../architecture/image-intake.md).
 
 Primary threats: TM-001, TM-002, TM-003, TM-006, TM-011, TM-012, TM-022, TM-023.
 
