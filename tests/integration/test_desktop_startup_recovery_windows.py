@@ -137,12 +137,16 @@ class _UnusedWorkerPort:
     def get_or_generate(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not generate a preview")
 
+    def transform(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not transform a preview")
+
 
 class _Composition:
     source_inspector = _UnusedWorkerPort()
     image_source_inspector = _UnusedWorkerPort()
     thumbnail_generator = _UnusedWorkerPort()
     image_page_generator = _UnusedWorkerPort()
+    image_page_transformer = _UnusedWorkerPort()
 
     def __init__(self) -> None:
         self.closed = False

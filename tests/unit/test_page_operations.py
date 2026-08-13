@@ -466,7 +466,7 @@ def test_replay_rejects_operation_gaps_and_domain_namespace_collisions() -> None
 
 def test_future_operation_versions_fail_closed_with_a_distinct_error() -> None:
     serialized = _operation(1, RotatePayload(PAGE_IDS[0], 1)).to_manifest()
-    serialized["operation_version"] = 2
+    serialized["operation_version"] = 3
 
     _assert_error_code(
         PageOperationErrorCode.VERSION_UNSUPPORTED,
@@ -476,7 +476,7 @@ def test_future_operation_versions_fail_closed_with_a_distinct_error() -> None:
         PageOperationErrorCode.VERSION_UNSUPPORTED,
         lambda: PageOperation(
             operation_id=_operation_id(71),
-            operation_version=2,
+            operation_version=3,
             sequence=1,
             payload=RotatePayload(PAGE_IDS[0], 1),
         ),

@@ -10,6 +10,9 @@ from typing import Any, ClassVar, cast
 from unittest.mock import patch
 
 from tools.validate_manifests import (
+    CURRENT_MANIFEST_EXAMPLE_PATTERN,
+    CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY,
+    CURRENT_MANIFEST_SCHEMA_PATH,
     MANIFEST_INVALID_FIXTURE_DIRECTORY,
     MANIFEST_SCHEMA_PATH,
     MAX_MANIFEST_BYTES,
@@ -95,7 +98,7 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertIsNotNone(summary)
         assert summary is not None
-        self.assertEqual(2, summary.positive_count)
+        self.assertEqual(4, summary.positive_count)
         self.assertGreaterEqual(summary.negative_count, 10)
 
     def test_each_negative_fixture_is_rejected_for_its_intended_reason(self) -> None:
@@ -103,7 +106,7 @@ class CaseManifestValidationTests(unittest.TestCase):
             "duplicate-key.json": "MANIFEST_JSON_DUPLICATE_KEY",
             "duplicate-source-id.json": "MANIFEST_SOURCE_ID_DUPLICATE",
             "executable-operation-field.json": "MANIFEST_SCHEMA_VALIDATION",
-            "future-version.json": "MANIFEST_VERSION_UNSUPPORTED",
+            "future-version.json": "MANIFEST_SCHEMA_IDENTITY_MISMATCH",
             "invalid-hash.json": "MANIFEST_SCHEMA_VALIDATION",
             "legacy-version.json": "MANIFEST_VERSION_UNSUPPORTED",
             "malformed-normalized-box.json": "MANIFEST_NORMALIZED_BOX_INVALID",
@@ -128,7 +131,7 @@ class CaseManifestValidationTests(unittest.TestCase):
             (True, "MANIFEST_VERSION_INVALID"),
             ("1", "MANIFEST_VERSION_INVALID"),
             (0, "MANIFEST_VERSION_UNSUPPORTED"),
-            (2, "MANIFEST_VERSION_UNSUPPORTED"),
+            (3, "MANIFEST_VERSION_UNSUPPORTED"),
         )
         for value, expected_code in cases:
             with self.subTest(value=value):
@@ -788,11 +791,23 @@ class ManifestSchemaRegistryIntegrationTests(unittest.TestCase):
     def _copy_fixture_root(self, target: Path) -> None:
         (target / "schemas" / "examples").mkdir(parents=True)
         (target / MANIFEST_INVALID_FIXTURE_DIRECTORY).mkdir(parents=True)
+        (target / CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY).mkdir(parents=True)
         shutil.copy2(ROOT / MANIFEST_SCHEMA_PATH, target / MANIFEST_SCHEMA_PATH)
+        shutil.copy2(
+            ROOT / CURRENT_MANIFEST_SCHEMA_PATH,
+            target / CURRENT_MANIFEST_SCHEMA_PATH,
+        )
         for source in EXAMPLE_DIRECTORY.glob("case-manifest-v1-*.json"):
+            shutil.copy2(source, target / "schemas" / "examples" / source.name)
+        for source in EXAMPLE_DIRECTORY.glob(CURRENT_MANIFEST_EXAMPLE_PATTERN):
             shutil.copy2(source, target / "schemas" / "examples" / source.name)
         for source in (ROOT / MANIFEST_INVALID_FIXTURE_DIRECTORY).glob("*.json"):
             shutil.copy2(source, target / MANIFEST_INVALID_FIXTURE_DIRECTORY / source.name)
+        for source in (ROOT / CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY).glob("*.json"):
+            shutil.copy2(
+                source,
+                target / CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY / source.name,
+            )
 
     def test_aggregate_rejects_a_corrupted_positive_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -800,7 +815,7 @@ class ManifestSchemaRegistryIntegrationTests(unittest.TestCase):
             self._copy_fixture_root(root)
             positive = root / "schemas" / "examples" / "case-manifest-v1-minimal.json"
             data = cast(dict[str, Any], json.loads(positive.read_text(encoding="utf-8")))
-            data["schema_version"] = 2
+            data["schema_version"] = 3
             positive.write_text(json.dumps(data), encoding="utf-8")
 
             summary, issues = validate_manifest_fixture_set(root)

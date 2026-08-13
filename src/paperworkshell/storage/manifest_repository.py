@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Final, Never, cast
 from uuid import UUID, uuid4
 
-from paperworkshell.domain.case_lifecycle import CURRENT_CASE_MANIFEST_VERSION
+from paperworkshell.domain.case_lifecycle import (
+    CURRENT_CASE_MANIFEST_VERSION,
+    LEGACY_CASE_MANIFEST_VERSION,
+)
+from paperworkshell.domain.manifest_migrations import migrate_manifest_v1_to_v2
 from paperworkshell.domain.manifest_repository import (
     MAX_SAFE_MANIFEST_INTEGER,
     ManifestLoadResult,
@@ -45,8 +49,8 @@ from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.manifest_codec import (
     MAX_MANIFEST_BYTES,
     decode_manifest,
-    has_current_manifest_schema_version,
     parse_utc_timestamp,
+    probe_supported_manifest_schema_version,
     summary_from_manifest,
 )
 from paperworkshell.storage.quotas import QuotaArea
@@ -56,8 +60,18 @@ from paperworkshell.storage.workspace import (
     WorkspaceCapacityReservation,
 )
 
-_SCHEMA_RESOURCE: Final = "case-manifest-v1.schema.json"
-_SCHEMA_FINGERPRINT: Final = "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
+_SCHEMA_RESOURCES: Final = {
+    LEGACY_CASE_MANIFEST_VERSION: "case-manifest-v1.schema.json",
+    CURRENT_CASE_MANIFEST_VERSION: "case-manifest-v2.schema.json",
+}
+_SCHEMA_FINGERPRINTS: Final = {
+    LEGACY_CASE_MANIFEST_VERSION: (
+        "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
+    ),
+    CURRENT_CASE_MANIFEST_VERSION: (
+        "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+    ),
+}
 _MAX_SCHEMA_BYTES: Final = 2 * 1024 * 1024
 _JOURNAL_CHECKPOINT_NAME: Final = "latest.json"
 _SHA256_LENGTH: Final = 64
@@ -268,7 +282,7 @@ class WindowsManifestRepository:
         current_error: ManifestRepositoryError | None = None
         try:
             current_raw = _read_raw_manifest(authority)
-            validated = _validate_manifest_payload(current_raw.payload, authority.case_id)
+            validated = _validate_loadable_manifest_payload(current_raw.payload, authority.case_id)
             current = _ObservedManifest(validated, current_raw.identity)
         except ManifestRepositoryError as error:
             current_error = error
@@ -294,28 +308,139 @@ class WindowsManifestRepository:
 
         if current is not None:
             if checkpoint is None:
-                return ManifestLoadResult(ManifestLoadStatus.CURRENT, current.snapshot)
+                return self._finish_loaded_locked(
+                    authority,
+                    current.snapshot,
+                    ManifestLoadStatus.CURRENT,
+                )
             if (
                 checkpoint.case_id == current.validated.case_id
                 and checkpoint.revision == current.validated.revision + 1
                 and checkpoint.document["created_at"] == current.validated.document["created_at"]
             ):
+                if checkpoint.schema_version < current.validated.schema_version:
+                    _reject(
+                        ManifestRepositoryErrorCode.RECOVERY_FAILED,
+                        "manifest.recovery_version",
+                    )
                 restored = self._restore_locked(
                     authority,
                     checkpoint,
                     current_raw=current_raw,
                 )
-                return ManifestLoadResult(ManifestLoadStatus.RECOVERED, restored)
+                return self._finish_loaded_locked(
+                    authority,
+                    restored,
+                    ManifestLoadStatus.RECOVERED,
+                    recovered_migration=(
+                        current.validated.schema_version == LEGACY_CASE_MANIFEST_VERSION
+                        and restored.schema_version == CURRENT_CASE_MANIFEST_VERSION
+                    ),
+                )
             if checkpoint.revision > current.validated.revision + 1:
                 _reject(ManifestRepositoryErrorCode.RECOVERY_FAILED, "manifest.recovery_gap")
-            return ManifestLoadResult(ManifestLoadStatus.CURRENT, current.snapshot)
+            return self._finish_loaded_locked(
+                authority,
+                current.snapshot,
+                ManifestLoadStatus.CURRENT,
+            )
 
         if checkpoint is None:
             if current_error is not None:
                 raise current_error
             _reject(ManifestRepositoryErrorCode.RECOVERY_FAILED, "manifest.recovery_missing")
         restored = self._restore_locked(authority, checkpoint, current_raw=current_raw)
-        return ManifestLoadResult(ManifestLoadStatus.RECOVERED, restored)
+        return self._finish_loaded_locked(
+            authority,
+            restored,
+            ManifestLoadStatus.RECOVERED,
+        )
+
+    def _finish_loaded_locked(
+        self,
+        authority: AuthenticatedCase,
+        snapshot: ManifestSnapshot,
+        status: ManifestLoadStatus,
+        *,
+        recovered_migration: bool = False,
+    ) -> ManifestLoadResult:
+        """Return only v2, transactionally migrating a settled v1 state."""
+
+        if snapshot.schema_version == CURRENT_CASE_MANIFEST_VERSION:
+            selected_status = (
+                ManifestLoadStatus.RECOVERED_MIGRATED if recovered_migration else status
+            )
+            return ManifestLoadResult(selected_status, snapshot)
+        if snapshot.schema_version != LEGACY_CASE_MANIFEST_VERSION:
+            _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.migration_version")
+        migrated = self._migrate_v1_locked(authority, snapshot)
+        selected_status = (
+            ManifestLoadStatus.RECOVERED_MIGRATED
+            if status is ManifestLoadStatus.RECOVERED
+            else ManifestLoadStatus.MIGRATED
+        )
+        return ManifestLoadResult(selected_status, migrated)
+
+    def _migrate_v1_locked(
+        self,
+        authority: AuthenticatedCase,
+        source: ManifestSnapshot,
+    ) -> ManifestSnapshot:
+        """Publish the exact lossless v1-to-v2 transition through the journal boundary."""
+
+        if (
+            source.case_id != authority.case_id
+            or source.schema_version != LEGACY_CASE_MANIFEST_VERSION
+            or source.revision >= MAX_SAFE_MANIFEST_INTEGER
+        ):
+            _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_source")
+        candidate = migrate_manifest_v1_to_v2(source.document)
+        candidate_payload = _canonical_manifest_bytes(candidate)
+        _validate_manifest_payload(candidate_payload, authority.case_id)
+        manifest_stage_id = _next_internal_id(
+            self._id_factory,
+            context="manifest.migration_stage_id",
+        )
+        journal_stage_id = _next_internal_id(
+            self._id_factory,
+            context="manifest.migration_journal_stage_id",
+        )
+        manifest_stage_path = authority.layout.temp / f"{manifest_stage_id}.tmp"
+        journal_stage_path = authority.layout.temp / f"{journal_stage_id}.tmp"
+        manifest_reservation: WorkspaceCapacityReservation | None = None
+        journal_reservation: WorkspaceCapacityReservation | None = None
+        try:
+            manifest_reservation = self._manager.reserve_capacity(
+                authority.case_id,
+                QuotaArea.TEMP,
+                relative_path=f"temp/{manifest_stage_id}.tmp",
+                is_directory=False,
+                byte_count=len(candidate_payload),
+            )
+            journal_reservation = self._manager.reserve_capacity(
+                authority.case_id,
+                QuotaArea.TEMP,
+                relative_path=f"temp/{journal_stage_id}.tmp",
+                is_directory=False,
+                byte_count=len(candidate_payload),
+            )
+            return commit_manifest_transaction(
+                authority=authority,
+                expected_payload=None,
+                expected_sha256=source.sha256,
+                expected_cas_token=source.cas_token,
+                candidate_payload=candidate_payload,
+                manifest_stage_path=manifest_stage_path,
+                journal_stage_path=journal_stage_path,
+                manifest_reservation=manifest_reservation,
+                journal_reservation=journal_reservation,
+                allow_legacy_current=True,
+            )
+        finally:
+            if journal_reservation is not None:
+                journal_reservation.release()
+            if manifest_reservation is not None:
+                manifest_reservation.release()
 
     def _restore_locked(
         self,
@@ -346,7 +471,12 @@ class WindowsManifestRepository:
                 entry_count=1,
             ):
                 stage_handle = write_new_file(stage_path, checkpoint.payload)
-                _reopen_and_validate_stage(stage_handle, checkpoint, authority.case_id)
+                _reopen_and_validate_stage(
+                    stage_handle,
+                    checkpoint,
+                    authority.case_id,
+                    allow_legacy=True,
+                )
                 if current_raw is None:
                     publish_new_file(
                         stage_handle,
@@ -402,7 +532,7 @@ class WindowsManifestRepository:
                     )
                 _close_handle(stage_handle)
                 stage_handle = None
-                reloaded = _read_observed_manifest(authority)
+                reloaded = _read_observed_manifest(authority, allow_legacy=True)
                 if reloaded.validated.sha256 != checkpoint.sha256:
                     _reject(
                         ManifestRepositoryErrorCode.RECOVERY_FAILED,
@@ -438,6 +568,7 @@ def commit_manifest_transaction(
     journal_reservation: WorkspaceCapacityReservation,
     before_checkpoint: BeforeCheckpoint | None = None,
     coordination_checkpoint: CoordinationCheckpoint | None = None,
+    allow_legacy_current: bool = False,
 ) -> ManifestSnapshot:
     """Commit one validated manifest and optional source publication as one journal boundary."""
 
@@ -452,6 +583,7 @@ def commit_manifest_transaction(
         or not isinstance(manifest_reservation, WorkspaceCapacityReservation)
         or not isinstance(journal_reservation, WorkspaceCapacityReservation)
         or (before_checkpoint is not None and not callable(before_checkpoint))
+        or type(allow_legacy_current) is not bool
     ):
         _reject(ManifestRepositoryErrorCode.MODEL_INVALID, "manifest.transaction")
     candidate = _validate_manifest_payload(candidate_payload, authority.case_id)
@@ -501,7 +633,14 @@ def commit_manifest_transaction(
                         expected_manifest,
                         authority.layout.manifest,
                     )
-                    current = _validate_manifest_payload(current_raw.payload, authority.case_id)
+                    current = (
+                        _validate_loadable_manifest_payload(
+                            current_raw.payload,
+                            authority.case_id,
+                        )
+                        if allow_legacy_current
+                        else _validate_manifest_payload(current_raw.payload, authority.case_id)
+                    )
                     if (
                         current.sha256 != expected_sha256
                         or (
@@ -753,15 +892,23 @@ def canonical_manifest_bytes(document: Mapping[str, object]) -> bytes:
 
 
 def validate_manifest_payload(payload: bytes, expected_case_id: UUID) -> None:
-    """Validate a complete current-version manifest for trusted storage adapters."""
+    """Validate a complete supported manifest for trusted storage adapters."""
 
-    _validate_manifest_payload(payload, expected_case_id)
+    _validate_loadable_manifest_payload(payload, expected_case_id)
 
 
-def _read_observed_manifest(authority: AuthenticatedCase) -> _ObservedManifest:
+def _read_observed_manifest(
+    authority: AuthenticatedCase,
+    *,
+    allow_legacy: bool = False,
+) -> _ObservedManifest:
     raw = _read_raw_manifest(authority)
     return _ObservedManifest(
-        _validate_manifest_payload(raw.payload, authority.case_id),
+        (
+            _validate_loadable_manifest_payload(raw.payload, authority.case_id)
+            if allow_legacy
+            else _validate_manifest_payload(raw.payload, authority.case_id)
+        ),
         raw.identity,
     )
 
@@ -826,7 +973,7 @@ def _read_checkpoint(authority: AuthenticatedCase) -> _ValidatedManifest | None:
                 return None
             with open_handle(checkpoint_path, read=True, share_delete=True) as handle:
                 raw = _read_exact_handle(handle, checkpoint_path)
-        return _validate_manifest_payload(raw.payload, authority.case_id)
+        return _validate_loadable_manifest_payload(raw.payload, authority.case_id)
     except ManifestRepositoryError:
         raise
     except WorkspaceError as error:
@@ -846,23 +993,43 @@ def _reopen_and_validate_stage(
     stage_handle: WindowsHandle,
     expected: _ValidatedManifest,
     case_id: UUID,
+    *,
+    allow_legacy: bool = False,
 ) -> None:
     with reopen_read_only_file(stage_handle) as staged:
         raw = _read_exact_handle(staged, staged.info.final_path)
-    validated = _validate_manifest_payload(raw.payload, case_id)
+    validated = (
+        _validate_loadable_manifest_payload(raw.payload, case_id)
+        if allow_legacy
+        else _validate_manifest_payload(raw.payload, case_id)
+    )
     if validated.sha256 != expected.sha256:
         _reject(ManifestRepositoryErrorCode.SAVE_FAILED, "manifest.stage_verify")
 
 
 def _validate_manifest_payload(payload: bytes, expected_case_id: UUID) -> _ValidatedManifest:
+    """Validate only the current writable manifest version."""
+
+    validated = _validate_loadable_manifest_payload(payload, expected_case_id)
+    if validated.schema_version != CURRENT_CASE_MANIFEST_VERSION:
+        _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.validation_version")
+    return validated
+
+
+def _validate_loadable_manifest_payload(
+    payload: bytes,
+    expected_case_id: UUID,
+) -> _ValidatedManifest:
+    """Validate a frozen v1 input or current v2 input without mutation."""
+
     selected = _require_case_id(expected_case_id, context="manifest.validation_case")
     if type(payload) is not bytes or not 1 <= len(payload) <= MAX_MANIFEST_BYTES:
         _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.validation_bytes")
     try:
-        current_version = has_current_manifest_schema_version(payload)
+        supported_version = probe_supported_manifest_schema_version(payload)
     except Exception:
         _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.validation_json")
-    if not current_version:
+    if supported_version is None:
         _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.validation_version")
     try:
         document = decode_manifest(payload)
@@ -871,9 +1038,9 @@ def _validate_manifest_payload(payload: bytes, expected_case_id: UUID) -> _Valid
     version = document.get("schema_version")
     if type(version) is not int:
         _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.validation_version")
-    if version != CURRENT_CASE_MANIFEST_VERSION:
+    if version != supported_version:
         _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.validation_version")
-    issues = validate_manifest(document, _runtime_schema())
+    issues = validate_manifest(document, _runtime_schema(version))
     if issues:
         code = issues[0].code
         if "VERSION" in code:
@@ -900,10 +1067,14 @@ def _validate_manifest_payload(payload: bytes, expected_case_id: UUID) -> _Valid
     )
 
 
-@lru_cache(maxsize=1)
-def _runtime_schema() -> Mapping[str, object]:
+@lru_cache(maxsize=2)
+def _runtime_schema(version: int = CURRENT_CASE_MANIFEST_VERSION) -> Mapping[str, object]:
+    resource = _SCHEMA_RESOURCES.get(version)
+    expected_fingerprint = _SCHEMA_FINGERPRINTS.get(version)
+    if resource is None or expected_fingerprint is None:
+        _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.schema_version")
     try:
-        payload = files("paperworkshell.storage").joinpath(_SCHEMA_RESOURCE).read_bytes()
+        payload = files("paperworkshell.storage").joinpath(resource).read_bytes()
     except Exception:
         _reject(ManifestRepositoryErrorCode.STORAGE_FAILED, "manifest.schema_resource")
     if not 1 <= len(payload) <= _MAX_SCHEMA_BYTES:
@@ -924,7 +1095,7 @@ def _runtime_schema() -> Mapping[str, object]:
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()
-    if fingerprint != _SCHEMA_FINGERPRINT:
+    if fingerprint != expected_fingerprint:
         _reject(ManifestRepositoryErrorCode.STORAGE_FAILED, "manifest.schema_identity")
     return schema
 

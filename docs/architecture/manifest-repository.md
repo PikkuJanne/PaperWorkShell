@@ -1,7 +1,7 @@
 # Atomic manifest repository and autosave contract
 
-- Status: Implemented PWS-0109 contract
-- Task: PWS-0109
+- Status: Implemented PWS-0109 contract with PWS-0202 schema migration
+- Tasks: PWS-0109, PWS-0202
 - Decisions: PWS-D010, PWS-D011, PWS-D036
 - Depends on: PWS-0006 case-manifest v1; PWS-0101 secure case workspace; PWS-0102 lifecycle
 - Related boundary: [Immutable source-ingest contract](immutable-ingest.md)
@@ -14,8 +14,9 @@ copying, and the canonical schema/semantic validator. `app.manifest_repository` 
 autosave coalescing. `storage.manifest_repository` owns bounded decoding, compare-and-swap,
 authenticated Windows staging, the fixed recovery checkpoint, atomic replacement, and recovery.
 
-The repository does not parse documents, render pages, import UI or PDF libraries, perform schema
-migration, or claim power-loss durability. PWS-0110 owns page-operation construction and replay;
+The repository does not parse documents, render pages, import UI or PDF libraries, or claim power-
+loss durability. It owns the single reviewed v1-to-v2 structural migration; PWS-0110/PWS-0202 own
+page-operation construction and replay;
 PWS-0113 owns the ordered [startup recovery](startup-recovery-and-diagnostics.md) boundary for
 unrelated orphaned staging objects after authoritative manifest and export-receipt settlement.
 
@@ -29,8 +30,8 @@ is returned or promoted. Validation includes:
   nesting, node count, string size, and collection size;
 - exact top-level schema-version dispatch after the 8 MiB JSON parse bound but before applying
   current-version float, depth, node, string, schema, or semantic rules;
-- a packaged, self-contained copy of case-manifest v1 whose canonical fingerprint is pinned to the
-  authoritative repository schema;
+- packaged, self-contained copies of the frozen case-manifest v1 and current v2 schemas, each with
+  its own pinned canonical fingerprint;
 - the structural schema rules and all semantic ID, reference, source-page, sequence replay,
   operation, assignment, confirmation, and constraint checks; and
 - matching canonical case UUID, ordered timestamps, and bounded revision metadata.
@@ -58,6 +59,13 @@ Loading holds the shared per-case transaction guard while it validates both auth
 - A corrupt checkpoint never replaces a valid current manifest.
 - A future-version current manifest or checkpoint fails before any recovery mutation; neither is
   downgraded or overwritten by current-version state.
+
+After those recovery rules settle one valid authoritative snapshot, a v1 result is copied and
+validated as the unique v2 migration candidate. Only `schema_version` and the next `revision`
+change. The repository publishes that candidate through the same checkpoint/replace transaction
+before returning it. Direct migration reports `migrated`; promotion of an interrupted migration
+reports `recovered_migrated`. Public load never returns a v1 snapshot, and the next load returns the
+same v2 state as `current`.
 
 Recovery writes and flushes a new random temp file, verifies it through a read-only handle reopened
 from the authenticated writer, atomically publishes or replaces `manifest.json`, closes the writer,
@@ -128,8 +136,8 @@ before either authoritative record references it.
 - The one-snapshot journal is recovery state, not user-visible version history.
 - Restrictive ACLs, retained handles, link/stream/reparse checks, and exact identities do not defend
   against unrestricted same-account malware, administrators, SYSTEM, or offline disk access.
-- PWS-0109 validates current version 1 and rejects all other versions; schema migration remains a
-  later explicitly versioned task.
+- Frozen v1 is supported only as validated migration input. Current saves require v2, and unknown
+  future versions remain blocked before mutation.
 
 ## Verification ownership
 

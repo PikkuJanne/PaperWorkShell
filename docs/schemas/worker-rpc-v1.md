@@ -11,7 +11,8 @@ cleanup without changing the released v1 envelope. PWS-0105 adds the first exact
 operation through the existing typed operation registry. PWS-0108 adds the exact one-page
 `pdf.thumbnail` operation and staging-output reference under the same additive-operation rules.
 PWS-0201 adds the exact `image.normalize` operation and bounded volatile artifact. None of these
-extensions adds paths or shell command text to messages. See the
+extensions adds paths or shell command text to messages. PWS-0202 adds a separate exact
+`image.transform` operation; it does not widen `image.normalize` version 1. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md), and
 [bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md), and
@@ -94,6 +95,14 @@ degrees. A succeeded result has exactly one bounded `operation_staging` output w
 receives no path or persistent cache authority. Other outcomes retain the released generic v1
 failure/timeout contract and have no outputs.
 
+PWS-0202 adds `image.transform` version 1. Its start has the same single authenticated JPEG or PNG
+source and reduced source/output handles, but carries a closed integer transform intent: normalized
+crop millionths, accumulated clockwise quarter turns, signed deskew millidegrees, contrast factor
+millionths, background-cleanup strength millionths, and bounded output dimensions. A succeeded
+result contains one `image-transformed-rgba-v1` staging artifact whose header binds the canonical
+intent, engine profile, cache key, operation/output identities, layout, and pixel digest. The
+worker receives no manifest, path, external-source writer, or persistent cache authority.
+
 ## Messages and lifecycle
 
 | Message | Direction | Payload |
@@ -146,7 +155,8 @@ Validation is intentionally split:
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `pdf.export` version 1, and `image.normalize` version 1. Each document operation's exact source reference, handle parameters, correlations, and
+version 1, `pdf.export` version 1, `image.normalize` version 1, and `image.transform` version 1.
+Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
 out-of-policy value fails closed.
 
@@ -256,6 +266,24 @@ bounded artifact's version, operation/output IDs, source facts, dimensions, stri
 orientation, color/alpha policy, pixel digest, and whole-artifact digest. Validated pixels may enter
 only the GUI-owned byte-budgeted disposable preview cache; the worker never receives cache or
 manifest publication authority. See [Image intake and page normalization](../architecture/image-intake.md).
+
+### `image.transform` volatile artifact result
+
+`image.transform` version 1 is an additive operation rather than a changed interpretation of
+`image.normalize`. It accepts one authenticated JPEG or PNG `source_read` reference, distinct
+positive `source_handle` and `output_handle` integers, distinct page and output UUIDs, bounded maximum
+width/height, and these exact integer intent values: crop x/y/width/height in
+`normalized_page_millionths_v1`, quarter turns in 0–3, deskew in −15,000–15,000 clockwise
+millidegrees, contrast in 0–4,000,000 millionths, and background cleanup in 0–1,000,000
+millionths. The four crop values must form a positive box inside the logical full page.
+
+The worker reauthenticates the immutable source, applies the fixed transform profile, and writes
+only to worker-private temporary rasters and the anonymous bounded output section. On success the
+sole staging output has content kind `image-transformed-rgba-v1`; the artifact binds the exact
+operation/page/output UUIDs, canonical transform-intent digest, engine-profile digest, cache-key digest,
+output geometry, and pixel digest. Cancellation, timeout, malformed input, resource exhaustion,
+and invalid output return no reference. The trusted broker confirms whole-tree termination and
+revalidates every binding before exposing a path-free typed result.
 
 ## Limits and bounded decoding
 

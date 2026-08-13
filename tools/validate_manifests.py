@@ -1,4 +1,4 @@
-"""Validate the PaperWorkShell case-manifest v1 contract and fixtures."""
+"""Validate the frozen v1 and current v2 case-manifest contracts and fixtures."""
 
 from __future__ import annotations
 
@@ -21,13 +21,23 @@ from jsonschema.exceptions import SchemaError
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v1.schema.json")
+CURRENT_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v2.schema.json")
 MANIFEST_EXAMPLE_DIRECTORY: Final = Path("schemas/examples")
 MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v1/invalid")
+CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v2/invalid")
 MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v1-*.json"
-SUPPORTED_SCHEMA_VERSION: Final = 1
+CURRENT_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v2-*.json"
+SUPPORTED_SCHEMA_VERSION: Final = 2
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
 )
+CURRENT_CANONICAL_SCHEMA_FINGERPRINT: Final = (
+    "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+)
+_SCHEMA_FINGERPRINTS_BY_VERSION: Final = {
+    1: CANONICAL_SCHEMA_FINGERPRINT,
+    2: CURRENT_CANONICAL_SCHEMA_FINGERPRINT,
+}
 
 MAX_MANIFEST_BYTES: Final = 8 * 1024 * 1024
 MAX_SCHEMA_BYTES: Final = 2 * 1024 * 1024
@@ -485,16 +495,42 @@ def _schema_has_reference_cycle(schema: Mapping[str, Any]) -> bool:
 def load_manifest_schema(
     root: Path = PROJECT_ROOT,
 ) -> tuple[dict[str, Any] | None, list[ManifestIssue]]:
-    """Strictly load and check the self-contained Draft 2020-12 schema."""
+    """Strictly load and check the frozen v1 schema."""
+
+    return _load_manifest_schema_at(
+        root,
+        MANIFEST_SCHEMA_PATH,
+        CANONICAL_SCHEMA_FINGERPRINT,
+    )
+
+
+def load_current_manifest_schema(
+    root: Path = PROJECT_ROOT,
+) -> tuple[dict[str, Any] | None, list[ManifestIssue]]:
+    """Strictly load and check the current self-contained v2 schema."""
+
+    return _load_manifest_schema_at(
+        root,
+        CURRENT_MANIFEST_SCHEMA_PATH,
+        CURRENT_CANONICAL_SCHEMA_FINGERPRINT,
+    )
+
+
+def _load_manifest_schema_at(
+    root: Path,
+    schema_path: Path,
+    expected_fingerprint: str,
+) -> tuple[dict[str, Any] | None, list[ManifestIssue]]:
+    """Load one exact reviewed offline Draft 2020-12 schema."""
 
     schema, issues = _load_json_object(
-        root / MANIFEST_SCHEMA_PATH,
+        root / schema_path,
         root=root,
         maximum_bytes=MAX_SCHEMA_BYTES,
     )
     if schema is None:
         return None, issues
-    document = MANIFEST_SCHEMA_PATH.as_posix()
+    document = schema_path.as_posix()
     policy_issues = _schema_policy_issues(schema, document)
     if policy_issues:
         return None, policy_issues
@@ -542,7 +578,7 @@ def load_manifest_schema(
                 "schema definition is invalid",
             )
         ]
-    if _schema_fingerprint(schema) != CANONICAL_SCHEMA_FINGERPRINT:
+    if _schema_fingerprint(schema) != expected_fingerprint:
         return None, [
             _issue(
                 "MANIFEST_SCHEMA_IDENTITY_MISMATCH",
@@ -1180,7 +1216,13 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
             )
         payload = cast(Mapping[str, Any], operation["payload"])
         kind = cast(str, payload["kind"])
-        if kind in {"rotate", "crop"}:
+        if kind in {
+            "rotate",
+            "crop",
+            "deskew",
+            "contrast",
+            "background_cleanup",
+        }:
             page_id = cast(str, payload["page_id"])
             if page_id not in page_index:
                 _add_issue(
@@ -1493,7 +1535,8 @@ def validate_manifest_data(
                 "schema version must be an integer",
             )
         ]
-    if version != SUPPORTED_SCHEMA_VERSION:
+    expected_fingerprint = _SCHEMA_FINGERPRINTS_BY_VERSION.get(version)
+    if expected_fingerprint is None:
         return [
             _issue(
                 "MANIFEST_VERSION_UNSUPPORTED",
@@ -1502,7 +1545,7 @@ def validate_manifest_data(
                 "schema version is not supported",
             )
         ]
-    if _schema_fingerprint(schema) != CANONICAL_SCHEMA_FINGERPRINT:
+    if _schema_fingerprint(schema) != expected_fingerprint:
         return [
             _issue(
                 "MANIFEST_SCHEMA_IDENTITY_MISMATCH",
@@ -1535,11 +1578,6 @@ def validate_manifest_document(
 ) -> tuple[dict[str, Any] | None, list[ManifestIssue]]:
     """Strictly load and validate one manifest document."""
 
-    active_schema = schema
-    if active_schema is None:
-        active_schema, schema_issues = load_manifest_schema(root)
-        if active_schema is None:
-            return None, schema_issues
     data, load_issues = _load_json_object(
         path,
         root=root,
@@ -1547,6 +1585,14 @@ def validate_manifest_document(
     )
     if data is None:
         return None, load_issues
+    active_schema = schema
+    if active_schema is None:
+        if data.get("schema_version") == SUPPORTED_SCHEMA_VERSION:
+            active_schema, schema_issues = load_current_manifest_schema(root)
+        else:
+            active_schema, schema_issues = load_manifest_schema(root)
+        if active_schema is None:
+            return None, schema_issues
     issues = validate_manifest_data(
         data,
         active_schema,
@@ -1590,72 +1636,91 @@ def _fixture_paths(
 def validate_manifest_fixture_set(
     root: Path = PROJECT_ROOT,
 ) -> tuple[ManifestFixtureSummary | None, list[ManifestIssue]]:
-    """Validate canonical examples and prove every negative fixture is rejected."""
+    """Validate frozen v1/current v2 examples and every negative fixture."""
 
-    schema, schema_issues = load_manifest_schema(root)
-    if schema is None:
-        return None, schema_issues
-    positive_paths, positive_path_issues = _fixture_paths(
-        root / MANIFEST_EXAMPLE_DIRECTORY,
-        pattern=MANIFEST_EXAMPLE_PATTERN,
-        document=MANIFEST_EXAMPLE_DIRECTORY.as_posix(),
+    legacy_schema, legacy_schema_issues = load_manifest_schema(root)
+    current_schema, current_schema_issues = load_current_manifest_schema(root)
+    if legacy_schema is None or current_schema is None:
+        return None, _sorted_issues([*legacy_schema_issues, *current_schema_issues])
+    fixture_sets = (
+        (
+            legacy_schema,
+            MANIFEST_EXAMPLE_PATTERN,
+            MANIFEST_INVALID_FIXTURE_DIRECTORY,
+        ),
+        (
+            current_schema,
+            CURRENT_MANIFEST_EXAMPLE_PATTERN,
+            CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY,
+        ),
     )
-    invalid_paths, invalid_path_issues = _fixture_paths(
-        root / MANIFEST_INVALID_FIXTURE_DIRECTORY,
-        pattern="*.json",
-        document=MANIFEST_INVALID_FIXTURE_DIRECTORY.as_posix(),
-    )
-    path_issues = [*positive_path_issues, *invalid_path_issues]
-    if path_issues or positive_paths is None or invalid_paths is None:
-        return None, _sorted_issues(path_issues)
     fixture_issues: list[ManifestIssue] = []
-    if not positive_paths:
-        _add_issue(
-            fixture_issues,
-            _issue(
-                "MANIFEST_POSITIVE_FIXTURES_MISSING",
-                MANIFEST_EXAMPLE_DIRECTORY.as_posix(),
-                "$",
-                "at least one positive fixture is required",
-            ),
+    positive_count = 0
+    negative_count = 0
+    for schema, positive_pattern, invalid_directory in fixture_sets:
+        positive_paths, positive_path_issues = _fixture_paths(
+            root / MANIFEST_EXAMPLE_DIRECTORY,
+            pattern=positive_pattern,
+            document=MANIFEST_EXAMPLE_DIRECTORY.as_posix(),
         )
-    if not invalid_paths:
-        _add_issue(
-            fixture_issues,
-            _issue(
-                "MANIFEST_NEGATIVE_FIXTURES_MISSING",
-                MANIFEST_INVALID_FIXTURE_DIRECTORY.as_posix(),
-                "$",
-                "at least one negative fixture is required",
-            ),
+        invalid_paths, invalid_path_issues = _fixture_paths(
+            root / invalid_directory,
+            pattern="*.json",
+            document=invalid_directory.as_posix(),
         )
-    for path in positive_paths:
-        _, issues = validate_manifest_document(path, root, schema=schema)
-        for issue in issues:
+        for issue in (*positive_path_issues, *invalid_path_issues):
+            _add_issue(fixture_issues, issue)
+        if positive_paths is None or invalid_paths is None:
+            continue
+        if not positive_paths:
             _add_issue(
                 fixture_issues,
                 _issue(
-                    "MANIFEST_POSITIVE_FIXTURE_INVALID",
-                    issue.document,
-                    issue.path,
-                    f"positive fixture failed with {issue.code}",
-                ),
-            )
-    for path in invalid_paths:
-        _, issues = validate_manifest_document(path, root, schema=schema)
-        if not issues:
-            _add_issue(
-                fixture_issues,
-                _issue(
-                    "MANIFEST_NEGATIVE_FIXTURE_ACCEPTED",
-                    _document_label(path, root),
+                    "MANIFEST_POSITIVE_FIXTURES_MISSING",
+                    MANIFEST_EXAMPLE_DIRECTORY.as_posix(),
                     "$",
-                    "negative fixture was accepted",
+                    "at least one positive fixture is required",
                 ),
             )
+        if not invalid_paths:
+            _add_issue(
+                fixture_issues,
+                _issue(
+                    "MANIFEST_NEGATIVE_FIXTURES_MISSING",
+                    invalid_directory.as_posix(),
+                    "$",
+                    "at least one negative fixture is required",
+                ),
+            )
+        for path in positive_paths:
+            _, issues = validate_manifest_document(path, root, schema=schema)
+            for issue in issues:
+                _add_issue(
+                    fixture_issues,
+                    _issue(
+                        "MANIFEST_POSITIVE_FIXTURE_INVALID",
+                        issue.document,
+                        issue.path,
+                        f"positive fixture failed with {issue.code}",
+                    ),
+                )
+        for path in invalid_paths:
+            _, issues = validate_manifest_document(path, root, schema=schema)
+            if not issues:
+                _add_issue(
+                    fixture_issues,
+                    _issue(
+                        "MANIFEST_NEGATIVE_FIXTURE_ACCEPTED",
+                        _document_label(path, root),
+                        "$",
+                        "negative fixture was accepted",
+                    ),
+                )
+        positive_count += len(positive_paths)
+        negative_count += len(invalid_paths)
     if fixture_issues:
         return None, _sorted_issues(fixture_issues)
-    return ManifestFixtureSummary(len(positive_paths), len(invalid_paths)), []
+    return ManifestFixtureSummary(positive_count, negative_count), []
 
 
 def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
@@ -1691,11 +1756,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(issue.render(), file=sys.stderr)
         return 1
     if arguments.document is not None:
-        print("OK: validated one case-manifest v1 document.")
+        print("OK: validated one case-manifest document.")
     else:
         assert summary is not None
         print(
-            "OK: validated case-manifest v1 with "
+            "OK: validated case-manifest v1/v2 with "
             f"{summary.positive_count} positive and {summary.negative_count} negative fixtures."
         )
     return 0

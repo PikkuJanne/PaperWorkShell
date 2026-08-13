@@ -77,7 +77,7 @@ from paperworkshell.storage.workspace import (
     CaseWorkspaceManager,
     CaseWorkspacePaths,
 )
-from tools.validate_manifests import load_manifest_schema, validate_manifest_data
+from tools.validate_manifests import load_current_manifest_schema, validate_manifest_data
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt", reason="PWS-0104 targets the supported Windows storage boundary"
@@ -459,7 +459,7 @@ def test_import_varied_copy_boundaries_commits_exact_manifest_and_fresh_reopen(
     assert document["page_operations"] == []
     _assert_no_staged_files(stack)
 
-    schema, schema_issues = load_manifest_schema(PROJECT_ROOT)
+    schema, schema_issues = load_current_manifest_schema(PROJECT_ROOT)
     assert schema is not None
     assert schema_issues == []
     assert validate_manifest_data(document, schema) == []

@@ -23,7 +23,7 @@ from paperworkshell.storage.case_lifecycle import (
 )
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.workspace import CaseWorkspaceManager
-from tools.validate_manifests import load_manifest_schema, validate_manifest_data
+from tools.validate_manifests import load_current_manifest_schema, validate_manifest_data
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000123")
 TIMESTAMP = datetime(2026, 8, 2, 10, 11, 12, 123456, tzinfo=UTC)
@@ -34,16 +34,16 @@ def _initial_document() -> dict[str, Any]:
     return cast(dict[str, Any], loaded)
 
 
-def test_initial_manifest_is_canonical_schema_valid_empty_v1() -> None:
+def test_initial_manifest_is_canonical_schema_valid_empty_v2() -> None:
     payload = build_initial_manifest_bytes(CASE_ID, TIMESTAMP)
     document = _initial_document()
-    schema, schema_issues = load_manifest_schema()
+    schema, schema_issues = load_current_manifest_schema()
 
     assert schema is not None, [issue.render() for issue in schema_issues]
     assert validate_manifest_data(document, schema, document="generated-initial.json") == []
     assert payload.endswith(b"\n")
     assert payload == build_initial_manifest_bytes(CASE_ID, TIMESTAMP)
-    assert document["schema_version"] == 1
+    assert document["schema_version"] == 2
     assert document["case_id"] == str(CASE_ID)
     assert document["revision"] == 0
     assert document["created_at"] == "2026-08-02T10:11:12.123456Z"
@@ -98,7 +98,7 @@ def test_strict_manifest_decoder_rejects_ambiguous_or_nonstandard_json(payload: 
 
 def test_future_version_dispatch_happens_before_other_envelope_validation() -> None:
     with pytest.raises(CaseLifecycleError) as raised:
-        _summary_from_manifest({"schema_version": 2}, CASE_ID)
+        _summary_from_manifest({"schema_version": 3}, CASE_ID)
 
     assert raised.value.code is CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED
 
@@ -107,7 +107,7 @@ def test_current_manifest_lifecycle_envelope_is_parsed_without_document_content(
     summary = _summary_from_manifest(_initial_document(), CASE_ID)
 
     assert summary.case_id == CASE_ID
-    assert summary.manifest_version == 1
+    assert summary.manifest_version == 2
     assert summary.revision == 0
     assert summary.created_at == TIMESTAMP
     assert summary.updated_at == TIMESTAMP

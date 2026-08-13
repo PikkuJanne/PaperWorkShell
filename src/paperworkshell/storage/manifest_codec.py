@@ -10,6 +10,7 @@ from uuid import UUID
 
 from paperworkshell.domain.case_lifecycle import (
     CURRENT_CASE_MANIFEST_VERSION,
+    LEGACY_CASE_MANIFEST_VERSION,
     MAX_SAFE_MANIFEST_INTEGER,
     CaseLifecycleErrorCode,
     CaseSummary,
@@ -72,18 +73,18 @@ class _UnsupportedJsonNumber(ValueError):
 
 
 class _JsonIntegerToken(str):
-    """Integer spelling retained while probing a version before v1-only decoding."""
+    """Integer spelling retained while probing a version before versioned decoding."""
 
 
 _JSON_FLOAT_SENTINEL: Final = object()
 
 
 def has_current_manifest_schema_version(payload: bytes) -> bool:
-    """Probe a bounded JSON object's integer version without applying v1 value rules.
+    """Probe a bounded JSON object's integer version before current-schema value rules.
 
-    Future schemas may legally use members or number forms that manifest v1 rejects. This
+    Future schemas may legally use members or number forms that the current schema rejects. This
     probe therefore preserves integer spelling and treats floats as inert nodes. The byte,
-    UTF-8, duplicate-key, and non-finite-constant bounds apply before dispatch; v1 depth,
+    UTF-8, duplicate-key, and non-finite-constant bounds apply before dispatch; current depth,
     node, and string bounds apply only after the probe identifies the current version.
     """
 
@@ -123,6 +124,52 @@ def has_current_manifest_schema_version(payload: bytes) -> bool:
     return current
 
 
+def probe_supported_manifest_schema_version(payload: bytes) -> int | None:
+    """Return an exact supported v1/v2 dispatch value without interpreting fields.
+
+    Unknown future integer versions return ``None`` after the same bounded outer
+    JSON probe. Malformed version tokens still fail as invalid JSON data.
+    """
+
+    if type(payload) is not bytes or not 1 <= len(payload) <= MAX_MANIFEST_BYTES:
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_size")
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_utf8")
+    if text.startswith("\ufeff"):
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_bom")
+    try:
+        loaded = json.loads(
+            text,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
+            parse_float=lambda _value: _JSON_FLOAT_SENTINEL,
+            parse_int=_JsonIntegerToken,
+        )
+    except (
+        _DuplicateJsonKey,
+        _UnsupportedJsonNumber,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ):
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_json")
+    if type(loaded) is not dict:
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_object")
+    document = cast(dict[str, object], loaded)
+    version = document.get("schema_version")
+    if type(version) is not _JsonIntegerToken:
+        reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_version")
+    selected = {
+        str(LEGACY_CASE_MANIFEST_VERSION): LEGACY_CASE_MANIFEST_VERSION,
+        str(CURRENT_CASE_MANIFEST_VERSION): CURRENT_CASE_MANIFEST_VERSION,
+    }.get(version)
+    if selected is not None:
+        _validate_json_resources(document)
+    return selected
+
+
 def decode_manifest(payload: bytes) -> dict[str, object]:
     """Decode one bounded strict-JSON manifest without accepting duplicate keys or floats."""
 
@@ -160,7 +207,7 @@ def summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -
     version = document.get("schema_version")
     if type(version) is not int:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_version")
-    if version != CURRENT_CASE_MANIFEST_VERSION:
+    if version not in {LEGACY_CASE_MANIFEST_VERSION, CURRENT_CASE_MANIFEST_VERSION}:
         reject_case_lifecycle(
             CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,
             "case.manifest_version",
@@ -200,7 +247,7 @@ def summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -
 
 
 def parse_utc_timestamp(value: object) -> datetime:
-    """Parse the exact canonical UTC timestamp shape used by manifest v1."""
+    """Parse the exact canonical UTC timestamp shape shared by manifest v1/v2."""
 
     if type(value) is not str or _UTC_TIMESTAMP_RE.fullmatch(value) is None:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_timestamp")

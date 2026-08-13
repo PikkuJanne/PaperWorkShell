@@ -267,7 +267,7 @@ flowchart LR
     Manifest["Current manifest"] ==> Broker
     Source["Immutable case source"] ==> Broker
     Broker ==> Worker["One-shot restricted worker"]
-    Worker ==> Renderer["PDF renderer or image decoder adapter"]
+    Worker ==> Renderer["PDF renderer or image decode/transform adapter"]
     Renderer ==> Buffer["Fixed-size volatile output section"]
     Worker --> Stop["Confirm complete Job-tree termination"]
     Stop --> Validate["Read section, validate exact bytes"]
@@ -277,9 +277,10 @@ flowchart LR
     App --> UI["Fixed-layout bounded RGBA8 pixels"]
 ```
 
-1. The UI names internal case/page IDs, desired bounded dimensions/quarter-turn, and cancellation
-   intent; it never opens the source document. A multi-page request is scheduled serially as one
-   bounded worker operation per page. Aggregate progress contains only phase and page counts.
+1. The UI names internal case/page IDs, desired bounded dimensions, canonical manifest transform
+   intent, and cancellation intent; it never opens the source document. A multi-page request is
+   scheduled serially as one bounded worker operation per page. Aggregate progress contains only
+   phase and page counts.
 2. TB-02/TB-03: before a cache hit, render, or image normalization, the trusted broker resolves the
    page through the current manifest and authenticates one exact committed PDF/JPEG/PNG handle, including file identity,
    containment, type, size, SHA-256, link/reparse/sparse/stream state, and retained lifetime. A
@@ -289,19 +290,26 @@ flowchart LR
    Final and staging names contain only random internal IDs and a full key digest. Source
    authentication precedes lookup, so cached state cannot conceal a changed source. Image previews
    do not publish a persistent raster cache: each miss is regenerated from the authenticated source
-   and only the UI's byte-budgeted pixmap LRU is reusable.
+   and only the UI's byte-budgeted pixmap LRU is reusable. A transformed image result additionally
+   binds the complete canonical operation bytes/digest, the normalized-source pixel digest, the
+   eight-token transform engine profile, output bounds, and pixel-affecting dependency versions; a
+   key never replaces source reauthentication. The upstream normalization-profile digest belongs to
+   approved golden provenance rather than the volatile runtime cache-key contract.
 4. On a PDF miss, storage reserves the worst-case artifact size against the case-cache quota and creates
    one random broker-only stage. The broker also creates an unnamed pagefile-backed section from
    the exact logical operation output limit; its volatile backing may be rounded by less than one
    memory page, while the adapter enforces the logical cap. It duplicates only source-read and
    section map-write rights into a fresh worker. The worker receives no persistent cache-file
    handle, case/cache path, directory, manifest, delete, rename, or publication authority.
-5. The worker rehashes the exact source and renders a PDF page or fully decodes one JPEG/PNG under
-   page/pixel/decompression/metadata/output/temp/memory/CPU/wall limits. Image orientation applies
-   all eight intrinsic EXIF intents before the manifest quarter-turn; alpha is composited on white.
+5. The worker rehashes the exact source and renders a PDF page or fully decodes/transforms one
+   JPEG/PNG under page/pixel/decompression/metadata/output/temp/memory/CPU/wall limits. Image
+   transforms use the one fixed order: intrinsic EXIF orientation; crop in full logical
+   pre-manifest-transform coordinates; accumulated quarter-turn; deskew; contrast; background
+   cleanup; bounded fit/serialization. Alpha is composited on white.
    The operation writes a fixed binary header plus exact opaque raw RGBA8 payload. Success references
    exact operation/output IDs, artifact size, whole-artifact SHA-256, and content kind; other outcomes
-   reference no output.
+   reference no output. The transform artifact also binds the exact operation/profile digest so a
+   syntactically valid normalization result cannot satisfy a different transform request.
 6. RPC success is untrusted. The broker first confirms complete one-shot Job-tree termination,
    then reads only the claimed bounded byte count through its read-only section view and validates
    RPC correlation, key/header versions, reserved fields, IDs, dimensions, stride, profile, exact
@@ -309,7 +317,8 @@ flowchart LR
    broker stage; storage seals, reads back, validates again, and no-replace renames it. A validated
    image artifact goes directly to the bounded UI snapshot/LRU. The UI never decodes arbitrary
    worker-produced PNG/JPEG/PDF bytes or follows a raced cache path.
-7. Cancellation, parser fault, invalid output, or quota failure leaves the manifest unchanged.
+7. Cancellation, parser/transform fault, invalid output, or quota failure leaves the manifest
+   unchanged.
    Before validation, the only worker-writable output is volatile and OS-capped; any PDF persistent
    stage remains empty and broker-only. Unconfirmed worker termination therefore cannot leave a live
    persistent writer. Only an indeterminate PDF-cache publication state quarantines a random stage;
@@ -320,7 +329,8 @@ flowchart LR
 
 The complete implementation contracts are the
 [bounded PDF-thumbnail service](../architecture/pdf-thumbnails.md) and
-[bounded JPEG/PNG intake](../architecture/image-intake.md).
+[bounded JPEG/PNG intake](../architecture/image-intake.md), extended by the
+[non-destructive scan-transform pipeline](../architecture/image-transform-pipeline.md).
 
 Primary threats: TM-001, TM-002, TM-003, TM-006, TM-011, TM-012, TM-022, TM-023.
 
@@ -342,9 +352,11 @@ sequenceDiagram
     Worker-->>App: Validated progress/result
 ```
 
-1. TB-02 validates logical page IDs, operation/profile versions, language IDs, limits, and
-   cancellation. TB-03 separately requires exact brokered input/temp/output handles; none is
-   inferred from a case path or identifier.
+1. TB-02 validates logical page IDs, canonical upstream transform intent, operation/profile
+   versions, language IDs, limits, and cancellation. TB-03 separately requires exact brokered
+   input/temp/output handles; none is inferred from a case path or identifier. OCR consumes the
+   PWS-0202 stage order rather than privately reordering crop, rotation, deskew, contrast, or
+   background cleanup.
 2. TB-04 starts only approved local executables/resources with fixed identities, fixed argument
    arrays and working directory, controlled DLL/plugin/config/font/language search paths, a
    minimal environment, bounded I/O/time/resources, no shell interpolation, and processing

@@ -208,6 +208,7 @@ def _build_stack(
             PagePreviewService(
                 desktop.thumbnail_generator,
                 desktop.image_page_generator,
+                desktop.image_page_transformer,
             ),
             close_resources=desktop.close,
             startup_recovery=startup_recovery,

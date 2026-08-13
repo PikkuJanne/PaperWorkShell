@@ -27,6 +27,7 @@ from paperworkshell.app.source_ingest import (
 )
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
+from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_export import (
     PdfExportErrorCode,
@@ -220,6 +221,7 @@ def _build_backend(
         thumbnails = PagePreviewService(
             composition.thumbnail_generator,
             composition.image_page_generator,
+            composition.image_page_transformer,
         )
         return OrganizerBackend(
             lifecycle,
@@ -403,6 +405,24 @@ def _desktop_worker_config(
             temporary_storage_bytes=(selected_policy.maximum_preview_pixels_per_page * 4),
             output_bytes=(
                 IMAGE_PAGE_ARTIFACT_HEADER_BYTES
+                + selected_policy.maximum_preview_pixels_per_page * 4
+            ),
+            page_count=1,
+            pixel_count=min(
+                268_435_456,
+                selected_policy.worker_process_memory_bytes // 4,
+            ),
+        ),
+        image_transform_limits=ResourceLimits(
+            wall_time_ms=60_000,
+            cpu_time_ms=45_000,
+            memory_bytes=min(512 * 1024 * 1024, selected_policy.worker_process_memory_bytes),
+            temporary_storage_bytes=min(
+                selected_policy.maximum_temporary_storage_bytes,
+                selected_policy.worker_process_memory_bytes,
+            ),
+            output_bytes=(
+                IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
                 + selected_policy.maximum_preview_pixels_per_page * 4
             ),
             page_count=1,

@@ -137,6 +137,10 @@ Version 1 meaning and its schema file are immutable once released. Additive fiel
 silently because closed objects would otherwise change accepted input. A new contract receives a
 new schema file, version number, dispatch entry, positive/negative fixtures, and migration tests.
 
+The current successor is the independently fingerprinted
+[case-manifest v2 contract](case-manifest-v2.md). The v1 schema and its packaged copy remain
+byte-for-byte unchanged and valid as migration input; v2 does not reinterpret a v1 operation.
+
 A migration must:
 
 1. strictly parse and validate the old manifest;

@@ -41,7 +41,7 @@ def test_case_summary_is_path_free_and_immutable() -> None:
     summary = _summary()
 
     assert summary.case_id == FIRST_ID
-    assert summary.manifest_version == 1
+    assert summary.manifest_version == CURRENT_CASE_MANIFEST_VERSION
     assert "path" not in repr(summary).casefold()
     with pytest.raises(FrozenInstanceError):
         summary.revision = 1  # type: ignore[misc]
@@ -55,7 +55,7 @@ def test_case_summary_is_path_free_and_immutable() -> None:
             CaseLifecycleErrorCode.CASE_ID_INVALID,
         ),
         (
-            {"manifest_version": 2},
+            {"manifest_version": 3},
             CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,
         ),
         ({"revision": True}, CaseLifecycleErrorCode.MANIFEST_INVALID),

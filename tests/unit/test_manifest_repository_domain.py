@@ -73,7 +73,7 @@ def test_snapshot_is_path_free_hides_sensitive_state_and_returns_defensive_copie
     ("field", "value"),
     (
         ("case_id", UUID("90000000-0000-3000-8000-000000000001")),
-        ("schema_version", 2),
+        ("schema_version", 3),
         ("revision", True),
         ("revision", -1),
         ("sha256", "SENSITIVE-invalid-digest"),

@@ -18,6 +18,12 @@ from paperworkshell.domain.image_pages import (
     ImagePagePreviewRequest,
     ImageSourceColorModel,
 )
+from paperworkshell.domain.image_transforms import (
+    IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES,
+    ImageNormalizedCrop,
+    ImagePageTransformRequest,
+    ImageTransformIntent,
+)
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
@@ -36,11 +42,26 @@ from paperworkshell.worker.image_page_broker import (
     ImageNormalizeBrokerPolicy,
     create_image_page_brokers,
 )
+from paperworkshell.worker.image_transform_broker import (
+    BrokeredImagePageTransformer,
+    ImageTransformBrokerPolicy,
+)
 from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_TRANSFORM_CAPABILITY,
     ResourceLimits,
 )
 from tests.worker_resources import WorkerTestResources
+from tools.image_transform_goldens import (
+    GOLDEN_DIRECTORY as IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
+)
+from tools.image_transform_goldens import (
+    PROJECT_ROOT,
+    SYNTHETIC_MARKER,
+    canonical_rgba_png,
+    decode_canonical_rgba_png,
+    source_image,
+)
 
 pytestmark = pytest.mark.skipif(
     os.name != "nt",
@@ -94,6 +115,22 @@ def _broker_policy() -> ImageNormalizeBrokerPolicy:
     )
 
 
+def _transform_policy() -> ImageTransformBrokerPolicy:
+    maximum_pixels = 1_048_576
+    return ImageTransformBrokerPolicy(
+        ResourceLimits(
+            wall_time_ms=20_000,
+            cpu_time_ms=15_000,
+            memory_bytes=64 * 1024 * 1024,
+            temporary_storage_bytes=maximum_pixels * 8,
+            output_bytes=IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES + maximum_pixels * 4,
+            page_count=1,
+            pixel_count=maximum_pixels,
+        ),
+        pump_interval_seconds=0.01,
+    )
+
+
 def _live_system(
     tmp_path: Path,
     resources: WorkerTestResources,
@@ -103,6 +140,7 @@ def _live_system(
     WorkerClient,
     BrokeredImageSourceInspector,
     BrokeredImagePageGenerator,
+    BrokeredImagePageTransformer,
 ]:
     profile = tmp_path / "profile"
     profile.mkdir()
@@ -150,23 +188,30 @@ def _live_system(
             cancellation_grace_seconds=5.0,
             shutdown_grace_seconds=10.0,
         ),
-        required_capabilities=(IMAGE_NORMALIZE_CAPABILITY,),
+        required_capabilities=(IMAGE_NORMALIZE_CAPABILITY, IMAGE_TRANSFORM_CAPABILITY),
     )
+    heavy_operations = HeavyOperationCoordinator(1)
     inspector, generator = create_image_page_brokers(
         worker,
         store,
         store,
         _broker_policy(),
-        heavy_operations=HeavyOperationCoordinator(1),
+        heavy_operations=heavy_operations,
     )
-    return manager, store, worker, inspector, generator
+    transformer = BrokeredImagePageTransformer(
+        worker,
+        store,
+        _transform_policy(),
+        heavy_operations=heavy_operations,
+    )
+    return manager, store, worker, inspector, generator, transformer
 
 
 def test_live_import_decodes_prepared_copy_then_normalizes_committed_page(
     tmp_path: Path,
     worker_test_resources: WorkerTestResources,
 ) -> None:
-    manager, store, worker, inspector, generator = _live_system(
+    manager, store, worker, inspector, generator, _transformer = _live_system(
         tmp_path,
         worker_test_resources,
     )
@@ -218,7 +263,7 @@ def test_live_malformed_png_is_rejected_before_commit_without_private_diagnostic
     tmp_path: Path,
     worker_test_resources: WorkerTestResources,
 ) -> None:
-    manager, store, worker, inspector, _generator = _live_system(
+    manager, store, worker, inspector, _generator, _transformer = _live_system(
         tmp_path,
         worker_test_resources,
     )
@@ -248,3 +293,65 @@ def test_live_malformed_png_is_rejected_before_commit_without_private_diagnostic
     assert source.read_bytes() == original
     assert worker.query().phase is WorkerLifecyclePhase.STOPPED
     assert tuple(manager.layout(_CASE_ID).originals.iterdir()) == ()
+
+
+def test_live_transform_matches_reviewed_golden_without_mutating_source_bytes(
+    tmp_path: Path,
+    worker_test_resources: WorkerTestResources,
+) -> None:
+    manager, store, worker, inspector, _generator, transformer = _live_system(
+        tmp_path,
+        worker_test_resources,
+    )
+    source = tmp_path / "transform-source.png"
+    source.write_bytes(
+        canonical_rgba_png(
+            source_image("crop"),
+            description=f"{SYNTHETIC_MARKER}: crop-grid-16x12-v1",
+        )
+    )
+    external_before = source.read_bytes()
+    imported = SourceIngestService(store, inspector).import_source(
+        _CASE_ID,
+        source,
+        _PRIVATE_DISPLAY_NAME,
+    )
+    case_copy = manager.layout(_CASE_ID).originals / f"{imported.source_id}.bin"
+    committed_before = case_copy.read_bytes()
+    phases: list[ImagePagePreviewProgressPhase] = []
+
+    transformed = transformer.transform(
+        ImagePageTransformRequest(
+            case_id=_CASE_ID,
+            page_id=imported.page_ids[0],
+            intent=ImageTransformIntent(
+                crop=ImageNormalizedCrop(250_000, 250_000, 500_000, 500_000),
+            ),
+            maximum_width_pixels=8,
+            maximum_height_pixels=6,
+        ),
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        progress=phases.append,
+    )
+
+    expected = decode_canonical_rgba_png(
+        (PROJECT_ROOT / IMAGE_TRANSFORM_GOLDEN_DIRECTORY / "crop.png").read_bytes()
+    )
+    assert (transformed.snapshot.width_pixels, transformed.snapshot.height_pixels) == (
+        expected.width,
+        expected.height,
+    )
+    assert transformed.pixels == expected.pixels
+    assert phases == [
+        ImagePagePreviewProgressPhase.LOOKUP,
+        ImagePagePreviewProgressPhase.GENERATING,
+        ImagePagePreviewProgressPhase.VALIDATING,
+    ]
+    assert worker.query().phase is WorkerLifecyclePhase.STOPPED
+    assert worker.generation == 2
+    assert source.read_bytes() == external_before
+    assert case_copy.read_bytes() == committed_before
+    assert hashlib.sha256(committed_before).hexdigest() == imported.sha256
+    assert tuple(manager.layout(_CASE_ID).thumbnails.iterdir()) == ()
+    assert tuple(manager.layout(_CASE_ID).temp.iterdir()) == ()

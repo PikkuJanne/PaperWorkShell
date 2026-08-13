@@ -400,6 +400,61 @@ class WorkerRpcValidationTests(unittest.TestCase):
         aliased_parameters[1]["value"] = 101
         self.assertIn("RPC_OPERATION_INPUT_INVALID", self._codes(aliased_handles))
 
+    def test_additive_image_transform_capability_has_an_exact_offline_contract(self) -> None:
+        started = _load_example("operation-start.json")
+        payload = cast(dict[str, Any], started["payload"])
+        payload["operation_kind"] = "image.transform"
+        payload["inputs"] = [
+            {
+                "reference_version": 1,
+                "area": "source_read",
+                "object_id": "40000000-0000-4000-8000-000000000001",
+                "operation_id": None,
+                "content_kind": "png",
+                "expected_byte_size": 128,
+                "expected_sha256": "a" * 64,
+            }
+        ]
+        numeric = {
+            "source_handle": 101,
+            "output_handle": 103,
+            "maximum_width_pixels": 64,
+            "maximum_height_pixels": 64,
+            "quarter_turns_clockwise": 1,
+            "crop_x_millionths": 0,
+            "crop_y_millionths": 0,
+            "crop_width_millionths": 1_000_000,
+            "crop_height_millionths": 1_000_000,
+            "deskew_millidegrees_clockwise": 3_000,
+            "contrast_factor_millionths": 1_250_000,
+            "background_cleanup_strength_millionths": 400_000,
+        }
+        payload["parameters"] = [
+            {
+                "name": "page_id",
+                "value_type": "uuid",
+                "value": "40000000-0000-4000-8000-000000000003",
+            },
+            {
+                "name": "output_object_id",
+                "value_type": "uuid",
+                "value": "40000000-0000-4000-8000-000000000002",
+            },
+            *(
+                {"name": name, "value_type": "integer", "value": value}
+                for name, value in numeric.items()
+            ),
+        ]
+
+        self.assertEqual([], self._issues(started))
+
+        extreme = copy.deepcopy(started)
+        values = cast(list[dict[str, Any]], cast(dict[str, Any], extreme["payload"])["parameters"])
+        next(item for item in values if item["name"] == "deskew_millidegrees_clockwise")[
+            "value"
+        ] = 15_001
+        self.assertIn("RPC_OPERATION_INPUT_INVALID", self._codes(extreme))
+
         extra_parameter = copy.deepcopy(started)
         cast(
             list[dict[str, Any]], cast(dict[str, Any], extra_parameter["payload"])["parameters"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import replace
 from typing import cast
@@ -28,6 +29,12 @@ from paperworkshell.domain.image_pages import (
     ImagePagePreviewSnapshot,
     ImageSourceColorModel,
     ImageSourceFormat,
+)
+from paperworkshell.domain.image_transforms import (
+    ImagePageTransformRequest,
+    ImagePageTransformResult,
+    ImagePageTransformSnapshot,
+    ImageTransformIntent,
 )
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import (
@@ -108,6 +115,27 @@ def _image_result(request: ImagePagePreviewRequest) -> ImagePagePreviewResult:
         request.additional_rotation,
     )
     return ImagePagePreviewResult(request, snapshot)
+
+
+def _transform_request(page: int) -> ImagePageTransformRequest:
+    return ImagePageTransformRequest(_uuid(1), _uuid(page), ImageTransformIntent(), 32, 32)
+
+
+def _transform_result(request: ImagePageTransformRequest) -> ImagePageTransformResult:
+    pixels = bytes((10, 20, 30, 255))
+    snapshot = ImagePageTransformSnapshot(
+        case_id=request.case_id,
+        source_id=_uuid(90),
+        page_id=request.page_id,
+        intent=request.intent,
+        width_pixels=1,
+        height_pixels=1,
+        row_stride_bytes=4,
+        bytes_written=4,
+        pixel_sha256=hashlib.sha256(pixels).hexdigest(),
+        cache_key_sha256="c" * 64,
+    )
+    return ImagePageTransformResult(request, snapshot, pixels)
 
 
 class _PdfGenerator:
@@ -210,6 +238,26 @@ class _ImageGenerator:
         return result
 
 
+class _TransformGenerator:
+    def __init__(self) -> None:
+        self.requests: list[ImagePageTransformRequest] = []
+
+    def transform(
+        self,
+        request: ImagePageTransformRequest,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ImagePreviewPhaseSink,
+    ) -> ImagePageTransformResult:
+        self.requests.append(request)
+        assert not deadline()
+        assert not cancellation()
+        progress(ImagePagePreviewProgressPhase.GENERATING)
+        progress(ImagePagePreviewProgressPhase.VALIDATING)
+        return _transform_result(request)
+
+
 class _Sequence:
     def __init__(self, *values: object) -> None:
         self._values = list(values)
@@ -275,6 +323,30 @@ def test_mixed_service_preserves_order_and_uses_one_deadline_cancel_and_progress
     ]
     assert {item.operation_id for item in reported} == {operation_id}
     assert {item.total_pages for item in reported} == {3}
+
+
+def test_transform_request_uses_the_same_sanitized_batch_boundary() -> None:
+    pdf = _PdfGenerator()
+    image = _ImageGenerator()
+    transform = _TransformGenerator()
+    request = _transform_request(13)
+    reported: list[PagePreviewProgress] = []
+
+    results = PagePreviewService(pdf, image, transform).get_previews(
+        (request,),
+        progress=reported.append,
+    )
+
+    assert results == (_transform_result(request),)
+    assert transform.requests == [request]
+    assert [item.phase for item in reported] == [
+        PagePreviewProgressPhase.LOOKUP,
+        PagePreviewProgressPhase.GENERATING,
+        PagePreviewProgressPhase.VALIDATING,
+        PagePreviewProgressPhase.COMPLETE,
+    ]
+    assert len({item.operation_id for item in reported}) == 1
+    assert {item.total_pages for item in reported} == {1}
 
 
 @pytest.mark.parametrize(

@@ -23,6 +23,7 @@ from paperworkshell.domain.manifest_repository import (
 )
 from paperworkshell.domain.page_operations import (
     MAX_PAGE_COUNT,
+    NEUTRAL_CONTRAST_FACTOR_MILLIONTHS,
     PageCommandHistory,
     PageOperationError,
     PageOperationErrorCode,
@@ -778,8 +779,13 @@ def build_pdf_export_plan(
         state = state_by_id.get(page_id)
         if state is None or not state.active:
             reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "plan.page_state")
-        if state.crop is not None:
-            reject_pdf_export(PdfExportErrorCode.TRANSFORM_UNSUPPORTED, "plan.crop")
+        if (
+            state.crop is not None
+            or state.deskew_angle_millidegrees_clockwise != 0
+            or state.contrast_factor_millionths != NEUTRAL_CONTRAST_FACTOR_MILLIONTHS
+            or state.background_cleanup_strength_millionths != 0
+        ):
+            reject_pdf_export(PdfExportErrorCode.TRANSFORM_UNSUPPORTED, "plan.scan_transform")
         source = source_by_id.get(state.reference.source_id)
         if source is None or state.reference.source_page_index >= source.page_count:
             reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "plan.page_source")

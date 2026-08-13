@@ -45,6 +45,14 @@ def main() -> int:
     except Exception:
         pass
     try:
+        from paperworkshell.worker.image_transform_operation import (
+            build_image_transform_operation_handler,
+        )
+
+        handlers.append(build_image_transform_operation_handler())
+    except Exception:
+        pass
+    try:
         from paperworkshell.worker.pdf_operation import (
             build_pdf_inspection_operation_handler,
         )

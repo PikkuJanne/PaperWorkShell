@@ -85,10 +85,15 @@ def _source(
     }
 
 
-def _operation(sequence: int, payload: dict[str, object]) -> dict[str, object]:
+def _operation(
+    sequence: int,
+    payload: dict[str, object],
+    *,
+    operation_version: int = 1,
+) -> dict[str, object]:
     return {
         "operation_id": str(OPERATION_IDS[sequence - 1]),
-        "operation_version": 1,
+        "operation_version": operation_version,
         "sequence": sequence,
         "payload": payload,
     }
@@ -183,7 +188,7 @@ def _snapshot(
     selected = _document() if document is None else document
     return ManifestSnapshot(
         case_id,
-        1,
+        cast(int, selected["schema_version"]),
         cast(int, selected["revision"]),
         selected,
         sha256,
@@ -477,6 +482,43 @@ def test_active_crop_is_rejected_but_crop_on_a_removed_page_is_not_export_intent
 
     plan = build_pdf_export_plan(_snapshot(inactive))
     assert tuple(page.page_id for page in plan.pages) == (PAGE_A1, PAGE_A0)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {
+            "kind": "deskew",
+            "page_id": str(PAGE_B0),
+            "angle_millidegrees_clockwise": 1_000,
+        },
+        {
+            "kind": "contrast",
+            "page_id": str(PAGE_B0),
+            "factor_millionths": 1_100_000,
+        },
+        {
+            "kind": "background_cleanup",
+            "page_id": str(PAGE_B0),
+            "strength_millionths": 100_000,
+        },
+    ),
+)
+def test_active_scan_only_transform_is_rejected_until_export_consumes_it(
+    payload: dict[str, object],
+) -> None:
+    document = _document()
+    document["schema_version"] = 2
+    cast(list[dict[str, object]], document["page_operations"]).append(
+        _operation(4, payload, operation_version=2)
+    )
+
+    error = _assert_error(
+        PdfExportErrorCode.TRANSFORM_UNSUPPORTED,
+        lambda: build_pdf_export_plan(_snapshot(document)),
+    )
+
+    assert error.context == "plan.scan_transform"
 
 
 def test_active_overlay_is_rejected_but_overlay_on_a_removed_page_is_not_export_intent() -> None:

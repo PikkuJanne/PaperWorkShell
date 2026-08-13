@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, and PWS-0201 image-intake extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, and PWS-0202 scan-transform extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202
 - Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -18,7 +18,7 @@ tests. After bootstrap isolation succeeds, host composition may load the admitte
 or image adapter from the exact staged runtime; third-party types still do not enter the core contracts.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `image.normalize` version 1, and `pdf.export` version 1. The no-op still proves process/protocol lifecycle without
+version 1, `image.normalize` version 1, `image.transform` version 1, and `pdf.export` version 1. The no-op still proves process/protocol lifecycle without
 document authority. PWS-0105 proves exact prepared-source read-handle transfer, a write-only
 bounded result pipe, worker-private copy verification, pikepdf/libqpdf structural inspection, and
 one-shot worker revocation. PWS-0108 adds one committed-source read handle and one fixed-size
@@ -29,7 +29,8 @@ operation grants a case/directory path, persistent cache or destination writer, 
 filesystem access. See
 the [PDF structural-inspection contract](pdf-structural-inspection.md),
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md),
-[bounded JPEG/PNG intake contract](image-intake.md), and
+[bounded JPEG/PNG intake contract](image-intake.md),
+[non-destructive scan-transform contract](image-transform-pipeline.md), and
 [deterministic verified PDF-export contract](pdf-export.md).
 
 ## Component ownership
@@ -51,6 +52,8 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 | `worker.pdf_thumbnail_operation` | Adopt one source and fixed-size output-section handle, enforce its exact logical limit, verify/copy/hash source, render one page, and write one fixed correlated artifact | Host-side only; receives no persistent cache-file or directory capability |
 | `worker.image_page_broker` | Authenticate a prepared or committed JPEG/PNG handle, broker one fixed output section, terminate the one-shot generation, and validate a correlated opaque RGBA8 artifact | Structural ports only; no source path, persistent cache writer, or decoder object crosses the boundary |
 | `worker.image_normalize_operation` | Adopt one read-only immutable-source handle and one bounded output section, invoke the admitted Pillow adapter under explicit limits, and write one fixed artifact | Host-side only; worker-private raster storage is anonymous and cleaned before terminal success |
+| `worker.image_transform_broker` | Reauthenticate one manifest-resolved JPEG/PNG source, broker one bounded output section, terminate one-shot processing, and validate exact source/intent/profile/result correlation | Structural ports only; no path, decoder object, manifest writer, or persistent raster writer crosses the boundary |
+| `worker.image_transform_operation` | Adopt one immutable-source handle and one fixed-size output section, normalize and transform one page under the canonical eight-checkpoint profile, and write one correlated artifact | Host-side only; closes reduced authorities on success, cancellation, timeout, and failure |
 | `worker.pdf_export_broker` | Authenticate one manifest-bound source batch, broker exact plan/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; never receives or publishes a destination path |
 | `worker.pdf_export_operation` | Adopt exact source/plan/output/report handles, copy and rehash sources in one private operation directory, assemble and verify, and write one correlated report | Host-side only; receives no case, manifest, history, or destination authority |
 | `worker._windows_broker` | Non-inheritable bounded anonymous result pipe and fixed-size pagefile-backed output section | GUI-process-side private primitives; no path or document value |
@@ -59,6 +62,7 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 | `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
 | `pdf.export_adapter` | Assemble, strictly reopen, qpdf-check, and PDFium-compare one worker-private candidate | Third-party objects, native output, and paths remain inside the restricted worker |
 | `imaging.pillow_decoder` | Perform bounded JPEG/PNG metadata inspection, EXIF interpretation, decode, color/alpha normalization, and fit | Pillow/native objects, metadata values, and raw exceptions remain worker-local |
+| `imaging.pillow_transformer` | Apply crop, quarter-turn, deskew, contrast, cleanup, fit, and opaque RGBA8 serialization to one normalized page | Pinned worker-only pixel profile; checks cancellation between bounded stages and never owns manifest intent |
 
 Package initializers remain passive. Application/UI code may import explicit `worker.client` and
 `worker.protocol` modules but cannot import the host, Windows launcher implementation, operation
@@ -321,6 +325,14 @@ reference plus fixed header/key/pixel contract, and writes the broker-only persi
 no-replace cache publication. If tree termination is unconfirmed, no persistent writer exists and
 the empty stage is safely discarded without parsing or publication.
 
+For `image.transform`, RPC success likewise proves only that the worker claims to have filled the
+requested bounded volatile object. The source is reauthenticated before launch and after confirmed
+one-shot termination. The broker validates the fixed artifact, exact source and output identities,
+canonical transform-intent digest, transform and normalization profiles, output geometry/stride,
+complete pixel digest, opaque-alpha invariant, and RPC correlation before returning typed pixels.
+Cancellation, timeout, malformed output, disk/capacity refusal, or source mutation returns no
+authoritative result and never changes the manifest or immutable source.
+
 Graceful shutdown during active work first requests cancellation, waits for the terminal result and
 any pending acknowledgement correlation, then sends `session.shutdown`. Only the correlated,
 validated `session.closed` yields a normal stopped state. Forced termination does not wait for
@@ -410,6 +422,14 @@ whole-tree termination may the trusted broker read and validate the section, wri
 stage, validate it again, and atomically publish it. Unconfirmed termination leaves the persistent
 stage empty; only indeterminate publication quarantines it. The complete rules are in the
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md).
+
+PWS-0202 uses the same authority shape for a complete scan-transform request, not a broader image
+grant. Storage resolves the current manifest page to one exact JPEG/PNG source; the broker transfers
+only source-read and fixed output-section map-write authority. The worker performs strict bounded
+normalization, applies the canonical eight-checkpoint transform profile, and closes the source
+before terminal output. The result remains volatile and disposable. No transform operation receives
+a case path, manifest/journal handle, persistent cache writer, or permission to replace a source.
+See the [non-destructive scan-transform contract](image-transform-pipeline.md).
 
 These are operation-specific handle claims only. The worker still has no general access to an
 active case, originals directory, cache directory, manifest, journal, export history, external

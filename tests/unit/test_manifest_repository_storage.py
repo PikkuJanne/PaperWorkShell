@@ -26,8 +26,8 @@ from paperworkshell.storage.manifest_repository import (
 from paperworkshell.storage.workspace import CaseWorkspaceManager
 
 ROOT = Path(__file__).resolve().parents[2]
-MINIMAL_MANIFEST = ROOT / "schemas" / "examples" / "case-manifest-v1-minimal.json"
-REPRESENTATIVE_MANIFEST = ROOT / "schemas" / "examples" / "case-manifest-v1-representative.json"
+MINIMAL_MANIFEST = ROOT / "schemas" / "examples" / "case-manifest-v2-minimal.json"
+REPRESENTATIVE_MANIFEST = ROOT / "schemas" / "examples" / "case-manifest-v2-representative.json"
 CASE_ID = UUID("10000000-0000-4000-8000-000000000109")
 OTHER_CASE_ID = UUID("20000000-0000-4000-8000-000000000209")
 
@@ -93,17 +93,27 @@ def test_canonical_bytes_are_order_independent_and_do_not_mutate_input() -> None
 
 
 def test_packaged_runtime_schema_is_the_exact_canonical_contract() -> None:
-    canonical = json.loads(
+    legacy = json.loads(
         (ROOT / "schemas" / "case-manifest-v1.schema.json").read_text(encoding="utf-8")
     )
-    packaged = json.loads(
+    packaged_legacy = json.loads(
         files("paperworkshell.storage")
         .joinpath("case-manifest-v1.schema.json")
         .read_text(encoding="utf-8")
     )
+    current = json.loads(
+        (ROOT / "schemas" / "case-manifest-v2.schema.json").read_text(encoding="utf-8")
+    )
+    packaged_current = json.loads(
+        files("paperworkshell.storage")
+        .joinpath("case-manifest-v2.schema.json")
+        .read_text(encoding="utf-8")
+    )
 
-    assert packaged == canonical
-    assert repository_storage._runtime_schema() == canonical
+    assert packaged_legacy == legacy
+    assert packaged_current == current
+    assert repository_storage._runtime_schema(1) == legacy
+    assert repository_storage._runtime_schema() == current
 
 
 @pytest.mark.parametrize(
@@ -123,9 +133,9 @@ def test_invalid_save_target_is_rejected_before_any_storage_access(
     repository, manager = _repository_without_storage()
     candidate = _document(revision=1)
     if mutation == "future-version":
-        candidate["schema_version"] = 2
+        candidate["schema_version"] = 3
     elif mutation == "invalid-version":
-        candidate["schema_version"] = "1"
+        candidate["schema_version"] = "2"
     elif mutation == "case-mismatch":
         candidate["case_id"] = str(OTHER_CASE_ID)
     elif mutation == "schema-invalid":
@@ -172,7 +182,7 @@ def test_strict_payload_failures_are_sanitized_and_never_echo_bytes(payload: byt
 
 def test_future_version_dispatch_precedes_current_version_float_rules() -> None:
     future = _document()
-    future["schema_version"] = 2
+    future["schema_version"] = 3
     future["future_shape"] = {"fraction": 1.25, "members": ["unknown"]}
     payload = json.dumps(future, separators=(",", ":"), sort_keys=True).encode() + b"\n"
 

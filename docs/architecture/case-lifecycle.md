@@ -1,7 +1,7 @@
 # Local case-lifecycle contract
 
-- Status: Implemented PWS-0102 contract with PWS-0104 and PWS-0109 extensions
-- Tasks: PWS-0102, PWS-0104, PWS-0109
+- Status: Implemented PWS-0102 contract with PWS-0104, PWS-0109, and PWS-0202 extensions
+- Tasks: PWS-0102, PWS-0104, PWS-0109, PWS-0202
 - Decisions: PWS-D005, PWS-D010, PWS-D011, PWS-D028, PWS-D036
 - Depends on: PWS-0101 secure case workspace; PWS-0006 case manifest v1
 - Source ingest: [Immutable source-ingest contract](immutable-ingest.md)
@@ -47,7 +47,7 @@ not carry a case path, original filename, document value, display name, or raw e
 Creation uses `manifest.json` as the sole lifecycle-validity marker:
 
 1. Provision and authenticate the fixed private UUID workspace from PWS-0101.
-2. Construct the exact empty manifest-v1 document with revision zero, one UTC timestamp, empty
+2. Construct the exact empty manifest-v2 document with revision zero, one UTC timestamp, empty
    collections, `combined_pdf`, and `must_be_unencrypted`.
 3. Reserve case/temp bytes and one entry under the shared per-case coordination lock.
 4. Exclusively create a random `temp/<uuid>.tmp`, write the exact UTF-8 bytes, flush them, and verify
@@ -85,11 +85,12 @@ duplicate keys, non-finite constants, floating-point values, non-object roots, m
 levels, more than 100,000 nodes, strings over 1,048,576 code points, or lifecycle collections over
 4,096 items.
 
-Version is an exact integer dispatch value. Missing, malformed, legacy, future, or unknown versions
-fail before mutation. A current envelope must have the closed top-level member set, a canonical
-matching UUIDv4, a bounded integer revision, schema-shaped top-level collection/record types, and
-valid ordered UTC timestamps. The fixed directory skeleton is reauthenticated before a summary is
-accepted.
+Version is an exact integer dispatch value. Missing, malformed, future, or unknown versions fail
+before mutation. A fully validated v1 envelope is accepted only for automatic transactional
+migration before list/open returns it. A current envelope must have the closed top-level member
+set, a canonical matching UUIDv4, a bounded integer revision, schema-shaped top-level
+collection/record types, and valid ordered UTC timestamps. The fixed directory skeleton is
+reauthenticated before a summary is accepted.
 
 Lifecycle list/open and deletion now use the shared runtime boundary for complete fingerprint-bound
 schema and semantic validation. List/open may promote the one fully validated recovery checkpoint;

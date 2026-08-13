@@ -31,6 +31,10 @@ from paperworkshell.worker.image_page_broker import (
     ImageNormalizeBrokerPolicy,
     create_image_page_brokers,
 )
+from paperworkshell.worker.image_transform_broker import (
+    BrokeredImagePageTransformer,
+    ImageTransformBrokerPolicy,
+)
 from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
     PdfExportBrokerPolicy,
@@ -48,6 +52,7 @@ from paperworkshell.worker.pdf_thumbnail_broker import (
 )
 from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_TRANSFORM_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
@@ -56,6 +61,7 @@ from paperworkshell.worker.protocol.models import (
 
 _REQUIRED_DESKTOP_CAPABILITIES = (
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_TRANSFORM_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
 )
@@ -89,6 +95,7 @@ class DesktopWorkerCompositionConfig:
     maximum_heavy_operation_concurrency: int
     inspection_policy: PdfInspectionBrokerPolicy
     image_policy: ImageNormalizeBrokerPolicy
+    image_transform_policy: ImageTransformBrokerPolicy
     thumbnail_policy: PdfThumbnailBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
@@ -105,6 +112,7 @@ class DesktopWorkerCompositionConfig:
             <= self.resource_policy.maximum_processes
             or type(self.inspection_policy) is not PdfInspectionBrokerPolicy
             or type(self.image_policy) is not ImageNormalizeBrokerPolicy
+            or type(self.image_transform_policy) is not ImageTransformBrokerPolicy
             or type(self.thumbnail_policy) is not PdfThumbnailBrokerPolicy
         ):
             reject_client(
@@ -181,6 +189,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         "_heavy_operations",
         "_image_page_generator",
         "_image_source_inspector",
+        "_image_page_transformer",
         "_owner_thread_id",
         "_source_inspector",
         "_thumbnail_generator",
@@ -194,6 +203,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         thumbnail_generator: BrokeredPdfThumbnailGenerator,
         image_source_inspector: BrokeredImageSourceInspector,
         image_page_generator: BrokeredImagePageGenerator,
+        image_page_transformer: BrokeredImagePageTransformer,
         heavy_operations: HeavyOperationCoordinator,
     ) -> None:
         self._worker = worker
@@ -201,6 +211,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         self._thumbnail_generator = thumbnail_generator
         self._image_source_inspector = image_source_inspector
         self._image_page_generator = image_page_generator
+        self._image_page_transformer = image_page_transformer
         self._heavy_operations = heavy_operations
         self._owner_thread_id = threading.get_ident()
         self._closed = False
@@ -228,6 +239,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         """Expose bounded committed-image preview generation."""
 
         return self._image_page_generator
+
+    @property
+    def image_page_transformer(self) -> BrokeredImagePageTransformer:
+        """Expose bounded canonical transforms over committed image pages."""
+
+        return self._image_page_transformer
 
     def resource_snapshot(self) -> WorkerResourceSnapshot | None:
         """Forward safe worker accounting without exposing process authority."""
@@ -431,12 +448,19 @@ def create_desktop_worker_composition(
         config.image_policy,
         heavy_operations=heavy_operations,
     )
+    image_transformer = BrokeredImagePageTransformer(
+        worker,
+        selected_image_pages,
+        config.image_transform_policy,
+        heavy_operations=heavy_operations,
+    )
     return DesktopWorkerComposition(
         worker,
         inspector,
         generator,
         image_inspector,
         image_generator,
+        image_transformer,
         heavy_operations,
     )
 
@@ -453,6 +477,7 @@ def create_desktop_worker_composition_config(
     maximum_heavy_operation_concurrency: int,
     inspection_limits: ResourceLimits,
     image_limits: ResourceLimits,
+    image_transform_limits: ResourceLimits,
     thumbnail_limits: ResourceLimits,
     venv_launcher: Path | None = None,
 ) -> DesktopWorkerCompositionConfig:
@@ -469,6 +494,7 @@ def create_desktop_worker_composition_config(
         maximum_heavy_operation_concurrency=maximum_heavy_operation_concurrency,
         inspection_policy=PdfInspectionBrokerPolicy(inspection_limits),
         image_policy=ImageNormalizeBrokerPolicy(image_limits),
+        image_transform_policy=ImageTransformBrokerPolicy(image_transform_limits),
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
         venv_launcher=venv_launcher,
     )

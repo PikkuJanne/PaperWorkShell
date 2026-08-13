@@ -47,9 +47,9 @@ scaling, and announcement coverage for the first PySide6 organizer surface.
 py -3.14 tools/dev.py validate-schemas
 ```
 
-The registry validates the task graph, constrained M1 evidence, case-manifest v1,
-declarative-template v1, worker-RPC v1, dependency-inventory v1, and synthetic-fixture-index v1
-contracts. The dependency validator is also available directly:
+The registry validates the task graph, constrained M1 evidence, frozen case-manifest v1, current
+case-manifest v2, declarative-template v1, worker-RPC v1, dependency-inventory v1, and synthetic-
+fixture-index v1 contracts. The dependency validator is also available directly:
 
 ```powershell
 py -3.14 tools/dev.py validate-dependencies

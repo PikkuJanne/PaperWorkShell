@@ -36,7 +36,7 @@ from paperworkshell.storage._windows import (
 )
 from paperworkshell.storage.case_lifecycle import build_initial_manifest_bytes
 from paperworkshell.storage.manifest_codec import MAX_MANIFEST_BYTES
-from tools.validate_manifests import load_manifest_schema, validate_manifest_data
+from tools.validate_manifests import load_current_manifest_schema, validate_manifest_data
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000001")
 PENDING_ID = UUID("20000000-0000-4000-8000-000000000002")
@@ -152,7 +152,7 @@ def _durable_snapshot(payload: bytes) -> ManifestSnapshot:
     document = _document(payload)
     return ManifestSnapshot(
         case_id=CASE_ID,
-        schema_version=1,
+        schema_version=cast(int, document["schema_version"]),
         revision=cast(int, document["revision"]),
         document=cast(dict[str, object], document),
         sha256=hashlib.sha256(payload).hexdigest(),
@@ -475,7 +475,7 @@ def test_candidate_appends_complete_source_pages_and_both_sequences(
     assert document["revision"] == 1
 
     snapshot = ingest_storage._validate_ingest_manifest(payload, IDENTITY, CASE_ID)
-    schema, schema_issues = load_manifest_schema()
+    schema, schema_issues = load_current_manifest_schema()
     assert snapshot.page_ids == page_ids
     assert snapshot.revision == 1
     assert schema is not None, [issue.render() for issue in schema_issues]
@@ -599,7 +599,7 @@ def test_ingest_validator_rejects_cumulative_page_count_amplification() -> None:
 
 def test_ingest_validator_rejects_future_version_before_other_state() -> None:
     document = _valid_candidate_document()
-    document["schema_version"] = 2
+    document["schema_version"] = 3
     document["sources"] = "Sensitive Applicant Source"
 
     with pytest.raises(SourceIngestError) as raised:

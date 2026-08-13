@@ -44,6 +44,14 @@ The memory budget applies to the canonical synthetic M1 workload, not every host
 - Release page buffers when the downstream stage finishes and avoid duplicate encoded/decoded copies.
 - The constrained profile permits one active full-resolution buffer. A stage that needs two must document and test the overlap before the policy changes.
 
+PWS-0202 scan transforms obey the same one-page incremental boundary. Their planner must charge
+every raster simultaneously live during intrinsic orientation, crop, quarter-turn, deskew,
+contrast, background cleanup, and terminal fit/serialization, plus metadata/scratch state and
+native-allocation headroom. A no-op stage may reuse its input, but a profile label may not hide an
+additional buffer. The worker must release each superseded raster at the earliest deterministic
+stage boundary. If the pinned adapter cannot satisfy the selected central policy for the requested
+geometry, the request fails before publication; the resource policy is not raised to admit it.
+
 ## Lazy work
 
 - Opening a document does not render every page.
@@ -104,6 +112,14 @@ the controlled M1 export. Worker-private bytes remain prospectively bounded rath
 sampled. Boundary and just-over-boundary tests are mandatory. Obsolete temporary artifacts are
 removed promptly, but cleanup uncertainty preserves evidence rather than risking an authoritative
 file or immutable original.
+
+The image-transform operation applies the same private-volume rule before decode or temporary
+raster creation. Its prospective amount includes the maximum complete transform-stage overlap and
+fixed result artifact. Tests accept the exact capacity boundary, reject one byte less before
+decoder work, force a disk-full failure after an identity-matched partial write, prove cleanup and
+reservation release, and then complete a fresh retry. Cancellation and timeout keep the original
+and authoritative manifest unchanged. These tests demonstrate bounded software behavior; they do
+not emulate rotational storage or certify a VM or physical device.
 
 ## Deterministic slow-I/O and low-disk testing
 

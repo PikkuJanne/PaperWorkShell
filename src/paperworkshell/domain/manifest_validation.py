@@ -1,7 +1,7 @@
-"""Pure, non-disclosing validation for decoded case-manifest v1 data.
+"""Pure, non-disclosing validation for decoded case-manifest v1/v2 data.
 
 The runtime validator intentionally implements only the reviewed JSON Schema
-subset used by the canonical manifest-v1 contract.  Keeping this interpreter
+subset used by the canonical manifest-v1/v2 contracts. Keeping this interpreter
 in the domain layer avoids a runtime dependency on schema libraries while the
 schema fingerprint prevents callers from substituting a weaker contract.
 """
@@ -19,10 +19,19 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Final, cast
 
-SUPPORTED_SCHEMA_VERSION: Final = 1
+# ``CANONICAL_SCHEMA_FINGERPRINT`` remains the published v1 identity for
+# compatibility with callers that explicitly validate a historical manifest.
+SUPPORTED_SCHEMA_VERSION: Final = 2
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
 )
+CURRENT_SCHEMA_FINGERPRINT: Final = (
+    "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+)
+_SCHEMA_FINGERPRINTS_BY_VERSION: Final = {
+    1: CANONICAL_SCHEMA_FINGERPRINT,
+    2: CURRENT_SCHEMA_FINGERPRINT,
+}
 MAX_REPORTED_ISSUES: Final = 512
 MAX_VALIDATION_STEPS: Final = 1_000_000
 MAX_SCHEMA_RECURSION: Final = 128
@@ -975,7 +984,7 @@ def _check_exact_lexical_tokens(
 
 
 def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, ...]:
-    """Return the complete manifest-v1 cross-reference and replay diagnostics."""
+    """Return the complete shared manifest-v1/v2 reference and replay diagnostics."""
 
     issues: list[ManifestValidationIssue] = []
     _check_exact_lexical_tokens(data, path="$", issues=issues)
@@ -1258,7 +1267,13 @@ def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, 
             )
         payload = cast(Mapping[str, Any], operation["payload"])
         kind = cast(str, payload["kind"])
-        if kind in {"rotate", "crop"}:
+        if kind in {
+            "rotate",
+            "crop",
+            "deskew",
+            "contrast",
+            "background_cleanup",
+        }:
             page_id = cast(str, payload["page_id"])
             if page_id not in page_index:
                 _add_issue(
@@ -1524,10 +1539,12 @@ def validate_manifest(
     data: Mapping[str, object],
     schema: Mapping[str, object],
 ) -> tuple[ManifestValidationIssue, ...]:
-    """Validate decoded manifest-v1 data without mutation, I/O, or disclosure.
+    """Validate decoded manifest-v1/v2 data without mutation, I/O, or disclosure.
 
     Version dispatch happens before schema execution so unknown future versions
-    fail closed without interpreting or traversing their content.
+    fail closed without interpreting or traversing their content. Released v1
+    remains independently valid only when paired with its exact frozen schema;
+    current persisted state uses v2.
     """
 
     version = data.get("schema_version")
@@ -1539,7 +1556,8 @@ def validate_manifest(
                 "schema version must be an integer",
             ),
         )
-    if version != SUPPORTED_SCHEMA_VERSION:
+    expected_fingerprint = _SCHEMA_FINGERPRINTS_BY_VERSION.get(version)
+    if expected_fingerprint is None:
         return (
             _issue(
                 "MANIFEST_VERSION_UNSUPPORTED",
@@ -1547,7 +1565,7 @@ def validate_manifest(
                 "schema version is not supported",
             ),
         )
-    if _schema_fingerprint(schema) != CANONICAL_SCHEMA_FINGERPRINT:
+    if _schema_fingerprint(schema) != expected_fingerprint:
         return (
             _issue(
                 "MANIFEST_SCHEMA_IDENTITY_MISMATCH",

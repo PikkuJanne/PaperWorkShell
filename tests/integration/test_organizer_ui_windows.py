@@ -30,6 +30,7 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.import_precheck import DetectedMediaType, ImportLimits
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -232,6 +233,7 @@ def test_live_composition_imports_and_renders_bounded_organizer_previews(tmp_pat
         PagePreviewService(
             composition.thumbnail_generator,
             composition.image_page_generator,
+            composition.image_page_transformer,
         ),
         close_resources=composition.close,
     )
@@ -251,7 +253,9 @@ def test_live_composition_imports_and_renders_bounded_organizer_previews(tmp_pat
         assert tuple(result.snapshot.page_id for result in previews) == imported.page_ids
         assert all(result.snapshot.width_pixels <= 80 for result in previews)
         assert all(result.snapshot.height_pixels <= 100 for result in previews)
-        assert all(result.snapshot.pixels for result in previews)
+        assert all(
+            type(result) is PdfThumbnailResult and result.snapshot.pixels for result in previews
+        )
         assert FIXTURE.read_bytes() == source_before
     finally:
         backend.shutdown()

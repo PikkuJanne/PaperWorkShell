@@ -36,9 +36,15 @@ from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseSummary
-from paperworkshell.domain.image_pages import ImagePagePreviewRequest, ImageQuarterTurn
+from paperworkshell.domain.image_pages import ImageQuarterTurn
+from paperworkshell.domain.image_transforms import (
+    ImageNormalizedCrop,
+    ImagePageTransformRequest,
+    ImageTransformIntent,
+)
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
     ManifestLoadResult,
     ManifestLoadStatus,
     ManifestRepository,
@@ -127,7 +133,7 @@ def _document(*, page_count: int = 3, include_image: bool = False) -> dict[str, 
         )
         sequence.append(str(IMAGE_PAGE_ID))
     return {
-        "schema_version": 1,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(CASE_ID),
         "revision": 0,
         "created_at": STAMP,
@@ -155,7 +161,7 @@ def _snapshot(document: Mapping[str, object]) -> ManifestSnapshot:
     revision = cast(int, document["revision"])
     return ManifestSnapshot(
         CASE_ID,
-        1,
+        CURRENT_MANIFEST_SCHEMA_VERSION,
         revision,
         document,
         f"{revision + 1:064x}",
@@ -429,6 +435,16 @@ def test_recovered_manifest_sets_path_free_review_status() -> None:
     assert not OrganizerViewState.empty().recovery_review_required
 
 
+def test_recovered_migration_sets_path_free_review_status() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    repository.load_status = ManifestLoadStatus.RECOVERED_MIGRATED
+
+    state = backend.open_case(CASE_ID)
+
+    assert state.recovery_review_required
+    assert backend.load_status is ManifestLoadStatus.RECOVERED_MIGRATED
+
+
 def test_page_actions_coalesce_and_preserve_history_after_successful_save() -> None:
     backend, repository, _, _, _ = _backend(_document())
     backend.open_case(CASE_ID)
@@ -674,14 +690,142 @@ def test_preview_requests_cover_pdf_and_image_pages_in_order_and_forward_control
     assert pdf_request.maximum_width_pixels == 320
     assert pdf_request.maximum_height_pixels == 240
     assert pdf_request.additional_rotation is PdfRenderRotation.DEGREES_90
-    assert type(image_request) is ImagePagePreviewRequest
+    assert type(image_request) is ImagePageTransformRequest
     assert image_request.page_id == IMAGE_PAGE_ID
     assert image_request.maximum_width_pixels == 320
     assert image_request.maximum_height_pixels == 240
-    assert image_request.additional_rotation is ImageQuarterTurn.DEGREES_0
+    assert image_request.intent == ImageTransformIntent(
+        additional_rotation=ImageQuarterTurn.DEGREES_0
+    )
     assert thumbnails.timeout_seen == 4.5
     assert thumbnails.cancellation_seen is cancellation
     assert thumbnails.progress_seen is progress
+
+
+def test_image_preview_request_binds_the_complete_persisted_transform_intent() -> None:
+    document = _document(page_count=0, include_image=True)
+    operations = cast(list[object], document["page_operations"])
+    operations.extend(
+        (
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000201",
+                "operation_version": 1,
+                "sequence": 1,
+                "payload": {
+                    "kind": "crop",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "box": {
+                        "coordinate_space": "normalized_page_millionths_v1",
+                        "x": 100_000,
+                        "y": 200_000,
+                        "width": 700_000,
+                        "height": 600_000,
+                    },
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000202",
+                "operation_version": 1,
+                "sequence": 2,
+                "payload": {
+                    "kind": "rotate",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "quarter_turns_clockwise": 3,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000203",
+                "operation_version": 2,
+                "sequence": 3,
+                "payload": {
+                    "kind": "deskew",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "angle_millidegrees_clockwise": -1_250,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000204",
+                "operation_version": 2,
+                "sequence": 4,
+                "payload": {
+                    "kind": "contrast",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "factor_millionths": 1_150_000,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000205",
+                "operation_version": 2,
+                "sequence": 5,
+                "payload": {
+                    "kind": "background_cleanup",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "strength_millionths": 250_000,
+                },
+            },
+        )
+    )
+    backend, _, _, _, previews = _backend(document)
+    backend.open_case(CASE_ID)
+
+    assert backend.get_thumbnails(320, 240, page_ids=(IMAGE_PAGE_ID,)) == ()
+
+    request = previews.requests[0]
+    assert type(request) is ImagePageTransformRequest
+    assert request.intent == ImageTransformIntent(
+        crop=ImageNormalizedCrop(100_000, 200_000, 700_000, 600_000),
+        additional_rotation=ImageQuarterTurn.DEGREES_270,
+        deskew_angle_millidegrees_clockwise=-1_250,
+        contrast_factor_millionths=1_150_000,
+        background_cleanup_strength_millionths=250_000,
+    )
+
+
+def test_pdf_preview_fails_closed_for_raster_only_transform_intent() -> None:
+    document = _document(page_count=1)
+    cast(list[object], document["page_operations"]).extend(
+        (
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000211",
+                "operation_version": 2,
+                "sequence": 1,
+                "payload": {
+                    "kind": "deskew",
+                    "page_id": str(PAGE_IDS[0]),
+                    "angle_millidegrees_clockwise": 1_000,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000212",
+                "operation_version": 2,
+                "sequence": 2,
+                "payload": {
+                    "kind": "contrast",
+                    "page_id": str(PAGE_IDS[0]),
+                    "factor_millionths": 1_100_000,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000213",
+                "operation_version": 2,
+                "sequence": 3,
+                "payload": {
+                    "kind": "background_cleanup",
+                    "page_id": str(PAGE_IDS[0]),
+                    "strength_millionths": 100_000,
+                },
+            },
+        )
+    )
+    backend, _, _, _, previews = _backend(document)
+    backend.open_case(CASE_ID)
+
+    with pytest.raises(PageOperationError) as caught:
+        backend.get_thumbnails(320, 240, page_ids=(PAGE_IDS[0],))
+
+    assert caught.value.code is PageOperationErrorCode.MODEL_INVALID
+    assert caught.value.context == "organizer.pdf_scan_transform"
+    assert previews.requests == ()
 
 
 def test_thumbnail_subset_preserves_organizer_order_and_scales_for_requested_pdfs() -> None:

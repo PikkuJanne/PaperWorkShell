@@ -102,12 +102,14 @@ _ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
         ("pdf.thumbnail", 1),
         ("pdf.export", 1),
         ("image.normalize", 1),
+        ("image.transform", 1),
     }
 )
 _OFFLINE_START_CAPABILITIES: Final = frozenset(
     {
         ("protocol.noop", 1),
         ("image.normalize", 1),
+        ("image.transform", 1),
     }
 )
 
@@ -1168,6 +1170,9 @@ def _operation_registry_issues(data: Mapping[str, Any], document: str) -> list[R
     elif message_type == "operation.start" and descriptor == ("image.normalize", 1):
         for issue in _image_normalize_start_issues(data, payload, document):
             _add_issue(issues, issue)
+    elif message_type == "operation.start" and descriptor == ("image.transform", 1):
+        for issue in _image_transform_start_issues(data, payload, document):
+            _add_issue(issues, issue)
     return _sorted_issues(issues)
 
 
@@ -1278,6 +1283,142 @@ def _image_normalize_start_issues(
                 document,
                 "$.payload.parameters",
                 "image.normalize parameters and identities must be bounded and distinct",
+            ),
+        )
+    return _sorted_issues(issues)
+
+
+def _image_transform_start_issues(
+    data: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    document: str,
+) -> list[RpcIssue]:
+    """Validate the exact additive scan-transform operation."""
+
+    issues: list[RpcIssue] = []
+    inputs = payload.get("inputs")
+    source: Mapping[str, Any] | None = None
+    if isinstance(inputs, list) and len(inputs) == 1 and isinstance(inputs[0], Mapping):
+        source = inputs[0]
+    if source is None or (
+        source.get("area") != "source_read"
+        or source.get("operation_id") is not None
+        or source.get("content_kind") not in {"jpeg", "png"}
+        or type(source.get("expected_byte_size")) is not int
+        or cast(int, source.get("expected_byte_size")) < 1
+        or not isinstance(source.get("expected_sha256"), str)
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.inputs",
+                "image.transform requires one authenticated JPEG or PNG source reference",
+            ),
+        )
+    expected_types = {
+        "source_handle": "integer",
+        "output_handle": "integer",
+        "page_id": "uuid",
+        "output_object_id": "uuid",
+        "maximum_width_pixels": "integer",
+        "maximum_height_pixels": "integer",
+        "quarter_turns_clockwise": "integer",
+        "crop_x_millionths": "integer",
+        "crop_y_millionths": "integer",
+        "crop_width_millionths": "integer",
+        "crop_height_millionths": "integer",
+        "deskew_millidegrees_clockwise": "integer",
+        "contrast_factor_millionths": "integer",
+        "background_cleanup_strength_millionths": "integer",
+    }
+    parameters = payload.get("parameters")
+    parameter_map: dict[str, Mapping[str, Any]] = {}
+    if isinstance(parameters, list):
+        for value in parameters:
+            if isinstance(value, Mapping) and isinstance(value.get("name"), str):
+                parameter_map[cast(str, value["name"])] = value
+    if (
+        not isinstance(parameters, list)
+        or len(parameters) != len(expected_types)
+        or set(parameter_map) != set(expected_types)
+        or any(
+            parameter_map[name].get("value_type") != value_type
+            for name, value_type in expected_types.items()
+            if name in parameter_map
+        )
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.parameters",
+                "image.transform requires its exact closed parameter set",
+            ),
+        )
+        return _sorted_issues(issues)
+    values = {name: parameter_map[name].get("value") for name in expected_types}
+    limits = payload.get("requested_limits")
+    pixel_limit = limits.get("pixel_count") if isinstance(limits, Mapping) else None
+    x = values["crop_x_millionths"]
+    y = values["crop_y_millionths"]
+    width = values["crop_width_millionths"]
+    height = values["crop_height_millionths"]
+    maximum_width = values["maximum_width_pixels"]
+    maximum_height = values["maximum_height_pixels"]
+    invalid = (
+        type(values["source_handle"]) is not int
+        or values["source_handle"] < 1
+        or type(values["output_handle"]) is not int
+        or values["output_handle"] < 1
+        or values["source_handle"] == values["output_handle"]
+        or not _canonical_uuid_v4(values["page_id"])
+        or not _canonical_uuid_v4(values["output_object_id"])
+        or type(maximum_width) is not int
+        or maximum_width < 1
+        or type(maximum_height) is not int
+        or maximum_height < 1
+        or type(pixel_limit) is not int
+        or maximum_width * maximum_height > pixel_limit
+        or values["quarter_turns_clockwise"] not in {0, 1, 2, 3}
+        or type(x) is not int
+        or type(y) is not int
+        or type(width) is not int
+        or type(height) is not int
+        or not 0 <= x <= 1_000_000
+        or not 0 <= y <= 1_000_000
+        or not 1 <= width <= 1_000_000
+        or not 1 <= height <= 1_000_000
+        or x + width > 1_000_000
+        or y + height > 1_000_000
+        or type(values["deskew_millidegrees_clockwise"]) is not int
+        or not -15_000 <= values["deskew_millidegrees_clockwise"] <= 15_000
+        or type(values["contrast_factor_millionths"]) is not int
+        or not 0 <= values["contrast_factor_millionths"] <= 4_000_000
+        or type(values["background_cleanup_strength_millionths"]) is not int
+        or not 0 <= values["background_cleanup_strength_millionths"] <= 1_000_000
+    )
+    correlated_ids = (
+        data.get("case_id"),
+        data.get("operation_id"),
+        None if source is None else source.get("object_id"),
+        values["page_id"],
+        values["output_object_id"],
+    )
+    if (
+        invalid
+        or any(not _canonical_uuid_v4(value) for value in correlated_ids)
+        or len(set(cast(tuple[str, str, str, str, str], correlated_ids))) != 5
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.parameters",
+                "image.transform parameters and identities must be bounded and distinct",
             ),
         )
     return _sorted_issues(issues)

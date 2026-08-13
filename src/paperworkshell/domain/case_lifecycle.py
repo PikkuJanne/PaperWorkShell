@@ -9,7 +9,11 @@ from enum import StrEnum
 from typing import Final, Never
 from uuid import UUID
 
-CURRENT_CASE_MANIFEST_VERSION: Final = 1
+LEGACY_CASE_MANIFEST_VERSION: Final = 1
+CURRENT_CASE_MANIFEST_VERSION: Final = 2
+SUPPORTED_CASE_MANIFEST_VERSIONS: Final = frozenset(
+    {LEGACY_CASE_MANIFEST_VERSION, CURRENT_CASE_MANIFEST_VERSION}
+)
 MAX_SAFE_MANIFEST_INTEGER: Final = 9_007_199_254_740_991
 
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
@@ -143,7 +147,7 @@ class CaseDeletionAssurance(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CaseSummary:
-    """Path-free lifecycle metadata for one valid current-version case."""
+    """Path-free lifecycle metadata for one valid supported-version case."""
 
     case_id: UUID
     manifest_version: int
@@ -155,7 +159,7 @@ class CaseSummary:
         require_case_id(self.case_id, context="case.summary_id")
         if (
             type(self.manifest_version) is not int
-            or self.manifest_version != CURRENT_CASE_MANIFEST_VERSION
+            or self.manifest_version not in SUPPORTED_CASE_MANIFEST_VERSIONS
         ):
             reject_case_lifecycle(
                 CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,

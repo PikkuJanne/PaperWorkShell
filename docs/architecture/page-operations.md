@@ -1,14 +1,14 @@
 # Page operation, replay, undo, and redo contract
 
-- Status: Implemented PWS-0110 contract
-- Task: PWS-0110
+- Status: Implemented PWS-0110 contract with PWS-0202 scan-transform extensions
+- Tasks: PWS-0110, PWS-0202
 - Decisions: PWS-D010, PWS-D011
 - Depends on: PWS-0006 case-manifest v1; PWS-0109 atomic manifest repository
 
 ## Scope and ownership
 
 PWS-0110 owns pure, path-free organizer intent. `domain.page_operations` defines typed page
-references, normalized crop intent, version-1 page-operation payloads, deterministic replay,
+references, normalized crop intent, versioned page-operation payloads, deterministic replay,
 organizer projections, commands, and session undo/redo history. It accepts only a validated
 PWS-0109 `ManifestSnapshot` and produces a complete candidate document for the existing autosave
 and repository boundary.
@@ -16,8 +16,8 @@ and repository boundary.
 The module performs no filesystem access, parsing, rendering, PDF manipulation, worker RPC, UI
 work, logging, timing, or background scheduling. It uses no third-party package. PWS-0111 owns
 accessible organizer controls; rendering and export tasks consume the recorded intent through their
-own adapters. Crop operations already present in a manifest are typed, preserved, and replayed, but
-creating or editing crop intent remains with its later owning workflow.
+own adapters. PWS-0202 adds commands and projection fields for crop, deskew, contrast, and
+background cleanup without moving rendering or worker concerns into the domain layer.
 
 ## Canonical operation replay
 
@@ -34,19 +34,32 @@ Sequence reasons retain the released manifest-v1 meaning:
 - `reorder`, `split`, and `combine` preserve identical membership while recording their distinct
   organizer intent.
 
-Rotate, crop, and group operations may address an introduced inactive page, so removing a page does
-not destroy its non-destructive intent. Clockwise quarter-turns accumulate modulo four. The latest
-crop box is projected without rewriting source content. A repeated group identity updates that
-group deterministically while retaining first-introduction group order and payload page order.
-The final replayed sequence must equal the authoritative manifest `page_sequence`.
+Rotate, crop, group, deskew, contrast, and background-cleanup operations may address an introduced
+inactive page, so removing a page does not destroy its non-destructive intent. Clockwise quarter-
+turns accumulate modulo four. Crop, deskew, contrast, and background cleanup use the latest value.
+Their neutral projected values are respectively no crop, zero millidegrees, one-million contrast
+millionths, and zero cleanup millionths. A repeated group identity updates that group
+deterministically while retaining first-introduction group order and payload page order. The final
+replayed sequence must equal the authoritative manifest `page_sequence`.
+
+Replay is deliberately media-neutral. Applicability is checked by each rendering consumer: the
+PWS-0202 raster profile consumes JPEG/PNG pages, while PDF preview/export currently accept only
+quarter-turn and fail closed on crop, deskew, non-neutral contrast, or cleanup rather than silently
+ignoring recorded intent.
+
+Legacy organizer payloads retain `operation_version: 1`. Deskew, contrast, and background cleanup
+require `operation_version: 2`; either version paired with the other version's payload fails
+closed. Their exact fields and ranges are defined by the
+[case-manifest v2 contract](../schemas/case-manifest-v2.md). A manifest-v1 snapshot cannot contain
+version-2 operations.
 
 ## Commands and reversible session history
 
 Loaded operations are a durable baseline and cannot be undone by a newly opened editing session.
 Commands append a typed operation to the session suffix. Sequence-change commands support reorder,
 remove, restore, split, and combine; import remains owned by immutable ingest and cannot be created
-by an organizer command. Rotate and set-group commands use the same replay validation before a new
-history value is returned.
+by an organizer command. Rotate, crop, deskew, contrast, background-cleanup, and set-group commands
+use the same replay validation before a new history value is returned.
 
 Undo removes only the latest session operation. Redo restores that exact operation identity and
 payload. Executing after undo clears the transient redo path, but discarded identifiers remain

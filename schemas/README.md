@@ -33,6 +33,23 @@ The schema is self-contained Draft 2020-12. Repository validation combines struc
 with deterministic semantic checks for IDs, references, page bounds, operation replay, normalized
 boxes, storage names, confirmations, and export-history references.
 
+Version 1 is frozen migration input. Its schema and packaged copy are not changed when a successor
+is released.
+
+## Case manifest v2
+
+- Contract: [`case-manifest-v2.schema.json`](case-manifest-v2.schema.json)
+- Canonical minimal example:
+  [`examples/case-manifest-v2-minimal.json`](examples/case-manifest-v2-minimal.json)
+- Representative synthetic example:
+  [`examples/case-manifest-v2-representative.json`](examples/case-manifest-v2-representative.json)
+- Semantics and migration:
+  [`docs/schemas/case-manifest-v2.md`](../docs/schemas/case-manifest-v2.md)
+
+Version 2 is the current manifest contract. It retains the closed v1 top-level graph and adds
+version-coupled deskew, contrast, and background-cleanup intent. Repository load migrates a fully
+validated v1 copy through the existing transactional recovery journal before returning state.
+
 ## Export history v1
 
 - Contract: [`export-history-v1.schema.json`](export-history-v1.schema.json)

@@ -23,6 +23,22 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER,
     IMAGE_NORMALIZE_OUTPUT_OBJECT_ID_PARAMETER,
     IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER,
+    IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER,
+    IMAGE_TRANSFORM_CAPABILITY,
+    IMAGE_TRANSFORM_CONTRAST_PARAMETER,
+    IMAGE_TRANSFORM_CROP_HEIGHT_PARAMETER,
+    IMAGE_TRANSFORM_CROP_WIDTH_PARAMETER,
+    IMAGE_TRANSFORM_CROP_X_PARAMETER,
+    IMAGE_TRANSFORM_CROP_Y_PARAMETER,
+    IMAGE_TRANSFORM_DESKEW_PARAMETER,
+    IMAGE_TRANSFORM_MAXIMUM_HEIGHT_PARAMETER,
+    IMAGE_TRANSFORM_MAXIMUM_WIDTH_PARAMETER,
+    IMAGE_TRANSFORM_OUTPUT_CONTENT_KIND,
+    IMAGE_TRANSFORM_OUTPUT_HANDLE_PARAMETER,
+    IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER,
+    IMAGE_TRANSFORM_PAGE_ID_PARAMETER,
+    IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER,
+    IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER,
     NOOP_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
@@ -197,6 +213,177 @@ class ImageNormalizeOperationHandler:
             OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
         )
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+@dataclass(frozen=True, slots=True)
+class ImageTransformOperationRequest:
+    """Path-free authority and normalized intent for one scan transform."""
+
+    source_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    output_object_id: UUID
+    page_id: UUID
+    maximum_width_pixels: int
+    maximum_height_pixels: int
+    quarter_turns_clockwise: int
+    crop_x_millionths: int
+    crop_y_millionths: int
+    crop_width_millionths: int
+    crop_height_millionths: int
+    deskew_millidegrees_clockwise: int
+    contrast_factor_millionths: int
+    background_cleanup_strength_millionths: int
+
+    def __post_init__(self) -> None:
+        handles = (self.source_handle, self.output_handle)
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+            or type(self.page_id) is not UUID
+            or self.page_id.version != 4
+            or self.page_id == self.output_object_id
+            or type(self.maximum_width_pixels) is not int
+            or self.maximum_width_pixels <= 0
+            or type(self.maximum_height_pixels) is not int
+            or self.maximum_height_pixels <= 0
+            or type(self.quarter_turns_clockwise) is not int
+            or self.quarter_turns_clockwise not in {0, 1, 2, 3}
+            or any(
+                type(value) is not int
+                for value in (
+                    self.crop_x_millionths,
+                    self.crop_y_millionths,
+                    self.crop_width_millionths,
+                    self.crop_height_millionths,
+                    self.deskew_millidegrees_clockwise,
+                    self.contrast_factor_millionths,
+                    self.background_cleanup_strength_millionths,
+                )
+            )
+            or not 0 <= self.crop_x_millionths <= 1_000_000
+            or not 0 <= self.crop_y_millionths <= 1_000_000
+            or not 1 <= self.crop_width_millionths <= 1_000_000
+            or not 1 <= self.crop_height_millionths <= 1_000_000
+            or self.crop_x_millionths + self.crop_width_millionths > 1_000_000
+            or self.crop_y_millionths + self.crop_height_millionths > 1_000_000
+            or not -15_000 <= self.deskew_millidegrees_clockwise <= 15_000
+            or not 0 <= self.contrast_factor_millionths <= 4_000_000
+            or not 0 <= self.background_cleanup_strength_millionths <= 1_000_000
+        ):
+            raise ValueError("validated image-transform parameters are unavailable")
+
+
+class ImageTransformAdapter(Protocol):
+    """Injected image adapter that consumes one immutable source and output section."""
+
+    def discard_handles(
+        self,
+        context: OperationContext,
+        request: ImageTransformOperationRequest,
+    ) -> None: ...
+
+    def transform(
+        self,
+        context: OperationContext,
+        request: ImageTransformOperationRequest,
+    ) -> CaseObjectReference: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ImageTransformOperationHandler:
+    """Coordinate the closed ``image.transform`` operation around one adapter."""
+
+    adapter: ImageTransformAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return IMAGE_TRANSFORM_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _image_transform_operation_request(context)
+        context.report_progress(
+            OperationProgressPayload(ProgressStage.PROCESSING, 0, 1, ProgressUnit.PAGES)
+        )
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+        try:
+            output = self.adapter.transform(context, request)
+        except ImagePageError as error:
+            if error.code is ImagePageErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is ImagePageErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            raise
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_image_transform_output(context, request, output)
+        context.report_progress(
+            OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
+        )
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+def _image_transform_operation_request(
+    context: OperationContext,
+) -> ImageTransformOperationRequest:
+    return ImageTransformOperationRequest(
+        source_handle=_positive_integer_parameter(context, IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER),
+        output_handle=_positive_integer_parameter(context, IMAGE_TRANSFORM_OUTPUT_HANDLE_PARAMETER),
+        output_object_id=_uuid_parameter(context, IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER),
+        page_id=_uuid_parameter(context, IMAGE_TRANSFORM_PAGE_ID_PARAMETER),
+        maximum_width_pixels=_positive_integer_parameter(
+            context, IMAGE_TRANSFORM_MAXIMUM_WIDTH_PARAMETER
+        ),
+        maximum_height_pixels=_positive_integer_parameter(
+            context, IMAGE_TRANSFORM_MAXIMUM_HEIGHT_PARAMETER
+        ),
+        quarter_turns_clockwise=_integer_parameter(
+            context, IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER, minimum=0
+        ),
+        crop_x_millionths=_integer_parameter(context, IMAGE_TRANSFORM_CROP_X_PARAMETER, minimum=0),
+        crop_y_millionths=_integer_parameter(context, IMAGE_TRANSFORM_CROP_Y_PARAMETER, minimum=0),
+        crop_width_millionths=_positive_integer_parameter(
+            context, IMAGE_TRANSFORM_CROP_WIDTH_PARAMETER
+        ),
+        crop_height_millionths=_positive_integer_parameter(
+            context, IMAGE_TRANSFORM_CROP_HEIGHT_PARAMETER
+        ),
+        deskew_millidegrees_clockwise=_integer_parameter(
+            context, IMAGE_TRANSFORM_DESKEW_PARAMETER, minimum=-15_000
+        ),
+        contrast_factor_millionths=_integer_parameter(
+            context, IMAGE_TRANSFORM_CONTRAST_PARAMETER, minimum=0
+        ),
+        background_cleanup_strength_millionths=_integer_parameter(
+            context, IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER, minimum=0
+        ),
+    )
+
+
+def _require_image_transform_output(
+    context: OperationContext,
+    request: ImageTransformOperationRequest,
+    output: CaseObjectReference,
+) -> None:
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != IMAGE_TRANSFORM_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+    ):
+        raise ValueError("image-transform adapter returned an invalid staging reference")
 
 
 def _image_normalize_operation_request(

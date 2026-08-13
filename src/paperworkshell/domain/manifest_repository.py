@@ -10,7 +10,11 @@ from enum import StrEnum
 from typing import Final, Never, Protocol, runtime_checkable
 from uuid import UUID
 
-CURRENT_MANIFEST_SCHEMA_VERSION: Final = 1
+LEGACY_MANIFEST_SCHEMA_VERSION: Final = 1
+CURRENT_MANIFEST_SCHEMA_VERSION: Final = 2
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS: Final = frozenset(
+    {LEGACY_MANIFEST_SCHEMA_VERSION, CURRENT_MANIFEST_SCHEMA_VERSION}
+)
 MAX_SAFE_MANIFEST_INTEGER: Final = 9_007_199_254_740_991
 MAX_MANIFEST_DEPTH: Final = 64
 MAX_MANIFEST_NODES: Final = 100_000
@@ -116,6 +120,8 @@ class ManifestLoadStatus(StrEnum):
 
     CURRENT = "current"
     RECOVERED = "recovered"
+    MIGRATED = "migrated"
+    RECOVERED_MIGRATED = "recovered_migrated"
 
 
 class ManifestSaveStatus(StrEnum):
@@ -153,7 +159,10 @@ class ManifestSnapshot:
         cas_token: str,
     ) -> None:
         selected_case = _require_case_id(case_id, context="snapshot.case_id")
-        if type(schema_version) is not int or schema_version != CURRENT_MANIFEST_SCHEMA_VERSION:
+        if (
+            type(schema_version) is not int
+            or schema_version not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS
+        ):
             reject_manifest_repository(
                 ManifestRepositoryErrorCode.MODEL_INVALID,
                 "snapshot.schema_version",

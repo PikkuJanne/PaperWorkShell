@@ -97,6 +97,31 @@ opposing crop-to-media insets; a page with direct boxes; and a `UserUnit` page r
 per user unit. CMYK and ICCBased cases are intentionally checked by documented structures and
 swatch relationships rather than an invented device-independent RGB value.
 
+PWS-0202 uses a separate `image-transforms-v1` golden family because fine deskew, resampling, and
+tonal cleanup are pinned production-profile behavior rather than independent PDF analytical
+oracles. Its six sources are still closed, no-input, standard-library-generated public rasters:
+asymmetric corners, a crop grid, a deskew line grid, a grayscale ramp, a synthetic paper/stroke
+field, and an alpha canary. No source image is copied from a user or downloaded file. The committed
+set contains only approved deterministic RGBA8 PNG outputs plus a canonical index; sources are
+reconstructed from their bound recipes.
+
+[`tools/image_transform_goldens.py`](../../tools/image_transform_goldens.py) cannot execute or
+import the production transform. It accepts already-produced bounded RGBA8 results and first stages
+a candidate outside the repository with exact source/operation/output digests and a labeled
+before/after HTML review sheet. Candidate status is explicitly unapproved. After all six pairs are
+inspected at native and enlarged nearest-neighbour scale, a separate explicit recorded visual approval
+step creates a closed promotion inventory outside the repository. Only that index and those six
+PNGs may be copied into `tests/golden/image-transforms-v1`; the review sheet, temporary sources, and
+candidate directory never enter Git.
+
+The image-transform validator rejects a missing or extra entry, link/reparse point, hard link,
+noncanonical JSON or PNG, wrong source recipe, stage reordering, operation or pixel digest change,
+nonopaque result, dimension change, duplicate key, or absent approval. A production profile or
+expected-pixel change requires a reviewed version-2 set and rationale; no command automatically
+refreshes the approved version-1 files. The exact transform order, case matrix, and review checklist
+are defined in the
+[image-transform pipeline contract](../architecture/image-transform-pipeline.md).
+
 The signed-marker fixture contains an unsigned PDF signature field only. It is not a digital
 signature, does not contain a signature image, and carries no validity claim. The handwriting
 demonstration is an algorithmic abstract stroke pattern explicitly marked as not a signature.
@@ -113,7 +138,8 @@ py -3.14 tools/dev.py validate-fixtures
 `generate-fixtures` is intentionally mutating and is not part of `check`. It writes only the
 reviewed committed corpus, canonical corpus index, and analytical renderer references, and refuses
 an unexpected output inventory. Review every generator or byte change; do not refresh fixtures or
-goldens merely to make a test pass.
+goldens merely to make a test pass. It does not capture or approve PWS-0202 transform output; that
+family uses the separate review workflow above.
 
 `validate-fixtures` is non-mutating. It authenticates the schema, validates current and rejected
 index examples, reconstructs the expected bytes in memory, compares the exact corpus and renderer
@@ -187,3 +213,9 @@ failure tests, exact regeneration, privacy scanning, and an explanation of why a
 is insufficient. Corpus versions are immutable once consumed by released migrations or golden
 evidence; later incompatible changes use a new version rather than silently changing version-1
 meaning.
+
+For a captured transform golden, “closed recipe” also includes the exact immutable source recipe,
+canonical operation bytes, intent/cache/artifact versions, transform and strict-normalization
+profile digests, pinned pixel-affecting dependency versions, output layout and dimensions, output
+digest, and recorded human approval. Merely recapturing a current production result is not an
+acceptable update procedure.

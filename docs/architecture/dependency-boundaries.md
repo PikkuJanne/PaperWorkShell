@@ -7,6 +7,7 @@
   PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake
+  and PWS-0202 non-destructive image transformations
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -158,6 +159,13 @@ manifest-candidate construction only in `domain.page_operations`. It consumes th
 PWS-0109 snapshot contract but does not import `app`, `storage`, worker, renderer, PDF, or UI code.
 The command and concurrency rules are specified in the
 [Page operation, replay, undo, and redo contract](page-operations.md).
+
+PWS-0202 extends those pure page operations with version-coupled crop, deskew, contrast, and
+background-cleanup intent and adds pure fixed-width transform/cache contracts in
+`domain.image_transforms`. Pixel processing remains in the worker-only `imaging` adapter; neither
+domain module imports Pillow, storage, worker orchestration, or UI code. Current manifest v2 is a
+separately fingerprinted schema, while storage alone owns the copy-only transactional migration
+from fully validated frozen v1 input.
 
 PWS-0107 makes the worker split concrete. GUI-safe `worker.client` modules own only cached lifecycle
 state and abstract process/transport contracts; `worker.protocol` owns bounded framing, bootstrap,

@@ -48,6 +48,7 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("schemas/m1-vertical-slice-benchmark-report-v2.schema.json"),
             Path("schemas/m1-vertical-slice-benchmark-report-v3.schema.json"),
             Path("schemas/case-manifest-v1.schema.json"),
+            Path("schemas/case-manifest-v2.schema.json"),
             FIXTURE_INDEX_SCHEMA_PATH,
             TEMPLATE_SCHEMA_PATH,
             INVENTORY_SCHEMA_PATH,
@@ -69,6 +70,10 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / "tests" / "fixtures" / "manifests" / "v1" / "invalid",
             root / "tests" / "fixtures" / "manifests" / "v1" / "invalid",
+        )
+        shutil.copytree(
+            PROJECT_ROOT / "tests" / "fixtures" / "manifests" / "v2" / "invalid",
+            root / "tests" / "fixtures" / "manifests" / "v2" / "invalid",
         )
         shutil.copytree(
             PROJECT_ROOT / "tests" / "fixtures" / "worker-rpc" / "v1" / "invalid",
@@ -97,7 +102,7 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             manifest_path = root / "schemas" / "examples" / "case-manifest-v1-minimal.json"
             loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest = cast(dict[str, Any], loaded)
-            manifest["schema_version"] = 2
+            manifest["schema_version"] = 3
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
             messages = validation_messages(root)

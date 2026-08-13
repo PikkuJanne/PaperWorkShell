@@ -10,6 +10,7 @@ import pytest
 
 from paperworkshell.app.manifest_repository import ManifestAutosaveService
 from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
     ManifestAutosaveResult,
     ManifestAutosaveStatus,
     ManifestLoadResult,
@@ -29,7 +30,7 @@ def _case_id() -> UUID:
 
 def _document(*, revision: int = 0, edit: str = "initial") -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(_case_id()),
         "revision": revision,
         "created_at": "2026-08-03T10:00:00.000000Z",
@@ -43,7 +44,7 @@ def _snapshot(document: Mapping[str, object]) -> ManifestSnapshot:
     revision = cast(int, document["revision"])
     return ManifestSnapshot(
         _case_id(),
-        1,
+        CURRENT_MANIFEST_SCHEMA_VERSION,
         revision,
         document,
         f"{revision + 1:064x}",
@@ -195,7 +196,7 @@ def test_future_candidate_version_fails_before_repository_mutation() -> None:
     repository = _Repository()
     service = ManifestAutosaveService(repository, _case_id())
     future = _document(edit="future")
-    future["schema_version"] = 2
+    future["schema_version"] = 3
     service.queue(future)
 
     with pytest.raises(ManifestRepositoryError) as raised:

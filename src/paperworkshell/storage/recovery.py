@@ -139,9 +139,10 @@ class WindowsStartupRecoveryStore:
                     RecoveryIssueCode.MANIFEST_RECOVERY_FAILED,
                 )
             loaded = load_result.snapshot
-            recovered_manifest = (
-                recovered_manifest or load_result.status is ManifestLoadStatus.RECOVERED
-            )
+            recovered_manifest = recovered_manifest or load_result.status in {
+                ManifestLoadStatus.RECOVERED,
+                ManifestLoadStatus.RECOVERED_MIGRATED,
+            }
             history_status = self._recover_history(loaded)
             if history_status is PdfExportHistoryRecoveryStatus.UNRESOLVED:
                 return CaseRecoveryResult(

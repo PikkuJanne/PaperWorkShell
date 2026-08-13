@@ -35,6 +35,13 @@ from tools.generate_synthetic_fixtures import (
     canonical_index_bytes,
     canonical_renderer_golden_index_bytes,
 )
+from tools.image_transform_goldens import (
+    CASE_PLANS as IMAGE_TRANSFORM_GOLDEN_PLANS,
+)
+from tools.image_transform_goldens import (
+    GOLDEN_DIRECTORY as IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
+)
+from tools.image_transform_goldens import validate_committed_golden_set
 
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "33229d2fdd6a84377fd10bdc690634037307862257f938f9a6c4c053ef954f2e"
@@ -208,6 +215,7 @@ class FixtureCorpusSummary:
 
     fixture_count: int
     golden_reference_count: int
+    image_transform_golden_reference_count: int
     total_fixture_bytes: int
     repository_history_blob_count: int
     repository_index_blob_count: int
@@ -1228,6 +1236,28 @@ def validate_fixture_corpus(
     golden_reference_count, golden_issues = _validate_renderer_goldens(root, generated)
     if golden_reference_count is None:
         return None, golden_issues
+    transform_golden_count, transform_golden_codes = validate_committed_golden_set(root)
+    if transform_golden_codes:
+        return None, [
+            _issue(
+                code,
+                IMAGE_TRANSFORM_GOLDEN_DIRECTORY.as_posix(),
+                "$",
+                "image-transform golden validation failed closed",
+            )
+            for code in transform_golden_codes
+        ]
+    for plan in IMAGE_TRANSFORM_GOLDEN_PLANS:
+        content, content_issues = _read_regular_bytes(
+            root / IMAGE_TRANSFORM_GOLDEN_DIRECTORY / plan.output_name,
+            trusted_root=root,
+            maximum_bytes=MAX_FIXTURE_BYTES,
+            document=(IMAGE_TRANSFORM_GOLDEN_DIRECTORY / plan.output_name).as_posix(),
+            code_prefix="FIXTURE_IMAGE_TRANSFORM_GOLDEN",
+        )
+        if content is None:
+            return None, content_issues
+        approved_digests.add(hashlib.sha256(content).digest())
 
     history_blob_count = 0
     index_blob_count = 0
@@ -1257,6 +1287,7 @@ def validate_fixture_corpus(
         FixtureCorpusSummary(
             fixture_count=len(generated),
             golden_reference_count=golden_reference_count,
+            image_transform_golden_reference_count=transform_golden_count,
             total_fixture_bytes=total_bytes,
             repository_history_blob_count=history_blob_count,
             repository_index_blob_count=index_blob_count,
@@ -1305,6 +1336,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "OK: validated "
             f"{summary.fixture_count} deterministic public synthetic fixtures "
             f"and {summary.golden_reference_count} analytical renderer references "
+            f"plus {summary.image_transform_golden_reference_count} approved image-transform "
+            "references "
             f"({summary.total_fixture_bytes} corpus bytes), "
             f"{summary.repository_history_blob_count} historical blobs, "
             f"{summary.repository_index_blob_count} index blobs, and "

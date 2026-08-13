@@ -246,6 +246,7 @@ PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
+IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 
 IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
@@ -254,6 +255,22 @@ IMAGE_NORMALIZE_MAXIMUM_WIDTH_PARAMETER: Final = "maximum_width_pixels"
 IMAGE_NORMALIZE_MAXIMUM_HEIGHT_PARAMETER: Final = "maximum_height_pixels"
 IMAGE_NORMALIZE_ADDITIONAL_ROTATION_PARAMETER: Final = "additional_rotation"
 IMAGE_NORMALIZE_OUTPUT_CONTENT_KIND: Final = "image-normalized-rgba-v1"
+
+IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
+IMAGE_TRANSFORM_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
+IMAGE_TRANSFORM_PAGE_ID_PARAMETER: Final = "page_id"
+IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
+IMAGE_TRANSFORM_MAXIMUM_WIDTH_PARAMETER: Final = "maximum_width_pixels"
+IMAGE_TRANSFORM_MAXIMUM_HEIGHT_PARAMETER: Final = "maximum_height_pixels"
+IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER: Final = "quarter_turns_clockwise"
+IMAGE_TRANSFORM_CROP_X_PARAMETER: Final = "crop_x_millionths"
+IMAGE_TRANSFORM_CROP_Y_PARAMETER: Final = "crop_y_millionths"
+IMAGE_TRANSFORM_CROP_WIDTH_PARAMETER: Final = "crop_width_millionths"
+IMAGE_TRANSFORM_CROP_HEIGHT_PARAMETER: Final = "crop_height_millionths"
+IMAGE_TRANSFORM_DESKEW_PARAMETER: Final = "deskew_millidegrees_clockwise"
+IMAGE_TRANSFORM_CONTRAST_PARAMETER: Final = "contrast_factor_millionths"
+IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER: Final = "background_cleanup_strength_millionths"
+IMAGE_TRANSFORM_OUTPUT_CONTENT_KIND: Final = "image-transformed-rgba-v1"
 
 PDF_INSPECT_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 PDF_INSPECT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
@@ -354,7 +371,7 @@ class CaseObjectReference:
     operation_id: UUID | None
     content_kind: str
     expected_byte_size: int | None
-    expected_sha256: str | None
+    expected_sha256: str | None = field(repr=False)
     reference_version: int = 1
 
     def __post_init__(self) -> None:
@@ -772,6 +789,215 @@ def validate_image_normalize_result(
             "RPC_INVALID_RESULT",
             "payload.outputs",
             "image.normalize output is not bound to its requested staging object and limit",
+        )
+
+
+def validate_image_transform_start(payload: OperationStartPayload) -> None:
+    """Validate the exact, path-free ``image.transform`` version-1 contract."""
+
+    if len(payload.inputs) != 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "image.transform version 1 requires exactly one source reference",
+        )
+    source = payload.inputs[0]
+    if (
+        source.area is not ReferenceArea.SOURCE_READ
+        or source.content_kind not in {"jpeg", "png"}
+        or source.expected_byte_size is None
+        or source.expected_byte_size < 1
+        or source.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "image.transform requires one authenticated JPEG or PNG source reference",
+        )
+    expected_names = {
+        IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER,
+        IMAGE_TRANSFORM_OUTPUT_HANDLE_PARAMETER,
+        IMAGE_TRANSFORM_PAGE_ID_PARAMETER,
+        IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER,
+        IMAGE_TRANSFORM_MAXIMUM_WIDTH_PARAMETER,
+        IMAGE_TRANSFORM_MAXIMUM_HEIGHT_PARAMETER,
+        IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER,
+        IMAGE_TRANSFORM_CROP_X_PARAMETER,
+        IMAGE_TRANSFORM_CROP_Y_PARAMETER,
+        IMAGE_TRANSFORM_CROP_WIDTH_PARAMETER,
+        IMAGE_TRANSFORM_CROP_HEIGHT_PARAMETER,
+        IMAGE_TRANSFORM_DESKEW_PARAMETER,
+        IMAGE_TRANSFORM_CONTRAST_PARAMETER,
+        IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform version 1 requires its exact closed parameter set",
+        )
+    handles = tuple(
+        parameters[name]
+        for name in (
+            IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER,
+            IMAGE_TRANSFORM_OUTPUT_HANDLE_PARAMETER,
+        )
+    )
+    if (
+        any(
+            parameter.value_type is not ScalarValueType.INTEGER
+            or type(parameter.value) is not int
+            or parameter.value <= 0
+            for parameter in handles
+        )
+        or handles[0].value == handles[1].value
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform brokered handles must be distinct positive integers",
+        )
+    page_object = parameters[IMAGE_TRANSFORM_PAGE_ID_PARAMETER]
+    output_object = parameters[IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER]
+    if (
+        page_object.value_type is not ScalarValueType.UUID
+        or type(page_object.value) is not UUID
+        or output_object.value_type is not ScalarValueType.UUID
+        or type(output_object.value) is not UUID
+        or len({source.object_id, page_object.value, output_object.value}) != 3
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform page and output identities must be distinct UUIDs",
+        )
+    integer_values: dict[str, int] = {}
+    for name in expected_names - {
+        IMAGE_TRANSFORM_PAGE_ID_PARAMETER,
+        IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER,
+    }:
+        parameter = parameters[name]
+        if parameter.value_type is not ScalarValueType.INTEGER or type(parameter.value) is not int:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.parameters",
+                "image.transform numeric parameters must be exact integers",
+            )
+        integer_values[name] = parameter.value
+    width = integer_values[IMAGE_TRANSFORM_MAXIMUM_WIDTH_PARAMETER]
+    height = integer_values[IMAGE_TRANSFORM_MAXIMUM_HEIGHT_PARAMETER]
+    if width <= 0 or height <= 0 or width > payload.requested_limits.pixel_count // height:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform dimensions exceed the requested pixel limit",
+        )
+    if integer_values[IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER] not in {0, 1, 2, 3}:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform rotation must be a clockwise quarter-turn count",
+        )
+    crop_x = integer_values[IMAGE_TRANSFORM_CROP_X_PARAMETER]
+    crop_y = integer_values[IMAGE_TRANSFORM_CROP_Y_PARAMETER]
+    crop_width = integer_values[IMAGE_TRANSFORM_CROP_WIDTH_PARAMETER]
+    crop_height = integer_values[IMAGE_TRANSFORM_CROP_HEIGHT_PARAMETER]
+    if (
+        not 0 <= crop_x <= 1_000_000
+        or not 0 <= crop_y <= 1_000_000
+        or not 1 <= crop_width <= 1_000_000
+        or not 1 <= crop_height <= 1_000_000
+        or crop_x + crop_width > 1_000_000
+        or crop_y + crop_height > 1_000_000
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform crop must fit the normalized logical page",
+        )
+    if not -15_000 <= integer_values[IMAGE_TRANSFORM_DESKEW_PARAMETER] <= 15_000:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform deskew is outside the admitted range",
+        )
+    if not 0 <= integer_values[IMAGE_TRANSFORM_CONTRAST_PARAMETER] <= 4_000_000:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform contrast is outside the admitted range",
+        )
+    if not 0 <= integer_values[IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER] <= 1_000_000:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.transform background cleanup is outside the admitted range",
+        )
+
+
+def image_transform_bound_object_ids(payload: OperationStartPayload) -> tuple[UUID, UUID, UUID]:
+    """Return source, page, and output UUIDs from a validated transform start."""
+
+    validate_image_transform_start(payload)
+    values = {parameter.name: parameter for parameter in payload.parameters}
+    page = values[IMAGE_TRANSFORM_PAGE_ID_PARAMETER]
+    output = values[IMAGE_TRANSFORM_OUTPUT_OBJECT_ID_PARAMETER]
+    if (
+        page.value_type is ScalarValueType.UUID
+        and type(page.value) is UUID
+        and output.value_type is ScalarValueType.UUID
+        and type(output.value) is UUID
+    ):
+        return payload.inputs[0].object_id, page.value, output.value
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "image.transform output object identifier is unavailable",
+    )
+
+
+def validate_image_transform_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    output_object_id: UUID,
+    maximum_output_bytes: int,
+) -> None:
+    """Bind a transform terminal result to its exact bounded staging output."""
+
+    _require_uuid4(operation_id, "operation_id")
+    _require_uuid4(output_object_id, "payload.outputs.object_id")
+    _require_int(maximum_output_bytes, "payload.requested_limits.output_bytes", minimum=1)
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful image.transform results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 1:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful image.transform results require exactly one staging output",
+        )
+    output = payload.outputs[0]
+    if (
+        output_object_id == operation_id
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != output_object_id
+        or output.operation_id != operation_id
+        or output.content_kind != IMAGE_TRANSFORM_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "image.transform output is not bound to its requested staging object and limit",
         )
 
 

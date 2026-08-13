@@ -48,7 +48,7 @@ pytestmark = pytest.mark.skipif(
 CASE_ID = UUID("10000000-0000-4000-8000-000000000109")
 CREATED_AT = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
 ROOT = Path(__file__).resolve().parents[2]
-REPRESENTATIVE_MANIFEST = ROOT / "schemas" / "examples" / "case-manifest-v1-representative.json"
+REPRESENTATIVE_MANIFEST = ROOT / "schemas" / "examples" / "case-manifest-v2-representative.json"
 
 
 def _quota(*, maximum_case_bytes: int = 32_000_000) -> WorkspaceQuota:
@@ -249,7 +249,7 @@ def test_future_current_and_future_candidate_fail_before_mutation(tmp_path: Path
     repository = WindowsManifestRepository(manager)
     opened = repository.load(CASE_ID).snapshot
     future_candidate = _candidate(opened.document, revision=1, marker=3)
-    future_candidate["schema_version"] = 2
+    future_candidate["schema_version"] = 3
     before_candidate = _tree_snapshot(layout.case_root)
 
     with pytest.raises(ManifestRepositoryError) as candidate_error:
@@ -265,7 +265,7 @@ def test_future_current_and_future_candidate_fail_before_mutation(tmp_path: Path
     assert _tree_snapshot(layout.case_root) == before_candidate
 
     future_current = opened.document
-    future_current["schema_version"] = 2
+    future_current["schema_version"] = 3
     layout.manifest.write_bytes(
         json.dumps(future_current, separators=(",", ":"), sort_keys=True).encode() + b"\n"
     )
@@ -284,7 +284,7 @@ def test_future_checkpoint_fails_closed_without_mutating_valid_current(tmp_path:
     opened = repository.load(CASE_ID).snapshot
     candidate = _candidate(opened.document, revision=1, marker=4)
     future_checkpoint = copy.deepcopy(candidate)
-    future_checkpoint["schema_version"] = 2
+    future_checkpoint["schema_version"] = 3
     future_checkpoint["future_fraction"] = 1.25
     future_checkpoint["future_text"] = "x" * (MAX_JSON_STRING_CODEPOINTS + 1)
     (layout.journal / "latest.json").write_bytes(
@@ -577,9 +577,9 @@ def test_page_operation_history_autosave_reload_replays_equivalently(
     existing_group = UUID("90000000-0000-4000-8000-000000000001")
     operation_ids = iter(
         (
-            UUID("50000000-0000-4000-8000-000000000006"),
-            UUID("50000000-0000-4000-8000-000000000007"),
-            UUID("50000000-0000-4000-8000-000000000008"),
+            UUID("50000000-0000-4000-8000-000000000009"),
+            UUID("50000000-0000-4000-8000-00000000000a"),
+            UUID("50000000-0000-4000-8000-00000000000b"),
         )
     )
 

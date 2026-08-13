@@ -6,6 +6,7 @@
 - Import boundary: [Immutable source-ingest contract](immutable-ingest.md)
 - Worker: [Restricted worker lifecycle contract](worker-lifecycle.md)
 - Security flow: [DF-IMPORT and DF-PREVIEW](../security/data-flows.md)
+- Downstream transforms: [Non-destructive scan-transform pipeline](image-transform-pipeline.md)
 
 ## Scope and ownership
 
@@ -20,6 +21,12 @@ intent, color/alpha normalization, a fixed correlated RGBA8 artifact, mixed PDF/
 orchestration, and organizer presentation. It does not rewrite an original, persist a re-encoded
 image as authoritative state, alter manifest-v1 meaning, provide arbitrary animation/TIFF/HEIC
 support, or claim calibrated color fidelity.
+
+PWS-0202 consumes this normalized page without changing PWS-0201's source meaning. Its exact order
+is intrinsic EXIF orientation, crop in full logical pre-manifest-transform coordinates, accumulated
+quarter-turn, fine deskew, contrast, background cleanup, and bounded fit/serialization. A new
+transform capability and artifact bind that complete intent; `image.normalize` version 1 remains
+the closed intake operation and is not silently widened.
 
 The package direction is:
 

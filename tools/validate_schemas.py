@@ -21,7 +21,11 @@ from tools.validate_dependencies import (
     INVENTORY_SCHEMA_PATH,
     validate_dependency_fixture_set,
 )
-from tools.validate_manifests import MANIFEST_SCHEMA_PATH, validate_manifest_fixture_set
+from tools.validate_manifests import (
+    CURRENT_MANIFEST_SCHEMA_PATH,
+    MANIFEST_SCHEMA_PATH,
+    validate_manifest_fixture_set,
+)
 from tools.validate_synthetic_fixtures import validate_fixture_index_set
 from tools.validate_tasks import SCHEMA_FILE, TASK_FILE, validate_repository
 from tools.validate_templates import TEMPLATE_SCHEMA_PATH, validate_template_fixture_set
@@ -74,7 +78,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(message, file=sys.stderr)
         return 1
     print(f"OK: validated {TASK_FILE} with {SCHEMA_FILE}.")
-    print(f"OK: validated case-manifest v1 with {MANIFEST_SCHEMA_PATH.as_posix()}.")
+    print(
+        "OK: validated frozen case-manifest v1 and current v2 with "
+        f"{MANIFEST_SCHEMA_PATH.as_posix()} and {CURRENT_MANIFEST_SCHEMA_PATH.as_posix()}."
+    )
     print(f"OK: validated synthetic fixture index v1 with {FIXTURE_INDEX_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated declarative-template v1 with {TEMPLATE_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated worker-RPC v1 with {RPC_SCHEMA_PATH.as_posix()}.")

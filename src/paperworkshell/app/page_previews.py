@@ -21,6 +21,10 @@ from paperworkshell.domain.image_pages import (
     ImagePagePreviewResult,
     reject_image_page,
 )
+from paperworkshell.domain.image_transforms import (
+    ImagePageTransformRequest,
+    ImagePageTransformResult,
+)
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
     PdfThumbnailProgressPhase,
@@ -34,8 +38,8 @@ MAX_PAGE_PREVIEW_TIMEOUT_SECONDS: Final = MAX_PDF_THUMBNAIL_TIMEOUT_SECONDS
 MAX_PAGE_PREVIEW_BATCH_PAGES: Final = 4_096
 PAGE_PREVIEW_PROGRESS_VERSION: Final = 1
 
-PagePreviewRequest = PdfThumbnailRequest | ImagePagePreviewRequest
-PagePreviewResult = PdfThumbnailResult | ImagePagePreviewResult
+PagePreviewRequest = PdfThumbnailRequest | ImagePagePreviewRequest | ImagePageTransformRequest
+PagePreviewResult = PdfThumbnailResult | ImagePagePreviewResult | ImagePageTransformResult
 
 
 class PagePreviewErrorCode(StrEnum):
@@ -189,6 +193,19 @@ class ImagePagePreviewGenerator(Protocol):
         cancellation: CancellationProbe,
         progress: ImagePreviewPhaseSink,
     ) -> ImagePagePreviewResult: ...
+
+
+class ImagePageTransformGenerator(Protocol):
+    """Narrow committed-image transform worker/broker port."""
+
+    def transform(
+        self,
+        request: ImagePageTransformRequest,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ImagePreviewPhaseSink,
+    ) -> ImagePageTransformResult: ...
 
 
 class MonotonicClock(Protocol):
@@ -358,12 +375,13 @@ def _defer_generator_progress(
 class PagePreviewService:
     """Generate one ordered mixed batch under a shared deadline and cancellation probe."""
 
-    __slots__ = ("_id_factory", "_image", "_monotonic", "_pdf")
+    __slots__ = ("_id_factory", "_image", "_monotonic", "_pdf", "_transform")
 
     def __init__(
         self,
         pdf: PdfPagePreviewGenerator,
         image: ImagePagePreviewGenerator,
+        transform: ImagePageTransformGenerator | None = None,
         *,
         monotonic: MonotonicClock = time.monotonic,
         id_factory: Callable[[], UUID] = uuid4,
@@ -371,12 +389,14 @@ class PagePreviewService:
         if (
             not callable(getattr(pdf, "get_or_generate", None))
             or not callable(getattr(image, "get_or_generate", None))
+            or (transform is not None and not callable(getattr(transform, "transform", None)))
             or not callable(monotonic)
             or not callable(id_factory)
         ):
             reject_page_preview(PagePreviewErrorCode.MODEL_INVALID, "preview.service")
         self._pdf = pdf
         self._image = image
+        self._transform = transform
         self._monotonic = monotonic
         self._id_factory = id_factory
 
@@ -506,6 +526,60 @@ class PagePreviewService:
                         "preview.image_result",
                     )
                 result = image_result
+            elif type(request) is ImagePageTransformRequest:
+                transform = self._transform
+                if transform is None:
+                    reject_page_preview(
+                        PagePreviewErrorCode.GENERATOR_FAILED,
+                        "preview.transform_generator",
+                    )
+
+                def report_transform_phase(
+                    phase: ImagePagePreviewProgressPhase,
+                    *,
+                    completed: int = index,
+                ) -> None:
+                    _defer_generator_progress(
+                        callback_failure,
+                        lambda: progress_sink(
+                            PagePreviewProgress(
+                                operation_id,
+                                _image_phase(phase),
+                                completed,
+                                total,
+                            )
+                        ),
+                    )
+
+                try:
+                    transform_result = transform.transform(
+                        request,
+                        deadline=generator_deadline,
+                        cancellation=generator_cancellation,
+                        progress=report_transform_phase,
+                    )
+                except ImagePageError as error:
+                    callback_failure.raise_if_pending()
+                    _rebuild_image_generator_error(error)
+                except PagePreviewError as error:
+                    callback_failure.raise_if_pending()
+                    _rebuild_page_preview_error(error, "preview.transform_generator")
+                except Exception:
+                    callback_failure.raise_if_pending()
+                    reject_page_preview(
+                        PagePreviewErrorCode.GENERATOR_FAILED,
+                        "preview.transform_generator",
+                    )
+                callback_failure.raise_if_pending()
+                if (
+                    type(transform_result) is not ImagePageTransformResult
+                    or transform_result.request != request
+                ):
+                    reject_page_preview(
+                        PagePreviewErrorCode.RESULT_INVALID,
+                        "preview.transform_result",
+                    )
+                result = transform_result
             else:
                 reject_page_preview(PagePreviewErrorCode.INTERNAL_ERROR, "preview.request_type")
             _require_active(deadline, cancellation_probe, "preview.after_page")
@@ -538,7 +612,8 @@ def _require_request_batch(
         type(requests) is not tuple
         or not 1 <= len(requests) <= MAX_PAGE_PREVIEW_BATCH_PAGES
         or any(
-            type(request) not in {PdfThumbnailRequest, ImagePagePreviewRequest}
+            type(request)
+            not in {PdfThumbnailRequest, ImagePagePreviewRequest, ImagePageTransformRequest}
             for request in requests
         )
     ):

@@ -16,6 +16,9 @@ from tools.generate_synthetic_fixtures import (
     PROJECT_ROOT,
     SCHEMA_PATH,
 )
+from tools.image_transform_goldens import (
+    GOLDEN_DIRECTORY as IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
+)
 from tools.validate_synthetic_fixtures import (
     EXPECTED_NEGATIVE_CODES,
     MAX_CORPUS_ENTRIES,
@@ -32,6 +35,10 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
         shutil.copy2(PROJECT_ROOT / SCHEMA_PATH, destination / SCHEMA_PATH)
         shutil.copytree(PROJECT_ROOT / CORPUS_DIRECTORY, destination / CORPUS_DIRECTORY)
         shutil.copytree(PROJECT_ROOT / GOLDEN_DIRECTORY, destination / GOLDEN_DIRECTORY)
+        shutil.copytree(
+            PROJECT_ROOT / IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
+            destination / IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
+        )
 
     def test_checked_in_index_and_corpus_pass(self) -> None:
         index_summary, index_issues = validate_fixture_index_set()
@@ -47,6 +54,32 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
         self.assertEqual([], corpus_issues)
         self.assertEqual(42, corpus_summary.fixture_count if corpus_summary else 0)
         self.assertEqual(15, corpus_summary.golden_reference_count if corpus_summary else 0)
+        self.assertEqual(
+            6,
+            corpus_summary.image_transform_golden_reference_count if corpus_summary else 0,
+        )
+
+    def test_mutated_missing_and_extra_image_transform_goldens_fail_closed(self) -> None:
+        cases = ("mutated", "missing", "extra")
+        for mutation in cases:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                self._copy_fixture_root(root)
+                target = root / IMAGE_TRANSFORM_GOLDEN_DIRECTORY / "crop.png"
+                if mutation == "mutated":
+                    target.write_bytes(target.read_bytes() + b"x")
+                elif mutation == "missing":
+                    target.unlink()
+                else:
+                    (root / IMAGE_TRANSFORM_GOLDEN_DIRECTORY / "extra.png").write_bytes(
+                        b"not-an-image"
+                    )
+
+                summary, issues = validate_fixture_corpus(root, inspect_repository=False)
+
+            self.assertIsNone(summary)
+            self.assertTrue(issues)
+            self.assertTrue(all(issue.code.startswith("GOLDEN_") for issue in issues))
 
     def test_mutated_missing_and_extra_renderer_goldens_fail_closed(self) -> None:
         cases = {

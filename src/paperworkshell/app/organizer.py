@@ -45,8 +45,13 @@ from paperworkshell.domain.case_lifecycle import (
 )
 from paperworkshell.domain.image_pages import (
     MAX_IMAGE_DIMENSION_PIXELS,
-    ImagePagePreviewRequest,
     ImageQuarterTurn,
+)
+from paperworkshell.domain.image_transforms import (
+    IDENTITY_CONTRAST_FACTOR_MILLIONTHS,
+    ImageNormalizedCrop,
+    ImagePageTransformRequest,
+    ImageTransformIntent,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import (
@@ -63,6 +68,7 @@ from paperworkshell.domain.page_operations import (
     OrganizerProjection,
     PageCommandHistory,
     PageOperationErrorCode,
+    PageState,
     RotatePageCommand,
     SequenceChangeCommand,
     SequenceChangeReason,
@@ -566,6 +572,11 @@ class OrganizerBackend:
                 )
             rotation_degrees = page.quarter_turns_clockwise * 90
             if media_type is DetectedMediaType.PDF:
+                if _has_raster_only_transform(page):
+                    reject_page_operation(
+                        PageOperationErrorCode.MODEL_INVALID,
+                        "organizer.pdf_scan_transform",
+                    )
                 request: PagePreviewRequest = PdfThumbnailRequest(
                     case_id=session.snapshot.case_id,
                     page_id=page_id,
@@ -574,12 +585,12 @@ class OrganizerBackend:
                     additional_rotation=PdfRenderRotation(rotation_degrees),
                 )
             else:
-                request = ImagePagePreviewRequest(
+                request = ImagePageTransformRequest(
                     case_id=session.snapshot.case_id,
                     page_id=page_id,
+                    intent=_image_transform_intent(page),
                     maximum_width_pixels=maximum_width_pixels,
                     maximum_height_pixels=maximum_height_pixels,
-                    additional_rotation=ImageQuarterTurn(rotation_degrees),
                 )
             requests.append(request)
         if not requests:
@@ -770,7 +781,11 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
         can_undo=session.history.can_undo,
         can_redo=session.history.can_redo,
         autosave_pending=session.autosave.pending,
-        recovery_review_required=session.load_status is ManifestLoadStatus.RECOVERED,
+        recovery_review_required=session.load_status
+        in {
+            ManifestLoadStatus.RECOVERED,
+            ManifestLoadStatus.RECOVERED_MIGRATED,
+        },
     )
 
 
@@ -799,6 +814,37 @@ def _preview_media_by_source(snapshot: ManifestSnapshot) -> dict[UUID, DetectedM
             reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "organizer.media_type")
         result[source_id] = detected_media_type
     return result
+
+
+def _image_transform_intent(page: PageState) -> ImageTransformIntent:
+    """Bind the authoritative replay projection to one canonical worker intent."""
+
+    if type(page) is not PageState:
+        reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.transform_state")
+    crop = page.crop
+    selected_crop = (
+        ImageNormalizedCrop()
+        if crop is None
+        else ImageNormalizedCrop(crop.x, crop.y, crop.width, crop.height)
+    )
+    return ImageTransformIntent(
+        crop=selected_crop,
+        additional_rotation=ImageQuarterTurn(page.quarter_turns_clockwise * 90),
+        deskew_angle_millidegrees_clockwise=page.deskew_angle_millidegrees_clockwise,
+        contrast_factor_millionths=page.contrast_factor_millionths,
+        background_cleanup_strength_millionths=(page.background_cleanup_strength_millionths),
+    )
+
+
+def _has_raster_only_transform(page: PageState) -> bool:
+    """Return whether a page requests intent not consumed by the PDF preview path."""
+
+    return (
+        page.crop is not None
+        or page.deskew_angle_millidegrees_clockwise != 0
+        or page.contrast_factor_millionths != IDENTITY_CONTRAST_FACTOR_MILLIONTHS
+        or page.background_cleanup_strength_millionths != 0
+    )
 
 
 def _require_active_page(projection: OrganizerProjection, page_id: UUID) -> None:

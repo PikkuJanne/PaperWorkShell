@@ -1,4 +1,4 @@
-"""Pure page-operation replay, commands, and manifest-v1 history integration.
+"""Pure page-operation replay, commands, and versioned manifest history integration.
 
 The module deliberately owns no paths and performs no I/O.  It treats even a
 ``ManifestSnapshot`` as an untrusted boundary, reconstructs the relevant page
@@ -15,6 +15,18 @@ from enum import StrEnum
 from typing import Final, Never, cast
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.image_transforms import (
+    IDENTITY_CONTRAST_FACTOR_MILLIONTHS as _NEUTRAL_CONTRAST_FACTOR_MILLIONTHS,
+)
+from paperworkshell.domain.image_transforms import (
+    MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS as _MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS,
+)
+from paperworkshell.domain.image_transforms import (
+    MAX_CONTRAST_FACTOR_MILLIONTHS as _MAX_CONTRAST_FACTOR_MILLIONTHS,
+)
+from paperworkshell.domain.image_transforms import (
+    MAX_DESKEW_ANGLE_MILLIDEGREES as _MAX_DESKEW_ANGLE_MILLIDEGREES,
+)
 from paperworkshell.domain.manifest_repository import (
     ManifestSnapshot,
     copy_manifest_document,
@@ -25,7 +37,15 @@ MAX_PAGE_OPERATION_COUNT: Final = 4_096
 MAX_REPLAY_MEMBERS: Final = 100_000
 MAX_SAFE_MANIFEST_INTEGER: Final = 9_007_199_254_740_991
 NORMALIZED_PAGE_MILLIONTHS: Final = 1_000_000
-PAGE_OPERATION_VERSION: Final = 1
+LEGACY_PAGE_OPERATION_VERSION: Final = 1
+SCAN_TRANSFORM_OPERATION_VERSION: Final = 2
+# Kept as the default for the released organizer operations. New scan-transform
+# payloads explicitly select ``SCAN_TRANSFORM_OPERATION_VERSION``.
+PAGE_OPERATION_VERSION: Final = LEGACY_PAGE_OPERATION_VERSION
+NEUTRAL_CONTRAST_FACTOR_MILLIONTHS: Final = _NEUTRAL_CONTRAST_FACTOR_MILLIONTHS
+MAX_CONTRAST_FACTOR_MILLIONTHS: Final = _MAX_CONTRAST_FACTOR_MILLIONTHS
+MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS: Final = _MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS
+MAX_DESKEW_ANGLE_MILLIDEGREES: Final = _MAX_DESKEW_ANGLE_MILLIDEGREES
 MAX_ID_GENERATION_ATTEMPTS: Final = 32
 
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
@@ -74,6 +94,9 @@ _ROTATE_MEMBERS: Final = frozenset({"kind", "page_id", "quarter_turns_clockwise"
 _CROP_MEMBERS: Final = frozenset({"kind", "page_id", "box"})
 _SEQUENCE_MEMBERS: Final = frozenset({"kind", "reason", "before_page_ids", "after_page_ids"})
 _GROUP_MEMBERS: Final = frozenset({"kind", "group_id", "page_ids"})
+_DESKEW_MEMBERS: Final = frozenset({"kind", "page_id", "angle_millidegrees_clockwise"})
+_CONTRAST_MEMBERS: Final = frozenset({"kind", "page_id", "factor_millionths"})
+_BACKGROUND_CLEANUP_MEMBERS: Final = frozenset({"kind", "page_id", "strength_millionths"})
 _BOX_MEMBERS: Final = frozenset({"coordinate_space", "x", "y", "width", "height"})
 
 
@@ -95,6 +118,9 @@ class PageOperationErrorCode(StrEnum):
     SEQUENCE_REASON_INVALID = "PAGE_OPERATION_SEQUENCE_REASON_INVALID"
     ROTATION_INVALID = "PAGE_OPERATION_ROTATION_INVALID"
     CROP_INVALID = "PAGE_OPERATION_CROP_INVALID"
+    DESKEW_INVALID = "PAGE_OPERATION_DESKEW_INVALID"
+    CONTRAST_INVALID = "PAGE_OPERATION_CONTRAST_INVALID"
+    BACKGROUND_CLEANUP_INVALID = "PAGE_OPERATION_BACKGROUND_CLEANUP_INVALID"
     GROUP_EMPTY = "PAGE_OPERATION_GROUP_EMPTY"
     UNDO_UNAVAILABLE = "PAGE_OPERATION_UNDO_UNAVAILABLE"
     REDO_UNAVAILABLE = "PAGE_OPERATION_REDO_UNAVAILABLE"
@@ -145,6 +171,15 @@ _SAFE_ERROR_MESSAGES: Final[dict[PageOperationErrorCode, str]] = {
     ),
     PageOperationErrorCode.CROP_INVALID: (
         "The requested crop is outside the normalized page area."
+    ),
+    PageOperationErrorCode.DESKEW_INVALID: (
+        "Choose a deskew angle from minus through plus fifteen degrees."
+    ),
+    PageOperationErrorCode.CONTRAST_INVALID: (
+        "Choose a contrast adjustment within the supported range."
+    ),
+    PageOperationErrorCode.BACKGROUND_CLEANUP_INVALID: (
+        "Choose a background cleanup strength within the supported range."
     ),
     PageOperationErrorCode.GROUP_EMPTY: ("Select at least one page before creating a page group."),
     PageOperationErrorCode.UNDO_UNAVAILABLE: "There is no session page edit to undo.",
@@ -276,13 +311,13 @@ class PageReference:
 
     @classmethod
     def from_manifest(cls, value: Mapping[str, object]) -> PageReference:
-        """Parse one exact case-manifest-v1 page record defensively."""
+        """Parse one exact shared case-manifest page record defensively."""
 
         copied = _copy_public_mapping(value, context="page.manifest")
         return _parse_page_reference(copied)
 
     def to_manifest(self) -> dict[str, object]:
-        """Serialize to the exact case-manifest-v1 page-record shape."""
+        """Serialize to the exact shared case-manifest page-record shape."""
 
         return {
             "page_id": str(self.page_id),
@@ -338,7 +373,7 @@ class NormalizedPageBox:
         return _parse_box(copied)
 
     def to_manifest(self) -> dict[str, object]:
-        """Serialize to the exact case-manifest-v1 normalized-box shape."""
+        """Serialize to the exact shared case-manifest normalized-box shape."""
 
         return {
             "coordinate_space": self.coordinate_space,
@@ -366,7 +401,7 @@ def _parse_box(value: object) -> NormalizedPageBox:
 
 
 class SequenceChangeReason(StrEnum):
-    """Closed manifest-v1 reasons for a page-sequence transition."""
+    """Closed legacy reasons retained by manifest v1/v2 sequence transitions."""
 
     IMPORT = "import"
     REORDER = "reorder"
@@ -429,6 +464,107 @@ class CropPayload:
 
     def to_manifest(self) -> dict[str, object]:
         return {"kind": "crop", "page_id": str(self.page_id), "box": self.box.to_manifest()}
+
+
+@dataclass(frozen=True, slots=True)
+class DeskewPayload:
+    """Latest-wins bounded clockwise fine-rotation intent."""
+
+    page_id: UUID
+    angle_millidegrees_clockwise: int
+
+    def __post_init__(self) -> None:
+        _require_uuid(self.page_id, context="deskew.page_id")
+        if (
+            type(self.angle_millidegrees_clockwise) is not int
+            or not -MAX_DESKEW_ANGLE_MILLIDEGREES
+            <= self.angle_millidegrees_clockwise
+            <= MAX_DESKEW_ANGLE_MILLIDEGREES
+        ):
+            reject_page_operation(PageOperationErrorCode.DESKEW_INVALID, "deskew.angle")
+
+    @classmethod
+    def from_manifest(cls, value: Mapping[str, object]) -> DeskewPayload:
+        copied = _copy_public_mapping(value, context="deskew.manifest")
+        payload = _parse_payload(copied)
+        if type(payload) is not cls:
+            reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "deskew.manifest")
+        return payload
+
+    def to_manifest(self) -> dict[str, object]:
+        return {
+            "kind": "deskew",
+            "page_id": str(self.page_id),
+            "angle_millidegrees_clockwise": self.angle_millidegrees_clockwise,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ContrastPayload:
+    """Latest-wins deterministic contrast factor in integer millionths."""
+
+    page_id: UUID
+    factor_millionths: int
+
+    def __post_init__(self) -> None:
+        _require_uuid(self.page_id, context="contrast.page_id")
+        if (
+            type(self.factor_millionths) is not int
+            or not 0 <= self.factor_millionths <= MAX_CONTRAST_FACTOR_MILLIONTHS
+        ):
+            reject_page_operation(PageOperationErrorCode.CONTRAST_INVALID, "contrast.factor")
+
+    @classmethod
+    def from_manifest(cls, value: Mapping[str, object]) -> ContrastPayload:
+        copied = _copy_public_mapping(value, context="contrast.manifest")
+        payload = _parse_payload(copied)
+        if type(payload) is not cls:
+            reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "contrast.manifest")
+        return payload
+
+    def to_manifest(self) -> dict[str, object]:
+        return {
+            "kind": "contrast",
+            "page_id": str(self.page_id),
+            "factor_millionths": self.factor_millionths,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BackgroundCleanupPayload:
+    """Latest-wins deterministic background cleanup strength."""
+
+    page_id: UUID
+    strength_millionths: int
+
+    def __post_init__(self) -> None:
+        _require_uuid(self.page_id, context="background_cleanup.page_id")
+        if (
+            type(self.strength_millionths) is not int
+            or not 0 <= self.strength_millionths <= MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS
+        ):
+            reject_page_operation(
+                PageOperationErrorCode.BACKGROUND_CLEANUP_INVALID,
+                "background_cleanup.strength",
+            )
+
+    @classmethod
+    def from_manifest(cls, value: Mapping[str, object]) -> BackgroundCleanupPayload:
+        copied = _copy_public_mapping(value, context="background_cleanup.manifest")
+        payload = _parse_payload(copied)
+        if type(payload) is not cls:
+            reject_page_operation(
+                PageOperationErrorCode.MANIFEST_INVALID,
+                "background_cleanup.manifest",
+            )
+        return payload
+
+    def to_manifest(self) -> dict[str, object]:
+        return {
+            "kind": "background_cleanup",
+            "page_id": str(self.page_id),
+            "strength_millionths": self.strength_millionths,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,11 +637,31 @@ class SetGroupPayload:
         }
 
 
-type PageOperationPayload = RotatePayload | CropPayload | ChangeSequencePayload | SetGroupPayload
+type PageOperationPayload = (
+    RotatePayload
+    | CropPayload
+    | ChangeSequencePayload
+    | SetGroupPayload
+    | DeskewPayload
+    | ContrastPayload
+    | BackgroundCleanupPayload
+)
 RotatePagePayload = RotatePayload
 CropPagePayload = CropPayload
 SequenceChangePayload = ChangeSequencePayload
 GroupPayload = SetGroupPayload
+
+_LEGACY_PAYLOAD_TYPES: Final = (
+    RotatePayload,
+    CropPayload,
+    ChangeSequencePayload,
+    SetGroupPayload,
+)
+_SCAN_TRANSFORM_PAYLOAD_TYPES: Final = (
+    DeskewPayload,
+    ContrastPayload,
+    BackgroundCleanupPayload,
+)
 
 
 def _parse_payload(value: object) -> PageOperationPayload:
@@ -526,6 +682,40 @@ def _parse_payload(value: object) -> PageOperationPayload:
         return CropPayload(
             page_id=_parse_uuid(payload["page_id"], context="crop.page_id"),
             box=_parse_box(payload["box"]),
+        )
+    if kind == "deskew":
+        payload = _require_members(value, _DESKEW_MEMBERS, context="deskew.manifest")
+        angle = payload["angle_millidegrees_clockwise"]
+        if type(angle) is not int:
+            reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "deskew.angle")
+        return DeskewPayload(
+            page_id=_parse_uuid(payload["page_id"], context="deskew.page_id"),
+            angle_millidegrees_clockwise=angle,
+        )
+    if kind == "contrast":
+        payload = _require_members(value, _CONTRAST_MEMBERS, context="contrast.manifest")
+        factor = payload["factor_millionths"]
+        if type(factor) is not int:
+            reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "contrast.factor")
+        return ContrastPayload(
+            page_id=_parse_uuid(payload["page_id"], context="contrast.page_id"),
+            factor_millionths=factor,
+        )
+    if kind == "background_cleanup":
+        payload = _require_members(
+            value,
+            _BACKGROUND_CLEANUP_MEMBERS,
+            context="background_cleanup.manifest",
+        )
+        strength = payload["strength_millionths"]
+        if type(strength) is not int:
+            reject_page_operation(
+                PageOperationErrorCode.MANIFEST_INVALID,
+                "background_cleanup.strength",
+            )
+        return BackgroundCleanupPayload(
+            page_id=_parse_uuid(payload["page_id"], context="background_cleanup.page_id"),
+            strength_millionths=strength,
         )
     if kind == "change_sequence":
         payload = _require_members(value, _SEQUENCE_MEMBERS, context="sequence.manifest")
@@ -569,25 +759,36 @@ class PageOperation:
         _require_uuid(self.operation_id, context="operation.id")
         if type(self.operation_version) is not int:
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "operation.version")
-        if self.operation_version != PAGE_OPERATION_VERSION:
+        if self.operation_version not in {
+            LEGACY_PAGE_OPERATION_VERSION,
+            SCAN_TRANSFORM_OPERATION_VERSION,
+        }:
             reject_page_operation(PageOperationErrorCode.VERSION_UNSUPPORTED, "operation.version")
+        payload_type = type(self.payload)
+        if (
+            self.operation_version == LEGACY_PAGE_OPERATION_VERSION
+            and payload_type not in _LEGACY_PAYLOAD_TYPES
+        ) or (
+            self.operation_version == SCAN_TRANSFORM_OPERATION_VERSION
+            and payload_type not in _SCAN_TRANSFORM_PAYLOAD_TYPES
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "operation.version_payload")
         if (
             type(self.sequence) is not int
             or not 1 <= self.sequence <= MAX_SAFE_MANIFEST_INTEGER
-            or type(self.payload)
-            not in {RotatePayload, CropPayload, ChangeSequencePayload, SetGroupPayload}
+            or payload_type not in {*_LEGACY_PAYLOAD_TYPES, *_SCAN_TRANSFORM_PAYLOAD_TYPES}
         ):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "operation.model")
 
     @classmethod
     def from_manifest(cls, value: Mapping[str, object]) -> PageOperation:
-        """Parse one exact case-manifest-v1 operation without retaining its containers."""
+        """Parse one exact versioned manifest operation without retaining containers."""
 
         copied = _copy_public_mapping(value, context="operation.manifest")
         return _parse_operation(copied)
 
     def to_manifest(self) -> dict[str, object]:
-        """Serialize to the exact case-manifest-v1 page-operation shape."""
+        """Serialize to the exact versioned manifest page-operation shape."""
 
         return {
             "operation_id": str(self.operation_id),
@@ -603,15 +804,23 @@ def _parse_operation(value: object) -> PageOperation:
     sequence = operation["sequence"]
     if type(version) is not int:
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "operation.version")
-    if version != PAGE_OPERATION_VERSION:
+    if version not in {LEGACY_PAGE_OPERATION_VERSION, SCAN_TRANSFORM_OPERATION_VERSION}:
         reject_page_operation(PageOperationErrorCode.VERSION_UNSUPPORTED, "operation.version")
     if type(sequence) is not int or not 1 <= sequence <= MAX_SAFE_MANIFEST_INTEGER:
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "operation.sequence")
+    payload = _parse_payload(operation["payload"])
+    if (
+        version == LEGACY_PAGE_OPERATION_VERSION and type(payload) not in _LEGACY_PAYLOAD_TYPES
+    ) or (
+        version == SCAN_TRANSFORM_OPERATION_VERSION
+        and type(payload) not in _SCAN_TRANSFORM_PAYLOAD_TYPES
+    ):
+        reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "operation.version_payload")
     return PageOperation(
         operation_id=_parse_uuid(operation["operation_id"], context="operation.id"),
         operation_version=version,
         sequence=sequence,
-        payload=_parse_payload(operation["payload"]),
+        payload=payload,
     )
 
 
@@ -639,6 +848,9 @@ class PageState:
     active: bool
     quarter_turns_clockwise: int
     crop: NormalizedPageBox | None
+    deskew_angle_millidegrees_clockwise: int = 0
+    contrast_factor_millionths: int = NEUTRAL_CONTRAST_FACTOR_MILLIONTHS
+    background_cleanup_strength_millionths: int = 0
     group_ids: tuple[UUID, ...] = ()
 
     def __post_init__(self) -> None:
@@ -648,6 +860,16 @@ class PageState:
             type(self.quarter_turns_clockwise) is not int
             or not 0 <= self.quarter_turns_clockwise <= 3
             or (self.crop is not None and type(self.crop) is not NormalizedPageBox)
+            or type(self.deskew_angle_millidegrees_clockwise) is not int
+            or not -MAX_DESKEW_ANGLE_MILLIDEGREES
+            <= self.deskew_angle_millidegrees_clockwise
+            <= MAX_DESKEW_ANGLE_MILLIDEGREES
+            or type(self.contrast_factor_millionths) is not int
+            or not 0 <= self.contrast_factor_millionths <= MAX_CONTRAST_FACTOR_MILLIONTHS
+            or type(self.background_cleanup_strength_millionths) is not int
+            or not 0
+            <= self.background_cleanup_strength_millionths
+            <= MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS
         ):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "projection.transform")
         object.__setattr__(
@@ -757,7 +979,7 @@ def replay_page_operations(
     *,
     final_sequence: Sequence[UUID] | None = None,
 ) -> OrganizerProjection:
-    """Replay validated page intent with the exact manifest-v1 semantic rules."""
+    """Replay validated page intent with the exact versioned manifest semantics."""
 
     return _replay_page_operations(
         pages,
@@ -843,6 +1065,9 @@ def _replay_page_operations(
     introduced = set(base)
     rotations: dict[UUID, int] = {page_id: 0 for page_id in page_ids}
     crops: dict[UUID, NormalizedPageBox] = {}
+    deskew_angles: dict[UUID, int] = {}
+    contrast_factors: dict[UUID, int] = {}
+    background_cleanup_strengths: dict[UUID, int] = {}
     groups: dict[UUID, tuple[UUID, ...]] = {}
     for operation in operation_records:
         payload = operation.payload
@@ -855,6 +1080,23 @@ def _replay_page_operations(
         if type(payload) is CropPayload:
             _require_introduced_page(payload.page_id, known_pages, introduced, "replay.crop")
             crops[payload.page_id] = payload.box
+            continue
+        if type(payload) is DeskewPayload:
+            _require_introduced_page(payload.page_id, known_pages, introduced, "replay.deskew")
+            deskew_angles[payload.page_id] = payload.angle_millidegrees_clockwise
+            continue
+        if type(payload) is ContrastPayload:
+            _require_introduced_page(payload.page_id, known_pages, introduced, "replay.contrast")
+            contrast_factors[payload.page_id] = payload.factor_millionths
+            continue
+        if type(payload) is BackgroundCleanupPayload:
+            _require_introduced_page(
+                payload.page_id,
+                known_pages,
+                introduced,
+                "replay.background_cleanup",
+            )
+            background_cleanup_strengths[payload.page_id] = payload.strength_millionths
             continue
         if type(payload) is ChangeSequencePayload:
             if tuple(sequence) != payload.before_page_ids:
@@ -899,6 +1141,15 @@ def _replay_page_operations(
             active=page.page_id in active,
             quarter_turns_clockwise=rotations[page.page_id],
             crop=crops.get(page.page_id),
+            deskew_angle_millidegrees_clockwise=deskew_angles.get(page.page_id, 0),
+            contrast_factor_millionths=contrast_factors.get(
+                page.page_id,
+                NEUTRAL_CONTRAST_FACTOR_MILLIONTHS,
+            ),
+            background_cleanup_strength_millionths=background_cleanup_strengths.get(
+                page.page_id,
+                0,
+            ),
             group_ids=tuple(page_groups[page.page_id]),
         )
         for page in page_records
@@ -988,6 +1239,52 @@ class RotatePageCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class CropPageCommand:
+    """Session command replacing the normalized crop intent for one page."""
+
+    page_id: UUID
+    box: NormalizedPageBox
+
+    def __post_init__(self) -> None:
+        _require_uuid(self.page_id, context="command.crop_page")
+        if type(self.box) is not NormalizedPageBox:
+            reject_page_operation(PageOperationErrorCode.CROP_INVALID, "command.crop")
+
+
+@dataclass(frozen=True, slots=True)
+class DeskewPageCommand:
+    """Session command replacing one page's bounded fine-rotation intent."""
+
+    page_id: UUID
+    angle_millidegrees_clockwise: int
+
+    def __post_init__(self) -> None:
+        DeskewPayload(self.page_id, self.angle_millidegrees_clockwise)
+
+
+@dataclass(frozen=True, slots=True)
+class ContrastPageCommand:
+    """Session command replacing one page's deterministic contrast factor."""
+
+    page_id: UUID
+    factor_millionths: int
+
+    def __post_init__(self) -> None:
+        ContrastPayload(self.page_id, self.factor_millionths)
+
+
+@dataclass(frozen=True, slots=True)
+class BackgroundCleanupPageCommand:
+    """Session command replacing one page's background cleanup strength."""
+
+    page_id: UUID
+    strength_millionths: int
+
+    def __post_init__(self) -> None:
+        BackgroundCleanupPayload(self.page_id, self.strength_millionths)
+
+
+@dataclass(frozen=True, slots=True)
 class SetGroupCommand:
     """Session command that creates or replaces one logical page group."""
 
@@ -1004,7 +1301,15 @@ class SetGroupCommand:
             _require_uuid(self.group_id, context="command.group_id")
 
 
-type PageCommand = SequenceChangeCommand | RotatePageCommand | SetGroupCommand
+type PageCommand = (
+    SequenceChangeCommand
+    | RotatePageCommand
+    | CropPageCommand
+    | DeskewPageCommand
+    | ContrastPageCommand
+    | BackgroundCleanupPageCommand
+    | SetGroupCommand
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1108,7 +1413,15 @@ class PageCommandHistory:
     ) -> PageCommandHistory:
         """Return a new history containing one validated session operation."""
 
-        if type(command) not in {SequenceChangeCommand, RotatePageCommand, SetGroupCommand}:
+        if type(command) not in {
+            SequenceChangeCommand,
+            RotatePageCommand,
+            CropPageCommand,
+            DeskewPageCommand,
+            ContrastPageCommand,
+            BackgroundCleanupPageCommand,
+            SetGroupCommand,
+        }:
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "history.command")
         if len(self._durable_operations) + len(self._owned_operations) >= MAX_PAGE_OPERATION_COUNT:
             reject_page_operation(PageOperationErrorCode.CAPACITY_EXCEEDED, "history.operations")
@@ -1130,6 +1443,14 @@ class PageCommandHistory:
             )
         elif isinstance(command, RotatePageCommand):
             payload = RotatePayload(command.page_id, command.quarter_turns_clockwise)
+        elif isinstance(command, CropPageCommand):
+            payload = CropPayload(command.page_id, command.box)
+        elif isinstance(command, DeskewPageCommand):
+            payload = DeskewPayload(command.page_id, command.angle_millidegrees_clockwise)
+        elif isinstance(command, ContrastPageCommand):
+            payload = ContrastPayload(command.page_id, command.factor_millionths)
+        elif isinstance(command, BackgroundCleanupPageCommand):
+            payload = BackgroundCleanupPayload(command.page_id, command.strength_millionths)
         elif isinstance(command, SetGroupCommand):
             existing_groups = {group.group_id for group in self._projection.groups}
             group_id = command.group_id
@@ -1147,6 +1468,11 @@ class PageCommandHistory:
             operation_id=operation_id,
             sequence=len(self.operations) + 1,
             payload=payload,
+            operation_version=(
+                SCAN_TRANSFORM_OPERATION_VERSION
+                if type(payload) in _SCAN_TRANSFORM_PAYLOAD_TYPES
+                else LEGACY_PAGE_OPERATION_VERSION
+            ),
         )
         session = self._session_operations + (operation,)
         projection = _replay_page_operations(
@@ -1305,9 +1631,9 @@ def _parse_snapshot(snapshot: ManifestSnapshot) -> _ParsedSnapshot:
     except Exception:
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "snapshot.document")
     _require_members(document, _ROOT_MEMBERS, context="snapshot.root")
-    if type(document["schema_version"]) is int and document["schema_version"] != 1:
+    if type(document["schema_version"]) is int and document["schema_version"] not in {1, 2}:
         reject_page_operation(PageOperationErrorCode.VERSION_UNSUPPORTED, "snapshot.version")
-    if document["schema_version"] != 1 or document["case_id"] != str(snapshot.case_id):
+    if document["schema_version"] not in {1, 2} or document["case_id"] != str(snapshot.case_id):
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "snapshot.identity")
     case_id = _parse_uuid(document["case_id"], context="snapshot.case_id")
     unrelated_namespace: set[UUID] = {case_id}
@@ -1380,6 +1706,10 @@ def _parse_snapshot(snapshot: ManifestSnapshot) -> _ParsedSnapshot:
     if type(raw_operations) is not list or len(raw_operations) > MAX_PAGE_OPERATION_COUNT:
         reject_page_operation(PageOperationErrorCode.CAPACITY_EXCEEDED, "snapshot.operations")
     operations = tuple(_parse_operation(operation) for operation in raw_operations)
+    if document["schema_version"] == 1 and any(
+        operation.operation_version != LEGACY_PAGE_OPERATION_VERSION for operation in operations
+    ):
+        reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "snapshot.operations")
     projection = _replay_page_operations(
         pages,
         base,

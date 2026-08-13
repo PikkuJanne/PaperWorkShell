@@ -1,4 +1,4 @@
-"""Routine-output privacy evidence for PWS-0201 image page previews."""
+"""Routine-output privacy evidence for image normalization and transforms."""
 
 from __future__ import annotations
 
@@ -36,25 +36,46 @@ from paperworkshell.domain.image_pages import (
     ImagePagePreviewRequest,
     ImagePagePreviewResult,
     ImageQuarterTurn,
+    ImageRgba8Layout,
     ImageSourceColorModel,
     ImageSourceFormat,
     image_page_preview_result_from_artifact,
     reject_image_page,
 )
+from paperworkshell.domain.image_transforms import (
+    ImagePageTransformRequest,
+    ImagePageTransformResult,
+    ImageTransformArtifact,
+    ImageTransformArtifactHeader,
+    ImageTransformCacheKey,
+    ImageTransformIntent,
+    ImageTransformLimits,
+    ImageTransformResult,
+    image_page_transform_result_from_artifact,
+    plan_image_transform,
+)
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailRequest,
     PdfThumbnailResult,
+)
+from paperworkshell.worker.protocol.models import (
+    CaseObjectReference,
+    OperationStartPayload,
+    ReferenceArea,
+    ResourceLimits,
 )
 
 _CASE_ID = UUID("85100000-0000-4000-8000-000000000001")
 _PAGE_ID = UUID("85100000-0000-4000-8000-000000000002")
 _OPERATION_ID = UUID("85100000-0000-4000-8000-000000000003")
 _OUTPUT_ID = UUID("85100000-0000-4000-8000-000000000004")
+_SOURCE_ID = UUID("85100000-0000-4000-8000-000000000005")
 _PRIVATE_PATH = r"C:\private\Applicant Name\passport-photo.png"
 _PRIVATE_NAME = "PRIVATE-APPLICANT-NAME-CANARY"
 _PRIVATE_METADATA_VALUE = "EXIF-USER-COMMENT-PRIVATE-CANARY"
 _RAW_EXCEPTION_VALUE = "NATIVE-DECODER-PRIVATE-CANARY"
 _PRIVATE_PIXELS = bytes((80, 82, 73, 255, 86, 65, 84, 255))
+_PRIVATE_SOURCE_DIGEST = hashlib.sha256(b"TRANSFORM-ENCODED-SOURCE-PRIVATE-CANARY").hexdigest()
 
 
 def _metadata() -> ImagePageMetadata:
@@ -102,6 +123,109 @@ def _result(request: ImagePagePreviewRequest | None = None) -> ImagePagePreviewR
     return image_page_preview_result_from_artifact(selected_request, _artifact())
 
 
+def _transform_request() -> ImagePageTransformRequest:
+    return ImagePageTransformRequest(
+        _CASE_ID,
+        _PAGE_ID,
+        ImageTransformIntent(),
+        2,
+        1,
+    )
+
+
+def _transform_result(
+    request: ImagePageTransformRequest | None = None,
+) -> ImagePageTransformResult:
+    selected_request = _transform_request() if request is None else request
+    return image_page_transform_result_from_artifact(
+        selected_request,
+        _transform_artifact(),
+    )
+
+
+def _transform_artifact() -> ImageTransformArtifact:
+    intent = ImageTransformIntent()
+    source_layout = ImageRgba8Layout(2, 1, 8, 2, len(_PRIVATE_PIXELS))
+    cache_key = ImageTransformCacheKey(
+        case_id=_CASE_ID,
+        source_id=_SOURCE_ID,
+        page_id=_PAGE_ID,
+        source_byte_size=123,
+        source_sha256=_PRIVATE_SOURCE_DIGEST,
+        source_format=ImageSourceFormat.PNG,
+        source_layout=source_layout,
+        source_pixel_sha256=hashlib.sha256(_PRIVATE_PIXELS).hexdigest(),
+        exif_orientation=ImageExifOrientation.NORMAL,
+        intent=intent,
+        maximum_width_pixels=2,
+        maximum_height_pixels=1,
+    )
+    limits = ImageTransformLimits(
+        maximum_source_width_pixels=2,
+        maximum_source_height_pixels=1,
+        maximum_source_pixels=2,
+        maximum_intermediate_pixels=2,
+        maximum_output_width_pixels=2,
+        maximum_output_height_pixels=1,
+        maximum_output_pixels=2,
+        maximum_output_bytes=len(_PRIVATE_PIXELS),
+        maximum_memory_bytes=1_000_000,
+        maximum_temporary_storage_bytes=2 * len(_PRIVATE_PIXELS),
+        wall_time_ms=1_000,
+    )
+    plan = plan_image_transform(source_layout, intent, 2, 1, limits)
+    transform_result = ImageTransformResult(
+        source_width_pixels=plan.source_layout.width_pixels,
+        source_height_pixels=plan.source_layout.height_pixels,
+        crop_left_pixels=plan.crop_left_pixels,
+        crop_top_pixels=plan.crop_top_pixels,
+        crop_right_pixels=plan.crop_right_pixels,
+        crop_bottom_pixels=plan.crop_bottom_pixels,
+        rotated_width_pixels=plan.rotated_width_pixels,
+        rotated_height_pixels=plan.rotated_height_pixels,
+        width_pixels=plan.output_layout.width_pixels,
+        height_pixels=plan.output_layout.height_pixels,
+        row_stride_bytes=plan.output_layout.row_stride_bytes,
+        bytes_written=plan.output_layout.byte_count,
+        pixel_sha256=hashlib.sha256(_PRIVATE_PIXELS).hexdigest(),
+        intent_sha256=intent.intent_sha256,
+    )
+    header = ImageTransformArtifactHeader(
+        _OPERATION_ID,
+        _OUTPUT_ID,
+        cache_key,
+        transform_result,
+    )
+    return ImageTransformArtifact(header, _PRIVATE_PIXELS)
+
+
+def _transform_start_payload() -> tuple[CaseObjectReference, OperationStartPayload]:
+    reference = CaseObjectReference(
+        area=ReferenceArea.SOURCE_READ,
+        object_id=_SOURCE_ID,
+        operation_id=None,
+        content_kind="png",
+        expected_byte_size=123,
+        expected_sha256=_PRIVATE_SOURCE_DIGEST,
+    )
+    payload = OperationStartPayload(
+        operation_kind="image.transform",
+        operation_version=1,
+        inputs=(reference,),
+        parameters=(),
+        requested_limits=ResourceLimits(
+            wall_time_ms=1_000,
+            cpu_time_ms=500,
+            memory_bytes=1_000_000,
+            temporary_storage_bytes=16,
+            output_bytes=1_024,
+            page_count=1,
+            pixel_count=2,
+        ),
+    )
+    return reference, payload
+
+
 class _UnusedPdfGenerator:
     def get_or_generate(
         self,
@@ -136,12 +260,44 @@ class _ImageGenerator:
         return self._outcome(request)
 
 
+class _TransformGenerator:
+    def __init__(
+        self,
+        outcome: Callable[[ImagePageTransformRequest], ImagePageTransformResult],
+    ) -> None:
+        self._outcome = outcome
+
+    def transform(
+        self,
+        request: ImagePageTransformRequest,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ImagePreviewPhaseSink,
+    ) -> ImagePageTransformResult:
+        assert deadline() is False
+        assert cancellation() is False
+        progress(ImagePagePreviewProgressPhase.GENERATING)
+        return self._outcome(request)
+
+
 def _service(
     outcome: Callable[[ImagePagePreviewRequest], ImagePagePreviewResult],
 ) -> PagePreviewService:
     return PagePreviewService(
         _UnusedPdfGenerator(),
         _ImageGenerator(outcome),
+        id_factory=lambda: _OPERATION_ID,
+    )
+
+
+def _transform_service(
+    outcome: Callable[[ImagePageTransformRequest], ImagePageTransformResult],
+) -> PagePreviewService:
+    return PagePreviewService(
+        _UnusedPdfGenerator(),
+        _ImageGenerator(lambda request: _result(request)),
+        _TransformGenerator(outcome),
         id_factory=lambda: _OPERATION_ID,
     )
 
@@ -162,6 +318,21 @@ def _privacy_canaries(result: ImagePagePreviewResult) -> tuple[str, ...]:
         result.snapshot.pixels.hex(),
         repr(result.snapshot.pixels),
         hashlib.sha256(result.snapshot.pixels).hexdigest(),
+    )
+
+
+def _transform_privacy_canaries(result: ImagePageTransformResult) -> tuple[str, ...]:
+    return (
+        _PRIVATE_PATH,
+        _PRIVATE_NAME,
+        _PRIVATE_METADATA_VALUE,
+        _RAW_EXCEPTION_VALUE,
+        _PRIVATE_SOURCE_DIGEST,
+        result.pixels.hex(),
+        repr(result.pixels),
+        hashlib.sha256(result.pixels).hexdigest(),
+        result.snapshot.cache_key_sha256,
+        result.request.intent.intent_sha256,
     )
 
 
@@ -203,6 +374,131 @@ def test_typed_image_results_progress_and_logs_exclude_private_values(
     assert not hasattr(result.snapshot.metadata, "exif_values")
     assert not hasattr(result.snapshot.metadata, "source_name")
     assert not hasattr(result.snapshot, "source_path")
+
+
+def test_typed_transform_request_result_progress_and_logs_exclude_private_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    reference, start_payload = _transform_start_payload()
+    artifact = _transform_artifact()
+    result = image_page_transform_result_from_artifact(_transform_request(), artifact)
+    progress = PagePreviewProgress(
+        _OPERATION_ID,
+        PagePreviewProgressPhase.COMPLETE,
+        1,
+        1,
+    )
+    rendered_objects = (
+        reference,
+        start_payload,
+        artifact.header.cache_key,
+        artifact.header.result,
+        artifact.header,
+        artifact,
+        result.request.intent,
+        result.request,
+        result.snapshot,
+        result,
+        progress,
+    )
+    logging.getLogger("paperworkshell.tests.image_transform_privacy").debug(
+        "image-transform=%r",
+        rendered_objects,
+    )
+
+    rendered = "\n".join(
+        (
+            *(repr(value) for value in rendered_objects),
+            *(str(value) for value in rendered_objects),
+            caplog.text,
+        )
+    )
+    assert all(canary not in rendered for canary in _transform_privacy_canaries(result))
+    assert not hasattr(result.request, "source_path")
+    assert not hasattr(result.snapshot, "source_path")
+    assert not hasattr(result.snapshot, "pixels")
+    assert reference.expected_sha256 == _PRIVATE_SOURCE_DIGEST
+    assert artifact.header.cache_key.source_sha256 == _PRIVATE_SOURCE_DIGEST
+
+
+def test_raw_transform_generator_failure_drops_canaries_and_exception_chain(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private = " ".join(
+        (_PRIVATE_PATH, _PRIVATE_NAME, _PRIVATE_METADATA_VALUE, _RAW_EXCEPTION_VALUE)
+    )
+
+    def fail(_: ImagePageTransformRequest) -> ImagePageTransformResult:
+        raise RuntimeError(private)
+
+    with pytest.raises(PagePreviewError) as raised:
+        _transform_service(fail).get_previews((_transform_request(),))
+
+    assert raised.value.code is PagePreviewErrorCode.GENERATOR_FAILED
+    assert raised.value.context == "preview.transform_generator"
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = _render_exception(raised.value) + caplog.text
+    assert all(
+        canary not in rendered for canary in _transform_privacy_canaries(_transform_result())
+    )
+
+
+def test_chained_transform_error_is_rebuilt_without_generator_owned_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private = " ".join(
+        (_PRIVATE_PATH, _PRIVATE_NAME, _PRIVATE_METADATA_VALUE, _RAW_EXCEPTION_VALUE)
+    )
+
+    def fail(_: ImagePageTransformRequest) -> ImagePageTransformResult:
+        try:
+            raise RuntimeError(private)
+        except RuntimeError as raw_error:
+            malformed = ImagePageError(ImagePageErrorCode.MALFORMED, "image.transform")
+            malformed.context = private
+            malformed.args = (private,)
+            raise malformed from raw_error
+
+    with pytest.raises(ImagePageError) as raised:
+        _transform_service(fail).get_previews((_transform_request(),))
+
+    assert raised.value.code is ImagePageErrorCode.MALFORMED
+    assert raised.value.context == "image.page"
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = _render_exception(raised.value) + caplog.text
+    assert all(
+        canary not in rendered for canary in _transform_privacy_canaries(_transform_result())
+    )
+
+
+def test_transform_phase_progress_failure_drops_callback_values_and_chain(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private = " ".join(
+        (_PRIVATE_PATH, _PRIVATE_NAME, _PRIVATE_METADATA_VALUE, _RAW_EXCEPTION_VALUE)
+    )
+
+    def fail_on_generation(progress: PagePreviewProgress) -> None:
+        if progress.phase is PagePreviewProgressPhase.GENERATING:
+            raise RuntimeError(private)
+
+    with pytest.raises(PagePreviewError) as raised:
+        _transform_service(_transform_result).get_previews(
+            (_transform_request(),),
+            progress=fail_on_generation,
+        )
+
+    assert raised.value.code is PagePreviewErrorCode.INTERNAL_ERROR
+    assert raised.value.context == "preview.progress_sink"
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = _render_exception(raised.value) + caplog.text
+    assert all(
+        canary not in rendered for canary in _transform_privacy_canaries(_transform_result())
+    )
 
 
 def test_domain_and_app_rejections_drop_raw_exception_links_and_values(

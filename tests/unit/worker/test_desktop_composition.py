@@ -28,6 +28,7 @@ from paperworkshell.worker.desktop_composition import (
 )
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.image_page_broker import ImageNormalizeBrokerPolicy
+from paperworkshell.worker.image_transform_broker import ImageTransformBrokerPolicy
 from paperworkshell.worker.pdf_source_inspector import (
     PdfInspectionBrokerPolicy,
     PreparedSourceHandleBroker,
@@ -39,6 +40,7 @@ from paperworkshell.worker.pdf_thumbnail_broker import (
 )
 from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_TRANSFORM_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     CapabilityDescriptor,
@@ -154,6 +156,17 @@ def _config(tmp_path: Path) -> DesktopWorkerCompositionConfig:
                 pixel_count=10_000_000,
             )
         ),
+        image_transform_policy=ImageTransformBrokerPolicy(
+            ResourceLimits(
+                wall_time_ms=15_000,
+                cpu_time_ms=10_000,
+                memory_bytes=256 * 1024 * 1024,
+                temporary_storage_bytes=128 * 1024 * 1024,
+                output_bytes=40_001_024,
+                page_count=1,
+                pixel_count=10_000_000,
+            )
+        ),
         thumbnail_policy=PdfThumbnailBrokerPolicy(_operation_limits()),
     )
 
@@ -200,16 +213,19 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     assert isinstance(source_port, SourceInspector)
     assert callable(thumbnail_port.get_or_generate)
     assert callable(image_port.get_or_generate)
+    assert callable(composition.image_page_transformer.transform)
     assert callable(composition.image_source_inspector.inspect)
     assert isinstance(worker.launcher, WindowsProcessLauncher)
     assert worker.required_capabilities == (
         IMAGE_NORMALIZE_CAPABILITY,
+        IMAGE_TRANSFORM_CAPABILITY,
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
     )
     assert cast(Any, source_port)._worker is worker
     assert cast(Any, thumbnail_port)._worker is worker
     assert cast(Any, image_port)._worker is worker
+    assert cast(Any, composition.image_page_transformer)._worker is worker
     assert cast(Any, source_port)._heavy_operations is cast(Any, thumbnail_port)._heavy_operations
     assert composition.heavy_operation_snapshot().maximum_concurrency == 1
     assert worker.constructed_thread == threading.get_ident()

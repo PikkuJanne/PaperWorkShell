@@ -61,6 +61,10 @@ from paperworkshell.domain.image_pages import (
     ImagePagePreviewResult,
     ImagePagePreviewSnapshot,
 )
+from paperworkshell.domain.image_transforms import (
+    ImagePageTransformResult,
+    ImagePageTransformSnapshot,
+)
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult, PdfThumbnailSnapshot
 from paperworkshell.domain.recovery import (
     CaseRecoveryStatus,
@@ -836,23 +840,30 @@ class PaperWorkShellWindow(QMainWindow):
             self._reject_preview_result(operation_id)
             return
         expected = self._active_preview_page_ids
-        snapshots: list[PdfThumbnailSnapshot | ImagePagePreviewSnapshot] = []
+        snapshots: list[
+            tuple[
+                PdfThumbnailSnapshot | ImagePagePreviewSnapshot | ImagePageTransformSnapshot,
+                bytes,
+            ]
+        ] = []
         for result in results:
             if type(result) is PdfThumbnailResult:
-                snapshots.append(result.snapshot)
+                snapshots.append((result.snapshot, result.snapshot.pixels))
             elif type(result) is ImagePagePreviewResult:
-                snapshots.append(result.snapshot)
+                snapshots.append((result.snapshot, result.snapshot.pixels))
+            elif type(result) is ImagePageTransformResult:
+                snapshots.append((result.snapshot, result.pixels))
             else:
                 self._reject_preview_result(operation_id)
                 return
-        received = tuple(snapshot.page_id for snapshot in snapshots)
+        received = tuple(snapshot.page_id for snapshot, _pixels in snapshots)
         if received != expected:
             self._reject_preview_result(operation_id)
             return
         images_valid = True
-        for snapshot in snapshots:
+        for snapshot, pixels in snapshots:
             image = QImage(
-                snapshot.pixels,
+                pixels,
                 snapshot.width_pixels,
                 snapshot.height_pixels,
                 snapshot.row_stride_bytes,
