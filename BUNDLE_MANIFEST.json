@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.62",
+  "bundle_version": "0.1.63",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 183037,
-      "sha256": "937ba9e4139928832e707eaad03ddb58b13aec9e80e560e05989ce876cb163a9"
+      "bytes": 186792,
+      "sha256": "76be77f0fe9ac727661024cfba8bf4faf5f1d67c0d6ef71431aca92306fd46b3"
     },
     {
       "path": "TASKS.schema.json",
@@ -44,8 +44,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 24367,
-      "sha256": "8e52bea0f23a2d9aa499455da2dab2bb51ad9a682f669076594ec73830fd9e3a"
+      "bytes": 24974,
+      "sha256": "f740110bc60b623d0d2de47e86f1cc45a9775c56fa0f9ff962833b5dcaa6dfad"
     }
   ],
   "validation": {
@@ -56,12 +56,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0201"
+      "PWS-0202"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0115 and PWS-0114 are done: the accepted PWS-D041 constrained software-resource contract, focused failure paths, exact-revision canonical report, two-page derivative inspection, and final quality evidence pass. Physical low-end hardware was not tested and is optional/non-gating; PWS-0201 is the next ready task.",
+    "PWS-0201 is done: bounded immutable JPEG/PNG intake, strict Pillow normalization, additive image.normalize worker RPC, mixed PDF/image organizer previews, hostile-input and resource-failure coverage, live AppContainer verification, and the final repository quality gate pass. PWS-0202 is the sole next ready task.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

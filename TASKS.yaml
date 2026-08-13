@@ -1512,7 +1512,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0114
@@ -1542,17 +1542,28 @@ tasks:
   - dos
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-13'
+    revision: "83c9ae0f967519a17bb2745f1f24cc7d066955ef"
+    commands:
+    - ".venv\\Scripts\\python.exe tools/dev.py check at 83c9ae0 - passed; 301 files formatted/linted and strictly typed, 13 import layers across 111 source files, 2348 unit tests, 378 integration tests with 2 disclosed Windows link-capability skips, 273 security tests with 6 disclosed link/privilege skips, 19 accessibility tests, every registered validator, the bounded secret scan, and all 5 deliberate quality violations"
+    - ".venv\\Scripts\\python.exe -m pytest -q tests/integration/test_image_normalize_adapter_appcontainer_windows.py tests/integration/test_image_normalize_worker_windows.py - passed; 3 focused live tests in 26.84 seconds with no pre-existing or repaired ACL recovery entry, proving the direct Pillow adapter and the complete one-shot image worker path"
+    - ".venv\\Scripts\\python.exe -m pytest -q tests/unit/test_page_preview_service.py tests/unit/worker/test_image_normalize_protocol.py tests/unit/test_validate_worker_rpc.py - passed; 113 focused tests and 169 subtests cover exact RPC identifiers, offline/runtime registry parity, and deferred PDF/image deadline, cancellation, and progress races"
+    - ".venv\\Scripts\\python.exe -m pytest -q tests/unit/worker/test_client_lifecycle.py tests/integration/test_desktop_startup_recovery_windows.py - passed separately after fixture convergence; all 33 client lifecycle tests and all 3 desktop startup/recovery tests admit the additive image capability and exact image composition ports"
+    notes:
+    - JPEG and PNG are admitted by bounded content signatures, copied into the authenticated case originals area before complete decode, and correlated by UUID, byte count, and SHA-256; live and hostile tests prove external and committed source bytes remain unchanged.
+    - The pure image-page contract represents all eight EXIF orientations as intrinsic non-destructive intent, applies closed JPEG/PNG, CMYK, palette, transparency, alpha-compositing, fit, rotation, and opaque-RGBA8 rules, and does not change released manifest-v1 meaning.
+    - The Pillow 12.3.0 worker adapter strictly scans multi-scan JPEG and PNG structure, metadata, palette, and transparency records; applies conservative three-source-raster peak planning with native-allocation headroom; and enforces dimensions, pixels, expansion, memory, output, wall-time, private-temp capacity, cancellation, and cleanup before publishing an authenticated artifact.
+    - The additive image.normalize v1 operation uses a one-shot network-denied worker, exact four-way-distinct case/operation/source/output identifiers, reduced inherited handles, immutable source leases, bounded output mapping, validated progress and results, sanitized stable failures, hard timeout termination, and fresh-worker recovery after malformed or partial writes.
+    - The organizer routes mixed PDF/image inspection and previews through one shared heavy-operation coordinator, preserves ordered keyboard-accessible UI state and content-free progress/error announcements, and keeps decoded pixels in the central byte-budgeted preview cache without exposing paths, names, metadata values, or image bytes to logs.
+    - Pillow is now an exact direct worker/runtime dependency with reviewed license, hashes, native-boundary inventory, lockfile, offline staging audit, and PWS-0801 shipment closure retained; a generated synthetic orientation/alpha preview was visually inspected and showed the expected transform and opaque-white normalization.
+    - Cooperative cancellation is checked at bounded Python phases and row writes; an unresponsive native Pillow call remains subject to the existing worker wall-time, Windows Job, and process-tree termination controls rather than an in-process interruption claim.
 - id: PWS-0202
   milestone: M2
   title: Implement non-destructive crop, rotate, deskew, and cleanup pipeline
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0201
