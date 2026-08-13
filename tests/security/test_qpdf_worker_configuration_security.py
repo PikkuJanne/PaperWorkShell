@@ -134,6 +134,8 @@ def test_worker_environment_allowlist_remains_closed() -> None:
             "TMP",
             "PWS_QPDF_EXECUTABLE",
             "PWS_PROFILE_ROOT",
+            "PWS_TESSDATA_ROOT",
+            "PWS_TESSERACT_EXECUTABLE",
             "PYTHONIOENCODING",
             "PYTHONUTF8",
         }
