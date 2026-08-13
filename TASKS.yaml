@@ -1771,7 +1771,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0204
@@ -1806,10 +1806,43 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-13'
+    revision: 12d599fba155c0f22ed5de6f92fe62f7eb6776a1
+    commands:
+    - uv run --locked --no-sync python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed;
+      371 files were formatted, linted, and strictly typed, and 13 import layers across 137 source files were valid
+    - uv run --locked --no-sync python tools/dev.py test-unit; test-integration - passed; 2897 unit tests and 390
+      integration tests passed, with 2 disclosed Windows link-capability skips in the isolated integration run
+    - uv run --locked --no-sync pytest -q tests/integration/test_searchable_pdf_export_worker_windows.py -vv - passed
+      once on the final implementation with admitted OCRmyPDF 17.10.0, Tesseract 5.5.3, qpdf 12.3.2, and PDFium in
+      29.74 seconds
+    - uv run --locked --no-sync python tools/dev.py test-security; test-accessibility - passed; 317 security tests
+      passed with 6 disclosed Windows link/privilege skips, and all 19 accessibility tests passed
+    - uv run --locked --no-sync python tools/dev.py validate-fixtures; validate-schemas; validate-dependencies;
+      validate-task-graph; validate-docs; validate-m1-benchmark-report; validate-pdf-renderer-benchmark; scan-secrets;
+      quality-self-test - passed; all registered schemas, the 45-fixture synthetic
+      corpus, dependency inventory, graph, docs, reports, bounded secret scan, and 5 deliberate quality violations
+      were validated
+    notes:
+    - The additive pdf.export.searchable v1 path borrows one storage-authenticated mixed PDF/JPEG/PNG source batch,
+      binds the current manifest projection and semantic fingerprint, and publishes only a verified no-replace PDF
+      derivative plus a closed page-status document; manifest v2 and export-history v1 meanings remain unchanged.
+    - Born-digital PDF pages are copied without unnecessary rasterization. Eligible image-only PDF, JPEG, and PNG pages
+      are processed sequentially through the admitted local OCR profile, and PDFium-derived non-whitespace presence is
+      reported per page without claiming OCR accuracy, PDF/UA conformance, or exact text reproduction.
+    - CropBox, UserUnit, intrinsic rotation, normalized crop, and quarter-turn geometry are preserved within the tested
+      0.001-point tolerance. Every candidate is strictly reopened, qpdf-checked, PDFium-render compared page by page,
+      and checked for supported extractable-text presence before commit.
+    - The network-denied two-process Job admits only exact qpdf and Tesseract authorities. Sequential page scratch,
+      operation temporary storage, output sections, cancellation, deadline, low-space, partial-write, cleanup, and fresh
+      retry paths are bounded; originals and manifest bytes remain immutable on success and failure.
+    - Marker-present and indeterminate signature states never enter OCR silently; modified outputs are labeled unsigned
+      derivatives with reason-aware wording. OCR text, document names, paths, content digests, and raw native failures
+      are excluded from routine models, progress, errors, representations, and logs.
+    - The final live AppContainer scenario preserved born-digital text, added non-whitespace text to the image-only PDF
+      and PNG pages, returned honest page outcomes, committed and recorded the verified derivative, left both external
+      and case originals plus the manifest unchanged, and returned case temporary usage to zero. The three-page result
+      was visually inspected through the pinned renderer and retained intact content and physical geometry.
 - id: PWS-0207
   milestone: M2
   title: Implement scan-quality and OCR review findings
@@ -1856,7 +1889,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0105

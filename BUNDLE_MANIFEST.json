@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.65",
+  "bundle_version": "0.1.66",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 194532,
-      "sha256": "34b3fe7fe7ffba2107a64cfb7f7e1e84fe8a6efa3615689bf7b141a713777dce"
+      "bytes": 198067,
+      "sha256": "752be7297d4f02b85d8670254f097e741f86b366da1b330c363ba947277f66d1"
     },
     {
       "path": "TASKS.schema.json",
@@ -58,13 +58,13 @@
     "initial_ready_tasks": [
       "PWS-0203",
       "PWS-0205",
-      "PWS-0206",
-      "PWS-0207"
+      "PWS-0207",
+      "PWS-0208"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0204 is done: storage-authenticated OCR requests, bounded OCRmyPDF 17.10.0 and Tesseract 5.5.3 execution in a network-denied one-shot worker, exact signed runtime admission, structured progress and cancellation, volatile verified candidates, immutable-source and privacy evidence, and complete repository quality coverage. PWS-0203, PWS-0205, PWS-0206, and PWS-0207 are ready; the P0 critical-path selector chooses PWS-0206 next.",
+    "PWS-0206 is done: verified mixed PDF/JPEG/PNG export preserves born-digital text, applies bounded page-local OCR, reports honest per-page text-presence outcomes, handles marker-present/unknown sources as unsigned derivatives, and reopens/qpdf-checks/PDFium-renders every output through the network-denied worker. PWS-0203, PWS-0205, PWS-0207, and PWS-0208 are ready; the P0 selector chooses PWS-0208 next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
