@@ -248,6 +248,7 @@ PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
 IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
+SEARCHABLE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.searchable", 1)
 
 IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
@@ -307,6 +308,18 @@ PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "pdf-export-pdf"
 MAX_PDF_EXPORT_PLAN_BYTES: Final = 2 * 1024 * 1024
 MAX_PDF_EXPORT_PAGES: Final = 4_096
 MAX_PDF_EXPORT_SOURCES: Final = MAX_JSON_COLLECTION_ITEMS - 1
+
+SEARCHABLE_PDF_EXPORT_PLAN_HANDLE_PARAMETER: Final = "plan_handle"
+SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
+SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER: Final = "status_handle"
+SEARCHABLE_PDF_EXPORT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
+SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
+SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER: Final = "status_object_id"
+SEARCHABLE_PDF_EXPORT_STATUS_CAPACITY_PARAMETER: Final = "status_capacity_bytes"
+SEARCHABLE_PDF_EXPORT_PLAN_CONTENT_KIND: Final = "searchable-pdf-export-plan-v1"
+SEARCHABLE_PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "searchable-pdf-v1"
+SEARCHABLE_PDF_EXPORT_STATUS_CONTENT_KIND: Final = "searchable-pdf-page-status-v1"
+MAX_SEARCHABLE_PDF_EXPORT_STATUS_BYTES: Final = 2 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -1595,6 +1608,265 @@ def validate_pdf_export_result(
             "RPC_INVALID_RESULT",
             "payload.outputs",
             "pdf.export output is not bound to its requested staging object and limit",
+        )
+
+
+def validate_searchable_pdf_export_start(payload: OperationStartPayload) -> None:
+    """Validate the additive ``pdf.export.searchable`` version-1 contract."""
+
+    if not 2 <= len(payload.inputs) <= MAX_PDF_EXPORT_SOURCES + 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "searchable PDF export requires one plan and at least one source",
+        )
+    plan = payload.inputs[0]
+    sources = payload.inputs[1:]
+    if (
+        plan.area is not ReferenceArea.SOURCE_READ
+        or plan.operation_id is not None
+        or plan.content_kind != SEARCHABLE_PDF_EXPORT_PLAN_CONTENT_KIND
+        or plan.expected_byte_size is None
+        or not 1 <= plan.expected_byte_size <= MAX_PDF_EXPORT_PLAN_BYTES
+        or plan.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "searchable PDF export requires one authenticated immutable plan",
+        )
+    if any(
+        source.area is not ReferenceArea.SOURCE_READ
+        or source.operation_id is not None
+        or source.content_kind not in OCR_PROCESS_SOURCE_CONTENT_KINDS
+        or source.expected_byte_size is None
+        or source.expected_byte_size < 1
+        or source.expected_sha256 is None
+        for source in sources
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "searchable PDF export requires authenticated PDF, JPEG, or PNG sources",
+        )
+    input_object_ids = tuple(reference.object_id for reference in payload.inputs)
+    if len(set(input_object_ids)) != len(input_object_ids):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "searchable PDF export input identities must be distinct",
+        )
+
+    expected_names = {
+        SEARCHABLE_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_STATUS_CAPACITY_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "searchable PDF export requires its exact closed parameter set",
+        )
+    handle_parameters = tuple(
+        parameters[name]
+        for name in (
+            SEARCHABLE_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+            SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+            SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER,
+            SEARCHABLE_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        )
+    )
+    if any(
+        parameter.value_type is not ScalarValueType.INTEGER
+        or type(parameter.value) is not int
+        or parameter.value <= 0
+        for parameter in handle_parameters
+    ) or len({parameter.value for parameter in handle_parameters}) != len(handle_parameters):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "searchable PDF export handles must be distinct positive integers",
+        )
+    output_parameter = parameters[SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER]
+    status_parameter = parameters[SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER]
+    if (
+        output_parameter.value_type is not ScalarValueType.UUID
+        or status_parameter.value_type is not ScalarValueType.UUID
+        or type(output_parameter.value) is not UUID
+        or type(status_parameter.value) is not UUID
+        or output_parameter.value == status_parameter.value
+        or output_parameter.value in set(input_object_ids)
+        or status_parameter.value in set(input_object_ids)
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "searchable PDF output identities must be distinct UUIDs",
+        )
+    status_capacity = parameters[SEARCHABLE_PDF_EXPORT_STATUS_CAPACITY_PARAMETER]
+    if (
+        status_capacity.value_type is not ScalarValueType.INTEGER
+        or type(status_capacity.value) is not int
+        or not 1 <= status_capacity.value <= MAX_SEARCHABLE_PDF_EXPORT_STATUS_BYTES
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "searchable PDF page-status capacity is invalid",
+        )
+
+    limits = payload.requested_limits
+    if limits.page_count > MAX_PDF_EXPORT_PAGES:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "searchable PDF page limit exceeds the supported profile",
+        )
+    source_bytes = 0
+    for source in sources:
+        size = source.expected_byte_size
+        if size is None or source_bytes > MAX_SAFE_INTEGER - size:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.requested_limits",
+                "searchable PDF source size total is invalid",
+            )
+        source_bytes += size
+    if (
+        source_bytes > limits.temporary_storage_bytes
+        or limits.output_bytes > limits.temporary_storage_bytes - source_bytes
+        or status_capacity.value
+        > limits.temporary_storage_bytes - source_bytes - limits.output_bytes
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "searchable PDF temporary storage cannot hold sources and outputs",
+        )
+
+
+def searchable_pdf_export_bound_object_ids(payload: OperationStartPayload) -> tuple[UUID, ...]:
+    """Return plan, source, PDF-output, and status-output IDs."""
+
+    validate_searchable_pdf_export_start(payload)
+    values: dict[str, UUID] = {}
+    for parameter in payload.parameters:
+        if (
+            parameter.name
+            in {
+                SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+                SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
+            }
+            and parameter.value_type is ScalarValueType.UUID
+            and type(parameter.value) is UUID
+        ):
+            values[parameter.name] = parameter.value
+    if set(values) != {
+        SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+        SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
+    }:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "searchable PDF output identities are unavailable",
+        )
+    return (
+        *tuple(reference.object_id for reference in payload.inputs),
+        values[SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER],
+        values[SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER],
+    )
+
+
+def searchable_pdf_export_output_object_ids(
+    payload: OperationStartPayload,
+) -> tuple[UUID, UUID]:
+    """Return the PDF and page-status staging identities."""
+
+    identifiers = searchable_pdf_export_bound_object_ids(payload)
+    return identifiers[-2], identifiers[-1]
+
+
+def searchable_pdf_export_status_capacity_bytes(payload: OperationStartPayload) -> int:
+    """Return the exact bounded page-status staging capacity."""
+
+    validate_searchable_pdf_export_start(payload)
+    for parameter in payload.parameters:
+        if parameter.name == SEARCHABLE_PDF_EXPORT_STATUS_CAPACITY_PARAMETER:
+            if parameter.value_type is ScalarValueType.INTEGER and type(parameter.value) is int:
+                return parameter.value
+            break
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "searchable PDF page-status capacity is unavailable",
+    )
+
+
+def validate_searchable_pdf_export_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    output_object_id: UUID,
+    status_object_id: UUID,
+    maximum_output_bytes: int,
+    maximum_status_bytes: int,
+) -> None:
+    """Bind success to both exact staging sections and their capacities."""
+
+    _require_uuid4(operation_id, "operation_id")
+    _require_uuid4(output_object_id, "payload.outputs.object_id")
+    _require_uuid4(status_object_id, "payload.outputs.object_id")
+    _require_int(maximum_output_bytes, "payload.requested_limits.output_bytes", minimum=1)
+    _require_int(maximum_status_bytes, "payload.parameters.status_capacity_bytes", minimum=1)
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful searchable PDF results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 2:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful searchable PDF results require PDF and page-status outputs",
+        )
+    if tuple(output.content_kind for output in payload.outputs) != (
+        SEARCHABLE_PDF_EXPORT_OUTPUT_CONTENT_KIND,
+        SEARCHABLE_PDF_EXPORT_STATUS_CONTENT_KIND,
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "searchable PDF result outputs must use PDF-then-status order",
+        )
+    output, status = payload.outputs
+    if (
+        len({operation_id, output_object_id, status_object_id}) != 3
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != output_object_id
+        or output.operation_id != operation_id
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+        or status.area is not ReferenceArea.OPERATION_STAGING
+        or status.object_id != status_object_id
+        or status.operation_id != operation_id
+        or status.expected_byte_size is None
+        or not 1 <= status.expected_byte_size <= maximum_status_bytes
+        or status.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "searchable PDF outputs are not bound to requested objects and limits",
         )
 
 

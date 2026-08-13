@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 import subprocess
@@ -26,8 +27,22 @@ MonotonicClock = Callable[[], float]
 QPDF_VERSION: Final = "12.3.2"
 DEFAULT_QPDF_EXECUTABLE: Final = Path(r"C:\Program Files\qpdf 12.3.2\bin\qpdf.exe")
 _OUTPUT_CHUNK_BYTES: Final = 65_536
+_MAXIMUM_VERSION_OUTPUT_BYTES: Final = 512
 _DEFAULT_POLL_SECONDS: Final = 0.01
 _DEFAULT_TERMINATION_GRACE_SECONDS: Final = 1.0
+_EXPECTED_VERSION_OUTPUT_SHA256: Final = frozenset(
+    hashlib.sha256(output).digest()
+    for output in (
+        (
+            f"qpdf version {QPDF_VERSION}\n"
+            "Run qpdf --copyright to see copyright and license information.\n"
+        ).encode("ascii"),
+        (
+            f"qpdf version {QPDF_VERSION}\r\n"
+            "Run qpdf --copyright to see copyright and license information.\r\n"
+        ).encode("ascii"),
+    )
+)
 
 
 def _never_cancel() -> bool:
@@ -76,6 +91,43 @@ class _DiscardBudget:
                 self.exceeded.set()
 
 
+class _VersionOutputDigest:
+    """Bound both pipes and retain only a digest of the candidate version output."""
+
+    def __init__(self) -> None:
+        self._consumed_bytes = 0
+        self._stdout_sha256 = hashlib.sha256()
+        self._stderr_bytes = 0
+        self._lock = threading.Lock()
+        self.exceeded = threading.Event()
+        self.failed = threading.Event()
+
+    def consume_stdout(self, block: bytes) -> None:
+        with self._lock:
+            self._consume(len(block))
+            if not self.exceeded.is_set():
+                self._stdout_sha256.update(block)
+
+    def consume_stderr(self, block: bytes) -> None:
+        with self._lock:
+            self._consume(len(block))
+            self._stderr_bytes += len(block)
+
+    def matches(self) -> bool:
+        with self._lock:
+            return (
+                not self.exceeded.is_set()
+                and not self.failed.is_set()
+                and self._stderr_bytes == 0
+                and self._stdout_sha256.digest() in _EXPECTED_VERSION_OUTPUT_SHA256
+            )
+
+    def _consume(self, byte_count: int) -> None:
+        self._consumed_bytes += byte_count
+        if self._consumed_bytes > _MAXIMUM_VERSION_OUTPUT_BYTES:
+            self.exceeded.set()
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class QpdfCommandChecker:
     """Invoke one trusted absolute qpdf executable without a shell."""
@@ -99,6 +151,143 @@ class QpdfCommandChecker:
 
     def __repr__(self) -> str:
         return "QpdfCommandChecker(<approved fixed executable>)"
+
+    def require_trusted_version(
+        self,
+        *,
+        deadline: float,
+        cancellation_probe: CancellationProbe = _never_cancel,
+        monotonic: MonotonicClock = time.monotonic,
+    ) -> None:
+        """Admit only the exact pinned qpdf build without exposing tool output."""
+
+        if (
+            type(deadline) not in (int, float)
+            or not math.isfinite(deadline)
+            or deadline <= 0
+            or not callable(cancellation_probe)
+            or not callable(monotonic)
+        ):
+            reject_pdf_inspection(PdfInspectionErrorCode.MODEL_INVALID, "qpdf.operation")
+        if not self.executable.is_file():
+            reject_pdf_inspection(
+                PdfInspectionErrorCode.DEPENDENCY_UNAVAILABLE,
+                "qpdf.executable",
+            )
+
+        operation = _CommandOperation(
+            cancellation_probe=cancellation_probe,
+            deadline=float(deadline),
+            monotonic=monotonic,
+        )
+        operation.checkpoint()
+        arguments = (os.fspath(self.executable), "--version")
+        creation_flags = 0
+        if os.name == "nt":
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+
+        process: subprocess.Popen[bytes]
+        try:
+            process = subprocess.Popen(
+                arguments,
+                executable=os.fspath(self.executable),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+                cwd=self.executable.parent,
+                env=_minimal_environment(os.environ),
+                close_fds=True,
+                creationflags=creation_flags,
+                text=False,
+            )
+        except OSError:
+            reject_pdf_inspection(
+                PdfInspectionErrorCode.DEPENDENCY_UNAVAILABLE,
+                "qpdf.launch",
+            )
+        except Exception:
+            reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.launch")
+
+        stdin_pipe = process.stdin
+        stdout_pipe = process.stdout
+        stderr_pipe = process.stderr
+        if stdin_pipe is None or stdout_pipe is None or stderr_pipe is None:
+            _terminate_process_tree(process, float(self.termination_grace_seconds))
+            reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.pipes")
+        try:
+            stdin_pipe.close()
+        except Exception:
+            _terminate_process_tree(process, float(self.termination_grace_seconds))
+            reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.stdin")
+        stdout = cast(BinaryIO, stdout_pipe)
+        stderr = cast(BinaryIO, stderr_pipe)
+
+        capture = _VersionOutputDigest()
+        drainers = (
+            _start_version_drainer(
+                stdout,
+                capture.consume_stdout,
+                capture,
+                "qpdf-version-stdout",
+            ),
+            _start_version_drainer(
+                stderr,
+                capture.consume_stderr,
+                capture,
+                "qpdf-version-stderr",
+            ),
+        )
+        try:
+            return_code = self._wait_for_result(
+                process,
+                operation=operation,
+                budget=capture,
+            )
+        except PdfInspectionError:
+            terminated = _terminate_process_tree(
+                process,
+                float(self.termination_grace_seconds),
+            )
+            drainers_finished = _finish_drainers(
+                drainers,
+                (stdout, stderr),
+                float(self.termination_grace_seconds),
+            )
+            if not terminated or not drainers_finished:
+                reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.cleanup")
+            raise
+        except Exception:
+            terminated = _terminate_process_tree(
+                process,
+                float(self.termination_grace_seconds),
+            )
+            drainers_finished = _finish_drainers(
+                drainers,
+                (stdout, stderr),
+                float(self.termination_grace_seconds),
+            )
+            if not terminated or not drainers_finished:
+                reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.cleanup")
+            reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.wait")
+
+        drainers_finished = _finish_drainers(
+            drainers,
+            (stdout, stderr),
+            float(self.termination_grace_seconds),
+        )
+        if not drainers_finished or capture.failed.is_set():
+            reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.output")
+        if capture.exceeded.is_set():
+            reject_pdf_inspection(PdfInspectionErrorCode.LIMIT_EXCEEDED, "qpdf.tool_output")
+        matches = capture.matches()
+        if return_code != 0:
+            reject_pdf_inspection(PdfInspectionErrorCode.DEPENDENCY_FAILED, "qpdf.version")
+        if not matches:
+            reject_pdf_inspection(
+                PdfInspectionErrorCode.DEPENDENCY_UNAVAILABLE,
+                "qpdf.version",
+            )
 
     def check(
         self,
@@ -240,7 +429,7 @@ class QpdfCommandChecker:
         process: subprocess.Popen[bytes],
         *,
         operation: _CommandOperation,
-        budget: _DiscardBudget,
+        budget: _DiscardBudget | _VersionOutputDigest,
     ) -> int:
         while True:
             operation.checkpoint()
@@ -269,6 +458,22 @@ def _start_drainer(
     return thread
 
 
+def _start_version_drainer(
+    stream: BinaryIO,
+    consume: Callable[[bytes], None],
+    capture: _VersionOutputDigest,
+    name: str,
+) -> threading.Thread:
+    thread = threading.Thread(
+        target=_drain_version_stream,
+        args=(stream, consume, capture),
+        name=name,
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
 def _drain_stream(stream: BinaryIO, budget: _DiscardBudget) -> None:
     try:
         while True:
@@ -283,6 +488,26 @@ def _drain_stream(stream: BinaryIO, budget: _DiscardBudget) -> None:
                 return
     except Exception:
         budget.failed.set()
+
+
+def _drain_version_stream(
+    stream: BinaryIO,
+    consume: Callable[[bytes], None],
+    capture: _VersionOutputDigest,
+) -> None:
+    try:
+        while True:
+            block = stream.read(_OUTPUT_CHUNK_BYTES)
+            if type(block) is not bytes:
+                capture.failed.set()
+                return
+            if not block:
+                return
+            consume(block)
+            if capture.exceeded.is_set():
+                return
+    except Exception:
+        capture.failed.set()
 
 
 def _finish_drainers(

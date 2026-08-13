@@ -1,4 +1,4 @@
-"""PWS-0105 security tests for the fixed qpdf command boundary."""
+"""PWS-0105/PWS-0206 security tests for the fixed qpdf command boundary."""
 
 from __future__ import annotations
 
@@ -211,6 +211,81 @@ def test_launch_uses_fixed_argv_separator_no_shell_and_minimal_environment(
     assert "PATHEXT" not in environment
     assert "HTTP_PROXY" not in environment
     assert "COMSPEC" not in environment
+
+
+def test_exact_version_probe_is_bounded_no_shell_and_uses_explicit_executable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _fake_checker(tmp_path)
+    process = _FakeProcess(
+        0,
+        stdout=(
+            f"qpdf version {QPDF_VERSION}\r\n"
+            "Run qpdf --copyright to see copyright and license information.\r\n"
+        ).encode("ascii"),
+    )
+    captured_keywords, captured_arguments = _install_fake_launch(monkeypatch, process)
+
+    checker.require_trusted_version(deadline=time.monotonic() + 30)
+
+    assert captured_arguments == [(os.fspath(checker.executable), "--version")]
+    assert captured_keywords["executable"] == os.fspath(checker.executable)
+    assert captured_keywords["shell"] is False
+    assert captured_keywords["stdin"] is subprocess.PIPE
+    assert process.stdin.closed
+    assert captured_keywords["stdout"] is subprocess.PIPE
+    assert captured_keywords["stderr"] is subprocess.PIPE
+    assert captured_keywords["close_fds"] is True
+    assert captured_keywords["cwd"] == checker.executable.parent
+
+
+def test_version_probe_rejects_mismatch_without_disclosing_raw_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private_token = "PRIVATE-QPDF-VERSION:C:\\private\\applicant.pdf"
+    checker = _fake_checker(tmp_path)
+    _install_fake_launch(
+        monkeypatch,
+        _FakeProcess(
+            0,
+            stdout=f"qpdf version 99.0.0\n{private_token}\n".encode("ascii"),
+        ),
+    )
+
+    with pytest.raises(PdfInspectionError) as raised:
+        checker.require_trusted_version(deadline=time.monotonic() + 30)
+
+    rendered = f"{raised.value!s} {raised.value!r} {caplog.text}"
+    assert raised.value.code is PdfInspectionErrorCode.DEPENDENCY_UNAVAILABLE
+    assert raised.value.context == "qpdf.version"
+    assert private_token not in rendered
+    assert "applicant.pdf" not in rendered
+
+
+def test_version_probe_stops_combined_output_over_its_private_fixed_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _fake_checker(tmp_path)
+    process = _FakeProcess(
+        None,
+        stdout=b"A" * 8_192,
+        stderr=b"B" * 8_192,
+    )
+    _install_fake_launch(monkeypatch, process)
+
+    with pytest.raises(PdfInspectionError) as raised:
+        checker.require_trusted_version(deadline=time.monotonic() + 30)
+
+    assert raised.value.code is PdfInspectionErrorCode.LIMIT_EXCEEDED
+    assert raised.value.context == "qpdf.tool_output"
+    assert process.stdout.bytes_read > 0
+    assert process.stderr.bytes_read > 0
+    assert process.terminate_calls == 1
+    assert process.poll() is not None
 
 
 @pytest.mark.parametrize(

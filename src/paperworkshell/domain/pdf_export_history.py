@@ -242,6 +242,59 @@ class PdfExportHistoryRecord:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
+class PdfExportHistoryPlanBinding:
+    """Minimal verified-export plan facts accepted by history v1.
+
+    PWS-0206 creates a distinct mixed-source plan whose worker semantics must
+    not be reinterpreted as :class:`PdfExportPlan`.  History v1 nevertheless
+    records the same closed structural checks, manifest binding, output facts,
+    and unsigned-derivative flag.  This immutable adapter keeps that reuse
+    explicit without widening the released history document schema.
+    """
+
+    case_id: UUID
+    manifest_revision: int
+    manifest_sha256: str = field(repr=False)
+    semantic_fingerprint: str = field(repr=False)
+    page_count: int
+    unsigned_derivative: bool
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_uuid4(self.case_id)
+            or type(self.manifest_revision) is not int
+            or not 0 <= self.manifest_revision <= MAX_SAFE_MANIFEST_INTEGER
+            or not _is_sha256(self.manifest_sha256)
+            or not _is_sha256(self.semantic_fingerprint)
+            or type(self.page_count) is not int
+            or not 1 <= self.page_count <= MAX_PDF_EXPORT_PAGES
+            or type(self.unsigned_derivative) is not bool
+        ):
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.plan_binding",
+            )
+
+    @classmethod
+    def from_pdf_export_plan(cls, plan: PdfExportPlan) -> PdfExportHistoryPlanBinding:
+        """Bind the released deterministic PDF plan to the common history seam."""
+
+        if type(plan) is not PdfExportPlan:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.plan_binding",
+            )
+        return cls(
+            case_id=plan.case_id,
+            manifest_revision=plan.manifest_revision,
+            manifest_sha256=plan.manifest_sha256,
+            semantic_fingerprint=plan.semantic_fingerprint,
+            page_count=plan.page_count,
+            unsigned_derivative=plan.contains_signature_markers,
+        )
+
+
+@dataclass(frozen=True, slots=True, repr=False)
 class PdfExportHistoryDocument:
     """Current version of the bounded case-internal history file."""
 
@@ -429,18 +482,40 @@ def build_pdf_export_history_record_for_commit(
 ) -> PdfExportHistoryRecord:
     """Prepare the exact record before the no-replace destination commit."""
 
+    if type(plan) is not PdfExportPlan:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MODEL_INVALID,
+            "export_history.verified_commit",
+        )
+    return build_pdf_export_history_record_for_binding(
+        PdfExportHistoryPlanBinding.from_pdf_export_plan(plan),
+        export_id=export_id,
+        report=report,
+        recorded_at=recorded_at,
+    )
+
+
+def build_pdf_export_history_record_for_binding(
+    binding: PdfExportHistoryPlanBinding,
+    *,
+    export_id: UUID,
+    report: PdfExportVerificationReport,
+    recorded_at: datetime,
+) -> PdfExportHistoryRecord:
+    """Prepare one history-v1 record from an explicit verified-plan binding."""
+
     utc_offset = recorded_at.utcoffset() if type(recorded_at) is datetime else None
     if (
-        type(plan) is not PdfExportPlan
+        type(binding) is not PdfExportHistoryPlanBinding
         or not _is_uuid4(export_id)
         or type(report) is not PdfExportVerificationReport
         or type(recorded_at) is not datetime
         or recorded_at.tzinfo is None
         or utc_offset is None
         or utc_offset.total_seconds() != 0
-        or report.semantic_fingerprint != plan.semantic_fingerprint
-        or report.page_count != plan.page_count
-        or report.unsigned_derivative != plan.contains_signature_markers
+        or report.semantic_fingerprint != binding.semantic_fingerprint
+        or report.page_count != binding.page_count
+        or report.unsigned_derivative != binding.unsigned_derivative
     ):
         reject_pdf_export_history(
             PdfExportHistoryErrorCode.MODEL_INVALID,
@@ -449,9 +524,9 @@ def build_pdf_export_history_record_for_commit(
     return PdfExportHistoryRecord(
         export_id=export_id,
         recorded_at=_render_utc_timestamp(recorded_at),
-        manifest_revision=plan.manifest_revision,
-        manifest_sha256=plan.manifest_sha256,
-        semantic_fingerprint=plan.semantic_fingerprint,
+        manifest_revision=binding.manifest_revision,
+        manifest_sha256=binding.manifest_sha256,
+        semantic_fingerprint=binding.semantic_fingerprint,
         output_sha256=report.output_sha256,
         output_byte_size=report.output_byte_size,
         page_count=report.page_count,
@@ -468,12 +543,32 @@ def build_pdf_export_history_retry_receipt(
 ) -> PdfExportHistoryRetryReceipt:
     """Return one path-free receipt that can append this exact record later."""
 
+    if type(plan) is not PdfExportPlan:
+        reject_pdf_export_history(
+            PdfExportHistoryErrorCode.MODEL_INVALID,
+            "export_history.retry_receipt",
+        )
+    return build_pdf_export_history_retry_receipt_for_binding(
+        PdfExportHistoryPlanBinding.from_pdf_export_plan(plan),
+        record,
+        report,
+    )
+
+
+def build_pdf_export_history_retry_receipt_for_binding(
+    binding: PdfExportHistoryPlanBinding,
+    record: PdfExportHistoryRecord,
+    report: PdfExportVerificationReport,
+) -> PdfExportHistoryRetryReceipt:
+    """Create a retry receipt for any explicitly bound verified PDF plan."""
+
     if (
-        type(plan) is not PdfExportPlan
+        type(binding) is not PdfExportHistoryPlanBinding
         or type(record) is not PdfExportHistoryRecord
         or type(report) is not PdfExportVerificationReport
-        or record.manifest_revision != plan.manifest_revision
-        or record.manifest_sha256 != plan.manifest_sha256
+        or record.manifest_revision != binding.manifest_revision
+        or record.manifest_sha256 != binding.manifest_sha256
+        or record.semantic_fingerprint != binding.semantic_fingerprint
         or record.semantic_fingerprint != report.semantic_fingerprint
         or record.output_sha256 != report.output_sha256
         or record.output_byte_size != report.output_byte_size
@@ -486,7 +581,7 @@ def build_pdf_export_history_retry_receipt(
         )
     payload = canonical_pdf_export_history_record_bytes(record)
     return PdfExportHistoryRetryReceipt(
-        case_id=plan.case_id,
+        case_id=binding.case_id,
         export_id=record.export_id,
         report=report,
         record_sha256=record.sha256,

@@ -49,6 +49,24 @@ The output limit is the smaller of 128 MiB and one quarter of the selected polic
 limit. The pixel limit is the smaller of 268,435,456 pixels and one quarter of worker-process
 memory bytes. These formulas are production composition, not separate profile constants.
 
+PWS-0206 adds only bounded transport/model ceilings around those central execution budgets; it
+does not change policy version 1:
+
+| Searchable mixed-output resource | Contract ceiling |
+|---|---:|
+| Sources in one semantic plan | 255 |
+| Output pages in one semantic plan | 4,096 |
+| Read-only plan section | 2,097,152 bytes |
+| Content-free page-status section | 2,097,152 bytes |
+| Simultaneously active private page-local OCR results | 1 |
+| Simultaneously live full-resolution page rasters under constrained-v1 | 1 |
+
+The plan/page ceilings bound semantic and transport collections; they are not permission to exceed
+any selected central byte/pixel/time budget. Each searchable-worker OCR invocation is fixed to one
+private page and inherits the admitted OCR output, pixel, temporary-storage, Job, and deadline
+limits. The coordinator rejects an unschedulable request before native work. Final searchable-PDF
+capacity continues to use the selected base-export output/temp policy.
+
 The authorized 128-MiB thumbnail-plus-preview cache ceiling is a combined hard gate, not two
 independent 128-MiB allowances. The constrained profile divides it evenly between the reproducible
 case-scoped thumbnail cache and the decoded in-memory preview LRU; the canonical measurement sums
@@ -77,8 +95,16 @@ PWS-0204 sets OCRmyPDF `jobs=1`, Tesseract `OMP_THREAD_LIMIT=1`, one worker plus
 same application-wide single-heavy-operation gate. This prevents process/page fan-out and overlap
 with another heavy document operation. OCRmyPDF may retain bounded multi-page private
 intermediates, so PWS-0204 claims the complete operation temp/Job ceilings and cleanup behavior,
-not an unevidenced per-page resident-memory profile. PWS-0208 owns the incremental mixed-job
-scheduler and measured large-job process-tree evidence.
+not an unevidenced per-page resident-memory profile.
+
+PWS-0206 composes mixed output incrementally. Eligibility and final text presence are recorded for
+one output page at a time. A page-copy path does not create a raster merely to share an OCR path;
+an OCR path may hold one central-policy full-resolution raster and one bounded private page result.
+The result is selected into the current output page or rejected, then the complete authenticated
+page directory is removed before the next page begins. Page-result bytes, decoded rasters, and
+extracted strings are never accumulated for the packet. Only the bounded content-free page-status
+tuple persists until final verification.
+PWS-0208 owns the incremental mixed-job scheduler and measured large-job process-tree evidence.
 
 ## Lazy work
 
@@ -167,6 +193,16 @@ unrelated process cannot consume capacity afterward. Focused OCR tests reject a 
 capacity shortfall before staging, inject disk-full after a partial private source write, prove
 pinned-tree cleanup, and then complete a fresh retry. Exact/over-limit adapter coverage remains
 part of the boundary suite, and PWS-0208 still owns the measured constrained workload.
+
+For searchable mixed output, the destination and worker-private capacity probes additionally cover
+the final PDF, bounded plan/status sections, the current staged source/page, and the largest
+simultaneously live private page-result/raster overlap permitted by the selected policy. They do
+not add every possible per-page result size together because page directories must not coexist. A low-space
+refusal occurs before OCR or destination publication; a later disk-full, cancellation, deadline,
+page-local OCR failure, malformed status, or native verification failure closes the current page
+files, releases the output/status sections and reservations, removes only authenticated
+disposable stages, and leaves the original, immutable source, manifest v2, export history v1, and
+prior derivatives unchanged. Focused fault-injection must then prove a fresh retry succeeds.
 
 ## Deterministic slow-I/O and low-disk testing
 

@@ -38,6 +38,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CancelDisposition,
     ClosedReason,
     Direction,
@@ -329,6 +330,7 @@ def _ready_client(
                 IMAGE_NORMALIZE_CAPABILITY,
                 IMAGE_TRANSFORM_CAPABILITY,
                 OCR_PROCESS_CAPABILITY,
+                SEARCHABLE_PDF_EXPORT_CAPABILITY,
             ),
             max_message_bytes=MAX_MESSAGE_BYTES,
         ),
@@ -394,6 +396,7 @@ def test_start_negotiates_and_query_is_local_and_secret_free() -> None:
         IMAGE_NORMALIZE_CAPABILITY,
         IMAGE_TRANSFORM_CAPABILITY,
         OCR_PROCESS_CAPABILITY,
+        SEARCHABLE_PDF_EXPORT_CAPABILITY,
     )
     assert record.process.transport.receive_calls == before_receive
     assert record.process.poll_calls == before_poll

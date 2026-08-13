@@ -59,6 +59,12 @@ CancellationProbe = Callable[[], bool]
 MonotonicClock = Callable[[], float]
 
 
+def loaded_pikepdf_engine_versions() -> tuple[object, object]:
+    """Return only loaded engine identity facts across the PDF adapter seam."""
+
+    return pikepdf.__version__, pikepdf.__libqpdf_version__
+
+
 def _never_cancel() -> bool:
     return False
 

@@ -101,6 +101,7 @@ _ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
         ("pdf.inspect", 1),
         ("pdf.thumbnail", 1),
         ("pdf.export", 1),
+        ("pdf.export.searchable", 1),
         ("image.normalize", 1),
         ("image.transform", 1),
         ("ocr.process", 1),
@@ -112,6 +113,7 @@ _OFFLINE_START_CAPABILITIES: Final = frozenset(
         ("image.normalize", 1),
         ("image.transform", 1),
         ("ocr.process", 1),
+        ("pdf.export.searchable", 1),
     }
 )
 
@@ -1178,6 +1180,165 @@ def _operation_registry_issues(data: Mapping[str, Any], document: str) -> list[R
     elif message_type == "operation.start" and descriptor == ("ocr.process", 1):
         for issue in _ocr_process_start_issues(data, payload, document):
             _add_issue(issues, issue)
+    elif message_type == "operation.start" and descriptor == (
+        "pdf.export.searchable",
+        1,
+    ):
+        for issue in _searchable_pdf_export_start_issues(data, payload, document):
+            _add_issue(issues, issue)
+    return _sorted_issues(issues)
+
+
+def _searchable_pdf_export_start_issues(
+    data: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    document: str,
+) -> list[RpcIssue]:
+    """Validate the exact additive searchable mixed-output operation."""
+
+    issues: list[RpcIssue] = []
+    inputs = payload.get("inputs")
+    plan: Mapping[str, Any] | None = None
+    sources: list[Mapping[str, Any]] = []
+    if isinstance(inputs, list) and 2 <= len(inputs) <= MAX_JSON_COLLECTION_ITEMS:
+        if isinstance(inputs[0], Mapping):
+            plan = inputs[0]
+        sources = [value for value in inputs[1:] if isinstance(value, Mapping)]
+    if plan is None or len(sources) != (0 if not isinstance(inputs, list) else len(inputs) - 1):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.inputs",
+                "searchable PDF export requires one plan and at least one source",
+            ),
+        )
+        return _sorted_issues(issues)
+    if (
+        plan.get("area") != "source_read"
+        or plan.get("operation_id") is not None
+        or plan.get("content_kind") != "searchable-pdf-export-plan-v1"
+        or type(plan.get("expected_byte_size")) is not int
+        or not 1 <= cast(int, plan.get("expected_byte_size")) <= 2 * 1024 * 1024
+        or not isinstance(plan.get("expected_sha256"), str)
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.inputs[0]",
+                "searchable PDF export requires one authenticated immutable plan",
+            ),
+        )
+    if any(
+        source.get("area") != "source_read"
+        or source.get("operation_id") is not None
+        or source.get("content_kind") not in {"pdf", "jpeg", "png"}
+        or type(source.get("expected_byte_size")) is not int
+        or cast(int, source.get("expected_byte_size")) < 1
+        or not isinstance(source.get("expected_sha256"), str)
+        for source in sources
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.inputs[1:]",
+                "searchable PDF export requires authenticated PDF, JPEG, or PNG sources",
+            ),
+        )
+
+    expected_types = {
+        "plan_handle": "integer",
+        "output_handle": "integer",
+        "status_handle": "integer",
+        "result_handle": "integer",
+        "output_object_id": "uuid",
+        "status_object_id": "uuid",
+        "status_capacity_bytes": "integer",
+    }
+    parameters = payload.get("parameters")
+    parameter_map: dict[str, Mapping[str, Any]] = {}
+    if isinstance(parameters, list):
+        for value in parameters:
+            if isinstance(value, Mapping) and isinstance(value.get("name"), str):
+                parameter_map[cast(str, value["name"])] = value
+    if (
+        not isinstance(parameters, list)
+        or len(parameters) != len(expected_types)
+        or set(parameter_map) != set(expected_types)
+        or any(
+            parameter_map[name].get("value_type") != value_type
+            for name, value_type in expected_types.items()
+            if name in parameter_map
+        )
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload.parameters",
+                "searchable PDF export requires its exact closed parameter set",
+            ),
+        )
+        return _sorted_issues(issues)
+
+    handles = tuple(
+        parameter_map[name].get("value")
+        for name in ("plan_handle", "output_handle", "status_handle", "result_handle")
+    )
+    output_id = parameter_map["output_object_id"].get("value")
+    status_id = parameter_map["status_object_id"].get("value")
+    status_capacity = parameter_map["status_capacity_bytes"].get("value")
+    input_ids = tuple(reference.get("object_id") for reference in (plan, *sources))
+    correlated_ids = (
+        data.get("case_id"),
+        data.get("operation_id"),
+        *input_ids,
+        output_id,
+        status_id,
+    )
+    limits = payload.get("requested_limits")
+    page_count = limits.get("page_count") if isinstance(limits, Mapping) else None
+    temporary_bytes = limits.get("temporary_storage_bytes") if isinstance(limits, Mapping) else None
+    output_bytes = limits.get("output_bytes") if isinstance(limits, Mapping) else None
+    source_sizes = tuple(source.get("expected_byte_size") for source in sources)
+    source_total = (
+        sum(cast(tuple[int, ...], source_sizes))
+        if all(type(value) is int and value > 0 for value in source_sizes)
+        else None
+    )
+    if (
+        any(type(handle) is not int or handle <= 0 for handle in handles)
+        or len(set(handles)) != len(handles)
+        or not _canonical_uuid_v4(output_id)
+        or not _canonical_uuid_v4(status_id)
+        or len(set(correlated_ids)) != len(correlated_ids)
+        or type(status_capacity) is not int
+        or not 1 <= status_capacity <= 2 * 1024 * 1024
+        or type(page_count) is not int
+        or not 1 <= page_count <= 4_096
+        or type(temporary_bytes) is not int
+        or type(output_bytes) is not int
+        or output_bytes < 1
+        or source_total is None
+        or source_total > temporary_bytes
+        or output_bytes > temporary_bytes - source_total
+        or status_capacity > temporary_bytes - source_total - output_bytes
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "RPC_OPERATION_INPUT_INVALID",
+                document,
+                "$.payload",
+                "searchable PDF export identities, handles, capacities, and limits must be bounded",
+            ),
+        )
     return _sorted_issues(issues)
 
 

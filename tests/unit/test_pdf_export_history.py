@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
@@ -41,11 +42,14 @@ from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryDocument,
     PdfExportHistoryError,
     PdfExportHistoryErrorCode,
+    PdfExportHistoryPlanBinding,
     PdfExportHistoryRecord,
     PdfExportHistorySnapshot,
     build_pdf_export_history_record,
+    build_pdf_export_history_record_for_binding,
     build_pdf_export_history_record_for_commit,
     build_pdf_export_history_retry_receipt,
+    build_pdf_export_history_retry_receipt_for_binding,
     canonical_pdf_export_history_bytes,
     canonical_pdf_export_history_record_bytes,
     decode_pdf_export_history,
@@ -459,6 +463,95 @@ def test_service_appends_record_before_manifest_reference_and_returns_recorded()
     )
     assert entries == [record.manifest_reference]
     assert entries[0]["sha256"] == record.sha256
+
+
+def test_explicit_plan_binding_preserves_history_v1_record_and_retry_payload() -> None:
+    plan = _plan(signed=True)
+    report = _outcome(plan).report
+    binding = PdfExportHistoryPlanBinding.from_pdf_export_plan(plan)
+
+    plan_record = build_pdf_export_history_record_for_commit(
+        plan,
+        export_id=EXPORT_ID,
+        report=report,
+        recorded_at=RECORDED_AT,
+    )
+    binding_record = build_pdf_export_history_record_for_binding(
+        binding,
+        export_id=EXPORT_ID,
+        report=report,
+        recorded_at=RECORDED_AT,
+    )
+    plan_receipt = build_pdf_export_history_retry_receipt(plan, plan_record, report)
+    binding_receipt = build_pdf_export_history_retry_receipt_for_binding(
+        binding,
+        binding_record,
+        report,
+    )
+
+    assert binding_record == plan_record
+    assert binding_receipt == plan_receipt
+    assert binding_record.record_version == PDF_EXPORT_HISTORY_RECORD_VERSION
+    assert set(binding_record.to_document()) == {
+        "export_id",
+        "record_version",
+        "recorded_at",
+        "manifest_revision",
+        "manifest_sha256",
+        "semantic_fingerprint",
+        "output_sha256",
+        "output_byte_size",
+        "page_count",
+        "check_codes",
+        "unsigned_derivative",
+    }
+    assert canonical_pdf_export_history_record_bytes(
+        binding_record
+    ) == canonical_pdf_export_history_record_bytes(plan_record)
+
+
+def test_service_accepts_explicit_binding_without_changing_record_first_order() -> None:
+    events: list[str] = []
+    history = _MemoryHistory(events)
+    manifests = _MemoryManifests(events)
+    plan = _plan()
+
+    result = PdfExportHistoryService(history, manifests).record_and_link_binding(
+        PdfExportHistoryPlanBinding.from_pdf_export_plan(plan),
+        _record(),
+        _outcome(plan),
+    )
+
+    assert result.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert events == ["history.append", "manifest.load", "manifest.save"]
+
+
+@pytest.mark.parametrize("field", ["page_count", "unsigned_derivative"])
+def test_service_rejects_explicit_binding_with_mismatched_structural_fact(
+    field: str,
+) -> None:
+    events: list[str] = []
+    plan = _plan()
+    binding = PdfExportHistoryPlanBinding.from_pdf_export_plan(plan)
+    mismatched = (
+        replace(binding, page_count=binding.page_count + 1)
+        if field == "page_count"
+        else replace(binding, unsigned_derivative=not binding.unsigned_derivative)
+    )
+
+    with pytest.raises(PdfExportHistoryError) as raised:
+        PdfExportHistoryService(
+            _MemoryHistory(events),
+            _MemoryManifests(events),
+        ).record_and_link_binding(
+            mismatched,
+            _record(),
+            _outcome(plan),
+        )
+
+    assert raised.value.code is PdfExportHistoryErrorCode.RECORD_MISMATCH
+    assert raised.value.context == "export_history.plan_correlation"
+    assert events == []
 
 
 def test_reserved_export_ids_include_durable_unlinked_records() -> None:

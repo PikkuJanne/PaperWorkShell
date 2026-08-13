@@ -23,6 +23,7 @@ from paperworkshell.ocr.ocrmypdf_adapter import (
     OcrMyPdfAdapter,
     _build_plugin_manager,
     _LazyOcrMyPdfBoundary,
+    _private_ocrmypdf_temp_directory,
     _temporary_tree_bytes,
     _TemporaryStorageMonitor,
 )
@@ -108,6 +109,7 @@ def test_lazy_boundary_uses_only_allowlisted_plugins_and_fixed_profile(
     monkeypatch.setenv("PATH", os.fspath(ambient_profile / "bin"))
     original_tesseract_run = __import__("ocrmypdf._exec.tesseract", fromlist=["run"]).run
     original_mkdtemp = _ocrmypdf_pipeline.__dict__["mkdtemp"]
+    original_manage_work_folder = _ocrmypdf_pipeline.__dict__["manage_work_folder"]
 
     def fake_ocr(input_path: Path, output_path: Path, **kwargs: object) -> int:
         assert input_path == source
@@ -124,10 +126,25 @@ def test_lazy_boundary_uses_only_allowlisted_plugins_and_fixed_profile(
         font_directories = SystemFontProvider()._get_font_dirs()
         assert all(not path.is_relative_to(ambient_profile) for path in font_directories)
         with tempfile.TemporaryDirectory(prefix="ocrmypdf.io.") as generated:
-            assert Path(generated).is_relative_to(tmp_path)
+            generated_path = Path(generated)
+            assert generated_path.parent == tmp_path
+            assert generated_path.name.startswith("o")
+            assert len(generated_path.name) == 17
         generated_work = Path(_ocrmypdf_pipeline.__dict__["mkdtemp"](prefix="ocrmypdf.io."))
-        assert generated_work.is_relative_to(tmp_path)
-        generated_work.rmdir()
+        assert generated_work.parent == tmp_path
+        assert generated_work.name.startswith("o")
+        assert len(generated_work.name) == 17
+        manage_work_folder = cast(Any, _ocrmypdf_pipeline.__dict__["manage_work_folder"])
+        with manage_work_folder(
+            work_folder=generated_work,
+            retain=False,
+            print_location=False,
+        ):
+            _write_pdf(generated_work / "origin.pdf")
+        # Cleanup is deliberately deferred until this OCR API frame returns.
+        assert generated_work.is_dir()
+        captured["leaked_document"] = pikepdf.Pdf.open(generated_work / "origin.pdf")
+        captured["generated_work"] = generated_work
         captured.update(kwargs)
         manager = cast(Any, kwargs["plugin_manager"])
         names = {name for name, _plugin in manager.pluggy_manager.list_name_plugin()}
@@ -172,6 +189,44 @@ def test_lazy_boundary_uses_only_allowlisted_plugins_and_fixed_profile(
     tesseract_module = __import__("ocrmypdf._exec.tesseract", fromlist=["run"])
     assert tesseract_module.run is original_tesseract_run
     assert _ocrmypdf_pipeline.__dict__["mkdtemp"] is original_mkdtemp
+    assert _ocrmypdf_pipeline.__dict__["manage_work_folder"] is original_manage_work_folder
+    assert not cast(Path, captured["generated_work"]).exists()
+    assert type(captured["leaked_document"]) is pikepdf.Pdf
+
+
+def test_deferred_work_tree_cleanup_failure_is_authoritative_and_restores_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_mkdtemp = _ocrmypdf_pipeline.__dict__["mkdtemp"]
+    original_manage_work_folder = _ocrmypdf_pipeline.__dict__["manage_work_folder"]
+    original_rmtree = __import__("shutil").rmtree
+    work_directory: Path | None = None
+
+    def failing_rmtree(_path: object, **_kwargs: object) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr("paperworkshell.ocr.ocrmypdf_adapter.shutil.rmtree", failing_rmtree)
+    with pytest.raises(OcrError) as raised:
+        with _private_ocrmypdf_temp_directory(tmp_path):
+            work_directory = Path(_ocrmypdf_pipeline.__dict__["mkdtemp"](prefix="ocrmypdf.io."))
+            manage_work_folder = cast(
+                Any,
+                _ocrmypdf_pipeline.__dict__["manage_work_folder"],
+            )
+            with manage_work_folder(
+                work_folder=work_directory,
+                retain=False,
+                print_location=False,
+            ):
+                _write_pdf(work_directory / "origin.pdf")
+
+    assert raised.value.code is OcrErrorCode.INTERNAL_ERROR
+    assert raised.value.context == "ocr.ocrmypdf_temp_cleanup"
+    assert _ocrmypdf_pipeline.__dict__["mkdtemp"] is original_mkdtemp
+    assert _ocrmypdf_pipeline.__dict__["manage_work_folder"] is original_manage_work_folder
+    assert work_directory is not None and work_directory.is_dir()
+    original_rmtree(work_directory)
 
 
 def test_supported_engine_builds_exact_hocr_argv_without_user_configuration(

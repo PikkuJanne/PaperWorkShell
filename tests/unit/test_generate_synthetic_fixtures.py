@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import re
@@ -18,6 +19,11 @@ from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
     GOLDEN_DIRECTORY,
     LONG_PATH_COMPONENT,
+    OCR_BORN_DIGITAL_TOKEN,
+    OCR_RASTER_GLYPH_SCALE,
+    OCR_RASTER_HEIGHT,
+    OCR_RASTER_TOKEN,
+    OCR_RASTER_WIDTH,
     SYNTHETIC_MARKER,
     FixtureGenerationError,
     _synthetic_rgb_icc_profile,
@@ -70,7 +76,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(42, len(self.fixtures))
+        self.assertEqual(45, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -182,12 +188,105 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 width, height, bit_depth, color_type, _, _, _ = struct.unpack(
                     ">IIBBBBB", chunks[0][1]
                 )
-                channels = 4 if color_type == 6 else 3
                 raw = zlib.decompress(chunks[2][1])
-                self.assertEqual(height * (1 + width * channels), len(raw))
-                self.assertEqual(8, bit_depth)
+                if bit_depth == 1 and color_type == 0:
+                    row_bytes = (width + 7) // 8
+                elif bit_depth == 8 and color_type in {2, 6}:
+                    row_bytes = width * (4 if color_type == 6 else 3)
+                else:
+                    self.fail("fixture PNG must use a reviewed pixel layout")
+                self.assertEqual(height * (1 + row_bytes), len(raw))
                 for row in range(height):
-                    self.assertEqual(0, raw[row * (1 + width * channels)])
+                    self.assertEqual(0, raw[row * (1 + row_bytes)])
+
+    def test_ocr_readable_fixtures_use_only_the_closed_bitmap_glyph_recipe(self) -> None:
+        png = self.by_id["png-ocr-raster-text"].content
+        image_pdf = self.by_id["pdf-ocr-raster-text"].content
+        mixed_pdf = self.by_id["pdf-ocr-readable-mixed"].content
+
+        self.assertNotIn(OCR_RASTER_TOKEN.encode("ascii"), png)
+        self.assertNotIn(OCR_RASTER_TOKEN.encode("ascii"), image_pdf)
+        self.assertNotIn(OCR_RASTER_TOKEN.encode("ascii"), mixed_pdf)
+        self.assertIn(OCR_BORN_DIGITAL_TOKEN.encode("ascii"), mixed_pdf)
+        self.assertNotIn(b"BT ", image_pdf)
+        self.assertNotIn(b" Tj", image_pdf)
+        self.assertIn(b"/BitsPerComponent 1", image_pdf)
+        self.assertIn(b"/Interpolate false", image_pdf)
+        self.assertEqual(1, image_pdf.count(b"/Subtype /Image"))
+        self.assertEqual(1, mixed_pdf.count(b"/Subtype /Image"))
+        self.assertIn(b"/Count 2", mixed_pdf)
+
+        with Image.open(io.BytesIO(png)) as image:
+            image.load()
+            self.assertEqual((OCR_RASTER_WIDTH, OCR_RASTER_HEIGHT), image.size)
+            self.assertEqual("1", image.mode)
+            self.assertEqual(255, image.getpixel((0, 0)))
+            scale = OCR_RASTER_GLYPH_SCALE
+            advances = [3 * scale if value == " " else 6 * scale for value in OCR_RASTER_TOKEN]
+            origin_x = (OCR_RASTER_WIDTH - (sum(advances) - scale)) // 2
+            origin_y = (OCR_RASTER_HEIGHT - 7 * scale) // 2
+            self.assertEqual(0, image.getpixel((origin_x + 2 * scale, origin_y)))
+            self.assertEqual(255, image.getpixel((origin_x, origin_y)))
+            self.assertEqual(0, image.getpixel((origin_x, origin_y + 2 * scale)))
+
+        png_idat = bytearray()
+        cursor = 8
+        while cursor < len(png):
+            length = struct.unpack(">I", png[cursor : cursor + 4])[0]
+            kind = png[cursor + 4 : cursor + 8]
+            if kind == b"IDAT":
+                png_idat.extend(png[cursor + 8 : cursor + 8 + length])
+            cursor += 12 + length
+        decoded_png = zlib.decompress(png_idat)
+        row_bytes = OCR_RASTER_WIDTH // 8
+        packed_png = b"".join(
+            decoded_png[offset + 1 : offset + 1 + row_bytes]
+            for offset in range(0, len(decoded_png), row_bytes + 1)
+        )
+        for fixture_id, pdf in (
+            ("pdf-ocr-raster-text", image_pdf),
+            ("pdf-ocr-readable-mixed", mixed_pdf),
+        ):
+            with self.subTest(fixture=fixture_id):
+                image_stream = re.search(
+                    rb"/Subtype /Image.*?>>\nstream\n(.*?)\nendstream",
+                    pdf,
+                    flags=re.DOTALL,
+                )
+                self.assertIsNotNone(image_stream)
+                self.assertEqual(
+                    packed_png,
+                    zlib.decompress(cast(re.Match[bytes], image_stream).group(1)),
+                )
+
+        expected_sha256 = {
+            "png-ocr-raster-text": (
+                "f2976a85d04b992bd690d8a2b70faf8444197d87ce58a7a5687a778c97f3fd82"
+            ),
+            "pdf-ocr-raster-text": (
+                "3057e335b09d8721538be4a64306e8da552af4cbe9bf72b032cb80c188642562"
+            ),
+            "pdf-ocr-readable-mixed": (
+                "27cd473b273d4b7fe6ea8183e39a5b4523f66021b5b3208fad5499084fc02f3a"
+            ),
+        }
+        for fixture_id, expected_digest in expected_sha256.items():
+            with self.subTest(fixture=fixture_id):
+                self.assertEqual(
+                    expected_digest,
+                    hashlib.sha256(self.by_id[fixture_id].content).hexdigest(),
+                )
+
+        index = build_index(self.fixtures)
+        index_entries = cast(list[dict[str, Any]], index["fixtures"])
+        index_by_id = {cast(str, fixture["id"]): fixture for fixture in index_entries}
+        for fixture_id in expected_sha256:
+            with self.subTest(provenance=fixture_id):
+                provenance = cast(dict[str, object], index_by_id[fixture_id]["provenance"])
+                self.assertEqual("algorithmic", provenance["kind"])
+                self.assertEqual("none", provenance["source_material"])
+                self.assertIs(False, provenance["contains_personal_data"])
+                self.assertEqual("PWS-D035", provenance["review_decision"])
 
     def test_feature_markers_are_narrow_and_duplicates_are_explicit(self) -> None:
         duplicate_a = self.by_id["pdf-duplicate-a"]
@@ -498,10 +597,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(42, count)
+        self.assertEqual(45, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(43, len(first))
+        self.assertEqual(46, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 

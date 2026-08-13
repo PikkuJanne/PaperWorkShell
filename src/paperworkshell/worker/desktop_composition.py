@@ -73,6 +73,21 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     ResourceLimits,
 )
+from paperworkshell.worker.searchable_pdf_export_composition import (
+    SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES as SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
+)
+from paperworkshell.worker.searchable_pdf_export_composition import (
+    SearchablePdfExportWorkerComposition as SearchablePdfExportWorkerComposition,
+)
+from paperworkshell.worker.searchable_pdf_export_composition import (
+    SearchablePdfExportWorkerCompositionConfig as SearchablePdfExportWorkerCompositionConfig,
+)
+from paperworkshell.worker.searchable_pdf_export_composition import (
+    create_searchable_pdf_export_worker_composition as create_searchable_pdf_export_worker_composition,
+)
+from paperworkshell.worker.searchable_pdf_export_composition import (
+    create_searchable_pdf_export_worker_composition_config as create_searchable_pdf_export_worker_composition_config,
+)
 
 _REQUIRED_DESKTOP_CAPABILITIES = (
     IMAGE_NORMALIZE_CAPABILITY,

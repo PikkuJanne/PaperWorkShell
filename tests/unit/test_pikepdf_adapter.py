@@ -82,6 +82,8 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "incremental-update.pdf",
         "malformed-truncated.pdf",
         "mixed.pdf",
+        "ocr-raster-text.pdf",
+        "ocr-readable-mixed.pdf",
         "page-geometry.pdf",
         "password-required.pdf",
         "render-calibration.pdf",
@@ -109,6 +111,8 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "image-only.pdf",
         "incremental-update.pdf",
         "mixed.pdf",
+        "ocr-raster-text.pdf",
+        "ocr-readable-mixed.pdf",
         "page-geometry.pdf",
         "render-calibration.pdf",
         "render-cmyk.pdf",
@@ -145,7 +149,13 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
             6
             if path.name == "render-geometry-matrix.pdf"
             else 2
-            if path.name in {"mixed.pdf", "page-geometry.pdf", "render-calibration.pdf"}
+            if path.name
+            in {
+                "mixed.pdf",
+                "ocr-readable-mixed.pdf",
+                "page-geometry.pdf",
+                "render-calibration.pdf",
+            }
             else 1
         )
         assert result.object_count is not None and result.object_count > 0

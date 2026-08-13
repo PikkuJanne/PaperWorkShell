@@ -15,7 +15,6 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from enum import StrEnum
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Final, Literal, Protocol, cast
@@ -39,7 +38,14 @@ from paperworkshell.domain.ocr import (
     TRUSTED_TESSERACT_VERSION,
     OcrError,
     OcrErrorCode,
+    OcrProgressPhase,
     reject_ocr,
+)
+from paperworkshell.domain.ocr import (
+    OcrAdapterProgressSink as OcrAdapterProgressSink,
+)
+from paperworkshell.domain.ocr import (
+    OcrAdapterResult as OcrAdapterResult,
 )
 from paperworkshell.ocr.tesseract_runner import (
     TesseractCommandRunner,
@@ -49,6 +55,7 @@ from paperworkshell.ocr.tesseract_runner import (
 )
 from paperworkshell.pdf.ocr_candidate_verifier import (
     OcrPdfCandidateVerificationError,
+    close_private_ocr_pdf_documents,
     verified_ocr_pdf_page_count,
 )
 
@@ -73,38 +80,12 @@ _TEMP_MONITOR_POLL_SECONDS: Final = 0.05
 _TEMP_MONITOR_JOIN_SECONDS: Final = 1.0
 _MAXIMUM_TEMP_ENTRIES: Final = 100_000
 _PRIVATE_TEMP_CREATE_ATTEMPTS: Final = 32
+_PRIVATE_TEMP_RANDOM_HEX_CHARACTERS: Final = 16
 _OCRMY_PDF_VERSION: Final = TRUSTED_OCRMYPDF_VERSION
 _TESSERACT_VERSION: Final = TRUSTED_TESSERACT_VERSION
 
 
-class OcrAdapterProgressPhase(StrEnum):
-    """Stable content-free phases emitted by the library adapter."""
-
-    PREPARING = "preparing"
-    RECOGNIZING = "recognizing"
-    FINALIZING = "finalizing"
-    VALIDATING = "validating"
-    COMPLETE = "complete"
-
-
-class OcrAdapterProgressSink(Protocol):
-    def __call__(
-        self,
-        phase: OcrAdapterProgressPhase,
-        completed_pages: int,
-        total_pages: int,
-    ) -> None: ...
-
-
-@dataclass(frozen=True, slots=True, repr=False)
-class OcrAdapterResult:
-    """Content-free facts for one verified private OCR candidate."""
-
-    byte_size: int
-    page_count: int
-    sha256: str = field(repr=False)
-    ocrmypdf_version: str
-    tesseract_version: str
+OcrAdapterProgressPhase = OcrProgressPhase
 
 
 class OcrMyPdfBoundary(Protocol):
@@ -609,9 +590,11 @@ def _private_ocrmypdf_temp_directory(root: Path) -> Iterator[None]:
 
     original = tempfile.TemporaryDirectory
     original_mkdtemp_value = _ocrmypdf_pipeline.__dict__.get("mkdtemp")
-    if not callable(original_mkdtemp_value):
+    original_manage_work_folder = _ocrmypdf_pipeline.__dict__.get("manage_work_folder")
+    if not callable(original_mkdtemp_value) or not callable(original_manage_work_folder):
         reject_ocr(OcrErrorCode.ENGINE_UNAVAILABLE, "ocr.ocrmypdf_temp_api")
     original_mkdtemp = cast(Callable[..., str], original_mkdtemp_value)
+    work_directories: list[Path] = []
 
     def private_mkdtemp(
         suffix: str | None = None,
@@ -641,13 +624,64 @@ def _private_ocrmypdf_temp_directory(root: Path) -> Iterator[None]:
             )
         )
 
+    @contextmanager
+    def private_manage_work_folder(
+        *,
+        work_folder: Path,
+        retain: bool,
+        print_location: bool,
+    ) -> Iterator[Path]:
+        """Defer strict work-tree cleanup until OCRmyPDF's frame has unwound.
+
+        OCRmyPDF normally removes this directory from inside its pipeline frame
+        and deliberately ignores errors.  On Windows, the frame can still own
+        an mmap of ``origin.pdf`` at that point.  Retaining the authenticated
+        tree until the API call returns gives those native owners a deterministic
+        lifetime and lets this adapter make cleanup failure authoritative.
+        """
+
+        if (
+            not isinstance(work_folder, Path)
+            or not work_folder.is_absolute()
+            or work_folder.parent != root
+            or retain
+            or print_location
+            or work_folder in work_directories
+        ):
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+        try:
+            info = os.lstat(work_folder)
+        except OSError:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+        if not stat.S_ISDIR(info.st_mode) or _is_reparse(info):
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
+        work_directories.append(work_folder)
+        yield work_folder
+
     tempfile.__dict__["TemporaryDirectory"] = private_temporary_directory
     _ocrmypdf_pipeline.__dict__["mkdtemp"] = private_mkdtemp
+    _ocrmypdf_pipeline.__dict__["manage_work_folder"] = private_manage_work_folder
+    cleanup_failed = False
     try:
         yield
     finally:
+        _ocrmypdf_pipeline.__dict__["manage_work_folder"] = original_manage_work_folder
         _ocrmypdf_pipeline.__dict__["mkdtemp"] = original_mkdtemp
         tempfile.__dict__["TemporaryDirectory"] = original
+        if not close_private_ocr_pdf_documents(tuple(work_directories)):
+            cleanup_failed = True
+        for work_directory in reversed(work_directories):
+            try:
+                shutil.rmtree(work_directory)
+                os.lstat(work_directory)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                cleanup_failed = True
+            else:
+                cleanup_failed = True
+        if cleanup_failed:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp_cleanup")
 
 
 class _InheritedAclTemporaryDirectory:
@@ -694,7 +728,10 @@ def _create_inherited_private_temp(
     ):
         reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.ocrmypdf_temp")
     for _attempt in range(_PRIVATE_TEMP_CREATE_ATTEMPTS):
-        candidate = root / f"pws-ocrmypdf-{uuid4().hex}"
+        # OCRmyPDF adds several long fixed artifact names beneath this folder.
+        # Keep the exclusive random component short enough to preserve legacy
+        # Windows MAX_PATH headroom when the AppContainer profile root is long.
+        candidate = root / f"o{uuid4().hex[:_PRIVATE_TEMP_RANDOM_HEX_CHARACTERS]}"
         try:
             candidate.mkdir()
             info = os.lstat(candidate)

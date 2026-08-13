@@ -40,6 +40,7 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_TRANSFORM_PAGE_ID_PARAMETER,
     IMAGE_TRANSFORM_QUARTER_TURNS_PARAMETER,
     IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER,
+    MAX_SEARCHABLE_PDF_EXPORT_STATUS_BYTES,
     NOOP_CAPABILITY,
     OCR_PROCESS_CAPABILITY,
     OCR_PROCESS_LANGUAGE_SET_ID_PARAMETER,
@@ -71,6 +72,16 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_PAGE_ID_PARAMETER,
     PDF_THUMBNAIL_SOURCE_HANDLE_PARAMETER,
     PDF_THUMBNAIL_SOURCE_PAGE_INDEX_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_CAPABILITY,
+    SEARCHABLE_PDF_EXPORT_OUTPUT_CONTENT_KIND,
+    SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_STATUS_CAPACITY_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_STATUS_CONTENT_KIND,
+    SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
     CapabilityDescriptor,
     CaseObjectReference,
     ErrorCategory,
@@ -805,6 +816,159 @@ def _require_pdf_export_output(
         or output.expected_sha256 is None
     ):
         raise ValueError("PDF-export adapter returned an invalid staging reference")
+
+
+@dataclass(frozen=True, slots=True)
+class SearchablePdfExportOperationRequest:
+    """Path-free authority for one searchable mixed-document derivative."""
+
+    plan_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    status_handle: int = field(repr=False)
+    result_handle: int = field(repr=False)
+    output_object_id: UUID
+    status_object_id: UUID
+    status_capacity_bytes: int
+
+    def __post_init__(self) -> None:
+        handles = (
+            self.plan_handle,
+            self.output_handle,
+            self.status_handle,
+            self.result_handle,
+        )
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+            or type(self.status_object_id) is not UUID
+            or self.status_object_id.version != 4
+            or self.output_object_id == self.status_object_id
+            or type(self.status_capacity_bytes) is not int
+            or not 1 <= self.status_capacity_bytes <= MAX_SEARCHABLE_PDF_EXPORT_STATUS_BYTES
+        ):
+            raise ValueError("validated searchable-PDF export parameters are unavailable")
+
+
+class SearchablePdfExportAdapter(Protocol):
+    """Injected adapter consuming all transferred searchable-export authority."""
+
+    def discard_handles(
+        self,
+        context: OperationContext,
+        request: SearchablePdfExportOperationRequest,
+    ) -> None:
+        """Consume transfer handles when terminal state prevents dispatch."""
+
+    def export(
+        self,
+        context: OperationContext,
+        request: SearchablePdfExportOperationRequest,
+    ) -> tuple[CaseObjectReference, CaseObjectReference]:
+        """Create exact PDF and page-status staging outputs in that order."""
+
+
+@dataclass(frozen=True, slots=True)
+class SearchablePdfExportOperationHandler:
+    """Coordinate ``pdf.export.searchable`` around one injected adapter."""
+
+    adapter: SearchablePdfExportAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return SEARCHABLE_PDF_EXPORT_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _searchable_pdf_export_operation_request(context)
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+
+        try:
+            outputs = self.adapter.export(context, request)
+        except PdfExportError as error:
+            if error.code is PdfExportErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is PdfExportErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            raise
+
+        # The adapter closes all four transfer handles before returning. A late
+        # terminal request suppresses both staging references atomically.
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_searchable_pdf_export_outputs(context, request, outputs)
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, outputs, None)
+
+
+def _searchable_pdf_export_operation_request(
+    context: OperationContext,
+) -> SearchablePdfExportOperationRequest:
+    return SearchablePdfExportOperationRequest(
+        plan_handle=_positive_integer_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+        ),
+        output_handle=_positive_integer_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+        ),
+        status_handle=_positive_integer_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER,
+        ),
+        result_handle=_positive_integer_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        ),
+        output_object_id=_uuid_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+        ),
+        status_object_id=_uuid_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
+        ),
+        status_capacity_bytes=_positive_integer_parameter(
+            context,
+            SEARCHABLE_PDF_EXPORT_STATUS_CAPACITY_PARAMETER,
+        ),
+    )
+
+
+def _require_searchable_pdf_export_outputs(
+    context: OperationContext,
+    request: SearchablePdfExportOperationRequest,
+    outputs: tuple[CaseObjectReference, CaseObjectReference],
+) -> None:
+    if type(outputs) is not tuple or len(outputs) != 2:
+        raise ValueError("searchable-PDF adapter returned invalid staging references")
+    output, status = outputs
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != SEARCHABLE_PDF_EXPORT_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+        or type(status) is not CaseObjectReference
+        or status.area is not ReferenceArea.OPERATION_STAGING
+        or status.object_id != request.status_object_id
+        or status.operation_id != context.operation_id
+        or status.content_kind != SEARCHABLE_PDF_EXPORT_STATUS_CONTENT_KIND
+        or status.expected_byte_size is None
+        or not 1 <= status.expected_byte_size <= request.status_capacity_bytes
+        or status.expected_sha256 is None
+    ):
+        raise ValueError("searchable-PDF adapter returned invalid staging references")
 
 
 def _pdf_thumbnail_render_request(context: OperationContext) -> PdfThumbnailRenderRequest:

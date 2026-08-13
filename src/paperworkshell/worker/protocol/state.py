@@ -17,6 +17,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CancelDisposition,
     CapabilityDescriptor,
     ClosedReason,
@@ -41,6 +42,8 @@ from paperworkshell.worker.protocol.models import (
     ocr_process_bound_object_ids,
     pdf_export_bound_object_ids,
     pdf_thumbnail_bound_object_ids,
+    searchable_pdf_export_bound_object_ids,
+    searchable_pdf_export_status_capacity_bytes,
     validate_image_normalize_result,
     validate_image_normalize_start,
     validate_image_transform_result,
@@ -52,6 +55,8 @@ from paperworkshell.worker.protocol.models import (
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_result,
     validate_pdf_thumbnail_start,
+    validate_searchable_pdf_export_result,
+    validate_searchable_pdf_export_start,
 )
 
 MAX_TRACKED_MESSAGES: Final = 4_096
@@ -81,6 +86,9 @@ class _ActiveOperation:
     ocr_output_object_id: UUID | None = None
     thumbnail_cache_object_id: UUID | None = None
     export_output_object_id: UUID | None = None
+    searchable_export_output_object_id: UUID | None = None
+    searchable_export_status_object_id: UUID | None = None
+    searchable_export_status_capacity_bytes: int | None = None
     accepted: bool = False
     pending_cancel_request_ids: frozenset[UUID] = field(default_factory=frozenset)
     progress_seen: bool = False
@@ -341,6 +349,9 @@ class ConversationState:
         ocr_output_object_id: UUID | None = None
         thumbnail_cache_object_id: UUID | None = None
         export_output_object_id: UUID | None = None
+        searchable_export_output_object_id: UUID | None = None
+        searchable_export_status_object_id: UUID | None = None
+        searchable_export_status_capacity_bytes: int | None = None
         if descriptor == IMAGE_NORMALIZE_CAPABILITY:
             validate_image_normalize_start(payload)
             image_bound_object_ids = image_normalize_bound_object_ids(payload)
@@ -412,6 +423,27 @@ class ConversationState:
                     "pdf.export operation and object identifiers must be distinct",
                 )
             export_output_object_id = export_bound_object_ids[-1]
+        if descriptor == SEARCHABLE_PDF_EXPORT_CAPABILITY:
+            validate_searchable_pdf_export_start(payload)
+            searchable_bound_object_ids = searchable_pdf_export_bound_object_ids(payload)
+            searchable_correlated_ids = (
+                self.case_id,
+                message.operation_id,
+                *searchable_bound_object_ids,
+            )
+            if len(set(searchable_correlated_ids)) != len(searchable_correlated_ids):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "searchable PDF export correlation identifiers must be distinct",
+                )
+            (
+                searchable_export_output_object_id,
+                searchable_export_status_object_id,
+            ) = searchable_bound_object_ids[-2:]
+            searchable_export_status_capacity_bytes = searchable_pdf_export_status_capacity_bytes(
+                payload
+            )
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",
@@ -432,6 +464,9 @@ class ConversationState:
                 ocr_output_object_id=ocr_output_object_id,
                 thumbnail_cache_object_id=thumbnail_cache_object_id,
                 export_output_object_id=export_output_object_id,
+                searchable_export_output_object_id=(searchable_export_output_object_id),
+                searchable_export_status_object_id=(searchable_export_status_object_id),
+                searchable_export_status_capacity_bytes=(searchable_export_status_capacity_bytes),
             ),
         )
 
@@ -503,6 +538,15 @@ class ConversationState:
                 "RPC_INVALID_PROGRESS",
                 "payload",
                 "ocr.process progress must use its exact numeric page total",
+            )
+        if active.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.PAGES
+            or payload.total_units != active.requested_limits.page_count
+        ):
+            reject(
+                "RPC_INVALID_PROGRESS",
+                "payload",
+                "searchable PDF export progress must use its exact numeric page total",
             )
         if active.progress_seen:
             if payload.completed_units < active.completed_units:
@@ -721,6 +765,25 @@ class ConversationState:
                 operation_id=active.operation_id,
                 output_object_id=active.export_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if active.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id:
+            if (
+                active.searchable_export_output_object_id is None
+                or active.searchable_export_status_object_id is None
+                or active.searchable_export_status_capacity_bytes is None
+            ):
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "searchable PDF export result binding is unavailable",
+                )
+            validate_searchable_pdf_export_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.searchable_export_output_object_id,
+                status_object_id=active.searchable_export_status_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+                maximum_status_bytes=active.searchable_export_status_capacity_bytes,
             )
         terminal = _TerminalOperation(
             operation_id=active.operation_id,

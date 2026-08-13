@@ -7,7 +7,8 @@
   PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
-  PWS-0202 non-destructive image transformations; and PWS-0204 bounded local OCR
+  PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; and PWS-0206
+  verified searchable mixed-document output
 - Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -32,8 +33,8 @@ worker host -> domain
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
-| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), and [deterministic verified PDF-export contract](pdf-export.md) |
-| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), and [deterministic verified PDF-export contract](pdf-export.md) |
+| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
+| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
 | `imaging` | Worker-only image inspection and transformation adapters; Pillow and its native objects never enter domain, app, or UI code |
 | `ocr` | Worker-only OCRmyPDF/Tesseract orchestration and its exact private PDF-candidate reopen seam; third-party objects and recognized text never cross into domain, app, UI, storage, or GUI-safe worker modules; see the [bounded local OCR contract](ocr-worker.md) |
 | `overlays` | Normalized visual-overlay intent and rendering boundaries |
@@ -182,6 +183,18 @@ narrow PDF seam converts pikepdf state to a page count or closed failure, and no
 crosses it. The operation produces only a bounded broker-owned volatile PDF candidate, not OCR
 text, a case artifact, manifest mutation, searchable-output claim, or export. Exact execution and
 deferrals are specified in the [bounded local OCR worker contract](ocr-worker.md).
+
+PWS-0206 adds pure manifest-projection, eligibility, per-page text fact, verification-report, and
+outcome contracts in `domain.searchable_pdf_export`. The application coordinates only structural
+manifest/source/searchable-broker/publication/history ports. `pdf.searchable_export_adapter` is the
+exact restricted-worker composition seam allowed to invoke the existing Pillow normalization/
+transform adapters and OCRmyPDF adapter for one private page; it does not route work through the
+`image.*` or `ocr.process` RPCs. Pikepdf/qpdf reopen, PDFium render comparison, and PDFium text-
+presence checks remain worker/PDF-adapter work; extracted text and third-party objects never cross
+into domain, app, storage, or UI. This is an additive versioned capability: it neither redefines
+`ocr.process` v1 or `pdf.export` v1 nor changes manifest v2/export-history v1 meaning. The page-
+local contract and resource bounds are specified in
+[Verified searchable mixed-document output](searchable-mixed-output.md).
 
 `worker.client.tesseract_runtime` is a standard-library-only helper for the private Windows
 launcher. It authenticates the code-owned manifest fingerprint and one explicitly configured

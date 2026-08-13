@@ -26,6 +26,7 @@ from paperworkshell.domain.pdf_export_history import (
     MAX_PDF_EXPORT_HISTORY_RECORDS,
     PdfExportHistoryError,
     PdfExportHistoryErrorCode,
+    PdfExportHistoryPlanBinding,
     PdfExportHistoryRecord,
     PdfExportHistoryRepository,
     PdfExportHistorySnapshot,
@@ -86,8 +87,27 @@ class PdfExportHistoryService:
     ) -> PdfExportOutcome:
         """Append first, then CAS-link; a retry never recreates the exported PDF."""
 
+        if type(plan) is not PdfExportPlan:
+            reject_pdf_export_history(
+                PdfExportHistoryErrorCode.MODEL_INVALID,
+                "export_history.record_request",
+            )
+        return self.record_and_link_binding(
+            PdfExportHistoryPlanBinding.from_pdf_export_plan(plan),
+            record,
+            outcome,
+        )
+
+    def record_and_link_binding(
+        self,
+        binding: PdfExportHistoryPlanBinding,
+        record: PdfExportHistoryRecord,
+        outcome: PdfExportOutcome,
+    ) -> PdfExportOutcome:
+        """Append and link one record using an explicit plan/history binding."""
+
         if (
-            type(plan) is not PdfExportPlan
+            type(binding) is not PdfExportHistoryPlanBinding
             or type(record) is not PdfExportHistoryRecord
             or type(outcome) is not PdfExportOutcome
         ):
@@ -96,15 +116,17 @@ class PdfExportHistoryService:
                 "export_history.record_request",
             )
         if (
-            record.manifest_revision != plan.manifest_revision
-            or record.manifest_sha256 != plan.manifest_sha256
-            or record.semantic_fingerprint != plan.semantic_fingerprint
+            record.manifest_revision != binding.manifest_revision
+            or record.manifest_sha256 != binding.manifest_sha256
+            or record.semantic_fingerprint != binding.semantic_fingerprint
+            or record.page_count != binding.page_count
+            or record.unsigned_derivative is not binding.unsigned_derivative
         ):
             reject_pdf_export_history(
                 PdfExportHistoryErrorCode.RECORD_MISMATCH,
                 "export_history.plan_correlation",
             )
-        case_id = plan.case_id
+        case_id = binding.case_id
         self._require_outcome_correlation(record, outcome)
         self._require_receipt_correlation(case_id, record, outcome.history_retry)
         return self._append_and_link(case_id, record, outcome)

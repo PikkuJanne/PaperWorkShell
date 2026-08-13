@@ -13,11 +13,14 @@ operation through the existing typed operation registry. PWS-0108 adds the exact
 PWS-0201 adds the exact `image.normalize` operation and bounded volatile artifact. None of these
 extensions adds paths or shell command text to messages. PWS-0202 adds a separate exact
 `image.transform` operation; it does not widen `image.normalize` version 1. PWS-0204 adds the
-separate `ocr.process` operation for one bounded volatile OCR PDF candidate. See the
+separate `ocr.process` operation for one bounded volatile OCR PDF candidate. PWS-0206 adds the
+separate `pdf.export.searchable` operation for one verified mixed PDF plus a bounded content-free
+page-status document; it changes neither `pdf.export` version 1 nor `ocr.process` version 1. See the
 [worker lifecycle contract](../architecture/worker-lifecycle.md) and
 [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md), and
 [bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md), and
-[bounded JPEG/PNG intake contract](../architecture/image-intake.md).
+[bounded JPEG/PNG intake contract](../architecture/image-intake.md), and
+[verified searchable mixed-output contract](../architecture/searchable-mixed-output.md).
 
 ## Common envelope
 
@@ -112,6 +115,15 @@ content kind `ocr-pdf-candidate-v1`, exact operation/output correlation, byte si
 The separate canonical result frame carries only IDs, counts, fixed profile/version tokens, and
 digests. It carries no recognized text, filename, path, raw engine message, or command argument.
 
+PWS-0206 adds `pdf.export.searchable` version 1. Its start has one authenticated canonical plan
+followed by one or more authenticated PDF, JPEG, or PNG `source_read` inputs; four distinct
+positive worker-local plan, output-section, status-section, and result-pipe handles; distinct PDF
+and status output UUIDs; and a bounded status capacity. A succeeded result has exactly two ordered
+`operation_staging` outputs: `searchable-pdf-v1`, then `searchable-pdf-page-status-v1`. The
+separate bounded canonical report frame correlates both outputs and embeds only the base structural
+verification report plus fixed engine/profile facts. No document or OCR text crosses this
+boundary.
+
 ## Messages and lifecycle
 
 | Message | Direction | Payload |
@@ -164,8 +176,8 @@ Validation is intentionally split:
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `pdf.export` version 1, `image.normalize` version 1, and `image.transform` version 1.
-The registry also includes `ocr.process` version 1.
+version 1, `pdf.export` version 1, `image.normalize` version 1, `image.transform` version 1,
+`ocr.process` version 1, and `pdf.export.searchable` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
 out-of-policy value fails closed.
@@ -324,6 +336,48 @@ array, a minimal environment, a fixed tessdata root, and `shell=False`. The Job 
 Python worker and one Tesseract descendant. OCR progress remains numeric `processing/pages`; the
 broker translates it into content-free prepare/recognize/validate/complete application phases.
 Cancellation, timeout, malformed output, engine failure, or uncertain cleanup returns no reference.
+
+### `pdf.export.searchable` mixed-output result
+
+`pdf.export.searchable` version 1 accepts an authenticated canonical plan input with content kind
+`searchable-pdf-export-plan-v1`, followed by one or more exact immutable PDF, JPEG, or PNG source
+references. The plan is limited to 2,097,152 bytes and binds the case/manifest facts, semantic
+fingerprint, source identities and digests, output page order, transform intent, signature and
+encryption states, fixed eligibility/text/OCR profiles, and the reduced source handles. Its exact
+start parameter set is:
+
+- distinct positive integer `plan_handle`, `output_handle`, `status_handle`, and `result_handle`
+  values;
+- distinct UUID `output_object_id` and `status_object_id`, neither aliased with a case, operation,
+  plan, or source identity; and
+- positive `status_capacity_bytes` no greater than 2,097,152 bytes.
+
+The authenticated source total, requested PDF-output capacity, and page-status capacity must fit
+the requested temporary-storage limit. The worker receives read authority for the plan and exact
+sources, map-write authority for two fixed-size anonymous output sections, and write-only authority
+for one report pipe. It receives no manifest/history writer, cache publisher, case root, external
+destination, path, filename, extracted-text sink, or caller-supplied command fragment.
+
+On success, `operation.result` contains exactly two outputs in fixed order. The first names
+`searchable-pdf-v1`; the second names `searchable-pdf-page-status-v1`. Both use
+`operation_staging`, bind their requested object and operation UUIDs, and include an exact bounded
+byte size and SHA-256. The canonical status document binds its own version, operation/status
+identities, plan semantic fingerprint, and exactly one ordered content-free eligibility/outcome/
+searchability/failure tuple per output page. It contains no extracted characters.
+
+The separate report pipe is limited to one 4,096-byte canonical frame. It correlates the operation,
+both output objects, status size/digest, base PDF verification report, fixed OCRmyPDF/Tesseract
+versions, and OCR engine-profile digest. The broker terminates the complete worker Job, revalidates
+every source, authenticates both output sections and the report, and checks the status document
+against the exact plan order before exposing the PDF candidate. Cancellation, timeout, malformed or
+oversized plan/status/report data, source mutation, output mismatch, failed reopen/qpdf/render/text
+verification, or cleanup uncertainty returns no authoritative candidate.
+
+This operation is an additive registry codec under the unchanged generic worker-RPC v1 envelope
+schema. The schema already represents capability tokens, bounded start inputs/parameters, and
+ordered staging outputs; no released JSON Schema meaning is widened. An older peer that does not
+request or advertise `pdf.export.searchable` never negotiates it, while any changed searchable
+operation meaning requires a new operation version.
 
 ## Limits and bounded decoding
 

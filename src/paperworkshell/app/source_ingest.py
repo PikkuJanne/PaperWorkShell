@@ -15,6 +15,12 @@ from paperworkshell.domain.pdf_export import (
     PdfExportSourceMediaType,
     PdfExportSourceSignatureState,
 )
+from paperworkshell.domain.searchable_pdf_export import (
+    SearchablePdfExportPlan,
+    SearchablePdfSourceEncryptionState,
+    SearchablePdfSourceMediaType,
+    SearchablePdfSourceSignatureState,
+)
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -154,6 +160,84 @@ class CommittedPdfSourceBatchStore(Protocol):
         cancellation: CancellationProbe,
     ) -> CommittedPdfSourceBatchLease:
         """Authenticate once and retain every exact source required by ``plan``."""
+
+
+@runtime_checkable
+class CommittedSearchablePdfSourceLease(Protocol):
+    """One authenticated PDF/JPEG/PNG source for searchable mixed output."""
+
+    @property
+    def source_id(self) -> UUID: ...
+
+    @property
+    def media_type(self) -> SearchablePdfSourceMediaType: ...
+
+    @property
+    def byte_size(self) -> int: ...
+
+    @property
+    def page_count(self) -> int: ...
+
+    @property
+    def sha256(self) -> str: ...
+
+    @property
+    def signature_state(self) -> SearchablePdfSourceSignatureState: ...
+
+    @property
+    def encryption_state(self) -> SearchablePdfSourceEncryptionState: ...
+
+    @property
+    def handle_value(self) -> int: ...
+
+
+@runtime_checkable
+class CommittedSearchablePdfSourceBatchLease(Protocol):
+    """Retain one manifest state and every first-use-ordered mixed source."""
+
+    @property
+    def case_id(self) -> UUID: ...
+
+    @property
+    def manifest_revision(self) -> int: ...
+
+    @property
+    def manifest_sha256(self) -> str: ...
+
+    @property
+    def manifest_cas_token(self) -> str: ...
+
+    @property
+    def sources(self) -> tuple[CommittedSearchablePdfSourceLease, ...]: ...
+
+    def revalidate(
+        self,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> None: ...
+
+    def __enter__(self) -> Self: ...
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+
+
+@runtime_checkable
+class CommittedSearchablePdfSourceBatchStore(Protocol):
+    """Storage port for one manifest-bound mixed searchable-export batch."""
+
+    def borrow_committed_searchable_pdf_sources(
+        self,
+        plan: SearchablePdfExportPlan,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> CommittedSearchablePdfSourceBatchLease: ...
 
 
 @runtime_checkable

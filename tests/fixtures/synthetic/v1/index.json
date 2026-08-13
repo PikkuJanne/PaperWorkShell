@@ -83,7 +83,9 @@
       "category": "image-only",
       "status": "committed",
       "fixture_ids": [
-        "pdf-image-only"
+        "pdf-image-only",
+        "pdf-ocr-raster-text",
+        "png-ocr-raster-text"
       ]
     },
     {
@@ -117,7 +119,8 @@
       "category": "mixed",
       "status": "committed",
       "fixture_ids": [
-        "pdf-mixed"
+        "pdf-mixed",
+        "pdf-ocr-readable-mixed"
       ]
     },
     {
@@ -431,6 +434,57 @@
         "page_count": 2,
         "text_page_count": 1,
         "image_page_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-ocr-raster-text",
+      "path": "pdf/ocr-raster-text.pdf",
+      "media_type": "application/pdf",
+      "bytes": 22465,
+      "sha256": "3057e335b09d8721538be4a64306e8da552af4cbe9bf72b032cb80c188642562",
+      "categories": [
+        "image-only"
+      ],
+      "recipe": "ocr-raster-text-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "image_xobject_count": 1,
+        "has_text_operator": false,
+        "pixel_token": "SCAN PAGE 206",
+        "source_raster_fixture": "png-ocr-raster-text",
+        "external_font_asset": false
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-ocr-readable-mixed",
+      "path": "pdf/ocr-readable-mixed.pdf",
+      "media_type": "application/pdf",
+      "bytes": 22829,
+      "sha256": "27cd473b273d4b7fe6ea8183e39a5b4523f66021b5b3208fad5499084fc02f3a",
+      "categories": [
+        "mixed"
+      ],
+      "recipe": "ocr-readable-mixed-pdf-v1",
+      "construction_assertions": {
+        "page_count": 2,
+        "text_page_count": 1,
+        "image_page_count": 1,
+        "born_digital_token": "DIGITAL PAGE 206",
+        "raster_token": "SCAN PAGE 206",
+        "source_raster_fixture": "png-ocr-raster-text",
+        "external_font_asset": false
       },
       "provenance": {
         "kind": "algorithmic",
@@ -865,6 +919,31 @@
         "width": 8,
         "height": 8,
         "color_type": 2
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "png-ocr-raster-text",
+      "path": "image/ocr-raster-text.png",
+      "media_type": "image/png",
+      "bytes": 21992,
+      "sha256": "f2976a85d04b992bd690d8a2b70faf8444197d87ce58a7a5687a778c97f3fd82",
+      "categories": [
+        "image-only"
+      ],
+      "recipe": "ocr-raster-text-png-v1",
+      "construction_assertions": {
+        "width": 720,
+        "height": 240,
+        "bit_depth": 1,
+        "color_type": 0,
+        "pixel_token": "SCAN PAGE 206",
+        "external_font_asset": false
       },
       "provenance": {
         "kind": "algorithmic",

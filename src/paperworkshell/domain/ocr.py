@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Final, Never, cast
+from typing import Final, Never, Protocol, cast
 from uuid import UUID
 
 OCR_REQUEST_VERSION: Final = 1
@@ -89,6 +89,28 @@ class OcrProgressPhase(StrEnum):
     FINALIZING = "finalizing"
     VALIDATING = "validating"
     COMPLETE = "complete"
+
+
+class OcrAdapterProgressSink(Protocol):
+    """Content-free progress port shared by worker-side OCR consumers."""
+
+    def __call__(
+        self,
+        phase: OcrProgressPhase,
+        completed_pages: int,
+        total_pages: int,
+    ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class OcrAdapterResult:
+    """Content-free facts for one verified private OCR candidate."""
+
+    byte_size: int
+    page_count: int
+    sha256: str = field(repr=False)
+    ocrmypdf_version: str
+    tesseract_version: str
 
 
 class OcrErrorCode(StrEnum):

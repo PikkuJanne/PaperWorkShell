@@ -24,6 +24,9 @@ from paperworkshell.app.source_ingest import (
     CommittedPdfSourceBatchLease,
     CommittedPdfSourceBatchStore,
     CommittedPdfSourceLease,
+    CommittedSearchablePdfSourceBatchLease,
+    CommittedSearchablePdfSourceBatchStore,
+    CommittedSearchablePdfSourceLease,
     SourceIngestService,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType, ImportLimits
@@ -34,6 +37,12 @@ from paperworkshell.domain.pdf_export import (
     PdfExportSource,
     PdfExportSourceSignatureState,
     build_pdf_export_plan,
+)
+from paperworkshell.domain.searchable_pdf_export import (
+    SearchablePdfExportPlan,
+    SearchablePdfSource,
+    SearchablePdfSourceMediaType,
+    build_searchable_pdf_export_plan,
 )
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
@@ -347,6 +356,35 @@ def _import_pdf(
         source,
         name,
     )
+
+
+def _import_searchable_mixed_sources(
+    stack: _Stack,
+    tmp_path: Path,
+) -> tuple[SourceImportResult, SourceImportResult, SourceImportResult]:
+    pdf = _import_pdf(
+        stack,
+        tmp_path,
+        name="searchable-source.pdf",
+        marker=b"searchable-mixed",
+    )
+    jpeg_path = (tmp_path / "searchable-source.jpg").resolve()
+    jpeg_path.write_bytes(_jpeg())
+    jpeg = stack.service.import_source(
+        CASE_ID,
+        jpeg_path,
+        "Searchable synthetic JPEG",
+    )
+    png_path = (tmp_path / "searchable-source.png").resolve()
+    png_path.write_bytes(
+        (PROJECT_ROOT / "tests/fixtures/synthetic/v1/image/ocr-raster-text.png").read_bytes()
+    )
+    png = stack.service.import_source(
+        CASE_ID,
+        png_path,
+        "Searchable synthetic PNG",
+    )
+    return pdf, jpeg, png
 
 
 def _reverse_source_order(plan: PdfExportPlan) -> PdfExportPlan:
@@ -1357,6 +1395,210 @@ def test_committed_pdf_batch_lease_preserves_plan_order_and_revalidates_all_hand
 
     assert second.source_id != first.source_id
     assert "batch-private" not in repr(active)
+
+
+def test_committed_searchable_batch_binds_pdf_jpeg_png_exactly_and_is_immutable(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    imported = _import_searchable_mixed_sources(stack, tmp_path)
+    snapshot = WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    plan = build_searchable_pdf_export_plan(snapshot)
+    manifest_before = stack.layout.manifest.read_bytes()
+    originals_before = {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in stack.layout.originals.iterdir()
+    }
+
+    assert isinstance(stack.store, CommittedSearchablePdfSourceBatchStore)
+    with stack.store.borrow_committed_searchable_pdf_sources(
+        plan,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+    ) as lease:
+        assert isinstance(lease, CommittedSearchablePdfSourceBatchLease)
+        assert repr(lease) == "CommittedSearchablePdfSourceBatchReadLease(<redacted>)"
+        assert lease.case_id == plan.case_id
+        assert lease.manifest_revision == plan.manifest_revision
+        assert lease.manifest_sha256 == plan.manifest_sha256
+        assert lease.manifest_cas_token == plan.manifest_cas_token
+        assert tuple(source.source_id for source in lease.sources) == tuple(
+            source.source_id for source in plan.sources
+        )
+        assert tuple(source.media_type for source in lease.sources) == (
+            SearchablePdfSourceMediaType.PDF,
+            SearchablePdfSourceMediaType.JPEG,
+            SearchablePdfSourceMediaType.PNG,
+        )
+        retained = lease.sources
+        for source, expected in zip(retained, plan.sources, strict=True):
+            assert isinstance(source, CommittedSearchablePdfSourceLease)
+            assert repr(source) == "CommittedSearchablePdfSourceReadLease(<redacted>)"
+            assert source.source_id == expected.source_id
+            assert source.media_type is expected.media_type
+            assert source.byte_size == expected.byte_size
+            assert source.page_count == expected.page_count
+            assert source.sha256 == expected.sha256
+            assert source.signature_state is expected.signature_state
+            assert source.encryption_state is expected.encryption_state
+            assert source.handle_value > 0
+            _advance_duplicated_handle(source.handle_value)
+        lease.revalidate(cancellation=lambda: False, deadline=lambda: False)
+
+    for source in retained:
+        with pytest.raises(SourceIngestError):
+            _ = source.handle_value
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in stack.layout.originals.iterdir()
+    } == originals_before
+    assert tuple(result.source_id for result in imported) == tuple(
+        source.source_id for source in plan.sources
+    )
+
+
+def test_committed_searchable_batch_change_closes_every_mixed_source(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    _pdf_result, _jpeg_result, png_result = _import_searchable_mixed_sources(
+        stack,
+        tmp_path,
+    )
+    plan = build_searchable_pdf_export_plan(
+        WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    )
+    active = stack.store.borrow_committed_searchable_pdf_sources(
+        plan,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+    )
+    retained = active.sources
+    alias = tmp_path / "searchable-source-link.bin"
+    case_copy = stack.layout.originals / f"{png_result.source_id}.bin"
+    os.link(case_copy, alias)
+    try:
+        with pytest.raises(SourceIngestError) as changed:
+            active.revalidate(cancellation=lambda: False, deadline=lambda: False)
+        assert changed.value.code is SourceIngestErrorCode.SOURCE_CHANGED
+        for source in retained:
+            with pytest.raises(SourceIngestError):
+                _ = source.handle_value
+    finally:
+        alias.unlink()
+        active.close()
+
+    with stack.store.borrow_committed_searchable_pdf_sources(
+        plan,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+    ) as recovered:
+        recovered.revalidate(cancellation=lambda: False, deadline=lambda: False)
+
+
+def test_committed_searchable_batch_rejects_changed_mixed_plan_facts(
+    tmp_path: Path,
+) -> None:
+    stack = _stack(tmp_path)
+    _import_searchable_mixed_sources(stack, tmp_path)
+    plan = build_searchable_pdf_export_plan(
+        WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    )
+    jpeg = plan.sources[1]
+    changed_jpeg = SearchablePdfSource(
+        source_id=jpeg.source_id,
+        media_type=jpeg.media_type,
+        byte_size=jpeg.byte_size + 1,
+        page_count=jpeg.page_count,
+        sha256=jpeg.sha256,
+        signature_state=jpeg.signature_state,
+        encryption_state=jpeg.encryption_state,
+    )
+    changed_plan = SearchablePdfExportPlan(
+        case_id=plan.case_id,
+        manifest_revision=plan.manifest_revision,
+        manifest_sha256=plan.manifest_sha256,
+        manifest_cas_token=plan.manifest_cas_token,
+        sources=(plan.sources[0], changed_jpeg, plan.sources[2]),
+        pages=plan.pages,
+        profile=plan.profile,
+    )
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.store.borrow_committed_searchable_pdf_sources(
+            changed_plan,
+            cancellation=lambda: False,
+            deadline=lambda: False,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.SOURCE_CHANGED
+    with stack.store.borrow_committed_searchable_pdf_sources(
+        plan,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+    ) as recovered:
+        recovered.revalidate(cancellation=lambda: False, deadline=lambda: False)
+
+
+def test_committed_searchable_batch_cancellation_closes_handles_and_case_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    _import_searchable_mixed_sources(stack, tmp_path)
+    plan = build_searchable_pdf_export_plan(
+        WindowsManifestRepository(stack.manager).load(CASE_ID).snapshot
+    )
+    cancellation = Event()
+    opened_sources: list[WindowsHandle] = []
+
+    def cancel_after_source_open(
+        path: Path,
+        *,
+        delete: bool = False,
+        read: bool = False,
+        share_delete: bool = False,
+        share_write: bool = False,
+        traverse: bool = False,
+    ) -> WindowsHandle:
+        handle = windows_open_handle(
+            path,
+            delete=delete,
+            read=read,
+            share_delete=share_delete,
+            share_write=share_write,
+            traverse=traverse,
+        )
+        if path.parent == stack.layout.originals and path.suffix == ".bin":
+            opened_sources.append(handle)
+            cancellation.set()
+        return handle
+
+    monkeypatch.setattr(source_ingest_storage, "open_handle", cancel_after_source_open)
+
+    with pytest.raises(SourceIngestError) as raised:
+        stack.store.borrow_committed_searchable_pdf_sources(
+            plan,
+            cancellation=cancellation.is_set,
+            deadline=lambda: False,
+        )
+
+    assert raised.value.code is SourceIngestErrorCode.CANCELLED
+    assert len(opened_sources) == 1
+    assert opened_sources[0].value == 0
+    monkeypatch.undo()
+    cancellation.clear()
+    with stack.store.borrow_committed_searchable_pdf_sources(
+        plan,
+        cancellation=cancellation.is_set,
+        deadline=lambda: False,
+    ) as recovered:
+        recovered.revalidate(
+            cancellation=cancellation.is_set,
+            deadline=lambda: False,
+        )
+    _assert_no_staged_files(stack)
 
 
 def test_committed_pdf_batch_rejects_stale_duplicate_missing_and_changed_plan_facts(

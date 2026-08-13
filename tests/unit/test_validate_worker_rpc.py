@@ -517,6 +517,136 @@ class WorkerRpcValidationTests(unittest.TestCase):
         parameters.append({"name": "raw_text", "value_type": "token", "value": "private"})
         self.assertIn("RPC_OPERATION_INPUT_INVALID", self._codes(extra_parameter))
 
+    def test_searchable_pdf_export_has_an_exact_offline_contract(self) -> None:
+        ready = _load_example("session-ready.json")
+        capabilities = cast(
+            list[dict[str, Any]], cast(dict[str, Any], ready["payload"])["capabilities"]
+        )
+        capabilities.append({"capability_id": "pdf.export.searchable", "capability_version": 1})
+        self.assertEqual([], self._issues(ready))
+
+        accepted = _load_example("operation-accepted.json")
+        cast(dict[str, Any], accepted["payload"])["operation_kind"] = "pdf.export.searchable"
+        self.assertEqual([], self._issues(accepted))
+
+        started = _load_example("operation-start.json")
+        payload = cast(dict[str, Any], started["payload"])
+        payload["operation_kind"] = "pdf.export.searchable"
+        payload["inputs"] = [
+            {
+                "reference_version": 1,
+                "area": "source_read",
+                "object_id": "40000000-0000-4000-8000-000000000001",
+                "operation_id": None,
+                "content_kind": "searchable-pdf-export-plan-v1",
+                "expected_byte_size": 512,
+                "expected_sha256": "a" * 64,
+            },
+            {
+                "reference_version": 1,
+                "area": "source_read",
+                "object_id": "40000000-0000-4000-8000-000000000002",
+                "operation_id": None,
+                "content_kind": "pdf",
+                "expected_byte_size": 1_024,
+                "expected_sha256": "b" * 64,
+            },
+            {
+                "reference_version": 1,
+                "area": "source_read",
+                "object_id": "40000000-0000-4000-8000-000000000003",
+                "operation_id": None,
+                "content_kind": "png",
+                "expected_byte_size": 256,
+                "expected_sha256": "c" * 64,
+            },
+        ]
+        payload["parameters"] = [
+            {"name": "plan_handle", "value_type": "integer", "value": 101},
+            {"name": "output_handle", "value_type": "integer", "value": 103},
+            {"name": "status_handle", "value_type": "integer", "value": 104},
+            {"name": "result_handle", "value_type": "integer", "value": 105},
+            {
+                "name": "output_object_id",
+                "value_type": "uuid",
+                "value": "40000000-0000-4000-8000-000000000004",
+            },
+            {
+                "name": "status_object_id",
+                "value_type": "uuid",
+                "value": "40000000-0000-4000-8000-000000000005",
+            },
+            {
+                "name": "status_capacity_bytes",
+                "value_type": "integer",
+                "value": 1_024,
+            },
+        ]
+        self.assertEqual([], self._issues(started))
+
+        mutations: list[dict[str, Any]] = []
+        wrong_plan_scope = copy.deepcopy(started)
+        cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], wrong_plan_scope["payload"])["inputs"],
+        )[0]["operation_id"] = started["operation_id"]
+        mutations.append(wrong_plan_scope)
+
+        bad_source_kind = copy.deepcopy(started)
+        cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], bad_source_kind["payload"])["inputs"],
+        )[2]["content_kind"] = "tiff"
+        mutations.append(bad_source_kind)
+
+        aliased_handles = copy.deepcopy(started)
+        cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], aliased_handles["payload"])["parameters"],
+        )[2]["value"] = 101
+        mutations.append(aliased_handles)
+
+        aliased_outputs = copy.deepcopy(started)
+        output_parameters = cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], aliased_outputs["payload"])["parameters"],
+        )
+        output_parameters[5]["value"] = output_parameters[4]["value"]
+        mutations.append(aliased_outputs)
+
+        aliased_case = copy.deepcopy(started)
+        case_parameters = cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], aliased_case["payload"])["parameters"],
+        )
+        case_parameters[4]["value"] = aliased_case["case_id"]
+        mutations.append(aliased_case)
+
+        excessive_status = copy.deepcopy(started)
+        cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], excessive_status["payload"])["parameters"],
+        )[6]["value"] = 2 * 1024 * 1024 + 1
+        mutations.append(excessive_status)
+
+        low_storage = copy.deepcopy(started)
+        limits = cast(
+            dict[str, Any],
+            cast(dict[str, Any], low_storage["payload"])["requested_limits"],
+        )
+        limits["temporary_storage_bytes"] = limits["output_bytes"] + 2_303
+        mutations.append(low_storage)
+
+        extra_parameter = copy.deepcopy(started)
+        cast(
+            list[dict[str, Any]],
+            cast(dict[str, Any], extra_parameter["payload"])["parameters"],
+        ).append({"name": "raw_text", "value_type": "token", "value": "private"})
+        mutations.append(extra_parameter)
+
+        for mutation in mutations:
+            self.assertIn("RPC_OPERATION_INPUT_INVALID", self._codes(mutation))
+
     def test_semantic_mutations_fail_with_stable_codes(self) -> None:
         cases: list[tuple[str, dict[str, Any], str]] = []
 

@@ -27,6 +27,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
+    SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CancelDisposition,
     CancelReason,
     CapabilityDescriptor,
@@ -67,6 +68,7 @@ from paperworkshell.worker.protocol.models import (
     validate_pdf_export_start,
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_start,
+    validate_searchable_pdf_export_start,
 )
 
 _ENVELOPE_FIELDS: Final = frozenset(
@@ -579,6 +581,7 @@ class OperationRegistry:
             PDF_INSPECT_CAPABILITY,
             PDF_THUMBNAIL_CAPABILITY,
             PDF_EXPORT_CAPABILITY,
+            SEARCHABLE_PDF_EXPORT_CAPABILITY,
         )
 
     def validate_descriptor(self, operation_kind: str, operation_version: int) -> None:
@@ -616,6 +619,8 @@ class OperationRegistry:
             validate_pdf_thumbnail_start(payload)
         if payload.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:
             validate_pdf_export_start(payload)
+        if payload.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id:
+            validate_searchable_pdf_export_start(payload)
 
     def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
         """Reject worker-advertised capabilities absent from the local registry."""

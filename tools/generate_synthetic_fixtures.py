@@ -25,6 +25,11 @@ SYNTHETIC_MARKER: Final = "PWS-SYNTHETIC-FIXTURE"
 CORPUS_ID: Final = "paperworkshell-public-synthetic-v1"
 GENERATOR_ID: Final = "paperworkshell-stdlib-fixtures"
 GENERATOR_VERSION: Final = 1
+OCR_RASTER_TOKEN: Final = "SCAN PAGE 206"
+OCR_BORN_DIGITAL_TOKEN: Final = "DIGITAL PAGE 206"
+OCR_RASTER_WIDTH: Final = 720
+OCR_RASTER_HEIGHT: Final = 240
+OCR_RASTER_GLYPH_SCALE: Final = 9
 OVERSIZED_PDF_DEFAULT_BYTES: Final = 52_428_801
 OVERSIZED_PDF_MAX_BYTES: Final = 268_435_456
 LONG_PATH_COMPONENT: Final = "pws-synthetic-long-path-segment"
@@ -238,6 +243,192 @@ def _mixed_pdf() -> bytes:
             _pdf_stream(_text_content(f"{SYNTHETIC_MARKER}: born-digital page")),
             _pdf_stream(b"q 192 0 0 192 210 300 cm /Im0 Do Q"),
             b"<< /Producer (" + _pdf_literal(SYNTHETIC_MARKER) + b") >>",
+        ),
+        info_object=9,
+    )
+
+
+_OCR_BITMAP_GLYPHS: Final[dict[str, tuple[str, ...]]] = {
+    "0": (
+        "01110",
+        "10001",
+        "10001",
+        "10001",
+        "10001",
+        "10001",
+        "01110",
+    ),
+    "2": (
+        "01110",
+        "10001",
+        "00001",
+        "00010",
+        "00100",
+        "01000",
+        "11111",
+    ),
+    "6": (
+        "00110",
+        "01000",
+        "10000",
+        "11110",
+        "10001",
+        "10001",
+        "01110",
+    ),
+    "A": (
+        "01110",
+        "10001",
+        "10001",
+        "11111",
+        "10001",
+        "10001",
+        "10001",
+    ),
+    "C": (
+        "01111",
+        "10000",
+        "10000",
+        "10000",
+        "10000",
+        "10000",
+        "01111",
+    ),
+    "E": (
+        "11111",
+        "10000",
+        "10000",
+        "11110",
+        "10000",
+        "10000",
+        "11111",
+    ),
+    "G": (
+        "01110",
+        "10001",
+        "10000",
+        "10111",
+        "10001",
+        "10001",
+        "01110",
+    ),
+    "N": (
+        "10001",
+        "11001",
+        "10101",
+        "10011",
+        "10001",
+        "10001",
+        "10001",
+    ),
+    "P": (
+        "11110",
+        "10001",
+        "10001",
+        "11110",
+        "10000",
+        "10000",
+        "10000",
+    ),
+    "S": (
+        "01111",
+        "10000",
+        "10000",
+        "01110",
+        "00001",
+        "00001",
+        "11110",
+    ),
+}
+
+
+def _ocr_raster_rows() -> tuple[bytes, ...]:
+    """Draw the closed OCR token with repository-owned one-bit glyphs."""
+
+    width = OCR_RASTER_WIDTH
+    height = OCR_RASTER_HEIGHT
+    scale = OCR_RASTER_GLYPH_SCALE
+    row_bytes = width // 8
+    if width % 8:
+        raise AssertionError("OCR raster width must be byte aligned")
+    bitmap = bytearray(b"\xff" * row_bytes * height)
+
+    advances = [3 * scale if character == " " else 6 * scale for character in OCR_RASTER_TOKEN]
+    rendered_width = sum(advances) - scale
+    cursor_x = (width - rendered_width) // 2
+    origin_y = (height - 7 * scale) // 2
+
+    for character, advance in zip(OCR_RASTER_TOKEN, advances, strict=True):
+        if character == " ":
+            cursor_x += advance
+            continue
+        glyph = _OCR_BITMAP_GLYPHS[character]
+        for glyph_y, glyph_row in enumerate(glyph):
+            for glyph_x, cell in enumerate(glyph_row):
+                if cell != "1":
+                    continue
+                for pixel_y in range(origin_y + glyph_y * scale, origin_y + (glyph_y + 1) * scale):
+                    for pixel_x in range(
+                        cursor_x + glyph_x * scale,
+                        cursor_x + (glyph_x + 1) * scale,
+                    ):
+                        offset = pixel_y * row_bytes + pixel_x // 8
+                        bitmap[offset] &= ~(0x80 >> (pixel_x % 8))
+        cursor_x += advance
+    return tuple(
+        bytes(bitmap[offset : offset + row_bytes]) for offset in range(0, len(bitmap), row_bytes)
+    )
+
+
+def _ocr_raster_image_stream() -> bytes:
+    packed = b"".join(_ocr_raster_rows())
+    return _pdf_stream(
+        _stored_zlib(packed),
+        (
+            b"/Type /XObject /Subtype /Image /Width 720 /Height 240 "
+            b"/ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /FlateDecode "
+            b"/Interpolate false"
+        ),
+    )
+
+
+def _ocr_raster_text_pdf() -> bytes:
+    marker = f"{SYNTHETIC_MARKER}: repository-owned bitmap glyph OCR carrier"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R /Lang (en-US) >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>"
+            ),
+            _ocr_raster_image_stream(),
+            _pdf_stream(b"q 540 0 0 180 36 306 cm /Im0 Do Q"),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=6,
+    )
+
+
+def _ocr_readable_mixed_pdf() -> bytes:
+    marker = f"{SYNTHETIC_MARKER}: repository-owned mixed text behavior carrier"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R /Lang (en-US) >>",
+            b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>"
+            ),
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Resources << /XObject << /Im0 6 0 R >> >> /Contents 8 0 R >>"
+            ),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            _ocr_raster_image_stream(),
+            _pdf_stream(_text_content(OCR_BORN_DIGITAL_TOKEN)),
+            _pdf_stream(b"q 540 0 0 180 36 306 cm /Im0 Do Q"),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
         ),
         info_object=9,
     )
@@ -969,6 +1160,39 @@ def _png(
     )
 
 
+def _monochrome_png(
+    width: int,
+    height: int,
+    *,
+    rows: Sequence[bytes],
+    description: str,
+) -> bytes:
+    """Encode one deterministic, filter-free, one-bit grayscale PNG."""
+
+    row_bytes = (width + 7) // 8
+    if len(rows) != height or any(len(row) != row_bytes for row in rows):
+        raise AssertionError("invalid internal monochrome PNG row dimensions")
+    raw = b"".join(b"\x00" + row for row in rows)
+    return b"".join(
+        (
+            b"\x89PNG\r\n\x1a\n",
+            _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 1, 0, 0, 0, 0)),
+            _png_chunk(b"tEXt", b"Comment\x00" + description.encode("latin-1")),
+            _png_chunk(b"IDAT", _stored_zlib(raw)),
+            _png_chunk(b"IEND", b""),
+        )
+    )
+
+
+def _ocr_raster_text_png() -> bytes:
+    return _monochrome_png(
+        OCR_RASTER_WIDTH,
+        OCR_RASTER_HEIGHT,
+        rows=_ocr_raster_rows(),
+        description=f"{SYNTHETIC_MARKER}: repository-owned bitmap glyph OCR carrier",
+    )
+
+
 def _transparent_png() -> bytes:
     rows: list[bytes] = []
     for y in range(16):
@@ -1297,6 +1521,22 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _image_only_pdf,
         ),
         _fixture(
+            "pdf-ocr-raster-text",
+            "pdf/ocr-raster-text.pdf",
+            "application/pdf",
+            ("image-only",),
+            "ocr-raster-text-pdf-v1",
+            {
+                "page_count": 1,
+                "image_xobject_count": 1,
+                "has_text_operator": False,
+                "pixel_token": OCR_RASTER_TOKEN,
+                "source_raster_fixture": "png-ocr-raster-text",
+                "external_font_asset": False,
+            },
+            _ocr_raster_text_pdf,
+        ),
+        _fixture(
             "pdf-mixed",
             "pdf/mixed.pdf",
             "application/pdf",
@@ -1304,6 +1544,23 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             "mixed-pdf-v1",
             {"page_count": 2, "text_page_count": 1, "image_page_count": 1},
             _mixed_pdf,
+        ),
+        _fixture(
+            "pdf-ocr-readable-mixed",
+            "pdf/ocr-readable-mixed.pdf",
+            "application/pdf",
+            ("mixed",),
+            "ocr-readable-mixed-pdf-v1",
+            {
+                "page_count": 2,
+                "text_page_count": 1,
+                "image_page_count": 1,
+                "born_digital_token": OCR_BORN_DIGITAL_TOKEN,
+                "raster_token": OCR_RASTER_TOKEN,
+                "source_raster_fixture": "png-ocr-raster-text",
+                "external_font_asset": False,
+            },
+            _ocr_readable_mixed_pdf,
         ),
         _fixture(
             "pdf-page-geometry",
@@ -1591,6 +1848,22 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             "incremental-pdf-v1",
             {"page_count": 1, "revision_count": 2, "prev_trailer_count": 1},
             _incremental_pdf,
+        ),
+        _fixture(
+            "png-ocr-raster-text",
+            "image/ocr-raster-text.png",
+            "image/png",
+            ("image-only",),
+            "ocr-raster-text-png-v1",
+            {
+                "width": OCR_RASTER_WIDTH,
+                "height": OCR_RASTER_HEIGHT,
+                "bit_depth": 1,
+                "color_type": 0,
+                "pixel_token": OCR_RASTER_TOKEN,
+                "external_font_asset": False,
+            },
+            _ocr_raster_text_png,
         ),
         _fixture(
             "png-transparent",

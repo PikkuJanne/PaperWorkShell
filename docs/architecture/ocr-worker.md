@@ -2,6 +2,7 @@
 
 - Status: PWS-0204 implementation contract
 - Task: PWS-0204
+- Extension: PWS-0206 [verified searchable mixed-document output](searchable-mixed-output.md)
 - Decisions: PWS-D009, PWS-D012, PWS-D013, PWS-D016, PWS-D027, PWS-D034,
   PWS-D036, PWS-D038
 - Worker lifecycle: [Restricted worker lifecycle contract](worker-lifecycle.md)
@@ -19,8 +20,11 @@ handles after the fixed worker bootstrap.
 A successful operation returns a single-pass view of an opaque PDF candidate held in a bounded,
 broker-owned volatile section. That candidate is not an OCR-text result, case artifact, manifest
 operation, verified export, or promise of searchability. It is never published automatically.
-PWS-0206 owns page eligibility, mixed born-digital/scanned output, searchability verification,
-reopen/render verification, and authoritative derivative publication.
+PWS-0206 reuses the admitted worker-side OCRmyPDF/Tesseract adapter and exact engine profile for one
+private base page at a time through the additive `pdf.export.searchable` version 1 path. It does
+not invoke `ocr.process` or consume this broker-owned section; it independently reopens, renders,
+and checks its private page result before publication. `ocr.process` version 1 and its report
+meaning remain unchanged.
 
 PWS-0204 does not expose recognized text or confidence values. Later review findings must use
 “Needs review” and remain subject to user confirmation; they may not mark a checklist requirement
@@ -217,6 +221,13 @@ and independently hashes the claimed section bytes. A caller may then stream the
 inside its context lifetime. Closing the candidate releases the volatile section. No PWS-0204
 path writes it to case storage or an external destination.
 
+The mixed-output adapter has a separate page-scoped lifetime: it creates one private base/result
+pair, selects the verified result or retains the base, and removes that authenticated page
+directory before processing another page. It cannot retain a packet-sized collection of OCR
+results, treat an engine's aggregate processed-page count as per-page evidence, or infer text
+presence from OCR engine success. The separately verified page outcome is defined by
+[Verified searchable mixed-document output](searchable-mixed-output.md).
+
 Routine representations, errors, progress, and logs may contain only closed codes, internal IDs,
 versions, counts, and numeric resource facts. They never contain OCR/document text, filenames,
 full paths, source/candidate digests, tool output, metadata, page images, names, or addresses.
@@ -228,9 +239,11 @@ markers and confirmed unencrypted state. Marker-present, unknown-signature, encr
 unknown-encryption states fail before worker launch. `NONE_DETECTED` is a conservative structural
 fact, not cryptographic signature validation.
 
-This fail-closed behavior deliberately provides no “continue anyway” path. PWS-0206 owns verified
-searchable derivative construction and PWS-0208 owns the signed-source policy service, explicit
-derivative warning/confirmation, unsigned-derivative labeling, and incremental workload evidence.
+This fail-closed behavior deliberately provides no “continue anyway” path. PWS-0206 defines the
+page-local marker-present/unknown fallback, keeps blocked pages visually retained, and requires an
+**unsigned derivative** result label whenever such a source participates in its output. PWS-0208
+owns the signed-source policy service and explicit derivative warning/confirmation, plus measured
+incremental workload evidence.
 PWS-0209 retains the complete mixed-document, accessibility, cancellation, signed-source, and
 constrained-resource gate.
 

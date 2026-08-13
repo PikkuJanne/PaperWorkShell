@@ -110,6 +110,16 @@ def _build_operation_registry() -> RuntimeOperationRegistry:
             handlers.append(ocr_handler)
     except Exception:
         pass
+    try:
+        from paperworkshell.worker.searchable_pdf_export_operation import (
+            build_searchable_pdf_export_operation_handler,
+        )
+
+        searchable_handler = build_searchable_pdf_export_operation_handler()
+        if searchable_handler is not None:
+            handlers.append(searchable_handler)
+    except Exception:
+        pass
     # Never advertise a document capability whose adapter failed to load. The
     # client rejects negotiation when its required capability is unavailable.
     return RuntimeOperationRegistry(tuple(handlers))

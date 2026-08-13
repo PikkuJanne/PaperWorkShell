@@ -18,6 +18,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CaseObjectReference,
     Direction,
     MessageType,
@@ -121,6 +122,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         PDF_EXPORT_CAPABILITY,
+        SEARCHABLE_PDF_EXPORT_CAPABILITY,
     )
     assert accepted_start.payload == payload
 

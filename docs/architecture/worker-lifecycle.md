@@ -1,8 +1,8 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, and PWS-0204 OCR extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204
-- Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, PWS-0204 OCR, and PWS-0206 searchable-export extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206
+- Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D016, PWS-D021, PWS-D027, PWS-D028, PWS-D029, PWS-D036, PWS-D037, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
 - Startup recovery: [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md)
@@ -20,8 +20,9 @@ contracts. An unavailable optional adapter is omitted rather than discovered thr
 plugins or advertised as a capability.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` version 1, and
-`ocr.process` version 1 when its exact resources pass admission. The no-op still proves process/protocol lifecycle without
+version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` version 1,
+`ocr.process` version 1, and the additive `pdf.export.searchable` version 1 when each operation's
+exact resources pass admission. The no-op still proves process/protocol lifecycle without
 document authority. PWS-0105 proves exact prepared-source read-handle transfer, a write-only
 bounded result pipe, worker-private copy verification, pikepdf/libqpdf structural inspection, and
 one-shot worker revocation. PWS-0108 adds one committed-source read handle and one fixed-size
@@ -35,7 +36,8 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 [bounded JPEG/PNG intake contract](image-intake.md),
 [non-destructive scan-transform contract](image-transform-pipeline.md),
 [bounded local OCR worker contract](ocr-worker.md), and
-[deterministic verified PDF-export contract](pdf-export.md).
+[deterministic verified PDF-export contract](pdf-export.md), extended by
+[verified searchable mixed-document output](searchable-mixed-output.md).
 
 ## Component ownership
 
@@ -64,12 +66,18 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 | `worker.process_creation_policy` | Install a worker-wide audit hook that permits only the exact configured qpdf/Tesseract subprocess shape | Loaded after isolation and before optional engines; shell/spawn and ambient executable discovery are denied |
 | `worker.pdf_export_broker` | Authenticate one manifest-bound source batch, broker exact plan/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; never receives or publishes a destination path |
 | `worker.pdf_export_operation` | Adopt exact source/plan/output/report handles, copy and rehash sources in one private operation directory, assemble and verify, and write one correlated report | Host-side only; receives no case, manifest, history, or destination authority |
+| `app.searchable_pdf_export` | Project manifest-v2 intent, retain an authenticated mixed source batch, call one structural broker, reuse no-replace destination/history ports, and return the exact page report | Toolkit/engine-free; no document path or third-party object enters the pure service contract |
+| `worker.searchable_pdf_export_plan` / `status` / `report` | Canonically encode/decode the bounded worker plan, content-free page outcomes, and correlated report | Host/client wire seams only; unknown members/versions, text values, and noncanonical bytes fail closed |
+| `worker.operations.SearchablePdfExportOperationHandler` | Adopt the additive plan/source/output/status/report handles and invoke one injected searchable adapter | Host-side only; no case, manifest, history, cache, or destination authority |
 | `worker._windows_broker` | Non-inheritable bounded anonymous result pipe and fixed-size pagefile-backed output section | GUI-process-side private primitives; no path or document value |
 | `storage.prepared_source_registry` | Register/revoke one sealed pending source and lend an exact independently positioned read handle | Storage owns source identity and publication; no worker-host import |
 | `storage.source_ingest` / `storage.thumbnail_cache` | Lend one manifest-bound committed PDF/JPEG/PNG handle; authenticate, stage, validate, publish, invalidate, and clean disposable thumbnails | Storage owns handle identity and cache publication; no worker implementation import |
 | `pdf.pikepdf_adapter` / `pdf.qpdf_checker` | Typed structural inspection and fixed-command qpdf test seam | Third-party objects/output remain inside the PDF adapter boundary |
 | `pdf.ocr_candidate_verifier` | Reopen one private OCR PDF without recovery and return only a positive page count | Narrow worker-side PDF seam; encrypted/invalid state is a closed failure and no pikepdf object crosses |
 | `pdf.export_adapter` | Assemble, strictly reopen, qpdf-check, and PDFium-compare one worker-private candidate | Third-party objects, native output, and paths remain inside the restricted worker |
+| `pdf.searchable_export_adapter` | Inspect page eligibility, preserve text pages, normalize/transform eligible raster pages, invoke one page-local OCR adapter call, assemble, reopen, qpdf-check, and verify every render/text fact | Restricted-worker composition only; page-private paths/text/native objects never cross the worker result boundary |
+| `pdf.text_presence` | Count PDFium characters and non-whitespace characters on selected pages without constructing or returning extracted strings | Worker-only PDFium seam; content-free facts only |
+| `pdf.raster_pdf_page` | Wrap one opaque transformed RGBA page as a strictly reopened private PDF at fixed image DPI or authenticated inherited physical geometry | Worker-only pikepdf seam; bounded one-page artifact and no persistent publication |
 | `imaging.pillow_decoder` | Perform bounded JPEG/PNG metadata inspection, EXIF interpretation, decode, color/alpha normalization, and fit | Pillow/native objects, metadata values, and raw exceptions remain worker-local |
 | `imaging.pillow_transformer` | Apply crop, quarter-turn, deskew, contrast, cleanup, fit, and opaque RGBA8 serialization to one normalized page | Pinned worker-only pixel profile; checks cancellation between bounded stages and never owns manifest intent |
 | `ocr.ocrmypdf_adapter` / `ocr.tesseract_runner` | Run the fixed OCRmyPDF 17.10.0 profile through the exact Tesseract 5.5.3 executable, monitor private temp, map progress, and request narrow PDF verification | Worker-only; one absolute child, no shell/PATH/plugin discovery, bounded discarded tool output, and no third-party object or text crossing |
@@ -364,6 +372,17 @@ candidate is exposed, and closing it releases the volatile section. Cancellation
 engine/language absence, malformed output, source mutation, or cleanup uncertainty returns no
 candidate and never changes the manifest or immutable source.
 
+For `pdf.export.searchable`, RPC success binds one bounded plan, an authenticated PDF/JPEG/PNG
+source batch, one PDF output section, one separately bounded page-status section, and one report
+pipe. The capability is additive: neither `ocr.process` v1 nor `pdf.export` v1 accepts those extra
+handles or gains searchable-output meaning. The broker must terminate the complete one-shot Job,
+reauthenticate every source, and validate the output and status object IDs, capacities, content
+kinds, correlations, exact page order/count, digests, eligibility/outcome codes, and base reopen/
+render checks before exposing a candidate. Extracted text never appears in RPC or the status
+section. A malformed or oversized page-status result, page-local mismatch, OCR failure, cancel,
+timeout, source race, cleanup uncertainty, or unconfirmed tree returns no authoritative aggregate
+claim and cannot mutate an original, manifest, history record, or destination.
+
 Graceful shutdown during active work first requests cancellation, waits for the terminal result and
 any pending acknowledgement correlation, then sends `session.shutdown`. Only the correlated,
 validated `session.closed` yields a normal stopped state. Forced termination does not wait for
@@ -625,7 +644,5 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 ## Explicit deferrals
 
 - PWS-0205: offline verification, installation, and selection of additional OCR language packs.
-- PWS-0206: mixed-document page eligibility, searchable-output verification, and derivative
-  publication.
 - PWS-0208: explicit signed-source derivative warning/confirmation and incremental OCR scheduling.
 - PWS-0801: release-grade packaged-content/SBOM/license-notice and release-input verification.

@@ -2,6 +2,7 @@
 
 - Status: Binding implementation contract
 - Task: PWS-0112
+- Extension: PWS-0206 [verified searchable mixed-document output](searchable-mixed-output.md)
 - Decisions: PWS-D009, PWS-D011, PWS-D015, PWS-D029, PWS-D037, PWS-D038
 
 ## Scope and claims
@@ -17,6 +18,15 @@ page, matching rendered order and rotation, and final-name destination reopen. W
 digital-signature markers, the result says **unsigned derivative**. It does not claim signature
 validity, PDF/A, PDF/UA, portal acceptance, legal validity, permanent redaction, or universal viewer
 compatibility.
+
+PWS-0206 composes these base checks through the additive `pdf.export.searchable` version 1
+capability. It preserves `pdf.export` version 1 exactly: searchable execution has its own plan,
+bounded page-status output, per-page text-presence report, and semantic fingerprint. Born-digital
+pages selected by the mixed eligibility policy continue through the page-copy/render-comparison
+path; OCR-required pages must independently pass the supported text-presence check before they are
+counted as having extractable text. See
+[Verified searchable mixed-document output](searchable-mixed-output.md) for the closed page matrix
+and limited claims.
 
 ## Layer ownership
 
@@ -176,6 +186,12 @@ precedes general case-temp cleanup. The complete order, limits, and diagnostic r
 by [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics.md). The
 destination path and filename are deliberately absent from the record and receipt; see [Export
 history v1](../schemas/export-history-v1.md).
+
+Searchable output reuses this publication/retry lifecycle without changing released manifest v2 or
+export-history v1 meaning. Searchable eligibility and per-page outcomes remain in the separately
+versioned transient verification report; they are not smuggled into an existing history field or
+operation-history payload. A future durable representation requires an explicit schema transition
+with old/current/future/invalid fixtures rather than an in-place reinterpretation.
 
 ## Failure and cleanup invariants
 

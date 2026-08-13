@@ -29,6 +29,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_PAGE_ID_PARAMETER,
     PDF_THUMBNAIL_SOURCE_HANDLE_PARAMETER,
     PDF_THUMBNAIL_SOURCE_PAGE_INDEX_PARAMETER,
+    SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CaseObjectReference,
     Direction,
     ErrorCategory,
@@ -204,6 +205,7 @@ def test_pdf_thumbnail_is_registered_and_round_trips_its_exact_contract() -> Non
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         PDF_EXPORT_CAPABILITY,
+        SEARCHABLE_PDF_EXPORT_CAPABILITY,
     )
     assert accepted_start.payload == payload
 

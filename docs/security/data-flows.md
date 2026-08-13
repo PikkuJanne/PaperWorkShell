@@ -399,8 +399,9 @@ sequenceDiagram
    After confirmed Job termination, the broker reauthenticates the
    immutable source, validates every report/request/profile/version/output correlation, and hashes
    the exact section bytes independently. Only then does it expose a single-pass, broker-owned
-   volatile PDF candidate. PWS-0204 exposes neither OCR text nor a final searchable export;
-   PWS-0206 owns searchability and derivative verification/publication.
+   volatile PDF candidate. PWS-0204 exposes neither OCR text nor a final searchable export.
+   PWS-0206 separately reuses the admitted adapter/profile inside its own worker operation; it does
+   not route this broker-owned candidate across operations.
 9. Tool output, OCR/document text, filenames, full paths, digests, metadata, candidate bytes, and
    third-party exceptions never enter routine logs, progress, representations, or UI errors.
    Later confidence/quality signals must say “Needs review” and cannot satisfy a checklist item.
@@ -410,6 +411,77 @@ The complete implementation contract is the
 
 Primary threats: TM-001, TM-002, TM-003, TM-004, TM-005, TM-006, TM-008, TM-009, TM-011, TM-012,
 TM-016, TM-020, TM-022, TM-023, TM-024.
+
+## DF-SEARCHABLE — per-page mixed composition and verification
+
+```mermaid
+sequenceDiagram
+    participant App as Trusted searchable-export coordinator
+    participant Worker as Restricted one-shot worker
+    participant OCR as Admitted local OCR adapter
+    participant PDF as pikepdf/qpdf/PDFium adapters
+    participant Status as Bounded page-status section
+    participant Destination as Trusted no-replace destination
+    App->>Worker: Plan/source readers, PDF/status writers, report writer
+    Worker->>PDF: Inspect page eligibility without returning text
+    alt Existing supported text and no pixel transform
+        PDF->>PDF: Copy born-digital page without rasterizing
+    else Eligible image or transformed page
+        Worker->>OCR: Process one private one-page base PDF
+        OCR-->>Worker: Private bounded page result
+    else Signature marker present or state unknown
+        PDF->>PDF: Retain visual page; block OCR modification
+    end
+    Worker->>PDF: Reopen, qpdf-check, render-compare, inspect output text presence
+    Worker->>Status: Exact closed outcome for each output page
+    Worker-->>App: Correlated PDF/status references and content-free report
+    App->>Worker: Terminate and confirm complete Job tree
+    App->>App: Reauthenticate sources and validate every bounded result
+    App->>Destination: Publish only the verified candidate under base export rules
+```
+
+1. TB-02 accepts only the additive version-1 `pdf.export.searchable` capability. Its request binds
+   a bounded semantic plan, one exact authenticated PDF/JPEG/PNG source reference per source, a
+   PDF output section, a separately bounded page-status section, a result pipe, and the selected
+   resource limits. It does not reinterpret the `ocr.process` v1 or `pdf.export` v1 wire contracts.
+2. The plan is a transient projection of one authenticated manifest-v2 snapshot. It binds source
+   size/digest/page/signature/encryption facts, output page order, supported transform intent,
+   and exact OCR/eligibility/text-presence/base-export profiles. It grants no
+   manifest, history, case-directory, cache, destination, or persistent-stage authority.
+3. Under `mixed-page-ocr-eligibility-v1`, a born-digital PDF page with supported extractable text
+   and no pixel-transform intent stays on the page-copy path. An image source, signature-clear
+   image-only PDF page, or signature-clear pixel-transformed PDF page may invoke the same admitted
+   OCRmyPDF/Tesseract adapter and profile on one private base page. This does not invoke the
+   `ocr.process` RPC. A marker-present or unknown-signature PDF is never OCR/pixel-modified; its
+   visual page is retained with a page-local blocked outcome.
+4. OCR engine success is not a text claim. The page result must first visibly match its base. The
+   worker then strictly reopens the complete mixed output,
+   runs the admitted qpdf structural check, PDFium-renders and compares every page, and applies
+   `pdfium-non-whitespace-text-v1` to each output page. Extracted strings are discarded worker-side;
+   only page IDs/indices, closed eligibility/outcome/failure codes, booleans, versions, and counts
+   enter the status/report structures.
+5. The exact page-local recognition failure, or absence of verified output text after OCR returns,
+   retains the visual page and yields one exact “Needs review” outcome. Security, resource,
+   cancellation, timeout, malformed-result, and cleanup failures remain authoritative operation
+   failures. A review outcome cannot be counted as extractable text or converted into a whole-
+   document searchable claim. A plan involving marker-present or unknown-signature input requires
+   the **unsigned derivative** label; PWS-0208 retains warning/confirmation UX.
+6. At most one full-resolution raster and one private page-local OCR result are live at a time
+   under the constrained profile. Page-result/status/output/temp/destination capacities are checked before or
+   during work. Low-disk, disk-full, cancellation, timeout, malformed result, source race, native
+   failure, and cleanup uncertainty expose no verified output, release authenticated disposable state,
+   and preserve source hashes, manifest/history schemas, and prior derivatives.
+7. After confirmed complete-tree termination, the broker reauthenticates every source and validates
+   object IDs, content kinds, capacities, byte counts/digests, page order, semantic fingerprint,
+   and the complete base/page verification report. Publication then reuses the existing no-replace
+   destination, final-name reopen, and export-history-v1 lifecycle without storing OCR text or
+   changing released schema meaning.
+
+The complete contract and deterministic fixture provenance are in
+[Verified searchable mixed-document output](../architecture/searchable-mixed-output.md).
+
+Primary threats: TM-001, TM-002, TM-003, TM-005, TM-006, TM-008, TM-011, TM-012, TM-014, TM-016,
+TM-022, TM-023, TM-024, TM-028.
 
 ## DF-EXPORT — plan, build, reopen, verify, and commit derivative
 

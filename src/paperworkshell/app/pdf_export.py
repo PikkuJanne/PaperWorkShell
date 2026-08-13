@@ -470,7 +470,7 @@ class PdfExportService:
                 reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_load")
             return (
                 build_pdf_export_plan(loaded.snapshot),
-                _manifest_identifier_ids(loaded.snapshot.document),
+                manifest_export_identifier_ids(loaded.snapshot.document),
             )
         except PdfExportError:
             raise
@@ -492,7 +492,8 @@ class PdfExportService:
         reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.identifier")
 
 
-def _manifest_identifier_ids(document: dict[str, object]) -> frozenset[UUID]:
+def manifest_export_identifier_ids(document: dict[str, object]) -> frozenset[UUID]:
+    """Return every manifest identity that a new export ID must avoid."""
     if type(document) is not dict:
         reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_identifiers")
     identifiers: set[UUID] = set()
@@ -592,6 +593,11 @@ def _manifest_identifier_ids(document: dict[str, object]) -> frozenset[UUID]:
     except BaseException:
         reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_identifiers")
     return frozenset(identifiers)
+
+
+# Retain the private spelling for accepted tests and internal callers while
+# PWS-0206 shares the same collision-safe identifier inventory.
+_manifest_identifier_ids = manifest_export_identifier_ids
 
 
 def _require_candidate(

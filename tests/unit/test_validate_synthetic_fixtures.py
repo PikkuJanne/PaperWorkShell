@@ -46,13 +46,13 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
 
         self.assertEqual([], index_issues)
         self.assertIsNotNone(index_summary)
-        self.assertEqual(42, index_summary.fixture_count if index_summary else 0)
+        self.assertEqual(45, index_summary.fixture_count if index_summary else 0)
         self.assertEqual(24, index_summary.coverage_count if index_summary else 0)
         self.assertEqual(
             len(EXPECTED_NEGATIVE_CODES), index_summary.negative_count if index_summary else 0
         )
         self.assertEqual([], corpus_issues)
-        self.assertEqual(42, corpus_summary.fixture_count if corpus_summary else 0)
+        self.assertEqual(45, corpus_summary.fixture_count if corpus_summary else 0)
         self.assertEqual(15, corpus_summary.golden_reference_count if corpus_summary else 0)
         self.assertEqual(
             6,
@@ -126,6 +126,37 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
                 issues[0].code,
                 {"FIXTURE_CONTENT_MISMATCH", "FIXTURE_SET_MISMATCH"},
             )
+
+    def test_ocr_evidence_bytes_and_provenance_are_generator_authoritative(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_fixture_root(root)
+            target = root / CORPUS_DIRECTORY / "image" / "ocr-raster-text.png"
+            target.write_bytes(target.read_bytes() + b"x")
+
+            summary, issues = validate_fixture_corpus(root, inspect_repository=False)
+
+        self.assertIsNone(summary)
+        self.assertEqual({"FIXTURE_CONTENT_MISMATCH"}, {issue.code for issue in issues})
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_fixture_root(root)
+            path = root / INDEX_PATH
+            loaded = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+            fixtures = cast(list[dict[str, Any]], loaded["fixtures"])
+            fixture = next(item for item in fixtures if item["id"] == "pdf-ocr-readable-mixed")
+            provenance = cast(dict[str, object], fixture["provenance"])
+            provenance["source_material"] = "external"
+            path.write_text(
+                json.dumps(loaded, ensure_ascii=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            summary, issues = validate_fixture_corpus(root, inspect_repository=False)
+
+        self.assertIsNone(summary)
+        self.assertEqual({"FIXTURE_INDEX_SCHEMA_INVALID"}, {issue.code for issue in issues})
 
     def test_index_metadata_and_encoding_are_generator_authoritative(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
