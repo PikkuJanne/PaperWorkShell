@@ -1563,7 +1563,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0201
@@ -1593,17 +1593,28 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-13'
+    revision: "0c3741009aef9ff5b99811a0d86cedf4c55fdd8e"
+    commands:
+    - ".venv\\Scripts\\python.exe -m tools.dev check during final convergence - formatting, Ruff, 13-layer import boundaries across 116 source files, strict mypy across 318 files, and all 2482 unit tests passed; its integration lane exposed one stale startup-recovery fake port, which was corrected and proven by the focused 3-test regression"
+    - ".venv\\Scripts\\python.exe -m tools.dev test-integration - passed after fixture convergence; 382 integration tests passed with 2 disclosed Windows link-capability skips, including manifest-v2 migration/recovery, the exact reviewed transform pixels, immutable external and committed source hashes, empty case temp/cache state, and the constrained AppContainer worker path"
+    - ".venv\\Scripts\\python.exe -m tools.dev test-security; test-accessibility; validate-fixtures; validate-schemas; validate-dependencies; validate-task-graph; validate-docs; validate-m1-benchmark-report; validate-pdf-renderer-benchmark; scan-secrets; quality-self-test - passed; 277 security tests with 6 disclosed link/privilege skips, 19 accessibility tests, 42 synthetic fixtures, 15 renderer references, 6 approved transform references, every registered schema/graph/document/dependency validator, the bounded secret scan, and all 5 deliberate quality violations"
+    - ".venv\\Scripts\\python.exe -m pytest -q tests/integration/test_image_normalize_worker_windows.py::test_live_transform_matches_reviewed_golden_without_mutating_source_bytes - passed once in 15.05 seconds; the real one-shot worker matched the independently reviewed crop golden exactly while external and committed source bytes and SHA-256 remained unchanged"
+    - ".venv\\Scripts\\python.exe -m pytest -q tests/security/test_image_page_privacy.py tests/security/test_worker_protocol_security.py tests/unit/worker/test_image_transform_protocol.py - passed; 40 tests and 30 subtests prove source/pixel/cache/intent digests and private content stay out of representations, logs, progress, errors, and tracebacks without changing RPC wire data"
+    notes:
+    - Frozen case-manifest v1 remains byte-stable. Current manifest v2 adds integer-valued crop/deskew/contrast/background-cleanup intent, preserves legacy operation meaning, migrates v1 transactionally after recovery settlement, resumes interrupted migration idempotently, and rejects future or invalid versions before mutation.
+    - The deterministic pipeline is intrinsic EXIF orientation, normalized crop, accumulated clockwise quarter-turn, fixed-canvas fine deskew, contrast, background cleanup, bounded no-upscale fit, then opaque-RGBA8 serialization. Cache/artifact identity binds immutable source facts, normalized pixels, canonical final intent, requested bounds, Pillow 12.3.0, and the versioned engine profile.
+    - The additive image.transform v1 operation runs only in a fresh network-denied worker with authenticated read-only source and bounded output handles, two anonymous private intermediates, prospective memory/temp/output checks, cooperative cancellation checkpoints, hard deadline termination, sanitized failures, late-output suppression, exact identifier/digest correlation, and clean retry after partial-write exhaustion.
+    - The approved public-synthetic image-transforms-v1 set contains six exact references for rotation, crop, deskew, contrast, background cleanup, transparency, and varied output geometries. The implementation agent reviewed every native and enlarged before/after pair on 2026-08-13; index SHA-256 is c24e01bed73f2d770299c5103d14cd3027aaab7d9b1dfc739caeba8d18970d05, and the non-mutating fixture validator rejects drift or unreviewed replacement.
+    - Persisted v2 intent reaches organizer image previews and the worker. PDF preview/export fail closed on raster-only crop/deskew/contrast/cleanup until a later task supplies a supported PDF transform consumer, so no path silently displays or exports unexecuted intent.
+    - No original is modified, no external path is overwritten, and no content-bearing digest or pixel buffer enters routine diagnostics. Native Pillow calls are cooperatively checked immediately before and after; the existing Windows Job deadline/termination remains the authoritative hard stop inside a non-interruptible native call.
 - id: PWS-0203
   milestone: M2
   title: Add before-and-after scan review UI
   kind: implementation
   priority: P1
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0202
@@ -1643,7 +1654,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0005
