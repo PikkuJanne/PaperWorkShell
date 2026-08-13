@@ -1654,7 +1654,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0005
@@ -1689,17 +1689,50 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-13'
+    revision: ffbdb9ae8afb9ae43645e37ee4cd936479c1ebeb
+    commands:
+    - .venv\Scripts\python.exe -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed;
+      345 files were formatted/linted and strictly typed, 13 import layers across 126 source files were valid, and all
+      2679 unit tests passed after the final task transition
+    - .venv\Scripts\python.exe -m tools.dev test-integration - passed on the final implementation revision; 383 tests
+      passed with 4 disclosed link/runtime-capability skips, including worker containment, recovery, immutable-source,
+      manifest, and M1 vertical-slice coverage
+    - uv run --locked --no-sync pytest -q tests/integration/test_ocr_admission_appcontainer_windows.py -vv and
+      tests/integration/test_ocr_worker_windows.py -vv - each passed once with the admitted Tesseract 5.5.3 runtime in
+      28.32 and 28.74 seconds, proving engine admission and the production storage-bound OCR service path
+    - .venv\Scripts\python.exe -m tools.dev test-security; test-accessibility; validate-fixtures; validate-schemas;
+      validate-dependencies; validate-task-graph; validate-docs; validate-m1-benchmark-report;
+      validate-pdf-renderer-benchmark; scan-secrets; quality-self-test - passed; 284 security tests with 6 disclosed
+      link/privilege skips, 19 accessibility tests, all registered validators, the bounded secret scan, and all 5
+      deliberate quality violations
+    notes:
+    - The additive ocr.process v1 operation runs only in a fresh network-denied AppContainer worker under a two-process
+      Job, so the worker may launch exactly one admitted Tesseract child while application-wide heavy work remains
+      serialized and deadline termination kills the complete process tree.
+    - OCRmyPDF 17.10.0 uses the standard-PDF, pypdfium, fpdf2, optimize-zero, single-job profile and invokes only the
+      exact absolute Tesseract 5.5.3 executable through an argument array, shell false, a minimal environment, bounded
+      discarded output, and an immutable Python process-creation audit allowlist.
+    - The English OCR runtime is authenticated before access or launch by a canonical 39-file, 30-package MSYS2 UCRT64
+      closure whose manifest SHA-256 is 1ffb85724770b4c30aa4d982564d548dadf466ebd5861cd827d2836198119c0a;
+      detached package signatures and exact hashes are validated offline.
+    - OcrService constructs requests only from a retained storage-authenticated committed-source lease, including media,
+      byte count, digest, page count, signature markers, and encryption state. Signed, marker-bearing, unknown, or
+      encrypted PDF states fail before worker launch; exact typed failures are rebuilt before crossing the app boundary.
+    - OCR candidates remain volatile broker-owned bounded sections. The worker terminates before output/report/source
+      revalidation; external sources, committed originals, and manifest bytes remain unchanged, and partial output and
+      private nested temporary trees fail closed and are removed on cancellation, timeout, resource exhaustion, crash,
+      and cleanup uncertainty.
+    - Structured progress contains only phases and numeric page counts. OCR text, source names, paths, command output,
+      content digests, and raw engine exceptions are excluded from routine logs, representations, progress, and errors.
+      PWS-0801 retains final redistribution, notices, source, relinking, and SBOM closure for native OCR packages.
 - id: PWS-0205
   milestone: M2
   title: Implement offline OCR language-pack management
   kind: implementation
   priority: P1
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0204
@@ -1738,7 +1771,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0204
@@ -1783,7 +1816,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0202

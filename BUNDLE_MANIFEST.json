@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.64",
+  "bundle_version": "0.1.65",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 191077,
-      "sha256": "6862405c2c68a081e43efc3df67d09beef88b0557a71558a1a68095b381da68e"
+      "bytes": 194532,
+      "sha256": "34b3fe7fe7ffba2107a64cfb7f7e1e84fe8a6efa3615689bf7b141a713777dce"
     },
     {
       "path": "TASKS.schema.json",
@@ -57,12 +57,14 @@
     "gate_task_count": 9,
     "initial_ready_tasks": [
       "PWS-0203",
-      "PWS-0204"
+      "PWS-0205",
+      "PWS-0206",
+      "PWS-0207"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0202 is done: transactional manifest-v2 scan intent, deterministic bounded image.transform worker processing, exact reviewed synthetic goldens, immutable-source and privacy evidence, and complete repository quality coverage. PWS-0203 and PWS-0204 are ready; the P0 critical-path selector chooses PWS-0204 next.",
+    "PWS-0204 is done: storage-authenticated OCR requests, bounded OCRmyPDF 17.10.0 and Tesseract 5.5.3 execution in a network-denied one-shot worker, exact signed runtime admission, structured progress and cancellation, volatile verified candidates, immutable-source and privacy evidence, and complete repository quality coverage. PWS-0203, PWS-0205, PWS-0206, and PWS-0207 are ready; the P0 critical-path selector chooses PWS-0206 next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
