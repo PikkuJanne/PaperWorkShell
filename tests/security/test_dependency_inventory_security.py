@@ -693,7 +693,11 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         document = copy.deepcopy(self.baseline)
         components = cast(list[dict[str, Any]], document["components"])
         template = _component(document, "ruff")
-        for index in range(200):
+        component_schema = cast(
+            dict[str, Any], cast(dict[str, Any], self.schema["properties"])["components"]
+        )
+        maximum_components = cast(int, component_schema["maxItems"])
+        for index in range(maximum_components - len(components)):
             component = copy.deepcopy(template)
             component_id = f"synthetic-{index:03d}"
             canary = rf"C:\Synthetic\private-{index}.txt"
