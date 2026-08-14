@@ -1614,7 +1614,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: L
-  status: ready
+  status: in_progress
   critical_path: false
   depends_on:
   - PWS-0202

@@ -1,10 +1,13 @@
 # Page organizer UI architecture
 
-PWS-0111 introduces the first desktop vertical slice. It is a guided packet organizer, not a
-general PDF editor. The surface creates or opens one local case, imports supported sources, shows
-bounded page previews, and records page rotation, active-sequence removal, ordering, undo, and
-redo. It makes no claim about portal acceptance, legal validity, permanent redaction, or universal
-document validity.
+PWS-0111 introduces the first desktop vertical slice. PWS-0203 extends that surface with an
+explicit, before-and-after scan-review workflow for supported image pages. It is a guided packet
+organizer, not a general PDF editor. The surface creates or opens one local case, imports supported
+sources, shows bounded page previews, and records page rotation, active-sequence removal, ordering,
+undo, redo, and user-confirmed scan transforms. It makes no claim about portal acceptance, legal
+validity, permanent redaction, scan legibility, or universal document validity. The exact draft,
+comparison, confirmation, and bounded-resource contract is documented in
+[`scan-review-ui.md`](scan-review-ui.md).
 
 ## Dependency direction
 
@@ -16,7 +19,9 @@ image, OCR, renderer, storage, or worker-host implementations.
 current validated `ManifestSnapshot`, `PageCommandHistory`, and `ManifestAutosaveService`, while
 presenting only internal identifiers, positions, rotation, preview availability, revision, and
 undo/redo/save state. The manifest remains authoritative; Qt settings do not duplicate organizer
-state.
+state. A `ScanReviewDraft` is deliberately tentative and revision-bound: it is not organizer or
+manifest intent until explicit Apply revalidates it. Changed intent queues one complete candidate;
+an exact no-change Apply closes the review without queuing autosave.
 
 `paperworkshell.__main__` is the sole composition root. Its one narrow worker import is
 `paperworkshell.worker.desktop_composition`, which creates the shared capability-scoped worker
@@ -42,6 +47,15 @@ The GUI's Cancel action sets the current token directly, so cancellation remains
 the backend thread is inside a synchronous broker call. Progress crossing back to Qt is an existing
 path-free typed record. Unknown exceptions are neither logged nor stringified; they become
 `PWS_UI_UNEXPECTED` with fixed recovery text.
+
+The scan-review window controller retains at most one active preview request and one latest pending
+draft/variant. A newer request replaces the pending value and cancels superseded active work; the
+dialog also disables adjustment and Update controls while work is active. Original is requested
+only when no retained Original byte charge exists, then Adjusted is requested for the exact current
+candidate. Operation and review generations prevent an older result from enabling Apply or
+replacing current pixels after cancellation, reset, page/revision change, or dialog close. While
+scan review owns the selected page workflow, ordinary organizer preview scheduling and page
+mutations cannot create concurrent document work behind it.
 
 ## Organizer state and autosave
 
@@ -127,12 +141,32 @@ Rotation invalidates retained pixels before autosave suppresses new preview work
 remain explicitly “Preview unavailable”; admitted PDF, JPEG, and PNG pages share the same visible
 preview states and decoded-pixel cache budget.
 
+For a selected JPEG or PNG page, the visible scan-review action opens an original/adjusted
+comparison. Original is regenerated from the authenticated immutable source with intrinsic EXIF
+interpretation and no user transform. Adjusted is generated from the exact tentative candidate.
+The original remains available when adjusted work is stale, cancelled, or failed. Preview, Reset,
+and dialog Cancel change no history, autosave candidate, or manifest revision. Only a changed-intent
+Apply may queue the locally constructed complete command set, and only after the
+case/page/revision/base/history and successful adjusted result still match. An exact no-change Apply
+closes the review with unchanged history and no autosave candidate.
+
 The composition root selects one immutable, versioned resource policy and applies it to source/page,
 pixel, case/cache/temp, preview-cache, worker-memory/CPU/process, and cancellation limits. The
 constrained profile lowers actual composition values rather than changing a report label. PDFium
 serializes the full-resolution allocation boundary and accepts one active page buffer, matching both
 current policy profiles. Document workers retain bounded CPU/wall time, no network capability, and
 case-scoped brokered handles.
+
+The dialog retains at most one detached pixmap per review variant. The window charges both decoded
+byte counts against the same `thumbnail_preview_cache_bytes` ceiling as organizer pixmaps and evicts
+the organizer LRU to the remaining allowance before accepting review pixels. It clears Adjusted
+when that candidate becomes stale or loading restarts, or when Adjusted work fails or is cancelled,
+while retaining an available Original for comparison and retry. An Original failure or cancellation
+marks Original unavailable and marks Adjusted as not produced. Dialog close clears both pixmap
+references and byte charges,
+then rebalances the organizer LRU. Preview pixel dimensions still come from the selected version-1
+resource policy; scan review adds no independent cache, executor, subprocess, or unbounded work
+queue.
 
 ## Keyboard and accessibility contract
 
@@ -148,6 +182,7 @@ shortcuts:
 | Rotate clockwise | `Ctrl+R` | Rotate clockwise |
 | Remove from active packet | `Delete` | Remove from packet |
 | Change complete order | `Ctrl+Shift+O` | Keyboard page-order dialog |
+| Review selected image scan | `Ctrl+Shift+A` | Review scan adjustments |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
 | Cancel import or preview | `Escape` | Cancel current operation |
 
@@ -167,6 +202,13 @@ clipping or nested workflow scrolling. Controls retain flexible height policies.
 order dialog disables Move earlier/later at the corresponding edge, refreshes those states after
 selection and movement, and publishes visible accessible position confirmation after each move.
 Focus returns to a recovery action after failure.
+
+`ScanReviewDialog` follows the same scalable rule with one scrollable review body and reachable
+action controls. Crop, quarter-turn, deskew, contrast, cleanup, comparison, preview update/retry,
+Reset, Cancel, and Apply all have keyboard paths, accessible names/descriptions, visible state, and
+logical focus order. Adjusted readiness is textual rather than color-only. Progress, cancellation,
+failure, and Apply completion are announced, while preview widgets describe only their role/state
+and never document imagery or text.
 
 One global operation-status surface sits outside the case-chooser/organizer page stack. Startup,
 case-list, and create/open failures are therefore both visibly available and announced while the
@@ -203,3 +245,11 @@ timeout behavior, a forcibly terminated PySide process at the durable autosave-c
 fresh-process recovery/reopen, unknown-error sanitization, and import-source hash
 preservation. The dated keyboard-only and NVDA procedure and its current evidence are recorded in
 [`../accessibility/pws-0111-nvda-smoke.md`](../accessibility/pws-0111-nvda-smoke.md).
+
+PWS-0203 adds focused draft/apply, suggestion-confirmation, original/adjusted correlation,
+one-active/one-latest-pending scheduling, shared preview-byte accounting, two-pixmap retention,
+stale-result, privacy, keyboard, focus, progress/error, and enlarged-layout coverage. Its real
+Windows effective-200-percent keyboard and visual checklist is kept
+separately in
+[`../accessibility/pws-0203-scan-review-smoke.md`](../accessibility/pws-0203-scan-review-smoke.md);
+result fields remain pending until the recorded run occurs.

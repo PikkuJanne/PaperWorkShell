@@ -18,8 +18,14 @@ from paperworkshell.app.page_previews import (
     PagePreviewErrorCode,
     PagePreviewProgress,
 )
+from paperworkshell.app.scan_review import (
+    ScanReviewDraft,
+    ScanReviewError,
+    ScanReviewPreviewVariant,
+)
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
+from paperworkshell.domain.image_transforms import ImageTransformIntent
 from paperworkshell.domain.manifest_repository import ManifestRepositoryError
 from paperworkshell.domain.page_operations import PageOperationError
 from paperworkshell.domain.pdf_thumbnails import (
@@ -98,6 +104,7 @@ _KNOWN_FAILURES: Final = (
     PageOperationError,
     PdfThumbnailError,
     RecoveryError,
+    ScanReviewError,
     SourceIngestError,
 )
 
@@ -140,6 +147,16 @@ class OrganizerBackendWorker(QObject):
     cases_changed = Signal(object)
     state_changed = Signal(object)
     thumbnails_ready = Signal(int, int, object)
+    scan_review_preview_ready = Signal(int, int, object)
+    scan_review_started = Signal(int, object)
+    scan_review_start_failed = Signal(int, object)
+    scan_review_progress_changed = Signal(object)
+    scan_review_preview_cancelled = Signal(int, int, str)
+    scan_review_preview_failed = Signal(int, int, object)
+    scan_review_preview_finished = Signal(int, int)
+    scan_review_applied = Signal(int, object)
+    scan_review_apply_failed = Signal(int, object)
+    scan_review_discard_failed = Signal(object)
     progress_changed = Signal(object)
     status_changed = Signal(str)
     operation_status_changed = Signal(int, str)
@@ -283,6 +300,215 @@ class OrganizerBackendWorker(QObject):
             )
 
         self._run_long(operation_id, "Preview", action)
+
+    @Slot(int, object, object)
+    def begin_scan_review(
+        self,
+        operation_id: int,
+        page_id: object,
+        suggested_intent: object,
+    ) -> None:
+        """Create one revision-bound provisional review on the backend owner thread."""
+
+        backend = self._backend
+        if (
+            backend is None
+            or type(operation_id) is not int
+            or operation_id <= 0
+            or type(page_id) is not UUID
+            or (suggested_intent is not None and type(suggested_intent) is not ImageTransformIntent)
+        ):
+            self.scan_review_start_failed.emit(
+                operation_id if type(operation_id) is int else 0,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid scan-review request.",
+                    retryable=True,
+                    operation_id=operation_id if type(operation_id) is int else None,
+                ),
+            )
+            return
+        try:
+            draft = backend.begin_scan_review(page_id, suggested_intent=suggested_intent)
+            expected_candidate = (
+                draft.base_intent
+                if suggested_intent is None and type(draft) is ScanReviewDraft
+                else suggested_intent
+            )
+            if (
+                type(draft) is not ScanReviewDraft
+                or draft.page_id != page_id
+                or draft.candidate_intent != expected_candidate
+                or draft.suggestion_present != (suggested_intent is not None)
+            ):
+                if type(draft) is ScanReviewDraft:
+                    try:
+                        backend.cancel_scan_review(draft)
+                    except BaseException:
+                        pass
+                self.scan_review_start_failed.emit(
+                    operation_id,
+                    UiFailure(
+                        code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                        message="PaperWorkShell could not verify the scan-review request safely.",
+                        retryable=True,
+                        operation_id=operation_id,
+                    ),
+                )
+                return
+        except BaseException as error:
+            self.scan_review_start_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.scan_review_started.emit(operation_id, draft)
+
+    @Slot(int, int, object, object, int, int, object)
+    def get_scan_review_preview(
+        self,
+        operation_id: int,
+        generation: int,
+        draft: object,
+        variant: object,
+        maximum_width: int,
+        maximum_height: int,
+        cancellation: object,
+    ) -> None:
+        """Render one correlated provisional review preview without manifest mutation."""
+
+        backend = self._backend
+        if (
+            backend is None
+            or type(operation_id) is not int
+            or operation_id <= 0
+            or type(generation) is not int
+            or generation <= 0
+            or type(draft) is not ScanReviewDraft
+            or type(variant) is not ScanReviewPreviewVariant
+            or type(maximum_width) is not int
+            or type(maximum_height) is not int
+            or type(cancellation) is not OperationCancellation
+        ):
+            self.scan_review_preview_failed.emit(
+                operation_id if type(operation_id) is int else 0,
+                generation if type(generation) is int else 0,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid scan-review preview request.",
+                    retryable=True,
+                    operation_id=operation_id if type(operation_id) is int else None,
+                ),
+            )
+            self.scan_review_preview_finished.emit(
+                operation_id if type(operation_id) is int else 0,
+                generation if type(generation) is int else 0,
+            )
+            return
+        try:
+            result = backend.get_scan_review_preview(
+                draft,
+                variant,
+                maximum_width,
+                maximum_height,
+                cancellation=cancellation.cancelled,
+                progress=lambda progress: self._scan_review_progress(operation_id, progress),
+            )
+            self.scan_review_preview_ready.emit(operation_id, generation, result)
+        except (ImagePageError, PagePreviewError) as error:
+            cancelled = (
+                isinstance(error, ImagePageError) and error.code is ImagePageErrorCode.CANCELLED
+            ) or (
+                isinstance(error, PagePreviewError) and error.code is PagePreviewErrorCode.CANCELLED
+            )
+            if cancelled:
+                self.scan_review_preview_cancelled.emit(
+                    operation_id,
+                    generation,
+                    "Preview cancelled. Adjustments were not applied.",
+                )
+            else:
+                self.scan_review_preview_failed.emit(
+                    operation_id,
+                    generation,
+                    sanitize_ui_failure(error, operation_id=operation_id),
+                )
+        except BaseException as error:
+            self.scan_review_preview_failed.emit(
+                operation_id,
+                generation,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+        finally:
+            self.scan_review_preview_finished.emit(operation_id, generation)
+
+    @Slot(int, object)
+    def apply_scan_review(self, operation_id: int, draft: object) -> None:
+        """Apply one exact reviewed draft and publish its queued organizer state."""
+
+        backend = self._backend
+        if (
+            backend is None
+            or type(operation_id) is not int
+            or operation_id <= 0
+            or type(draft) is not ScanReviewDraft
+        ):
+            self.scan_review_apply_failed.emit(
+                operation_id if type(operation_id) is int else 0,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid scan-review apply request.",
+                    retryable=True,
+                    operation_id=operation_id if type(operation_id) is int else None,
+                ),
+            )
+            return
+        try:
+            before = backend.state
+            state = backend.apply_scan_review(draft)
+            if not _scan_review_apply_transition_is_valid(before, state, draft):
+                self.scan_review_apply_failed.emit(
+                    operation_id,
+                    UiFailure(
+                        code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                        message="PaperWorkShell could not verify the scan-review result safely.",
+                        retryable=True,
+                        operation_id=operation_id,
+                    ),
+                )
+                return
+        except BaseException as error:
+            self.scan_review_apply_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.state_changed.emit(state)
+        self.status_changed.emit(
+            "Scan adjustments applied. Saving changes."
+            if state.autosave_pending
+            else "Scan review complete. No changes were applied."
+        )
+        self.scan_review_applied.emit(operation_id, state)
+
+    @Slot(object)
+    def cancel_scan_review(self, draft: object) -> None:
+        """Discard one provisional review after any active worker call settles."""
+
+        backend = self._backend
+        if backend is None or type(draft) is not ScanReviewDraft:
+            self.scan_review_discard_failed.emit(
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell could not discard the scan review safely.",
+                    retryable=True,
+                )
+            )
+            return
+        try:
+            backend.cancel_scan_review(draft)
+        except BaseException as error:
+            self.scan_review_discard_failed.emit(sanitize_ui_failure(error))
 
     @Slot(object)
     def rotate_clockwise(self, page_id: object) -> None:
@@ -432,6 +658,18 @@ class OrganizerBackendWorker(QObject):
             )
         )
 
+    def _scan_review_progress(self, operation_id: int, progress: PagePreviewProgress) -> None:
+        self.scan_review_progress_changed.emit(
+            UiProgress(
+                operation="Scan review",
+                phase=progress.phase.value,
+                completed=progress.completed_pages,
+                total=progress.total_pages,
+                cancelable=True,
+                operation_id=operation_id,
+            )
+        )
+
     def _run_long(
         self,
         operation_id: int,
@@ -517,6 +755,57 @@ class OrganizerBackendWorker(QObject):
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
 
 
+def _scan_review_apply_transition_is_valid(
+    before: object,
+    after: object,
+    draft: ScanReviewDraft,
+) -> bool:
+    """Accept only the complete organizer-state transition produced by one Apply."""
+
+    if type(before) is not OrganizerViewState or type(after) is not OrganizerViewState:
+        return False
+    if (
+        before.case_id != draft.case_id
+        or before.revision != draft.manifest_revision
+        or before.autosave_pending
+    ):
+        return False
+    matching_before = tuple(page for page in before.pages if page.page_id == draft.page_id)
+    if (
+        len(matching_before) != 1
+        or matching_before[0].scan_review_intent != draft.base_intent
+        or matching_before[0].rotation_degrees != int(draft.base_intent.additional_rotation)
+    ):
+        return False
+    changes_applied = draft.candidate_intent != draft.base_intent
+    if not changes_applied:
+        return after == before
+    if (
+        after.case_id != before.case_id
+        or after.revision != before.revision
+        or after.recovery_review_required is not before.recovery_review_required
+        or not after.can_undo
+        or after.can_redo
+        or not after.autosave_pending
+        or len(after.pages) != len(before.pages)
+    ):
+        return False
+    for before_page, after_page in zip(before.pages, after.pages, strict=True):
+        if before_page.page_id != draft.page_id:
+            if after_page != before_page:
+                return False
+            continue
+        if (
+            after_page.page_id != before_page.page_id
+            or after_page.position != before_page.position
+            or after_page.preview_supported is not before_page.preview_supported
+            or after_page.rotation_degrees != int(draft.candidate_intent.additional_rotation)
+            or after_page.scan_review_intent != draft.candidate_intent
+        ):
+            return False
+    return True
+
+
 class OrganizerBackendCommands(QObject):
     """Queued command surface owned by the GUI thread."""
 
@@ -527,6 +816,10 @@ class OrganizerBackendCommands(QObject):
     close_case_requested = Signal()
     import_requested = Signal(int, object, str, object)
     thumbnails_requested = Signal(int, int, object, int, int, object)
+    scan_review_begin_requested = Signal(int, object, object)
+    scan_review_preview_requested = Signal(int, int, object, object, int, int, object)
+    scan_review_apply_requested = Signal(int, object)
+    scan_review_cancel_requested = Signal(object)
     rotate_requested = Signal(object)
     remove_requested = Signal(object)
     move_requested = Signal(object, int)
@@ -547,6 +840,10 @@ class OrganizerBackendCommands(QObject):
         self.close_case_requested.connect(worker.close_case)
         self.import_requested.connect(worker.import_source)
         self.thumbnails_requested.connect(worker.get_thumbnails)
+        self.scan_review_begin_requested.connect(worker.begin_scan_review)
+        self.scan_review_preview_requested.connect(worker.get_scan_review_preview)
+        self.scan_review_apply_requested.connect(worker.apply_scan_review)
+        self.scan_review_cancel_requested.connect(worker.cancel_scan_review)
         self.rotate_requested.connect(worker.rotate_clockwise)
         self.remove_requested.connect(worker.remove_page)
         self.move_requested.connect(worker.move_page)

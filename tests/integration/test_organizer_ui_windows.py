@@ -27,8 +27,14 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
+from paperworkshell.app.scan_review import ScanReviewPreviewVariant
 from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.app.source_inspection import SourceInspectorRouter
+from paperworkshell.domain.image_pages import ImagePagePreviewResult, ImageQuarterTurn
+from paperworkshell.domain.image_transforms import (
+    ImagePageTransformResult,
+    ImageTransformIntent,
+)
 from paperworkshell.domain.import_precheck import DetectedMediaType, ImportLimits
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult
 from paperworkshell.domain.source_ingest import (
@@ -62,6 +68,14 @@ FIXTURE = (
     / "v1"
     / "pdf"
     / "render-calibration.pdf"
+)
+IMAGE_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "synthetic"
+    / "v1"
+    / "image"
+    / "render-calibration-crop-rotate.png"
 )
 
 
@@ -143,6 +157,39 @@ def _backend(profile: Path) -> OrganizerBackend:
 def _application() -> QApplication:
     existing = QApplication.instance()
     return QApplication([]) if existing is None else cast(QApplication, existing)
+
+
+def _live_image_backend(profile: Path) -> OrganizerBackend:
+    manager = CaseWorkspaceManager(profile_root=profile, quota=_quota())
+    source_store = WindowsSourceIngestStore(
+        manager,
+        WindowsSourcePrechecker(_limits()),
+        maximum_page_count=16,
+    )
+    composition = create_desktop_worker_composition(
+        _desktop_worker_config(),
+        prepared_sources=source_store,
+        committed_pages=source_store,
+        thumbnail_cache=WindowsThumbnailCacheStore(manager),
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
+    return OrganizerBackend(
+        CaseLifecycleService(WindowsCaseLifecycleStore(manager)),
+        WindowsManifestRepository(manager),
+        SourceIngestService(
+            source_store,
+            SourceInspectorRouter(
+                composition.source_inspector,
+                composition.image_source_inspector,
+            ),
+        ),
+        PagePreviewService(
+            composition.thumbnail_generator,
+            composition.image_page_generator,
+            composition.image_page_transformer,
+        ),
+        close_resources=composition.close,
+    )
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows workspace integration")
@@ -259,3 +306,69 @@ def test_live_composition_imports_and_renders_bounded_organizer_previews(tmp_pat
         assert FIXTURE.read_bytes() == source_before
     finally:
         backend.shutdown()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows worker integration")
+def test_live_scan_review_preserves_original_and_reopens_only_applied_intent(
+    tmp_path: Path,
+) -> None:
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    source_before = IMAGE_FIXTURE.read_bytes()
+    backend = _live_image_backend(profile)
+    case_id: UUID | None = None
+    reviewed_intent = ImageTransformIntent(
+        additional_rotation=ImageQuarterTurn.DEGREES_90,
+        deskew_angle_millidegrees_clockwise=1_000,
+        contrast_factor_millionths=1_200_000,
+        background_cleanup_strength_millionths=100_000,
+    )
+
+    try:
+        created = backend.create_case()
+        assert created.case_id is not None
+        case_id = created.case_id
+        imported = backend.import_source(
+            IMAGE_FIXTURE,
+            "Synthetic scan-review calibration.png",
+        ).committed_import
+        assert len(imported.page_ids) == 1
+        page_id = imported.page_ids[0]
+        opening = backend.begin_scan_review(page_id)
+        candidate = opening.with_candidate(reviewed_intent)
+
+        original = backend.get_scan_review_preview(
+            opening,
+            ScanReviewPreviewVariant.ORIGINAL,
+            120,
+            160,
+        )
+        adjusted = backend.get_scan_review_preview(
+            candidate,
+            ScanReviewPreviewVariant.ADJUSTED,
+            120,
+            160,
+        )
+
+        assert type(original.result) is ImagePagePreviewResult
+        assert original.result.request.additional_rotation is ImageQuarterTurn.DEGREES_0
+        assert type(adjusted.result) is ImagePageTransformResult
+        assert adjusted.result.request.intent == reviewed_intent
+        assert original.result.snapshot.pixels != adjusted.result.pixels
+        queued = backend.apply_scan_review(candidate)
+        assert queued.autosave_pending
+        assert queued.pages[0].scan_review_intent == reviewed_intent
+        saved = backend.flush_autosave()
+        assert not saved.autosave_pending
+        assert IMAGE_FIXTURE.read_bytes() == source_before
+    finally:
+        backend.shutdown()
+
+    assert case_id is not None
+    reopened_backend = _live_image_backend(profile)
+    try:
+        reopened = reopened_backend.open_case(case_id)
+        assert reopened.pages[0].scan_review_intent == reviewed_intent
+        assert IMAGE_FIXTURE.read_bytes() == source_before
+    finally:
+        reopened_backend.shutdown()

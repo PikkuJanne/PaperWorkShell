@@ -56,6 +56,11 @@ from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
     OrganizerViewState,
 )
+from paperworkshell.app.scan_review import (
+    ScanReviewDraft,
+    ScanReviewPreviewResult,
+    ScanReviewPreviewVariant,
+)
 from paperworkshell.domain.case_lifecycle import CaseIndex
 from paperworkshell.domain.image_pages import (
     ImagePagePreviewResult,
@@ -85,11 +90,14 @@ from paperworkshell.ui.backend import (
     UiProgress,
 )
 from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
+from paperworkshell.ui.scan_review import ScanReviewDialog
 
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
 _THUMBNAIL_WIDTH: Final = 240
 _THUMBNAIL_HEIGHT: Final = 320
 _PREVIEW_REFRESH_DEBOUNCE_MS: Final = 75
+_SCAN_REVIEW_PREVIEW_WIDTH: Final = 600
+_SCAN_REVIEW_PREVIEW_HEIGHT: Final = 800
 _MAX_OPERATION_ID: Final = 2_147_483_647
 _FOCUS_VISIBLE_TEXT_STYLE: Final = """
 QLabel {
@@ -120,6 +128,17 @@ class _ImportPresentationState(StrEnum):
 class _LongOperation:
     operation_id: int
     kind: _LongOperationKind
+    cancellation: OperationCancellation
+
+
+@dataclass(frozen=True, slots=True)
+class _ScanReviewPreviewOperation:
+    """One exact provisional preview request owned by the GUI thread."""
+
+    operation_id: int
+    generation: int
+    draft: ScanReviewDraft
+    variant: ScanReviewPreviewVariant
     cancellation: OperationCancellation
 
 
@@ -339,6 +358,16 @@ class PaperWorkShellWindow(QMainWindow):
             raise ValueError("resource policy exceeds the organizer preview batch limit")
         if _THUMBNAIL_WIDTH * _THUMBNAIL_HEIGHT > (selected_policy.maximum_preview_pixels_per_page):
             raise ValueError("resource policy cannot accommodate the bounded preview dimensions")
+        if (
+            _SCAN_REVIEW_PREVIEW_WIDTH * _SCAN_REVIEW_PREVIEW_HEIGHT
+            > selected_policy.maximum_preview_pixels_per_page
+        ):
+            raise ValueError("resource policy cannot accommodate scan-review preview dimensions")
+        if (
+            2 * _SCAN_REVIEW_PREVIEW_WIDTH * _SCAN_REVIEW_PREVIEW_HEIGHT * 4
+            > selected_policy.thumbnail_preview_cache_bytes
+        ):
+            raise ValueError("resource policy cannot retain both scan-review previews")
         self.setObjectName("paperWorkShellWindow")
         self.setWindowTitle("PaperWorkShell")
         self.setAccessibleName("PaperWorkShell guided packet builder")
@@ -367,6 +396,22 @@ class PaperWorkShellWindow(QMainWindow):
         self._pending_failure_focus: str | None = None
         self._startup_recovery_announced = False
         self._pending_startup_unavailable_case_ids: frozenset[UUID] = frozenset()
+        self._pending_scan_review_page_id: UUID | None = None
+        self._scan_review_start_operation_id: int | None = None
+        self._scan_review_start_page_id: UUID | None = None
+        self._scan_review_dialog: ScanReviewDialog | None = None
+        self._scan_review_preview_generation = 0
+        self._active_scan_review_preview: _ScanReviewPreviewOperation | None = None
+        self._pending_scan_review_preview: (
+            tuple[ScanReviewDraft, ScanReviewPreviewVariant] | None
+        ) = None
+        self._scan_review_preview_succeeded = False
+        self._pending_scan_review_apply_draft: ScanReviewDraft | None = None
+        self._scan_review_apply_operation_id: int | None = None
+        self._scan_review_apply_draft: ScanReviewDraft | None = None
+        self._scan_review_apply_completed = False
+        self._scan_review_original_bytes = 0
+        self._scan_review_adjusted_bytes = 0
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
@@ -628,6 +673,12 @@ class PaperWorkShellWindow(QMainWindow):
             "removeButton",
             "Remove the selected page from the active packet. Delete.",
         )
+        self._scan_review_button = self._action_button(
+            "Review scan adjustments",
+            "scanReviewButton",
+            "Compare the unchanged original with provisional scan adjustments. "
+            "Nothing changes until Apply adjustments is chosen. Ctrl+Shift+A.",
+        )
         self._change_order_button = self._action_button(
             "Change full order",
             "changeOrderButton",
@@ -643,6 +694,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._move_later_button.clicked.connect(lambda: self._move_selected(1))
         self._rotate_button.clicked.connect(self._rotate_selected)
         self._remove_button.clicked.connect(self._remove_selected)
+        self._scan_review_button.clicked.connect(self._request_scan_review)
         self._change_order_button.clicked.connect(self._change_full_order)
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
@@ -650,9 +702,10 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._move_later_button, 0, 1)
         action_layout.addWidget(self._rotate_button, 0, 2)
         action_layout.addWidget(self._remove_button, 1, 0)
-        action_layout.addWidget(self._change_order_button, 1, 1)
-        action_layout.addWidget(self._undo_button, 1, 2)
-        action_layout.addWidget(self._redo_button, 1, 3)
+        action_layout.addWidget(self._scan_review_button, 1, 1)
+        action_layout.addWidget(self._change_order_button, 1, 2)
+        action_layout.addWidget(self._undo_button, 2, 0)
+        action_layout.addWidget(self._redo_button, 2, 1)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -664,6 +717,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._move_later_button,
             self._rotate_button,
             self._remove_button,
+            self._scan_review_button,
             self._change_order_button,
             self._undo_button,
             self._redo_button,
@@ -695,6 +749,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Alt+Down", lambda: self._move_selected(1)),
             ("Ctrl+R", self._rotate_selected),
             ("Delete", self._remove_selected),
+            ("Ctrl+Shift+A", self._request_scan_review),
             ("Ctrl+Shift+O", self._change_full_order),
             ("Ctrl+Shift+R", self._retry_failed_preview),
             ("Escape", self._cancel_active_operation),
@@ -712,6 +767,16 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.cases_changed.connect(self._cases_changed)
         self._worker.state_changed.connect(self._state_changed)
         self._worker.thumbnails_ready.connect(self._thumbnails_ready)
+        self._worker.scan_review_started.connect(self._scan_review_started)
+        self._worker.scan_review_start_failed.connect(self._scan_review_start_failed)
+        self._worker.scan_review_preview_ready.connect(self._scan_review_preview_ready)
+        self._worker.scan_review_progress_changed.connect(self._scan_review_progress_changed)
+        self._worker.scan_review_preview_cancelled.connect(self._scan_review_preview_cancelled)
+        self._worker.scan_review_preview_failed.connect(self._scan_review_preview_failed)
+        self._worker.scan_review_preview_finished.connect(self._scan_review_preview_finished)
+        self._worker.scan_review_applied.connect(self._scan_review_applied)
+        self._worker.scan_review_apply_failed.connect(self._scan_review_apply_failed)
+        self._worker.scan_review_discard_failed.connect(self._scan_review_discard_failed)
         self._worker.progress_changed.connect(self._progress_changed)
         self._worker.status_changed.connect(self._status_changed)
         self._worker.operation_status_changed.connect(self._operation_status_changed)
@@ -771,6 +836,12 @@ class PaperWorkShellWindow(QMainWindow):
     def _state_changed(self, state: object) -> None:
         if type(state) is not OrganizerViewState:
             return
+        dialog = self._scan_review_dialog
+        if dialog is not None and (
+            state.case_id != dialog.draft.case_id
+            or state.revision != dialog.draft.manifest_revision
+        ):
+            self._dismiss_scan_review_after_state_change()
         prior_state = self._state
         focused_widget = QApplication.focusWidget()
         preserve_focus = (
@@ -883,6 +954,375 @@ class PaperWorkShellWindow(QMainWindow):
         self._model.evict_previews(
             protected_page_ids=retained,
         )
+
+    @Slot(int, object)
+    def _scan_review_started(self, operation_id: int, draft: object) -> None:
+        """Open one exact revision-bound review after the backend accepts it."""
+
+        if operation_id != self._scan_review_start_operation_id:
+            return
+        expected_page_id = self._scan_review_start_page_id
+        self._scan_review_start_operation_id = None
+        self._scan_review_start_page_id = None
+        self._pending_scan_review_page_id = None
+        state = self._state
+        expected_pages = (
+            tuple(page for page in state.pages if page.page_id == expected_page_id)
+            if state is not None
+            else ()
+        )
+        expected_page = expected_pages[0] if len(expected_pages) == 1 else None
+        if (
+            type(draft) is not ScanReviewDraft
+            or state is None
+            or state.autosave_pending
+            or state.case_id != draft.case_id
+            or state.revision != draft.manifest_revision
+            or draft.page_id != expected_page_id
+            or self._selected_page_id() != expected_page_id
+            or expected_page is None
+            or expected_page.scan_review_intent is None
+            or expected_page.scan_review_intent != draft.base_intent
+            or expected_page.rotation_degrees != int(draft.base_intent.additional_rotation)
+            or draft.candidate_intent != draft.base_intent
+            or draft.suggestion_present
+            or self._scan_review_dialog is not None
+        ):
+            if type(draft) is ScanReviewDraft:
+                self._commands.scan_review_cancel_requested.emit(draft)
+            self._show_scan_review_failure(
+                UiFailure(
+                    code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                    message="PaperWorkShell could not open scan review safely. Start the review again.",
+                    retryable=True,
+                )
+            )
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_preview_retry_action()
+            return
+        dialog = ScanReviewDialog(draft, self)
+        dialog.preview_requested.connect(self._queue_scan_review_preview)
+        dialog.apply_requested.connect(self._request_scan_review_apply)
+        dialog.cancel_preview_requested.connect(self._cancel_scan_review_preview)
+        dialog.finished.connect(self._scan_review_dialog_finished)
+        self._scan_review_dialog = dialog
+        self._scan_review_apply_completed = False
+        self._scan_review_original_bytes = 0
+        self._scan_review_adjusted_bytes = 0
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        self._hide_error()
+        self._update_page_actions()
+        self._update_preview_retry_action()
+        dialog.open()
+        if dialog.set_preview_loading(draft):
+            self._start_scan_review_preview_cycle(draft)
+
+    @Slot(int, object)
+    def _scan_review_start_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._scan_review_start_operation_id:
+            return
+        self._scan_review_start_operation_id = None
+        self._scan_review_start_page_id = None
+        self._pending_scan_review_page_id = None
+        self._update_import_availability()
+        if type(failure) is UiFailure:
+            self._show_scan_review_failure(failure)
+        else:
+            self._show_scan_review_failure(
+                UiFailure(
+                    code="PWS_UI_UNEXPECTED",
+                    message="PaperWorkShell could not open scan review. Try again.",
+                    retryable=True,
+                )
+            )
+        self._update_page_actions()
+        self._update_preview_retry_action()
+
+    @Slot(int, int, object)
+    def _scan_review_preview_ready(
+        self,
+        operation_id: int,
+        generation: int,
+        result: object,
+    ) -> None:
+        active = self._active_scan_review_preview
+        dialog = self._scan_review_dialog
+        if (
+            active is None
+            or dialog is None
+            or operation_id != active.operation_id
+            or generation != active.generation
+            or type(result) is not ScanReviewPreviewResult
+            or result.draft != active.draft
+            or result.variant is not active.variant
+            or active.cancellation.cancelled()
+            or not self._scan_review_result_matches_window_request(result)
+        ):
+            return
+        image = self._scan_review_image(result)
+        if image is None:
+            self._fail_active_scan_review_preview(
+                "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                "PaperWorkShell could not display that preview safely. Update the preview again.",
+            )
+            return
+        byte_cost = image.width() * image.height() * 4
+        if not self._reserve_scan_review_preview_bytes(active.variant, byte_cost):
+            self._fail_active_scan_review_preview(
+                "PWS_UI_SCAN_REVIEW_LIMIT_EXCEEDED",
+                "The preview exceeds the configured memory limit. Close scan review and try again.",
+            )
+            return
+        if active.variant is ScanReviewPreviewVariant.ORIGINAL:
+            accepted = dialog.set_original_image(result.draft, image)
+        else:
+            accepted = dialog.set_adjusted_image(result.draft, image)
+        if not accepted:
+            self._fail_active_scan_review_preview(
+                "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                "PaperWorkShell rejected a stale scan-review preview. Update the preview again.",
+            )
+            return
+        self._scan_review_preview_succeeded = True
+
+    @Slot(object)
+    def _scan_review_progress_changed(self, progress: object) -> None:
+        active = self._active_scan_review_preview
+        dialog = self._scan_review_dialog
+        if (
+            active is None
+            or dialog is None
+            or type(progress) is not UiProgress
+            or progress.operation_id != active.operation_id
+            or active.cancellation.cancelled()
+        ):
+            return
+        dialog.set_progress(
+            active.draft,
+            progress.phase,
+            progress.completed,
+            progress.total,
+        )
+
+    @Slot(int, int, str)
+    def _scan_review_preview_cancelled(
+        self,
+        operation_id: int,
+        generation: int,
+        _message: str,
+    ) -> None:
+        active = self._active_scan_review_preview
+        dialog = self._scan_review_dialog
+        if (
+            active is None
+            or dialog is None
+            or operation_id != active.operation_id
+            or generation != active.generation
+        ):
+            return
+        if active.draft == dialog.draft:
+            cancelled_variant = (
+                ScanReviewPreviewVariant.ADJUSTED
+                if active.variant is ScanReviewPreviewVariant.ORIGINAL
+                and self._scan_review_preview_succeeded
+                else active.variant
+            )
+            self._pending_scan_review_preview = None
+            if cancelled_variant is ScanReviewPreviewVariant.ORIGINAL:
+                self._scan_review_original_bytes = 0
+            else:
+                self._scan_review_adjusted_bytes = 0
+            self._rebalance_preview_cache()
+            dialog.set_preview_cancelled(active.draft, cancelled_variant)
+
+    @Slot(int, int, object)
+    def _scan_review_preview_failed(
+        self,
+        operation_id: int,
+        generation: int,
+        failure: object,
+    ) -> None:
+        active = self._active_scan_review_preview
+        dialog = self._scan_review_dialog
+        if (
+            active is None
+            or dialog is None
+            or operation_id != active.operation_id
+            or generation != active.generation
+        ):
+            return
+        if active.draft != dialog.draft:
+            return
+        self._pending_scan_review_preview = None
+        if active.variant is ScanReviewPreviewVariant.ORIGINAL:
+            self._scan_review_original_bytes = 0
+            self._rebalance_preview_cache()
+        else:
+            self._scan_review_adjusted_bytes = 0
+            self._rebalance_preview_cache()
+        if type(failure) is UiFailure:
+            dialog.set_failure(
+                active.draft,
+                failure.code,
+                failure.message,
+                variant=active.variant,
+            )
+        else:
+            dialog.set_failure(
+                active.draft,
+                "PWS_UI_UNEXPECTED",
+                "PaperWorkShell could not complete scan review. Try again.",
+                variant=active.variant,
+            )
+
+    @Slot(int, int)
+    def _scan_review_preview_finished(self, operation_id: int, generation: int) -> None:
+        active = self._active_scan_review_preview
+        if active is None or operation_id != active.operation_id or generation != active.generation:
+            return
+        succeeded = self._scan_review_preview_succeeded
+        self._active_scan_review_preview = None
+        self._scan_review_preview_succeeded = False
+        pending = self._pending_scan_review_preview
+        self._pending_scan_review_preview = None
+        dialog = self._scan_review_dialog
+        pending_apply = self._pending_scan_review_apply_draft
+        self._pending_scan_review_apply_draft = None
+        if pending_apply is not None:
+            if (
+                dialog is not None
+                and succeeded
+                and active.variant is ScanReviewPreviewVariant.ADJUSTED
+                and not active.cancellation.cancelled()
+                and active.draft == pending_apply
+                and dialog.draft == pending_apply
+                and pending is None
+            ):
+                self._start_scan_review_apply(pending_apply)
+            elif dialog is not None and active.draft == dialog.draft:
+                dialog.set_failure(
+                    active.draft,
+                    "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                    "The preview did not finish safely. Update the preview again.",
+                    variant=active.variant,
+                )
+            return
+        if (
+            dialog is not None
+            and pending is not None
+            and not succeeded
+            and active.variant is ScanReviewPreviewVariant.ORIGINAL
+            and pending[1] is ScanReviewPreviewVariant.ADJUSTED
+            and active.draft == dialog.draft
+        ):
+            dialog.set_failure(
+                active.draft,
+                "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                "The original preview did not finish safely. Update the preview again.",
+                variant=active.variant,
+            )
+            return
+        if dialog is None or pending is None:
+            if (
+                dialog is not None
+                and active.draft == dialog.draft
+                and (
+                    active.cancellation.cancelled()
+                    or (succeeded and active.variant is ScanReviewPreviewVariant.ORIGINAL)
+                )
+            ):
+                cancelled_variant = (
+                    ScanReviewPreviewVariant.ADJUSTED
+                    if succeeded and active.variant is ScanReviewPreviewVariant.ORIGINAL
+                    else active.variant
+                )
+                dialog.set_preview_cancelled(active.draft, cancelled_variant)
+            elif dialog is not None and active.draft == dialog.draft and not succeeded:
+                dialog.set_failure(
+                    active.draft,
+                    "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                    "The preview did not finish safely. Update the preview again.",
+                    variant=active.variant,
+                )
+            return
+        draft, variant = pending
+        if draft != dialog.draft:
+            return
+        self._start_scan_review_preview(draft, variant)
+
+    @Slot(int, object)
+    def _scan_review_applied(self, operation_id: int, state: object) -> None:
+        if operation_id != self._scan_review_apply_operation_id:
+            return
+        dialog = self._scan_review_dialog
+        draft = self._scan_review_apply_draft
+        self._scan_review_apply_operation_id = None
+        self._scan_review_apply_draft = None
+        if dialog is None or draft is None:
+            return
+        applied_page = (
+            next(
+                (page for page in state.pages if page.page_id == draft.page_id),
+                None,
+            )
+            if type(state) is OrganizerViewState
+            else None
+        )
+        if (
+            type(state) is not OrganizerViewState
+            or self._state != state
+            or state.case_id != draft.case_id
+            or state.revision != draft.manifest_revision
+            or applied_page is None
+            or applied_page.scan_review_intent != draft.candidate_intent
+        ):
+            dialog.set_failure(
+                draft,
+                "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                "PaperWorkShell could not verify the applied scan-review state safely.",
+            )
+            return
+        self._scan_review_apply_completed = True
+        if not dialog.set_apply_complete(
+            draft,
+            changes_applied=state.autosave_pending,
+        ):
+            self._scan_review_apply_completed = False
+            self._show_scan_review_failure(
+                UiFailure(
+                    code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
+                    message="PaperWorkShell applied the case change, but could not close scan review safely.",
+                    retryable=False,
+                )
+            )
+
+    @Slot(int, object)
+    def _scan_review_apply_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._scan_review_apply_operation_id:
+            return
+        dialog = self._scan_review_dialog
+        draft = self._scan_review_apply_draft
+        self._scan_review_apply_operation_id = None
+        self._scan_review_apply_draft = None
+        if dialog is None or draft is None:
+            return
+        if type(failure) is UiFailure:
+            dialog.set_failure(draft, failure.code, failure.message)
+        else:
+            dialog.set_failure(
+                draft,
+                "PWS_UI_UNEXPECTED",
+                "PaperWorkShell could not apply those adjustments. Try again.",
+            )
+
+    @Slot(object)
+    def _scan_review_discard_failed(self, failure: object) -> None:
+        if self._closing_requested:
+            return
+        if type(failure) is UiFailure:
+            self._show_scan_review_failure(failure)
 
     @Slot(object)
     def _progress_changed(self, progress: object) -> None:
@@ -1033,6 +1473,27 @@ class PaperWorkShellWindow(QMainWindow):
         if self._closing_requested:
             self._pending_failure_focus = None
             return
+        pending_scan_review = self._pending_scan_review_page_id
+        if pending_scan_review is not None:
+            self._pending_failure_focus = None
+            self._pending_scan_review_page_id = None
+            if self._selected_page_id() != pending_scan_review:
+                self._show_scan_review_failure(
+                    UiFailure(
+                        code="PWS_UI_SCAN_REVIEW_SELECTION_CHANGED",
+                        message=(
+                            "The selected page changed before scan review opened. "
+                            "Select a page and try again."
+                        ),
+                        retryable=True,
+                    )
+                )
+                self._update_import_availability()
+                self._update_page_actions()
+                self._update_preview_retry_action()
+                return
+            self._start_scan_review(pending_scan_review)
+            return
         deferred_import = self._deferred_import
         if deferred_import is not None:
             self._pending_failure_focus = None
@@ -1139,7 +1600,7 @@ class PaperWorkShellWindow(QMainWindow):
         )
 
     def _request_previews(self, state: OrganizerViewState) -> None:
-        if self._case_reopen_required:
+        if self._case_reopen_required or self._scan_review_is_opening_or_active():
             return
         unsupported = tuple(page.page_id for page in state.pages if not page.preview_supported)
         for page_id in unsupported:
@@ -1195,6 +1656,7 @@ class PaperWorkShellWindow(QMainWindow):
             or state.autosave_pending
             or self._closing_requested
             or self._case_reopen_required
+            or self._scan_review_is_opening_or_active()
         ):
             return
         self._preview_refresh_timer.start()
@@ -1208,6 +1670,7 @@ class PaperWorkShellWindow(QMainWindow):
             or state.autosave_pending
             or self._closing_requested
             or self._case_reopen_required
+            or self._scan_review_is_opening_or_active()
         ):
             return
         self._request_previews(state)
@@ -1236,6 +1699,7 @@ class PaperWorkShellWindow(QMainWindow):
             not self._controls_enabled
             or self._closing_requested
             or not self._import_button.isEnabled()
+            or self._scan_review_is_opening_or_active()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -1260,7 +1724,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._queue_import(source_path, source_path.name)
 
     def _queue_import(self, source_path: Path, display_name: str) -> None:
-        if self._case_reopen_required:
+        if self._case_reopen_required or self._scan_review_is_opening_or_active():
             return
         state = self._state
         self._deferred_preview_state = (
@@ -1324,6 +1788,7 @@ class PaperWorkShellWindow(QMainWindow):
         if (
             not self._controls_enabled
             or self._closing_requested
+            or self._scan_review_is_opening_or_active()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -1397,18 +1862,40 @@ class PaperWorkShellWindow(QMainWindow):
     def _update_page_actions(self) -> None:
         row = self._page_view.currentIndex().row()
         page_count = self._model.rowCount()
+        state = self._state
+        scan_review_busy = self._scan_review_is_opening_or_active()
+        self._close_case_button.setEnabled(
+            self._controls_enabled
+            and state is not None
+            and state.case_id is not None
+            and not scan_review_busy
+        )
         editable = (
             self._controls_enabled
             and not self._case_reopen_required
             and not self._import_is_pending_or_running()
+            and not scan_review_busy
         )
         has_selection = editable and 0 <= row < page_count
         self._move_earlier_button.setEnabled(has_selection and row > 0)
         self._move_later_button.setEnabled(has_selection and row < page_count - 1)
         self._rotate_button.setEnabled(has_selection)
         self._remove_button.setEnabled(has_selection)
+        selected_page = self._model.pages[row] if 0 <= row < page_count else None
+        scan_review_idle = (
+            self._scan_review_start_operation_id is None
+            and self._scan_review_dialog is None
+            and self._pending_scan_review_page_id is None
+        )
+        self._scan_review_button.setEnabled(
+            has_selection
+            and scan_review_idle
+            and state is not None
+            and not state.autosave_pending
+            and selected_page is not None
+            and selected_page.scan_review_intent is not None
+        )
         self._change_order_button.setEnabled(editable and page_count > 1)
-        state = self._state
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -1434,6 +1921,300 @@ class PaperWorkShellWindow(QMainWindow):
         page_id = self._selected_page_id()
         if page_id is not None and self._prepare_for_mutation():
             self._commands.remove_requested.emit(page_id)
+
+    def _request_scan_review(self) -> None:
+        """Start a provisional image-page review without changing case intent."""
+
+        if not self._scan_review_button.isEnabled():
+            return
+        page_id = self._selected_page_id()
+        if page_id is None:
+            return
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        active = self._active_operation
+        if active is not None:
+            if active.kind is not _LongOperationKind.PREVIEW:
+                return
+            self._pending_scan_review_page_id = page_id
+            self._cancel_active_preview()
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_preview_retry_action()
+            self._announce("Stopping the current page preview before scan review opens.")
+            return
+        self._start_scan_review(page_id)
+
+    def _start_scan_review(self, page_id: UUID) -> None:
+        if (
+            self._scan_review_start_operation_id is not None
+            or self._scan_review_dialog is not None
+            or self._closing_requested
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        self._scan_review_start_operation_id = operation_id
+        self._scan_review_start_page_id = page_id
+        self._pending_scan_review_page_id = None
+        self._hide_error()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_preview_retry_action()
+        self._announce("Opening scan review. Nothing has been applied.")
+        self._commands.scan_review_begin_requested.emit(operation_id, page_id, None)
+
+    @Slot(object)
+    def _queue_scan_review_preview(self, draft: object) -> None:
+        dialog = self._scan_review_dialog
+        if dialog is None or type(draft) is not ScanReviewDraft or draft != dialog.draft:
+            return
+        self._scan_review_adjusted_bytes = 0
+        self._rebalance_preview_cache()
+        self._start_scan_review_preview_cycle(draft)
+
+    def _start_scan_review_preview_cycle(self, draft: ScanReviewDraft) -> None:
+        variant = (
+            ScanReviewPreviewVariant.ORIGINAL
+            if self._scan_review_original_bytes == 0
+            else ScanReviewPreviewVariant.ADJUSTED
+        )
+        if self._active_scan_review_preview is not None:
+            self._pending_scan_review_preview = (draft, variant)
+            self._active_scan_review_preview.cancellation.cancel()
+            return
+        if variant is ScanReviewPreviewVariant.ORIGINAL:
+            self._pending_scan_review_preview = (
+                draft,
+                ScanReviewPreviewVariant.ADJUSTED,
+            )
+        self._start_scan_review_preview(draft, variant)
+
+    def _start_scan_review_preview(
+        self,
+        draft: ScanReviewDraft,
+        variant: ScanReviewPreviewVariant,
+    ) -> None:
+        if self._active_scan_review_preview is not None:
+            raise RuntimeError("scan-review preview overlap")
+        self._scan_review_preview_generation += 1
+        operation = _ScanReviewPreviewOperation(
+            operation_id=self._allocate_operation_id(),
+            generation=self._scan_review_preview_generation,
+            draft=draft,
+            variant=variant,
+            cancellation=OperationCancellation(),
+        )
+        self._active_scan_review_preview = operation
+        self._scan_review_preview_succeeded = False
+        self._commands.scan_review_preview_requested.emit(
+            operation.operation_id,
+            operation.generation,
+            operation.draft,
+            operation.variant,
+            _SCAN_REVIEW_PREVIEW_WIDTH,
+            _SCAN_REVIEW_PREVIEW_HEIGHT,
+            operation.cancellation,
+        )
+
+    @Slot()
+    def _cancel_scan_review_preview(self) -> None:
+        active = self._active_scan_review_preview
+        pending = self._pending_scan_review_preview
+        self._pending_scan_review_preview = None
+        if active is not None:
+            active.cancellation.cancel()
+        dialog = self._scan_review_dialog
+        if pending is None or active is None or dialog is None:
+            return
+        draft, variant = pending
+        is_automatic_adjusted = (
+            active.variant is ScanReviewPreviewVariant.ORIGINAL
+            and variant is ScanReviewPreviewVariant.ADJUSTED
+            and active.draft == draft
+        )
+        if is_automatic_adjusted or draft != dialog.draft:
+            return
+        if variant is ScanReviewPreviewVariant.ORIGINAL:
+            self._scan_review_original_bytes = 0
+        else:
+            self._scan_review_adjusted_bytes = 0
+        self._rebalance_preview_cache()
+        dialog.set_preview_cancelled(draft, variant)
+
+    @Slot(object)
+    def _request_scan_review_apply(self, draft: object) -> None:
+        dialog = self._scan_review_dialog
+        if (
+            dialog is None
+            or type(draft) is not ScanReviewDraft
+            or draft != dialog.draft
+            or not dialog.preview_ready_for_apply
+            or self._scan_review_apply_operation_id is not None
+            or self._pending_scan_review_apply_draft is not None
+        ):
+            return
+        active = self._active_scan_review_preview
+        if active is not None:
+            if (
+                active.variant is ScanReviewPreviewVariant.ADJUSTED
+                and active.draft == draft
+                and self._scan_review_preview_succeeded
+                and not active.cancellation.cancelled()
+            ):
+                self._pending_scan_review_apply_draft = draft
+            return
+        self._start_scan_review_apply(draft)
+
+    def _start_scan_review_apply(self, draft: ScanReviewDraft) -> None:
+        """Emit Apply only after the exact adjusted preview operation has drained."""
+
+        operation_id = self._allocate_operation_id()
+        self._scan_review_apply_operation_id = operation_id
+        self._scan_review_apply_draft = draft
+        self._commands.scan_review_apply_requested.emit(operation_id, draft)
+
+    @Slot(int)
+    def _scan_review_dialog_finished(self, _result: int) -> None:
+        dialog = self._scan_review_dialog
+        if dialog is None:
+            return
+        draft = dialog.draft
+        applied = self._scan_review_apply_completed
+        if self._active_scan_review_preview is not None:
+            self._active_scan_review_preview.cancellation.cancel()
+        if not applied:
+            self._commands.scan_review_cancel_requested.emit(draft)
+        dialog.deleteLater()
+        self._clear_scan_review_presentation()
+        if not self._closing_requested:
+            self._page_view.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._schedule_preview_refresh()
+
+    def _clear_scan_review_presentation(self) -> None:
+        self._scan_review_dialog = None
+        self._scan_review_start_operation_id = None
+        self._scan_review_start_page_id = None
+        self._pending_scan_review_page_id = None
+        self._active_scan_review_preview = None
+        self._pending_scan_review_preview = None
+        self._scan_review_preview_succeeded = False
+        self._pending_scan_review_apply_draft = None
+        self._scan_review_apply_operation_id = None
+        self._scan_review_apply_draft = None
+        self._scan_review_apply_completed = False
+        self._scan_review_original_bytes = 0
+        self._scan_review_adjusted_bytes = 0
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_preview_retry_action()
+        self._rebalance_preview_cache()
+
+    def _dismiss_scan_review_after_state_change(self) -> None:
+        dialog = self._scan_review_dialog
+        if dialog is None:
+            return
+        if self._active_scan_review_preview is not None:
+            self._active_scan_review_preview.cancellation.cancel()
+        try:
+            dialog.finished.disconnect(self._scan_review_dialog_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._clear_scan_review_presentation()
+
+    def _fail_active_scan_review_preview(self, code: str, message: str) -> None:
+        active = self._active_scan_review_preview
+        dialog = self._scan_review_dialog
+        self._pending_scan_review_preview = None
+        if active is not None and dialog is not None and active.draft == dialog.draft:
+            if active.variant is ScanReviewPreviewVariant.ORIGINAL:
+                self._scan_review_original_bytes = 0
+            else:
+                self._scan_review_adjusted_bytes = 0
+            self._rebalance_preview_cache()
+            dialog.set_failure(active.draft, code, message, variant=active.variant)
+
+    @staticmethod
+    def _scan_review_image(result: ScanReviewPreviewResult) -> QImage | None:
+        snapshot: ImagePagePreviewSnapshot | ImagePageTransformSnapshot
+        if result.variant is ScanReviewPreviewVariant.ORIGINAL:
+            value = result.result
+            if type(value) is not ImagePagePreviewResult:
+                return None
+            snapshot = value.snapshot
+            pixels = snapshot.pixels
+        else:
+            value = result.result
+            if type(value) is not ImagePageTransformResult:
+                return None
+            snapshot = value.snapshot
+            pixels = value.pixels
+        image = QImage(
+            pixels,
+            snapshot.width_pixels,
+            snapshot.height_pixels,
+            snapshot.row_stride_bytes,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
+        return None if image.isNull() else image
+
+    @staticmethod
+    def _scan_review_result_matches_window_request(
+        result: ScanReviewPreviewResult,
+    ) -> bool:
+        request = result.result.request
+        snapshot = result.result.snapshot
+        return (
+            request.maximum_width_pixels == _SCAN_REVIEW_PREVIEW_WIDTH
+            and request.maximum_height_pixels == _SCAN_REVIEW_PREVIEW_HEIGHT
+            and 1 <= snapshot.width_pixels <= _SCAN_REVIEW_PREVIEW_WIDTH
+            and 1 <= snapshot.height_pixels <= _SCAN_REVIEW_PREVIEW_HEIGHT
+        )
+
+    def _reserve_scan_review_preview_bytes(
+        self,
+        variant: ScanReviewPreviewVariant,
+        byte_cost: int,
+    ) -> bool:
+        if type(byte_cost) is not int or byte_cost <= 0:
+            return False
+        original = (
+            byte_cost
+            if variant is ScanReviewPreviewVariant.ORIGINAL
+            else self._scan_review_original_bytes
+        )
+        adjusted = (
+            byte_cost
+            if variant is ScanReviewPreviewVariant.ADJUSTED
+            else self._scan_review_adjusted_bytes
+        )
+        if original + adjusted > self._resource_policy.thumbnail_preview_cache_bytes:
+            return False
+        if variant is ScanReviewPreviewVariant.ORIGINAL:
+            self._scan_review_original_bytes = byte_cost
+        else:
+            self._scan_review_adjusted_bytes = byte_cost
+        self._rebalance_preview_cache()
+        return (
+            self._model.retained_preview_bytes + original + adjusted
+            <= self._resource_policy.thumbnail_preview_cache_bytes
+        )
+
+    def _rebalance_preview_cache(self) -> None:
+        review_bytes = self._scan_review_original_bytes + self._scan_review_adjusted_bytes
+        remaining = max(
+            0,
+            self._resource_policy.thumbnail_preview_cache_bytes - review_bytes,
+        )
+        self._model.evict_previews(maximum_bytes=remaining)
+
+    def _show_scan_review_failure(self, failure: UiFailure) -> None:
+        self._error_label.setText(f"{failure.code}: {failure.message}")
+        self._error_label.setVisible(True)
+        self._announce(f"Scan review failed. {failure.message}", assertive=True)
+        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._error_label)
 
     def _change_full_order(self) -> None:
         if not self._change_order_button.isEnabled() or len(self._model.pages) < 2:
@@ -1489,7 +2270,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._announce("Cancellation requested. Waiting for the operation to stop.", assertive=True)
 
     def _retry_failed_preview(self) -> None:
-        if not self._retry_preview_button.isVisible() or not self._retry_preview_button.isEnabled():
+        if (
+            self._scan_review_is_opening_or_active()
+            or not self._retry_preview_button.isVisible()
+            or not self._retry_preview_button.isEnabled()
+        ):
             return
         page_id = self._selected_page_id()
         if page_id is None or not self._model.reset_failed_preview(page_id):
@@ -1505,8 +2290,7 @@ class PaperWorkShellWindow(QMainWindow):
     def _begin_long_operation(self, kind: _LongOperationKind) -> _LongOperation:
         if self._active_operation is not None:
             raise RuntimeError("long operation overlap")
-        operation_id = self._next_operation_id
-        self._next_operation_id = 1 if operation_id >= _MAX_OPERATION_ID else operation_id + 1
+        operation_id = self._allocate_operation_id()
         operation = _LongOperation(operation_id, kind, OperationCancellation())
         self._active_operation = operation
         if kind is _LongOperationKind.IMPORT:
@@ -1522,6 +2306,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_page_actions()
         self._update_preview_retry_action()
         return operation
+
+    def _allocate_operation_id(self) -> int:
+        operation_id = self._next_operation_id
+        self._next_operation_id = 1 if operation_id >= _MAX_OPERATION_ID else operation_id + 1
+        return operation_id
 
     def _cancel_active_preview(self) -> None:
         active = self._active_operation
@@ -1568,6 +2357,13 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         return self._deferred_import is not None or (
             active is not None and active.kind is _LongOperationKind.IMPORT
+        )
+
+    def _scan_review_is_opening_or_active(self) -> bool:
+        return (
+            self._pending_scan_review_page_id is not None
+            or self._scan_review_start_operation_id is not None
+            or self._scan_review_dialog is not None
         )
 
     def _update_organizer_guidance(self) -> None:
@@ -1699,7 +2495,12 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._case_reopen_required
             and failed
         )
-        enabled = visible and self._active_operation is None and not self._closing_requested
+        enabled = (
+            visible
+            and self._active_operation is None
+            and not self._closing_requested
+            and not self._scan_review_is_opening_or_active()
+        )
         if self._retry_preview_button.hasFocus() and not enabled:
             self._focus_safe_control()
         self._retry_preview_button.setVisible(visible)
@@ -1746,6 +2547,7 @@ class PaperWorkShellWindow(QMainWindow):
             and state.case_id is not None
             and not self._case_reopen_required
             and not self._import_is_pending_or_running()
+            and not self._scan_review_is_opening_or_active()
         )
 
     def _set_controls_enabled(self, enabled: bool) -> None:
@@ -1761,6 +2563,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._move_later_button,
             self._rotate_button,
             self._remove_button,
+            self._scan_review_button,
             self._change_order_button,
             self._undo_button,
             self._redo_button,
@@ -1796,6 +2599,7 @@ class PaperWorkShellWindow(QMainWindow):
         if queued_import:
             self._import_presentation = _ImportPresentationState.CANCELLED
         self._deferred_preview_state = None
+        self._discard_scan_review_for_shutdown()
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
         self._cancel_active_operation_silently()
@@ -1807,3 +2611,18 @@ class PaperWorkShellWindow(QMainWindow):
             else "Closing PaperWorkShell after saving queued changes."
         )
         self._commands.shutdown_requested.emit()
+
+    def _discard_scan_review_for_shutdown(self) -> None:
+        dialog = self._scan_review_dialog
+        if self._active_scan_review_preview is not None:
+            self._active_scan_review_preview.cancellation.cancel()
+        if dialog is not None:
+            draft = dialog.draft
+            try:
+                dialog.finished.disconnect(self._scan_review_dialog_finished)
+            except RuntimeError:
+                pass
+            dialog.done(QDialog.DialogCode.Rejected)
+            dialog.deleteLater()
+            self._commands.scan_review_cancel_requested.emit(draft)
+        self._clear_scan_review_presentation()

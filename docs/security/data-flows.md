@@ -266,6 +266,7 @@ TM-023, TM-026.
 ```mermaid
 flowchart LR
     UI["UI requests internal page ID"] --> App["Serial mixed-preview service"]
+    Draft["Revision-bound scan-review draft"] --> App
     App --> Broker["Trusted source/cache broker"]
     Manifest["Current manifest"] ==> Broker
     Source["Immutable case source"] ==> Broker
@@ -280,10 +281,13 @@ flowchart LR
     App --> UI["Fixed-layout bounded RGBA8 pixels"]
 ```
 
-1. The UI names internal case/page IDs, desired bounded dimensions, canonical manifest transform
-   intent, and cancellation intent; it never opens the source document. A multi-page request is
-   scheduled serially as one bounded worker operation per page. Aggregate progress contains only
-   phase and page counts.
+1. The UI names internal case/page IDs, desired bounded dimensions, cancellation intent, and either
+   canonical manifest transform intent or one validated PWS-0203 tentative scan-review intent; it
+   never opens the source document. A review draft binds the exact case, page, manifest revision,
+   authoritative base intent, candidate intent, suggestion state, and contract version. Original
+   uses neutral source-relative intent; Adjusted uses the exact candidate. A multi-page request is
+   scheduled serially as one bounded worker operation per page, while scan review is limited to one
+   selected image page. Aggregate progress contains only phase and page counts.
 2. TB-02/TB-03: before a cache hit, render, or image normalization, the trusted broker resolves the
    page through the current manifest and authenticates one exact committed PDF/JPEG/PNG handle, including file identity,
    containment, type, size, SHA-256, link/reparse/sparse/stream state, and retained lifetime. A
@@ -296,8 +300,10 @@ flowchart LR
    and only the UI's byte-budgeted pixmap LRU is reusable. A transformed image result additionally
    binds the complete canonical operation bytes/digest, the normalized-source pixel digest, the
    eight-token transform engine profile, output bounds, and pixel-affecting dependency versions; a
-   key never replaces source reauthentication. The upstream normalization-profile digest belongs to
-   approved golden provenance rather than the volatile runtime cache-key contract.
+   key never replaces source reauthentication. Tentative review results additionally require exact
+   draft/generation correlation before Qt accepts them; a successful adjusted result becomes only a
+   temporary Apply-eligibility token, never manifest authority. The upstream normalization-profile
+   digest belongs to approved golden provenance rather than the volatile runtime cache-key contract.
 4. On a PDF miss, storage reserves the worst-case artifact size against the case-cache quota and creates
    one random broker-only stage. The broker also creates an unnamed pagefile-backed section from
    the exact logical operation output limit; its volatile backing may be rounded by less than one
@@ -321,19 +327,26 @@ flowchart LR
    image artifact goes directly to the bounded UI snapshot/LRU. The UI never decodes arbitrary
    worker-produced PNG/JPEG/PDF bytes or follows a raced cache path.
 7. Cancellation, parser/transform fault, invalid output, or quota failure leaves the manifest
-   unchanged.
+   unchanged. PWS-0203 preview, suggestion initialization, Reset, dialog Cancel, and stale or late
+   results likewise queue no history/autosave mutation. Apply separately revalidates the bound
+   case/page/revision/base/history and the exact successful candidate. Changed intent builds every
+   command locally and queues one final candidate only after complete validation; exact no-change
+   intent completes with unchanged history and no autosave candidate.
    Before validation, the only worker-writable output is volatile and OS-capped; any PDF persistent
    stage remains empty and broker-only. Unconfirmed worker termination therefore cannot leave a live
    persistent writer. Only an indeterminate PDF-cache publication state quarantines a random stage;
    earlier complete page entries remain safely reusable.
-8. Paths, filenames, source/cache/pixel digests, text, metadata, rendered bytes, thumbnails, raw
-   RPC, handles, and third-party exceptions never enter routine logs. Fixed pixels reach only the
-   requested UI snapshot after complete validation.
+8. Paths, filenames, source/cache/pixel/intent digests, text, metadata, rendered bytes, thumbnails,
+   raw RPC, handles, and third-party exceptions never enter routine logs or scan-review
+   accessibility metadata. Fixed pixels reach only the requested UI snapshot after complete
+   validation. Original and Adjusted expose only their role and textual presentation state; they do
+   not receive content-derived descriptions.
 
 The complete implementation contracts are the
 [bounded PDF-thumbnail service](../architecture/pdf-thumbnails.md) and
 [bounded JPEG/PNG intake](../architecture/image-intake.md), extended by the
-[non-destructive scan-transform pipeline](../architecture/image-transform-pipeline.md).
+[non-destructive scan-transform pipeline](../architecture/image-transform-pipeline.md) and the
+[before-and-after scan-review UI](../architecture/scan-review-ui.md).
 
 Primary threats: TM-001, TM-002, TM-003, TM-006, TM-011, TM-012, TM-022, TM-023.
 

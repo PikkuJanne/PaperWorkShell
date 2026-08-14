@@ -141,6 +141,7 @@ class OrganizerPageListModel(QAbstractListModel):
             preview_changed = prior is not None and (
                 prior.rotation_degrees != page.rotation_degrees
                 or prior.preview_supported != page.preview_supported
+                or prior.scan_review_intent != page.scan_review_intent
             )
             if preview_changed or not page.preview_supported:
                 self._discard_preview(page.page_id)

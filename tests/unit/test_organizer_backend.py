@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,11 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
+from paperworkshell.app.scan_review import (
+    ScanReviewError,
+    ScanReviewErrorCode,
+    ScanReviewPreviewVariant,
+)
 from paperworkshell.app.source_ingest import (
     DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
 )
@@ -36,10 +42,22 @@ from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseSummary
-from paperworkshell.domain.image_pages import ImageQuarterTurn
+from paperworkshell.domain.image_pages import (
+    ImageAlphaNormalizationPolicy,
+    ImageExifOrientation,
+    ImagePageMetadata,
+    ImagePagePreviewRequest,
+    ImagePagePreviewResult,
+    ImagePagePreviewSnapshot,
+    ImageQuarterTurn,
+    ImageSourceColorModel,
+    ImageSourceFormat,
+)
 from paperworkshell.domain.image_transforms import (
     ImageNormalizedCrop,
     ImagePageTransformRequest,
+    ImagePageTransformResult,
+    ImagePageTransformSnapshot,
     ImageTransformIntent,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType
@@ -55,7 +73,12 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSnapshot,
     copy_manifest_document,
 )
-from paperworkshell.domain.page_operations import PageOperationError, PageOperationErrorCode
+from paperworkshell.domain.page_operations import (
+    PageCommand,
+    PageCommandHistory,
+    PageOperationError,
+    PageOperationErrorCode,
+)
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
 from paperworkshell.domain.recovery import StartupRecoveryResult
@@ -365,6 +388,61 @@ class _Thumbnails:
         self.cancellation_seen = cancellation
         self.progress_seen = progress
         return self.results
+
+
+def _review_metadata() -> ImagePageMetadata:
+    return ImagePageMetadata(
+        source_format=ImageSourceFormat.PNG,
+        source_color_model=ImageSourceColorModel.RGB,
+        alpha_policy=ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE,
+        exif_orientation=ImageExifOrientation.NORMAL,
+        encoded_width_pixels=2,
+        encoded_height_pixels=1,
+        oriented_width_pixels=2,
+        oriented_height_pixels=1,
+        component_count=3,
+        bits_per_component=8,
+        frame_count=1,
+        metadata_record_count=0,
+        metadata_byte_count=0,
+        has_alpha=False,
+        has_embedded_color_profile=False,
+        has_exif=False,
+    )
+
+
+def _review_original_result(request: ImagePagePreviewRequest) -> ImagePagePreviewResult:
+    pixels = bytes((10, 20, 30, 255)) * 2
+    snapshot = ImagePagePreviewSnapshot(
+        request.case_id,
+        request.page_id,
+        2,
+        1,
+        8,
+        pixels,
+        _review_metadata(),
+        request.additional_rotation,
+    )
+    return ImagePagePreviewResult(request, snapshot)
+
+
+def _review_adjusted_result(
+    request: ImagePageTransformRequest,
+) -> ImagePageTransformResult:
+    pixels = bytes((40, 50, 60, 255))
+    snapshot = ImagePageTransformSnapshot(
+        case_id=request.case_id,
+        source_id=IMAGE_SOURCE_ID,
+        page_id=request.page_id,
+        intent=request.intent,
+        width_pixels=1,
+        height_pixels=1,
+        row_stride_bytes=4,
+        bytes_written=4,
+        pixel_sha256=hashlib.sha256(pixels).hexdigest(),
+        cache_key_sha256="c" * 64,
+    )
+    return ImagePageTransformResult(request, snapshot, pixels)
 
 
 def _backend(
@@ -826,6 +904,341 @@ def test_pdf_preview_fails_closed_for_raster_only_transform_intent() -> None:
     assert caught.value.code is PageOperationErrorCode.MODEL_INVALID
     assert caught.value.context == "organizer.pdf_scan_transform"
     assert previews.requests == ()
+
+
+def test_scan_review_exposes_images_only_and_refuses_pending_autosave() -> None:
+    backend, _, _, _, _ = _backend(_document(page_count=1, include_image=True))
+    state = backend.open_case(CASE_ID)
+
+    assert state.pages[0].scan_review_intent is None
+    assert state.pages[1].scan_review_intent == ImageTransformIntent()
+    with pytest.raises(ScanReviewError) as pdf_review:
+        backend.begin_scan_review(PAGE_IDS[0])
+    assert pdf_review.value.code is ScanReviewErrorCode.MEDIA_UNSUPPORTED
+
+    backend.rotate_clockwise(IMAGE_PAGE_ID)
+    with pytest.raises(ScanReviewError) as pending:
+        backend.begin_scan_review(IMAGE_PAGE_ID)
+    assert pending.value.code is ScanReviewErrorCode.SAVE_PENDING
+
+
+def test_scan_review_suggestion_reset_and_cancel_never_queue_history() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=0, include_image=True))
+    backend.open_case(CASE_ID)
+    suggestion = ImageTransformIntent(
+        deskew_angle_millidegrees_clockwise=1_250,
+        contrast_factor_millionths=1_200_000,
+    )
+
+    draft = backend.begin_scan_review(IMAGE_PAGE_ID, suggested_intent=suggestion)
+    reset = draft.reset_to_original()
+
+    assert draft.suggestion_present
+    assert draft.base_intent == ImageTransformIntent()
+    assert draft.candidate_intent is suggestion
+    assert not backend.state.autosave_pending
+    assert repository.save_calls == 0
+    assert repository.current.document["page_operations"] == []
+    backend.cancel_scan_review(reset)
+    assert not backend.state.autosave_pending
+    assert backend.begin_scan_review(IMAGE_PAGE_ID).base_intent == ImageTransformIntent()
+
+
+def test_scan_review_uses_literal_original_and_requires_exact_adjusted_preview() -> None:
+    backend, repository, _, _, thumbnails = _backend(_document(page_count=0, include_image=True))
+    backend.open_case(CASE_ID)
+    candidate = ImageTransformIntent(
+        crop=ImageNormalizedCrop(100_000, 200_000, 700_000, 600_000),
+        additional_rotation=ImageQuarterTurn.DEGREES_270,
+        deskew_angle_millidegrees_clockwise=-1_250,
+        contrast_factor_millionths=1_150_000,
+        background_cleanup_strength_millionths=250_000,
+    )
+    draft = backend.begin_scan_review(IMAGE_PAGE_ID).with_candidate(candidate)
+
+    original_request = ImagePagePreviewRequest(CASE_ID, IMAGE_PAGE_ID, 320, 240)
+    thumbnails.results = (_review_original_result(original_request),)
+    original = backend.get_scan_review_preview(
+        draft,
+        ScanReviewPreviewVariant.ORIGINAL,
+        320,
+        240,
+    )
+
+    assert original.variant is ScanReviewPreviewVariant.ORIGINAL
+    assert type(thumbnails.requests[0]) is ImagePagePreviewRequest
+    assert thumbnails.requests[0].additional_rotation is ImageQuarterTurn.DEGREES_0
+    assert not backend.state.autosave_pending
+    with pytest.raises(ScanReviewError) as not_adjusted:
+        backend.apply_scan_review(draft)
+    assert not_adjusted.value.code is ScanReviewErrorCode.PREVIEW_REQUIRED
+
+    adjusted_request = ImagePageTransformRequest(
+        CASE_ID,
+        IMAGE_PAGE_ID,
+        candidate,
+        320,
+        240,
+    )
+    thumbnails.results = (_review_adjusted_result(adjusted_request),)
+    adjusted = backend.get_scan_review_preview(
+        draft,
+        ScanReviewPreviewVariant.ADJUSTED,
+        320,
+        240,
+    )
+    state = backend.apply_scan_review(draft)
+
+    assert adjusted.variant is ScanReviewPreviewVariant.ADJUSTED
+    assert thumbnails.requests == (adjusted_request,)
+    assert state.autosave_pending
+    assert state.pages[0].scan_review_intent == candidate
+    assert repository.save_calls == 0
+
+    saved = backend.flush_autosave()
+    payloads = [
+        cast(dict[str, object], operation)["payload"]
+        for operation in cast(list[object], repository.current.document["page_operations"])
+    ]
+    assert [cast(dict[str, object], payload)["kind"] for payload in payloads] == [
+        "crop",
+        "rotate",
+        "deskew",
+        "contrast",
+        "background_cleanup",
+    ]
+    assert saved.revision == 1
+    assert repository.save_calls == 1
+
+
+def test_scan_review_late_command_failure_keeps_authoritative_state_atomic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend, repository, _, _, thumbnails = _backend(_document(page_count=0, include_image=True))
+    before = backend.open_case(CASE_ID)
+    session = backend._require_session()
+    origin_history = session.history
+    origin_document = copy_manifest_document(repository.current.document)
+    candidate = ImageTransformIntent(
+        crop=ImageNormalizedCrop(100_000, 200_000, 700_000, 600_000),
+        additional_rotation=ImageQuarterTurn.DEGREES_90,
+        deskew_angle_millidegrees_clockwise=1_250,
+        contrast_factor_millionths=1_150_000,
+        background_cleanup_strength_millionths=250_000,
+    )
+    draft = backend.begin_scan_review(IMAGE_PAGE_ID).with_candidate(candidate)
+    request = ImagePageTransformRequest(CASE_ID, IMAGE_PAGE_ID, candidate, 320, 240)
+    thumbnails.results = (_review_adjusted_result(request),)
+    backend.get_scan_review_preview(
+        draft,
+        ScanReviewPreviewVariant.ADJUSTED,
+        320,
+        240,
+    )
+    original_execute = PageCommandHistory.execute
+    execute_calls = 0
+
+    def fail_second_execute(
+        history: PageCommandHistory,
+        command: PageCommand,
+    ) -> PageCommandHistory:
+        nonlocal execute_calls
+        execute_calls += 1
+        if execute_calls == 2:
+            raise PageOperationError(
+                PageOperationErrorCode.CAPACITY_EXCEEDED,
+                "scan_review.atomic_apply",
+            )
+        return original_execute(history, command)
+
+    monkeypatch.setattr(PageCommandHistory, "execute", fail_second_execute)
+
+    with pytest.raises(PageOperationError) as caught:
+        backend.apply_scan_review(draft)
+
+    assert caught.value.code is PageOperationErrorCode.CAPACITY_EXCEEDED
+    assert execute_calls == 2
+    assert backend._require_session().history is origin_history
+    assert backend.state == before
+    assert not backend.state.autosave_pending
+    assert repository.save_calls == 0
+    assert repository.load_calls == 1
+    assert repository.current.document == origin_document
+    backend.cancel_scan_review(draft)
+    assert backend.begin_scan_review(IMAGE_PAGE_ID).base_intent == ImageTransformIntent()
+
+
+def test_noop_scan_review_apply_queues_nothing_and_closes_review() -> None:
+    backend, repository, _, _, thumbnails = _backend(_document(page_count=0, include_image=True))
+    backend.open_case(CASE_ID)
+    draft = backend.begin_scan_review(IMAGE_PAGE_ID)
+    request = ImagePageTransformRequest(
+        CASE_ID,
+        IMAGE_PAGE_ID,
+        draft.candidate_intent,
+        320,
+        240,
+    )
+    thumbnails.results = (_review_adjusted_result(request),)
+    backend.get_scan_review_preview(
+        draft,
+        ScanReviewPreviewVariant.ADJUSTED,
+        320,
+        240,
+    )
+
+    state = backend.apply_scan_review(draft)
+
+    assert not state.autosave_pending
+    assert repository.save_calls == 0
+    assert repository.current.document["page_operations"] == []
+    with pytest.raises(ScanReviewError) as closed:
+        backend.apply_scan_review(draft)
+    assert closed.value.code is ScanReviewErrorCode.NOT_ACTIVE
+
+
+def test_scan_review_reset_records_neutral_latest_wins_intent_and_rotation_delta() -> None:
+    document = _document(page_count=0, include_image=True)
+    cast(list[object], document["page_operations"]).extend(
+        (
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000301",
+                "operation_version": 1,
+                "sequence": 1,
+                "payload": {
+                    "kind": "crop",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "box": {
+                        "coordinate_space": "normalized_page_millionths_v1",
+                        "x": 100_000,
+                        "y": 100_000,
+                        "width": 800_000,
+                        "height": 800_000,
+                    },
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000302",
+                "operation_version": 1,
+                "sequence": 2,
+                "payload": {
+                    "kind": "rotate",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "quarter_turns_clockwise": 1,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000303",
+                "operation_version": 2,
+                "sequence": 3,
+                "payload": {
+                    "kind": "deskew",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "angle_millidegrees_clockwise": 1_250,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000304",
+                "operation_version": 2,
+                "sequence": 4,
+                "payload": {
+                    "kind": "contrast",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "factor_millionths": 1_200_000,
+                },
+            },
+            {
+                "operation_id": "50000000-0000-4000-8000-000000000305",
+                "operation_version": 2,
+                "sequence": 5,
+                "payload": {
+                    "kind": "background_cleanup",
+                    "page_id": str(IMAGE_PAGE_ID),
+                    "strength_millionths": 250_000,
+                },
+            },
+        )
+    )
+    backend, repository, _, _, thumbnails = _backend(document)
+    backend.open_case(CASE_ID)
+    draft = backend.begin_scan_review(IMAGE_PAGE_ID).reset_to_original()
+    request = ImagePageTransformRequest(
+        CASE_ID,
+        IMAGE_PAGE_ID,
+        draft.candidate_intent,
+        320,
+        240,
+    )
+    thumbnails.results = (_review_adjusted_result(request),)
+    backend.get_scan_review_preview(
+        draft,
+        ScanReviewPreviewVariant.ADJUSTED,
+        320,
+        240,
+    )
+
+    state = backend.apply_scan_review(draft)
+    backend.flush_autosave()
+
+    assert state.pages[0].scan_review_intent == ImageTransformIntent()
+    operations = cast(list[dict[str, object]], repository.current.document["page_operations"])
+    appended = operations[-5:]
+    assert [cast(dict[str, object], operation["payload"])["kind"] for operation in appended] == [
+        "crop",
+        "rotate",
+        "deskew",
+        "contrast",
+        "background_cleanup",
+    ]
+    assert cast(dict[str, object], appended[1]["payload"])["quarter_turns_clockwise"] == 3
+
+
+def test_failed_new_adjusted_preview_revokes_prior_apply_eligibility() -> None:
+    backend, _, _, _, thumbnails = _backend(_document(page_count=0, include_image=True))
+    backend.open_case(CASE_ID)
+    first = backend.begin_scan_review(IMAGE_PAGE_ID).with_candidate(
+        ImageTransformIntent(contrast_factor_millionths=1_100_000)
+    )
+    first_request = ImagePageTransformRequest(
+        CASE_ID,
+        IMAGE_PAGE_ID,
+        first.candidate_intent,
+        320,
+        240,
+    )
+    thumbnails.results = (_review_adjusted_result(first_request),)
+    backend.get_scan_review_preview(
+        first,
+        ScanReviewPreviewVariant.ADJUSTED,
+        320,
+        240,
+    )
+
+    second = first.with_candidate(ImageTransformIntent(contrast_factor_millionths=1_200_000))
+    thumbnails.results = ()
+    with pytest.raises(ScanReviewError) as failed:
+        backend.get_scan_review_preview(
+            second,
+            ScanReviewPreviewVariant.ADJUSTED,
+            320,
+            240,
+        )
+    assert failed.value.code is ScanReviewErrorCode.PREVIEW_RESULT_INVALID
+    with pytest.raises(ScanReviewError) as revoked:
+        backend.apply_scan_review(first)
+    assert revoked.value.code is ScanReviewErrorCode.PREVIEW_REQUIRED
+
+
+def test_successful_unrelated_page_mutation_invalidates_active_scan_review() -> None:
+    backend, _, _, _, _ = _backend(_document(page_count=0, include_image=True))
+    backend.open_case(CASE_ID)
+    draft = backend.begin_scan_review(IMAGE_PAGE_ID)
+
+    backend.rotate_clockwise(IMAGE_PAGE_ID)
+
+    with pytest.raises(ScanReviewError) as stale:
+        backend.apply_scan_review(draft)
+    assert stale.value.code is ScanReviewErrorCode.NOT_ACTIVE
 
 
 def test_thumbnail_subset_preserves_organizer_order_and_scales_for_requested_pdfs() -> None:

@@ -25,9 +25,11 @@ supported by the PDF page-copy path. A later versioned PDF-raster consumer is re
 other scan transforms can apply to PDF sources.
 
 This task does not add OCR, infer that a page is clean or legible, silently accept an automatic
-suggestion, or publish an export. PWS-0203 owns before/after confirmation controls. PWS-0204 consumes
-the transform contract for local OCR, PWS-0207 owns review findings, and PWS-0503 may later reuse the
-bounded raster seam for explicitly selected image re-encoding.
+suggestion, or publish an export. PWS-0203 now supplies the separate
+[before-and-after scan-review contract](scan-review-ui.md): tentative values remain revision-bound
+draft state, Original and Adjusted stay distinguishable, and only explicit Apply queues manifest
+intent. PWS-0204 consumes the transform contract for local OCR, PWS-0207 owns review findings, and
+PWS-0503 may later reuse the bounded raster seam for explicitly selected image re-encoding.
 
 ## Canonical order
 
@@ -209,6 +211,9 @@ set; it does not rewrite version-1 evidence in place.
   certification claim.
 - Privacy tests use distinct canaries in source paths, names, metadata, operation payloads, pixel
   buffers, native exceptions, progress, representations, tracebacks, and routine logs.
-- PWS-0203 retains accessibility ownership for apply/reset/cancel/compare controls, keyboard
-  adjustment, focus recovery, announcements, and 200% scaling. PWS-0202 keeps progress and errors
-  content-free and cancelable so that UI can consume them safely.
+- PWS-0203 implements apply/reset/cancel/compare controls, keyboard adjustment, focus recovery,
+  announcements, and 200-percent scaling through the separate
+  [scan-review UI](scan-review-ui.md). Focused tests additionally prove that preview, suggestion,
+  reset, cancel, failure, and stale results do not mutate the manifest; only an exact reviewed
+  candidate can reach the atomic Apply boundary. PWS-0202 keeps progress and errors content-free
+  and cancelable so that UI can consume them safely.

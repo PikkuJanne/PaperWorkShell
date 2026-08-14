@@ -11,6 +11,10 @@ from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from paperworkshell.app.organizer import OrganizerPageView, OrganizerViewState
+from paperworkshell.domain.image_transforms import (
+    ImageNormalizedCrop,
+    ImageTransformIntent,
+)
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
 from paperworkshell.ui.window import _bounded_preview_rows
@@ -89,6 +93,29 @@ def test_rotation_invalidates_stale_pixels_before_autosave_preview_suppression()
     model.set_preview(PAGE_ONE, QPixmap.fromImage(image))
 
     model.set_organizer_state(_state(OrganizerPageView(PAGE_ONE, 1, 90, True)))
+
+    index = model.index(0, 0)
+    assert model.data(index, model.PreviewStateRole) == PreviewState.NOT_LOADED.value
+    assert model.data(index, int(Qt.ItemDataRole.DecorationRole)) is None
+    assert model.retained_preview_count == 0
+
+
+def test_any_persisted_scan_transform_invalidates_stale_image_pixels() -> None:
+    _application()
+    base = ImageTransformIntent()
+    adjusted = ImageTransformIntent(
+        crop=ImageNormalizedCrop(100_000, 120_000, 700_000, 650_000),
+        deskew_angle_millidegrees_clockwise=1_250,
+        contrast_factor_millionths=1_150_000,
+        background_cleanup_strength_millionths=200_000,
+    )
+    model = OrganizerPageListModel()
+    model.set_organizer_state(_state(OrganizerPageView(PAGE_ONE, 1, 0, True, base)))
+    image = QImage(8, 12, QImage.Format.Format_RGBA8888)
+    image.fill(QColor("white"))
+    model.set_preview(PAGE_ONE, QPixmap.fromImage(image))
+
+    model.set_organizer_state(_state(OrganizerPageView(PAGE_ONE, 1, 0, True, adjusted)))
 
     index = model.index(0, 0)
     assert model.data(index, model.PreviewStateRole) == PreviewState.NOT_LOADED.value
