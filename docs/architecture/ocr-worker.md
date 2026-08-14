@@ -139,9 +139,12 @@ catalog admits only `share/tessdata/deu.traineddata`, with exact size and SHA-25
 requires the packaged manifest and catalog bytes, exact layout, exact size and SHA-256 for every
 present file, single-link regular files with only their unnamed data stream, stream-free
 directories, no missing required entries, and no unlisted entries. Before any runtime path is
-opened or enumerated, both configured paths must form the exact layout on the same canonical
-physical fixed-volume mapping; DOS aliases, UNC/device forms, non-NTFS/ReFS volumes, volumes
-without persistent ACLs, reparse ancestors, and offline/recall attributes fail closed. A missing
+opened or enumerated, both configured paths must form the exact layout on one Windows-presented,
+mount-manager-registered `DRIVE_FIXED` volume whose drive and volume-GUID names map to the same
+`\\Device\\HarddiskVolumeN`. UNC/device spellings, network-drive mappings, unregistered DOS aliases,
+non-NTFS/ReFS volumes, volumes without persistent ACLs, reparse ancestors, and offline/recall
+attributes fail closed. This OS-visible check does not attest the physical medium or lower-layer
+storage transport; iSCSI-, SAN-, or VHD/VHDX-backed volumes can satisfy it. A missing
 optional file is simply unavailable; a present but changed file invalidates the runtime. Admission
 is repeated before the launcher grants AppContainer access, so failure occurs before process
 creation. Version and language probes use the same boundary before the host advertises

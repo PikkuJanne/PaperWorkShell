@@ -274,7 +274,7 @@ def admit_tesseract_runtime(
 
 
 def preflight_tesseract_runtime_paths(executable: Path, tessdata_root: Path) -> Path:
-    """Authenticate one paired physical local runtime location before content I/O."""
+    """Authenticate one paired Windows-visible fixed-volume runtime before content I/O."""
 
     if not isinstance(executable, Path) or not isinstance(tessdata_root, Path):
         _reject("configuration")
@@ -519,13 +519,26 @@ def _read_packaged_resource(path: Path, context: str) -> bytes:
             or metadata.st_nlink != 1
         ):
             _reject(context)
-        content = path.read_bytes()
+        remaining = metadata.st_size
+        content = bytearray()
+        with path.open("rb") as stream:
+            opened = os.fstat(stream.fileno())
+            if _file_identity(metadata) != _file_identity(opened):
+                _reject(context)
+            while remaining:
+                block = stream.read(min(1024 * 1024, remaining))
+                if not block or len(block) > remaining:
+                    _reject(context)
+                content.extend(block)
+                remaining -= len(block)
+            if stream.read(1):
+                _reject(context)
         after = path.lstat()
     except OSError, ValueError:
         _reject(context)
     if _file_identity(metadata) != _file_identity(after):
         _reject(context)
-    return content
+    return bytes(content)
 
 
 def _parse_manifest(content: bytes) -> tuple[_ManifestFile, ...]:
@@ -798,12 +811,16 @@ def _inventory_runtime(root: Path) -> tuple[set[str], set[str]]:
             directory, relative_directory, depth = pending.pop()
             if depth > _MAX_RUNTIME_DEPTH:
                 _reject("inventory")
+            remaining_entries = _MAX_RUNTIME_ENTRIES - entry_count
+            entries: list[os.DirEntry[str]] = []
             with os.scandir(directory) as children:
-                entries = sorted(children, key=lambda child: child.name.casefold())
+                for child in children:
+                    if len(entries) >= remaining_entries:
+                        _reject("inventory")
+                    entries.append(child)
+            entry_count += len(entries)
+            entries.sort(key=lambda child: child.name.casefold())
             for child in entries:
-                entry_count += 1
-                if entry_count > _MAX_RUNTIME_ENTRIES:
-                    _reject("inventory")
                 metadata = child.stat(follow_symlinks=False)
                 if _has_unsupported_runtime_attributes(metadata):
                     _reject("attributes")
@@ -866,8 +883,15 @@ def _verify_file(path: Path, expected: _ManifestFile) -> None:
             opened = os.fstat(stream.fileno())
             if _file_identity(before) != _file_identity(opened):
                 _reject("changed")
-            for block in iter(lambda: stream.read(1024 * 1024), b""):
+            remaining = expected.size_bytes
+            while remaining:
+                block = stream.read(min(1024 * 1024, remaining))
+                if not block or len(block) > remaining:
+                    _reject("size")
                 digest.update(block)
+                remaining -= len(block)
+            if stream.read(1):
+                _reject("size")
         after = path.lstat()
     except TesseractRuntimeAdmissionError:
         raise

@@ -21,7 +21,11 @@ from paperworkshell.app.ocr_languages import (
     OcrLanguageSnapshot,
 )
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
-from paperworkshell.ui.backend import OrganizerBackendCommands, OrganizerBackendWorker
+from paperworkshell.ui.backend import (
+    OrganizerBackendCommands,
+    OrganizerBackendWorker,
+    UiFailure,
+)
 from paperworkshell.ui.ocr_languages import OcrLanguageDialog
 from paperworkshell.ui.window import PaperWorkShellWindow, _LongOperationKind
 
@@ -75,6 +79,12 @@ def _settings_button(window: PaperWorkShellWindow) -> QPushButton:
     return button
 
 
+def _language_dialog(window: PaperWorkShellWindow) -> OcrLanguageDialog:
+    dialog = window._ocr_language_dialog
+    assert dialog is not None
+    return dialog
+
+
 def test_settings_entry_is_persistent_on_chooser_and_organizer() -> None:
     with _window() as (window, _commands, worker):
         button = _settings_button(window)
@@ -121,6 +131,82 @@ def test_dialog_forwards_correlated_refresh_and_rejects_stale_worker_result() ->
         assert window._ocr_language_dialog is None
         assert _settings_button(window).isEnabled()
         assert _settings_button(window).hasFocus()
+
+
+def test_closed_refresh_keeps_queue_gate_until_each_exact_terminal_signal() -> None:
+    with _window() as (window, commands, worker):
+        refreshes: list[int] = []
+        commands.ocr_languages_refresh_requested.connect(refreshes.append)
+        button = _settings_button(window)
+
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+        _application().processEvents()
+        first = _language_dialog(window)
+        first_request_id = first.pending_request_id
+        assert first_request_id == 1
+        assert refreshes == [first_request_id]
+
+        QTest.keyClick(first, Qt.Key.Key_Escape)
+        _application().processEvents()
+        assert window._ocr_language_dialog is None
+        assert not button.isEnabled()
+
+        QTest.keyClick(
+            window,
+            Qt.Key.Key_L,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
+        worker.ocr_languages_changed.emit(999, _snapshot())
+        worker.ocr_languages_failed.emit(
+            998,
+            UiFailure("OCR_INTERNAL_ERROR", "Safe stale failure.", True, 998),
+        )
+        _application().processEvents()
+        assert refreshes == [first_request_id]
+        assert window._ocr_language_dialog is None
+        assert not button.isEnabled()
+
+        window.activateWindow()
+        window._case_list.setFocus(Qt.FocusReason.OtherFocusReason)
+        _application().processEvents()
+        assert window._case_list.hasFocus()
+        worker.ocr_languages_changed.emit(first_request_id, _snapshot())
+        _application().processEvents()
+        assert button.isEnabled()
+        assert window._case_list.hasFocus()
+
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+        _application().processEvents()
+        second = _language_dialog(window)
+        second_request_id = second.pending_request_id
+        assert second_request_id == 2
+        assert refreshes == [first_request_id, second_request_id]
+
+        QTest.keyClick(second, Qt.Key.Key_Escape)
+        _application().processEvents()
+        assert window._ocr_language_dialog is None
+        assert not button.isEnabled()
+
+        worker.ocr_languages_failed.emit(
+            second_request_id,
+            UiFailure(
+                "OCR_INTERNAL_ERROR",
+                "PaperWorkShell could not check OCR languages safely.",
+                True,
+                second_request_id,
+            ),
+        )
+        _application().processEvents()
+        assert button.isEnabled()
+
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+        _application().processEvents()
+        third = _language_dialog(window)
+        assert third.pending_request_id == 3
+        assert refreshes == [first_request_id, second_request_id, 3]
+        worker.ocr_languages_changed.emit(3, _snapshot())
+        QTest.keyClick(third, Qt.Key.Key_Escape)
+        _application().processEvents()
 
 
 def test_settings_entry_is_guarded_during_long_work_review_and_shutdown() -> None:

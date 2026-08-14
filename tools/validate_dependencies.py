@@ -4731,8 +4731,10 @@ def _tesseract_language_pack_catalog_issues(
     try:
         if catalog_path.is_symlink() or packaged_path.is_symlink():
             raise OSError("catalog path must not be a symbolic link")
-        raw = catalog_path.read_bytes()
-        packaged_raw = packaged_path.read_bytes()
+        with catalog_path.open("rb") as stream:
+            raw = stream.read(MAX_LANGUAGE_PACK_CATALOG_BYTES + 1)
+        with packaged_path.open("rb") as stream:
+            packaged_raw = stream.read(MAX_LANGUAGE_PACK_CATALOG_BYTES + 1)
     except OSError:
         return [
             _issue(

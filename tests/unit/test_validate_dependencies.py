@@ -6,11 +6,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar, cast
+from unittest.mock import patch
 
 from tools.validate_dependencies import (
     EXPECTED_NEGATIVE_CODES,
     INVALID_FIXTURE_DIRECTORY,
     INVENTORY_PATH,
+    MAX_LANGUAGE_PACK_CATALOG_BYTES,
     DependencyIssue,
     _authority_reference_issues,
     _tesseract_language_pack_catalog_issues,
@@ -416,6 +418,40 @@ class DependencyInventoryValidationTests(unittest.TestCase):
 
         self.assertIn(
             "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_COPY_MISMATCH",
+            {issue.code for issue in issues},
+        )
+
+    def test_language_pack_catalog_read_stops_at_the_byte_limit(self) -> None:
+        data = _load_inventory()
+        components = {
+            component["component_id"]: component
+            for component in cast(list[dict[str, Any]], data["components"])
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            canonical = temporary_root / "packaging/tesseract-language-pack-catalog-v1.json"
+            packaged = (
+                temporary_root
+                / "src/paperworkshell/worker/client/tesseract-language-pack-catalog-v1.json"
+            )
+            canonical.parent.mkdir(parents=True)
+            packaged.parent.mkdir(parents=True)
+            canonical.write_bytes(b"x" * (MAX_LANGUAGE_PACK_CATALOG_BYTES + 2))
+            packaged.write_bytes(b"{}")
+
+            with patch.object(
+                Path,
+                "read_bytes",
+                side_effect=AssertionError("catalog validation must use a bounded read"),
+            ):
+                issues = _tesseract_language_pack_catalog_issues(
+                    temporary_root,
+                    components,
+                    "dependency-inventory.json",
+                )
+
+        self.assertIn(
+            "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVALID",
             {issue.code for issue in issues},
         )
 

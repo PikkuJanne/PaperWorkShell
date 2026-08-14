@@ -666,9 +666,12 @@ PWS-0205 extends runtime admission with a separately fingerprinted optional-lang
 locally prestaged German model is available only when its regular-file identity, exact byte size,
 SHA-256, and unnamed-stream-only state match that catalog; missing data stays unavailable, while
 changed, redirected, offline/recall, alternate-stream, or unlisted data invalidates the runtime
-before authority is granted. Capability discovery first requires a canonical physical fixed-volume
-mapping with persistent ACL support, so a UNC, mapped, DOS-aliased, cloud-provider, removable, or
-other unsupported location is not enumerated. Discovery never downloads packs and does not change
+before authority is granted. Capability discovery first requires a mount-manager-registered
+`DRIVE_FIXED` NTFS/ReFS volume with persistent ACLs whose drive and volume-GUID names map to the
+same `\\Device\\HarddiskVolumeN`, so UNC/device spellings, network-drive mappings, unregistered DOS
+aliases, removable volumes, and provider mappings that do not meet that OS-visible contract are
+not enumerated. This check does not attest physical medium or lower-layer storage transport;
+iSCSI-, SAN-, or VHD/VHDX-backed volumes can satisfy it. Discovery never downloads packs and does not change
 the worker's zero-capability network policy. Close and restart PaperWorkShell after an offline pack
 change. PWS-0801/PWS-0802 retain the exact release staging path, elevation, removal, notices, and
 detached-signature verification evidence.

@@ -394,9 +394,12 @@ sequenceDiagram
    only the exact-size, exact-SHA-256 `deu.traineddata` file. Missing optional data is unavailable;
    changed, hardlinked, special, reparse, offline/recall, alternate-stream, or unlisted resources
    invalidate admission before launch. Both runtime paths pass closed lexical/layout checks before
-   native queries, then must resolve through one canonical physical fixed-volume mapping with
-   persistent ACL support; DOS aliases, network/cloud providers, and unsupported volumes fail
-   before runtime enumeration or hashing.
+   native queries, then must resolve through one mount-manager-registered `DRIVE_FIXED` NTFS/ReFS
+   volume with persistent ACLs whose drive and volume-GUID names map to the same
+   `\\Device\\HarddiskVolumeN`. UNC/device spellings, network-drive mappings, unregistered DOS
+   aliases, and provider mappings that do not meet that OS-visible contract fail before runtime
+   enumeration or hashing. This does not attest physical medium or lower-layer storage transport;
+   iSCSI-, SAN-, or VHD/VHDX-backed volumes can satisfy the checks.
 5. The only OCR child starts with the approved absolute executable, fixed working directory,
    structured arguments, `shell=False`, no `PATH`/`PATHEXT`/`COMSPEC`, and a minimal private
    environment. A worker-wide process audit hook rejects any other process-creation shape.

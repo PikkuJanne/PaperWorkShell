@@ -351,9 +351,12 @@ OCR child must run under that same no-breakaway Job and AppContainer policy.
 Current dependency inventory, hash-addressed base manifest, and PWS-0205 optional-language catalog
 establish task-level engine/data admission and redistribution review. PWS-0205 tests exact local
 German model bytes, missing/tampered/unknown resources, canonical/packaged catalog parity, closed
-language-set selection, rejection of UNC/device/DOS-alias/non-physical/non-ACL/offline/recall
-locations before content I/O, rejection of alternate data streams on base and optional resources,
-and absence of application/worker downloads. PWS-0208 adds the explicit signed-source
+language-set selection, and rejection before content I/O of UNC/device spellings, network-drive or
+unregistered DOS aliases, non-`DRIVE_FIXED` or unregistered-volume paths, non-NTFS/ReFS volumes,
+volumes without persistent ACLs, and offline/recall locations. It also covers rejection of
+alternate data streams on base and optional resources and absence of application/worker
+downloads. These tests do not attest physical medium or lower-layer storage transport; iSCSI-,
+SAN-, or VHD/VHDX-backed volumes can satisfy the OS-visible checks. PWS-0208 adds the explicit signed-source
 derivative warning/confirmation and incremental workload measurements. PWS-0801 and PWS-0802 still
 own release-environment signature validation, final package/SBOM/license-notice closure, exact
 staging/removal behavior, and comparison of packaged objects with release inputs.

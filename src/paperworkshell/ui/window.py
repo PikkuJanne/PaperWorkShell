@@ -415,6 +415,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._scan_review_original_bytes = 0
         self._scan_review_adjusted_bytes = 0
         self._ocr_language_dialog: OcrLanguageDialog | None = None
+        self._ocr_language_refresh_request_id: int | None = None
         self._ocr_language_saved_message: str | None = None
 
         self._preview_refresh_timer = QTimer(self)
@@ -843,11 +844,15 @@ class PaperWorkShellWindow(QMainWindow):
 
     @Slot()
     def _open_ocr_languages(self) -> None:
-        if self._ocr_language_dialog is not None or not self._ocr_language_button.isEnabled():
+        if (
+            self._ocr_language_dialog is not None
+            or self._ocr_language_refresh_request_id is not None
+            or not self._ocr_language_button.isEnabled()
+        ):
             QApplication.beep()
             return
         dialog = OcrLanguageDialog(self._allocate_operation_id, self)
-        dialog.refresh_requested.connect(self._commands.ocr_languages_refresh_requested.emit)
+        dialog.refresh_requested.connect(self._request_ocr_language_refresh)
         dialog.selection_requested.connect(self._commands.ocr_languages_select_requested.emit)
         dialog.selection_saved.connect(self._ocr_language_selection_saved)
         dialog.finished.connect(self._ocr_language_dialog_finished)
@@ -857,19 +862,45 @@ class PaperWorkShellWindow(QMainWindow):
         dialog.show()
         dialog.request_refresh()
 
+    @Slot(int)
+    def _request_ocr_language_refresh(self, request_id: int) -> None:
+        """Retain one app-level queue gate until its exact terminal signal arrives."""
+
+        if (
+            type(request_id) is not int
+            or request_id <= 0
+            or self._ocr_language_dialog is None
+            or self._ocr_language_refresh_request_id is not None
+        ):
+            return
+        self._ocr_language_refresh_request_id = request_id
+        self._update_ocr_language_availability()
+        self._commands.ocr_languages_refresh_requested.emit(request_id)
+
     @Slot(int, object)
     def _ocr_languages_changed(self, request_id: int, snapshot: object) -> None:
-        dialog = self._ocr_language_dialog
-        if dialog is None or type(snapshot) is not OcrLanguageSnapshot:
+        if type(snapshot) is not OcrLanguageSnapshot:
             return
-        dialog.set_snapshot(request_id, snapshot)
+        dialog = self._ocr_language_dialog
+        if dialog is not None:
+            dialog.set_snapshot(request_id, snapshot)
+        self._complete_ocr_language_refresh(request_id)
 
     @Slot(int, object)
     def _ocr_languages_failed(self, request_id: int, failure: object) -> None:
-        dialog = self._ocr_language_dialog
-        if dialog is None or type(failure) is not UiFailure or failure.operation_id != request_id:
+        if type(failure) is not UiFailure or failure.operation_id != request_id:
             return
-        dialog.set_failure(request_id, failure.code, failure.message)
+        dialog = self._ocr_language_dialog
+        if dialog is not None:
+            dialog.set_failure(request_id, failure.code, failure.message)
+        self._complete_ocr_language_refresh(request_id)
+
+    def _complete_ocr_language_refresh(self, request_id: int) -> bool:
+        if type(request_id) is not int or self._ocr_language_refresh_request_id != request_id:
+            return False
+        self._ocr_language_refresh_request_id = None
+        self._update_ocr_language_availability()
+        return True
 
     @Slot(object)
     def _ocr_language_selection_saved(self, snapshot: object) -> None:
@@ -2657,6 +2688,7 @@ class PaperWorkShellWindow(QMainWindow):
             and self._active_operation is None
             and not self._scan_review_is_opening_or_active()
             and self._ocr_language_dialog is None
+            and self._ocr_language_refresh_request_id is None
         )
 
     def _set_controls_enabled(self, enabled: bool) -> None:

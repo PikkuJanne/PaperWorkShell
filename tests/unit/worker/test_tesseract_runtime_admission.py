@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import stat
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import Any
 
@@ -27,6 +27,54 @@ from paperworkshell.worker.client.tesseract_runtime import (
     packaged_tesseract_language_pack_catalog,
     packaged_tesseract_runtime_manifest,
 )
+
+
+class _ExtraByteReader:
+    def __init__(self, inner: Any, read_requests: list[int]) -> None:
+        self._inner = inner
+        self._read_requests = read_requests
+        self._read_count = 0
+
+    def __enter__(self) -> _ExtraByteReader:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self._inner.close()
+
+    def fileno(self) -> int:
+        return int(self._inner.fileno())
+
+    def read(self, size: int = -1) -> bytes:
+        self._read_requests.append(size)
+        self._read_count += 1
+        if self._read_count == 1:
+            return bytes(self._inner.read(size))
+        if self._read_count == 2:
+            return b"x"
+        return b""
+
+
+class _CountingScandir:
+    def __init__(self, entry_count: int) -> None:
+        self._entry_count = entry_count
+        self._index = 0
+        self.next_calls = 0
+
+    def __enter__(self) -> _CountingScandir:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def __iter__(self) -> _CountingScandir:
+        return self
+
+    def __next__(self) -> SimpleNamespace:
+        if self._index >= self._entry_count:
+            raise StopIteration
+        self.next_calls += 1
+        self._index += 1
+        return SimpleNamespace(name=f"unlisted-{self._index:05d}.bin")
 
 
 def _runtime(tmp_path: Path) -> tuple[Path, Path, bytes, str]:
@@ -220,6 +268,84 @@ def test_exact_closure_is_admitted_with_fixed_layout(tmp_path: Path) -> None:
     assert len(admission.resources) == TESSERACT_RUNTIME_FILE_COUNT + 4
     assert admission.installed_language_codes == ("eng",)
     assert admission.available_language_set_ids == ("latin-default-v1",)
+
+
+def test_runtime_inventory_stops_after_the_first_entry_over_its_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_root = tmp_path / "bounded-runtime"
+    runtime_root.mkdir()
+    scanner = _CountingScandir(runtime_module._MAX_RUNTIME_ENTRIES + 1_000)
+    monkeypatch.setattr(os, "scandir", lambda _path: scanner)
+    monkeypatch.setattr(
+        runtime_module,
+        "_require_only_unnamed_data_stream",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="inventory"):
+        runtime_module._inventory_runtime(runtime_root)
+
+    assert scanner.next_calls == runtime_module._MAX_RUNTIME_ENTRIES + 1
+
+
+def test_runtime_file_hashing_reads_only_the_expected_size_plus_one_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b"bounded reviewed payload"
+    target = tmp_path / "reviewed-runtime-file.bin"
+    target.write_bytes(payload)
+    expected = runtime_module._ManifestFile(
+        path=PurePosixPath(target.name),
+        size_bytes=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    real_open = Path.open
+    read_requests: list[int] = []
+
+    def open_with_extra(path: Path, *args: Any, **kwargs: Any) -> Any:
+        inner = real_open(path, *args, **kwargs)
+        if path == target:
+            return _ExtraByteReader(inner, read_requests)
+        return inner
+
+    monkeypatch.setattr(Path, "open", open_with_extra)
+    monkeypatch.setattr(
+        runtime_module,
+        "_require_only_unnamed_data_stream",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="size"):
+        runtime_module._verify_file(target, expected)
+
+    assert read_requests == [len(payload), 1]
+
+
+def test_packaged_resource_read_is_bounded_by_authenticated_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b"bounded packaged resource"
+    target = tmp_path / "packaged-resource.json"
+    target.write_bytes(payload)
+    real_open = Path.open
+    read_requests: list[int] = []
+
+    def open_with_extra(path: Path, *args: Any, **kwargs: Any) -> Any:
+        inner = real_open(path, *args, **kwargs)
+        if path == target:
+            return _ExtraByteReader(inner, read_requests)
+        return inner
+
+    monkeypatch.setattr(Path, "open", open_with_extra)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="manifest_resource"):
+        runtime_module._read_packaged_resource(target, "manifest_resource")
+
+    assert read_requests == [len(payload), 1]
 
 
 @pytest.mark.parametrize(
