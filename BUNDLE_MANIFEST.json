@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.68",
+  "bundle_version": "0.2.0",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -9,23 +9,29 @@
       "sha256": "07f0a21be2baed503aad61847da345c8d01bebfb98a379081dd63147e4b64dc6",
       "bytes": 50029,
       "role": "User-supplied product concept used to derive the roadmap bundle"
+    },
+    {
+      "name": "BUNDLE_MANIFEST(1).json",
+      "sha256": "d6bf62f3a382166546b446d1aa9a8d4ab81bfc24f1c4f42fd170d3fbe65f563a",
+      "bytes": 1727,
+      "role": "Verified manifest for the maintainer-supplied PaperWorkShell-ThirdLife steering bundle version 1.0.0"
     }
   ],
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 31990,
-      "sha256": "d0d68804bb4be4de7b21e567219af282ad52c78ea2eaaf8c525b2e129b8733d5"
+      "bytes": 40335,
+      "sha256": "f7ed9d6f3af2dbc0ab48c2f627282a0249f42481e7ef7fc9c265f090bde4b651"
     },
     {
       "path": "DECISIONS.md",
-      "bytes": 24053,
-      "sha256": "853429b106c53103e81a4b65ff9933d81419db9392eeff35e5be366c38ab03c6"
+      "bytes": 27650,
+      "sha256": "bbd1bcc02fb22af8921a79aaac507d01598b2344a1281c937bdbad79904ce5a3"
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 207487,
-      "sha256": "b11c8b98c6286bdfead636eff93478a90357e92e230933232da2e523d12053f0"
+      "bytes": 218233,
+      "sha256": "259485a3c0fc7d5821f049f4a58fc78357d51ea94602bcca04002ca6348a7967"
     },
     {
       "path": "TASKS.schema.json",
@@ -34,25 +40,60 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 16140,
-      "sha256": "2b24f8de1b7785e5c42ee4a3b44b6a0886dc7820acc87e6e0b148155e0114784"
+      "bytes": 18948,
+      "sha256": "49d322501e4f8820fe7bfaed2a3c90e1ffcf64d05f3c08d026eb8d728947bf34"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 13071,
-      "sha256": "db8266ea326bd976d6d0c62ac06f0aef9495935c03a54c563045e317b0863ce0"
+      "bytes": 14931,
+      "sha256": "2cf38e5ffc7e20637141d8cf71ec3b7d6d941b45e3bf182724ccc59eff35e895"
     },
     {
       "path": "README.md",
-      "bytes": 24974,
-      "sha256": "f740110bc60b623d0d2de47e86f1cc45a9775c56fa0f9ff962833b5dcaa6dfad"
+      "bytes": 27350,
+      "sha256": "52e06ca156c7c1a6b354ca820fcea672758f20883027b68dae38b3516704f71a"
+    },
+    {
+      "path": "THIRDLIFE_ALIGNMENT.md",
+      "bytes": 11254,
+      "sha256": "a61a90b3e07929521afdb53910e8b45c60d8241dc81b7168e894c07f3017e414"
+    },
+    {
+      "path": "docs/release/README.md",
+      "bytes": 2628,
+      "sha256": "b35bf1eac0250cda37b3d66908ced6c333e4af977710a6003a1b9bc6853a7fc9"
+    },
+    {
+      "path": "docs/release/RELEASE_EVIDENCE.md",
+      "bytes": 14396,
+      "sha256": "0ad055a696b0b7ec1e4a8014e3fd10824d528db7e7f8c8ef378a5f3d82cae952"
+    },
+    {
+      "path": "docs/release/RELEASE_INTERFACE.md",
+      "bytes": 16690,
+      "sha256": "b1dafa341209a388e1b50bf6d20ee52c36043484068b15bf4b02e2307caf57a2"
+    },
+    {
+      "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
+      "bytes": 9957,
+      "sha256": "a3bb07448c89b19835923bea5b54d1c00011454bcf0c91270c25193d83e6b9f9"
+    },
+    {
+      "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
+      "bytes": 7846,
+      "sha256": "9a327d94ed2484df47167dbe4ec1d0fd328bc12d10ee1aa460538ecbf2600808"
+    },
+    {
+      "path": "docs/portfolio/THIRDLIFE_FUTURE_NOTES.md",
+      "bytes": 8207,
+      "sha256": "5ecccd838b5181d2e30f027850fbeed4188411c3dcd4310a58037726535b219a"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 81,
-    "dependency_edge_count": 240,
+    "task_count": 82,
+    "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
@@ -62,7 +103,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0203 is done: JPEG/PNG scan review now compares immutable-source Original and exact tentative Adjusted previews, requires explicit confirmed Apply, preserves reset/cancel/failure as non-mutating, and keeps production work serialized, cancelable, and within shared preview-cache budgets; real-Windows keyboard review passed at effective Qt DPR 2.0. PWS-0205 and PWS-0207 are ready; the task selector chooses PWS-0205 next.",
+    "PWS-0809 has integrated the ThirdLife late-binding boundary, canonical governance, release-envelope ownership, draft release documents, and offline portfolio guard, but remains in_progress pending final repository validation. PWS-0205 and PWS-0207 remain ready; the task selector chooses PWS-0205 next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

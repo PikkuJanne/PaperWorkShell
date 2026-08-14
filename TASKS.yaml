@@ -1,7 +1,7 @@
 schema_version: 1
 project: PaperWorkShell
-task_graph_version: 0.2.0
-frozen_at: '2026-08-12'
+task_graph_version: 0.3.0
+frozen_at: '2026-08-14'
 roadmap_file: ROADMAP.md
 decision_file: DECISIONS.md
 agent_contract_file: AGENTS.md
@@ -92,7 +92,8 @@ milestones:
 - id: M8
   name: Release hardening
   release_target: v1.0 candidate
-  objective: Ship a signed, updateable, documented, migratable Windows release with pinned dependencies and an SBOM.
+  objective: Ship a signed, updateable, documented, migratable, independently verifiable Windows release with pinned
+    dependencies, an SBOM, and a frozen black-box release envelope.
   gate_task: PWS-0808
 tasks:
 - id: PWS-0001
@@ -3752,22 +3753,27 @@ tasks:
   - PWS-0005
   decision_refs:
   - PWS-D034
+  - PWS-D042
   objective: Produce a release-grade inventory of runtime/build dependencies, licenses, versions, sources, hashes,
-    and transitive components.
+    transitive components, and exact candidate provenance suitable for the public release evidence index.
   deliverables:
   - Final lock data
   - Machine-readable SBOM
   - Human-readable license/notice bundle
   - Dependency hash/source verification report
   - Policy for emergency security updates
+  - Exact candidate provenance table for `docs/release/RELEASE_EVIDENCE.md`
   acceptance_criteria:
   - Every shipped runtime/build component appears in the SBOM and license inventory.
   - Pinned versions and source hashes match release inputs.
   - Distribution obligations are included in packaging documentation.
   - No unapproved distribution-altering dependency is present.
+  - Installer/package, source revision, dependency lock, SBOM, notices, and published hashes identify one exact candidate.
+  - No ThirdLife or sibling product artifact is a PaperWorkShell build, test, or release input.
   verification:
   - Generate SBOM from a clean release environment and compare with packaged contents.
   - Run license-policy and hash verification checks.
+  - Reconcile the frozen artifact inventory and provenance fields in `docs/release/RELEASE_EVIDENCE.md`.
   risk_tags:
   - supply-chain
   - licensing
@@ -3791,21 +3797,39 @@ tasks:
   decision_refs:
   - PWS-D004
   - PWS-D034
-  objective: Package PaperWorkShell and required engines/resources for Windows without development tools and sign
-    artifacts through the approved release process.
+  - PWS-D042
+  objective: Freeze PaperWorkShell's independent application identity, package the application and required engines/resources
+    for Windows without development tools, and sign artifacts through the approved release process.
   deliverables:
   - Installer technology ADR and configuration
+  - Stable reverse-domain application ID, publisher, product licence, product version/channel, supported Windows
+    OS/architecture matrix, package identity, and upgrade identity
   - Application/installer build pipeline
   - Code-signing procedure using maintainer-controlled material
   - Install/repair/uninstall test automation where practical
+  - Documented privilege, restart, silent-option, rollback, file-association, data-choice, and uninstall-residue behavior
   acceptance_criteria:
   - A clean Windows machine installs and runs PaperWorkShell without a development environment.
   - Artifacts are signed by the approved process; private signing material is never committed or exposed to Codex
     logs.
   - Install locations and permissions follow least privilege.
   - Required notices and component versions are available to the user.
+  - Application and package identities are stable, independently versioned, and contain no ThirdLife version coupling.
+  - The final product licence and supported Windows editions, builds, and architectures are selected from release-grade
+    evidence and appear consistently in package metadata and release documentation.
+  - Normal launch works as a standard user; any elevation is limited to the selected install, repair, update, or removal
+    operation.
+  - Silent options are documented only when genuinely supported and safe; otherwise they are explicitly unsupported.
+  - Any file association is optional, user-visible, does not steal unrelated defaults or bypass import consent, and is
+    removed cleanly.
+  - Uninstall separates application removal from an explicit choice about deleting PaperWorkShell-managed local case
+    data under the user's control, and handles optional engines/language data, caches, logs, settings, support bundles,
+    and other app-data residue by documented category.
+  - Uninstall never deletes an externally selected source document or user-selected export destination.
   verification:
-  - Install, launch, repair/update as supported, and uninstall on clean Windows test environments.
+  - Install, standard-user launch, repair/update as supported, and uninstall on clean Windows test environments.
+  - Exercise preserve-case, explicit-data-removal, reinstall-and-reopen, privilege, restart, rollback, and optional
+    file-association paths.
   - Verify signatures and packaged file inventory.
   risk_tags:
   - installer
@@ -3833,22 +3857,28 @@ tasks:
   - PWS-D005
   - PWS-D013
   - PWS-D034
+  - PWS-D042
   objective: Provide optional authenticated application updates that are separate from document processing and cannot
-    silently replace components from an untrusted source.
+    silently replace components from an untrusted source or couple PaperWorkShell to a portfolio release cadence.
   deliverables:
   - Update-channel ADR and threat model
   - Signed update metadata/package verification
   - User control and offline behavior
   - Rollback/failure handling
   - Component/version audit trail
+  - Independent version/channel and future compatibility-status documentation
   acceptance_criteria:
   - Document processing remains fully usable offline.
   - Unsigned, tampered, rollback-forbidden, or wrong-channel updates are rejected before installation.
   - Update checks transmit no document/case content.
   - A failed update leaves the previous working version intact or recoverable.
   - Worker network denial remains in effect during document processing.
+  - Update checks and version selection require no ThirdLife process, account, service, version, or compatibility result.
+  - A newer PaperWorkShell release is not represented as ThirdLife-compatible until a future B4 cut verifies that exact
+    version or range.
   verification:
   - Run valid, tampered, expired, rollback, offline, interrupted, and privacy-capture update tests.
+  - Verify independent product/channel metadata and absence of ThirdLife content or cadence coupling.
   risk_tags:
   - updates
   - supply-chain
@@ -3874,21 +3904,28 @@ tasks:
   - PWS-D009
   - PWS-D010
   - PWS-D036
+  - PWS-D042
   objective: Safely open and migrate supported older cases while preserving source identity and user intent, and
-    fail before mutation on unsupported future versions.
+    fail before mutation on unsupported future versions while keeping migration exclusively PaperWorkShell-owned.
   deliverables:
   - Migration registry and transactional runner
   - Versioned case fixtures from supported releases
   - Backup/rollback and failure behavior
   - Migration compatibility report
+  - Public workspace/project open, import, and export behavior documented where independently supported, or an explicit
+    unsupported statement with rationale
   acceptance_criteria:
   - Migrations preserve source hashes, page references/order, transforms, overlays, assignments, constraints, confirmations,
     and export history references.
   - A failure leaves the original case unchanged and recoverable.
   - Unknown future versions fail before mutation.
   - Migration logs contain IDs/codes only and no document content.
+  - Only PaperWorkShell interprets and migrates private case state; passing an explicitly selected path does not authorize
+    ThirdLife or another product to inspect, repair, or migrate it.
+  - Any documented workspace/project artifact is versioned, synthetic-fixture tested, and useful without ThirdLife.
   verification:
   - Run forward migration, repeated/open-idempotence, interrupted, disk-full, corrupted, and future-version tests.
+  - Test documented public workspace/project opening or verify the release's explicit unsupported behavior.
   risk_tags:
   - migration
   - recovery
@@ -3913,21 +3950,25 @@ tasks:
   decision_refs:
   - PWS-D027
   - PWS-D039
+  - PWS-D042
   objective: Create an opt-in support bundle whose exact safe contents are shown before local export.
   deliverables:
   - Diagnostic data collector using approved fields only
   - Human-readable pre-export inventory
   - Local bundle writer with safe filenames
   - Redaction/prohibited-token tests for diagnostics
+  - Non-sensitive sample sanitized bundle, allow-list, expected-behavior note, and SHA-256 hash
   acceptance_criteria:
   - The user sees the exact categories/files to be included before creation.
   - No OCR text, form values, names, addresses, filenames, full paths, metadata values, thumbnails, signatures,
     or document bytes are included.
   - Bundle creation is opt-in and local.
   - Collection failure does not alter cases or logs with sensitive values.
+  - PaperWorkShell support evidence remains separate from any future ThirdLife support metadata or bundle.
   verification:
   - Run prohibited-token scans across generated bundles.
   - Test cancel, permission failure, and partial write behavior.
+  - Reopen and inspect the published synthetic sample and verify its recorded hash and allow-list.
   risk_tags:
   - diagnostics
   - privacy
@@ -3948,6 +3989,7 @@ tasks:
   critical_path: false
   depends_on:
   - PWS-0803
+  - PWS-0804
   - PWS-0805
   decision_refs:
   - PWS-D020
@@ -3955,23 +3997,37 @@ tasks:
   - PWS-D033
   - PWS-D037
   - PWS-D039
+  - PWS-D042
   objective: Provide accurate documentation for users, volunteers, administrators, and security reporters without
-    overstating product guarantees.
+    overstating product guarantees, and prepare the exact-candidate standalone release interface and evidence index.
   deliverables:
   - User guide for the complete workflow
   - Assisted-use and privacy guide
   - Recovery, retention, deletion, diagnostics, and uninstall guide
   - Signature/redaction terminology guide
   - Security policy, contact, supported versions, and vulnerability process
+  - Known-limitations and maintenance-status documentation
+  - Exact data-location, retention, deletion, migration-backup, and uninstall-residue inventory by category
+  - Candidate `docs/release/RELEASE_INTERFACE.md`, `docs/release/RELEASE_EVIDENCE.md`, and
+    `docs/release/STANDALONE_RELEASE_CHECKLIST.md` records ready for matrix evidence
+  - Published `THIRDLIFE_ALIGNMENT.md`, `docs/portfolio/SOURCE_TRACEABILITY.md`, and non-gating
+    `docs/portfolio/THIRDLIFE_FUTURE_NOTES.md`
   acceptance_criteria:
   - Documentation distinguishes visual, digital, and qualified signatures.
   - Redaction documentation states supported method, verification, and limitations.
   - No guide promises portal acceptance, legal advice, forensic erasure, OCR certainty, or PDF/UA conformance.
   - Support instructions do not ask users to send sensitive documents or ordinary logs containing content.
   - Accessibility and keyboard instructions are complete.
+  - Product documentation states that PaperWorkShell is standalone, versions independently, retains local user-data
+    boundaries, and has no current ThirdLife app-to-app integration or compatibility claim.
+  - Every data category has a documented location class, retention and deletion behavior, and uninstall disposition
+    without exposing private usernames or absolute paths.
+  - Release-interface and evidence fields remain visibly draft until proved; unknown facts are not guessed and unsupported
+    behavior is stated with a reason.
   verification:
   - Run documentation link/terminology/prohibited-claim checks.
   - Perform novice and support-person walkthroughs.
+  - Audit release documents for unexplained claims, private paths, real personal data, and accidental runtime-API wording.
   risk_tags:
   - documentation
   - security-process
@@ -4003,14 +4059,18 @@ tasks:
   - PWS-D034
   - PWS-D040
   - PWS-D041
-  objective: Execute the complete release matrix on packaged builds and confirm installation, workflow, updates,
-    migrations, recovery, accessibility, compatibility, and cleanup behavior.
+  - PWS-D042
+  objective: Execute the complete public black-box release matrix on packaged builds and confirm installation, launch,
+    opening, workflow, updates, migrations, recovery, accessibility, compatibility, data preservation, and cleanup behavior.
   deliverables:
   - Release-candidate test plan and environment inventory
   - Packaged-build automated and manual results
   - Packaged-build resource-budget plus low-disk and slow-I/O simulation report
   - Optional physical-device observations when available, explicitly non-gating
   - Install/update/migration/uninstall/residual-case report
+  - Synthetic black-box sample package with representative inputs, applicable workspace/project artifact, expected
+    outputs and summaries, expected-behavior notes, provenance, and hashes
+  - Candidate release-evidence results tied to exact artifact, interface, environment, and sample revisions
   - Release-blocker list
   acceptance_criteria:
   - All prior milestone gates remain valid against the packaged candidate.
@@ -4018,10 +4078,20 @@ tasks:
   - Supported older cases migrate safely.
   - Packaged builds meet approved resource budgets and bounded-behavior requirements.
   - Full keyboard/NVDA, redaction, compression, reader, recovery, diagnostics, and update scenarios pass.
+  - Clean install, standard-user launch, supported synthetic-file opening, the canonical offline workflow, update or
+    repair, interrupted-update recovery, uninstall with preserved cases, reinstall and reopen, explicit data removal,
+    and optional file-association cleanup pass using only documented public behavior.
+  - PaperWorkShell works with ThirdLife absent and requires no sibling process, account, server, database, fixture,
+    adapter, source tree, or compatibility result.
+  - Public samples and evidence contain no private username, absolute local path, credential, real or user document/OCR
+    content, original or user filename, extracted user metadata, real thumbnail/signature, or other real personal data;
+    deliberately synthetic cleared fixture text and its synthetic expected-output evidence remain permitted.
   - No release-blocking defect remains open.
   verification:
   - Run the full packaged-build test matrix on clean environments.
   - Perform manual accessibility, compatibility, redaction, update, migration, and uninstall scenarios.
+  - Run black-box launch/open/offline/preserve/reinstall/remove-data/association scenarios against the frozen synthetic
+    sample package and reconcile results and hashes with `docs/release/RELEASE_EVIDENCE.md`.
   risk_tags:
   - release-candidate
   - performance
@@ -4049,34 +4119,111 @@ tasks:
   - PWS-0805
   - PWS-0806
   - PWS-0807
+  - PWS-0809
   decision_refs:
   - PWS-D003
   - PWS-D022
   - PWS-D030
   - PWS-D034
   - PWS-D040
+  - PWS-D042
   objective: Approve a v1.0 candidate only when every milestone gate and release-hardening criterion has current
-    evidence on the packaged build.
+    evidence on the packaged build and its complete standalone black-box release envelope is frozen.
   deliverables:
   - Milestone 8/v1.0 gate report
   - Signed artifact inventory and checksums
   - SBOM/license bundle
   - Release notes and known limitations
   - Security/accessibility/compatibility sign-off records
+  - Completed exact-candidate `docs/release/RELEASE_INTERFACE.md` and `docs/release/RELEASE_EVIDENCE.md`
+  - Frozen synthetic sample package, expected-behavior notes, hashes, and standalone-checklist sign-off
   acceptance_criteria:
   - Every M8 prerequisite and every earlier milestone gate is done.
   - Packaged artifacts are signed and match the verified inventory/SBOM.
   - Authenticated updates, migrations, diagnostics, install/uninstall, and recovery pass.
   - Permanent redaction retains independent approval and passes against the candidate.
   - Full keyboard/NVDA and compatibility matrices pass.
+  - Every release-interface and evidence field is proved for the exact candidate or explicitly marked “not supported”
+    with a reason; no unexplained `TBD` remains.
+  - Release documents, packaged artifacts, source revision, SBOM, samples, expected outputs, known limitations, and
+    hashes identify the same frozen candidate.
+  - PaperWorkShell's standalone workflow, install, launch, supported opening, update or repair, migration, diagnostics,
+    data preservation, and uninstall pass with ThirdLife absent.
+  - No ThirdLife build, fixture, repository, process, service, adapter, or compatibility approval is required for the
+    PaperWorkShell release gate, and the release makes no premature ThirdLife compatibility claim.
   - No unresolved release/security/privacy/accessibility blocker remains.
   verification:
   - Run the final packaged-build matrix and independently verify artifact signatures/checksums.
   - Perform the formal release review and record pass/fail.
+  - Reconcile and freeze the standalone checklist, release interface, release evidence, synthetic sample manifest, and
+    known limitations with the signed candidate inventory.
   risk_tags:
   - gate
   - v1-0
   - release
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes: []
+- id: PWS-0809
+  milestone: M8
+  title: Integrate ThirdLife late-binding governance and release-envelope ownership
+  kind: implementation
+  priority: P0
+  effort: M
+  status: in_progress
+  critical_path: false
+  depends_on:
+  - PWS-0010
+  decision_refs:
+  - PWS-D001
+  - PWS-D003
+  - PWS-D005
+  - PWS-D027
+  - PWS-D028
+  - PWS-D033
+  - PWS-D034
+  - PWS-D036
+  - PWS-D039
+  - PWS-D040
+  - PWS-D042
+  objective: Mirror the inherited ThirdLife late-binding portfolio boundary in PaperWorkShell's local canonical governance
+    and assign project-local owners for the standalone release envelope without adding runtime or cross-repository coupling.
+  deliverables:
+  - Accepted `docs/adr/0008-thirdlife-late-binding-portfolio.md` and frozen decision for standalone independence,
+    ordinary interfaces first, and ThirdLife-owned late assembly
+  - Canonical roadmap, task-graph, agent-contract, startup-prompt, and product-orientation alignment
+  - Adapted `THIRDLIFE_ALIGNMENT.md`; `docs/release/RELEASE_INTERFACE.md`, `docs/release/RELEASE_EVIDENCE.md`, and
+    `docs/release/STANDALONE_RELEASE_CHECKLIST.md`; and `docs/portfolio/SOURCE_TRACEABILITY.md` and explicitly non-gating
+    `docs/portfolio/THIRDLIFE_FUTURE_NOTES.md`
+  - Precise M8 ownership for identity, install/remove, updates, migrations, diagnostics, documentation, black-box samples,
+    candidate evidence, and the final standalone gate
+  - Verified steering-bundle provenance and refreshed repository bundle metadata
+  acceptance_criteria:
+  - PaperWorkShell's Team A / A1 position, Owns and Does not own boundary, primary data, standalone release condition,
+    and late-binding suite treatment are explicit and internally consistent.
+  - No production feature, runtime/build/test dependency, cross-repository edge, shared platform, hidden automation path,
+    or ThirdLife access to PaperWorkShell content is introduced.
+  - "`docs/release/RELEASE_INTERFACE.md` and `docs/release/RELEASE_EVIDENCE.md` remain clearly draft with unknown facts
+    unresolved until an exact packaged candidate supplies evidence."
+  - Future adapter and composite-journey observations remain non-gating, and every PaperWorkShell task dependency is
+    project-local.
+  - Existing M8 tasks and PWS-0808 explicitly own every required standalone release-envelope artifact, black-box test,
+    and freeze/sign-off outcome without requiring actual ThirdLife integration.
+  - Current development priorities, completed task evidence, release targets, and all existing security, privacy,
+    accessibility, resource, redaction, migration, and packaging gates remain intact.
+  verification:
+  - Verify every supplied steering file against its bundle byte count and SHA-256 entry.
+  - Run schema, task-graph, documentation, link, terminology, prohibited-claim, and bundle-manifest validation.
+  - Run the repository full quality check and confirm no ThirdLife runtime, sibling import, cross-project dependency,
+    integration-only protocol, or private release fact was added.
+  risk_tags:
+  - governance
+  - release
+  - privacy
+  - architecture
   blocker: null
   evidence:
     completed_at: null

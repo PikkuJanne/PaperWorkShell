@@ -6,14 +6,17 @@ import importlib
 import subprocess
 import sys
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from tools.check_import_boundaries import (
+    APPROVED_EXTERNAL_IMPORT_PREFIXES,
     DEFAULT_PACKAGE_ROOT,
     PROJECT_ROOT,
     REQUIRED_PACKAGES,
+    inspect_file,
     inspect_package,
     inspect_source,
     main,
@@ -263,6 +266,18 @@ def test_repository_respects_import_boundaries() -> None:
             "paperworkshell.app",
             "try:\n    import pikepdf\nexcept ImportError:\n    pass\n",
             "ARCH_EXTERNAL_IMPORT",
+        ),
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "import thirdlife\n",
+            "ARCH_PORTFOLIO_DEPENDENCY",
+        ),
+        (
+            "paperworkshell.worker.example",
+            "paperworkshell.worker",
+            "if False:\n    from thirdlife_setup_core import Bridge\n",
+            "ARCH_PORTFOLIO_DEPENDENCY",
         ),
         (
             "paperworkshell.app.example",
@@ -727,6 +742,25 @@ def test_invalid_source_and_relative_import_fail_closed() -> None:
     assert [violation.code for violation in relative_violations] == ["ARCH_RELATIVE_IMPORT"]
 
 
+def test_portfolio_import_cannot_be_admitted_by_the_external_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        APPROVED_EXTERNAL_IMPORT_PREFIXES,
+        "app",
+        frozenset({"thirdlife"}),
+    )
+
+    violations = inspect_source(
+        "import thirdlife\n",
+        module="paperworkshell.app.example",
+        package="paperworkshell.app",
+        path="portfolio_dependency.py",
+    )
+
+    assert {violation.code for violation in violations} == {"ARCH_PORTFOLIO_DEPENDENCY"}
+
+
 def _create_package_layout(root: Path) -> None:
     root.mkdir()
     (root / "__init__.py").write_text('"""Test package."""\n', encoding="utf-8")
@@ -743,6 +777,174 @@ def test_missing_required_initializer_fails_layout_check(tmp_path: Path) -> None
 
     violations = inspect_package(package_root)
     assert "ARCH_PACKAGE_LAYOUT" in {violation.code for violation in violations}
+
+
+def test_python_bearing_sibling_source_package_is_rejected(tmp_path: Path) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    sibling = tmp_path / "thirdlife"
+    sibling.mkdir()
+    (sibling / "bridge.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    violations = inspect_package(package_root)
+
+    assert "ARCH_SOURCE_PACKAGE_UNEXPECTED" in {violation.code for violation in violations}
+
+
+def test_source_root_enumeration_error_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    original_iterdir = Path.iterdir
+
+    def injected_iterdir(path: Path) -> Iterator[Path]:
+        if path == tmp_path:
+            raise OSError("sensitive host detail")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", injected_iterdir)
+
+    violations = inspect_package(package_root)
+
+    read_errors = [
+        violation for violation in violations if violation.code == "ARCH_SOURCE_ROOT_READ_ERROR"
+    ]
+    assert [(violation.line, violation.detail) for violation in read_errors] == [
+        (1, "source root cannot be enumerated safely")
+    ]
+    assert "sensitive host detail" not in "\n".join(violation.render() for violation in violations)
+
+
+def test_package_root_alias_fails_before_source_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    (package_root / "app" / "private-path-canary.py").write_text(
+        "import pikepdf\n",
+        encoding="utf-8",
+    )
+    original_is_symlink = Path.is_symlink
+
+    def injected_is_symlink(path: Path) -> bool:
+        return path == package_root or original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", injected_is_symlink)
+
+    violations = inspect_package(package_root)
+    rendered = "\n".join(violation.render() for violation in violations)
+
+    assert {violation.code for violation in violations} == {"ARCH_PACKAGE_ROOT_UNSAFE"}
+    assert "ARCH_EXTERNAL_IMPORT" not in rendered
+    assert "private-path-canary" not in rendered
+
+
+def test_nested_directory_alias_fails_before_layout_or_source_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    aliased_directory = package_root / "app"
+    original_is_symlink = Path.is_symlink
+    original_rglob = Path.rglob
+
+    def injected_is_symlink(path: Path) -> bool:
+        return path == aliased_directory or original_is_symlink(path)
+
+    def guarded_rglob(path: Path, pattern: str) -> Iterator[Path]:
+        if path == package_root:
+            raise AssertionError("unsafe directory trees must not be traversed")
+        return original_rglob(path, pattern)
+
+    monkeypatch.setattr(Path, "is_symlink", injected_is_symlink)
+    monkeypatch.setattr(Path, "rglob", guarded_rglob)
+
+    violations = inspect_package(package_root)
+
+    assert {violation.code for violation in violations} == {"ARCH_SOURCE_PATH_UNSAFE"}
+    assert violations[0].path == "<outside-project>"
+    assert str(tmp_path) not in violations[0].render()
+
+
+def test_sibling_alias_is_rejected_without_recursive_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    sibling = tmp_path / "suite-assembly"
+    sibling.mkdir()
+    original_is_symlink = Path.is_symlink
+    original_rglob = Path.rglob
+
+    def injected_is_symlink(path: Path) -> bool:
+        return path == sibling or original_is_symlink(path)
+
+    def guarded_rglob(path: Path, pattern: str) -> Iterator[Path]:
+        if path == sibling:
+            raise AssertionError("sibling alias must not be traversed")
+        return original_rglob(path, pattern)
+
+    monkeypatch.setattr(Path, "is_symlink", injected_is_symlink)
+    monkeypatch.setattr(Path, "rglob", guarded_rglob)
+
+    violations = inspect_package(package_root)
+
+    assert "ARCH_SOURCE_PACKAGE_UNEXPECTED" in {violation.code for violation in violations}
+
+
+def test_unsafe_source_path_is_not_opened_or_disclosed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    outside = tmp_path / "private-path-canary.py"
+    outside.write_text("import pikepdf\n", encoding="utf-8")
+    linked = package_root / "app" / "leak.py"
+    linked.write_text("import pikepdf\n", encoding="utf-8")
+    original_is_symlink = Path.is_symlink
+
+    def injected_is_symlink(path: Path) -> bool:
+        return path == linked or original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", injected_is_symlink)
+
+    violations = (*inspect_package(package_root), *inspect_file(outside, package_root))
+    rendered = "\n".join(violation.render() for violation in violations)
+
+    assert "ARCH_SOURCE_PATH_UNSAFE" in {violation.code for violation in violations}
+    assert "ARCH_EXTERNAL_IMPORT" not in {violation.code for violation in violations}
+    assert str(outside) not in rendered
+    assert "private-path-canary" not in rendered
+
+
+def test_in_package_ancestor_alias_is_rejected_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "paperworkshell"
+    _create_package_layout(package_root)
+    source = package_root / "app" / "bridge.py"
+    source.write_text("import pikepdf\n", encoding="utf-8")
+    aliased_target = package_root / "domain" / "bridge.py"
+    aliased_target.write_text("VALUE = 1\n", encoding="utf-8")
+    original_resolve = Path.resolve
+
+    def injected_resolve(path: Path, strict: bool = False) -> Path:
+        if path == source:
+            return aliased_target
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", injected_resolve)
+
+    violations = inspect_file(source, package_root)
+
+    assert {violation.code for violation in violations} == {"ARCH_SOURCE_PATH_UNSAFE"}
 
 
 def test_cli_rejects_deliberate_prohibited_fixture(

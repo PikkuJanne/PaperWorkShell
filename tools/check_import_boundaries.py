@@ -66,6 +66,8 @@ GUI_SAFE_WORKER_PREFIXES: Final = (
     f"{WORKER_PACKAGE}.client",
     f"{WORKER_PACKAGE}.protocol",
 )
+PROHIBITED_PORTFOLIO_IMPORT_ROOT_PREFIXES: Final = ("thirdlife",)
+PYTHON_SOURCE_SUFFIXES: Final = frozenset({".py", ".pyi"})
 
 
 @dataclass(frozen=True, order=True)
@@ -84,11 +86,16 @@ class BoundaryViolation:
 
 
 def _display_path(path: Path) -> str:
-    resolved = path.resolve()
+    project_root = PROJECT_ROOT.resolve(strict=False)
     try:
-        return resolved.relative_to(PROJECT_ROOT).as_posix()
-    except ValueError:
-        return resolved.as_posix()
+        lexical = path.absolute()
+        return lexical.relative_to(project_root).as_posix()
+    except OSError, ValueError:
+        pass
+    try:
+        return path.resolve(strict=False).relative_to(project_root).as_posix()
+    except OSError, ValueError:
+        return "<outside-project>"
 
 
 def _module_context(path: Path, package_root: Path) -> tuple[str, str]:
@@ -118,6 +125,14 @@ def _is_within(module: str, package: str) -> bool:
 def _is_standard_library(module: str) -> bool:
     root = module.partition(".")[0]
     return root == "__future__" or root in sys.stdlib_module_names
+
+
+def _is_prohibited_portfolio_import(module: str) -> bool:
+    normalized_root = module.partition(".")[0].casefold().replace("-", "_")
+    return any(
+        normalized_root == prefix or normalized_root.startswith(f"{prefix}_")
+        for prefix in PROHIBITED_PORTFOLIO_IMPORT_ROOT_PREFIXES
+    )
 
 
 def _from_import_targets(node: ast.ImportFrom, package: str) -> tuple[str, ...]:
@@ -153,6 +168,13 @@ def _target_violation(
     line: int,
 ) -> BoundaryViolation | None:
     target_root = target.partition(".")[0]
+    if _is_prohibited_portfolio_import(target):
+        return BoundaryViolation(
+            path,
+            line,
+            "ARCH_PORTFOLIO_DEPENDENCY",
+            "product code must not import ThirdLife or a ThirdLife-owned runtime package",
+        )
     if target_root in FORBIDDEN_UI_TOOLKIT_ROOTS:
         return BoundaryViolation(
             path,
@@ -501,6 +523,24 @@ def inspect_file(path: Path, package_root: Path) -> tuple[BoundaryViolation, ...
 
     display_path = _display_path(path)
     try:
+        resolved_package_root = package_root.resolve(strict=True)
+        relative_path = path.absolute().relative_to(package_root.absolute())
+        if path.is_symlink():
+            raise ValueError
+        resolved_path = path.resolve(strict=True)
+        resolved_path.relative_to(resolved_package_root)
+        if resolved_path != resolved_package_root / relative_path:
+            raise ValueError
+    except OSError, ValueError:
+        return (
+            BoundaryViolation(
+                display_path,
+                1,
+                "ARCH_SOURCE_PATH_UNSAFE",
+                "source must be a regular in-package path and cannot be a filesystem alias",
+            ),
+        )
+    try:
         with tokenize.open(str(path)) as source_file:
             source = source_file.read()
     except OSError, SyntaxError, UnicodeError:
@@ -522,10 +562,72 @@ def inspect_file(path: Path, package_root: Path) -> tuple[BoundaryViolation, ...
     )
 
 
+def _unsafe_descendant_directory(package_root: Path) -> Path | None:
+    """Find a directory alias or unreadable subtree without following it."""
+
+    pending = [package_root]
+    while pending:
+        current = pending.pop()
+        try:
+            entries = tuple(
+                sorted(
+                    current.iterdir(),
+                    key=lambda entry: (entry.name.casefold(), entry.name),
+                )
+            )
+        except OSError:
+            return current
+        for entry in entries:
+            try:
+                if entry.is_symlink() or entry.is_junction():
+                    return entry
+                if not entry.is_dir():
+                    continue
+                relative = entry.absolute().relative_to(package_root.absolute())
+                if entry.resolve(strict=True) != package_root / relative:
+                    return entry
+            except OSError, ValueError:
+                return entry
+            pending.append(entry)
+    return None
+
+
 def inspect_package(package_root: Path) -> tuple[BoundaryViolation, ...]:
     """Inspect required layout and every Python source under a package root."""
 
-    package_root = package_root.resolve()
+    lexical_package_root = package_root.absolute()
+    try:
+        if package_root.is_symlink():
+            raise ValueError
+        resolved_package_root = package_root.resolve(strict=True)
+    except OSError:
+        return (
+            BoundaryViolation(
+                _display_path(package_root),
+                1,
+                "ARCH_PACKAGE_ROOT",
+                "PaperWorkShell package root does not exist",
+            ),
+        )
+    except ValueError:
+        return (
+            BoundaryViolation(
+                _display_path(package_root),
+                1,
+                "ARCH_PACKAGE_ROOT_UNSAFE",
+                "PaperWorkShell package root cannot be a filesystem alias",
+            ),
+        )
+    if resolved_package_root != lexical_package_root:
+        return (
+            BoundaryViolation(
+                _display_path(package_root),
+                1,
+                "ARCH_PACKAGE_ROOT_UNSAFE",
+                "PaperWorkShell package root cannot traverse a filesystem alias",
+            ),
+        )
+    package_root = resolved_package_root
     if not package_root.is_dir():
         return (
             BoundaryViolation(
@@ -536,7 +638,52 @@ def inspect_package(package_root: Path) -> tuple[BoundaryViolation, ...]:
             ),
         )
 
+    unsafe_directory = _unsafe_descendant_directory(package_root)
+    if unsafe_directory is not None:
+        return (
+            BoundaryViolation(
+                _display_path(unsafe_directory),
+                1,
+                "ARCH_SOURCE_PATH_UNSAFE",
+                "source directories must be readable in-package paths and cannot be aliases",
+            ),
+        )
+
     violations: list[BoundaryViolation] = []
+    source_root = package_root.parent
+    try:
+        sibling_entries = tuple(source_root.iterdir())
+    except OSError:
+        sibling_entries = ()
+        violations.append(
+            BoundaryViolation(
+                _display_path(source_root),
+                1,
+                "ARCH_SOURCE_ROOT_READ_ERROR",
+                "source root cannot be enumerated safely",
+            )
+        )
+    for entry in sorted(sibling_entries, key=lambda path: path.name.casefold()):
+        if entry == package_root or entry.name == "__pycache__":
+            continue
+        try:
+            entry_is_alias = entry.is_symlink() or entry.resolve(strict=True) != entry.absolute()
+            python_bearing = entry_is_alias or (
+                entry.is_dir()
+                or (entry.is_file() and entry.suffix.casefold() in PYTHON_SOURCE_SUFFIXES)
+            )
+        except OSError:
+            python_bearing = True
+        if python_bearing:
+            violations.append(
+                BoundaryViolation(
+                    _display_path(entry),
+                    1,
+                    "ARCH_SOURCE_PACKAGE_UNEXPECTED",
+                    "the source root may contain only the PaperWorkShell product package",
+                )
+            )
+
     root_initializer = package_root / "__init__.py"
     if not root_initializer.is_file():
         violations.append(

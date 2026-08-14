@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Register version | 0.2.0 |
+| Register version | 0.3.0 |
 | Status | **Frozen** |
 | Effective date | 2026-07-14 |
-| Last amended | 2026-08-12 |
+| Last amended | 2026-08-14 |
 | Applies to | Product scope, architecture, security, release gates, and terminology |
 
 A frozen decision is binding on implementation and planning until the maintainer explicitly approves a replacement. A technical obstacle is not permission to bypass a decision. Changes use the procedure at the end of this file and must update `ROADMAP.md`, `TASKS.yaml`, and affected prompts or schemas in the same change.
@@ -63,6 +63,7 @@ Status vocabulary:
 | PWS-D039 | Diagnostics are sanitized and previewable before export |
 | PWS-D040 | v0.1 ends at M4; v1.0 requires all release gates |
 | PWS-D041 | Low-resource compatibility is enforced through bounded architecture and automated resource budgets |
+| PWS-D042 | PaperWorkShell remains standalone and ThirdLife portfolio assembly is late-bound |
 
 ---
 
@@ -396,6 +397,18 @@ Status vocabulary:
 
 **Consequences:** Core functionality cannot require a discrete GPU. Heavy document work remains outside the GUI process. Full packets are not eagerly rasterized or retained at full resolution. Caches, queues, subprocesses, and temporary storage have explicit limits and fail safely when exceeded. Performance evidence distinguishes measured software budgets from physical-hardware certification. PaperWorkShell must not describe a named low-end device, processor count, RAM amount, GPU class, SSD, or HDD as verified or certified unless that physical configuration is actually tested later. The accepted rationale, migration, and affected surfaces are recorded in `docs/adr/0007-low-resource-budgets.md`.
 
+## PWS-D042 — PaperWorkShell remains standalone and ThirdLife portfolio assembly is late-bound
+
+**Status:** FROZEN
+
+**Decision:** PaperWorkShell is an independently useful, independently versioned Team A / A1 product in the ThirdLife portfolio. Its development, build, tests, installation, launch, update or repair, document workflow, recovery, migration, support, uninstall, and release gates do not require ThirdLife, a sibling product, a sibling repository or branch, a sibling database or service, or a private cross-project fixture. PaperWorkShell has no permanent integration lane and introduces no shared user-content database, workspace, SDK, runtime schema, universal job engine, plugin framework, background service, monorepo mandate, or synchronized release cadence for portfolio integration.
+
+Future ThirdLife Deployment and Suite Assembly work may consume only an exact frozen PaperWorkShell release through its public installer or package, hashes, human-readable release documents, synthetic samples, and documented black-box behavior. ThirdLife owns any later catalogue entry, profile, compatibility rule, workaround, or optional version-bounded adapter. Normal installation, launch, user-visible opening of a user-selected supported file, documented workspace behavior where independently supported, ordinary export and import, and human guidance precede a custom interface. A CLI, URI, RPC command, file association, machine-readable export, or manifest field requires independent PaperWorkShell user, testing, support, accessibility, or administration value and the normal local decision process; hypothetical sibling convenience is insufficient.
+
+PaperWorkShell publishes a versioned human-readable `docs/release/RELEASE_INTERFACE.md` and a matching `docs/release/RELEASE_EVIDENCE.md` for preview and stable candidates. These documents describe an exact release and are not a shared runtime schema or an application API. PaperWorkShell owns its case migrations and rollback behavior. A future ThirdLife release may keep catalogue, installation, compatibility, and its own support metadata, but it does not read or index PaperWorkShell documents, OCR text, overlays, signatures, redaction state, private manifests, or case records. Removing or disabling a future adapter must leave the complete normal PaperWorkShell path available.
+
+**Consequences:** The PaperWorkShell task graph remains project-local, and composite portfolio journeys or future adapter ideas are non-gating observations rather than dependencies. PaperWorkShell versions and releases independently and does not wait for ThirdLife adoption. No ThirdLife compatibility claim exists until a future B4 compatibility cut tests an exact frozen release. Release documents keep unknown facts as `TBD` or state “not supported” with a reason until real packaged-build evidence exists. A change to the PaperWorkShell **Owns** or **Does not own** boundary requires an explicit maintainer-approved portfolio-alignment decision rather than an incidental task edit. Existing decisions PWS-D001–PWS-D041 remain in force; this decision specializes PWS-D003, PWS-D005, PWS-D008, PWS-D010, PWS-D027, PWS-D028, PWS-D033, PWS-D036, PWS-D039, and PWS-D040 for the late-binding portfolio boundary. The accepted rationale and source mapping are recorded in `docs/adr/0008-thirdlife-late-binding-portfolio.md`.
+
 ---
 
 ## Deliberately variable implementation parameters
@@ -408,6 +421,7 @@ The following are implementation parameters rather than permission to change pro
 - Specific font family and embedding method for overlays, proven in `PWS-0303` and `PWS-0307`
 - Numeric resource limits and quality thresholds, measured against approved synthetic workloads and versioned resource policies
 - Exact installer technology and authenticated update mechanism, selected in Milestone 8
+- Exact reverse-domain application identity and optional file-association policy, selected and evidenced by `PWS-0802`
 
 Each selection requires an ADR in `docs/adr/`, evidence, tests, and no conflict with the frozen decisions above.
 

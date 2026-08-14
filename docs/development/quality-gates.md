@@ -32,9 +32,9 @@ py -3.14 tools/dev.py check
 `check` runs every non-mutating command marked `[check]` by `list`, in registry order. It covers
 formatting, linting, architecture boundaries, strict typing, unit/integration/security/
 accessibility lanes, public synthetic fixture regeneration/provenance, repository schemas, the task
-graph, the constrained M1 evidence schema, the bound PDF-renderer comparison workload, secret
-scanning, offline documentation links/anchors/security references, and deliberate negative
-self-tests. Use
+graph, the ThirdLife standalone-portfolio boundary, the constrained M1 evidence schema, the bound
+PDF-renderer comparison workload, secret scanning, offline documentation
+links/anchors/security references, and deliberate negative self-tests. Use
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
 
@@ -134,6 +134,25 @@ graph. The PWS-0004 security catalogue is structural: threat IDs are unique, eve
 threat has a known decision and task/gate mapping, every threat has planned test coverage, and the
 eleven threat categories named by the task remain explicit. This is reference/plan evidence; it
 does not claim that future controls have been implemented.
+
+## Portfolio-boundary validation
+
+```powershell
+py -3.14 tools/dev.py validate-portfolio-boundary
+```
+
+This offline validator preserves `PWS-D042` without consulting a sibling repository. It parses
+project and lock metadata, the reviewed dependency inventory, production Python syntax, every
+repository and packaged runtime schema, portfolio-document metadata, the M8 task owners, and
+`BUNDLE_MANIFEST.json`.
+It rejects ThirdLife runtime dependencies and production-only interface references; missing release
+documents or metadata that does not match the current M8 gate stage; loss of project-local M8
+ownership or gate coverage; and stale, unsafe, or mismatched roadmap-bundle records. Graph counts
+and bundle summaries are reconciled with
+the current structured task graph rather than frozen as permanent numeric constants. The validator
+does not claim that a ThirdLife compatibility cut exists and does not turn future notes into work.
+ThirdLife disclosure prose belongs in the canonical portfolio/release documentation, so production
+Python literals and identifiers remain marker-free as well as dependency-free.
 
 ## Negative self-test
 

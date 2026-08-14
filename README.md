@@ -4,13 +4,36 @@ This bundle turns the initial PaperWorkShell product concept into a repository-r
 
 PaperWorkShell is a local-first desktop application that converts mixed PDFs and images into a complete, organized, legible, privacy-safe, portal-ready document package. The first release is deliberately narrower than a general PDF editor.
 
+## ThirdLife portfolio position
+
+PaperWorkShell is the standalone Team A / A1 product in the ThirdLife portfolio. It does not
+require ThirdLife, another portfolio application, an account, or a project-controlled server, and
+current development contains no app-to-app integration lane. PaperWorkShell owns responsibility
+for its document workflow, migrations, and release process; users retain control of their local
+cases and documents, which are not a shared portfolio database.
+
+A future ThirdLife Deployment and Suite Assembly (Team B / B4) project may test an exact frozen
+PaperWorkShell release through documented black-box behavior such as installation, normal launch,
+optional user-controlled file opening, and human guidance. Any deeper adapter remains
+ThirdLife-owned, optional, version-bounded, and removable. PaperWorkShell does not add a shared SDK,
+schema, service, CLI, URI, RPC command, file association, or project-transfer format solely for
+hypothetical integration.
+
+The binding portfolio boundary is recorded in
+[`THIRDLIFE_ALIGNMENT.md`](THIRDLIFE_ALIGNMENT.md). Draft M8 release artifacts are indexed under
+[`docs/release/`](docs/release/README.md), and non-gating assembly observations live under
+[`docs/portfolio/`](docs/portfolio/THIRDLIFE_FUTURE_NOTES.md). These documents do not claim that a
+ThirdLife compatibility cut or packaged PaperWorkShell release already exists.
+
 ## Development bootstrap
 
 The repository has completed its foundation and Milestone 1 vertical-slice gates and is implementing
 Milestone 2 image-processing capabilities. It contains the restricted worker, immutable
-PDF/JPEG/PNG ingest boundaries, and worker-only pikepdf, pypdfium2, and Pillow adapters. The first PySide6 Widgets organizer admits exact
+PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only pikepdf, pypdfium2, Pillow,
+OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
-repository does not yet contain OCR, installer, cloud, or signing integration.
+repository does not yet contain an installer, cloud integration, or cryptographic-signing
+creation.
 
 Prerequisites:
 
@@ -105,6 +128,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py validate-schemas` | Validate every registered schema and checked-in instance |
 | `py -3.14 tools/dev.py validate-dependencies` | Validate the dependency, license, provenance, and redistribution baseline |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
+| `py -3.14 tools/dev.py validate-portfolio-boundary` | Validate standalone ThirdLife boundaries, M8 ownership, and roadmap-bundle integrity |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
 | `py -3.14 tools/dev.py validate-m1-benchmark-report` | Validate the constrained-profile M1 evidence contract |
 | `py -3.14 tools/dev.py validate-pdf-renderer-benchmark` | Validate the bound synthetic renderer-comparison workload |
@@ -280,8 +304,13 @@ encrypted and complex-script/font fixtures remain explicitly assigned to their o
 | `TASKS.schema.json` | JSON Schema for validating the task graph after YAML-to-JSON parsing |
 | `AGENTS.md` | Codex operating contract: task selection, architecture, security, testing, state changes, and reporting |
 | `CODEX_START_PROMPT.md` | Copy-paste first-session prompt and reusable task, review, security, gate, and status prompts |
+| `THIRDLIFE_ALIGNMENT.md` | Standalone-product and late-binding ThirdLife portfolio boundary |
 | `README.md` | This guide |
 | `BUNDLE_MANIFEST.json` | Bundle version, file inventory, and checksums |
+
+M8 release-interface/evidence/checklist templates are kept in
+[`docs/release/`](docs/release/README.md). Supplier traceability and explicitly non-gating future
+assembly observations are kept in [`docs/portfolio/`](docs/portfolio/SOURCE_TRACEABILITY.md).
 
 ## Binding order
 
@@ -371,6 +400,7 @@ After bootstrapping, run all validation layers:
 py -3.14 tools/dev.py validate-schemas
 py -3.14 tools/dev.py validate-dependencies
 py -3.14 tools/dev.py validate-task-graph
+py -3.14 tools/dev.py validate-portfolio-boundary
 py -3.14 tools/dev.py validate-docs
 ```
 
@@ -383,6 +413,11 @@ keys.
 Documentation validation checks
 supported local Markdown links/anchors and decision, task, and security references without retrieving
 network content.
+
+Portfolio-boundary validation uses structured TOML, lock, dependency-inventory, Python AST,
+runtime-schema, Markdown-metadata, task-graph, and bundle-manifest inspection. It rejects a
+ThirdLife runtime or production interface, missing or wrong-stage portfolio documents, lost M8
+release ownership, and stale roadmap-bundle hashes without reading a sibling repository.
 
 Graph validation must additionally confirm:
 

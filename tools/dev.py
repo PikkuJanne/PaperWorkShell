@@ -173,6 +173,10 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.validate_docs"),
         "Validate local documentation links and security references offline.",
     ),
+    "validate-portfolio-boundary": CommandSpec(
+        ("python", "-m", "tools.validate_portfolio_boundary"),
+        "Validate standalone ThirdLife late-binding governance and release ownership.",
+    ),
     "validate-m1-benchmark-report": CommandSpec(
         ("python", "-m", "tools.m1_vertical_slice_benchmark", "validate"),
         "Validate the constrained-profile M1 vertical-slice evidence schema.",

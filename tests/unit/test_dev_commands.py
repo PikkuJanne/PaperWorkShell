@@ -41,6 +41,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "validate-dependencies",
             "validate-task-graph",
             "validate-docs",
+            "validate-portfolio-boundary",
             "validate-m1-benchmark-report",
             "validate-pws0208-resource-workload",
             "validate-pdf-renderer-benchmark",
@@ -75,6 +76,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertIn("validate-fixtures", CHECK_COMMANDS)
         self.assertIn("validate-pdf-renderer-benchmark", CHECK_COMMANDS)
         self.assertIn("validate-pws0208-resource-workload", CHECK_COMMANDS)
+        self.assertIn("validate-portfolio-boundary", CHECK_COMMANDS)
         self.assertIn("quality-self-test", CHECK_COMMANDS)
         self.assertEqual(
             ("python", "-m", "mypy", "src", "tools", "tests"),

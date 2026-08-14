@@ -268,3 +268,35 @@ Add the lowest-level deterministic regression first, including at least one budg
 
 Report measured software budgets honestly. Never describe the result as emulation or certification of a named CPU count, RAM size, GPU, SSD, HDD, VM, or physical computer unless that exact environment was actually tested. Physical-device smoke testing is optional and non-gating.
 ```
+
+---
+
+## 12. Review a portfolio-sensitive task
+
+Use this before work involving releases, installers, updates, launch/open behavior, data locations,
+support artifacts, interoperability, or a proposed suite-facing surface.
+
+```text
+Review this PaperWorkShell task for ThirdLife portfolio-boundary impact: <TASK_OR_CHANGE>
+
+Read DECISIONS.md, ROADMAP.md, TASKS.yaml, AGENTS.md, THIRDLIFE_ALIGNMENT.md, and the active task.
+Remain inside the PaperWorkShell repository; do not inspect a sibling repository or active branch.
+
+Before editing, confirm that the work:
+- is independently useful to PaperWorkShell users, testing, support, accessibility, or administration
+- preserves complete standalone operation with ThirdLife absent
+- creates no live sibling source, runtime, database, service, build, test, or release dependency
+- uses ordinary files, public packaged behavior, normal launch/opening, and manual export/import first
+- does not add a speculative shared SDK, schema, service, CLI, URI, RPC, plugin framework, or handoff format
+- leaves every future ThirdLife adapter optional, removable, version-bounded, and owned by B4
+- keeps data storage/lifecycle, versions, migrations, and deletion implementation product-local while users retain control of their content
+
+Identify security/privacy, accessibility, low-resource, packaging, migration, maintenance,
+data-ownership, and release-interface impact. Put non-gating future assembly observations in
+docs/portfolio/THIRDLIFE_FUTURE_NOTES.md rather than TASKS.yaml. Keep unproved release facts in
+docs/release/RELEASE_INTERFACE.md and docs/release/RELEASE_EVIDENCE.md as TBD.
+
+Stop for a frozen-decision proposal if the change would redesign the product boundary or create a
+permanent integration lane. In the completion report, state the boundary and release-interface
+impact even when both are "none".
+```

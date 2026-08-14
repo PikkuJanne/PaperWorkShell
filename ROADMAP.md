@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Roadmap version | 0.2.0 |
+| Roadmap version | 0.3.0 |
 | Status | **Binding** |
 | Product name | **PaperWorkShell** |
 | Planning model | Dependency-based milestones with explicit exit gates |
 | First pilot release | v0.1 after Milestone 4 |
 | Hardened public release target | v1.0 after Milestone 8 |
-| Last amended | 2026-08-12 |
+| Last amended | 2026-08-14 |
 
 This roadmap is the main execution contract for PaperWorkShell. It converts the product concept into an implementation sequence that a coding agent can follow one task at a time. `TASKS.yaml` is the executable task graph; this document explains the intent, sequencing, gates, and non-negotiable outcomes behind that graph.
 
@@ -81,6 +81,16 @@ The v0.1 pilot MUST NOT advertise permanent redaction, digital signing, qualifie
 
 A hardened v1.0 requires completion of all milestones, including the redaction security gate, accessibility and assisted-mode gate, signed packaging, dependency inventory, migration tests, and release-candidate validation.
 
+### 1.6 ThirdLife portfolio position and product boundary
+
+PaperWorkShell is the independently useful Team A / A1 product in the ThirdLife portfolio. It establishes Team A's discipline for safe file intake and transformation, reviewable preview and export, interruption recovery, accessibility, and bounded low-resource behavior. PaperWorkShell and ThirdLife Setup Core are developed independently and do not block one another.
+
+PaperWorkShell owns document intake; cleanup and local OCR orchestration; page and document ordering; visual marks and text overlays; permanent redaction only after its separate security gate; compression and portal-constraint checking; naming and packaging; checklists and summaries; immutable source preservation; and document-workspace recovery. Its product data includes user-selected sources, immutable imported copies and hashes, derived pages and previews, case and operation metadata, overlays, assignments and confirmations, temporary processing artifacts, exports, application configuration, sanitized logs, and user-authorized support evidence. The user remains in control of that local content and its retention.
+
+PaperWorkShell does not own resume or cover-letter authoring, job-application tracking, transcription, scam assessment, device or software management, organizational cybersecurity assessment, backup repositories or recovery-key custody, official portal submission, legal advice, eligibility decisions, acceptance guarantees, ThirdLife profiles or catalogue metadata, compatibility matrices, or adapter maintenance.
+
+The complete PaperWorkShell workflow MUST remain local and usable without ThirdLife, a sibling application, a mandatory account, or a project-controlled server. It MUST export portable results, preserve sources, survive interruption, and pass hostile-input, privacy, accessibility, uninstall, recovery, provenance, and resource-budget gates as a standalone product. A change to the **Owns** or **Does not own** boundary requires an explicit maintainer-approved portfolio-alignment decision, not an incidental task edit.
+
 ---
 
 ## 2. Source-of-truth order
@@ -116,6 +126,36 @@ A lower item MUST NOT silently override a higher item. A conflict is resolved by
 | AI | Not required | Automatic decisions about whether a requirement is satisfied |
 | Telemetry | Off by default; no content telemetry | Silent analytics or document upload |
 | Legal/eligibility | Packaging guidance only | Legal advice, entitlement decisions, acceptance guarantees |
+| Portfolio integration | Standalone public product behavior and frozen release documentation | Live app-to-app dependency, shared platform, private-content access, or synchronized releases |
+
+### 3.1 Late-binding ThirdLife posture
+
+PaperWorkShell development contains no app-to-app integration requirement and no ThirdLife runtime, build, test, installation, or release prerequisite. Its tasks do not depend on a sibling repository, active branch, private fixture, service, database, or compatibility result. Composite portfolio journeys are future B4 acceptance ideas, not PaperWorkShell build dependencies.
+
+Only an exact frozen PaperWorkShell preview or stable release may enter future ThirdLife compatibility work. ThirdLife Deployment and Suite Assembly owns later catalogue entries, profiles, compatibility rules, workarounds, and optional version-bounded adapters. The suite adapts to the released product; PaperWorkShell does not become a component of a monolith. PaperWorkShell versions and releases independently, and a stable release is not delayed because ThirdLife has not adopted it.
+
+Future permitted shallow actions are limited to documented installation, update or removal, normal launch, optional user-visible file association, opening an explicitly user-selected supported file or documented workspace, and human guidance. Every action retains a normal PaperWorkShell manual path. Opening never bypasses PaperWorkShell consent and import checks or transfers content ownership.
+
+### 3.2 Minimal standalone release envelope
+
+Preview and stable candidates MUST publish a small human-readable black-box envelope tied to the exact release:
+
+- Stable product and reverse-domain application identity, independent version and channel, publisher, licence, supported Windows versions, and architectures
+- Installer or package identity, source revision, size, hashes, signatures or verification, privileges, restart, repair, update, rollback, and removal behavior
+- Exact configuration, case, immutable-original, derived, cache, temporary, optional engine or language-data, log, support-bundle, migration-backup, and export locations with retention and uninstall residue by category
+- Supported ordinary inputs and outputs; documented copying, conversion, flattening, reconstruction, or reference behavior; and workspace or project opening only where independently supported
+- Normal launch, user-visible file-opening and optional file-association behavior, with unsupported CLI or project-export behavior stated honestly rather than invented
+- A local, opt-in, previewable, sanitized support bundle; known limitations; reporting route; supported-version and maintenance information
+- Non-sensitive synthetic inputs, a representative workspace or project artifact where applicable, expected outputs and summaries, expected-behavior notes, and SHA-256 hashes
+- A completed versioned `docs/release/RELEASE_INTERFACE.md`, a matching `docs/release/RELEASE_EVIDENCE.md`, and `docs/release/STANDALONE_RELEASE_CHECKLIST.md` frozen with the candidate
+
+Unknown facts remain `TBD` until real packaged-build evidence exists. A release may state “not supported” with a reason instead of creating a speculative interface. The release interface is documentation, not a shared runtime schema or application API.
+
+### 3.3 Explicit portfolio-integration non-goals
+
+PaperWorkShell MUST NOT add a shared user-content database or workspace, SDK, universal job engine, plugin framework, findings or handoff schema, background service, monorepo requirement, cross-repository import, synchronized version, live development-branch integration test, or cross-team release gate. It MUST NOT give ThirdLife access to documents, OCR text, overlays, signatures, redaction state, private manifests, routine logs, or cases, and ThirdLife MUST NOT migrate PaperWorkShell data.
+
+A CLI, URI, RPC command, file association, machine-readable export, or manifest field MUST have independent PaperWorkShell user, testing, support, accessibility, or administration value and its own local approval. Hypothetical sibling convenience is not sufficient. Future adapter ideas belong in non-gating notes until ThirdLife B4 evaluates them against a frozen release.
 
 ---
 
@@ -303,7 +343,7 @@ These apply to every milestone:
 | M5 — Compression and compatibility | Portal robustness | Target-size policy, sanitization inspection, viewer profile | `PWS-0507` |
 | M6 — Permanent redaction | Security-gated capability | Reconstructed pages, adversarial verification, blocked failure | `PWS-0608` |
 | M7 — Accessibility, localization, assisted mode | Inclusive pilot readiness | Keyboard, NVDA, scaling, consent, retention controls | `PWS-0707` |
-| M8 — Release hardening | **v1.0 candidate** | Installer, updates, SBOM, migrations, documentation, RC matrix | `PWS-0808` |
+| M8 — Release hardening | **v1.0 candidate** | Signed standalone package, updates, SBOM, migrations, black-box release envelope, RC matrix | `PWS-0808` |
 
 The primary critical path is:
 
@@ -505,7 +545,7 @@ Make the complete primary workflow operable by keyboard and screen reader, and s
 
 ### Objective
 
-Produce a supportable, signed, updateable, and migratable Windows release.
+Produce a supportable, signed, updateable, migratable, and independently verifiable Windows release with the public black-box envelope needed by deployers and a future ThirdLife B4 compatibility cut.
 
 ### Exit criteria
 
@@ -519,6 +559,14 @@ Produce a supportable, signed, updateable, and migratable Windows release.
 - Security reporting, vulnerability handling, user documentation, and support documentation are published.
 - The release-candidate matrix passes supported readers, packaged-build resource budgets, low disk, slow I/O, interruption, migration, accessibility, and security tests.
 - Optional physical-device observations may be recorded when available, but are non-gating and cannot be described as certification unless that exact hardware was tested.
+- Stable application identity, install, launch, supported file opening, update or repair, removal, privilege, file-association policy, data preservation, and uninstall residue are documented and tested against the exact packaged candidate.
+- Exact configuration, case, immutable-original, derived, cache, temporary, optional engine or language-data, log, support-bundle, migration-backup, and export locations and retention are documented without exposing private machine paths.
+- `docs/release/RELEASE_INTERFACE.md` is complete for the exact candidate, and every unknown is resolved from evidence or marked “not supported” with a reason.
+- `docs/release/RELEASE_EVIDENCE.md` indexes current packaged-build results, artifact and sample hashes, known limitations, and the matching interface revision.
+- A non-sensitive synthetic black-box package contains representative inputs, a workspace or project artifact where independently supported, expected outputs and summaries, expected-behavior notes, and hashes.
+- Clean install, standard-user launch, supported-file opening, offline workflow, update or repair, failure recovery, uninstall with preserved cases, reinstall and reopen, explicit data removal, and optional file-association cleanup pass using only public PaperWorkShell behavior.
+- The exact release works with ThirdLife absent and requires no sibling source, service, process, fixture, database, adapter, or compatibility result.
+- The completed interface, evidence index, standalone checklist, samples, known limitations, and artifact inventory are frozen together. A future ThirdLife compatibility claim remains a separate B4 decision.
 
 ---
 
@@ -621,6 +669,7 @@ Parallel work is permitted only when tasks have no incomplete dependencies and d
 | Portal templates become stale | Rejected uploads | Version, verification date, expiry, human-readable rules, no executable updates |
 | Logs leak content | Privacy breach | Stable IDs, prohibited-field tests, user-previewed diagnostics |
 | Scope expansion | Delayed core workflow | Enforce frozen non-goals and milestone gates |
+| Premature portfolio coupling | Privacy exposure, brittle releases, blocked standalone work | Project-local dependencies, frozen black-box artifacts, ordinary files first, and ThirdLife-owned optional adapters |
 
 ---
 

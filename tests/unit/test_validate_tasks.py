@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import re
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -54,10 +55,17 @@ class TaskValidationTests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertIsNotNone(summary)
         assert summary is not None
-        self.assertEqual(81, summary.task_count)
-        self.assertEqual(240, summary.dependency_count)
-        self.assertEqual(9, summary.milestone_count)
-        self.assertEqual(41, summary.decision_count)
+        tasks = cast(list[dict[str, Any]], self.data["tasks"])
+        self.assertEqual(len(tasks), summary.task_count)
+        self.assertEqual(
+            sum(len(cast(list[object], task["depends_on"])) for task in tasks),
+            summary.dependency_count,
+        )
+        self.assertEqual(len(cast(list[object], self.data["milestones"])), summary.milestone_count)
+        self.assertEqual(
+            len(re.findall(r"^## PWS-D[0-9]{3}\b", self.decisions, re.MULTILINE)),
+            summary.decision_count,
+        )
 
     def test_unknown_dependency_fails(self) -> None:
         data = copy.deepcopy(self.data)
@@ -162,7 +170,9 @@ class TaskValidationTests(unittest.TestCase):
             result = main(["--root", str(ROOT)])
 
         self.assertEqual(0, result)
-        self.assertIn("81 tasks, 240 dependencies", stdout.getvalue())
+        tasks = cast(list[dict[str, Any]], self.data["tasks"])
+        dependency_count = sum(len(cast(list[object], task["depends_on"])) for task in tasks)
+        self.assertIn(f"{len(tasks)} tasks, {dependency_count} dependencies", stdout.getvalue())
         self.assertEqual("", stderr.getvalue())
 
     def test_schema_only_does_not_require_decisions_file(self) -> None:

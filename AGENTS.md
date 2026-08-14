@@ -10,7 +10,9 @@ Read these files in order before making changes:
 2. `ROADMAP.md`
 3. `TASKS.yaml`
 4. This `AGENTS.md`
-5. The code, tests, schemas, and ADRs relevant to the selected task
+5. For portfolio-sensitive, release, packaging, installer, update, data-location, or
+   interoperability work, `THIRDLIFE_ALIGNMENT.md`
+6. The code, tests, schemas, and ADRs relevant to the selected task
 
 Then identify one task ID and state it in the work log or completion report. Do not start from a broad milestone description when a task exists.
 
@@ -27,6 +29,38 @@ Repository authority is:
 7. Other documentation and comments
 
 Never code around a conflict. Preserve the higher-level contract and report the conflict. Do not edit a frozen decision unless the maintainer explicitly requests the decision-change procedure.
+
+### 2.1 Project vacuum and portfolio boundary
+
+PaperWorkShell is a standalone Team A / A1 product in the ThirdLife portfolio. The binding local
+rule is `PWS-D042`; `THIRDLIFE_ALIGNMENT.md` explains its portfolio provenance and release
+consequences. PaperWorkShell must remain complete when ThirdLife and every sibling application are
+absent.
+
+Unless an explicit ThirdLife B4 task authorizes work in the portfolio repository:
+
+- Stay inside the PaperWorkShell repository. Do not browse, clone, edit, test against, or depend on
+  sibling repositories, active branches, private fixtures, databases, or services.
+- Do not create a shared SDK, runtime schema, user-content database, workspace, service,
+  background agent, plugin framework, universal job engine, cross-repository import, or synchronized
+  release requirement.
+- Do not implement a ThirdLife adapter in PaperWorkShell. Future catalogue entries, profiles,
+  compatibility rules, adapters, and workarounds belong to ThirdLife Deployment and Suite Assembly
+  B4 and must consume exact frozen public artifacts.
+- Do not add a feature, CLI option, URI, RPC operation, file association, or machine-readable export
+  solely for a future sibling. It needs independently demonstrated PaperWorkShell user, testing,
+  support, accessibility, or administration value and the normal local decision process.
+- Prefer ordinary files, normal interactive launch, user-visible opening, and manual export/import.
+  Removing a future adapter must always leave a complete normal PaperWorkShell path.
+- Keep PaperWorkShell versions and migrations independent. ThirdLife must not inspect, own, or
+  migrate PaperWorkShell cases, documents, OCR text, overlays, signatures, redaction state, or other
+  private product data.
+- Record non-gating assembly observations in
+  `docs/portfolio/THIRDLIFE_FUTURE_NOTES.md`; recording a note creates no task or dependency.
+- Treat `docs/release/RELEASE_INTERFACE.md` as versioned human-readable documentation, not code, a
+  shared API, or evidence that a compatibility cut exists. Leave unproved release facts `TBD`.
+- Stop and use the frozen-decision procedure if a suite idea would change the product boundary,
+  data ownership, or standalone architecture.
 
 ## 3. Task selection algorithm
 
@@ -55,6 +89,8 @@ For each task:
 2. **Plan**
    - Define the smallest coherent implementation that satisfies the task.
    - Identify security, privacy, accessibility, migration, and licensing effects.
+   - For portfolio-sensitive work, state the standalone-boundary, data-ownership, and
+     release-interface effects.
    - Name the tests that will prove completion.
 
 3. **Implement**
@@ -263,6 +299,7 @@ test-security
 test-accessibility
 validate-schemas
 validate-task-graph
+validate-portfolio-boundary
 ```
 
 Use repository-defined commands rather than inventing one-off invocations. Until those entry points exist, the bootstrap task may use direct Python module commands and must document them.
@@ -337,6 +374,8 @@ Before marking a task done, confirm:
 - [ ] Accessibility requirements are addressed for UI changes.
 - [ ] Security/resource limits are addressed for document-processing changes.
 - [ ] Documentation, schemas, and ADRs are updated.
+- [ ] Portfolio-sensitive work preserves standalone operation, creates no live sibling dependency,
+      and records its release-interface impact.
 - [ ] `TASKS.yaml` status and evidence are updated.
 - [ ] The completion report names the next ready task.
 
@@ -360,6 +399,9 @@ Use this structure after each task:
 
 ### Security/privacy/accessibility notes
 - ...
+
+### Portfolio boundary and release-interface notes
+- Standalone usefulness, data ownership, sibling dependencies, and release-document impact
 
 ### Residual risks or deferrals
 - None, or a precise statement linked to a task/ADR
