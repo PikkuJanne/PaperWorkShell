@@ -67,6 +67,11 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfVerificationReport,
     build_searchable_pdf_export_plan,
 )
+from paperworkshell.domain.signed_source_policy import (
+    SIGNED_SOURCE_CONFIRMATION_CODE,
+    SignedSourcePolicyError,
+    SignedSourcePolicyErrorCode,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CASE_ID = UUID("10000000-0000-4000-8000-000000000002")
@@ -468,6 +473,77 @@ def test_service_commits_verified_mixed_candidate_and_reuses_history_v1() -> Non
     assert retries.lease.closed
     assert progress[0].completed_pages == 0
     assert progress[-1].completed_pages == outcome.report.plan.page_count
+
+
+@pytest.mark.parametrize(
+    ("confirmation_state", "expected_code"),
+    (
+        ("missing", SignedSourcePolicyErrorCode.CONFIRMATION_REQUIRED),
+        ("withdrawn", SignedSourcePolicyErrorCode.CONFIRMATION_REQUIRED),
+        ("wrong_statement", SignedSourcePolicyErrorCode.CONFIRMATION_REQUIRED),
+        ("duplicate", SignedSourcePolicyErrorCode.CONFIRMATION_AMBIGUOUS),
+    ),
+)
+def test_signed_source_policy_stops_before_capacity_history_source_or_broker(
+    confirmation_state: str,
+    expected_code: SignedSourcePolicyErrorCode,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, sources, broker, destination, history, retries = _service()
+    original = _snapshot()
+    document = original.document
+    confirmations = document["confirmations"]
+    assert type(confirmations) is list
+    matching = [
+        value
+        for value in confirmations
+        if type(value) is dict and value.get("confirmation_code") == SIGNED_SOURCE_CONFIRMATION_CODE
+    ]
+    assert len(matching) == 1
+    if confirmation_state == "missing":
+        confirmations.remove(matching[0])
+    elif confirmation_state == "withdrawn":
+        matching[0]["state"] = "withdrawn"
+    elif confirmation_state == "wrong_statement":
+        matching[0]["statement_version"] = 2
+    else:
+        duplicate = dict(matching[0])
+        duplicate["confirmation_id"] = "a0000000-0000-4000-8000-000000000099"
+        scope = matching[0]["scope"]
+        assert type(scope) is dict
+        duplicate["scope"] = dict(scope)
+        confirmations.append(duplicate)
+    changed = ManifestSnapshot(
+        original.case_id,
+        original.schema_version,
+        original.revision,
+        document,
+        original.sha256,
+        original.cas_token,
+    )
+
+    def load_changed(_manifests: _Manifests, case_id: UUID) -> ManifestLoadResult:
+        assert case_id == CASE_ID
+        return ManifestLoadResult(ManifestLoadStatus.CURRENT, changed)
+
+    monkeypatch.setattr(_Manifests, "load", load_changed)
+
+    with pytest.raises(SignedSourcePolicyError) as raised:
+        service.export_pdf(
+            CASE_ID,
+            DESTINATION,
+            deadline=lambda: False,
+            cancellation=lambda: False,
+        )
+
+    assert raised.value.code is expected_code
+    assert destination.capacity_calls == 0
+    assert destination.commit_calls == 0
+    assert history.reserved_id_calls == 0
+    assert history.bindings == []
+    assert sources.borrow_calls == 0
+    assert broker.export_calls == 0
+    assert retries.lease is None
 
 
 def test_low_disk_preflight_stops_before_authoritative_work_and_retry_succeeds(

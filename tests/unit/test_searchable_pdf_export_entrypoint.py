@@ -87,6 +87,15 @@ def test_searchable_config_uses_exact_combined_authority_and_central_policy(
     )
     assert config.broker_policy.limits == limits
     assert config.broker_policy.status_capacity_bytes == 2 * 1024 * 1024
+    assert config.maximum_active_full_resolution_page_buffers == (
+        CONSTRAINED_RESOURCE_POLICY_V1.maximum_active_full_resolution_page_buffers
+    )
+    assert config.resource_sampling_interval_ms == (
+        CONSTRAINED_RESOURCE_POLICY_V1.resource_sampling_interval_ms
+    )
+    assert config.broker_policy.pump_interval_seconds == (
+        CONSTRAINED_RESOURCE_POLICY_V1.resource_sampling_interval_ms / 1_000
+    )
     assert (
         2 * limits.output_bytes
     ) + config.broker_policy.status_capacity_bytes < limits.temporary_storage_bytes

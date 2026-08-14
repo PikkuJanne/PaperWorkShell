@@ -657,6 +657,54 @@ def test_unsigned_derivative_claim_names_only_the_authenticated_signature_reason
     assert plan.contains_signature_uncertainty is (not contains_markers)
 
 
+@pytest.mark.parametrize("signature", ("markers_detected", "unknown"))
+@pytest.mark.parametrize("status", tuple(PdfExportOutcomeStatus))
+def test_signed_or_unknown_searchable_outcome_foregrounds_unsigned_derivative(
+    signature: str,
+    status: PdfExportOutcomeStatus,
+) -> None:
+    document = _document()
+    _source_record(document, PDF_SOURCE_ID)["signature_state"] = signature
+    plan = build_searchable_pdf_export_plan(_snapshot(document))
+    page_outcomes = (
+        _outcome(
+            plan,
+            0,
+            SearchablePdfPageEligibilityCode.OCR_REQUIRED_IMAGE_SOURCE,
+            SearchablePdfPageOutcomeCode.OCR_TEXT_VERIFIED,
+        ),
+        _outcome(
+            plan,
+            1,
+            SearchablePdfPageEligibilityCode.OCR_BLOCKED_SIGNATURE_STATE,
+            SearchablePdfPageOutcomeCode.OCR_BLOCKED_SIGNED_SOURCE_RETAINED,
+        ),
+    )
+    report = SearchablePdfVerificationReport.for_verified_plan(
+        plan,
+        output_sha256="d" * 64,
+        output_byte_size=8_192,
+        page_outcomes=page_outcomes,
+    )
+    outcome = SearchablePdfExportOutcome(
+        _committed_outcome(report.base_report, status=status),
+        report,
+    )
+
+    assert outcome.safe_message.startswith("Unsigned derivative: ")
+    base_unsigned_claim = next(
+        check.claim
+        for check in outcome.checks
+        if check.code is PdfExportCheckCode.UNSIGNED_DERIVATIVE
+    )
+    assert "or its marker state could not be confirmed" in base_unsigned_claim
+    assert "saved" in outcome.safe_message.casefold()
+    if status is PdfExportOutcomeStatus.COMMITTED_RECORDED:
+        assert "recorded in case history" in outcome.safe_message
+    else:
+        assert "does not need to be exported again" in outcome.safe_message
+
+
 def test_report_rejects_page_order_fingerprint_count_and_unsigned_mismatch() -> None:
     plan = build_searchable_pdf_export_plan(_snapshot())
     outcomes = (

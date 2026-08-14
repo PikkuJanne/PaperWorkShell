@@ -66,6 +66,8 @@ from paperworkshell.worker.protocol.models import (
     CancelReason,
     CapabilityDescriptor,
     CaseObjectReference,
+    ErrorCategory,
+    ErrorCode,
     OperationOutcome,
     OperationStartPayload,
     ProgressStage,
@@ -416,6 +418,8 @@ class _Worker:
         self.capabilities = (SEARCHABLE_PDF_EXPORT_CAPABILITY,)
         self.withhold_result = False
         self.outcome = OperationOutcome.SUCCEEDED
+        self.error_code: ErrorCode | None = None
+        self.error_category: ErrorCategory | None = None
         self.reverse_outputs = False
         self.status_object_override: UUID | None = None
         self.status_digest_override: str | None = None
@@ -557,7 +561,8 @@ class _Worker:
             operation_id,
             self.outcome,
             outputs if self.outcome is OperationOutcome.SUCCEEDED else (),
-            None,
+            self.error_code,
+            self.error_category,
         )
         return operation_id
 
@@ -992,6 +997,21 @@ def test_policy_and_operation_limits_reserve_both_staging_sections() -> None:
     error = _error(system)
     assert error.code is PdfExportErrorCode.LIMIT_EXCEEDED
     assert system.buffer_factory_calls == 0
+
+
+def test_correlated_worker_resource_limit_maps_to_retryable_export_limit() -> None:
+    system = _System()
+    system.worker.outcome = OperationOutcome.FAILED
+    system.worker.error_code = ErrorCode.WORKER_OPERATION_FAILED
+    system.worker.error_category = ErrorCategory.RESOURCE_LIMIT
+
+    error = _error(system)
+
+    assert error.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert error.context == "searchable.worker_resource_limit"
+    assert system.worker.terminated
+    assert system.output.close_calls == 1
+    assert system.status.close_calls == 1
 
 
 def test_permanent_revocation_fails_before_allocating_or_launching() -> None:

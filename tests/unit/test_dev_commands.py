@@ -42,10 +42,12 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "validate-task-graph",
             "validate-docs",
             "validate-m1-benchmark-report",
+            "validate-pws0208-resource-workload",
             "validate-pdf-renderer-benchmark",
             "scan-secrets",
             "quality-self-test",
             "run-m1-vertical-slice",
+            "run-pws0208-resource-workload",
             "benchmark-pdf-renderers",
         }
 
@@ -65,12 +67,14 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertEqual(expected, CHECK_COMMANDS)
         self.assertNotIn("format", CHECK_COMMANDS)
         self.assertNotIn("run-m1-vertical-slice", CHECK_COMMANDS)
+        self.assertNotIn("run-pws0208-resource-workload", CHECK_COMMANDS)
         self.assertNotIn("benchmark-pdf-renderers", CHECK_COMMANDS)
         self.assertNotIn("generate-fixtures", CHECK_COMMANDS)
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)
         self.assertIn("format-check", CHECK_COMMANDS)
         self.assertIn("validate-fixtures", CHECK_COMMANDS)
         self.assertIn("validate-pdf-renderer-benchmark", CHECK_COMMANDS)
+        self.assertIn("validate-pws0208-resource-workload", CHECK_COMMANDS)
         self.assertIn("quality-self-test", CHECK_COMMANDS)
         self.assertEqual(
             ("python", "-m", "mypy", "src", "tools", "tests"),

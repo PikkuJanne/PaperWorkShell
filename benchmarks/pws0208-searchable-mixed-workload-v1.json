@@ -1,0 +1,41 @@
+{
+  "workload_id": "pws0208-searchable-mixed-incremental",
+  "workload_version": 1,
+  "policy_profile": "constrained",
+  "policy_version": 1,
+  "source_count": 3,
+  "page_count": 12,
+  "sources": [
+    {
+      "fixture_id": "pdf-ocr-readable-mixed",
+      "sha256": "27cd473b273d4b7fe6ea8183e39a5b4523f66021b5b3208fad5499084fc02f3a",
+      "derivation": "append pages 0 then 1, repeated five times"
+    },
+    {
+      "fixture_id": "png-ocr-raster-text",
+      "sha256": "f2976a85d04b992bd690d8a2b70faf8444197d87ce58a7a5687a778c97f3fd82",
+      "derivation": "one image page"
+    },
+    {
+      "fixture_id": "pdf-signed-marker",
+      "sha256": "520a27e1952cdad2d936729041dd28c7ce7bbb150510cac9ab7481485976c3e4",
+      "derivation": "one retained marker-present PDF page"
+    }
+  ],
+  "signed_source_confirmation": {
+    "confirmation_code": "signed-source-unsigned-derivative",
+    "statement_version": 1
+  },
+  "scheduler": {
+    "maximum_active_full_resolution_page_buffers": 1,
+    "maximum_active_page_results": 1
+  },
+  "sampling_interval_ms": 50,
+  "active_page_measurement_scope": "focused-production-adapter-instrumentation",
+  "scenarios": [
+    "confirmed-success",
+    "cancel-after-four-pages",
+    "one-byte-output-limit",
+    "fresh-retry"
+  ]
+}

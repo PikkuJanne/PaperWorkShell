@@ -14,6 +14,7 @@ from paperworkshell.worker.client.errors import (
     WorkerClientErrorCode,
 )
 from paperworkshell.worker.client.models import (
+    WorkerPrivateTempSnapshot,
     WorkerResourceSnapshot,
     WorkerTimeoutPolicy,
 )
@@ -78,6 +79,7 @@ class _Process:
         )
         self.observed: WorkerResourceSnapshot | object = initial
         self.raise_on_observation = False
+        self.termination_failures_remaining = 0
 
     def poll(self) -> int | None:
         return None
@@ -94,6 +96,9 @@ class _Process:
 
     def terminate_tree(self) -> None:
         self.events.append("process.terminate")
+        if self.termination_failures_remaining:
+            self.termination_failures_remaining -= 1
+            raise OSError("C:/private/applicant-termination-canary.pdf")
 
     def close(self) -> None:
         self.events.append("process.close")
@@ -113,7 +118,24 @@ class _Launcher:
         return self.process
 
 
-def _client(process: _Process) -> WorkerClient:
+class _TempProcess(_Process):
+    def __init__(self, values: list[int]) -> None:
+        super().__init__(_snapshot(process_peak=1_000, job_peak=2_000))
+        self.temp_values = values
+        self.raise_on_temp_observation = False
+
+    def private_temp_bytes(self) -> int:
+        self.events.append("process.private_temp_bytes")
+        if self.raise_on_temp_observation:
+            raise OSError("C:/private/applicant-temp-canary.pdf")
+        return self.temp_values.pop(0)
+
+
+def _client(
+    process: _Process,
+    *,
+    resource_sampling_interval_ms: int | None = None,
+) -> WorkerClient:
     return WorkerClient(
         _Launcher(process),
         _resource_policy(),
@@ -122,6 +144,7 @@ def _client(process: _Process) -> WorkerClient:
             cancellation_grace_seconds=1.0,
             shutdown_grace_seconds=1.0,
         ),
+        resource_sampling_interval_ms=resource_sampling_interval_ms,
     )
 
 
@@ -155,6 +178,87 @@ def test_resource_snapshot_is_immutable_and_monotonic_contract_is_exact() -> Non
     assert "path" not in repr(later).casefold()
     with pytest.raises(FrozenInstanceError):
         later.peak_job_memory_used_bytes = 6  # type: ignore[misc]
+
+
+def test_private_temp_snapshot_is_numeric_immutable_and_monotonic() -> None:
+    earlier = WorkerPrivateTempSnapshot(10, 1, 50, True)
+    later = WorkerPrivateTempSnapshot(20, 2, 50, True)
+    incomplete = WorkerPrivateTempSnapshot(20, 2, 50, False)
+
+    assert later.is_monotonic_successor_of(earlier)
+    assert incomplete.is_monotonic_successor_of(later)
+    assert not later.is_monotonic_successor_of(incomplete)
+    assert "path" not in repr(later).casefold()
+    with pytest.raises(FrozenInstanceError):
+        later.sampled_peak_bytes = 30  # type: ignore[misc]
+
+
+def test_client_retains_sampled_private_temp_high_water_after_termination() -> None:
+    process = _TempProcess([3, 10, 4])
+    client = _client(process, resource_sampling_interval_ms=50)
+
+    client.start(uuid4())
+    assert client.private_temp_snapshot() == WorkerPrivateTempSnapshot(10, 2, 50, True)
+    client.terminate()
+
+    assert client.private_temp_snapshot() == WorkerPrivateTempSnapshot(10, 3, 50, True)
+    assert client.query().last_private_temp_snapshot == WorkerPrivateTempSnapshot(
+        10,
+        3,
+        50,
+        True,
+    )
+
+
+def test_close_fallback_cannot_make_pretermination_sampling_complete() -> None:
+    process = _TempProcess([3, 10])
+    process.termination_failures_remaining = 1
+    client = _client(process, resource_sampling_interval_ms=50)
+
+    client.start(uuid4())
+    client.terminate()
+
+    assert process.events[:3] == [
+        "process.private_temp_bytes",
+        "process.terminate",
+        "process.private_temp_bytes",
+    ]
+    assert client.private_temp_snapshot() == WorkerPrivateTempSnapshot(10, 2, 50, False)
+    assert client.resource_snapshot() is None
+
+
+def test_private_temp_sampling_uncertainty_is_sticky_and_sanitized() -> None:
+    process = _TempProcess([5])
+    client = _client(process, resource_sampling_interval_ms=50)
+    client.start(uuid4())
+    process.raise_on_temp_observation = True
+
+    with pytest.raises(WorkerClientError) as raised:
+        client.private_temp_snapshot()
+
+    assert raised.value.code is WorkerClientErrorCode.RESOURCE_REPORT_FAILED
+    assert "applicant" not in str(raised.value).casefold()
+    assert client.query().last_private_temp_snapshot == WorkerPrivateTempSnapshot(
+        5,
+        1,
+        50,
+        False,
+    )
+    client.terminate()
+
+
+def test_private_temp_sampling_is_disabled_unless_policy_interval_is_bound() -> None:
+    process = _TempProcess([5])
+    client = _client(process)
+
+    client.start(uuid4())
+    with pytest.raises(WorkerClientError) as raised:
+        client.private_temp_snapshot()
+
+    assert raised.value.code is WorkerClientErrorCode.RESOURCE_REPORT_FAILED
+    assert client.query().last_private_temp_snapshot is None
+    assert process.temp_values == [5]
+    client.terminate()
 
 
 def test_client_caches_a_terminal_snapshot_before_process_authority_closes() -> None:

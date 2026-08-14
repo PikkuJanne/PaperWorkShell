@@ -104,7 +104,33 @@ The result is selected into the current output page or rejected, then the comple
 page directory is removed before the next page begins. Page-result bytes, decoded rasters, and
 extracted strings are never accumulated for the packet. Only the bounded content-free page-status
 tuple persists until final verification.
-PWS-0208 owns the incremental mixed-job scheduler and measured large-job process-tree evidence.
+
+PWS-0208 measures that incremental contract with workload
+`pws0208-searchable-mixed-incremental` version 1 and report family
+`pws0208-resource-evidence` version 1. The constrained workload must demonstrate
+`peak_active_full_resolution_page_buffers <= 1`, `peak_active_page_results <= 1`, the selected
+process-tree/Job-memory and private-temp ceilings, the configured sampling interval, a complete
+private-temp measurement, and no unbounded page-result retention.
+`peak_worker_job_commit_bytes` is Windows Job commit accounting and must not be described as RSS;
+`peak_complete_process_tree_rss_bytes` is the separately sampled complete-tree RSS fact.
+`sampled_worker_private_temp_peak_bytes`, `worker_private_temp_sampling_interval_ms`,
+`worker_private_temp_sample_count`, and `worker_private_temp_measurement_complete` state the bounded
+sampled-temp claim explicitly. A mandatory close may still prove safe cleanup after an earlier
+tree-stop call fails, but that fallback cannot retroactively make the pre-close temp observation
+complete or make the pre-stop Job sample terminal. Such a run retains incomplete sampled-temp
+facts, discards the nonterminal Job sample, and cannot satisfy this evidence gate. Cancellation
+evidence additionally records
+`cancellation_acknowledgement_ms`, complete worker-tree termination, authenticated cleanup, and a
+successful fresh retry.
+The Windows AppContainer run produces the process, Job, and private-temp facts. The active-buffer
+and active-result peaks are independently observed at the production adapter's scheduler seam
+under the same exact workload and are labeled
+`focused-production-adapter-instrumentation`; they are not claimed to cross worker RPC v1.
+The repository-owned recipe is
+[`pws0208-searchable-mixed-workload-v1.json`](../../benchmarks/pws0208-searchable-mixed-workload-v1.json).
+`python -m tools.pws0208_resource_evidence <report>` validates a report after a focused Windows
+integration harness produces it; that validation command does not execute or simulate the live
+workload.
 
 ## Lazy work
 
@@ -192,7 +218,9 @@ honor its configured ceiling. It does not reserve physical disk space or guarant
 unrelated process cannot consume capacity afterward. Focused OCR tests reject a prospective
 capacity shortfall before staging, inject disk-full after a partial private source write, prove
 pinned-tree cleanup, and then complete a fresh retry. Exact/over-limit adapter coverage remains
-part of the boundary suite, and PWS-0208 still owns the measured constrained workload.
+part of the boundary suite. The PWS-0208 constrained workload measures the complete Job and
+parent-observed worker-private temp root; it does not replace the prospective admission checks or
+make a physical-device claim.
 
 For searchable mixed output, the destination and worker-private capacity probes additionally cover
 the final PDF, bounded plan/status sections, the current staged source/page, and the largest
@@ -227,6 +255,18 @@ The canonical resource report contains only:
 - Worker exit/recycle and recovery facts
 - Individual budget results and overall run status
 
-It never contains original filenames, full paths, OCR/document text, form values, extracted metadata, page or signature images, names, or addresses. Process-tree RSS sampling occurs at the configured interval and may miss extremely short-lived processes. Case-workspace peak evidence instead combines strict quiescent inventories with event-driven active quota-claim high-water; it is a conservative upper bound and may exceed the instantaneous physical byte count. Worker-private temporary storage remains prospectively bounded by each enforced operation limit but is not reported as a separate measured high-water. These limitations are stated in the current versioned report contract.
+The PWS-0208 report also binds workload/report versions, repository revision and policy version,
+exact OCRmyPDF/Tesseract/pikepdf/qpdf/pypdfium2/PDFium identities, phase and total durations,
+verified derivative byte size and SHA-256, complete-tree RSS, worker-process and worker-Job commit
+peaks, sampled private-temp facts, peak
+active full-resolution buffers/page results, cancellation acknowledgement, limit failure,
+cleanup, and retry results. Those fields use numeric or closed values and remain content-free.
 
-Duration is recorded but is not a hard gate across heterogeneous developer machines. Memory, cache, concurrency, disk, responsiveness, cancellation, privacy, and correctness are hard gates. A budget may not be raised merely to make a regression pass: first find the source of the regression, optimize or reject oversized work, and document any evidence-based amendment through an ADR.
+It never contains original filenames, full paths, OCR/document text, form values, extracted metadata, page or signature images, names, or addresses. `peak_complete_process_tree_rss_bytes` sampling may miss extremely short-lived processes; the separately recorded `peak_worker_job_commit_bytes` is Windows Job commit accounting and is not relabeled as RSS. Case-workspace peak evidence combines strict quiescent inventories with event-driven active quota-claim high-water; it is a conservative upper bound and may exceed the instantaneous physical byte count. PWS-0208's trusted parent samples the owned AppContainer temporary root on each pump and retains the final observation after termination. The report must mark that measurement incomplete if required observations cannot be made; a partial sample series cannot pass the temp budget. These limitations are stated in the current versioned report contract.
+
+Duration is recorded but is not a hard gate across heterogeneous developer machines. The
+PWS-0208 workflow is headless, so UI-heartbeat facts remain in the canonical UI-bearing M1 report
+rather than being invented for this narrower operation report. Memory, cache, concurrency, disk,
+responsiveness, cancellation, privacy, and correctness are hard gates. A budget may not be raised
+merely to make a regression pass: first find the source of the regression, optimize or reject
+oversized work, and document any evidence-based amendment through an ADR.

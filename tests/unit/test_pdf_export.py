@@ -4,7 +4,7 @@ import copy
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from typing import cast
 from uuid import UUID
 
@@ -29,6 +29,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgressPhase,
     PdfExportRotation,
     PdfExportSource,
+    PdfExportSourceSignatureState,
     PdfExportVerificationReport,
     build_pdf_export_plan,
 )
@@ -443,6 +444,41 @@ def test_encrypted_unchecked_unknown_and_inapplicable_pdf_states_are_rejected(
     _assert_error(code, lambda: build_pdf_export_plan(_snapshot(document)))
 
 
+@pytest.mark.parametrize("state", ("unknown", "not_checked"))
+def test_legacy_export_rejects_unconfirmed_signature_state_compatibly(state: str) -> None:
+    document = _document()
+    _source_record(document, 1)["signature_state"] = state
+
+    error = _assert_error(
+        PdfExportErrorCode.SOURCE_SIGNATURE_UNKNOWN,
+        lambda: build_pdf_export_plan(_snapshot(document)),
+    )
+
+    assert error.context == "plan.source_signature"
+    assert "could not confirm" in error.safe_message
+
+
+def test_legacy_plan_model_cannot_bypass_unknown_signature_rejection() -> None:
+    plan = build_pdf_export_plan(_snapshot())
+    unknown_source = replace(
+        plan.sources[0],
+        signature_state=PdfExportSourceSignatureState.UNKNOWN,
+    )
+
+    _assert_error(
+        PdfExportErrorCode.SOURCE_SIGNATURE_UNKNOWN,
+        lambda: PdfExportPlan(
+            case_id=plan.case_id,
+            manifest_revision=plan.manifest_revision,
+            manifest_sha256=plan.manifest_sha256,
+            manifest_cas_token=plan.manifest_cas_token,
+            sources=(unknown_source, *plan.sources[1:]),
+            pages=plan.pages,
+            profile=plan.profile,
+        ),
+    )
+
+
 def test_active_crop_is_rejected_but_crop_on_a_removed_page_is_not_export_intent() -> None:
     active = _document()
     cast(list[dict[str, object]], active["page_operations"]).append(
@@ -693,7 +729,7 @@ def test_successful_report_has_exact_checks_concrete_claims_and_unsigned_derivat
         "All 3 pages rendered with the verification profile.",
         "Rendered page order and rotations match the export plan for all 3 pages.",
         "The exported PDF is an unsigned derivative because at least one source "
-        "contained digital-signature markers.",
+        "contained digital-signature markers or its marker state could not be confirmed.",
     )
     claims = " ".join(report.claims).casefold()
     for prohibited in ("portal-ready", "accepted by", "legally valid", "still signed"):
@@ -782,6 +818,7 @@ def test_committed_outcomes_never_request_reexport(
     assert not outcome.export_retry_required
     assert outcome.checks[-1].code is PdfExportCheckCode.OUTPUT_COMMIT_REOPENED
     assert outcome.claims[-1] == "PaperWorkShell reopened the committed output successfully."
+    assert outcome.safe_message.startswith("Unsigned derivative: ")
     assert "saved" in outcome.safe_message.casefold()
     if history_retry:
         assert "does not need to be exported again" in outcome.safe_message

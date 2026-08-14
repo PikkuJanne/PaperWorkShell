@@ -18,6 +18,7 @@ from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
     CapabilityDescriptor,
     CaseObjectReference,
+    ErrorCategory,
     ErrorCode,
     OperationOutcome,
     ProgressStage,
@@ -162,6 +163,7 @@ class WorkerOperationResultSnapshot:
     outcome: OperationOutcome
     outputs: tuple[CaseObjectReference, ...]
     error_code: ErrorCode | None
+    error_category: ErrorCategory | None = None
 
     def __post_init__(self) -> None:
         if type(self.generation) is not int or not 1 <= self.generation <= MAX_SAFE_INTEGER:
@@ -183,6 +185,16 @@ class WorkerOperationResultSnapshot:
                 WorkerClientContext.PROTOCOL,
             )
         if self.error_code is not None and type(self.error_code) is not ErrorCode:
+            reject_client(
+                WorkerClientErrorCode.PROTOCOL_FAILED,
+                WorkerClientContext.PROTOCOL,
+            )
+        if self.error_category is not None and type(self.error_category) is not ErrorCategory:
+            reject_client(
+                WorkerClientErrorCode.PROTOCOL_FAILED,
+                WorkerClientContext.PROTOCOL,
+            )
+        if self.error_code is None and self.error_category is not None:
             reject_client(
                 WorkerClientErrorCode.PROTOCOL_FAILED,
                 WorkerClientContext.PROTOCOL,
@@ -238,6 +250,43 @@ class WorkerResourceSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkerPrivateTempSnapshot:
+    """Path-free sampled high-water facts for one worker-private temp tree."""
+
+    sampled_peak_bytes: int
+    sample_count: int
+    sampling_interval_ms: int
+    measurement_complete: bool
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.sampled_peak_bytes) is not int
+            or not 0 <= self.sampled_peak_bytes <= MAX_SAFE_INTEGER
+            or type(self.sample_count) is not int
+            or not 0 <= self.sample_count <= MAX_SAFE_INTEGER
+            or type(self.sampling_interval_ms) is not int
+            or not 1 <= self.sampling_interval_ms <= MAX_SAFE_INTEGER
+            or type(self.measurement_complete) is not bool
+            or (self.sample_count == 0 and self.sampled_peak_bytes != 0)
+        ):
+            reject_client(
+                WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                WorkerClientContext.RESOURCE,
+            )
+
+    def is_monotonic_successor_of(self, previous: WorkerPrivateTempSnapshot) -> bool:
+        """Return whether this extends the same sampled worker generation."""
+
+        return (
+            type(previous) is WorkerPrivateTempSnapshot
+            and self.sampling_interval_ms == previous.sampling_interval_ms
+            and self.sampled_peak_bytes >= previous.sampled_peak_bytes
+            and self.sample_count >= previous.sample_count
+            and (previous.measurement_complete or not self.measurement_complete)
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class WorkerClientSnapshot:
     """A local-only immutable view that never queries the process or transport."""
 
@@ -252,6 +301,7 @@ class WorkerClientSnapshot:
     last_result: WorkerOperationResultSnapshot | None
     last_failure: WorkerFailure | None
     last_resource_snapshot: WorkerResourceSnapshot | None = None
+    last_private_temp_snapshot: WorkerPrivateTempSnapshot | None = None
     last_cancellation_acknowledgement_ms: int | None = None
 
     def __post_init__(self) -> None:
@@ -303,6 +353,14 @@ class WorkerClientSnapshot:
         if (
             self.last_resource_snapshot is not None
             and type(self.last_resource_snapshot) is not WorkerResourceSnapshot
+        ):
+            reject_client(
+                WorkerClientErrorCode.CONFIGURATION_INVALID,
+                WorkerClientContext.STATE,
+            )
+        if (
+            self.last_private_temp_snapshot is not None
+            and type(self.last_private_temp_snapshot) is not WorkerPrivateTempSnapshot
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,

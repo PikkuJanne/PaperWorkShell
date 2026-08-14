@@ -175,6 +175,8 @@ _CURRENT_PROCESS_TOKEN: Final = -4
 _PROCESS_QUERY_LIMITED_INFORMATION: Final = 0x0000_1000
 _ERROR_ACCESS_DENIED: Final = 5
 _ERROR_FILE_NOT_FOUND: Final = 2
+_ERROR_PATH_NOT_FOUND: Final = 3
+_ERROR_HANDLE_EOF: Final = 38
 _ERROR_INVALID_PARAMETER: Final = 87
 
 _PROFILE_PREFIX: Final = "PaperWorkShell.Worker."
@@ -184,6 +186,8 @@ _MAX_PROFILE_NAME_CODEPOINTS: Final = 64
 _MAX_BOOTSTRAP_WRITE_ATTEMPTS: Final = 4
 _MAX_APPROVED_RESOURCE_ENTRIES: Final = 20_000
 _MAX_APPROVED_RESOURCE_DEPTH: Final = 64
+_MAX_PRIVATE_TEMP_ENTRIES: Final = 4_096
+_MAX_PRIVATE_TEMP_DEPTH: Final = 64
 _PROFILE_DELETE_ATTEMPTS: Final = 5
 _PROFILE_DELETE_RETRY_SECONDS: Final = 0.125
 _PROFILE_CLEANUP_ATTEMPTS: Final = 3
@@ -316,6 +320,13 @@ class _FileIdInfo(ctypes.Structure):
     _fields_ = [
         ("volume_serial_number", ctypes.c_ulonglong),
         ("file_id", _FileId128),
+    ]
+
+
+class _Win32FindStreamData(ctypes.Structure):
+    _fields_ = [
+        ("stream_size", ctypes.c_longlong),
+        ("stream_name", wintypes.WCHAR * 296),
     ]
 
 
@@ -4472,6 +4483,259 @@ def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> N
     _require_private_pycache_prefix(local_app_data)
 
 
+class _PrivateTempTreeChanged(Exception):
+    """Internal marker for one concurrent private-temp namespace change."""
+
+
+def _private_temp_tree_bytes(root: Path) -> int:
+    """Return numeric logical bytes from a bounded, no-follow private-temp scan."""
+
+    if (
+        not isinstance(root, Path)
+        or not root.is_absolute()
+        or _is_remote_or_device_path(root)
+        or _has_named_data_stream(root)
+    ):
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.temp_measure",
+            "Windows could not measure private worker temporary storage.",
+        )
+    for attempt in range(2):
+        try:
+            return _scan_private_temp_tree_bytes(root)
+        except _PrivateTempTreeChanged:
+            if attempt == 0:
+                continue
+        except OSError:
+            pass
+        break
+    _reject(
+        WindowsLaunchErrorCode.PROFILE_FAILED,
+        "profile.temp_measure",
+        "Windows could not measure private worker temporary storage.",
+    )
+
+
+def _scan_private_temp_tree_bytes(root: Path) -> int:
+    pending: list[tuple[Path, int]] = [(root, 0)]
+    entry_count = 0
+    total_bytes = 0
+    while pending:
+        directory, depth = pending.pop()
+        retained_directory, retained_info = _retain_private_temp_directory(directory)
+        try:
+            try:
+                before = os.lstat(directory)
+            except FileNotFoundError as error:
+                raise _PrivateTempTreeChanged from error
+            if (
+                not stat.S_ISDIR(before.st_mode)
+                or stat.S_ISLNK(before.st_mode)
+                or int(getattr(before, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
+            ):
+                raise OSError
+            if not _private_temp_stat_matches_retained_info(before, retained_info):
+                raise _PrivateTempTreeChanged
+            _require_no_private_temp_alternate_streams(
+                directory,
+                expected_size=0,
+                is_directory=True,
+            )
+            try:
+                with os.scandir(directory) as iterator:
+                    for entry in iterator:
+                        entry_count += 1
+                        if (
+                            entry_count > _MAX_PRIVATE_TEMP_ENTRIES
+                            or not entry.name
+                            or ":" in entry.name
+                            or Path(entry.path).parent != directory
+                        ):
+                            raise OSError
+                        try:
+                            info = os.lstat(entry.path)
+                        except FileNotFoundError as error:
+                            raise _PrivateTempTreeChanged from error
+                        if (
+                            stat.S_ISLNK(info.st_mode)
+                            or int(getattr(info, "st_file_attributes", 0))
+                            & _FILE_ATTRIBUTE_REPARSE_POINT
+                        ):
+                            raise OSError
+                        if stat.S_ISDIR(info.st_mode):
+                            if depth >= _MAX_PRIVATE_TEMP_DEPTH:
+                                raise OSError
+                            pending.append((Path(entry.path), depth + 1))
+                            continue
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size < 0:
+                            raise OSError
+                        _require_no_private_temp_alternate_streams(
+                            Path(entry.path),
+                            expected_size=info.st_size,
+                            is_directory=False,
+                        )
+                        total_bytes += info.st_size
+                        if total_bytes > MAX_SAFE_INTEGER:
+                            raise OSError
+            except FileNotFoundError as error:
+                raise _PrivateTempTreeChanged from error
+            try:
+                after = os.lstat(directory)
+            except FileNotFoundError as error:
+                raise _PrivateTempTreeChanged from error
+            if (
+                not os.path.samestat(before, after)
+                or before.st_mode != after.st_mode
+                or int(getattr(after, "st_file_attributes", 0)) & _FILE_ATTRIBUTE_REPARSE_POINT
+                or not _private_temp_stat_matches_retained_info(after, retained_info)
+            ):
+                raise _PrivateTempTreeChanged
+            retained_after = _query_retained_resource_info(retained_directory.value)
+            if (
+                retained_after.identity != retained_info.identity
+                or not retained_after.is_directory
+                or retained_after.is_reparse_point
+                or retained_after.delete_pending
+            ):
+                raise _PrivateTempTreeChanged
+            _require_no_private_temp_alternate_streams(
+                directory,
+                expected_size=0,
+                is_directory=True,
+            )
+        finally:
+            if not _close_owned_handle_bounded(retained_directory):
+                _quarantine_owned_handle(retained_directory)
+                _reject(
+                    WindowsLaunchErrorCode.CLEANUP_FAILED,
+                    "profile.temp_measure_handle",
+                    "Windows could not close private temporary-storage measurement authority.",
+                )
+    return total_bytes
+
+
+def _private_temp_stat_matches_retained_info(
+    observed: os.stat_result,
+    retained: _RetainedResourceInfo,
+) -> bool:
+    """Bind one path observation to the exact retained Windows file ID."""
+
+    retained_file_id = int.from_bytes(retained.identity[1], byteorder="little", signed=False)
+    return (
+        int(observed.st_dev) == retained.identity[0]
+        and int(observed.st_ino) > 0
+        and int(observed.st_ino) == retained_file_id
+        and stat.S_ISDIR(observed.st_mode) is retained.is_directory
+    )
+
+
+def _require_no_private_temp_alternate_streams(
+    path: Path,
+    *,
+    expected_size: int,
+    is_directory: bool,
+) -> None:
+    """Fail closed when a path has storage that ``scandir`` cannot account for."""
+
+    kernel32 = _kernel32()
+    find_first_stream = kernel32.FindFirstStreamW
+    find_first_stream.argtypes = (
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        ctypes.POINTER(_Win32FindStreamData),
+        wintypes.DWORD,
+    )
+    find_first_stream.restype = wintypes.HANDLE
+    find_next_stream = kernel32.FindNextStreamW
+    find_next_stream.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_Win32FindStreamData),
+    )
+    find_next_stream.restype = wintypes.BOOL
+    stream = _Win32FindStreamData()
+    ctypes.set_last_error(_ERROR_SUCCESS)
+    raw_handle = find_first_stream(os.fspath(path), 0, ctypes.byref(stream), 0)
+    value = int(raw_handle) if raw_handle else 0
+    if not value or value == _INVALID_HANDLE_VALUE:
+        failure = ctypes.get_last_error()
+        if failure == _ERROR_HANDLE_EOF and is_directory:
+            return
+        if failure in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
+            raise _PrivateTempTreeChanged
+        raise OSError
+    try:
+        if (
+            is_directory
+            or stream.stream_name != "::$DATA"
+            or int(stream.stream_size) != expected_size
+        ):
+            raise OSError
+        ctypes.set_last_error(_ERROR_SUCCESS)
+        if find_next_stream(wintypes.HANDLE(value), ctypes.byref(stream)):
+            raise OSError
+        failure = ctypes.get_last_error()
+        if failure in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
+            raise _PrivateTempTreeChanged
+        if failure != _ERROR_HANDLE_EOF:
+            raise OSError
+    finally:
+        find_close = kernel32.FindClose
+        find_close.argtypes = (wintypes.HANDLE,)
+        find_close.restype = wintypes.BOOL
+        if not find_close(wintypes.HANDLE(value)):
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "profile.temp_measure_stream_handle",
+                "Windows could not close private temporary-storage measurement authority.",
+            )
+
+
+def _retain_private_temp_directory(
+    path: Path,
+) -> tuple[_OwnedHandle, _RetainedResourceInfo]:
+    """Retain one no-follow directory handle without blocking worker mutation."""
+
+    create_file = _kernel32().CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    raw_handle = create_file(
+        os.fspath(path),
+        _GENERIC_READ | _FILE_READ_ATTRIBUTES,
+        _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE,
+        None,
+        _OPEN_EXISTING,
+        _FILE_FLAG_BACKUP_SEMANTICS | _FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+    )
+    value = int(raw_handle) if raw_handle else 0
+    if not value or value == _INVALID_HANDLE_VALUE:
+        raise _PrivateTempTreeChanged
+    handle = _OwnedHandle(value)
+    try:
+        info = _query_retained_resource_info(handle.value)
+        if not info.is_directory or info.is_reparse_point or info.delete_pending:
+            raise OSError
+    except BaseException:
+        if not _close_owned_handle_bounded(handle):
+            _quarantine_owned_handle(handle)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "profile.temp_measure_handle",
+                "Windows could not close private temporary-storage measurement authority.",
+            )
+        raise
+    return handle, info
+
+
 def _require_private_pycache_prefix(local_app_data: Path) -> Path:
     """Return one exact, empty, reparse-free profile-private cache namespace."""
 
@@ -5292,6 +5556,17 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 "Worker resource data is unavailable after containment authority closes.",
             )
         return self._job.resource_snapshot()
+
+    def private_temp_bytes(self) -> int:
+        """Sample numeric worker-private temp usage while profile authority is retained."""
+
+        if self._closed or self._profile_closed:
+            _reject(
+                WindowsLaunchErrorCode.PROCESS_FAILED,
+                "resource_temp.closed",
+                "Worker temporary-storage data is unavailable after profile cleanup.",
+            )
+        return _private_temp_tree_bytes(self._profile.local_app_data / "Temp")
 
     def poll(self) -> int | None:
         if self._returncode is not None:

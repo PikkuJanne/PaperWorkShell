@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +18,7 @@ from PIL import Image
 import paperworkshell.pdf.searchable_export_adapter as searchable_adapter
 from paperworkshell.domain.image_pages import ImageNormalizationLimits
 from paperworkshell.domain.image_transforms import ImageTransformLimits
+from paperworkshell.domain.incremental_processing import IncrementalProcessingSnapshot
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.page_operations import NormalizedPageBox
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
@@ -402,14 +404,18 @@ def _run(
     plan: SearchablePdfExportPlan,
     paths: dict[UUID, Path],
     ocr: Any,
+    *,
+    resource_observer: Callable[[IncrementalProcessingSnapshot], None] | None = None,
 ) -> tuple[Path, Any, _CleanChecker]:
     checker = _CleanChecker()
     output = (tmp_path / "output.pdf").resolve()
-    report = SearchablePdfExportAdapter(
+    adapter = SearchablePdfExportAdapter(
         ocr_processor=ocr,
         qpdf_checker=checker,
         renderer=PdfiumPageRenderer(),
-    ).assemble_and_verify(
+    )
+    observer = resource_observer or (lambda _snapshot: None)
+    report = adapter.assemble_and_verify(
         plan,
         paths,
         output,
@@ -417,8 +423,44 @@ def _run(
         languages=("eng",),
         limits=_limits(),
         control=_control(),
+        resource_observer=observer,
     )
     return output, report, checker
+
+
+def test_adapter_scheduler_reports_one_page_at_a_time_without_page_payloads(
+    tmp_path: Path,
+) -> None:
+    source = (tmp_path / "three-pages.pdf").resolve()
+    with (
+        pikepdf.open(
+            PDF_FIXTURES / "born-digital.pdf",
+            attempt_recovery=False,
+            suppress_warnings=True,
+        ) as original,
+        pikepdf.Pdf.new() as document,
+    ):
+        for _index in range(3):
+            document.pages.append(original.pages[0])
+        document.save(source, deterministic_id=True)
+    plan, paths = _plan(source, (0, 1, 2))
+    observations: list[IncrementalProcessingSnapshot] = []
+
+    _output, report, _checker = _run(
+        tmp_path,
+        plan,
+        paths,
+        _NeverOcr(),
+        resource_observer=observations.append,
+    )
+
+    assert len(report.page_outcomes) == 3
+    assert max(item.active_pages for item in observations) == 1
+    assert max(item.active_full_resolution_page_buffers for item in observations) == 1
+    assert max(item.active_page_results for item in observations) == 1
+    assert observations[-1].completed_pages == observations[-1].total_pages == 3
+    assert observations[-1].active_pages == 0
+    assert all(not hasattr(item, "page_payload") for item in observations)
 
 
 def test_born_digital_page_is_object_copied_without_ocr_and_text_survives(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 
@@ -12,13 +13,21 @@ import paperworkshell.worker.client._windows as windows_launcher
 import paperworkshell.worker.searchable_pdf_export_composition as composition_module
 from paperworkshell.worker.client._windows import WindowsProcessLauncher
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
-from paperworkshell.worker.client.models import WorkerResourceSnapshot, WorkerTimeoutPolicy
+from paperworkshell.worker.client.models import (
+    WorkerClientSnapshot,
+    WorkerLifecyclePhase,
+    WorkerOperationResultSnapshot,
+    WorkerPrivateTempSnapshot,
+    WorkerResourceSnapshot,
+    WorkerTimeoutPolicy,
+)
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.client.tesseract_runtime import TesseractRuntimeAdmission
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.protocol.models import (
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CapabilityDescriptor,
+    OperationOutcome,
     ResourceLimits,
 )
 from paperworkshell.worker.searchable_pdf_export_broker import (
@@ -55,11 +64,13 @@ class _FakeWorkerClient:
         timeout_policy: WorkerTimeoutPolicy,
         *,
         required_capabilities: tuple[CapabilityDescriptor, ...],
+        resource_sampling_interval_ms: int,
     ) -> None:
         self.launcher = launcher
         self.resource_policy = resource_policy
         self.timeout_policy = timeout_policy
         self.required_capabilities = required_capabilities
+        self.resource_sampling_interval_ms = resource_sampling_interval_ms
         self.constructed_thread = threading.get_ident()
         self.terminate_calls = 0
         self.snapshot = WorkerResourceSnapshot(
@@ -68,12 +79,39 @@ class _FakeWorkerClient:
             1,
             2,
         )
+        self.temp_snapshot = WorkerPrivateTempSnapshot(7, 2, resource_sampling_interval_ms, True)
+        self.result_snapshot = WorkerOperationResultSnapshot(
+            1,
+            uuid4(),
+            OperationOutcome.CANCELLED,
+            (),
+            None,
+        )
 
     def terminate(self) -> None:
         self.terminate_calls += 1
 
     def resource_snapshot(self) -> WorkerResourceSnapshot:
         return self.snapshot
+
+    def private_temp_snapshot(self) -> WorkerPrivateTempSnapshot:
+        return self.temp_snapshot
+
+    def query(self) -> WorkerClientSnapshot:
+        return WorkerClientSnapshot(
+            generation=1,
+            phase=WorkerLifecyclePhase.STOPPED,
+            case_id=None,
+            session_id=None,
+            worker_instance_id=None,
+            pid=None,
+            capabilities=(),
+            active_operation=None,
+            last_result=self.result_snapshot,
+            last_failure=None,
+            last_resource_snapshot=self.snapshot,
+            last_private_temp_snapshot=self.temp_snapshot,
+        )
 
 
 def _paths(tmp_path: Path) -> dict[str, Any]:
@@ -144,6 +182,9 @@ def test_config_binds_qpdf_tesseract_tessdata_and_bounded_policy(tmp_path: Path)
     assert config.tesseract_executable in launch.tesseract_access_resources
     assert config.tessdata_root in launch.tesseract_access_resources
     assert config.resource_policy.maximum_processes == 2
+    assert config.maximum_active_full_resolution_page_buffers == 1
+    assert config.resource_sampling_interval_ms == 50
+    assert config.broker_policy.pump_interval_seconds == 0.05
     assert config.broker_policy == SearchablePdfExportBrokerPolicy(
         _limits(),
         status_capacity_bytes=2 * 1024 * 1024,
@@ -179,7 +220,11 @@ def test_composition_registers_only_searchable_capability_and_shares_gate(
     assert cast(Any, composition.exporter)._heavy_operations is gate
     assert composition.exporter.maximum_output_bytes == _limits().output_bytes
     assert worker.constructed_thread == threading.get_ident()
+    assert worker.resource_sampling_interval_ms == 50
     assert composition.resource_snapshot() == worker.snapshot
+    assert composition.private_temp_snapshot() == worker.temp_snapshot
+    assert composition.last_operation_result() == worker.result_snapshot
+    assert composition.worker_tree_termination_confirmed()
 
     exporter = composition.exporter
     composition.close()
@@ -197,6 +242,43 @@ def test_composition_rejects_a_different_application_gate(tmp_path: Path) -> Non
         )
 
     assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+
+
+@pytest.mark.parametrize(
+    "accessor",
+    (
+        "resource_snapshot",
+        "private_temp_snapshot",
+        "last_operation_result",
+        "worker_tree_termination_confirmed",
+    ),
+)
+def test_resource_evidence_accessors_require_owner_thread(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    accessor: str,
+) -> None:
+    monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
+    composition = create_searchable_pdf_export_worker_composition(
+        _config(tmp_path),
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
+    observed: list[BaseException] = []
+
+    def read() -> None:
+        try:
+            getattr(composition, accessor)()
+        except BaseException as error:
+            observed.append(error)
+
+    thread = threading.Thread(target=read)
+    thread.start()
+    thread.join()
+
+    assert len(observed) == 1
+    assert isinstance(observed[0], WorkerClientError)
+    assert observed[0].code is WorkerClientErrorCode.OWNER_THREAD_REQUIRED
+    composition.close()
 
 
 @pytest.mark.parametrize("maximum_processes", (1, 3))
@@ -218,6 +300,38 @@ def test_config_rejects_process_count_other_than_worker_plus_tesseract(
             maximum_heavy_operation_concurrency=1,
             limits=_limits(),
             status_capacity_bytes=2 * 1024 * 1024,
+        )
+
+    assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+
+
+@pytest.mark.parametrize(
+    ("maximum_buffers", "sampling_interval_ms", "pump_interval_seconds"),
+    ((2, 50, 0.05), (1, 25, 0.05), (1, 0, 0.05)),
+)
+def test_config_rejects_unbound_incremental_resource_policy(
+    tmp_path: Path,
+    maximum_buffers: int,
+    sampling_interval_ms: int,
+    pump_interval_seconds: float,
+) -> None:
+    values = _paths(tmp_path)
+    with pytest.raises(WorkerClientError) as raised:
+        create_searchable_pdf_export_worker_composition_config(
+            **values,
+            resource_policy=WorkerResourcePolicy(
+                process_memory_bytes=512 * 1024 * 1024,
+                job_memory_bytes=768 * 1024 * 1024,
+                cpu_time_ms=120_000,
+                maximum_processes=SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
+            ),
+            timeout_policy=WorkerTimeoutPolicy(20.0, 2.0, 10.0),
+            maximum_heavy_operation_concurrency=1,
+            limits=_limits(),
+            status_capacity_bytes=2 * 1024 * 1024,
+            maximum_active_full_resolution_page_buffers=maximum_buffers,
+            resource_sampling_interval_ms=sampling_interval_ms,
+            pump_interval_seconds=pump_interval_seconds,
         )
 
     assert raised.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID

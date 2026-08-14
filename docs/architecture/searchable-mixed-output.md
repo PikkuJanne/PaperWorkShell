@@ -118,8 +118,18 @@ retained visually and reported as `ocr_blocked_signed_source_retained`.
 Any exported derivative whose plan includes a marker-present or unknown-signature PDF source is
 labeled **unsigned derivative**, including a derivative that preserves the marked page while
 combining or reordering content. The imported original and immutable case copy remain unchanged.
-PWS-0208 retains the explicit warning/confirmation workflow; PWS-0206 establishes the fail-closed
-page policy and the report label, not a signature-validity claim or a “continue anyway” OCR path.
+PWS-0208 adds a reason-aware presentation contract before that modifying export: it distinguishes
+detected markers from a marker state that could not be confirmed, shows the **unsigned derivative**
+label and consequence, and requires the exact action **Create unsigned derivative**. **Cancel** is
+the initial and default action; Escape cancels. The presentation does not validate a signature,
+persist confirmation, or grant worker authority by itself. The trusted application must bind the
+explicit choice to its validated source-scoped confirmation state before it creates an operation.
+
+Confirmation never turns a marker-present or unknown state into permission for OCR or a pixel
+transform. The PWS-0206 fail-closed page policy remains authoritative, so the marked visual page
+is retained and reported with its exact blocked outcome. The standalone dialog is intentionally
+not coupled to a destination or worker: cancelling it creates no output and starts no document
+operation.
 
 ## Reopen, render, and searchability verification
 
@@ -162,9 +172,11 @@ operation gate. It does not create a second unbounded queue, cache, executor, or
   release volatile sections and reservations, and preserve originals, manifest v2, export history,
   and prior derivatives.
 
-PWS-0208 retains the measured large mixed-job scheduler/process-tree evidence. PWS-0206 proves the
-bounded page-local composition and cleanup semantics; it does not infer a named-hardware claim from
-synthetic constrained-profile tests.
+PWS-0208 adds the measured large mixed-job scheduler/process-tree evidence under the separately
+identified `pws0208-resource-evidence` version-1 report. PWS-0206 proves the bounded page-local
+composition and cleanup semantics; neither report infers a named-hardware claim from synthetic
+constrained-profile tests. The exact source/page/scenario recipe is bound by
+[`pws0208-searchable-mixed-workload-v1.json`](../../benchmarks/pws0208-searchable-mixed-workload-v1.json).
 
 ## Deterministic synthetic evidence
 

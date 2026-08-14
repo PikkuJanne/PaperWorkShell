@@ -55,6 +55,10 @@ from paperworkshell.domain.pdf_export_retry import (
     PdfExportRetryInventory,
     PreparedPdfExportRetry,
 )
+from paperworkshell.domain.signed_source_policy import (
+    SignedSourcePolicyError,
+    SignedSourcePolicyErrorCode,
+)
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000812")
@@ -662,6 +666,31 @@ def test_capacity_preflight_runs_before_history_source_or_worker_activity() -> N
     assert raised.value.code is PdfExportErrorCode.DESTINATION_CAPACITY_EXCEEDED
     assert stack.events == ["manifest.load", "destination.capacity"]
     assert stack.sources.calls == 0
+
+
+def test_marker_source_without_exact_confirmation_stops_before_all_export_side_effects() -> None:
+    stack = _stack()
+    document = _manifest_document()
+    source = cast(dict[str, object], cast(list[object], document["sources"])[0])
+    source["signature_state"] = "markers_detected"
+    snapshot = ManifestSnapshot(
+        CASE_ID,
+        1,
+        7,
+        document,
+        "d" * 64,
+        "export_service_manifest_cas_0208",
+    )
+    stack.manifests.result = ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot)
+
+    with pytest.raises(SignedSourcePolicyError) as raised:
+        _export(stack)
+
+    assert raised.value.code is SignedSourcePolicyErrorCode.CONFIRMATION_REQUIRED
+    assert stack.events == ["manifest.load"]
+    assert stack.sources.calls == 0
+    assert stack.history.calls == 0
+    assert stack.retries.lease is None
 
 
 def test_capacity_preflight_preserves_process_control_exceptions() -> None:

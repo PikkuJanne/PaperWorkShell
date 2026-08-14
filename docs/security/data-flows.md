@@ -416,13 +416,28 @@ TM-016, TM-020, TM-022, TM-023, TM-024.
 
 ```mermaid
 sequenceDiagram
+    participant User
+    participant UI as Unsigned-derivative confirmation
     participant App as Trusted searchable-export coordinator
+    participant Gate as Signed-source policy gate
     participant Worker as Restricted one-shot worker
     participant OCR as Admitted local OCR adapter
     participant PDF as pikepdf/qpdf/PDFium adapters
     participant Status as Bounded page-status section
     participant Destination as Trusted no-replace destination
-    App->>Worker: Plan/source readers, PDF/status writers, report writer
+    App->>Gate: Validate structural state and source-scoped confirmation
+    alt Marker present or marker state unknown
+        Gate-->>UI: Reason-aware unsigned-derivative notice
+        alt Cancel or Escape
+            User->>UI: Cancel
+            UI-->>App: Rejected; no operation authority
+        else Explicitly continue
+            User->>UI: Create unsigned derivative
+            UI-->>Gate: Explicit presentation result
+            Gate-->>App: Validated source-scoped confirmation
+        end
+    end
+    App->>Worker: Admitted plan/source readers, PDF/status writers, report writer
     Worker->>PDF: Inspect page eligibility without returning text
     alt Existing supported text and no pixel transform
         PDF->>PDF: Copy born-digital page without rasterizing
@@ -465,7 +480,12 @@ sequenceDiagram
    cancellation, timeout, malformed-result, and cleanup failures remain authoritative operation
    failures. A review outcome cannot be counted as extractable text or converted into a whole-
    document searchable claim. A plan involving marker-present or unknown-signature input requires
-   the **unsigned derivative** label; PWS-0208 retains warning/confirmation UX.
+   the **unsigned derivative** label and PWS-0208's explicit **Create unsigned derivative** choice.
+   The reason-aware presentation distinguishes detected markers from an unknown marker state and
+   keeps Cancel as the safe default. The presentation result is not authority by itself; the
+   trusted gate validates the source-scoped confirmation before any worker operation is created.
+   Cancel or Escape launches no worker and creates no destination. Confirmation does not permit an
+   OCR or pixel transform that the signature-state policy blocks.
 6. At most one full-resolution raster and one private page-local OCR result are live at a time
    under the constrained profile. Page-result/status/output/temp/destination capacities are checked before or
    during work. Low-disk, disk-full, cancellation, timeout, malformed result, source race, native
@@ -505,7 +525,9 @@ flowchart LR
    operation-staging handles. The worker has no case-directory or destination path authority and
    cannot publish manifests, journals, export history, or external files. Signed-source policy is
    checked before any modifying operation; detection may be unknown and is not cryptographic
-   validation.
+   validation. Marker-present or unknown state must pass the source-scoped explicit unsigned-
+   derivative confirmation gate before the broker creates operation authority; Cancel or Escape
+   therefore creates no worker generation, operation, staging output, or destination artifact.
 3. The temporary result is reopened. Required parse, structural, page-count, encryption,
    attachment/interactive policy, naming/size, and render checks must pass. Unknown required state
    is failure.
@@ -528,8 +550,9 @@ flowchart LR
    manifest reference independently proves the same commit. Recovery never starts the worker,
    rebuilds an output, or accesses the destination. Invalid receipt state blocks replay and keeps
    parseable IDs reserved.
-8. A modified signed source produces an explicitly unsigned derivative. Permanent-redaction
-   output remains unavailable until PWS-0608.
+8. A modified marker-present or unknown-signature source produces an explicitly unsigned
+   derivative. This is a conservative output label, not a signature-validity claim. Permanent-
+   redaction output remains unavailable until PWS-0608.
 
 Primary threats: TM-005, TM-006, TM-014, TM-015, TM-016, TM-017, TM-022, TM-023, TM-025, TM-026,
 TM-027.

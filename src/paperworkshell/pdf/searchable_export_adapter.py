@@ -10,7 +10,7 @@ import shutil
 import stat
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import BinaryIO, Final, Protocol, cast
@@ -33,6 +33,14 @@ from paperworkshell.domain.image_transforms import (
     ImageTransformIntent,
     ImageTransformLimits,
     ImageTransformResult,
+)
+from paperworkshell.domain.incremental_processing import (
+    IncrementalPageScheduler,
+    IncrementalProcessingError,
+    IncrementalProcessingErrorCode,
+    IncrementalProcessingLimits,
+    IncrementalProcessingObserver,
+    IncrementalProcessingSnapshot,
 )
 from paperworkshell.domain.ocr import (
     OcrAdapterProgressSink,
@@ -119,10 +127,19 @@ _PHYSICAL_GEOMETRY_TOLERANCE_POINTS: Final = 0.001
 
 CancellationProbe = Callable[[], bool]
 MonotonicClock = Callable[[], float]
+PageScratchObserver = Callable[[int], None]
 
 
 def _never_cancel() -> bool:
     return False
+
+
+def _discard_page_scratch(_bytes_used: int) -> None:
+    return
+
+
+def _discard_resource_observation(_snapshot: IncrementalProcessingSnapshot) -> None:
+    return
 
 
 class SearchablePdfAdapterProgressPhase(StrEnum):
@@ -255,6 +272,7 @@ class SearchablePdfExportAdapterLimits:
     pdf_transform_height_pixels: int
     verification_width_pixels: int = 1024
     verification_height_pixels: int = 1024
+    maximum_active_full_resolution_page_buffers: int = 1
 
     def __post_init__(self) -> None:
         if (
@@ -287,8 +305,10 @@ class SearchablePdfExportAdapterLimits:
                     self.pdf_transform_height_pixels,
                     self.verification_width_pixels,
                     self.verification_height_pixels,
+                    self.maximum_active_full_resolution_page_buffers,
                 )
             )
+            or self.maximum_active_full_resolution_page_buffers != 1
             or self.inspection.maximum_pages > self.rendering.maximum_pages
             or self.inspection.maximum_pages > self.text_presence.maximum_pages
             or self.maximum_total_source_bytes > self.text_presence.maximum_source_bytes
@@ -328,6 +348,10 @@ class SearchablePdfExportAdapterControl:
     deadline: float
     cancellation_probe: CancellationProbe = field(default=_never_cancel, repr=False)
     monotonic: MonotonicClock = field(default=time.monotonic, repr=False)
+    page_scratch_observer: PageScratchObserver = field(
+        default=_discard_page_scratch,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if (
@@ -336,6 +360,7 @@ class SearchablePdfExportAdapterControl:
             or self.deadline <= 0
             or not callable(self.cancellation_probe)
             or not callable(self.monotonic)
+            or not callable(self.page_scratch_observer)
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.searchable_control")
 
@@ -449,6 +474,7 @@ class SearchablePdfExportAdapter:
         limits: SearchablePdfExportAdapterLimits,
         control: SearchablePdfExportAdapterControl,
         progress: SearchablePdfAdapterProgressSink = _DISCARD_PROGRESS,
+        resource_observer: IncrementalProcessingObserver = _discard_resource_observation,
     ) -> SearchablePdfVerificationReport:
         """Process pages in plan order and publish only after closed verification."""
 
@@ -461,6 +487,7 @@ class SearchablePdfExportAdapter:
             limits,
             control,
             progress,
+            resource_observer,
         )
         _checkpoint(control)
         _validate_sources(bindings, limits, control)
@@ -469,28 +496,71 @@ class SearchablePdfExportAdapter:
         output_saved = False
 
         try:
+            scheduler = IncrementalPageScheduler(
+                plan.page_count,
+                IncrementalProcessingLimits(
+                    maximum_pages=limits.inspection.maximum_pages,
+                    maximum_full_resolution_page_buffers=(
+                        limits.maximum_active_full_resolution_page_buffers
+                    ),
+                    maximum_page_results=1,
+                    maximum_temporary_storage_bytes=limits.maximum_page_scratch_bytes,
+                ),
+                observer=resource_observer,
+            )
             with pikepdf.Pdf.new() as output:
-                for planned_page in plan.pages:
+                for page_index, planned_page in enumerate(plan.pages):
                     _checkpoint(control)
-                    binding = binding_by_id[planned_page.source_id]
-                    selected = _process_page(
-                        self,
-                        output,
-                        plan,
-                        planned_page,
-                        binding,
-                        temporary_directory,
-                        languages,
-                        limits,
-                        control,
-                    )
-                    selected_pages.append(selected)
-                    _emit_progress(
-                        progress,
-                        SearchablePdfAdapterProgressPhase.ASSEMBLING,
-                        len(selected_pages),
-                        plan.page_count,
-                    )
+                    with scheduler.begin_page(page_index) as page_lease:
+                        page_lease.observe(
+                            full_resolution_page_buffers=1,
+                            page_results=0,
+                            temporary_storage_bytes=0,
+                        )
+
+                        def observe_scratch(
+                            consumed: int,
+                        ) -> None:
+                            page_lease.observe(
+                                full_resolution_page_buffers=1,
+                                page_results=0,
+                                temporary_storage_bytes=consumed,
+                            )
+
+                        page_control = replace(
+                            control,
+                            page_scratch_observer=observe_scratch,
+                        )
+                        binding = binding_by_id[planned_page.source_id]
+                        selected = _process_page(
+                            self,
+                            output,
+                            plan,
+                            planned_page,
+                            binding,
+                            temporary_directory,
+                            languages,
+                            limits,
+                            page_control,
+                        )
+                        page_lease.observe(
+                            full_resolution_page_buffers=0,
+                            page_results=1,
+                            temporary_storage_bytes=0,
+                        )
+                        selected_pages.append(selected)
+                        _emit_progress(
+                            progress,
+                            SearchablePdfAdapterProgressPhase.ASSEMBLING,
+                            len(selected_pages),
+                            plan.page_count,
+                        )
+                        page_lease.observe(
+                            full_resolution_page_buffers=0,
+                            page_results=0,
+                            temporary_storage_bytes=0,
+                        )
+                scheduler.require_complete()
                 if _NAME_METADATA in output.Root:
                     del output.Root[_NAME_METADATA]
                 _save_output(output, output_path, limits, control)
@@ -545,6 +615,15 @@ class SearchablePdfExportAdapter:
             if output_saved:
                 _remove_failed_candidate(output_path)
             raise
+        except IncrementalProcessingError as error:
+            if output_saved:
+                _remove_failed_candidate(output_path)
+            code = (
+                PdfExportErrorCode.LIMIT_EXCEEDED
+                if error.code is IncrementalProcessingErrorCode.RESOURCE_LIMIT
+                else PdfExportErrorCode.INTERNAL_ERROR
+            )
+            reject_pdf_export(code, "export.incremental_processing")
         except MemoryError, RecursionError:
             if output_saved:
                 _remove_failed_candidate(output_path)
@@ -564,6 +643,7 @@ def _validate_call(
     limits: SearchablePdfExportAdapterLimits,
     control: SearchablePdfExportAdapterControl,
     progress: SearchablePdfAdapterProgressSink,
+    resource_observer: IncrementalProcessingObserver,
 ) -> tuple[_SourceBinding, ...]:
     if (
         type(plan) is not SearchablePdfExportPlan
@@ -582,6 +662,7 @@ def _validate_call(
         or type(limits) is not SearchablePdfExportAdapterLimits
         or type(control) is not SearchablePdfExportAdapterControl
         or not callable(progress)
+        or not callable(resource_observer)
         or plan.page_count > limits.inspection.maximum_pages
     ):
         reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.searchable_request")
@@ -1936,6 +2017,12 @@ def _require_page_scratch(
         )
     if consumed > limits.maximum_page_scratch_bytes:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.page_scratch_bytes")
+    try:
+        control.page_scratch_observer(consumed)
+    except IncrementalProcessingError:
+        raise
+    except BaseException:
+        reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.page_scratch_observer")
     _checkpoint(control)
 
 

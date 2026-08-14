@@ -29,10 +29,13 @@ from paperworkshell.worker.protocol.models import (
     SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER,
     SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
     CaseObjectReference,
+    ErrorCategory,
+    ErrorCode,
     OperationOutcome,
     OperationProgressPayload,
     ReferenceArea,
     ResourceLimits,
+    RetryAction,
     ScalarValueType,
     TaggedScalar,
 )
@@ -295,6 +298,23 @@ def test_handler_maps_terminal_adapter_failures_without_outputs(
     assert result.outcome is expected_outcome
     assert result.outputs == ()
     assert len(adapter.export_calls) == 1
+
+
+def test_handler_preserves_retryable_resource_limit_category_on_protocol_v1() -> None:
+    adapter = _RecordingAdapter(
+        failure=PdfExportError(PdfExportErrorCode.LIMIT_EXCEEDED, "export.synthetic")
+    )
+
+    result = SearchablePdfExportOperationHandler(adapter).execute(_context())
+
+    assert result.outcome is OperationOutcome.FAILED
+    assert result.outputs == ()
+    assert result.error is not None
+    assert result.error.code is ErrorCode.WORKER_OPERATION_FAILED
+    assert result.error.category is ErrorCategory.RESOURCE_LIMIT
+    assert result.error.retry_action is RetryAction.RETRY
+    assert result.error.restart_required is False
+    assert result.error.parameters == ()
 
 
 def test_handler_propagates_nonterminal_failure_for_runtime_sanitization() -> None:

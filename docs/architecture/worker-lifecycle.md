@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, PWS-0204 OCR, and PWS-0206 searchable-export extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, PWS-0204 OCR, PWS-0206 searchable-export, and PWS-0208 signed-source-admission extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206, PWS-0208
 - Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D016, PWS-D021, PWS-D027, PWS-D028, PWS-D029, PWS-D036, PWS-D037, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -318,6 +318,23 @@ Each start has a bounded handshake deadline. Each operation has the requested wa
 both broker and host. Cancellation and graceful shutdown have separate trusted grace periods.
 Deadlines use monotonic time. `pump()` accepts at most one transport event before evaluating a
 deadline, so ordering is explicit rather than a thread race.
+
+### Signed-source admission before lifecycle authority
+
+PWS-0208's reason-aware unsigned-derivative confirmation stays in the trusted application/UI
+process and precedes worker lifecycle authority. For a marker-present or unknown-signature source,
+the presentation shows the exact **Create unsigned derivative** action and a safe/default
+**Cancel** action. Cancel or Escape returns a rejected presentation result: the coordinator must
+not create a worker generation, enqueue an operation, broker a source/output handle, reserve a
+destination, or write confirmation state.
+
+An affirmative dialog result is also not a worker capability. The trusted application must bind
+it to validated source-scoped confirmation state and re-run the signed-source policy gate before
+starting work. Only an admitted content-free plan crosses the worker boundary; warning prose,
+document values, actor text, and confirmation UI state do not enter RPC or routine diagnostics.
+Confirmation never permits OCR or a pixel transform for a marker-present or unknown-signature PDF
+page. The worker retains that visual page under the existing fail-closed policy, and any permitted
+modified aggregate remains labeled **unsigned derivative** after verification.
 
 ## Operation, cancellation, and timeout rules
 
@@ -644,5 +661,4 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 ## Explicit deferrals
 
 - PWS-0205: offline verification, installation, and selection of additional OCR language packs.
-- PWS-0208: explicit signed-source derivative warning/confirmation and incremental OCR scheduling.
 - PWS-0801: release-grade packaged-content/SBOM/license-notice and release-input verification.

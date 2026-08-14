@@ -895,6 +895,8 @@ class SearchablePdfExportOperationHandler:
                 return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
             if error.code is PdfExportErrorCode.TIMED_OUT:
                 return timed_out_operation_result()
+            if error.code is PdfExportErrorCode.LIMIT_EXCEEDED:
+                return resource_limited_operation_result()
             raise
 
         # The adapter closes all four transfer handles before returning. A late
@@ -1241,6 +1243,22 @@ def failed_operation_result() -> OperationResultPayload:
         ErrorPayload(
             ErrorCode.WORKER_OPERATION_FAILED,
             ErrorCategory.OPERATION,
+            RetryAction.RETRY,
+            False,
+            (),
+        ),
+    )
+
+
+def resource_limited_operation_result() -> OperationResultPayload:
+    """Return a retryable protocol-v1 resource failure without adding wire fields."""
+
+    return OperationResultPayload(
+        OperationOutcome.FAILED,
+        (),
+        ErrorPayload(
+            ErrorCode.WORKER_OPERATION_FAILED,
+            ErrorCategory.RESOURCE_LIMIT,
             RetryAction.RETRY,
             False,
             (),

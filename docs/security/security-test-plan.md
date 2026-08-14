@@ -301,7 +301,7 @@ PWS-0107 live worker/descendant network probes remain the authoritative egress-d
 OCR child must run under that same no-breakaway Job and AppContainer policy.
 
 Current dependency inventory and the hash-addressed runtime manifest establish task-level engine
-admission and redistribution review. PWS-0205 owns additional offline language packs. PWS-0208 owns
+admission and redistribution review. PWS-0205 owns additional offline language packs. PWS-0208 adds
 the explicit signed-source derivative warning/confirmation and incremental workload measurements.
 PWS-0801 still owns the clean release-environment SBOM, final license/notice bundle, and comparison
 of every packaged runtime/build object with release inputs.
@@ -357,6 +357,58 @@ may prove failure isolation but cannot prove actual token extraction or viewer r
 automated PDFium reopen/render is the minimum viewer smoke. If the release evidence names another
 desktop viewer, its installed version and a synthetic-only open/page-order/text-search result must
 be recorded; an absent or skipped named required viewer is not a pass.
+
+## PWS-0208 signed-source confirmation and resource evidence
+
+PWS-0208 extends ST-002, ST-004, ST-005, ST-010 through ST-013, ST-016, and ST-020. Its UI evidence
+uses the synthetic `pdf-signed-marker` fixture only as a structural marker-present input. That
+fixture contains an unsigned `/FT /Sig` field and no `/ByteRange`; neither its filename nor its
+structure is evidence that a cryptographic signature exists or is valid. The unknown state remains
+an injected closed structural result rather than a fixture mislabeled as signed.
+
+Focused unit and accessibility tests must prove both reason presentations, the visible
+**Unsigned derivative** label, the exact **Create unsigned derivative** action, and plain wording
+that modification can invalidate an existing signature while originals remain unchanged. Cancel
+is the initial/default action; Escape rejects; keyboard-only focus reaches both actions; every
+control and warning has an accessible name/description; and enlarged text keeps the actions visible
+while warning details remain scrollable. Accepting the presentation is not worker authority: the
+trusted application must still validate the source-scoped confirmation state, while Cancel or
+Escape must start no worker and create no destination. Confirmation must not unlock OCR or pixel
+transforms for marker-present or unknown-signature pages.
+
+The signed-source output evidence reuses the existing synthetic fixture and does not refresh a
+golden merely because the confirmation surface was added. On a clean completion revision, record
+external-source and immutable-case-copy SHA-256 before and after the confirmed export, the exact
+source-scoped confirmation state used by the application gate, the derivative SHA-256 and page
+count, and the content-free unsigned-derivative result label. Strictly reopen the derivative with
+pikepdf, run the admitted qpdf check, and render every source/derivative page through the pinned
+PDFium profile. Independently render every page with Poppler `pdftoppm`, then visually inspect the
+synthetic output for expected page order, legibility, geometry, blank pages, clipping, and the
+visible unsigned-derivative presentation where the owning output surface requires it. Record the
+renderer/tool versions and inspection decision. A required skip, mismatch, or uninspected output
+leaves the evidence open. A new golden is warranted only if an approved visual output contract
+changes; it must remain synthetic, minimal, hash-bound, and review-approved rather than silently
+refreshed.
+
+Resource evidence uses workload `pws0208-searchable-mixed-incremental` version 1 and report family
+`pws0208-resource-evidence` version 1. The constrained synthetic run must separately record sampled
+complete-process-tree RSS, worker-process and Windows Job commit peaks, sampled worker-private-temp
+peak/completeness/interval/count, active full-resolution page buffers/page results, repository and
+policy revisions, cleanup, and retry results. `peak_worker_job_commit_bytes` is Job commit
+accounting, not RSS. A cancellation scenario records bounded `cancellation_acknowledgement_ms`,
+confirmed complete-tree termination, no authoritative partial output, authenticated disposable
+cleanup, and a successful fresh retry. Reports and routine logs are scanned for prohibited fixture
+tokens and path/content fields. Constrained-profile evidence proves bounded software behavior only;
+it does not certify a named processor, RAM size, GPU, disk, VM, or physical device.
+The exact recipe is
+[`pws0208-searchable-mixed-workload-v1.json`](../../benchmarks/pws0208-searchable-mixed-workload-v1.json).
+A focused supported-Windows integration harness produces the local report; the separate
+`python -m tools.pws0208_resource_evidence <report>` command validates its canonical model and
+budgets but is not a live runner.
+Process, Job, and private-temp measurements come from the supported-Windows AppContainer run. The
+active-buffer/result peaks come from a separate focused production-adapter scheduler observation
+over the exact same workload and are explicitly labeled
+`focused-production-adapter-instrumentation`; no searchable RPC-v1 field is added or inferred.
 
 ## PWS-0113 startup-recovery and diagnostic evidence
 

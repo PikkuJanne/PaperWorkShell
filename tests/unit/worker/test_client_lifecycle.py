@@ -42,6 +42,9 @@ from paperworkshell.worker.protocol.models import (
     CancelDisposition,
     ClosedReason,
     Direction,
+    ErrorCategory,
+    ErrorCode,
+    ErrorPayload,
     MessageType,
     OperationAcceptedPayload,
     OperationCancelAckPayload,
@@ -53,6 +56,7 @@ from paperworkshell.worker.protocol.models import (
     ProgressUnit,
     ProtocolEnvelope,
     ResourceLimits,
+    RetryAction,
     SessionClosedPayload,
     SessionReadyPayload,
     SessionShutdownPayload,
@@ -679,6 +683,36 @@ def test_operation_accept_progress_and_success_are_protocol_authoritative() -> N
     assert record.process.resource_snapshot_calls == 1
 
 
+def test_operation_result_snapshot_preserves_protocol_resource_category() -> None:
+    client, _launcher, record, _generation = _ready_client()
+    operation_id, start = _start_and_accept(client, record)
+    result = record.worker_peer.prepare_outbound(
+        MessageType.OPERATION_RESULT,
+        OperationResultPayload(
+            OperationOutcome.FAILED,
+            (),
+            ErrorPayload(
+                ErrorCode.WORKER_OPERATION_FAILED,
+                ErrorCategory.RESOURCE_LIMIT,
+                RetryAction.RETRY,
+                False,
+                (),
+            ),
+        ),
+        request_id=start.request_id,
+        operation_id=operation_id,
+    )
+
+    _queue(record, result)
+    client.pump()
+
+    snapshot = client.query().last_result
+    assert snapshot is not None
+    assert snapshot.operation_id == operation_id
+    assert snapshot.error_code is ErrorCode.WORKER_OPERATION_FAILED
+    assert snapshot.error_category is ErrorCategory.RESOURCE_LIMIT
+
+
 def test_cancel_ack_is_nonterminal_and_success_may_win_the_race() -> None:
     clock = FakeClock()
     client, _launcher, record, _generation = _ready_client(clock=clock)
@@ -824,7 +858,7 @@ def test_shutdown_waits_for_terminal_cancel_ack_and_preserves_reason() -> None:
     _queue(record, closed)
     client.pump()
     assert client.query().phase is WorkerLifecyclePhase.STOPPED
-    assert record.process.terminate_calls == 0
+    assert record.process.terminate_calls == 1
 
 
 def test_shutdown_after_cancel_result_waits_for_the_terminal_ack() -> None:

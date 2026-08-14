@@ -44,6 +44,11 @@ from paperworkshell.pdf.searchable_export_adapter import (
 )
 from paperworkshell.worker.operations import SearchablePdfExportOperationRequest
 from paperworkshell.worker.pdf_export_report import PdfExportWorkerReport
+from paperworkshell.worker.protocol.models import (
+    ErrorCategory,
+    ErrorCode,
+    OperationOutcome,
+)
 from paperworkshell.worker.searchable_pdf_export_plan import (
     SearchablePdfWorkerPlan,
     SearchablePdfWorkerSource,
@@ -499,6 +504,28 @@ def test_source_path_cannot_be_reused_as_candidate_and_source_remains_immutable(
 
     assert raised.value.code is PdfExportErrorCode.DESTINATION_EXISTS
     assert hashlib.sha256(source.read_bytes()).hexdigest() == source_before
+
+
+def test_correlated_resource_limit_is_sanitized_and_fresh_attempt_recovers() -> None:
+    limited = _System()
+    limited.worker.outcome = OperationOutcome.FAILED
+    limited.worker.error_code = ErrorCode.WORKER_OPERATION_FAILED
+    limited.worker.error_category = ErrorCategory.RESOURCE_LIMIT
+
+    with pytest.raises(PdfExportError) as raised:
+        limited.export()
+
+    assert raised.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert raised.value.context == "searchable.worker_resource_limit"
+    assert limited.worker.terminated
+    rendered = f"{raised.value!s}\n{raised.value!r}"
+    for private in (_PRIVATE_PATH, _PRIVATE_FILENAME, _PRIVATE_TEXT, _PRIVATE_LANGUAGE_ID):
+        assert private not in rendered
+
+    retry = _System()
+    with retry.export() as candidate:
+        assert candidate.report.plan.page_count == retry.plan.page_count
+    assert retry.worker.terminated
 
 
 def test_searchable_trust_boundary_modules_have_no_routine_logging_or_print_surface() -> None:

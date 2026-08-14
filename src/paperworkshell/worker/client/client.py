@@ -24,6 +24,7 @@ from paperworkshell.worker.client.models import (
     WorkerLifecyclePhase,
     WorkerOperationResultSnapshot,
     WorkerOperationSnapshot,
+    WorkerPrivateTempSnapshot,
     WorkerProgressSnapshot,
     WorkerResourceSnapshot,
     WorkerTimeoutPolicy,
@@ -35,6 +36,7 @@ from paperworkshell.worker.client.process import (
     TransportReceive,
     TransportReceiveKind,
     WorkerLaunchRequest,
+    WorkerPrivateTempReporter,
     WorkerProcess,
     WorkerResourcePolicy,
     WorkerResourceReporter,
@@ -121,10 +123,18 @@ class WorkerClient:
         clock: Callable[[], float] = time.monotonic,
         id_factory: Callable[[], UUID] = uuid4,
         capability_factory: Callable[[], SessionCapability] = _default_capability_factory,
+        resource_sampling_interval_ms: int | None = None,
     ) -> None:
         if (
             type(resource_policy) is not WorkerResourcePolicy
             or type(timeout_policy) is not WorkerTimeoutPolicy
+            or (
+                resource_sampling_interval_ms is not None
+                and (
+                    type(resource_sampling_interval_ms) is not int
+                    or not 1 <= resource_sampling_interval_ms <= MAX_SAFE_INTEGER
+                )
+            )
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
@@ -169,6 +179,7 @@ class WorkerClient:
         self._clock = clock
         self._id_factory = id_factory
         self._capability_factory = capability_factory
+        self._resource_sampling_interval_ms = resource_sampling_interval_ms
         self._owner_thread_id = threading.get_ident()
 
         self._generation = 0
@@ -189,6 +200,7 @@ class WorkerClient:
         self._last_result: WorkerOperationResultSnapshot | None = None
         self._last_failure: WorkerFailure | None = None
         self._last_resource_snapshot: WorkerResourceSnapshot | None = None
+        self._last_private_temp_snapshot: WorkerPrivateTempSnapshot | None = None
         self._handshake_deadline: float | None = None
         self._operation_deadline: float | None = None
         self._cancellation_deadline: float | None = None
@@ -271,6 +283,7 @@ class WorkerClient:
         self._last_result = None
         self._last_failure = None
         self._last_resource_snapshot = None
+        self._last_private_temp_snapshot = None
         self._clear_deadlines()
         self._shutdown_after_operation = False
         self._pending_shutdown_reason = None
@@ -318,6 +331,7 @@ class WorkerClient:
                     WorkerClientErrorCode.ISOLATION_INSUFFICIENT,
                     WorkerClientContext.ISOLATION,
                 )
+            self._capture_private_temp_snapshot(required=False)
 
             # AppContainer/profile/ACL setup is a separate trusted launch phase and
             # can legitimately serialize with another application instance.  The
@@ -370,6 +384,7 @@ class WorkerClient:
             last_result=self._last_result,
             last_failure=self._last_failure,
             last_resource_snapshot=self._last_resource_snapshot,
+            last_private_temp_snapshot=self._last_private_temp_snapshot,
             last_cancellation_acknowledgement_ms=(self._last_cancellation_acknowledgement_ms),
         )
 
@@ -381,6 +396,14 @@ class WorkerClient:
             return self._last_resource_snapshot
         return self._capture_resource_snapshot(required=True)
 
+    def private_temp_snapshot(self) -> WorkerPrivateTempSnapshot | None:
+        """Sample private-temp usage or return the terminal numeric cache."""
+
+        self._require_owner()
+        if self._process is None:
+            return self._last_private_temp_snapshot
+        return self._capture_private_temp_snapshot(required=True)
+
     def pump(self, timeout_seconds: float = 0.0) -> WorkerClientSnapshot:
         """Accept at most one transport event, preserving actor-order race semantics."""
 
@@ -388,6 +411,7 @@ class WorkerClient:
         timeout = self._validated_wait(timeout_seconds)
         if self._process is None or self._transport is None:
             return self.query()
+        self._capture_private_temp_snapshot(required=False)
         timeout = min(timeout, self._remaining_to_next_deadline())
 
         receive: object = None
@@ -396,6 +420,7 @@ class WorkerClient:
             receive = self._transport.receive_payload(timeout)
         except Exception:
             receive_failed = True
+        self._capture_private_temp_snapshot(required=False)
         if receive_failed or type(receive) is not TransportReceive:
             failure = self._fault(
                 WorkerClientErrorCode.TRANSPORT_FAILED,
@@ -726,8 +751,10 @@ class WorkerClient:
                 outcome=payload.outcome,
                 outputs=payload.outputs,
                 error_code=None if payload.error is None else payload.error.code,
+                error_category=None if payload.error is None else payload.error.category,
             )
             self._capture_resource_snapshot(required=False)
+            self._capture_private_temp_snapshot(required=False)
             self._active_operation = None
             self._operation_deadline = None
             if (
@@ -956,16 +983,30 @@ class WorkerClient:
         transport = self._transport
         process_closed = True
         transport_closed = True
-        if process is not None and terminate:
+        tree_confirmed_before_sampling = False
+        if process is not None:
+            # The Windows closer has its own mandatory Job-stop fallback, but a
+            # resource measurement may be called complete only when the tree was
+            # already confirmed stopped before the terminal observation.  A
+            # graceful protocol close still crosses this Job confirmation. A
+            # later successful closer fallback remains authoritative for cleanup,
+            # but it cannot retroactively make this earlier sample complete.
             try:
                 process.terminate_tree()
             except Exception:
-                # A successful mandatory close remains authoritative: concrete
-                # process adapters must confirm the tree and all launch authority
-                # are gone before returning from close().
                 pass
+            else:
+                tree_confirmed_before_sampling = True
+        if process is not None:
+            self._capture_private_temp_snapshot(required=False)
         if process is not None:
             self._capture_resource_snapshot(required=False)
+        if process is not None and not tree_confirmed_before_sampling:
+            self._mark_private_temp_measurement_incomplete()
+            # Peak Job accounting is monotonic, but a sample taken while the
+            # tree might still run is not a terminal upper bound.  Do not retain
+            # it as completion evidence when only close() later proves cleanup.
+            self._last_resource_snapshot = None
         if process is not None:
             try:
                 process.close()
@@ -987,6 +1028,20 @@ class WorkerClient:
             # than treating a later idempotent no-op as fresh evidence.
             self._cleanup_unconfirmed = True
         return success
+
+    def _mark_private_temp_measurement_incomplete(self) -> None:
+        """Retain numeric high-water facts while rejecting a complete claim."""
+
+        interval = self._resource_sampling_interval_ms
+        if interval is None:
+            return
+        previous = self._last_private_temp_snapshot
+        self._last_private_temp_snapshot = WorkerPrivateTempSnapshot(
+            sampled_peak_bytes=0 if previous is None else previous.sampled_peak_bytes,
+            sample_count=0 if previous is None else previous.sample_count,
+            sampling_interval_ms=interval,
+            measurement_complete=False,
+        )
 
     def _capture_resource_snapshot(
         self,
@@ -1036,6 +1091,90 @@ class WorkerClient:
             return previous
         self._last_resource_snapshot = observed
         return observed
+
+    def _capture_private_temp_snapshot(
+        self,
+        *,
+        required: bool,
+    ) -> WorkerPrivateTempSnapshot | None:
+        process = self._process
+        if process is None:
+            return self._last_private_temp_snapshot
+        interval = self._resource_sampling_interval_ms
+        if interval is None:
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return self._last_private_temp_snapshot
+        reporter: WorkerPrivateTempReporter | None = None
+        try:
+            if isinstance(process, WorkerPrivateTempReporter):
+                reporter = cast(WorkerPrivateTempReporter, process)
+        except Exception:
+            pass
+        if reporter is None:
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return self._last_private_temp_snapshot
+
+        observed: object = None
+        try:
+            observed = reporter.private_temp_bytes()
+        except Exception:
+            pass
+        previous = self._last_private_temp_snapshot
+        if type(observed) is not int or not 0 <= observed <= MAX_SAFE_INTEGER:
+            incomplete = WorkerPrivateTempSnapshot(
+                sampled_peak_bytes=(0 if previous is None else previous.sampled_peak_bytes),
+                sample_count=(0 if previous is None else previous.sample_count),
+                sampling_interval_ms=interval,
+                measurement_complete=False,
+            )
+            self._last_private_temp_snapshot = incomplete
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return incomplete
+        sample_count = 1 if previous is None else previous.sample_count + 1
+        if sample_count > MAX_SAFE_INTEGER:
+            incomplete = WorkerPrivateTempSnapshot(
+                sampled_peak_bytes=(0 if previous is None else previous.sampled_peak_bytes),
+                sample_count=(0 if previous is None else previous.sample_count),
+                sampling_interval_ms=interval,
+                measurement_complete=False,
+            )
+            self._last_private_temp_snapshot = incomplete
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return incomplete
+        snapshot = WorkerPrivateTempSnapshot(
+            sampled_peak_bytes=max(
+                observed,
+                0 if previous is None else previous.sampled_peak_bytes,
+            ),
+            sample_count=sample_count,
+            sampling_interval_ms=interval,
+            measurement_complete=(previous is None or previous.measurement_complete),
+        )
+        if previous is not None and not snapshot.is_monotonic_successor_of(previous):
+            if required:
+                reject_client(
+                    WorkerClientErrorCode.RESOURCE_REPORT_FAILED,
+                    WorkerClientContext.RESOURCE,
+                )
+            return previous
+        self._last_private_temp_snapshot = snapshot
+        return snapshot
 
     def _next_deadline(self) -> float | None:
         candidates: list[float] = []

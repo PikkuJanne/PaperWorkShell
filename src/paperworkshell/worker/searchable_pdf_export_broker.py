@@ -74,6 +74,8 @@ from paperworkshell.worker.protocol.models import (
     SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
     CancelReason,
     CaseObjectReference,
+    ErrorCategory,
+    ErrorCode,
     OperationOutcome,
     OperationStartPayload,
     ProgressStage,
@@ -954,6 +956,12 @@ def _require_successful_outputs(
         reject_pdf_export(PdfExportErrorCode.CANCELLED, "searchable.worker_result")
     if result.outcome is OperationOutcome.TIMED_OUT:
         reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "searchable.worker_result")
+    if (
+        result.outcome is OperationOutcome.FAILED
+        and result.error_code is ErrorCode.WORKER_OPERATION_FAILED
+        and result.error_category is ErrorCategory.RESOURCE_LIMIT
+    ):
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "searchable.worker_resource_limit")
     if result.outcome is not OperationOutcome.SUCCEEDED or len(result.outputs) != 2:
         reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "searchable.worker_result")
     output, status = result.outputs

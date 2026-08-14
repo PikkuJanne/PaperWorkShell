@@ -45,6 +45,12 @@ from paperworkshell.domain.pdf_export_retry import (
     PdfExportRetryRepository,
     PreparedPdfExportRetry,
 )
+from paperworkshell.domain.signed_source_policy import (
+    SignedSourceModificationSource,
+    SignedSourcePolicyError,
+    SignedSourceSignatureState,
+    require_signed_source_modification_confirmation,
+)
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 
 _MAXIMUM_IDENTIFIER_ATTEMPTS = 32
@@ -468,11 +474,21 @@ class PdfExportService:
             loaded = self._manifests.load(case_id)
             if type(loaded) is not ManifestLoadResult or loaded.snapshot.case_id != case_id:
                 reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_load")
-            return (
-                build_pdf_export_plan(loaded.snapshot),
-                manifest_export_identifier_ids(loaded.snapshot.document),
+            plan = build_pdf_export_plan(loaded.snapshot)
+            require_signed_source_modification_confirmation(
+                loaded.snapshot,
+                tuple(
+                    SignedSourceModificationSource(
+                        source.source_id,
+                        SignedSourceSignatureState(source.signature_state.value),
+                    )
+                    for source in plan.sources
+                ),
             )
+            return plan, manifest_export_identifier_ids(loaded.snapshot.document)
         except PdfExportError:
+            raise
+        except SignedSourcePolicyError:
             raise
         except ManifestRepositoryError as error:
             _raise_manifest_error(error)

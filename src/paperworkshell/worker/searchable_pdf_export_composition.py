@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
@@ -15,10 +16,17 @@ from paperworkshell.worker.client.errors import (
     WorkerClientErrorCode,
     reject_client,
 )
-from paperworkshell.worker.client.models import WorkerResourceSnapshot, WorkerTimeoutPolicy
+from paperworkshell.worker.client.models import (
+    WorkerLifecyclePhase,
+    WorkerOperationResultSnapshot,
+    WorkerPrivateTempSnapshot,
+    WorkerResourceSnapshot,
+    WorkerTimeoutPolicy,
+)
 from paperworkshell.worker.client.process import WorkerResourcePolicy
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationSnapshot
 from paperworkshell.worker.protocol.models import (
+    MAX_SAFE_INTEGER,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     ResourceLimits,
 )
@@ -46,6 +54,8 @@ class SearchablePdfExportWorkerCompositionConfig:
     timeout_policy: WorkerTimeoutPolicy
     maximum_heavy_operation_concurrency: int
     broker_policy: SearchablePdfExportBrokerPolicy
+    maximum_active_full_resolution_page_buffers: int = 1
+    resource_sampling_interval_ms: int = 50
     venv_launcher: Path | None = field(default=None, repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
@@ -60,6 +70,16 @@ class SearchablePdfExportWorkerCompositionConfig:
             or type(self.maximum_heavy_operation_concurrency) is not int
             or self.maximum_heavy_operation_concurrency != 1
             or type(self.broker_policy) is not SearchablePdfExportBrokerPolicy
+            or type(self.maximum_active_full_resolution_page_buffers) is not int
+            or self.maximum_active_full_resolution_page_buffers != 1
+            or type(self.resource_sampling_interval_ms) is not int
+            or not 1 <= self.resource_sampling_interval_ms <= MAX_SAFE_INTEGER
+            or not math.isclose(
+                self.broker_policy.pump_interval_seconds * 1_000,
+                self.resource_sampling_interval_ms,
+                rel_tol=0.0,
+                abs_tol=1e-9,
+            )
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
@@ -126,6 +146,28 @@ class SearchablePdfExportWorkerComposition(
         self._require_owner()
         return self._worker.resource_snapshot()
 
+    def private_temp_snapshot(self) -> WorkerPrivateTempSnapshot | None:
+        self._require_owner()
+        return self._worker.private_temp_snapshot()
+
+    def last_operation_result(self) -> WorkerOperationResultSnapshot | None:
+        """Return the cached path-free terminal result for correlation evidence."""
+
+        self._require_owner()
+        return self._worker.query().last_result
+
+    def worker_tree_termination_confirmed(self) -> bool:
+        """Return whether a launched generation completed mandatory tree cleanup."""
+
+        self._require_owner()
+        snapshot = self._worker.query()
+        return bool(
+            snapshot.generation > 0
+            and snapshot.phase is WorkerLifecyclePhase.STOPPED
+            and snapshot.pid is None
+            and snapshot.active_operation is None
+        )
+
     def last_cancellation_acknowledgement_ms(self) -> int | None:
         self._require_owner()
         return self._worker.query().last_cancellation_acknowledgement_ms
@@ -186,6 +228,7 @@ def create_searchable_pdf_export_worker_composition(
         config.resource_policy,
         config.timeout_policy,
         required_capabilities=(SEARCHABLE_PDF_EXPORT_CAPABILITY,),
+        resource_sampling_interval_ms=config.resource_sampling_interval_ms,
     )
     return SearchablePdfExportWorkerComposition(
         worker,
@@ -213,6 +256,8 @@ def create_searchable_pdf_export_worker_composition_config(
     maximum_heavy_operation_concurrency: int,
     limits: ResourceLimits,
     status_capacity_bytes: int,
+    maximum_active_full_resolution_page_buffers: int = 1,
+    resource_sampling_interval_ms: int = 50,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
 ) -> SearchablePdfExportWorkerCompositionConfig:
@@ -230,6 +275,8 @@ def create_searchable_pdf_export_worker_composition_config(
         resource_policy=resource_policy,
         timeout_policy=timeout_policy,
         maximum_heavy_operation_concurrency=maximum_heavy_operation_concurrency,
+        maximum_active_full_resolution_page_buffers=(maximum_active_full_resolution_page_buffers),
+        resource_sampling_interval_ms=resource_sampling_interval_ms,
         broker_policy=SearchablePdfExportBrokerPolicy(
             limits=limits,
             status_capacity_bytes=status_capacity_bytes,

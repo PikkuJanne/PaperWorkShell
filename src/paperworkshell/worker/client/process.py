@@ -485,7 +485,7 @@ class WorkerProcess(Protocol):
         """Duplicate one reduced-right, non-inheritable handle into this worker."""
 
     def terminate_tree(self) -> None:
-        """Terminate the retained job and its complete descendant tree."""
+        """Return only after the retained job and complete descendant tree stop."""
 
     def close(self) -> None:
         """Close transport, process, thread, job, and profile authority idempotently."""
@@ -497,6 +497,14 @@ class WorkerResourceReporter(Protocol):
 
     def resource_snapshot(self) -> WorkerResourceSnapshot:
         """Return one validated immutable resource observation."""
+
+
+@runtime_checkable
+class WorkerPrivateTempReporter(Protocol):
+    """Optional process capability for numeric-only private-temp sampling."""
+
+    def private_temp_bytes(self) -> int:
+        """Return the current bounded logical bytes below the private temp root."""
 
 
 class ProcessLauncher(Protocol):

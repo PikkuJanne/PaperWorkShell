@@ -82,6 +82,7 @@ class PdfExportErrorCode(StrEnum):
     SOURCE_UNSUPPORTED = "PDF_EXPORT_SOURCE_UNSUPPORTED"
     SOURCE_ENCRYPTED = "PDF_EXPORT_SOURCE_ENCRYPTED"
     SOURCE_ENCRYPTION_UNKNOWN = "PDF_EXPORT_SOURCE_ENCRYPTION_UNKNOWN"
+    SOURCE_SIGNATURE_UNKNOWN = "PDF_EXPORT_SOURCE_SIGNATURE_UNKNOWN"
     SOURCE_INCONSISTENT = "PDF_EXPORT_SOURCE_INCONSISTENT"
     SOURCE_CHANGED = "PDF_EXPORT_SOURCE_CHANGED"
     TRANSFORM_UNSUPPORTED = "PDF_EXPORT_TRANSFORM_UNSUPPORTED"
@@ -125,6 +126,10 @@ _SAFE_ERROR_MESSAGES: Final[dict[PdfExportErrorCode, str]] = {
     ),
     PdfExportErrorCode.SOURCE_ENCRYPTION_UNKNOWN: (
         "PaperWorkShell could not confirm that every selected PDF is unencrypted."
+    ),
+    PdfExportErrorCode.SOURCE_SIGNATURE_UNKNOWN: (
+        "PaperWorkShell could not confirm the digital-signature-marker state of every "
+        "selected PDF. Use searchable PDF export after explicit review."
     ),
     PdfExportErrorCode.SOURCE_INCONSISTENT: ("The case source and page records do not agree."),
     PdfExportErrorCode.SOURCE_CHANGED: "A source PDF changed before export completed.",
@@ -444,6 +449,13 @@ class PdfExportPlan:
             or any(type(page) is not PdfExportPage for page in pages)
         ):
             reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "plan.collections")
+        if any(
+            source.signature_state is PdfExportSourceSignatureState.UNKNOWN for source in sources
+        ):
+            reject_pdf_export(
+                PdfExportErrorCode.SOURCE_SIGNATURE_UNKNOWN,
+                "plan.source_signature",
+            )
         source_ids = tuple(source.source_id for source in sources)
         page_ids = tuple(page.page_id for page in pages)
         source_positions = tuple((page.source_id, page.source_page_index) for page in pages)
@@ -556,7 +568,7 @@ class PdfExportCheck:
             return "PaperWorkShell reopened the committed output successfully."
         return (
             "The exported PDF is an unsigned derivative because at least one source "
-            "contained digital-signature markers."
+            "contained digital-signature markers or its marker state could not be confirmed."
         )
 
 
@@ -722,12 +734,14 @@ class PdfExportOutcome:
 
     @property
     def safe_message(self) -> str:
+        prefix = "Unsigned derivative: " if self.report.unsigned_derivative else ""
         if self.status is PdfExportOutcomeStatus.COMMITTED_RECORDED:
-            return "The verified PDF was saved and recorded in case history."
-        return (
+            return f"{prefix}The verified PDF was saved and recorded in case history."
+        message = (
             "The verified PDF was saved, but PaperWorkShell could not record it in case "
             "history. The output does not need to be exported again."
         )
+        return f"{prefix}{message}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -907,6 +921,11 @@ def _select_export_source(source: _ManifestSource) -> PdfExportSource:
         )
     if source.encryption_state != PdfExportSourceEncryptionState.UNENCRYPTED.value:
         reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "plan.source_encryption")
+    if source.signature_state in {"unknown", "not_checked"}:
+        reject_pdf_export(
+            PdfExportErrorCode.SOURCE_SIGNATURE_UNKNOWN,
+            "plan.source_signature",
+        )
     try:
         signature_state = PdfExportSourceSignatureState(source.signature_state)
     except ValueError:

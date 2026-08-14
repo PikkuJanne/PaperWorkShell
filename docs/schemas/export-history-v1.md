@@ -14,7 +14,8 @@ Each v1 record contains exactly:
 - the deterministic semantic fingerprint of page selection, order, rotation, and profile;
 - verified output SHA-256, byte size, and page count;
 - the closed codes for checks actually completed; and
-- whether the output is an unsigned derivative because signature markers were present.
+- whether the output is an unsigned derivative because signature markers were present or their
+  state could not be confirmed by the producing profile.
 
 There is no path, filename, display name, PDF text, OCR text, form value, metadata value, thumbnail,
 or signature image field. Routine errors and representations omit record identifiers and digests.

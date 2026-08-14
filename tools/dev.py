@@ -177,6 +177,16 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.m1_vertical_slice_benchmark", "validate"),
         "Validate the constrained-profile M1 vertical-slice evidence schema.",
     ),
+    "validate-pws0208-resource-workload": CommandSpec(
+        (
+            "python",
+            "-m",
+            "tools.pws0208_resource_evidence",
+            "--workload",
+            "benchmarks/pws0208-searchable-mixed-workload-v1.json",
+        ),
+        "Validate the exact constrained incremental mixed-output workload.",
+    ),
     "validate-pdf-renderer-benchmark": CommandSpec(
         ("python", "-m", "tools.pdf_renderer_benchmark", "validate"),
         "Validate the versioned PWS-0106 renderer comparison workload.",
@@ -193,6 +203,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
     "run-m1-vertical-slice": CommandSpec(
         ("python", "-m", "tools.m1_vertical_slice_live_runner"),
         "Run the constrained PWS-0114 scenario and publish its local derivative and report.",
+        include_in_check=False,
+    ),
+    "run-pws0208-resource-workload": CommandSpec(
+        ("python", "-m", "tools.pws0208_resource_live_runner"),
+        "Run the constrained PWS-0208 signed-source resource workload.",
         include_in_check=False,
     ),
     "benchmark-pdf-renderers": CommandSpec(

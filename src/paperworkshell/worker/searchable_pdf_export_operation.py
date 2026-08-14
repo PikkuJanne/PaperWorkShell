@@ -752,6 +752,7 @@ def _adapter_limits(
         pdf_transform_height_pixels=transform_dimension,
         verification_width_pixels=_VERIFICATION_DIMENSION_PIXELS,
         verification_height_pixels=_VERIFICATION_DIMENSION_PIXELS,
+        maximum_active_full_resolution_page_buffers=1,
     )
 
 

@@ -29,6 +29,59 @@ It does not emulate or certify a named CPU, RAM allocation, GPU, SSD, HDD, VM, o
 Physical low-end-device testing has not been performed; any future observation is optional and
 non-gating under PWS-D041.
 
+## PWS-0208 incremental mixed-job evidence
+
+[`pws0208-searchable-mixed-workload-v1.json`](pws0208-searchable-mixed-workload-v1.json) is the
+canonical content-free workload descriptor for PWS-0208. It binds three public synthetic sources,
+12 pages, the source-scoped unsigned-derivative confirmation code, one active full-resolution page
+buffer/result, the 50-millisecond sampling interval, and success/cancellation/limit/fresh-retry
+scenarios. The `pdf-signed-marker` source is a structural-marker fixture, not evidence that a
+cryptographic signature exists or is valid.
+Its exact SHA-256 is
+`ce04fcca1b67fa212d790ddda5074baf82f2d55e8212fc5467f879fbab8dd70a`.
+
+Validate a canonical `pws0208-resource-evidence` version-1 report without running the workload:
+
+```powershell
+python -m tools.pws0208_resource_evidence <report>
+```
+
+Validate the exact committed workload descriptor through the stable developer entry point:
+
+```powershell
+py -3.14 tools/dev.py validate-pws0208-resource-workload
+```
+
+Run the admitted Windows workload and publish the fixed local report and derivative under
+`output/pdf/`:
+
+```powershell
+py -3.14 tools/dev.py run-pws0208-resource-workload
+```
+
+The workload command is the live runner: it invokes the focused supported-Windows integration
+harness, uses the production worker/Job boundary and exact workload descriptor, and publishes the
+report only after the run passes. The separate `python -m tools.pws0208_resource_evidence <report>`
+command is validator-only: it checks a previously produced report's closed model, canonical
+encoding, workload/policy identity, numeric budgets, sampled private-temp completeness,
+cancellation bound, cleanup, and retry outcomes without running the workload. Both commands keep
+the report local and sanitized; the validator never prints its contents.
+
+The model binds the verified derivative byte size and SHA-256, and records sampled
+complete-process-tree RSS separately from worker-process and Windows Job
+commit peaks. It also records the sampled worker-private-temp peak/count/interval/completeness,
+active full-resolution page buffers and page results, cancellation acknowledgement, the closed
+limit failure, cleanup, retry, unchanged originals, expected confirmation/history-only manifest
+mutations, and manifest stability across cancel/limit failures. Passing these bounded
+software checks does not certify a named processor, memory size, disk, VM, or physical device.
+The active-buffer/result values are observed in a separate focused production-adapter scheduler
+probe over the exact workload and carry scope
+`focused-production-adapter-instrumentation`; the AppContainer run supplies process, Job, and
+private-temp measurements. The report does not imply those counters crossed worker RPC.
+Exact OCRmyPDF, Tesseract, pikepdf, qpdf, pypdfium2, and PDFium versions plus preparation,
+success, cancellation, limit-failure, retry, and total durations are bound as content-free facts.
+Durations are observations, not heterogeneous-machine performance gates.
+
 ## PDF renderer comparison
 
 `pdf-renderer-windows-v1.json` binds the historical PWS-0106 comparison to a versioned Windows workload,

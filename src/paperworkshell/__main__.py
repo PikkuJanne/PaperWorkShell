@@ -569,6 +569,11 @@ def build_windows_searchable_pdf_export_worker_config(
             shutdown_grace_seconds=10.0,
         ),
         maximum_heavy_operation_concurrency=(selected_policy.maximum_heavy_operation_concurrency),
+        maximum_active_full_resolution_page_buffers=(
+            selected_policy.maximum_active_full_resolution_page_buffers
+        ),
+        resource_sampling_interval_ms=selected_policy.resource_sampling_interval_ms,
+        pump_interval_seconds=selected_policy.resource_sampling_interval_ms / 1_000,
         limits=build_windows_searchable_pdf_export_limits(selected_policy),
         status_capacity_bytes=_SEARCHABLE_PDF_STATUS_BYTES,
     )
