@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.66",
+  "bundle_version": "0.1.67",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 198067,
-      "sha256": "752be7297d4f02b85d8670254f097e741f86b366da1b330c363ba947277f66d1"
+      "bytes": 202679,
+      "sha256": "665681eb755db85ceb9cbf5b1d84e4f356c66dfc480d5ea1cf4506d53d96259d"
     },
     {
       "path": "TASKS.schema.json",
@@ -58,13 +58,12 @@
     "initial_ready_tasks": [
       "PWS-0203",
       "PWS-0205",
-      "PWS-0207",
-      "PWS-0208"
+      "PWS-0207"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0206 is done: verified mixed PDF/JPEG/PNG export preserves born-digital text, applies bounded page-local OCR, reports honest per-page text-presence outcomes, handles marker-present/unknown sources as unsigned derivatives, and reopens/qpdf-checks/PDFium-renders every output through the network-denied worker. PWS-0203, PWS-0205, PWS-0207, and PWS-0208 are ready; the P0 selector chooses PWS-0208 next.",
+    "PWS-0208 is done: exact source-scoped confirmation now precedes signed or indeterminate PDF modification, outputs retain reason-aware unsigned-derivative wording, and the versioned constrained 12-page workload proves one-page-at-a-time scheduling, bounded complete-tree memory and sampled private temp, cancellation, correlated limit refusal, cleanup, and fresh retry. PWS-0203, PWS-0205, and PWS-0207 are ready; the task selector chooses PWS-0203 next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

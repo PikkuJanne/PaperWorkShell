@@ -1889,7 +1889,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0105
@@ -1923,10 +1923,59 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-14'
+    revision: dae0bc9f30d8097f0504438d3fe4f33c91d6d77f
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py format; lint; check-import-boundaries; typecheck; test-unit
+      - passed on the final implementation revision; 386 files were formatted, linted, and strictly typed,
+      13 import layers across 141 source files were valid, and all 3027 unit tests passed
+    - .venv\Scripts\python.exe tools/dev.py test-security; test-accessibility - passed on the final
+      implementation revision; 329 security tests passed with 6 disclosed Windows link/privilege skips,
+      and all 26 accessibility tests passed
+    - .venv\Scripts\python.exe tools/dev.py test-integration - passed on the final implementation revision
+      with the admitted qpdf 12.3.2 and Tesseract 5.5.3 English runtime; 390 tests passed with 4 disclosed
+      Windows link/private-stage skips in 2291.05 seconds
+    - .venv\Scripts\python.exe tools/dev.py run-pws0208-resource-workload - passed against clean revision
+      dae0bc9f30d8097f0504438d3fe4f33c91d6d77f; the fixed 12-page signed-source workload completed
+      success, page-boundary cancellation, correlated one-byte resource refusal, cleanup, and fresh retry
+      in 103069 ms
+    - .venv\Scripts\python.exe -m tools.pws0208_resource_evidence output\pdf\PWS-0208-resource-evidence.json;
+      qpdf --check; pdfinfo; pdftoppm render review - passed; report SHA-256
+      73d20ac23ea37976df36c0e8ce074397dd7c79b058025982bc861b7f0083f7a5 binds the 128179-byte
+      derivative SHA-256 71945f79abc29979b89cef4857c597511036649da5099680fafb508272ad0836; all 12
+      final page renders exactly matched the visually approved pixel hashes
+    - .venv\Scripts\python.exe tools/dev.py format-check; validate-schemas; validate-task-graph;
+      validate-dependencies; validate-docs; validate-fixtures; validate-pws0208-resource-workload;
+      scan-secrets; quality-self-test - passed; all registered contracts, the 45-fixture corpus, bounded
+      repository privacy scan, and all 5 deliberate quality violations were validated
+    notes:
+    - Both structural and searchable export services require the exact source-scoped manifest-v2
+      signed-source-unsigned-derivative confirmation before capacity, history, source borrowing, or worker
+      work. Missing, withdrawn, stale, duplicate, wrong-version, or wrong-source confirmation fails closed;
+      legacy export rejects unknown signature state, while searchable marker/unknown outputs are conservatively
+      labeled Unsigned derivative.
+    - The accessible confirmation dialog keeps Cancel as the safe initial/default action, exposes the exact
+      affected sources and reason-aware warning, supports keyboard scrolling under enlarged text, and records
+      only the existing versioned user confirmation after revision, manifest hash, and CAS revalidation. The
+      synthetic marker fixture is an unsigned /FT /Sig field without /ByteRange and is not claimed to be a
+      cryptographically valid signature.
+    - The version-1 incremental scheduler processed the fixed mixed job in manifest order with measured peak
+      active full-resolution page buffers 1 and peak active page results 1. The worker remained under the
+      536870912-byte process, 805306368-byte Job, 1342177280-byte complete-tree RSS, and 536870912-byte
+      temporary-storage budgets.
+    - Parent evidence measured peak complete-process-tree RSS 323784704 bytes, worker-process commit 102596608
+      bytes, Job commit 124583936 bytes, and a complete 804-sample worker-private-temp peak of 738223 bytes at
+      50 ms. The AppContainer one-map regression proves those samples observe physical AC\Temp, the old nested
+      AC\Packages namespace is absent, the real user temp is untouched, and guarded bytecode-cache mutation is
+      denied.
+    - Cancellation was acknowledged in 14 ms, terminated the complete worker tree, published no destination,
+      and preserved originals/manifest. The exact correlated PDF_EXPORT_LIMIT_EXCEEDED attempt also published
+      nothing and cleaned up; a fresh one-shot worker then succeeded. Routine models, reports, errors, and logs
+      contain no OCR/document text, original filenames, paths, content digests, or raw engine failures.
+    - The final unsigned derivative strictly reopened, passed qpdf 12.3.2, was PDFium-verified page by page,
+      and was rendered with Poppler for visual inspection. Its five preserved born-digital/raster pairs,
+      standalone raster page, and conservative signature-field-marker page were intact; no PDF/UA, OCR
+      accuracy, legal-signature validity, or named-hardware performance claim is made.
 - id: PWS-0209
   milestone: M2
   title: Run Milestone 2 image and OCR gate
