@@ -388,9 +388,9 @@ def _measure_active_thumbnail_cancellation(
             page_ids=(page_id,),
             # AppContainer profile construction and authenticated resource
             # inventory are outside the cancellation acknowledgement window.
-            # Give startup its production-sized budget, then start the measured
-            # two-second window only at the RENDERING progress boundary.
-            timeout_seconds=120.0,
+            # Exercise the production organizer deadline, then start the
+            # measured two-second window only at the RENDERING progress
+            # boundary.
             cancellation=cancellation.is_set,
             progress=progress,
         )

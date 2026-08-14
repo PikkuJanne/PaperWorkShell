@@ -220,13 +220,14 @@ Preview generation keeps the PWS-0108 one-shot isolation boundary: every disk-ca
 and terminates a fresh restricted worker for one page, and each untrusted render retains its
 independent 60-second worker wall-time limit. The application thumbnail service also has one
 monotonic deadline covering the complete serial batch, including trusted worker launch and
-revocation. The organizer's default outer budget is therefore 120 seconds per PDF page in the
-validated subset, capped at the service maximum of 3,600 seconds. An explicit caller timeout is not
-rescaled. Interactive scan review instead uses that existing 3,600-second service ceiling for its
-outer application deadline because fresh AppContainer ACL preparation and revocation are trusted,
-synchronous setup that can exceed the ordinary one-page budget. The review remains responsive and
-explicitly cancelable, and every untrusted render still has its independent 60-second worker wall
-limit; the longer outer deadline does not grant more document-processing time.
+revocation. The toolkit-level one-call default remains 120 seconds. The selected production
+organizer instead uses 300 seconds per requested page in the validated subset, capped at the
+service maximum of 3,600 seconds, because fresh AppContainer
+ACL preparation and revocation are trusted, synchronous setup that can exceed the toolkit-level
+default on a constrained Windows host. An explicit caller timeout is not rescaled. Interactive scan
+review uses the existing 3,600-second service ceiling for the same reason. Both workflows remain
+responsive and explicitly cancelable, and every untrusted render still has its independent
+60-second worker wall limit; the longer outer deadlines do not grant more document-processing time.
 
 Application exit never stops the backend event loop ahead of backend shutdown. The fallback wait
 processes GUI-thread completion/refusal signals for ten seconds. A timeout leaves the backend loop

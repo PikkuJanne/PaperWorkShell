@@ -1253,7 +1253,7 @@ def test_thumbnail_subset_preserves_organizer_order_and_scales_for_requested_pdf
         PAGE_IDS[0],
         PAGE_IDS[2],
     )
-    assert thumbnails.timeout_seen == DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS * 2
+    assert thumbnails.timeout_seen == DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS * 2
 
 
 def test_thumbnail_subset_rejects_duplicates_unknown_order_and_over_cap() -> None:
