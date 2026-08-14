@@ -330,6 +330,8 @@ def test_live_searchable_mixed_export_preserves_text_ocrs_images_and_verifies_ou
                 shutdown_grace_seconds=10.0,
             ),
             maximum_heavy_operation_concurrency=1,
+            maximum_active_full_resolution_page_buffers=1,
+            resource_sampling_interval_ms=10,
             limits=limits,
             status_capacity_bytes=1024 * 1024,
             pump_interval_seconds=0.01,
