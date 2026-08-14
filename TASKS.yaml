@@ -1785,7 +1785,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0204
@@ -1814,10 +1814,39 @@ tasks:
   - packaging
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-14'
+    revision: b1d242abcb26b007a9213b30cecc1bbd97c1df2c
+    commands:
+    - uv run --locked --no-sync python tools/dev.py format-check; lint; typecheck - passed on the final implementation;
+      407 files were formatted/linted and all 407 source files passed strict mypy
+    - uv run --locked --no-sync python tools/dev.py test-unit - passed after task/bundle closure; 3249 unit tests passed
+    - uv run --locked --no-sync python tools/dev.py test-security; test-accessibility - passed after closure; 339
+      security tests passed with 6 disclosed Windows link/privilege skips, and all 36 accessibility tests passed
+    - uv run --locked --no-sync pytest -q tests/integration/test_packaged_language_catalog.py
+      tests/integration/test_ocr_worker_windows.py tests/integration/test_ocr_admission_appcontainer_windows.py
+      tests/integration/test_searchable_pdf_export_worker_windows.py tests/integration/test_pws0208_resource_workload_windows.py
+      - passed; the offline wheel/sdist catalog test passed and 5 live nodes skipped because the reviewed runtime/private
+      PWS-0208 stage was not configured
+    - uv run --locked --no-sync python tools/dev.py validate-dependencies; validate-schemas; validate-task-graph;
+      validate-docs; validate-portfolio-boundary - passed with the approved catalog, 82-task/243-edge graph, and refreshed
+      0.2.1 bundle
+    notes:
+    - A separate hash-addressed catalog admits the exact German tessdata-fast 4.1.0 model and immutable English,
+      German, and English-plus-German set IDs. The PWS-0204 39-file base manifest and worker RPC v1 remain unchanged.
+    - Capability discovery, Save, direct OCR, searchable export, and worker launch re-admit one app-scoped
+      Windows-visible runtime authority on a mount-manager-registered DRIVE_FIXED NTFS/ReFS volume with persistent
+      ACLs. UNC/device/network-drive/unregistered DOS aliases, unsupported volume mappings, reparse/offline/recall
+      state, hardlinks, alternate streams, missing/changed/unlisted files, and unsupported sets fail closed without
+      fallback. The check does not attest physical medium or lower-layer storage transport; iSCSI-, SAN-, or
+      VHD/VHDX-backed volumes can satisfy the OS-visible contract.
+    - The accessible Ctrl+Shift+L workflow is process-session scoped, performs no download or case mutation, retains no
+      machine path in case state, gives actionable missing/invalid/unknown recovery without stale verification claims,
+      and retains one application-level refresh gate so a dismissed dialog cannot queue repeated capability scans.
+    - Runtime inventory consumes at most the first over-limit entry, authenticated resources read only their exact
+      expected size plus one EOF probe, and the dependency validator bounds both catalog reads before decoding.
+    - PWS-0801/PWS-0802 retain final detached-signature verification, installer-protected read-only staging, notices,
+      elevation/removal, and same-path swap/ACL evidence. No traineddata bytes, live multilingual accuracy claim, or
+      completed installer hook is committed by this task.
 - id: PWS-0206
   milestone: M2
   title: Produce searchable mixed-document output
