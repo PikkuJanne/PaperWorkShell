@@ -16,6 +16,11 @@ from typing import Final, Protocol, cast
 from uuid import UUID
 
 from paperworkshell.app.manifest_repository import ManifestAutosaveService
+from paperworkshell.app.ocr_languages import (
+    OcrLanguageManager,
+    OcrLanguageSnapshot,
+    unavailable_ocr_language_manager,
+)
 from paperworkshell.app.page_previews import (
     DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
     MAX_PAGE_PREVIEW_TIMEOUT_SECONDS,
@@ -312,6 +317,7 @@ class OrganizerBackend:
         "_active_scan_review",
         "_close_resources",
         "_lifecycle",
+        "_ocr_languages",
         "_pending_committed_import",
         "_repository",
         "_session",
@@ -330,6 +336,7 @@ class OrganizerBackend:
         *,
         close_resources: Callable[[], None] = _close_nothing,
         startup_recovery: StartupRecoveryResult | None = None,
+        ocr_languages: OcrLanguageManager | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -337,12 +344,21 @@ class OrganizerBackend:
             startup_recovery = StartupRecoveryResult()
         elif type(startup_recovery) is not StartupRecoveryResult:
             reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.organizer_result")
+        selected_ocr_languages = (
+            unavailable_ocr_language_manager() if ocr_languages is None else ocr_languages
+        )
+        if type(selected_ocr_languages) is not OcrLanguageManager:
+            reject_page_operation(
+                PageOperationErrorCode.MODEL_INVALID,
+                "organizer.ocr_languages",
+            )
         self._lifecycle = lifecycle
         self._repository = repository
         self._source_ingest = source_ingest
         self._thumbnails = thumbnails
         self._close_resources = close_resources
         self._startup_recovery = startup_recovery
+        self._ocr_languages = selected_ocr_languages
         self._active_scan_review: _ActiveScanReview | None = None
         self._pending_committed_import: SourceImportResult | None = None
         self._session: _OrganizerSession | None = None
@@ -353,6 +369,27 @@ class OrganizerBackend:
         """Return the immutable path-free result from desktop startup recovery."""
 
         return self._startup_recovery
+
+    @property
+    def ocr_language_manager(self) -> OcrLanguageManager:
+        """Expose the exact app-scoped manager used by OCR service preflight."""
+
+        return self._ocr_languages
+
+    def refresh_ocr_languages(self) -> OcrLanguageSnapshot:
+        """Refresh local-only OCR language facts outside the GUI event thread."""
+
+        self._require_not_shutdown()
+        return self._ocr_languages.refresh()
+
+    def select_ocr_language_codes(
+        self,
+        language_codes: tuple[str, ...],
+    ) -> OcrLanguageSnapshot:
+        """Retain one canonical process-local selection without changing a case."""
+
+        self._require_not_shutdown()
+        return self._ocr_languages.select_language_codes(language_codes)
 
     @property
     def state(self) -> OrganizerViewState:

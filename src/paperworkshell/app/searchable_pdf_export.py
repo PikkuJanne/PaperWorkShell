@@ -9,6 +9,10 @@ from types import TracebackType
 from typing import Never, Protocol, Self, runtime_checkable
 from uuid import UUID, uuid4
 
+from paperworkshell.app.ocr import (
+    OcrLanguageAvailability,
+    built_in_ocr_language_availability,
+)
 from paperworkshell.app.pdf_export import manifest_export_identifier_ids
 from paperworkshell.app.source_ingest import (
     CancellationProbe,
@@ -22,6 +26,7 @@ from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryError,
     ManifestRepositoryErrorCode,
 )
+from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
@@ -49,6 +54,7 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportErrorCode,
     SearchablePdfExportOutcome,
     SearchablePdfExportPlan,
+    SearchablePdfExportProfile,
     SearchablePdfVerificationReport,
     build_searchable_pdf_export_plan,
     reject_searchable_pdf_export,
@@ -155,6 +161,7 @@ class SearchablePdfExportService:
         "_destination",
         "_history",
         "_id_factory",
+        "_ocr_languages",
         "_manifests",
         "_retries",
         "_sources",
@@ -171,6 +178,7 @@ class SearchablePdfExportService:
         *,
         clock: Callable[[], datetime] = _utc_now,
         id_factory: Callable[[], UUID] = uuid4,
+        ocr_languages: OcrLanguageAvailability | None = None,
     ) -> None:
         if (
             not isinstance(manifests, ManifestRepository)
@@ -181,6 +189,9 @@ class SearchablePdfExportService:
             or not isinstance(retries, PdfExportRetryRepository)
             or not callable(clock)
             or not callable(id_factory)
+            or (
+                ocr_languages is not None and not isinstance(ocr_languages, OcrLanguageAvailability)
+            )
         ):
             reject_searchable_pdf_export(
                 SearchablePdfExportErrorCode.MODEL_INVALID,
@@ -194,6 +205,7 @@ class SearchablePdfExportService:
         self._retries = retries
         self._clock = clock
         self._id_factory = id_factory
+        self._ocr_languages = ocr_languages or built_in_ocr_language_availability()
 
     def export_pdf(
         self,
@@ -203,6 +215,7 @@ class SearchablePdfExportService:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink = _ignore_progress,
+        profile: SearchablePdfExportProfile | None = None,
     ) -> SearchablePdfExportOutcome:
         """Return only after no-replace commit and destination reopen succeed."""
 
@@ -213,13 +226,15 @@ class SearchablePdfExportService:
             or not callable(deadline)
             or not callable(cancellation)
             or not callable(progress)
+            or (profile is not None and type(profile) is not SearchablePdfExportProfile)
         ):
             reject_searchable_pdf_export(
                 SearchablePdfExportErrorCode.MODEL_INVALID,
                 "searchable.request",
             )
         _require_active(deadline, cancellation)
-        plan, manifest_ids = self._load_plan(case_id)
+        selected_profile = self._select_profile(profile)
+        plan, manifest_ids = self._load_plan(case_id, selected_profile)
         try:
             maximum_output_bytes = self._broker.maximum_output_bytes
         except BaseException:
@@ -403,7 +418,82 @@ class SearchablePdfExportService:
         )
         return SearchablePdfExportOutcome(base_outcome=base_result, report=report)
 
-    def _load_plan(self, case_id: UUID) -> tuple[SearchablePdfExportPlan, frozenset[UUID]]:
+    def _require_language_set(self, language_set_id: str) -> None:
+        try:
+            self._ocr_languages.require_available(language_set_id)
+        except OcrError as error:
+            if type(error) is not OcrError:
+                reject_searchable_pdf_export(
+                    SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                    "searchable.language_preflight",
+                )
+            if error.code is OcrErrorCode.LANGUAGE_UNAVAILABLE:
+                reject_searchable_pdf_export(
+                    SearchablePdfExportErrorCode.OCR_LANGUAGE_UNAVAILABLE,
+                    "searchable.language_preflight",
+                )
+            if error.code is OcrErrorCode.MODEL_INVALID:
+                reject_searchable_pdf_export(
+                    SearchablePdfExportErrorCode.MODEL_INVALID,
+                    "searchable.language_preflight",
+                )
+            reject_searchable_pdf_export(
+                SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                "searchable.language_preflight",
+            )
+        except Exception:
+            reject_searchable_pdf_export(
+                SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                "searchable.language_preflight",
+            )
+
+    def _select_profile(
+        self,
+        profile: SearchablePdfExportProfile | None,
+    ) -> SearchablePdfExportProfile:
+        if profile is not None:
+            self._require_language_set(profile.ocr_language_set_id)
+            return profile
+        try:
+            selected = self._ocr_languages.require_selected_available()
+        except OcrError as error:
+            if type(error) is not OcrError:
+                reject_searchable_pdf_export(
+                    SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                    "searchable.language_preflight",
+                )
+            if error.code is OcrErrorCode.LANGUAGE_UNAVAILABLE:
+                reject_searchable_pdf_export(
+                    SearchablePdfExportErrorCode.OCR_LANGUAGE_UNAVAILABLE,
+                    "searchable.language_preflight",
+                )
+            reject_searchable_pdf_export(
+                SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                "searchable.language_preflight",
+            )
+        except Exception:
+            reject_searchable_pdf_export(
+                SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                "searchable.language_preflight",
+            )
+        if type(selected) is not str:
+            reject_searchable_pdf_export(
+                SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                "searchable.language_preflight",
+            )
+        try:
+            return SearchablePdfExportProfile(ocr_language_set_id=selected)
+        except SearchablePdfExportError:
+            reject_searchable_pdf_export(
+                SearchablePdfExportErrorCode.INTERNAL_ERROR,
+                "searchable.language_preflight",
+            )
+
+    def _load_plan(
+        self,
+        case_id: UUID,
+        profile: SearchablePdfExportProfile,
+    ) -> tuple[SearchablePdfExportPlan, frozenset[UUID]]:
         try:
             loaded = self._manifests.load(case_id)
             if type(loaded) is not ManifestLoadResult or loaded.snapshot.case_id != case_id:
@@ -411,7 +501,7 @@ class SearchablePdfExportService:
                     SearchablePdfExportErrorCode.MANIFEST_INVALID,
                     "searchable.manifest_load",
                 )
-            plan = build_searchable_pdf_export_plan(loaded.snapshot)
+            plan = build_searchable_pdf_export_plan(loaded.snapshot, profile=profile)
             require_signed_source_modification_confirmation(
                 loaded.snapshot,
                 tuple(

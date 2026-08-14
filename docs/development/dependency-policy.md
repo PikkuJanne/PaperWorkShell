@@ -385,10 +385,32 @@ The initial English data is admitted from the signed MSYS2 UCRT64 package
 It is the Apache-2.0 `tessdata_fast` 4.1.0 model family, not an interchangeable `best` or legacy
 model.
 
-Additional language packs remain modular under `PWS-0205`. They may be bundled or installed from
-a separately authenticated offline package after review, but the document worker never downloads
-them and never receives network access. Missing or mismatched data produces a stable remediation
-error; it does not trigger a silent download or fallback.
+PWS-0205 admits one modular German component from the signed MSYS2 UCRT64 distribution package
+`mingw-w64-ucrt-x86_64-tesseract-data-deu 4.1.0-3`. It is the Apache-2.0 `tessdata_fast` 4.1.0
+model family. The package archive is 816,507 bytes with SHA-256
+`0d1bfa3838617fa0a6c439da638926e50f1186b87a247b3dd5ab3eac25887e41`; its 566-byte detached
+signature has SHA-256 `448ee3de17ec1b9592455d85a678ff97e73db603b1b3bf1786af5d8a0c311542`;
+and the extracted 1,525,436-byte `deu.traineddata` has SHA-256
+`19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d`.
+
+The canonical
+[`packaging/tesseract-language-pack-catalog-v1.json`](../../packaging/tesseract-language-pack-catalog-v1.json)
+and its byte-identical packaged copy bind the optional model and its source evidence. Runtime
+admission authenticates the catalog bytes, then checks the locally staged model's exact relative
+path, size, and SHA-256. Runtime checks do not authenticate the upstream distribution package: release
+packaging must still validate its detached signature against reviewed MSYS2 signer fingerprint
+`5F944B027F7FE2091985AA2EFA11531AA0AA7F57` before extraction. The committed metadata records the
+required upstream evidence; it does not claim that the detached signature was cryptographically
+reverified during PWS-0205.
+
+Installation is verified offline prestaging only. The application and worker do not download
+language data, do not use ambient Tesseract discovery, and receive no network authority for pack
+discovery or OCR. Close and restart PaperWorkShell after adding, replacing, or removing a pack so
+the next discovery reads one complete stable resource set. A missing pack is reported as not
+installed; a size/hash mismatch makes the runtime invalid. Both cases provide local remediation and
+leave case data unchanged, with no silent download or language fallback. PWS-0801 and PWS-0802
+retain the exact package inclusion, staging path, elevation, repair/removal, and user-visible
+license/notice behavior for the release candidate.
 
 ### PDF renderer candidates
 

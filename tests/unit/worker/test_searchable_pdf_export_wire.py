@@ -9,6 +9,7 @@ from paperworkshell.domain.pdf_export import PdfExportError
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportError,
     SearchablePdfExportPlan,
+    SearchablePdfExportProfile,
     SearchablePdfPage,
     SearchablePdfPageEligibility,
     SearchablePdfPageEligibilityCode,
@@ -45,7 +46,10 @@ OUTPUT_ID = UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
 STATUS_ID = UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")
 
 
-def _plan() -> SearchablePdfExportPlan:
+def _plan(
+    *,
+    language_set_id: str = "latin-default-v1",
+) -> SearchablePdfExportPlan:
     source = SearchablePdfSource(
         source_id=SOURCE_ID,
         media_type=SearchablePdfSourceMediaType.PDF,
@@ -73,6 +77,9 @@ def _plan() -> SearchablePdfExportPlan:
         manifest_cas_token="abcdefghijklmnop",
         sources=(source,),
         pages=(page,),
+        profile=SearchablePdfExportProfile(
+            ocr_language_set_id=language_set_id,
+        ),
     )
 
 
@@ -103,6 +110,24 @@ def test_searchable_worker_plan_round_trips_exact_canonical_bytes() -> None:
         )
         == payload
     )
+
+
+def test_searchable_worker_plan_round_trips_supported_multiple_language_set() -> None:
+    plan = _plan(language_set_id="english-german-fast-v1")
+    payload = encode_searchable_pdf_worker_plan(plan, {SOURCE_ID: 41})
+
+    decoded = decode_searchable_pdf_worker_plan(payload)
+
+    assert decoded.plan == plan
+    assert decoded.plan.profile.ocr_language_set_id == "english-german-fast-v1"
+
+
+def test_searchable_worker_plan_rejects_unsupported_language_set() -> None:
+    plan = _plan(language_set_id="unsupported-private-v1")
+    payload = encode_searchable_pdf_worker_plan(plan, {SOURCE_ID: 41})
+
+    with pytest.raises(SearchablePdfExportError):
+        decode_searchable_pdf_worker_plan(payload)
 
 
 def test_searchable_status_and_worker_report_round_trip() -> None:

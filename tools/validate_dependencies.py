@@ -26,6 +26,12 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 INVENTORY_PATH: Final = Path("packaging/dependency-inventory-v1.json")
 TESSERACT_RUNTIME_CLOSURE_PATH: Final = Path("packaging/tesseract-runtime-closure-v1.json")
+TESSERACT_LANGUAGE_PACK_CATALOG_PATH: Final = Path(
+    "packaging/tesseract-language-pack-catalog-v1.json"
+)
+PACKAGED_TESSERACT_LANGUAGE_PACK_CATALOG_PATH: Final = Path(
+    "src/paperworkshell/worker/client/tesseract-language-pack-catalog-v1.json"
+)
 INVENTORY_SCHEMA_PATH: Final = Path("schemas/dependency-inventory-v1.schema.json")
 INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/dependencies/v1/invalid")
 SUPPORTED_SCHEMA_VERSION: Final = 1
@@ -38,6 +44,7 @@ CANONICAL_SCHEMA_FINGERPRINT: Final = (
 MAX_INVENTORY_BYTES: Final = 2 * 1024 * 1024
 MAX_SCHEMA_BYTES: Final = 1024 * 1024
 MAX_RUNTIME_CLOSURE_BYTES: Final = 512 * 1024
+MAX_LANGUAGE_PACK_CATALOG_BYTES: Final = 64 * 1024
 MAX_JSON_DEPTH: Final = 64
 MAX_JSON_NODES: Final = 100_000
 MAX_JSON_STRING_CODEPOINTS: Final = 1_048_576
@@ -51,6 +58,9 @@ EXPECTED_TESSERACT_RUNTIME_FILE_COUNT: Final = 39
 EXPECTED_TESSERACT_RUNTIME_FILE_BYTES: Final = 27_588_734
 CANONICAL_TESSERACT_RUNTIME_CLOSURE_FINGERPRINT: Final = (
     "1ffb85724770b4c30aa4d982564d548dadf466ebd5861cd827d2836198119c0a"
+)
+CANONICAL_TESSERACT_LANGUAGE_PACK_CATALOG_FINGERPRINT: Final = (
+    "7b77404b22bdc7cec72c6af918e7bc4c700399c0dbcb650e7e4562fe1d94ce45"
 )
 
 RENDERER_COMPONENT_IDS: Final = frozenset(
@@ -111,6 +121,7 @@ EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "qt-pdf": "framework",
     "tesseract": "native-tool",
     "tesseract-language-data": "data",
+    "tesseract-language-data-deu": "data",
     "uharfbuzz": "python-package",
 }
 REQUIRED_COMPONENT_IDS: Final = frozenset(
@@ -149,6 +160,7 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
         "shiboken6",
         "tesseract",
         "tesseract-language-data",
+        "tesseract-language-data-deu",
         "typing-inspection",
         "uharfbuzz",
         "uv",
@@ -185,6 +197,7 @@ REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
             "rich",
             "tesseract",
             "tesseract-language-data",
+            "tesseract-language-data-deu",
             "typing-inspection",
             "uharfbuzz",
         }
@@ -222,12 +235,14 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "shiboken6": frozenset({"PWS-0106", "PWS-0111"}),
     "tesseract": frozenset({"PWS-0204"}),
     "tesseract-language-data": frozenset({"PWS-0204"}),
+    "tesseract-language-data-deu": frozenset({"PWS-0204", "PWS-0205"}),
     "typing-inspection": frozenset({"PWS-0204"}),
     "uharfbuzz": frozenset({"PWS-0204"}),
 }
 REQUIRED_USAGE_TASK_REFERENCES: Final[dict[str, frozenset[str]]] = {
     "pillow": frozenset({"PWS-0201"}),
     "tesseract-language-data": frozenset({"PWS-0205"}),
+    "tesseract-language-data-deu": frozenset({"PWS-0205", "PWS-0801", "PWS-0802"}),
 }
 REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
     {
@@ -238,6 +253,7 @@ REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
         ("pyside6", "contains", "qt-pdf", False),
         ("pyside6-addons", "contains", "qt-pdf", False),
         ("tesseract", "uses-data", "tesseract-language-data", True),
+        ("tesseract", "uses-data", "tesseract-language-data-deu", True),
     }
 )
 EXPECTED_NEGATIVE_CODES: Final[dict[str, str]] = {
@@ -329,6 +345,13 @@ EXPECTED_INTEGRITY_ARTIFACTS: Final[dict[str, frozenset[str]]] = {
             "eng.traineddata",
         }
     ),
+    "tesseract-language-data-deu": frozenset(
+        {
+            "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst",
+            "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst.sig",
+            "deu.traineddata",
+        }
+    ),
 }
 EXPECTED_QPDF_BIN_FILES: Final[tuple[str, ...]] = (
     "concrt140.dll",
@@ -362,6 +385,10 @@ EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
         "https://mirror.msys2.org/mingw/ucrt64/"
         "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst"
     ),
+    "tesseract-language-data-deu": (
+        "https://mirror.msys2.org/mingw/ucrt64/"
+        "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst"
+    ),
 }
 EXPECTED_RELEASE_URLS: Final[dict[str, str]] = {
     "pdfium": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947",
@@ -369,6 +396,9 @@ EXPECTED_RELEASE_URLS: Final[dict[str, str]] = {
     "tesseract": ("https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-ocr"),
     "tesseract-language-data": (
         "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-eng"
+    ),
+    "tesseract-language-data-deu": (
+        "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-deu"
     ),
 }
 EXPECTED_PIN_VERIFICATION: Final[dict[str, str]] = {
@@ -447,6 +477,7 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "shiboken6": "https://doc.qt.io/qtforpython-6/shiboken6/",
     "tesseract": "https://github.com/tesseract-ocr/tesseract",
     "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata_fast",
+    "tesseract-language-data-deu": "https://github.com/tesseract-ocr/tessdata_fast",
     "types-jsonschema": "https://github.com/python/typeshed",
     "types-pyyaml": "https://github.com/python/typeshed",
     "typing-extensions": "https://github.com/python/typing_extensions",
@@ -523,6 +554,7 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     ),
     "tesseract": "https://github.com/tesseract-ocr/tesseract/blob/5.5.3/LICENSE",
     "tesseract-language-data": "https://github.com/tesseract-ocr/tessdata_fast/blob/4.1.0/LICENSE",
+    "tesseract-language-data-deu": "https://github.com/tesseract-ocr/tessdata_fast/blob/4.1.0/LICENSE",
     "types-jsonschema": "https://github.com/python/typeshed/blob/main/LICENSE",
     "types-pyyaml": "https://github.com/python/typeshed/blob/main/LICENSE",
     "typing-extensions": "https://github.com/python/typing_extensions/blob/4.16.0/LICENSE",
@@ -680,6 +712,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
         False,
     ),
     "tesseract-language-data": ("Apache-2.0", None, True, False, False, False),
+    "tesseract-language-data-deu": ("Apache-2.0", None, True, False, False, False),
     "types-jsonschema": ("Apache-2.0", None, True, False, False, False),
     "types-pyyaml": ("Apache-2.0", None, True, False, False, False),
     "typing-extensions": ("PSF-2.0", None, True, False, False, False),
@@ -1437,6 +1470,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         True,
         True,
     ),
+    "tesseract-language-data-deu": (
+        "data",
+        "direct",
+        "approved",
+        ("data", "worker"),
+        "planned",
+        False,
+        False,
+        True,
+        "data-only",
+        True,
+        True,
+    ),
     "types-jsonschema": (
         "python-package",
         "direct",
@@ -1669,6 +1715,12 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     ),
     "tesseract-language-data": (
         "Tesseract fast English language data",
+        "data",
+        "Tesseract OCR contributors and MSYS2",
+        "upstream-release-inventory",
+    ),
+    "tesseract-language-data-deu": (
+        "Tesseract fast German language data",
         "data",
         "Tesseract OCR contributors and MSYS2",
         "upstream-release-inventory",
@@ -4608,6 +4660,7 @@ def _repository_semantic_issues(
         _declaration_reconciliation_issues(root, components, document),
         _workflow_reconciliation_issues(root, components, document),
         _tesseract_runtime_closure_issues(root, components, document),
+        _tesseract_language_pack_catalog_issues(root, components, document),
     ):
         for issue in collection:
             _add_issue(issues, issue)
@@ -4659,6 +4712,176 @@ def _repository_semantic_issues(
                 document,
                 "$.relationships",
                 "PySide6 meta-package, Addons, and Qt PDF product containment must remain disabled without conflating PDFium builds",
+            ),
+        )
+    return _sorted_issues(issues)
+
+
+def _tesseract_language_pack_catalog_issues(
+    root: Path,
+    components: Mapping[str, Mapping[str, Any]],
+    document: str,
+) -> list[DependencyIssue]:
+    """Validate the frozen optional-pack catalog and its packaged byte-identical copy."""
+
+    catalog_document = TESSERACT_LANGUAGE_PACK_CATALOG_PATH.as_posix()
+    packaged_document = PACKAGED_TESSERACT_LANGUAGE_PACK_CATALOG_PATH.as_posix()
+    catalog_path = root / TESSERACT_LANGUAGE_PACK_CATALOG_PATH
+    packaged_path = root / PACKAGED_TESSERACT_LANGUAGE_PACK_CATALOG_PATH
+    try:
+        if catalog_path.is_symlink() or packaged_path.is_symlink():
+            raise OSError("catalog path must not be a symbolic link")
+        raw = catalog_path.read_bytes()
+        packaged_raw = packaged_path.read_bytes()
+    except OSError:
+        return [
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_MISSING",
+                catalog_document,
+                "$",
+                "canonical and packaged language-pack catalogs must both be regular files",
+            )
+        ]
+    issues: list[DependencyIssue] = []
+    if (
+        not raw
+        or len(raw) > MAX_LANGUAGE_PACK_CATALOG_BYTES
+        or not packaged_raw
+        or len(packaged_raw) > MAX_LANGUAGE_PACK_CATALOG_BYTES
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVALID",
+                catalog_document,
+                "$",
+                "language-pack catalogs must remain within the reviewed byte limit",
+            ),
+        )
+        return _sorted_issues(issues)
+    if raw != packaged_raw:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_COPY_MISMATCH",
+                packaged_document,
+                "$",
+                "the packaged language-pack catalog must be byte-identical to its authority",
+            ),
+        )
+    if hashlib.sha256(raw).hexdigest() != CANONICAL_TESSERACT_LANGUAGE_PACK_CATALOG_FINGERPRINT:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVALID",
+                catalog_document,
+                "$",
+                "language-pack catalog must match the reviewed canonical fingerprint",
+            ),
+        )
+    try:
+        catalog = json.loads(raw.decode("utf-8"))
+    except UnicodeError, ValueError:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVALID",
+                catalog_document,
+                "$",
+                "language-pack catalog must be a bounded UTF-8 JSON document",
+            ),
+        )
+        return _sorted_issues(issues)
+    if not isinstance(catalog, dict) or not isinstance(catalog.get("packs"), list):
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVALID",
+                catalog_document,
+                "$",
+                "language-pack catalog must retain its reviewed closed object structure",
+            ),
+        )
+        return _sorted_issues(issues)
+    packs = cast(list[object], catalog["packs"])
+    german_pack = next(
+        (
+            cast(Mapping[str, Any], pack)
+            for pack in packs
+            if isinstance(pack, Mapping) and pack.get("language_code") == "deu"
+        ),
+        None,
+    )
+    component = components.get("tesseract-language-data-deu")
+    if german_pack is None or component is None:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVENTORY_MISMATCH",
+                catalog_document,
+                "$.packs",
+                "the reviewed German pack and dependency component must both be present",
+            ),
+        )
+        return _sorted_issues(issues)
+    required_pack_strings = (
+        "relative_path",
+        "sha256",
+        "license_expression",
+        "distribution_package_version",
+        "archive",
+        "archive_url",
+        "archive_sha256",
+        "signature_artifact",
+        "signature_sha256",
+    )
+    if any(
+        not isinstance(german_pack.get(key), str) for key in required_pack_strings
+    ) or not isinstance(german_pack.get("archive_size_bytes"), int):
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVALID",
+                catalog_document,
+                "$.packs[*]",
+                "language-pack artifact identities must retain their reviewed types",
+            ),
+        )
+        return _sorted_issues(issues)
+
+    integrity = cast(Mapping[str, Any], component["integrity"])
+    hashes = {
+        cast(str, item["artifact"]): cast(str, item["value"])
+        for item in cast(list[Mapping[str, Any]], integrity["hashes"])
+    }
+    artifact_evidence = cast(Mapping[str, Any], component["artifact_evidence"])
+    version = cast(Mapping[str, Any], component["version"])
+    license_data = cast(Mapping[str, Any], component["license"])
+    expected_hashes: dict[str, str] = {
+        cast(str, german_pack["archive"]): cast(str, german_pack["archive_sha256"]),
+        cast(str, german_pack["signature_artifact"]): cast(str, german_pack["signature_sha256"]),
+        Path(cast(str, german_pack["relative_path"])).name: cast(str, german_pack["sha256"]),
+    }
+    inventory_matches = (
+        version.get("selected") == german_pack.get("distribution_package_version")
+        and artifact_evidence.get("artifact") == german_pack.get("archive")
+        and artifact_evidence.get("url") == german_pack.get("archive_url")
+        and artifact_evidence.get("size_bytes") == german_pack.get("archive_size_bytes")
+        and artifact_evidence.get("sha256") == german_pack.get("archive_sha256")
+        and hashes == expected_hashes
+        and license_data.get("expression") == german_pack.get("license_expression")
+        and {"PWS-0205", "PWS-0801", "PWS-0802"}.issubset(
+            set(cast(list[str], component["task_refs"]))
+        )
+    )
+    if not inventory_matches:
+        _add_issue(
+            issues,
+            _issue(
+                "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_INVENTORY_MISMATCH",
+                document,
+                "$.components[*]",
+                "German language-pack version, artifacts, hashes, license, and obligations must match the catalog",
             ),
         )
     return _sorted_issues(issues)

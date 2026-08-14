@@ -17,6 +17,7 @@ from paperworkshell.worker.client.errors import (
 )
 from paperworkshell.worker.client.models import WorkerResourceSnapshot, WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.client.tesseract_runtime import tesseract_runtime_authority_id
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationSnapshot
 from paperworkshell.worker.ocr_broker import BrokeredOcrProcessor, OcrBrokerPolicy
 from paperworkshell.worker.protocol.models import OCR_PROCESS_CAPABILITY, ResourceLimits
@@ -41,6 +42,7 @@ class OcrWorkerCompositionConfig:
     broker_policy: OcrBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
+    _ocr_runtime_authority_id: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if (
@@ -68,6 +70,11 @@ class OcrWorkerCompositionConfig:
             tessdata_root=self.tessdata_root,
         )
         object.__setattr__(self, "_launch_config", launch_config)
+        object.__setattr__(
+            self,
+            "_ocr_runtime_authority_id",
+            tesseract_runtime_authority_id(self.tesseract_executable, self.tessdata_root),
+        )
 
     def __repr__(self) -> str:
         return "OcrWorkerCompositionConfig(<validated fixed resources>)"
@@ -80,6 +87,7 @@ class OcrWorkerComposition(AbstractContextManager["OcrWorkerComposition"]):
         "_closed",
         "_heavy_operations",
         "_ocr_processor",
+        "_ocr_runtime_authority_id",
         "_owner_thread_id",
         "_worker",
     )
@@ -89,10 +97,12 @@ class OcrWorkerComposition(AbstractContextManager["OcrWorkerComposition"]):
         worker: WorkerClient,
         ocr_processor: BrokeredOcrProcessor,
         heavy_operations: HeavyOperationCoordinator,
+        ocr_runtime_authority_id: str,
     ) -> None:
         self._worker = worker
         self._ocr_processor = ocr_processor
         self._heavy_operations = heavy_operations
+        self._ocr_runtime_authority_id = ocr_runtime_authority_id
         self._owner_thread_id = threading.get_ident()
         self._closed = False
 
@@ -107,6 +117,12 @@ class OcrWorkerComposition(AbstractContextManager["OcrWorkerComposition"]):
         """Expose the exact app-scoped heavy-work gate identity."""
 
         return self._heavy_operations
+
+    @property
+    def ocr_runtime_authority_id(self) -> str:
+        """Expose only the path-free runtime binding for app-root correlation."""
+
+        return self._ocr_runtime_authority_id
 
     @property
     def closed(self) -> bool:
@@ -185,6 +201,7 @@ def create_ocr_worker_composition(
             heavy_operations=heavy_operations,
         ),
         heavy_operations,
+        config._ocr_runtime_authority_id,
     )
 
 

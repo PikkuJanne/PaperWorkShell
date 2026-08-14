@@ -13,6 +13,7 @@ from tools.validate_dependencies import (
     INVENTORY_PATH,
     DependencyIssue,
     _authority_reference_issues,
+    _tesseract_language_pack_catalog_issues,
     _tesseract_runtime_closure_issues,
     load_dependency_schema,
     validate_dependency_data,
@@ -209,7 +210,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 data = _load_inventory()
                 if mutation == "component-review-after-inventory":
-                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-14"
+                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-15"
                 elif mutation == "future-inventory-review":
                     data["reviewed_on"] = "9999-12-31"
                 else:
@@ -377,6 +378,47 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             {issue.code for issue in issues},
         )
 
+    def test_language_pack_catalog_matches_inventory_and_packaged_copy(self) -> None:
+        data = _load_inventory()
+        components = {
+            component["component_id"]: component
+            for component in cast(list[dict[str, Any]], data["components"])
+        }
+        self.assertEqual(
+            [],
+            _tesseract_language_pack_catalog_issues(
+                ROOT,
+                components,
+                "dependency-inventory.json",
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            canonical = temporary_root / "packaging/tesseract-language-pack-catalog-v1.json"
+            packaged = (
+                temporary_root
+                / "src/paperworkshell/worker/client/tesseract-language-pack-catalog-v1.json"
+            )
+            canonical.parent.mkdir(parents=True)
+            packaged.parent.mkdir(parents=True)
+            catalog_bytes = (
+                ROOT / "packaging/tesseract-language-pack-catalog-v1.json"
+            ).read_bytes()
+            canonical.write_bytes(catalog_bytes)
+            packaged.write_bytes(catalog_bytes + b"\n")
+
+            issues = _tesseract_language_pack_catalog_issues(
+                temporary_root,
+                components,
+                "dependency-inventory.json",
+            )
+
+        self.assertIn(
+            "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_COPY_MISMATCH",
+            {issue.code for issue in issues},
+        )
+
     def test_selected_families_reference_their_actual_implementation_tasks(self) -> None:
         data = _load_inventory()
         expected = {
@@ -394,6 +436,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             "ocrmypdf": "PWS-0204",
             "tesseract": "PWS-0204",
             "tesseract-language-data": "PWS-0205",
+            "tesseract-language-data-deu": "PWS-0205",
         }
 
         for component_id, task_id in expected.items():
@@ -410,9 +453,9 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         )
 
         missing_language_management_ref = _load_inventory()
-        _component(missing_language_management_ref, "tesseract-language-data")["task_refs"].remove(
-            "PWS-0205"
-        )
+        _component(missing_language_management_ref, "tesseract-language-data-deu")[
+            "task_refs"
+        ].remove("PWS-0205")
         self.assertIn(
             "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
             self._codes(missing_language_management_ref, repository_checks=True),
@@ -429,6 +472,8 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             for component in components.values()
             for task_ref in cast(list[str], component["task_refs"])
         }
+        german_pack = components["tesseract-language-data-deu"]
+        german_pack["admission_status"] = "evaluated"
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             authority_root = Path(temporary_directory)
@@ -455,9 +500,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             )
             self.assertEqual([], issues)
 
-            additional_pack = copy.deepcopy(components["tesseract-language-data"])
-            additional_pack["component_id"] = "additional-tesseract-language-data"
-            components["additional-tesseract-language-data"] = additional_pack
+            german_pack["admission_status"] = "approved"
             additional_pack_issues = _authority_reference_issues(
                 authority_root,
                 components,

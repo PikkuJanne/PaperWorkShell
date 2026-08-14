@@ -24,6 +24,7 @@ from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_inspection import PdfInspectionError, PdfInspectionErrorCode
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportPlan,
+    SearchablePdfExportProfile,
     SearchablePdfPage,
     SearchablePdfPageEligibility,
     SearchablePdfPageEligibilityCode,
@@ -79,9 +80,7 @@ from paperworkshell.worker.searchable_pdf_export_operation import (
     WindowsSearchablePdfExportOperationAdapter,
     build_searchable_pdf_export_operation_handler,
 )
-from paperworkshell.worker.searchable_pdf_export_plan import (
-    encode_searchable_pdf_worker_plan,
-)
+from paperworkshell.worker.searchable_pdf_export_plan import encode_searchable_pdf_worker_plan
 from paperworkshell.worker.searchable_pdf_export_report import (
     decode_searchable_pdf_worker_report,
 )
@@ -187,7 +186,11 @@ def _close_if_open(handle: int) -> None:
     assert close_handle(wintypes.HANDLE(handle))
 
 
-def _plan(source_path: Path) -> SearchablePdfExportPlan:
+def _plan(
+    source_path: Path,
+    *,
+    language_set_id: str = "latin-default-v1",
+) -> SearchablePdfExportPlan:
     payload = source_path.read_bytes()
     source = SearchablePdfSource(
         source_id=_uuid(10),
@@ -216,6 +219,9 @@ def _plan(source_path: Path) -> SearchablePdfExportPlan:
                 1_000_000,
                 0,
             ),
+        ),
+        profile=SearchablePdfExportProfile(
+            ocr_language_set_id=language_set_id,
         ),
     )
 
@@ -335,7 +341,10 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
     source_path = tmp_path / "source.pdf"
     output_payload = PDF_FIXTURE.read_bytes()
     source_path.write_bytes(output_payload)
-    plan = _plan(source_path)
+    plan = _plan(
+        source_path,
+        language_set_id="english-german-fast-v1",
+    )
     source_authority = _open_source_authority(source_path)
     source_worker = _duplicate_local_handle(source_authority)
     _close_if_open(source_authority)
@@ -452,7 +461,7 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
     assert progress[-1].completed_units == plan.page_count
     assert {fact.total_units for fact in progress} == {plan.page_count}
     assert tuple(private_root.iterdir()) == ()
-    assert observed["languages"] == ("eng",)
+    assert observed["languages"] == ("eng", "deu")
 
 
 def test_candidate_reopen_failure_keeps_output_authority_owned_until_cleanup(

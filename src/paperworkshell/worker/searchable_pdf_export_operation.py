@@ -41,6 +41,7 @@ from paperworkshell.domain.ocr import (
     OcrError,
     OcrErrorCode,
 )
+from paperworkshell.domain.ocr_languages import resolve_ocr_language_set
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode, reject_pdf_export
 from paperworkshell.domain.pdf_inspection import (
     MAX_PDF_INSPECTION_OBJECTS,
@@ -323,7 +324,9 @@ class WindowsSearchablePdfExportOperationAdapter:
                     staged,
                     candidate_path,
                     operation_temp,
-                    languages=("eng",),
+                    languages=resolve_ocr_language_set(
+                        worker_plan.plan.profile.ocr_language_set_id
+                    ),
                     limits=limits,
                     control=control,
                     progress=cast(SearchablePdfAdapterProgressSink, report_adapter_progress),

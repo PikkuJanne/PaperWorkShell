@@ -9,14 +9,15 @@ from typing import Final, Never, cast
 from uuid import UUID
 
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
+from paperworkshell.domain.ocr_languages import resolve_ocr_language_set
 from paperworkshell.domain.page_operations import NormalizedPageBox
 from paperworkshell.domain.searchable_pdf_export import (
-    DEFAULT_SEARCHABLE_PDF_EXPORT_PROFILE,
     MAX_SEARCHABLE_PDF_PAGES,
     MAX_SEARCHABLE_PDF_SOURCES,
     SEARCHABLE_PDF_PLAN_VERSION,
     SearchablePdfExportErrorCode,
     SearchablePdfExportPlan,
+    SearchablePdfExportProfile,
     SearchablePdfPage,
     SearchablePdfSource,
     SearchablePdfSourceEncryptionState,
@@ -255,7 +256,11 @@ def decode_searchable_pdf_worker_plan(payload: bytes) -> SearchablePdfWorkerPlan
         if _integer(root["plan_version"]) != SEARCHABLE_PDF_PLAN_VERSION:
             raise _PlanDecodeError
         profile_doc = _object(root["profile"], _PROFILE_MEMBERS)
-        expected_profile = DEFAULT_SEARCHABLE_PDF_EXPORT_PROFILE
+        selected_language_set_id = _string(profile_doc["ocr_language_set_id"])
+        resolve_ocr_language_set(selected_language_set_id)
+        expected_profile = SearchablePdfExportProfile(
+            ocr_language_set_id=selected_language_set_id,
+        )
         expected_pdf = expected_profile.pdf_profile
         expected_profile_values = {
             "profile_version": expected_profile.profile_version,

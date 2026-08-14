@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "catalog_id": "paperworkshell-tesseract-language-packs-windows-x86_64",
+  "reviewed_on": "2026-08-14",
+  "task_id": "PWS-0205",
+  "target": {
+    "os": "Windows",
+    "architecture": "x86_64",
+    "abi": "MSYS2 UCRT64"
+  },
+  "runtime_policy": {
+    "model_family": "tessdata_fast",
+    "model_version": "4.1.0",
+    "installation_mode": "offline-prestaged-exact-file",
+    "network_download_allowed": false,
+    "allow_unlisted_files": false,
+    "allow_reparse_points": false
+  },
+  "trust": {
+    "runtime_authority": "catalog-file-size-and-sha256",
+    "upstream_signature_requirement": "The detached MSYS2 package signature must validate against the pinned reviewed MSYS2 key before extraction.",
+    "signature_evidence_status": "required-upstream-not-reverified-for-pws-0205",
+    "required_key_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+  },
+  "packs": [
+    {
+      "language_code": "deu",
+      "display_name": "German",
+      "relative_path": "share/tessdata/deu.traineddata",
+      "size_bytes": 1525436,
+      "sha256": "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d",
+      "license_expression": "Apache-2.0",
+      "distribution_package_id": "mingw-w64-ucrt-x86_64-tesseract-data-deu",
+      "distribution_package_version": "4.1.0-3",
+      "archive": "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst",
+      "archive_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst",
+      "archive_size_bytes": 816507,
+      "archive_sha256": "0d1bfa3838617fa0a6c439da638926e50f1186b87a247b3dd5ab3eac25887e41",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "448ee3de17ec1b9592455d85a678ff97e73db603b1b3bf1786af5d8a0c311542",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    }
+  ]
+}

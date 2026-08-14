@@ -142,7 +142,10 @@ _SAFE_ERROR_MESSAGES: Final[dict[OcrErrorCode, str]] = {
     OcrErrorCode.SIGNED_SOURCE_REQUIRES_CONFIRMATION: (
         "The selected PDF may contain a digital signature and needs review before modification."
     ),
-    OcrErrorCode.LANGUAGE_UNAVAILABLE: "The configured OCR language resources are unavailable.",
+    OcrErrorCode.LANGUAGE_UNAVAILABLE: (
+        "The selected OCR languages are not installed and verified. "
+        "Review OCR language settings before retrying."
+    ),
     OcrErrorCode.LIMIT_EXCEEDED: "The OCR request exceeds a configured safety limit.",
     OcrErrorCode.CANCELLED: "OCR was cancelled before completion.",
     OcrErrorCode.TIMED_OUT: "OCR exceeded its configured time limit.",

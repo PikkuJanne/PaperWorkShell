@@ -12,6 +12,7 @@ from uuid import UUID
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
 from paperworkshell.app.page_previews import (
     PagePreviewError,
@@ -27,6 +28,11 @@ from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.image_transforms import ImageTransformIntent
 from paperworkshell.domain.manifest_repository import ManifestRepositoryError
+from paperworkshell.domain.ocr import OcrError
+from paperworkshell.domain.ocr_languages import (
+    resolve_ocr_language_set,
+    select_ocr_language_set,
+)
 from paperworkshell.domain.page_operations import PageOperationError
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
@@ -100,6 +106,7 @@ _KNOWN_FAILURES: Final = (
     CaseLifecycleError,
     ImagePageError,
     ManifestRepositoryError,
+    OcrError,
     PagePreviewError,
     PageOperationError,
     PdfThumbnailError,
@@ -145,6 +152,8 @@ class OrganizerBackendWorker(QObject):
     initialized = Signal()
     startup_recovery_changed = Signal(object)
     cases_changed = Signal(object)
+    ocr_languages_changed = Signal(int, object)
+    ocr_languages_failed = Signal(int, object)
     state_changed = Signal(object)
     thumbnails_ready = Signal(int, int, object)
     scan_review_preview_ready = Signal(int, int, object)
@@ -191,6 +200,36 @@ class OrganizerBackendWorker(QObject):
         """Publish a deterministic path-free case index."""
 
         self._run(self._emit_cases)
+
+    @Slot(int)
+    def refresh_ocr_languages(self, request_id: int) -> None:
+        """Publish one correlated local-only OCR language snapshot."""
+
+        self._run_ocr_language_action(
+            request_id,
+            lambda backend: backend.refresh_ocr_languages(),
+        )
+
+    @Slot(int, object)
+    def select_ocr_language_codes(self, request_id: int, language_codes: object) -> None:
+        """Retain one correlated canonical selection without mutating a case."""
+
+        def action(backend: OrganizerBackend) -> OcrLanguageSnapshot:
+            if type(language_codes) is not tuple:
+                raise TypeError
+            language_set_id = select_ocr_language_set(language_codes)
+            canonical_codes = resolve_ocr_language_set(language_set_id)
+            snapshot = backend.select_ocr_language_codes(language_codes)
+            if (
+                type(snapshot) is not OcrLanguageSnapshot
+                or snapshot.selected_language_set_id != language_set_id
+                or snapshot.selected_language_codes != canonical_codes
+                or not snapshot.selected_available
+            ):
+                raise TypeError
+            return snapshot
+
+        self._run_ocr_language_action(request_id, action)
 
     @Slot()
     def create_case(self) -> None:
@@ -633,6 +672,48 @@ class OrganizerBackendWorker(QObject):
         cases: CaseIndex = selected.list_cases()
         self.cases_changed.emit(cases)
 
+    def _run_ocr_language_action(
+        self,
+        request_id: int,
+        callback: Callable[[OrganizerBackend], OcrLanguageSnapshot],
+    ) -> None:
+        if type(request_id) is not int or request_id <= 0 or not callable(callback):
+            self.ocr_languages_failed.emit(
+                request_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid OCR language request.",
+                    retryable=True,
+                    operation_id=(
+                        request_id if type(request_id) is int and request_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.ocr_languages_failed.emit(
+                request_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=request_id,
+                ),
+            )
+            return
+        try:
+            snapshot = callback(backend)
+            if type(snapshot) is not OcrLanguageSnapshot:
+                raise TypeError
+        except BaseException as error:
+            self.ocr_languages_failed.emit(
+                request_id,
+                sanitize_ui_failure(error, operation_id=request_id),
+            )
+            return
+        self.ocr_languages_changed.emit(request_id, snapshot)
+
     def _source_progress(self, operation_id: int, progress: SourceImportProgress) -> None:
         phase = progress.phase.value.replace("_", " ")
         self.progress_changed.emit(
@@ -811,6 +892,8 @@ class OrganizerBackendCommands(QObject):
 
     initialize_requested = Signal()
     list_cases_requested = Signal()
+    ocr_languages_refresh_requested = Signal(int)
+    ocr_languages_select_requested = Signal(int, object)
     create_case_requested = Signal()
     open_case_requested = Signal(object)
     close_case_requested = Signal()
@@ -835,6 +918,8 @@ class OrganizerBackendCommands(QObject):
 
         self.initialize_requested.connect(worker.initialize)
         self.list_cases_requested.connect(worker.list_cases)
+        self.ocr_languages_refresh_requested.connect(worker.refresh_ocr_languages)
+        self.ocr_languages_select_requested.connect(worker.select_ocr_language_codes)
         self.create_case_requested.connect(worker.create_case)
         self.open_case_requested.connect(worker.open_case)
         self.close_case_requested.connect(worker.close_case)

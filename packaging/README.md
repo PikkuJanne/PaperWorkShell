@@ -98,8 +98,23 @@ explicit frozen-decision change.
   contains no reparse points, and has no unlisted files. The upstream Windows installer is rejected
   because its signer certificate expired before it was signed.
 - Treat every Tesseract `.traineddata` file as a separate, versioned, hashed, licensed data
-  component. The initial closure contains only the pinned `tessdata_fast` English model from the
-  signed MSYS2 `tesseract-data-eng 4.1.0-3` package. The worker must not download language data.
+  component. The 39-file base closure contains the pinned `tessdata_fast` English model from the
+  signed MSYS2 `tesseract-data-eng 4.1.0-3` package. PWS-0205 adds German as a separate planned
+  component from `tesseract-data-deu 4.1.0-3`; its archive, detached signature, and extracted model
+  identities are frozen in both the dependency inventory and
+  [`tesseract-language-pack-catalog-v1.json`](tesseract-language-pack-catalog-v1.json).
+- Keep the canonical language-pack catalog byte-identical to the packaged copy under
+  `src/paperworkshell/worker/client/`, and require both the built wheel and source distribution to
+  contain that copy. Runtime
+  admission checks the catalog fingerprint plus exact model size and SHA-256; it does not replace
+  upstream detached-signature validation. Packaging must validate the signature against the
+  reviewed MSYS2 key before extracting and staging a pack. This PWS-0205 update records the
+  signature evidence but does not claim that cryptographic verification was re-performed here.
+- Language packs are local, offline-prestaged resources. Neither the application nor worker may
+  download them or gain network access for discovery. Restart after adding, replacing, or removing
+  one. Missing or changed data stays unavailable until a verified copy is restored. PWS-0801 and
+  PWS-0802 retain the exact release-package inclusion, install path, elevation, removal, and
+  user-visible notice evidence.
 - Keep the OCR native and Python components at `planned` shipment state until PWS-0801 stages all
   license texts, notices, corresponding source/relinking material, and reconciles the final package
   and SBOM. The file identity is closed by PWS-0204; redistribution-notice closure is not.

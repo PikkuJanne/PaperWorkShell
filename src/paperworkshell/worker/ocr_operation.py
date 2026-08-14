@@ -31,6 +31,10 @@ from paperworkshell.domain.ocr import (
     ocr_engine_profile_sha256,
     reject_ocr,
 )
+from paperworkshell.domain.ocr_languages import (
+    DEFAULT_OCR_LANGUAGE_SET_ID,
+    resolve_ocr_language_set,
+)
 from paperworkshell.ocr.ocrmypdf_adapter import (
     OcrAdapterProgressPhase,
     OcrAdapterResult,
@@ -71,7 +75,7 @@ if os.name == "nt":
 
 PWS_TESSERACT_EXECUTABLE_ENVIRONMENT: Final = "PWS_TESSERACT_EXECUTABLE"
 PWS_TESSDATA_ROOT_ENVIRONMENT: Final = "PWS_TESSDATA_ROOT"
-OCR_DEFAULT_LANGUAGE_SET_ID: Final = "latin-default-v1"
+OCR_DEFAULT_LANGUAGE_SET_ID: Final = DEFAULT_OCR_LANGUAGE_SET_ID
 OCR_OPERATION_MAX_RESULT_BYTES: Final = 4_096
 OCRMY_PDF_ENGINE_VERSION: Final = TRUSTED_OCRMYPDF_VERSION
 TESSERACT_ENGINE_VERSION: Final = TRUSTED_TESSERACT_VERSION
@@ -219,6 +223,7 @@ class WindowsOcrProcessAdapter:
         try:
             if os.name != "nt":
                 reject_ocr(OcrErrorCode.ENGINE_UNAVAILABLE, "ocr.platform")
+            languages = _languages_for_set(request.language_set_id)
             for value, suffix in (
                 (request.source_handle, "source"),
                 (request.output_handle, "output"),
@@ -243,6 +248,7 @@ class WindowsOcrProcessAdapter:
                     reference,
                     cast(BinaryIO, source),
                     handles,
+                    languages,
                 )
         except OcrError:
             raise
@@ -264,6 +270,7 @@ class WindowsOcrProcessAdapter:
         reference: CaseObjectReference,
         source: BinaryIO,
         handles: _OwnedHandles,
+        languages: tuple[str, ...],
     ) -> CaseObjectReference:
         expected_size = reference.expected_byte_size
         expected_digest = reference.expected_sha256
@@ -300,7 +307,7 @@ class WindowsOcrProcessAdapter:
                 source_path,
                 candidate_path,
                 temporary_directory=operation_root,
-                languages=_languages_for_set(request.language_set_id),
+                languages=languages,
                 profile_id=request.profile_id,
                 expected_page_count=request.page_count,
                 maximum_output_bytes=context.limits.output_bytes,
@@ -391,9 +398,7 @@ def _source_suffix(request: OcrProcessOperationRequest) -> str:
 
 
 def _languages_for_set(language_set_id: str) -> tuple[str, ...]:
-    if language_set_id != OCR_DEFAULT_LANGUAGE_SET_ID:
-        reject_ocr(OcrErrorCode.LANGUAGE_UNAVAILABLE, "ocr.language_set")
-    return ("eng",)
+    return resolve_ocr_language_set(language_set_id)
 
 
 def _stage_source(

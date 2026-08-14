@@ -35,7 +35,7 @@ The following evidence is real but is not a completed M8 release package:
 | Resources | [Policy version 1 / constrained-v1](../performance/LOW_RESOURCE_POLICY.md) and completed M1/PWS-0208 constrained evidence | These are bounded software facts, not packaged or physical-hardware certification |
 | Accessibility | [PWS-0111 human keyboard/NVDA record](../accessibility/pws-0111-nvda-smoke.md) and [PWS-0203 agent scan-review record](../accessibility/pws-0203-scan-review-smoke.md) | The complete packaged M7/M8 keyboard/NVDA matrix is still required |
 | Synthetic corpus | [Public synthetic fixture index](../../tests/fixtures/synthetic/v1/index.json) and [fixture policy](../development/synthetic-fixture-policy.md) | M8 must freeze a representative release subset, expected outputs, behavior notes, and hashes |
-| Dependencies | [Reviewed policy baseline](../../packaging/README.md) | It is not the final package inventory, licence bundle, or SBOM |
+| Dependencies | [Reviewed policy baseline](../../packaging/README.md), [dependency inventory](../../packaging/dependency-inventory-v1.json), and [OCR language-pack catalog](../../packaging/tesseract-language-pack-catalog-v1.json) | Exact German source/archive/signature/model metadata and offline runtime authority are recorded; built-package inclusion, signature verification, licence/notice bundle, and SBOM remain PWS-0801/PWS-0802 evidence |
 | Diagnostics | [Structured diagnostic baseline](../architecture/startup-recovery-and-diagnostics.md) | No user-authorized support bundle exists yet; PWS-0805 owns it |
 
 At adoption, the repository is a pre-alpha source tree with project metadata `0.0.0`; no installer,

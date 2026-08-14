@@ -175,6 +175,22 @@ class _Processor:
         return _Candidate(request)
 
 
+class _LanguageAvailability:
+    def __init__(self, available: frozenset[str]) -> None:
+        self.available = available
+        self.calls: list[str] = []
+
+    def require_available(self, language_set_id: str) -> None:
+        self.calls.append(language_set_id)
+        if language_set_id not in self.available:
+            raise OcrError(OcrErrorCode.LANGUAGE_UNAVAILABLE, "ocr.language_preflight")
+
+    def require_selected_available(self) -> str:
+        selected = "english-german-fast-v1"
+        self.require_available(selected)
+        return selected
+
+
 @pytest.mark.parametrize(
     ("media_type", "signature", "encryption", "page_count", "expected_kind"),
     [
@@ -234,6 +250,142 @@ def test_service_builds_request_only_from_same_authenticated_lease(
     assert processor.source is not None
     assert lease.revalidated and lease.exited
     assert candidate.report.source_id == lease.source_id
+
+
+def test_service_preflights_selected_language_set_before_borrowing_source() -> None:
+    lease = _Lease(
+        DetectedMediaType.PNG,
+        SourceSignatureState.NOT_APPLICABLE,
+        SourceEncryptionState.NOT_APPLICABLE,
+        1,
+    )
+    store = _Store(lease)
+    processor = _Processor(lease)
+    languages = _LanguageAvailability(frozenset({"latin-default-v1"}))
+
+    with pytest.raises(OcrError) as captured:
+        OcrService(store, processor, language_sets=languages).process_page(
+            CASE_ID,
+            PAGE_ID,
+            "english-german-fast-v1",
+            deadline=lambda: False,
+            cancellation=lambda: False,
+        )
+
+    assert captured.value.code is OcrErrorCode.LANGUAGE_UNAVAILABLE
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+    assert languages.calls == ["english-german-fast-v1"]
+    assert store.calls == []
+    assert processor.calls == 0
+
+
+def test_service_binds_available_multiple_language_set_to_worker_request() -> None:
+    lease = _Lease(
+        DetectedMediaType.PNG,
+        SourceSignatureState.NOT_APPLICABLE,
+        SourceEncryptionState.NOT_APPLICABLE,
+        1,
+    )
+    store = _Store(lease)
+    processor = _Processor(lease)
+    languages = _LanguageAvailability(frozenset({"english-german-fast-v1"}))
+
+    OcrService(store, processor, language_sets=languages).process_page(
+        CASE_ID,
+        PAGE_ID,
+        "english-german-fast-v1",
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    )
+
+    assert languages.calls == ["english-german-fast-v1"]
+    assert processor.request is not None
+    assert processor.request.language_set_id == "english-german-fast-v1"
+
+
+def test_service_uses_atomic_session_selection_when_language_id_is_omitted() -> None:
+    lease = _Lease(
+        DetectedMediaType.PNG,
+        SourceSignatureState.NOT_APPLICABLE,
+        SourceEncryptionState.NOT_APPLICABLE,
+        1,
+    )
+    store = _Store(lease)
+    processor = _Processor(lease)
+    languages = _LanguageAvailability(frozenset({"english-german-fast-v1"}))
+
+    OcrService(store, processor, language_sets=languages).process_page(
+        CASE_ID,
+        PAGE_ID,
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    )
+
+    assert languages.calls == ["english-german-fast-v1"]
+    assert processor.request is not None
+    assert processor.request.language_set_id == "english-german-fast-v1"
+
+
+def test_missing_atomic_session_selection_stops_before_source_borrow() -> None:
+    lease = _Lease(
+        DetectedMediaType.PNG,
+        SourceSignatureState.NOT_APPLICABLE,
+        SourceEncryptionState.NOT_APPLICABLE,
+        1,
+    )
+    store = _Store(lease)
+    processor = _Processor(lease)
+    languages = _LanguageAvailability(frozenset({"latin-default-v1"}))
+
+    with pytest.raises(OcrError) as captured:
+        OcrService(store, processor, language_sets=languages).process_page(
+            CASE_ID,
+            PAGE_ID,
+            deadline=lambda: False,
+            cancellation=lambda: False,
+        )
+
+    assert captured.value.code is OcrErrorCode.LANGUAGE_UNAVAILABLE
+    assert store.calls == []
+    assert processor.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("deadline", "cancellation", "expected_code"),
+    (
+        (lambda: True, lambda: False, OcrErrorCode.TIMED_OUT),
+        (lambda: False, lambda: True, OcrErrorCode.CANCELLED),
+    ),
+)
+def test_terminal_request_stops_before_language_discovery_and_source_borrow(
+    deadline: DeadlineProbe,
+    cancellation: CancellationProbe,
+    expected_code: OcrErrorCode,
+) -> None:
+    lease = _Lease(
+        DetectedMediaType.PNG,
+        SourceSignatureState.NOT_APPLICABLE,
+        SourceEncryptionState.NOT_APPLICABLE,
+        1,
+    )
+    store = _Store(lease)
+    processor = _Processor(lease)
+    languages = _LanguageAvailability(frozenset({"latin-default-v1"}))
+
+    with pytest.raises(OcrError) as captured:
+        OcrService(store, processor, language_sets=languages).process_page(
+            CASE_ID,
+            PAGE_ID,
+            "latin-default-v1",
+            deadline=deadline,
+            cancellation=cancellation,
+        )
+
+    assert captured.value.code is expected_code
+    assert languages.calls == []
+    assert store.calls == []
+    assert processor.calls == 0
 
 
 @pytest.mark.parametrize(

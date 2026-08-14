@@ -33,6 +33,7 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSaveResult,
     ManifestSnapshot,
 )
+from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
@@ -55,6 +56,7 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportErrorCode,
     SearchablePdfExportOutcome,
     SearchablePdfExportPlan,
+    SearchablePdfExportProfile,
     SearchablePdfPageEligibility,
     SearchablePdfPageEligibilityCode,
     SearchablePdfPageFailureCode,
@@ -213,6 +215,7 @@ class _Batch:
 
 class _Sources:
     def __init__(self, plan: SearchablePdfExportPlan) -> None:
+        self.plan = plan
         self.batch = _Batch(plan)
         self.borrow_calls = 0
 
@@ -224,7 +227,7 @@ class _Sources:
         cancellation: CancellationProbe,
     ) -> _Batch:
         del deadline, cancellation
-        assert plan == _plan()
+        assert plan == self.plan
         self.borrow_calls += 1
         return self.batch
 
@@ -257,6 +260,7 @@ class _Broker:
     maximum_output_bytes = 16 * 1024 * 1024
 
     def __init__(self, plan: SearchablePdfExportPlan) -> None:
+        self.plan = plan
         self.candidate = _Candidate(_report(plan))
         self.export_calls = 0
 
@@ -270,7 +274,7 @@ class _Broker:
         progress: SearchablePdfExportProgressSink,
     ) -> _Candidate:
         del sources, deadline, cancellation, progress
-        assert plan == _plan()
+        assert plan == self.plan
         self.export_calls += 1
         return self.candidate
 
@@ -394,10 +398,28 @@ class _Retries:
         return True
 
 
+class _LanguageAvailability:
+    def __init__(self, available: frozenset[str]) -> None:
+        self.available = available
+        self.calls: list[str] = []
+
+    def require_available(self, language_set_id: str) -> None:
+        self.calls.append(language_set_id)
+        if language_set_id not in self.available:
+            raise OcrError(OcrErrorCode.LANGUAGE_UNAVAILABLE, "ocr.language_preflight")
+
+    def require_selected_available(self) -> str:
+        selected = "english-german-fast-v1"
+        self.require_available(selected)
+        return selected
+
+
 def _service(
     *,
     destination_failure: PdfExportError | None = None,
     history_failure: bool = False,
+    plan: SearchablePdfExportPlan | None = None,
+    languages: _LanguageAvailability | None = None,
 ) -> tuple[
     SearchablePdfExportService,
     _Sources,
@@ -406,9 +428,9 @@ def _service(
     _History,
     _Retries,
 ]:
-    plan = _plan()
-    sources = _Sources(plan)
-    broker = _Broker(plan)
+    selected_plan = plan or _plan()
+    sources = _Sources(selected_plan)
+    broker = _Broker(selected_plan)
     destination = _Destination(destination_failure)
     history = _History(fail=history_failure)
     retries = _Retries()
@@ -429,6 +451,7 @@ def _service(
             retries,
             clock=lambda: RECORDED_AT,
             id_factory=lambda: EXPORT_ID,
+            ocr_languages=languages,
         ),
         sources,
         broker,
@@ -473,6 +496,80 @@ def test_service_commits_verified_mixed_candidate_and_reuses_history_v1() -> Non
     assert retries.lease.closed
     assert progress[0].completed_pages == 0
     assert progress[-1].completed_pages == outcome.report.plan.page_count
+
+
+def test_service_binds_selected_multiple_language_set_into_plan_and_fingerprint() -> None:
+    profile = SearchablePdfExportProfile(ocr_language_set_id="english-german-fast-v1")
+    plan = build_searchable_pdf_export_plan(_snapshot(), profile=profile)
+    languages = _LanguageAvailability(frozenset({"english-german-fast-v1"}))
+    service, sources, broker, destination, _history, _retries = _service(
+        plan=plan,
+        languages=languages,
+    )
+
+    outcome = service.export_pdf(
+        CASE_ID,
+        DESTINATION,
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        profile=profile,
+    )
+
+    assert outcome.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
+    assert outcome.report.plan.profile == profile
+    assert outcome.report.plan.profile.ocr_language_set_id == "english-german-fast-v1"
+    assert languages.calls == ["english-german-fast-v1"]
+    assert sources.borrow_calls == 1
+    assert broker.export_calls == 1
+    assert destination.committed
+
+
+def test_service_uses_atomic_session_selection_when_profile_is_omitted() -> None:
+    profile = SearchablePdfExportProfile(ocr_language_set_id="english-german-fast-v1")
+    plan = build_searchable_pdf_export_plan(_snapshot(), profile=profile)
+    languages = _LanguageAvailability(frozenset({"english-german-fast-v1"}))
+    service, sources, broker, destination, _history, _retries = _service(
+        plan=plan,
+        languages=languages,
+    )
+
+    outcome = service.export_pdf(
+        CASE_ID,
+        DESTINATION,
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    )
+
+    assert outcome.report.plan.profile == profile
+    assert languages.calls == ["english-german-fast-v1"]
+    assert sources.borrow_calls == 1
+    assert broker.export_calls == 1
+    assert destination.committed
+
+
+def test_missing_atomic_selection_stops_before_manifest_capacity_history_source_or_worker() -> None:
+    languages = _LanguageAvailability(frozenset({"latin-default-v1"}))
+    service, sources, broker, destination, history, retries = _service(languages=languages)
+
+    with pytest.raises(SearchablePdfExportError) as captured:
+        service.export_pdf(
+            CASE_ID,
+            DESTINATION,
+            deadline=lambda: False,
+            cancellation=lambda: False,
+        )
+
+    assert captured.value.code is SearchablePdfExportErrorCode.OCR_LANGUAGE_UNAVAILABLE
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+    assert languages.calls == ["english-german-fast-v1"]
+    assert destination.capacity_calls == 0
+    assert destination.commit_calls == 0
+    assert history.reserved_id_calls == 0
+    assert history.bindings == []
+    assert sources.borrow_calls == 0
+    assert broker.export_calls == 0
+    assert retries.lease is None
 
 
 @pytest.mark.parametrize(

@@ -26,6 +26,7 @@ from paperworkshell.domain.ocr import (
     DEFAULT_OCR_PROFILE_ID,
     TRUSTED_OCR_ENGINE_PROFILE_SHA256,
 )
+from paperworkshell.domain.ocr_languages import DEFAULT_OCR_LANGUAGE_SET_ID
 from paperworkshell.domain.page_operations import (
     MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS,
     MAX_CONTRAST_FACTOR_MILLIONTHS,
@@ -61,7 +62,6 @@ OCR_ELIGIBILITY_POLICY_VERSION: Final = 1
 TEXT_PRESENCE_POLICY_VERSION: Final = 1
 DEFAULT_OCR_ELIGIBILITY_POLICY_ID: Final = "mixed-page-ocr-eligibility-v1"
 DEFAULT_TEXT_PRESENCE_PROFILE_ID: Final = "pdfium-non-whitespace-text-v1"
-DEFAULT_OCR_LANGUAGE_SET_ID: Final = "latin-default-v1"
 MAX_SEARCHABLE_PDF_SOURCES: Final = 255
 MAX_SEARCHABLE_PDF_PAGES: Final = MAX_PAGE_COUNT
 
@@ -113,6 +113,7 @@ class SearchablePdfExportErrorCode(StrEnum):
     SOURCE_ENCRYPTION_UNKNOWN = "SEARCHABLE_PDF_SOURCE_ENCRYPTION_UNKNOWN"
     SOURCE_INCONSISTENT = "SEARCHABLE_PDF_SOURCE_INCONSISTENT"
     TRANSFORM_UNSUPPORTED = "SEARCHABLE_PDF_TRANSFORM_UNSUPPORTED"
+    OCR_LANGUAGE_UNAVAILABLE = "SEARCHABLE_PDF_OCR_LANGUAGE_UNAVAILABLE"
     LIMIT_EXCEEDED = "SEARCHABLE_PDF_LIMIT_EXCEEDED"
     REPORT_INVALID = "SEARCHABLE_PDF_REPORT_INVALID"
     RESULT_INVALID = "SEARCHABLE_PDF_RESULT_INVALID"
@@ -146,6 +147,10 @@ _SAFE_ERROR_MESSAGES: Final[dict[SearchablePdfExportErrorCode, str]] = {
     ),
     SearchablePdfExportErrorCode.TRANSFORM_UNSUPPORTED: (
         "The selected pages include unsupported output intent."
+    ),
+    SearchablePdfExportErrorCode.OCR_LANGUAGE_UNAVAILABLE: (
+        "The selected OCR languages are not installed and verified. "
+        "Review OCR language settings before creating the searchable PDF."
     ),
     SearchablePdfExportErrorCode.LIMIT_EXCEEDED: (
         "The searchable-PDF request exceeds a configured safety limit."

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +13,14 @@ from paperworkshell.app.case_lifecycle import CaseLifecycleService
 from paperworkshell.app.export_history import (
     PdfExportHistoryService,
     PdfExportRetryRecoveryService,
+)
+from paperworkshell.app.ocr import CommittedSourcePageStore, OcrService
+from paperworkshell.app.ocr_languages import (
+    SUPPORTED_OCR_LANGUAGE_CODES,
+    OcrLanguageDiscoveryResult,
+    OcrLanguageManager,
+    OcrLanguageRuntimeStatus,
+    unavailable_ocr_language_manager,
 )
 from paperworkshell.app.organizer import OrganizerBackend
 from paperworkshell.app.page_previews import PagePreviewService
@@ -59,6 +67,11 @@ from paperworkshell.storage.workspace import CaseWorkspaceManager
 from paperworkshell.ui.application import run_desktop_application
 from paperworkshell.worker.client.models import WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.client.tesseract_runtime import (
+    TesseractRuntimeAdmissionError,
+    admit_packaged_tesseract_runtime,
+    tesseract_runtime_authority_id,
+)
 from paperworkshell.worker.desktop_composition import (
     OCR_WORKER_MAXIMUM_PROCESSES,
     SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
@@ -95,6 +108,13 @@ class DesktopApplicationResourceContext:
 
     resource_policy: ResourcePolicy
     heavy_operations: DesktopHeavyOperationCoordinator
+    ocr_languages: OcrLanguageManager = field(
+        default_factory=unavailable_ocr_language_manager,
+        repr=False,
+    )
+    _ocr_executable: Path | None = field(default=None, repr=False)
+    _ocr_tessdata_root: Path | None = field(default=None, repr=False)
+    _ocr_runtime_authority_id: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -102,21 +122,87 @@ class DesktopApplicationResourceContext:
             or type(self.heavy_operations) is not DesktopHeavyOperationCoordinator
             or self.heavy_operations.snapshot().maximum_concurrency
             != self.resource_policy.maximum_heavy_operation_concurrency
+            or type(self.ocr_languages) is not OcrLanguageManager
+            or (self._ocr_executable is not None and not isinstance(self._ocr_executable, Path))
+            or (
+                self._ocr_tessdata_root is not None
+                and not isinstance(self._ocr_tessdata_root, Path)
+            )
+            or self.ocr_languages.runtime_authority_id != self._ocr_runtime_authority_id
         ):
             raise ValueError("application resource context is invalid")
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _PackagedOcrLanguageDiscovery:
+    """Translate exact local runtime admission into path-free UI facts."""
+
+    executable: Path | None
+    tessdata_root: Path | None
+
+    def discover_ocr_languages(self) -> OcrLanguageDiscoveryResult:
+        if self.executable is None and self.tessdata_root is None:
+            return OcrLanguageDiscoveryResult(
+                OcrLanguageRuntimeStatus.UNAVAILABLE,
+                (),
+            )
+        if not isinstance(self.executable, Path) or not isinstance(self.tessdata_root, Path):
+            return OcrLanguageDiscoveryResult(
+                OcrLanguageRuntimeStatus.INVALID,
+                (),
+            )
+        try:
+            admission = admit_packaged_tesseract_runtime(
+                self.executable,
+                self.tessdata_root,
+            )
+        except TesseractRuntimeAdmissionError:
+            return OcrLanguageDiscoveryResult(
+                OcrLanguageRuntimeStatus.INVALID,
+                (),
+            )
+        installed = frozenset(admission.installed_language_codes)
+        return OcrLanguageDiscoveryResult(
+            OcrLanguageRuntimeStatus.AVAILABLE,
+            tuple(code for code in SUPPORTED_OCR_LANGUAGE_CODES if code in installed),
+        )
+
+    def __repr__(self) -> str:
+        configured = self.executable is not None or self.tessdata_root is not None
+        return f"_PackagedOcrLanguageDiscovery(configured={configured})"
+
+
 def create_desktop_application_resource_context(
     resource_policy: ResourcePolicy | None = None,
+    *,
+    tesseract_executable: Path | None = None,
+    tessdata_root: Path | None = None,
 ) -> DesktopApplicationResourceContext:
     """Select one policy and construct its sole app-scoped heavy-work gate."""
 
     selected_policy = _require_resource_policy(resource_policy)
+    selected_executable, selected_tessdata_root = _configured_optional_ocr_resources(
+        tesseract_executable,
+        tessdata_root,
+    )
+    authority_id = (
+        tesseract_runtime_authority_id(selected_executable, selected_tessdata_root)
+        if selected_executable is not None and selected_tessdata_root is not None
+        else None
+    )
+    selected_languages = OcrLanguageManager(
+        _PackagedOcrLanguageDiscovery(selected_executable, selected_tessdata_root),
+        runtime_authority_id=authority_id,
+    )
     return DesktopApplicationResourceContext(
         selected_policy,
         create_desktop_heavy_operation_coordinator(
             selected_policy.maximum_heavy_operation_concurrency
         ),
+        selected_languages,
+        selected_executable,
+        selected_tessdata_root,
+        authority_id,
     )
 
 
@@ -197,6 +283,7 @@ def build_windows_searchable_pdf_export_service(
     composition: SearchablePdfExportWorkerComposition,
     *,
     resources: DesktopApplicationResourceContext,
+    ocr_languages: OcrLanguageManager | None = None,
 ) -> SearchablePdfExportService:
     """Wire mixed-source persistence around the combined OCR/export worker."""
 
@@ -207,6 +294,8 @@ def build_windows_searchable_pdf_export_service(
         or composition.closed
         or type(resources) is not DesktopApplicationResourceContext
         or composition.heavy_operations is not resources.heavy_operations
+        or composition.ocr_runtime_authority_id != resources._ocr_runtime_authority_id
+        or (ocr_languages is not None and ocr_languages is not resources.ocr_languages)
     ):
         reject_searchable_pdf_export(
             SearchablePdfExportErrorCode.MODEL_INVALID,
@@ -230,6 +319,7 @@ def build_windows_searchable_pdf_export_service(
             manifests,
         ),
         WindowsPdfExportRetryRepository(manager),
+        ocr_languages=resources.ocr_languages,
     )
 
 
@@ -251,11 +341,15 @@ def _build_backend(
     manager: CaseWorkspaceManager,
     *,
     resources: DesktopApplicationResourceContext | None = None,
+    ocr_languages: OcrLanguageManager | None = None,
 ) -> OrganizerBackend:
     """Recover local cases before constructing document-worker resources."""
 
     startup_recovery = build_windows_startup_recovery_service(manager).recover_startup()
     selected_resources = _require_application_resource_context(resources)
+    selected_ocr_languages = selected_resources.ocr_languages
+    if ocr_languages is not None and ocr_languages is not selected_ocr_languages:
+        reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.language_composition")
     selected_policy = selected_resources.resource_policy
     lifecycle = CaseLifecycleService(WindowsCaseLifecycleStore(manager))
     repository = WindowsManifestRepository(manager)
@@ -290,6 +384,7 @@ def _build_backend(
             repository,
             source_ingest,
             thumbnails,
+            ocr_languages=selected_ocr_languages,
             close_resources=composition.close,
             startup_recovery=startup_recovery,
         )
@@ -490,13 +585,42 @@ def build_windows_ocr_worker_composition(
     """Compose OCR with the exact app-scoped policy and heavy-work gate."""
 
     selected_resources = _require_application_resource_context(resources, required=True)
+    selected_executable, selected_tessdata_root = _resource_bound_ocr_resources(
+        selected_resources,
+        tesseract_executable,
+        tessdata_root,
+    )
     return create_ocr_worker_composition(
         build_windows_ocr_worker_config(
-            tesseract_executable,
-            tessdata_root,
+            selected_executable,
+            selected_tessdata_root,
             resource_policy=selected_resources.resource_policy,
         ),
         heavy_operations=selected_resources.heavy_operations,
+    )
+
+
+def build_windows_ocr_service(
+    sources: CommittedSourcePageStore,
+    composition: OcrWorkerComposition,
+    *,
+    resources: DesktopApplicationResourceContext,
+) -> OcrService:
+    """Bind direct OCR to the same app-scoped language authority as its UI."""
+
+    if (
+        not isinstance(sources, CommittedSourcePageStore)
+        or type(composition) is not OcrWorkerComposition
+        or composition.closed
+        or type(resources) is not DesktopApplicationResourceContext
+        or composition.heavy_operations is not resources.heavy_operations
+        or composition.ocr_runtime_authority_id != resources._ocr_runtime_authority_id
+    ):
+        reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.composition")
+    return OcrService(
+        sources,
+        composition.ocr_processor,
+        language_sets=resources.ocr_languages,
     )
 
 
@@ -588,11 +712,16 @@ def build_windows_searchable_pdf_export_worker_composition(
     """Compose mixed export with the sole app-scoped heavy-work gate."""
 
     selected_resources = _require_application_resource_context(resources, required=True)
+    selected_tesseract, selected_tessdata_root = _resource_bound_ocr_resources(
+        selected_resources,
+        tesseract_executable,
+        tessdata_root,
+    )
     return create_searchable_pdf_export_worker_composition(
         build_windows_searchable_pdf_export_worker_config(
             qpdf_executable,
-            tesseract_executable,
-            tessdata_root,
+            selected_tesseract,
+            selected_tessdata_root,
             resource_policy=selected_resources.resource_policy,
         ),
         heavy_operations=selected_resources.heavy_operations,
@@ -730,23 +859,68 @@ def _configured_ocr_resources(
     executable: Path | None,
     tessdata_root: Path | None,
 ) -> tuple[Path, Path]:
-    selected_executable = executable
-    selected_tessdata = tessdata_root
-    if selected_executable is None:
-        configured = os.environ.get("PWS_TESSERACT_EXECUTABLE")
-        try:
-            selected_executable = Path(configured) if configured else None
-        except OSError, TypeError, ValueError:
-            reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.tesseract_configuration")
-    if selected_tessdata is None:
-        configured = os.environ.get("PWS_TESSDATA_ROOT")
-        try:
-            selected_tessdata = Path(configured) if configured else None
-        except OSError, TypeError, ValueError:
-            reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.tessdata_configuration")
-    if not isinstance(selected_executable, Path) or not isinstance(selected_tessdata, Path):
+    selected_executable, selected_tessdata = _configured_optional_ocr_resources(
+        executable,
+        tessdata_root,
+    )
+    if selected_executable is None or selected_tessdata is None:
         reject_ocr(OcrErrorCode.ENGINE_UNAVAILABLE, "ocr.engine_configuration")
     return selected_executable, selected_tessdata
+
+
+def _configured_optional_ocr_resources(
+    executable: Path | None,
+    tessdata_root: Path | None,
+) -> tuple[Path | None, Path | None]:
+    """Capture normalized optional OCR configuration once without starting a worker."""
+
+    selected_executable: Path | str | None = executable
+    selected_tessdata: Path | str | None = tessdata_root
+    if selected_executable is None:
+        selected_executable = os.environ.get("PWS_TESSERACT_EXECUTABLE") or None
+    if selected_tessdata is None:
+        selected_tessdata = os.environ.get("PWS_TESSDATA_ROOT") or None
+    try:
+        normalized_executable = (
+            None
+            if selected_executable is None
+            else Path(os.path.abspath(os.fspath(selected_executable)))
+        )
+        normalized_tessdata = (
+            None
+            if selected_tessdata is None
+            else Path(os.path.abspath(os.fspath(selected_tessdata)))
+        )
+    except OSError, TypeError, ValueError:
+        reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.engine_configuration")
+    return normalized_executable, normalized_tessdata
+
+
+def _resource_bound_ocr_resources(
+    resources: DesktopApplicationResourceContext,
+    executable: Path | None,
+    tessdata_root: Path | None,
+) -> tuple[Path, Path]:
+    """Resolve OCR paths only from the app authority and reject split configurations."""
+
+    captured = (resources._ocr_executable, resources._ocr_tessdata_root)
+    if executable is None and tessdata_root is None:
+        selected = captured
+    else:
+        if not isinstance(executable, Path) or not isinstance(tessdata_root, Path):
+            reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.language_composition")
+        try:
+            selected = (
+                Path(os.path.abspath(os.fspath(executable))),
+                Path(os.path.abspath(os.fspath(tessdata_root))),
+            )
+        except OSError, TypeError, ValueError:
+            reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.language_composition")
+        if selected != captured:
+            reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.language_composition")
+    if selected[0] is None or selected[1] is None:
+        reject_ocr(OcrErrorCode.ENGINE_UNAVAILABLE, "ocr.engine_configuration")
+    return selected[0], selected[1]
 
 
 def _worker_runtime_resources() -> tuple[

@@ -211,6 +211,48 @@ def test_windows_launch_boundary_rejects_an_unreviewed_tool_root(
     assert raised.value.context == "config.tesseract_runtime"
 
 
+def test_tesseract_location_preflight_runs_before_path_type_probes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        runtime_root,
+        code_root,
+        python_executable,
+        bootstrap_script,
+        tesseract_executable,
+        tessdata_root,
+    ) = _resources(tmp_path)
+
+    def reject_location(_executable: Path, _tessdata_root: Path) -> Path:
+        raise TesseractRuntimeAdmissionError("location")
+
+    def unexpected_path_probe(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("OCR location preflight must precede pathlib type probes")
+
+    monkeypatch.setattr(
+        windows_launcher,
+        "preflight_tesseract_runtime_paths",
+        reject_location,
+    )
+    monkeypatch.setattr(Path, "is_file", unexpected_path_probe)
+    monkeypatch.setattr(Path, "is_dir", unexpected_path_probe)
+
+    with pytest.raises(WindowsLaunchError) as raised:
+        WindowsLaunchConfig(
+            python_executable=python_executable,
+            bootstrap_script=bootstrap_script,
+            runtime_roots=(runtime_root,),
+            code_roots=(code_root,),
+            working_directory=code_root,
+            tesseract_executable=tesseract_executable,
+            tessdata_root=tessdata_root,
+        )
+
+    assert raised.value.code is WindowsLaunchErrorCode.CONFIGURATION_INVALID
+    assert raised.value.context == "config.tesseract_location"
+
+
 def test_minimal_worker_environment_carries_no_ambient_tool_search(
     tmp_path: Path,
 ) -> None:

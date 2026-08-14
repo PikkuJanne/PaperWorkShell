@@ -19,6 +19,10 @@ from paperworkshell.domain.ocr import (
     OcrWorkerReport,
     reject_ocr,
 )
+from paperworkshell.domain.ocr_languages import (
+    DEFAULT_OCR_LANGUAGE_SET_ID,
+    resolve_ocr_language_set,
+)
 from paperworkshell.domain.source_ingest import (
     SourceEncryptionState,
     SourceIngestError,
@@ -43,6 +47,38 @@ class OcrProgressSink(Protocol):
     """Receive one validated, content-free OCR progress record."""
 
     def __call__(self, progress: OcrProgress, /) -> object: ...
+
+
+@runtime_checkable
+class OcrLanguageAvailability(Protocol):
+    """Preflight one versioned OCR language set before source authority is borrowed."""
+
+    def require_available(self, language_set_id: str) -> None: ...
+
+    def require_selected_available(self) -> str: ...
+
+
+class _BuiltInOcrLanguageAvailability:
+    """Compatibility policy admitting only the immutable built-in English set."""
+
+    __slots__ = ()
+
+    def require_available(self, language_set_id: str) -> None:
+        language_codes = resolve_ocr_language_set(language_set_id)
+        if language_set_id != DEFAULT_OCR_LANGUAGE_SET_ID or language_codes != ("eng",):
+            reject_ocr(OcrErrorCode.LANGUAGE_UNAVAILABLE, "ocr.language_preflight")
+
+    def require_selected_available(self) -> str:
+        return DEFAULT_OCR_LANGUAGE_SET_ID
+
+
+_BUILT_IN_OCR_LANGUAGES = _BuiltInOcrLanguageAvailability()
+
+
+def built_in_ocr_language_availability() -> OcrLanguageAvailability:
+    """Return the compatibility policy for the authenticated built-in pack."""
+
+    return _BUILT_IN_OCR_LANGUAGES
 
 
 @runtime_checkable
@@ -263,25 +299,32 @@ def _ignore_progress(_progress: OcrProgress) -> None:
 class OcrService:
     """Authenticate, bind, and run OCR without accepting caller-supplied source facts."""
 
-    __slots__ = ("_processor", "_sources")
+    __slots__ = ("_language_sets", "_processor", "_sources")
 
     def __init__(
         self,
         sources: CommittedSourcePageStore,
         processor: OcrProcessor,
+        *,
+        language_sets: OcrLanguageAvailability | None = None,
     ) -> None:
-        if not isinstance(sources, CommittedSourcePageStore) or not isinstance(
-            processor, OcrProcessor
+        if (
+            not isinstance(sources, CommittedSourcePageStore)
+            or not isinstance(processor, OcrProcessor)
+            or (
+                language_sets is not None and not isinstance(language_sets, OcrLanguageAvailability)
+            )
         ):
             reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.service")
         self._sources = sources
         self._processor = processor
+        self._language_sets = language_sets or _BUILT_IN_OCR_LANGUAGES
 
     def process_page(
         self,
         case_id: UUID,
         page_id: UUID,
-        language_set_id: str,
+        language_set_id: str | None = None,
         *,
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
@@ -302,6 +345,9 @@ class OcrService:
         ):
             reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.service_request")
 
+        _require_active(deadline, cancellation)
+        selected_language_set_id = self._select_language_set(language_set_id)
+
         candidate: OcrCandidate | None = None
         try:
             lease_context = self._sources.borrow_committed_source_page(
@@ -321,7 +367,7 @@ class OcrService:
                     source_sha256=source.sha256,
                     signature_state=source.signature_state,
                     encryption_state=source.encryption_state,
-                    language_set_id=language_set_id,
+                    language_set_id=selected_language_set_id,
                     profile_id=profile_id,
                 )
                 candidate = self._processor.process(
@@ -349,6 +395,33 @@ class OcrService:
             _close_candidate_no_raise(candidate)
             reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.service")
 
+    def _require_language_set(self, language_set_id: str) -> None:
+        try:
+            self._language_sets.require_available(language_set_id)
+        except OcrError as error:
+            if type(error) is not OcrError:
+                reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.language_preflight")
+            reject_ocr(error.code, error.context)
+        except Exception:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.language_preflight")
+
+    def _select_language_set(self, language_set_id: str | None) -> str:
+        if language_set_id is not None:
+            self._require_language_set(language_set_id)
+            return language_set_id
+        try:
+            selected = self._language_sets.require_selected_available()
+        except OcrError as error:
+            if type(error) is not OcrError:
+                reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.language_preflight")
+            reject_ocr(error.code, error.context)
+        except Exception:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.language_preflight")
+        if type(selected) is not str:
+            reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.language_preflight")
+        resolve_ocr_language_set(selected)
+        return selected
+
 
 def _map_source_kind(value: object) -> OcrSourceKind:
     if type(value) is not DetectedMediaType:
@@ -357,6 +430,23 @@ def _map_source_kind(value: object) -> OcrSourceKind:
         return _SOURCE_KIND_BY_MEDIA_TYPE[value]
     except KeyError:
         reject_ocr(OcrErrorCode.SOURCE_INVALID, "ocr.source_media")
+
+
+def _require_active(
+    deadline: DeadlineProbe,
+    cancellation: CancellationProbe,
+) -> None:
+    try:
+        cancelled = cancellation()
+        expired = deadline()
+    except BaseException:
+        reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.callback")
+    if type(cancelled) is not bool or type(expired) is not bool:
+        reject_ocr(OcrErrorCode.INTERNAL_ERROR, "ocr.callback")
+    if cancelled:
+        reject_ocr(OcrErrorCode.CANCELLED, "ocr.cancelled")
+    if expired:
+        reject_ocr(OcrErrorCode.TIMED_OUT, "ocr.deadline")
 
 
 def _map_signature_state(value: object) -> OcrSourceSignatureState:

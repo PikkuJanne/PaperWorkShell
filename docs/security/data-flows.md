@@ -374,9 +374,9 @@ sequenceDiagram
 
 1. TB-02 accepts only a version-1 `ocr.process` request bound to internal case/source/operation IDs,
    a content-derived source kind, exact source size/page count/SHA-256, the fixed language/profile
-   tokens, explicit resource limits, and cancellation. The initial language token resolves only to
-   `eng`; it is never an argument fragment. No source path, filename, OCR text, manifest content,
-   or executable value appears in RPC.
+   tokens, explicit resource limits, and cancellation. A language token resolves only through the
+   closed `eng`, `deu`, or `eng`-then-`deu` set definitions; it is never an argument fragment. No
+   source path, filename, OCR text, manifest content, or executable value appears in RPC.
 2. TB-03 separately authenticates a retained immutable PDF/JPEG/PNG source lease and transfers
    only three distinct reduced handles: source read, bounded volatile-section write, and bounded
    report-pipe write. The worker has no case ACL/path, source-write, manifest/journal/history,
@@ -386,11 +386,17 @@ sequenceDiagram
    signature markers. Marker-present, unknown-signature, encrypted, and unknown-encryption states
    fail before worker launch. This is a conservative fail-closed gate, not cryptographic signature
    validation; PWS-0208 owns an explicit derivative-warning/confirmation workflow.
-4. TB-04 admits only OCRmyPDF `17.10.0`, Tesseract `5.5.3`, `eng`, and the fixed profile digest:
+4. TB-04 admits only OCRmyPDF `17.10.0`, Tesseract `5.5.3`, the built-in `eng` model, an optional
+   exact `deu` model, and the fixed profile digest:
    `image_dpi=300`, standard PDF, `mode="skip"`, pypdfium rasterization, fpdf2 text rendering,
    `optimize=0`, `jobs=1`, and disabled OCRmyPDF cleanup transforms. The packaged Tesseract
-   manifest authenticates the exact 39-file executable/DLL/language closure and rejects missing,
-   changed, hardlinked, special, reparse, or unlisted resources.
+   manifest authenticates the exact 39-file base closure. A separate fingerprinted catalog admits
+   only the exact-size, exact-SHA-256 `deu.traineddata` file. Missing optional data is unavailable;
+   changed, hardlinked, special, reparse, offline/recall, alternate-stream, or unlisted resources
+   invalidate admission before launch. Both runtime paths pass closed lexical/layout checks before
+   native queries, then must resolve through one canonical physical fixed-volume mapping with
+   persistent ACL support; DOS aliases, network/cloud providers, and unsupported volumes fail
+   before runtime enumeration or hashing.
 5. The only OCR child starts with the approved absolute executable, fixed working directory,
    structured arguments, `shell=False`, no `PATH`/`PATHEXT`/`COMSPEC`, and a minimal private
    environment. A worker-wide process audit hook rejects any other process-creation shape.

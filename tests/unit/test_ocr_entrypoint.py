@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 import paperworkshell.__main__ as entrypoint
 import paperworkshell.worker.client._windows as windows_launcher
+from paperworkshell.app.ocr_languages import OcrLanguageRuntimeStatus
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
-from paperworkshell.worker.client.tesseract_runtime import TesseractRuntimeAdmission
-from paperworkshell.worker.ocr_composition import OCR_WORKER_MAXIMUM_PROCESSES
+from paperworkshell.worker.client.tesseract_runtime import (
+    TesseractRuntimeAdmission,
+    TesseractRuntimeAdmissionError,
+)
+from paperworkshell.worker.ocr_composition import (
+    OCR_WORKER_MAXIMUM_PROCESSES,
+    OcrWorkerComposition,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -115,13 +123,93 @@ def test_missing_ocr_resources_fail_closed(
     assert raised.value.context == "ocr.engine_configuration"
 
 
+def test_language_manager_stays_lazy_and_reports_unavailable_without_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PWS_TESSERACT_EXECUTABLE", raising=False)
+    monkeypatch.delenv("PWS_TESSDATA_ROOT", raising=False)
+    manager = entrypoint.create_desktop_application_resource_context().ocr_languages
+
+    assert manager.snapshot.runtime_status is OcrLanguageRuntimeStatus.UNCHECKED
+    snapshot = manager.refresh()
+
+    assert snapshot.runtime_status is OcrLanguageRuntimeStatus.UNAVAILABLE
+    assert snapshot.installed_language_codes == frozenset()
+    assert not snapshot.selected_available
+
+
+def test_language_manager_discovers_authenticated_optional_pack_in_canonical_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata = _ocr_resources(tmp_path)
+    monkeypatch.setenv("PWS_TESSERACT_EXECUTABLE", os.fspath(executable))
+    monkeypatch.setenv("PWS_TESSDATA_ROOT", os.fspath(tessdata))
+
+    def admit(
+        executable_arg: Path,
+        tessdata_arg: Path,
+    ) -> TesseractRuntimeAdmission:
+        assert executable_arg == executable
+        assert tessdata_arg == tessdata
+        return TesseractRuntimeAdmission(
+            root=executable.parent.parent,
+            executable=executable,
+            tessdata_root=tessdata,
+            resources=(),
+            installed_language_codes=("deu", "eng"),
+            available_language_set_ids=(
+                "english-german-fast-v1",
+                "german-fast-v1",
+                "latin-default-v1",
+            ),
+        )
+
+    monkeypatch.setattr(entrypoint, "admit_packaged_tesseract_runtime", admit)
+    manager = entrypoint.create_desktop_application_resource_context().ocr_languages
+
+    snapshot = manager.refresh()
+    selected = manager.select_language_codes(("deu", "eng"))
+
+    assert snapshot.runtime_status is OcrLanguageRuntimeStatus.AVAILABLE
+    assert tuple(option.code for option in snapshot.language_options if option.installed) == (
+        "eng",
+        "deu",
+    )
+    assert selected.selected_language_set_id == "english-german-fast-v1"
+    assert selected.selected_available
+    manager.require_available(selected.selected_language_set_id)
+
+
+def test_language_manager_reports_invalid_without_exposing_admission_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata = _ocr_resources(tmp_path)
+    monkeypatch.setenv("PWS_TESSERACT_EXECUTABLE", os.fspath(executable))
+    monkeypatch.setenv("PWS_TESSDATA_ROOT", os.fspath(tessdata))
+
+    def reject(_executable: Path, _tessdata: Path) -> TesseractRuntimeAdmission:
+        raise TesseractRuntimeAdmissionError("private_path_canary")
+
+    monkeypatch.setattr(entrypoint, "admit_packaged_tesseract_runtime", reject)
+
+    snapshot = entrypoint.create_desktop_application_resource_context().ocr_languages.refresh()
+
+    assert snapshot.runtime_status is OcrLanguageRuntimeStatus.INVALID
+    assert snapshot.installed_language_codes == frozenset()
+    assert "private_path_canary" not in repr(snapshot)
+
+
 def test_ocr_composition_receives_exact_application_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     executable, tessdata = _ocr_resources(tmp_path)
     resources = entrypoint.create_desktop_application_resource_context(
-        CONSTRAINED_RESOURCE_POLICY_V1
+        CONSTRAINED_RESOURCE_POLICY_V1,
+        tesseract_executable=executable,
+        tessdata_root=tessdata,
     )
     sentinel = object()
     observed: dict[str, object] = {}
@@ -164,3 +252,74 @@ def test_ocr_composition_receives_exact_application_gate(
         "config": sentinel,
         "heavy_operations": resources.heavy_operations,
     }
+
+
+def test_ocr_composition_rejects_runtime_different_from_app_authority(
+    tmp_path: Path,
+) -> None:
+    executable, tessdata = _ocr_resources(tmp_path / "captured")
+    other_executable, other_tessdata = _ocr_resources(tmp_path / "other")
+    resources = entrypoint.create_desktop_application_resource_context(
+        CONSTRAINED_RESOURCE_POLICY_V1,
+        tesseract_executable=executable,
+        tessdata_root=tessdata,
+    )
+
+    with pytest.raises(OcrError) as captured:
+        entrypoint.build_windows_ocr_worker_composition(
+            resources,
+            other_executable,
+            other_tessdata,
+        )
+
+    assert captured.value.code is OcrErrorCode.MODEL_INVALID
+    assert captured.value.context == "ocr.language_composition"
+
+
+def test_ocr_service_reuses_manager_and_rejects_cross_wired_composition(
+    tmp_path: Path,
+) -> None:
+    executable, tessdata = _ocr_resources(tmp_path)
+    resources = entrypoint.create_desktop_application_resource_context(
+        CONSTRAINED_RESOURCE_POLICY_V1,
+        tesseract_executable=executable,
+        tessdata_root=tessdata,
+    )
+
+    class _Sources:
+        def borrow_committed_source_page(self, *_args: object, **_kwargs: object) -> object:
+            raise AssertionError("not exercised")
+
+    class _Processor:
+        def process(self, *_args: object, **_kwargs: object) -> object:
+            raise AssertionError("not exercised")
+
+    matching = OcrWorkerComposition(
+        cast(Any, object()),
+        cast(Any, _Processor()),
+        resources.heavy_operations,
+        cast(str, resources.ocr_languages.runtime_authority_id),
+    )
+    service = entrypoint.build_windows_ocr_service(
+        cast(Any, _Sources()),
+        matching,
+        resources=resources,
+    )
+
+    assert cast(Any, service)._language_sets is resources.ocr_languages
+
+    mismatched = OcrWorkerComposition(
+        cast(Any, object()),
+        cast(Any, _Processor()),
+        resources.heavy_operations,
+        "0" * 64,
+    )
+    with pytest.raises(OcrError) as captured:
+        entrypoint.build_windows_ocr_service(
+            cast(Any, _Sources()),
+            mismatched,
+            resources=resources,
+        )
+
+    assert captured.value.code is OcrErrorCode.MODEL_INVALID
+    assert captured.value.context == "ocr.composition"

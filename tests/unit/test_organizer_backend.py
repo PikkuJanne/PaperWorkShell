@@ -10,6 +10,11 @@ from uuid import UUID
 import pytest
 
 import paperworkshell.app.organizer as organizer_module
+from paperworkshell.app.ocr_languages import (
+    OcrLanguageDiscoveryResult,
+    OcrLanguageManager,
+    OcrLanguageRuntimeStatus,
+)
 from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
     OrganizerBackend,
@@ -449,6 +454,7 @@ def _backend(
     document: Mapping[str, object],
     *,
     close_resources: Callable[[], None] = lambda: None,
+    ocr_languages: OcrLanguageManager | None = None,
 ) -> tuple[OrganizerBackend, _Repository, _Lifecycle, _SourceIngest, _Thumbnails]:
     repository = _Repository(document)
     lifecycle = _Lifecycle(repository)
@@ -461,6 +467,7 @@ def _backend(
             source_ingest,
             thumbnails,
             close_resources=close_resources,
+            ocr_languages=ocr_languages,
         ),
         repository,
         lifecycle,
@@ -500,6 +507,48 @@ def test_startup_recovery_result_is_preserved_for_the_desktop_bridge() -> None:
     )
 
     assert backend.startup_recovery_result is recovery
+
+
+class _InstalledOcrLanguages:
+    def discover_ocr_languages(self) -> OcrLanguageDiscoveryResult:
+        return OcrLanguageDiscoveryResult(
+            OcrLanguageRuntimeStatus.AVAILABLE,
+            ("eng", "deu"),
+        )
+
+
+def test_language_management_uses_injected_manager_without_mutating_active_case() -> None:
+    manager = OcrLanguageManager(_InstalledOcrLanguages())
+    backend, repository, _, _, _ = _backend(
+        _document(page_count=1),
+        ocr_languages=manager,
+    )
+    before_state = backend.open_case(CASE_ID)
+    before_manifest = copy_manifest_document(repository.current.document)
+    before_revision = repository.current.revision
+
+    refreshed = backend.refresh_ocr_languages()
+    selected = backend.select_ocr_language_codes(("deu", "eng"))
+
+    assert backend.ocr_language_manager is manager
+    assert refreshed.installed_language_codes == frozenset({"eng", "deu"})
+    assert selected.selected_language_codes == ("eng", "deu")
+    assert backend.state == before_state
+    assert repository.current.revision == before_revision
+    assert repository.current.document == before_manifest
+    assert repository.save_calls == 0
+
+
+def test_default_language_manager_fails_safely_when_runtime_is_unavailable() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    before_state = backend.open_case(CASE_ID)
+
+    snapshot = backend.refresh_ocr_languages()
+
+    assert snapshot.runtime_status is OcrLanguageRuntimeStatus.UNAVAILABLE
+    assert not snapshot.selected_available
+    assert backend.state == before_state
+    assert repository.save_calls == 0
 
 
 def test_recovered_manifest_sets_path_free_review_status() -> None:

@@ -8,6 +8,7 @@ import pytest
 
 import paperworkshell.__main__ as entrypoint
 import paperworkshell.worker.client._windows as windows_launcher
+from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.worker.client.tesseract_runtime import TesseractRuntimeAdmission
 from paperworkshell.worker.searchable_pdf_export_composition import (
@@ -105,10 +106,12 @@ def test_searchable_composition_receives_exact_application_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    resources = entrypoint.create_desktop_application_resource_context(
-        CONSTRAINED_RESOURCE_POLICY_V1
-    )
     qpdf, tesseract, tessdata = _engines(tmp_path)
+    resources = entrypoint.create_desktop_application_resource_context(
+        CONSTRAINED_RESOURCE_POLICY_V1,
+        tesseract_executable=tesseract,
+        tessdata_root=tessdata,
+    )
     config = object()
     composition = object()
     observed: dict[str, object] = {}
@@ -157,3 +160,28 @@ def test_searchable_composition_receives_exact_application_gate(
         "config": config,
         "heavy_operations": resources.heavy_operations,
     }
+
+
+def test_searchable_composition_rejects_runtime_different_from_app_authority(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "captured").mkdir()
+    (tmp_path / "other").mkdir()
+    qpdf, tesseract, tessdata = _engines(tmp_path / "captured")
+    _other_qpdf, other_tesseract, other_tessdata = _engines(tmp_path / "other")
+    resources = entrypoint.create_desktop_application_resource_context(
+        CONSTRAINED_RESOURCE_POLICY_V1,
+        tesseract_executable=tesseract,
+        tessdata_root=tessdata,
+    )
+
+    with pytest.raises(OcrError) as captured:
+        entrypoint.build_windows_searchable_pdf_export_worker_composition(
+            resources,
+            qpdf,
+            other_tesseract,
+            other_tessdata,
+        )
+
+    assert captured.value.code is OcrErrorCode.MODEL_INVALID
+    assert captured.value.context == "ocr.language_composition"

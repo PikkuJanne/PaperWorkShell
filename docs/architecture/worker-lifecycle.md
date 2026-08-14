@@ -662,6 +662,17 @@ two-process Job, zero-capability token, minimal environment, and exact-object AC
 developer `PATH` installation or unrestricted direct adapter run is useful diagnosis but is not
 the supported-Windows isolation claim.
 
+PWS-0205 extends runtime admission with a separately fingerprinted optional-language catalog. A
+locally prestaged German model is available only when its regular-file identity, exact byte size,
+SHA-256, and unnamed-stream-only state match that catalog; missing data stays unavailable, while
+changed, redirected, offline/recall, alternate-stream, or unlisted data invalidates the runtime
+before authority is granted. Capability discovery first requires a canonical physical fixed-volume
+mapping with persistent ACL support, so a UNC, mapped, DOS-aliased, cloud-provider, removable, or
+other unsupported location is not enumerated. Discovery never downloads packs and does not change
+the worker's zero-capability network policy. Close and restart PaperWorkShell after an offline pack
+change. PWS-0801/PWS-0802 retain the exact release staging path, elevation, removal, notices, and
+detached-signature verification evidence.
+
 The PWS-0107 no-op must not fake handle evidence with a test-only production RPC operation. Tests
 may inject fixed launch/operation adapters, but release claims require the real launcher and host.
 Successful case-object handle brokerage was not a PWS-0107 completion criterion. PWS-0105 is the
@@ -671,5 +682,5 @@ result correlation, or cleanup failure leaves the consuming task/gate open.
 
 ## Explicit deferrals
 
-- PWS-0205: offline verification, installation, and selection of additional OCR language packs.
 - PWS-0801: release-grade packaged-content/SBOM/license-notice and release-input verification.
+- PWS-0802: exact installer path, privilege, repair/removal, and restart behavior.

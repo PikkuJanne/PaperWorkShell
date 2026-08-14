@@ -69,6 +69,7 @@ UUID is correlation data, never filesystem authority.
 | `ocr.tesseract_runner` | Start, monitor, cancel, and terminate the exact executable; bound and discard tool output | Sole OCR subprocess site; absolute executable, array arguments, `shell=False`, fixed cwd, and minimal environment |
 | `pdf.ocr_candidate_verifier` | Strictly reopen one private OCR PDF with pikepdf and return only a positive page count | Narrow worker-side PDF seam; no recovery, encrypted candidate, third-party object, or raw exception crosses |
 | `worker.client.tesseract_runtime` | Authenticate the packaged manifest and exact runtime file closure before launch authority is granted | Standard-library-only launcher-side admission; no runtime discovery through `PATH`, registry, current directory, or user profile |
+| `app.ocr_languages` | Present path-free local availability and retain one closed language-set selection | Local-only discovery; no source paths, download action, or arbitrary engine expression |
 | `worker.ocr_composition` | Create the OCR-only launcher/client/broker and share the application heavy-operation gate | Exactly one worker plus at most one active child and one heavy document operation |
 
 Package initializers remain passive. UI/application code does not import OCRmyPDF, Tesseract,
@@ -83,9 +84,21 @@ Capability registration succeeds only when all of the following are present and 
 - the built-in `eng` language in the admitted tessdata directory; and
 - the fixed engine-profile SHA-256 computed from both versions and the semantic settings below.
 
-The initial language-set token is `latin-default-v1`, which resolves internally to `eng`. It is
-not a filename, command fragment, or arbitrary Tesseract language expression. PWS-0205 owns
-additional offline language-pack discovery, selection, verification, and remediation.
+The closed language-set tokens are `latin-default-v1` (`eng`), `german-fast-v1` (`deu`), and
+`english-german-fast-v1` (`eng`, then `deu`). They are not filenames, command fragments, or
+caller-supplied Tesseract expressions. PWS-0205 discovery reports only authenticated local facts;
+selection cannot make a missing pack available. A request that selects `deu` is preflighted against
+the same runtime admission and fails before source authority is borrowed when that optional model
+is absent or invalid.
+
+The desktop root captures the configured executable and tessdata paths once and constructs the
+process-session language manager from that same binding. OCR and searchable-export compositions
+carry only a path-free authority digest back to their service builders; a service refuses a worker
+composition from a different runtime binding. When a caller omits a language ID or export profile,
+the manager atomically re-admits the captured local runtime and returns the exact current session
+selection, which is then carried explicitly through the request, plan, wire payload, fingerprint,
+and report. An explicit ID/profile remains deterministic and is preflighted exactly. Selection is
+not persisted across application restarts, and no unavailable selection falls back to English.
 
 The `searchable-pdf-v1` engine profile is:
 
@@ -120,13 +133,28 @@ application-wide heavy-operation coordinator permits only one heavy document ope
 The child remains in the same no-breakaway Job and zero-capability AppContainer, so worker egress,
 memory, CPU, termination, and descendant controls apply to it.
 
-The packaged Tesseract runtime manifest names exactly 39 reviewed files, including the executable,
-native DLL closure, and `share/tessdata/eng.traineddata`. Runtime admission requires the packaged
-manifest's fixed SHA-256, exact layout, exact size and SHA-256 for every file, single-link regular
-files, non-reparse directories, no missing entries, and no unlisted entries. Admission is repeated
-immediately before the launcher grants the AppContainer access; a changed closure fails before
-process creation. Version and language probes use the same executable boundary before the host
-advertises `ocr.process`.
+The packaged Tesseract base manifest names exactly 39 reviewed files, including the executable,
+native DLL closure, and `share/tessdata/eng.traineddata`. The separately fingerprinted optional-pack
+catalog admits only `share/tessdata/deu.traineddata`, with exact size and SHA-256. Runtime admission
+requires the packaged manifest and catalog bytes, exact layout, exact size and SHA-256 for every
+present file, single-link regular files with only their unnamed data stream, stream-free
+directories, no missing required entries, and no unlisted entries. Before any runtime path is
+opened or enumerated, both configured paths must form the exact layout on the same canonical
+physical fixed-volume mapping; DOS aliases, UNC/device forms, non-NTFS/ReFS volumes, volumes
+without persistent ACLs, reparse ancestors, and offline/recall attributes fail closed. A missing
+optional file is simply unavailable; a present but changed file invalidates the runtime. Admission
+is repeated before the launcher grants AppContainer access, so failure occurs before process
+creation. Version and language probes use the same boundary before the host advertises
+`ocr.process`.
+
+The runtime authenticates staged bytes, not upstream distribution signatures. Packaging must
+validate each detached MSYS2 signature against the reviewed signer key before extraction. Neither
+the application nor worker downloads packs. Close and restart PaperWorkShell after an offline pack
+change; exact release staging path, elevation, removal, and notices remain PWS-0801/PWS-0802 work.
+The source-build environment-path seam is capability-only: although admission is repeated before
+launch, the launcher does not retain each model file handle through the native child's later open.
+PWS-0801/PWS-0802 must therefore stage the exact closure in an installer-protected, read-only
+location and prove its ACL/repair/update behavior before any packaged-release claim.
 
 Tesseract launch uses:
 
@@ -249,7 +277,6 @@ constrained-resource gate.
 
 Additional deferrals are:
 
-- PWS-0205: offline installation and selection of additional checksum-tracked language packs;
 - PWS-0207: OCR confidence and scan-quality review findings;
 - PWS-0801: final packaged dependency/SBOM/license-notice and release-input verification; and
-- PWS-0803/PWS-0807: packaged-build signing, installer, and release-matrix evidence.
+- PWS-0802/PWS-0803/PWS-0807: packaged-build installation, signing, and release-matrix evidence.

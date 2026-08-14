@@ -13,11 +13,18 @@ from typing import Any
 import pytest
 
 import paperworkshell.worker.client.tesseract_runtime as runtime_module
+from paperworkshell.domain.ocr_languages import (
+    OCR_LANGUAGE_SET_DEFINITIONS,
+    OcrLanguageSetDefinition,
+)
 from paperworkshell.worker.client.tesseract_runtime import (
+    TESSERACT_LANGUAGE_PACK_CATALOG_SHA256,
     TESSERACT_RUNTIME_FILE_COUNT,
     TESSERACT_RUNTIME_MANIFEST_SHA256,
+    TesseractRuntimeAdmission,
     TesseractRuntimeAdmissionError,
     admit_tesseract_runtime,
+    packaged_tesseract_language_pack_catalog,
     packaged_tesseract_runtime_manifest,
 )
 
@@ -93,6 +100,78 @@ def _encode(document: dict[str, Any]) -> tuple[bytes, str]:
     return manifest, hashlib.sha256(manifest).hexdigest()
 
 
+def _language_catalog(payload: bytes) -> tuple[bytes, str]:
+    archive = "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst"
+    document = {
+        "schema_version": 1,
+        "catalog_id": "paperworkshell-tesseract-language-packs-windows-x86_64",
+        "reviewed_on": "2026-08-14",
+        "task_id": "PWS-0205",
+        "target": {
+            "os": "Windows",
+            "architecture": "x86_64",
+            "abi": "MSYS2 UCRT64",
+        },
+        "runtime_policy": {
+            "model_family": "tessdata_fast",
+            "model_version": "4.1.0",
+            "installation_mode": "offline-prestaged-exact-file",
+            "network_download_allowed": False,
+            "allow_unlisted_files": False,
+            "allow_reparse_points": False,
+        },
+        "trust": {
+            "runtime_authority": "catalog-file-size-and-sha256",
+            "upstream_signature_requirement": (
+                "The detached MSYS2 package signature must validate against the pinned "
+                "reviewed MSYS2 key before extraction."
+            ),
+            "signature_evidence_status": ("required-upstream-not-reverified-for-pws-0205"),
+            "required_key_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+        },
+        "packs": [
+            {
+                "language_code": "deu",
+                "display_name": "German",
+                "relative_path": "share/tessdata/deu.traineddata",
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "license_expression": "Apache-2.0",
+                "distribution_package_id": ("mingw-w64-ucrt-x86_64-tesseract-data-deu"),
+                "distribution_package_version": "4.1.0-3",
+                "archive": archive,
+                "archive_url": f"https://mirror.msys2.org/mingw/ucrt64/{archive}",
+                "archive_size_bytes": 1,
+                "archive_sha256": "1" * 64,
+                "signature_artifact": f"{archive}.sig",
+                "signature_url": (f"https://mirror.msys2.org/mingw/ucrt64/{archive}.sig"),
+                "signature_size_bytes": 1,
+                "signature_sha256": "2" * 64,
+                "expected_signer_fingerprint": ("5F944B027F7FE2091985AA2EFA11531AA0AA7F57"),
+            }
+        ],
+    }
+    return _encode(document)
+
+
+def _admit_with_catalog(
+    executable: Path,
+    tessdata: Path,
+    manifest: bytes,
+    digest: str,
+    catalog: bytes,
+    catalog_digest: str,
+) -> TesseractRuntimeAdmission:
+    return admit_tesseract_runtime(
+        executable,
+        tessdata,
+        manifest_bytes=manifest,
+        expected_manifest_sha256=digest,
+        language_catalog_bytes=catalog,
+        expected_language_catalog_sha256=catalog_digest,
+    )
+
+
 def test_packaged_manifest_is_the_reviewed_hash_addressed_copy() -> None:
     content = packaged_tesseract_runtime_manifest().read_bytes()
 
@@ -102,6 +181,24 @@ def test_packaged_manifest_is_the_reviewed_hash_addressed_copy() -> None:
         == (
             Path(__file__).parents[3] / "packaging" / "tesseract-runtime-closure-v1.json"
         ).read_bytes()
+    )
+
+
+def test_packaged_language_catalog_is_hash_addressed_and_matches_canonical() -> None:
+    content = packaged_tesseract_language_pack_catalog().read_bytes()
+    canonical = (
+        Path(__file__).parents[3] / "packaging" / "tesseract-language-pack-catalog-v1.json"
+    ).read_bytes()
+
+    assert content == canonical
+    assert hashlib.sha256(content).hexdigest() == TESSERACT_LANGUAGE_PACK_CATALOG_SHA256
+    document = json.loads(content)
+    german = document["packs"][0]
+    assert german["language_code"] == "deu"
+    assert german["size_bytes"] == 1_525_436
+    assert german["sha256"] == ("19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d")
+    assert document["trust"]["signature_evidence_status"] == (
+        "required-upstream-not-reverified-for-pws-0205"
     )
 
 
@@ -121,6 +218,576 @@ def test_exact_closure_is_admitted_with_fixed_layout(tmp_path: Path) -> None:
     assert executable in admission.resources
     assert tessdata in admission.resources
     assert len(admission.resources) == TESSERACT_RUNTIME_FILE_COUNT + 4
+    assert admission.installed_language_codes == ("eng",)
+    assert admission.available_language_set_ids == ("latin-default-v1",)
+
+
+@pytest.mark.parametrize(
+    "runtime_root",
+    (
+        r"\\server\share\approved-runtime",
+        r"\\?\C:\approved-runtime",
+        r"\\.\C:\approved-runtime",
+        r"\??\C:\approved-runtime",
+    ),
+)
+def test_remote_and_device_locations_are_rejected_before_runtime_file_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runtime_root: str,
+) -> None:
+    _executable, _tessdata, manifest, digest = _runtime(tmp_path)
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("remote runtime location must fail before file I/O")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", unexpected_io)
+    monkeypatch.setattr(Path, "lstat", unexpected_io)
+    monkeypatch.setattr(Path, "iterdir", unexpected_io)
+    monkeypatch.setattr(Path, "read_bytes", unexpected_io)
+    root = Path(runtime_root)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location"):
+        _admit(root / "bin" / "tesseract.exe", root / "share" / "tessdata", manifest, digest)
+
+
+@pytest.mark.parametrize("drive_type", (2, 4, 5, 6))
+def test_non_fixed_drive_is_rejected_before_runtime_file_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drive_type: int,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("non-fixed runtime location must fail before file I/O")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", lambda _root: drive_type)
+    monkeypatch.setattr(Path, "lstat", unexpected_io)
+    monkeypatch.setattr(Path, "iterdir", unexpected_io)
+    monkeypatch.setattr(Path, "read_bytes", unexpected_io)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+def test_reparse_ancestor_is_rejected_before_runtime_file_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("redirected runtime location must fail before file I/O")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", lambda _root: 3)
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_file_attributes",
+        lambda _path: runtime_module._FILE_ATTRIBUTE_REPARSE_POINT,
+    )
+    monkeypatch.setattr(Path, "lstat", unexpected_io)
+    monkeypatch.setattr(Path, "iterdir", unexpected_io)
+    monkeypatch.setattr(Path, "read_bytes", unexpected_io)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="reparse"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+@pytest.mark.parametrize(
+    "device_target",
+    (r"\??\C:\approved-runtime", r"\Device\GoogleDriveFS"),
+)
+def test_fixed_classification_cannot_admit_dos_alias_or_virtual_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    device_target: str,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+
+    def unexpected_provider_query(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("untrusted provider must fail before volume or path queries")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", lambda _root: 3)
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_dos_device_targets",
+        lambda _name: (device_target,),
+    )
+    monkeypatch.setattr(runtime_module, "_windows_volume_name", unexpected_provider_query)
+    monkeypatch.setattr(runtime_module, "_windows_volume_information", unexpected_provider_query)
+    monkeypatch.setattr(runtime_module, "_windows_file_attributes", unexpected_provider_query)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+def test_volume_without_persistent_acls_is_rejected_before_path_queries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    device = r"\Device\HarddiskVolume7"
+
+    def unexpected_path_query(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("unsupported volume must fail before path queries")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", lambda _root: 3)
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_dos_device_targets",
+        lambda _name: (device,),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_volume_name",
+        lambda _root: r"\\?\Volume{00000000-0000-0000-0000-000000000007}" + "\\",
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_volume_information",
+        lambda _root: (0, "FAT32"),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_volume_paths",
+        lambda _volume_name: (executable.anchor,),
+    )
+    monkeypatch.setattr(runtime_module, "_windows_file_attributes", unexpected_path_query)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+def test_direct_physical_device_alias_must_be_registered_by_mount_manager(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    device = r"\Device\HarddiskVolume7"
+
+    def unexpected_provider_query(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("unregistered DOS alias must fail before provider path queries")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", lambda _root: 3)
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_dos_device_targets",
+        lambda _name: (device,),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_volume_name",
+        lambda _root: r"\\?\Volume{00000000-0000-0000-0000-000000000007}" + "\\",
+    )
+    monkeypatch.setattr(runtime_module, "_windows_volume_paths", lambda _name: ())
+    monkeypatch.setattr(runtime_module, "_windows_volume_information", unexpected_provider_query)
+    monkeypatch.setattr(runtime_module, "_windows_file_attributes", unexpected_provider_query)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+@pytest.mark.parametrize("second_path_kind", ("remote", "layout"))
+def test_both_runtime_paths_are_validated_before_any_native_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    second_path_kind: str,
+) -> None:
+    executable, _tessdata, manifest, digest = _runtime(tmp_path)
+    tessdata = (
+        Path(r"\\server\share\approved-runtime\share\tessdata")
+        if second_path_kind == "remote"
+        else (tmp_path / "different-runtime" / "share" / "tessdata").absolute()
+    )
+
+    def unexpected_query(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("paired lexical and layout checks must run before native queries")
+
+    monkeypatch.setattr(runtime_module, "_windows_drive_type", unexpected_query)
+    monkeypatch.setattr(runtime_module, "_windows_dos_device_targets", unexpected_query)
+    monkeypatch.setattr(runtime_module, "_windows_file_attributes", unexpected_query)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location|layout"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+def test_offline_or_recall_attribute_is_rejected_before_runtime_file_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("offline runtime must fail before file I/O")
+
+    monkeypatch.setattr(
+        runtime_module,
+        "_windows_file_attributes",
+        lambda _path: runtime_module._FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
+    )
+    monkeypatch.setattr(Path, "lstat", unexpected_io)
+    monkeypatch.setattr(Path, "iterdir", unexpected_io)
+    monkeypatch.setattr(Path, "read_bytes", unexpected_io)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="location"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+@pytest.mark.parametrize(
+    "relative_target",
+    ("bin/runtime-00.dll", "share/tessdata/eng.traineddata"),
+)
+def test_offline_closure_entry_is_rejected_before_stream_or_content_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative_target: str,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    root = executable.parent.parent
+    target = root.joinpath(*relative_target.split("/"))
+    target_identity = runtime_module._file_identity(target.lstat())
+    real_attribute_check = runtime_module._has_unsupported_runtime_attributes
+    real_stream_check = runtime_module._require_only_unnamed_data_stream
+
+    def has_unsupported_attributes(metadata: os.stat_result) -> bool:
+        return runtime_module._file_identity(metadata) == target_identity or real_attribute_check(
+            metadata
+        )
+
+    def stream_check(
+        path: Path,
+        *,
+        is_directory: bool,
+        expected_size: int = 0,
+    ) -> None:
+        if os.path.normcase(path) == os.path.normcase(target):
+            raise AssertionError("offline closure entry must fail before stream enumeration")
+        real_stream_check(path, is_directory=is_directory, expected_size=expected_size)
+
+    monkeypatch.setattr(
+        runtime_module,
+        "_has_unsupported_runtime_attributes",
+        has_unsupported_attributes,
+    )
+    monkeypatch.setattr(runtime_module, "_require_only_unnamed_data_stream", stream_check)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="attributes"):
+        _admit(executable, tessdata, manifest, digest)
+
+
+def test_exact_present_optional_pack_is_merged_into_admission(tmp_path: Path) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    german = tessdata / "deu.traineddata"
+    german.write_bytes(payload)
+    catalog, catalog_digest = _language_catalog(payload)
+
+    admission = _admit_with_catalog(
+        executable,
+        tessdata,
+        manifest,
+        digest,
+        catalog,
+        catalog_digest,
+    )
+
+    assert german in admission.resources
+    assert admission.installed_language_codes == ("deu", "eng")
+    assert admission.available_language_set_ids == (
+        "english-german-fast-v1",
+        "german-fast-v1",
+        "latin-default-v1",
+    )
+
+
+def test_catalogued_optional_pack_may_be_absent(tmp_path: Path) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    catalog, catalog_digest = _language_catalog(b"not installed")
+
+    admission = _admit_with_catalog(
+        executable,
+        tessdata,
+        manifest,
+        digest,
+        catalog,
+        catalog_digest,
+    )
+
+    assert admission.installed_language_codes == ("eng",)
+    assert admission.available_language_set_ids == ("latin-default-v1",)
+
+
+@pytest.mark.parametrize("optional_pack", (False, True))
+def test_named_data_stream_on_base_or_optional_file_is_rejected(
+    tmp_path: Path,
+    optional_pack: bool,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    target = executable.parent / "runtime-00.dll"
+    catalog: bytes | None = None
+    catalog_digest: str | None = None
+    if optional_pack:
+        target = tessdata / "deu.traineddata"
+        target.write_bytes(payload)
+        catalog, catalog_digest = _language_catalog(payload)
+    stream = Path(f"{target}:private-stream-canary")
+    try:
+        stream.write_bytes(b"unlisted alternate data")
+    except OSError as error:
+        pytest.skip(f"alternate data streams unavailable: {error.winerror}")
+
+    try:
+        with pytest.raises(TesseractRuntimeAdmissionError, match="stream") as raised:
+            if catalog is None or catalog_digest is None:
+                _admit(executable, tessdata, manifest, digest)
+            else:
+                _admit_with_catalog(
+                    executable,
+                    tessdata,
+                    manifest,
+                    digest,
+                    catalog,
+                    catalog_digest,
+                )
+    finally:
+        stream.unlink(missing_ok=True)
+
+    assert "private-stream-canary" not in str(raised.value)
+    assert "private-stream-canary" not in repr(raised.value)
+
+
+def test_language_catalog_hash_mismatch_is_rejected_before_inventory(
+    tmp_path: Path,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    catalog, _catalog_digest = _language_catalog(b"not installed")
+    (executable.parent / "runtime-00.dll").unlink()
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="language_catalog_hash"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            "0" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["extra_top_level_member", "network_enabled", "unknown_language"],
+)
+def test_language_catalog_schema_is_closed(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    catalog, _catalog_digest = _language_catalog(b"not installed")
+    document = _document(catalog)
+    if mutation == "extra_top_level_member":
+        document["unreviewed"] = True
+    elif mutation == "network_enabled":
+        policy = document["runtime_policy"]
+        assert isinstance(policy, dict)
+        policy["network_download_allowed"] = True
+    else:
+        packs = document["packs"]
+        assert isinstance(packs, list)
+        pack = packs[0]
+        assert isinstance(pack, dict)
+        pack["language_code"] = "fra"
+    changed, changed_digest = _encode(document)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="language_catalog_schema"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            changed,
+            changed_digest,
+        )
+
+
+def test_language_catalog_must_cover_every_supported_optional_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    catalog, catalog_digest = _language_catalog(b"not installed")
+    monkeypatch.setattr(
+        runtime_module,
+        "OCR_LANGUAGE_SET_DEFINITIONS",
+        (
+            *OCR_LANGUAGE_SET_DEFINITIONS,
+            OcrLanguageSetDefinition("french-fast-v1", ("fra",)),
+        ),
+    )
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="language_catalog_schema"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
+
+
+@pytest.mark.parametrize("mutation", ["size", "hash"])
+def test_present_optional_pack_must_match_catalog_exactly(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    german = tessdata / "deu.traineddata"
+    german.write_bytes(payload)
+    catalog, catalog_digest = _language_catalog(payload)
+    german.write_bytes(payload + b"x" if mutation == "size" else b"x" * len(payload))
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match=mutation):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
+
+
+def test_unlisted_file_stays_rejected_when_catalog_is_present(tmp_path: Path) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    catalog, catalog_digest = _language_catalog(b"not installed")
+    (tessdata / "fra.traineddata").write_bytes(b"not catalogued")
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="unlisted"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
+
+
+def test_optional_pack_reparse_is_rejected_before_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    german = tessdata / "deu.traineddata"
+    german.write_bytes(payload)
+    catalog, catalog_digest = _language_catalog(payload)
+    german_metadata = german.lstat()
+    real_is_reparse = runtime_module._is_reparse
+
+    def is_reparse(metadata: os.stat_result) -> bool:
+        return (
+            metadata.st_dev == german_metadata.st_dev and metadata.st_ino == german_metadata.st_ino
+        ) or real_is_reparse(metadata)
+
+    monkeypatch.setattr(runtime_module, "_is_reparse", is_reparse)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="reparse"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
+
+
+def test_optional_pack_hardlink_is_rejected_before_hashing(tmp_path: Path) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    german = tessdata / "deu.traineddata"
+    german.write_bytes(payload)
+    catalog, catalog_digest = _language_catalog(payload)
+    alias = tmp_path / "outside-german-language-alias"
+    try:
+        os.link(german, alias)
+    except OSError as error:
+        pytest.skip(f"hard links are unavailable on this test volume: {error.errno}")
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="type"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
+
+
+def test_optional_pack_case_variant_is_rejected(tmp_path: Path) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    (tessdata / "DEU.traineddata").write_bytes(payload)
+    catalog, catalog_digest = _language_catalog(payload)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="case_collision"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
+
+
+def test_optional_pack_identity_change_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, tessdata, manifest, digest = _runtime(tmp_path)
+    payload = b"synthetic reviewed German language data"
+    german = tessdata / "deu.traineddata"
+    german.write_bytes(payload)
+    catalog, catalog_digest = _language_catalog(payload)
+    real_lstat = Path.lstat
+    german_calls = 0
+
+    def changed_lstat(path: Path) -> os.stat_result | SimpleNamespace:
+        nonlocal german_calls
+        metadata = real_lstat(path)
+        if path != german:
+            return metadata
+        german_calls += 1
+        if german_calls == 1:
+            return metadata
+        return SimpleNamespace(
+            st_dev=metadata.st_dev,
+            st_ino=metadata.st_ino,
+            st_size=metadata.st_size,
+            st_mtime_ns=metadata.st_mtime_ns + 1,
+            st_mode=metadata.st_mode,
+            st_nlink=metadata.st_nlink,
+            st_file_attributes=getattr(metadata, "st_file_attributes", 0),
+        )
+
+    monkeypatch.setattr(Path, "lstat", changed_lstat)
+
+    with pytest.raises(TesseractRuntimeAdmissionError, match="changed"):
+        _admit_with_catalog(
+            executable,
+            tessdata,
+            manifest,
+            digest,
+            catalog,
+            catalog_digest,
+        )
 
 
 def test_manifest_hash_mismatch_is_rejected_before_inventory(tmp_path: Path) -> None:

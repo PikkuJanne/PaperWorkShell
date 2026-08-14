@@ -56,12 +56,21 @@ the admitted OCR engine-profile digest, and these policy identifiers:
 |---|---|
 | OCR eligibility | `mixed-page-ocr-eligibility-v1` |
 | Text presence | `pdfium-non-whitespace-text-v1` |
-| Initial local language set | `latin-default-v1` |
+| Local language sets | `latin-default-v1`, `german-fast-v1`, or `english-german-fast-v1` |
 
 The semantic fingerprint covers only the deterministic semantic projection; authority and
 freshness facts remain separately authenticated. An active overlay is rejected because PWS-0206
 does not silently add new overlay-export semantics. Encryption must be confirmed absent for every
 PDF. JPEG and PNG sources are one-page inputs.
+
+Each language-set identifier resolves through the closed product mapping and is checked against
+the authenticated local runtime before source authority is borrowed. A missing selected pack fails
+with stable language-unavailable remediation; it does not silently fall back to English, download
+data, or mutate the case. The optional German bytes are admitted only by the packaged fingerprinted
+catalog described in the [OCR worker contract](ocr-worker.md). If no explicit export profile is
+provided, the service atomically captures the app-scoped process-session selection and builds the
+otherwise-default profile around that exact language-set ID. The same path-free runtime-authority
+digest must be present on both the app context and worker composition before the service can run.
 
 Eligibility and terminal outcomes are closed and one-to-one where required:
 

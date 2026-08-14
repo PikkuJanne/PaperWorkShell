@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
     OrganizerViewState,
@@ -90,6 +91,7 @@ from paperworkshell.ui.backend import (
     UiProgress,
 )
 from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
+from paperworkshell.ui.ocr_languages import OcrLanguageDialog
 from paperworkshell.ui.scan_review import ScanReviewDialog
 
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
@@ -412,6 +414,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._scan_review_apply_completed = False
         self._scan_review_original_bytes = 0
         self._scan_review_adjusted_bytes = 0
+        self._ocr_language_dialog: OcrLanguageDialog | None = None
+        self._ocr_language_saved_message: str | None = None
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
@@ -421,6 +425,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.setObjectName("workflowStack")
         self._status_surface = self._build_status_surface()
+        self._ocr_language_surface = self._build_ocr_language_surface()
         self._welcome_page = self._build_welcome_page()
         self._organizer_page = self._build_organizer_page()
         self._stack.addWidget(self._welcome_page)
@@ -430,6 +435,7 @@ class PaperWorkShellWindow(QMainWindow):
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        central_layout.addWidget(self._ocr_language_surface)
         central_layout.addWidget(self._stack, 1)
         central_layout.addWidget(self._status_surface)
         self._application_scroll = QScrollArea()
@@ -527,6 +533,34 @@ class PaperWorkShellWindow(QMainWindow):
         status_layout.addWidget(self._progress)
         status_layout.addLayout(status_actions)
         return status_group
+
+    def _build_ocr_language_surface(self) -> QGroupBox:
+        surface = QGroupBox("OCR language settings")
+        surface.setObjectName("ocrLanguageSettingsGroup")
+        surface.setAccessibleName("OCR language settings")
+        surface.setAccessibleDescription(
+            "Manage verified local OCR language packs from the case chooser or organizer."
+        )
+        layout = QVBoxLayout(surface)
+        guidance = QLabel(
+            "Choose the verified local languages PaperWorkShell may use for OCR. "
+            "No language data is downloaded."
+        )
+        guidance.setObjectName("ocrLanguageSettingsGuidance")
+        guidance.setAccessibleName("OCR language settings guidance")
+        guidance.setTextFormat(Qt.TextFormat.PlainText)
+        guidance.setWordWrap(True)
+        self._ocr_language_button = QPushButton("Manage OCR languages…")
+        self._ocr_language_button.setObjectName("ocrLanguageSettingsButton")
+        self._ocr_language_button.setAccessibleName("Manage OCR languages")
+        self._ocr_language_button.setAccessibleDescription(
+            "Review installed and verified offline OCR languages. "
+            "Shortcut Ctrl+Shift+L. No language data is downloaded."
+        )
+        self._ocr_language_button.clicked.connect(self._open_ocr_languages)
+        layout.addWidget(guidance)
+        layout.addWidget(self._ocr_language_button)
+        return surface
 
     def _build_welcome_page(self) -> QWidget:
         page = QWidget()
@@ -750,6 +784,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+R", self._rotate_selected),
             ("Delete", self._remove_selected),
             ("Ctrl+Shift+A", self._request_scan_review),
+            ("Ctrl+Shift+L", self._open_ocr_languages),
             ("Ctrl+Shift+O", self._change_full_order),
             ("Ctrl+Shift+R", self._retry_failed_preview),
             ("Escape", self._cancel_active_operation),
@@ -765,6 +800,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.initialized.connect(self._backend_initialized)
         self._worker.startup_recovery_changed.connect(self._startup_recovery_changed)
         self._worker.cases_changed.connect(self._cases_changed)
+        self._worker.ocr_languages_changed.connect(self._ocr_languages_changed)
+        self._worker.ocr_languages_failed.connect(self._ocr_languages_failed)
         self._worker.state_changed.connect(self._state_changed)
         self._worker.thumbnails_ready.connect(self._thumbnails_ready)
         self._worker.scan_review_started.connect(self._scan_review_started)
@@ -803,6 +840,68 @@ class PaperWorkShellWindow(QMainWindow):
     def _backend_initialized(self) -> None:
         self._set_controls_enabled(True)
         self._case_list.setFocus()
+
+    @Slot()
+    def _open_ocr_languages(self) -> None:
+        if self._ocr_language_dialog is not None or not self._ocr_language_button.isEnabled():
+            QApplication.beep()
+            return
+        dialog = OcrLanguageDialog(self._allocate_operation_id, self)
+        dialog.refresh_requested.connect(self._commands.ocr_languages_refresh_requested.emit)
+        dialog.selection_requested.connect(self._commands.ocr_languages_select_requested.emit)
+        dialog.selection_saved.connect(self._ocr_language_selection_saved)
+        dialog.finished.connect(self._ocr_language_dialog_finished)
+        self._ocr_language_dialog = dialog
+        self._ocr_language_saved_message = None
+        self._update_ocr_language_availability()
+        dialog.show()
+        dialog.request_refresh()
+
+    @Slot(int, object)
+    def _ocr_languages_changed(self, request_id: int, snapshot: object) -> None:
+        dialog = self._ocr_language_dialog
+        if dialog is None or type(snapshot) is not OcrLanguageSnapshot:
+            return
+        dialog.set_snapshot(request_id, snapshot)
+
+    @Slot(int, object)
+    def _ocr_languages_failed(self, request_id: int, failure: object) -> None:
+        dialog = self._ocr_language_dialog
+        if dialog is None or type(failure) is not UiFailure or failure.operation_id != request_id:
+            return
+        dialog.set_failure(request_id, failure.code, failure.message)
+
+    @Slot(object)
+    def _ocr_language_selection_saved(self, snapshot: object) -> None:
+        if type(snapshot) is not OcrLanguageSnapshot:
+            return
+        count = len(snapshot.selected_language_codes)
+        noun = "language" if count == 1 else "languages"
+        self._ocr_language_saved_message = (
+            f"OCR language selection saved for this application session: {count} {noun}."
+        )
+
+    @Slot(int)
+    def _ocr_language_dialog_finished(self, _result: int) -> None:
+        dialog = self._ocr_language_dialog
+        if dialog is None:
+            return
+        saved_message = self._ocr_language_saved_message
+        self._ocr_language_dialog = None
+        self._ocr_language_saved_message = None
+        dialog.deleteLater()
+        self._update_ocr_language_availability()
+        if not self._closing_requested and self._ocr_language_button.isEnabled():
+            QTimer.singleShot(0, self._focus_ocr_language_button_after_dialog)
+        if saved_message is not None:
+            self._announce(saved_message)
+
+    def _focus_ocr_language_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._ocr_language_button.isEnabled():
+            return
+        self.activateWindow()
+        self._ocr_language_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._ocr_language_button)
 
     @Slot(object)
     def _cases_changed(self, case_index: object) -> None:
@@ -2549,6 +2648,16 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._import_is_pending_or_running()
             and not self._scan_review_is_opening_or_active()
         )
+        self._update_ocr_language_availability()
+
+    def _update_ocr_language_availability(self) -> None:
+        self._ocr_language_button.setEnabled(
+            self._controls_enabled
+            and not self._closing_requested
+            and self._active_operation is None
+            and not self._scan_review_is_opening_or_active()
+            and self._ocr_language_dialog is None
+        )
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         self._controls_enabled = enabled
@@ -2599,6 +2708,7 @@ class PaperWorkShellWindow(QMainWindow):
         if queued_import:
             self._import_presentation = _ImportPresentationState.CANCELLED
         self._deferred_preview_state = None
+        self._discard_ocr_language_dialog_for_shutdown()
         self._discard_scan_review_for_shutdown()
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
@@ -2611,6 +2721,11 @@ class PaperWorkShellWindow(QMainWindow):
             else "Closing PaperWorkShell after saving queued changes."
         )
         self._commands.shutdown_requested.emit()
+
+    def _discard_ocr_language_dialog_for_shutdown(self) -> None:
+        dialog = self._ocr_language_dialog
+        if dialog is not None:
+            dialog.discard_for_shutdown()
 
     def _discard_scan_review_for_shutdown(self) -> None:
         dialog = self._scan_review_dialog

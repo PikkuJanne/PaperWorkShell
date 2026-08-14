@@ -38,6 +38,7 @@ from paperworkshell.worker.client.models import WorkerResourceSnapshot
 from paperworkshell.worker.client.tesseract_runtime import (
     TesseractRuntimeAdmissionError,
     admit_packaged_tesseract_runtime,
+    preflight_tesseract_runtime_paths,
 )
 from paperworkshell.worker.protocol.bootstrap import (
     BOOTSTRAP_BYTES,
@@ -1459,6 +1460,18 @@ class WindowsLaunchConfig:
                 "config.location",
                 "Worker resources must be on a supported local Windows path.",
             )
+        if self.tesseract_executable is not None and self.tessdata_root is not None:
+            try:
+                preflight_tesseract_runtime_paths(
+                    self.tesseract_executable,
+                    self.tessdata_root,
+                )
+            except TesseractRuntimeAdmissionError:
+                _reject(
+                    WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                    "config.tesseract_location",
+                    "The configured OCR runtime is not on an approved fixed local volume.",
+                )
         try:
             valid_types = (
                 self.python_executable.is_file()

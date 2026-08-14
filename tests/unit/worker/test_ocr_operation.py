@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
 from typing import Any, BinaryIO, cast
@@ -193,12 +193,46 @@ def test_fixed_engine_profile_hash_is_public_and_deterministic() -> None:
 
 def test_language_set_is_opaque_configuration_not_tesseract_argv() -> None:
     assert _languages_for_set("latin-default-v1") == ("eng",)
+    assert _languages_for_set("german-fast-v1") == ("deu",)
+    assert _languages_for_set("english-german-fast-v1") == ("eng", "deu")
 
     with pytest.raises(OcrError) as raised:
         _languages_for_set("eng;--config=private-file")
 
-    assert raised.value.code is OcrErrorCode.LANGUAGE_UNAVAILABLE
+    assert raised.value.code is OcrErrorCode.MODEL_INVALID
     assert "private-file" not in str(raised.value)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="production OCR operation is Windows-only")
+def test_unsupported_language_set_is_rejected_before_source_staging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processor = _CandidateProcessor()
+    adapter = operation.WindowsOcrProcessAdapter(
+        candidate_processor=processor,
+        private_temp_storage=_TempStorage(),
+    )
+    temp_materialized = False
+
+    def materialize() -> Path:
+        nonlocal temp_materialized
+        temp_materialized = True
+        return Path("unused")
+
+    closed: list[int] = []
+    monkeypatch.setattr(operation, "_materialize_private_temp", materialize)
+    monkeypatch.setattr(operation, "_close_native_handle_no_raise", closed.append)
+
+    with pytest.raises(OcrError) as raised:
+        adapter.process(
+            _context(b"%PDF-1.7\n%%EOF\n"),
+            replace(_request(), language_set_id="unsupported-private-v1"),
+        )
+
+    assert raised.value.code is OcrErrorCode.LANGUAGE_UNAVAILABLE
+    assert not temp_materialized
+    assert processor.calls == 0
+    assert sorted(closed) == [101, 202, 303]
 
 
 def test_missing_fixed_resource_environment_builds_fail_closed_handler(
@@ -319,6 +353,7 @@ def test_private_temp_capacity_refusal_precedes_staging_and_ocr(
             context.inputs[0],
             _source_stream(monkeypatch, payload),
             operation._OwnedHandles({202, 303}),
+            ("eng",),
         )
 
     assert raised.value.code is OcrErrorCode.LIMIT_EXCEEDED
@@ -410,6 +445,7 @@ def test_mid_source_disk_full_cleans_partial_and_fresh_retry_recovers(
             context.inputs[0],
             _source_stream(monkeypatch, payload),
             operation._OwnedHandles({202, 303}),
+            ("eng",),
         )
 
     assert raised.value.code is OcrErrorCode.LIMIT_EXCEEDED
@@ -429,6 +465,7 @@ def test_mid_source_disk_full_cleans_partial_and_fresh_retry_recovers(
         context.inputs[0],
         _source_stream(monkeypatch, payload),
         operation._OwnedHandles({202, 303}),
+        ("eng",),
     )
 
     assert reference.expected_byte_size == len(processor.payload)

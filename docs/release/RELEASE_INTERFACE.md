@@ -113,7 +113,7 @@ machine path.
 | Derived final outputs | User-selected external destination for supported export | Product never overwrites an imported original; exact release behavior **TBD** |
 | Thumbnail/preview caches | Case-scoped `cache\thumbnails\` and `cache\previews\` | Disposable and bounded; packaged cleanup behavior **TBD** |
 | Temporary processing data | Case-scoped `temp\` plus restricted worker-private temporary storage | Authenticated cleanup/recovery is implemented; packaged residue tests **TBD** |
-| OCR language data / optional engines | **TBD for packaged release** | Separately identifiable/removable behavior **TBD** |
+| OCR language data / optional engines | Source contract: built-in English plus exact optional German `tessdata_fast` 4.1.0 data; exact packaged path/inclusion **TBD for PWS-0801/PWS-0802** | Close/restart after a local pack change; exact installer/elevation/removal/notices **TBD for PWS-0802** |
 | Persistent logs | **TBD; current diagnostic logger is bounded and structured rather than a release log store** | Sanitized; retention **TBD** |
 | Support bundles | User-selected local destination; feature **not yet implemented** | Created only after preview and confirmation; user-controlled deletion |
 | Migration/rollback backups | **TBD** | **TBD** |
@@ -166,10 +166,10 @@ silently replaced.
 | Mandatory account | None |
 | Project-controlled server required for core workflow | None |
 | Worker network access during document processing | Denied by product design and current Windows tests; **verify packaged release** |
-| Optional downloads | OCR language packs, updates, or other approved components **TBD** |
+| Optional downloads | OCR language packs are never downloaded by the application or worker; update/other component behavior **TBD** |
 | Data transmitted by optional features | **TBD; disclose before transmission** |
-| Offline installation path | **TBD** |
-| Interrupted download behavior | **TBD where downloads exist** |
+| Offline installation path | PWS-0205 supports verified local prestaging only; exact release path, package UI, and elevation **TBD for PWS-0802** |
+| Interrupted download behavior | Not applicable to OCR language discovery or processing because those perform no download; **TBD where later update downloads exist** |
 
 ## 9. Resource behavior
 

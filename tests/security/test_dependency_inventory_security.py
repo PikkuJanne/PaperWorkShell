@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from collections.abc import Callable
@@ -49,10 +50,12 @@ REPOSITORY_POLICY_INPUTS = (
     Path("DECISIONS.md"),
     Path("TASKS.yaml"),
     Path("docs/development/dependency-policy.md"),
+    Path("packaging/tesseract-language-pack-catalog-v1.json"),
     Path("packaging/tesseract-runtime-closure-v1.json"),
     Path("pyproject.toml"),
     Path("tools/dev.py"),
     Path("uv.lock"),
+    Path("src/paperworkshell/worker/client/tesseract-language-pack-catalog-v1.json"),
 )
 
 
@@ -1295,6 +1298,42 @@ class DependencyInventorySecurityTests(unittest.TestCase):
         if summary is not None:
             self.assertEqual(1, summary.positive_count)
             self.assertEqual(len(EXPECTED_NEGATIVE_CODES), summary.negative_count)
+
+    def test_language_catalog_tamper_and_packaged_copy_divergence_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _copy_repository_policy_inputs(root)
+            packaged_catalog = (
+                root / "src/paperworkshell/worker/client/tesseract-language-pack-catalog-v1.json"
+            )
+            packaged_catalog.write_bytes(packaged_catalog.read_bytes() + b"\n")
+
+            _, issues = validate_dependency_data(
+                self.baseline,
+                self.schema,
+                document="synthetic-dependency-inventory.json",
+                root=root,
+                repository_checks=True,
+            )
+
+        self.assertIn(
+            "DEPENDENCY_TESSERACT_LANGUAGE_CATALOG_COPY_MISMATCH",
+            _codes(issues),
+        )
+
+    def test_repository_does_not_track_language_model_payloads(self) -> None:
+        tracked = subprocess.run(
+            ("git", "ls-files", "--", "*.traineddata"),
+            cwd=PROJECT_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+
+        self.assertEqual("", tracked.stdout)
+        ignore_lines = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        self.assertIn("*.traineddata", ignore_lines)
 
 
 if __name__ == "__main__":

@@ -3,8 +3,8 @@
   "schema_version": 1,
   "inventory_id": "paperworkshell-dependencies",
   "inventory_profile": "policy-baseline",
-  "inventory_revision": 8,
-  "reviewed_on": "2026-08-13",
+  "inventory_revision": 9,
+  "reviewed_on": "2026-08-14",
   "target": {"os": "Windows", "architecture": "x86_64", "python_minor": "3.14"},
   "policy": {
     "document": "docs/development/dependency-policy.md",
@@ -548,12 +548,32 @@
       "source": {"project_url": "https://github.com/tesseract-ocr/tessdata_fast", "release_url": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-eng", "license_url": "https://github.com/tesseract-ocr/tessdata_fast/blob/4.1.0/LICENSE"},
       "integrity": {"verification": "sha256", "revision": null, "hashes": [{"algorithm": "SHA-256", "value": "543111e842aeebe248839902945b3883f9bf79b58787a1696d6ac211c13f7029", "artifact": "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst"}, {"algorithm": "SHA-256", "value": "380afbdc4fccc03ddac5944d63d8b8a86b1ad87623b39818207bfed6ab7d9d87", "artifact": "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst.sig"}, {"algorithm": "SHA-256", "value": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2", "artifact": "eng.traineddata"}]},
       "artifact_evidence": {"artifact": "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst", "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst", "target_platform": "windows-x64", "size_bytes": 1815579, "sha256": "543111e842aeebe248839902945b3883f9bf79b58787a1696d6ac211c13f7029"},
-      "license": {"expression": "Apache-2.0", "distribution_note": "The selected tessdata_fast English model is Apache-2.0. The 4,113,088-byte eng.traineddata file is independently hash-bound; other languages remain PWS-0205 modular additions and may not be downloaded by the worker.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
+      "license": {"expression": "Apache-2.0", "distribution_note": "The selected tessdata_fast English model is Apache-2.0. The 4,113,088-byte eng.traineddata file is independently hash-bound. PWS-0205 admits additional language data only as separate, exact, offline-prestaged components; neither the application nor worker may download models.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
       "binary": {"contains_native_code": false, "installs_executable": false, "processes_untrusted_documents": true},
       "maintenance": {"status": "stable", "checked_on": "2026-08-13", "evidence_url": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-eng", "note": "The exact signed MSYS2 package selects tessdata_fast 4.1.0 English data. The detached signature identifies the same reviewed MSYS2 developer key as the Tesseract package."},
       "security": {"boundary": "data-only", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
       "packaging": {"ship_state": "planned", "windows_impact": "Only eng.traineddata is selected for the PWS-0204 baseline; osd.traineddata and hocr/txt configs come from the pinned Tesseract package. TESSDATA_PREFIX points to the controlled read-only directory. PWS-0801 must stage hashes and the Apache-2.0 notice.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom"]},
       "sbom": {"component_type": "data", "purl": "pkg:generic/tesseract-language-data@4.1.0-3", "supplier": "Tesseract OCR contributors and MSYS2", "transitive_components_from": "upstream-release-inventory"}
+    },
+    {
+      "component_id": "tesseract-language-data-deu",
+      "name": "Tesseract fast German language data",
+      "ecosystem": "data",
+      "relationship": "direct",
+      "admission_status": "approved",
+      "active_scopes": ["data", "worker"],
+      "decision_refs": ["PWS-D016", "PWS-D034"],
+      "task_refs": ["PWS-0005", "PWS-0204", "PWS-0205", "PWS-0801", "PWS-0802"],
+      "version": {"constraint": "==4.1.0-3", "selected": "4.1.0-3", "pin_kind": "exact", "pin_source": "MSYS2 UCRT64 signed repository package from tessdata_fast 4.1.0"},
+      "source": {"project_url": "https://github.com/tesseract-ocr/tessdata_fast", "release_url": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-deu", "license_url": "https://github.com/tesseract-ocr/tessdata_fast/blob/4.1.0/LICENSE"},
+      "integrity": {"verification": "sha256", "revision": null, "hashes": [{"algorithm": "SHA-256", "value": "0d1bfa3838617fa0a6c439da638926e50f1186b87a247b3dd5ab3eac25887e41", "artifact": "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst"}, {"algorithm": "SHA-256", "value": "448ee3de17ec1b9592455d85a678ff97e73db603b1b3bf1786af5d8a0c311542", "artifact": "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst.sig"}, {"algorithm": "SHA-256", "value": "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d", "artifact": "deu.traineddata"}]},
+      "artifact_evidence": {"artifact": "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst", "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst", "target_platform": "windows-x64", "size_bytes": 816507, "sha256": "0d1bfa3838617fa0a6c439da638926e50f1186b87a247b3dd5ab3eac25887e41"},
+      "license": {"expression": "Apache-2.0", "distribution_note": "The selected tessdata_fast German model and distribution package are Apache-2.0. The 816,507-byte archive, 566-byte detached signature, and 1,525,436-byte extracted deu.traineddata file are independently hash-bound. PWS-0801 owns final license, notice, hash, and SBOM closure; PWS-0802 owns exact installer path, privilege, repair, removal, and user-visible notice behavior.", "notice_required": true, "source_offer_required": false, "relinking_required": false, "distribution_altering": false},
+      "binary": {"contains_native_code": false, "installs_executable": false, "processes_untrusted_documents": true},
+      "maintenance": {"status": "stable", "checked_on": "2026-08-14", "evidence_url": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-data-deu", "note": "The exact MSYS2 package selects tessdata_fast 4.1.0 German data. Upstream evidence identifies MSYS2 signer key 5F944B027F7FE2091985AA2EFA11531AA0AA7F57; detached-signature verification remains mandatory during release packaging and was not re-performed for this inventory update."},
+      "security": {"boundary": "data-only", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
+      "packaging": {"ship_state": "planned", "windows_impact": "PWS-0205 permits verified local prestaging of the exact deu.traineddata bytes only. Runtime checks the canonical catalog and file bytes; neither the application nor worker may download language data. Restart after adding, replacing, or removing a pack. Missing or changed data stays unavailable until a verified copy is restored. PWS-0801 and PWS-0802 retain final package inclusion, path, elevation, removal, and notice evidence.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom"]},
+      "sbom": {"component_type": "data", "purl": "pkg:generic/tesseract-language-data-deu@4.1.0-3", "supplier": "Tesseract OCR contributors and MSYS2", "transitive_components_from": "upstream-release-inventory"}
     },
     {
       "component_id": "types-jsonschema",
@@ -1402,6 +1422,7 @@
     {"from": "rich", "type": "depends-on", "to": "markdown-it-py", "enabled": true},
     {"from": "rich", "type": "depends-on", "to": "pygments", "enabled": true},
     {"from": "tesseract", "type": "uses-data", "to": "tesseract-language-data", "enabled": true},
+    {"from": "tesseract", "type": "uses-data", "to": "tesseract-language-data-deu", "enabled": true},
     {"from": "types-jsonschema", "type": "depends-on", "to": "referencing", "enabled": true},
     {"from": "typing-inspection", "type": "depends-on", "to": "typing-extensions", "enabled": true}
   ]

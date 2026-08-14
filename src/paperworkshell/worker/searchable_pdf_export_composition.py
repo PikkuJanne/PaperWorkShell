@@ -24,6 +24,7 @@ from paperworkshell.worker.client.models import (
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.client.tesseract_runtime import tesseract_runtime_authority_id
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationSnapshot
 from paperworkshell.worker.protocol.models import (
     MAX_SAFE_INTEGER,
@@ -58,6 +59,7 @@ class SearchablePdfExportWorkerCompositionConfig:
     resource_sampling_interval_ms: int = 50
     venv_launcher: Path | None = field(default=None, repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
+    _ocr_runtime_authority_id: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if (
@@ -100,6 +102,11 @@ class SearchablePdfExportWorkerCompositionConfig:
                 tessdata_root=self.tessdata_root,
             ),
         )
+        object.__setattr__(
+            self,
+            "_ocr_runtime_authority_id",
+            tesseract_runtime_authority_id(self.tesseract_executable, self.tessdata_root),
+        )
 
     def __repr__(self) -> str:
         return "SearchablePdfExportWorkerCompositionConfig(<validated fixed resources>)"
@@ -114,6 +121,7 @@ class SearchablePdfExportWorkerComposition(
         "_closed",
         "_exporter",
         "_heavy_operations",
+        "_ocr_runtime_authority_id",
         "_owner_thread_id",
         "_worker",
     )
@@ -123,10 +131,12 @@ class SearchablePdfExportWorkerComposition(
         worker: WorkerClient,
         exporter: BrokeredSearchablePdfExporter,
         heavy_operations: HeavyOperationCoordinator,
+        ocr_runtime_authority_id: str,
     ) -> None:
         self._worker = worker
         self._exporter = exporter
         self._heavy_operations = heavy_operations
+        self._ocr_runtime_authority_id = ocr_runtime_authority_id
         self._owner_thread_id = threading.get_ident()
         self._closed = False
 
@@ -137,6 +147,12 @@ class SearchablePdfExportWorkerComposition(
     @property
     def heavy_operations(self) -> HeavyOperationCoordinator:
         return self._heavy_operations
+
+    @property
+    def ocr_runtime_authority_id(self) -> str:
+        """Expose only the path-free runtime binding for app-root correlation."""
+
+        return self._ocr_runtime_authority_id
 
     @property
     def closed(self) -> bool:
@@ -238,6 +254,7 @@ def create_searchable_pdf_export_worker_composition(
             heavy_operations=heavy_operations,
         ),
         heavy_operations,
+        config._ocr_runtime_authority_id,
     )
 
 

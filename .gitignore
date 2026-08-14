@@ -36,3 +36,4 @@ Thumbs.db
 /benchmark-results/
 /secrets/
 /signing/
+*.traineddata
