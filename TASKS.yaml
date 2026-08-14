@@ -4173,7 +4173,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0010
@@ -4226,7 +4226,38 @@ tasks:
   - architecture
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-14'
+    revision: d97255fde3cdbe75cdc55546507acaca17e77475
+    commands:
+    - PowerShell Get-Item/Get-FileHash verification against the supplied BUNDLE_MANIFEST(1).json - passed;
+      all 8 steering documents matched their exact byte counts and SHA-256 values, and the 1727-byte source
+      manifest matched d6bf62f3a382166546b446d1aa9a8d4ab81bfc24f1c4f42fd170d3fbe65f563a
+    - .venv\Scripts\python.exe tools/dev.py check - passed on the frozen implementation snapshot in
+      3413.6 seconds; 396 format/type surfaces, 13 import layers across 143 source files, 3139 unit tests,
+      388 integration tests with 7 disclosed capability skips, 331 security tests with 6 disclosed
+      capability skips, and 31 accessibility tests passed together with every fixture, schema, task,
+      documentation, portfolio, resource, privacy, secret-scan, benchmark, and quality-self-test gate
+    - .venv\Scripts\python.exe -m pytest -q tests/unit/test_validate_portfolio_boundary.py
+      tests/unit/test_import_boundaries.py tests/unit/test_dev_commands.py tests/unit/test_validate_tasks.py
+      tests/integration/test_quality_entry_points.py - passed; 155 focused tests and 55 subtests
+    - .venv\Scripts\python.exe -m tools.validate_synthetic_fixtures - passed; 45 public synthetic fixtures,
+      15 analytical renderer references, 6 image-transform references, 1885 historical blobs, 598 index
+      blobs, and 635 working files were validated without a privacy finding
+    - .venv\Scripts\python.exe -m tools.validate_portfolio_boundary; tools/dev.py validate-task-graph;
+      validate-schemas; validate-docs; git diff --check - passed after the final evidence and bundle refresh
+    notes:
+    - PWS-D042 and ADR 0008 preserve PaperWorkShell as an independently useful, versioned, installed,
+      updated, secured, and released product. ThirdLife assembly remains a later black-box B4 concern against
+      exact frozen public artifacts; no sibling runtime, import, build/test dependency, repository edge,
+      shared platform, protocol, schema, service, database, or content access was added.
+    - The adapted alignment, source-traceability, future-notes, release-interface, release-evidence, and
+      standalone-checklist documents preserve the supplied direction under PaperWorkShell's local authority.
+      Candidate-specific identity, packaging, support, resource, accessibility, and release facts remain
+      explicitly draft/TBD until their existing M8 owners prove an exact packaged candidate.
+    - The permanent offline portfolio guard validates the frozen decision, task ownership and gate order,
+      stage-aware release evidence, complete final checklists, source and runtime-schema aliases, dependency
+      declarations and uv resolution surfaces, production references, bundle provenance, dynamic graph facts,
+      and repository-local hashes with bounded, sanitized diagnostics.
+    - The supplied bundle manifest remained provenance only and did not replace the repository roadmap bundle.
+      Current implementation priorities and historical evidence were preserved; PWS-0205 and PWS-0207 remain
+      ready, and the selector chooses PWS-0205 next.

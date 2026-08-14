@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 218233,
-      "sha256": "259485a3c0fc7d5821f049f4a58fc78357d51ea94602bcca04002ca6348a7967"
+      "bytes": 221360,
+      "sha256": "2f86c2a0faedd0d058f707a9ef1d830106a6f3464a84bd6c5f7b92bf5ddaebb8"
     },
     {
       "path": "TASKS.schema.json",
@@ -103,7 +103,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0809 has integrated the ThirdLife late-binding boundary, canonical governance, release-envelope ownership, draft release documents, and offline portfolio guard, but remains in_progress pending final repository validation. PWS-0205 and PWS-0207 remain ready; the task selector chooses PWS-0205 next.",
+    "PWS-0809 is done: the ThirdLife late-binding boundary, canonical governance, release-envelope ownership, draft release documents, offline portfolio guard, and final repository validation are complete. PWS-0205 and PWS-0207 remain ready; the task selector chooses PWS-0205 next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
