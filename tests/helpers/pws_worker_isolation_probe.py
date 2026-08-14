@@ -525,8 +525,8 @@ def _spawn_descendant(
     control: _Control,
     parent_standard_handles: tuple[int, int, int],
 ) -> tuple[subprocess.Popen[bytes], int, int, int]:
-    pycache_prefix = sys.pycache_prefix
-    if type(pycache_prefix) is not str or not pycache_prefix:
+    configured_prefix = sys._xoptions.get("pycache_prefix")
+    if type(configured_prefix) is not str or not configured_prefix:
         raise _DescendantProbeError(-26)
     arguments = (
         sys.executable,
@@ -536,7 +536,7 @@ def _spawn_descendant(
         "-X",
         "utf8",
         "-X",
-        f"pycache_prefix={pycache_prefix}",
+        f"pycache_prefix={configured_prefix}",
         os.fspath(Path(__file__)),
         _DESCENDANT_ARGUMENT,
     )
