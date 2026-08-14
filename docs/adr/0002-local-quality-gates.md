@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-01
-- Amended: 2026-08-12 by PWS-0115 low-resource contract migration
+- Amended: 2026-08-12 by PWS-0115 low-resource contract migration; 2026-08-14 by PWS-0203
+  quality-gate closure after bounded repository-history growth
 - Task: PWS-0003
 - Decisions: PWS-D003, PWS-D034, PWS-D035
 
@@ -66,10 +67,12 @@ machine-independent limits without inventing physical-hardware equivalence.
    weakening either bound. A 512 MiB logical-work budget covers source/configuration and Git-object
    reads, scanner inputs, mirror writes, and repeated path associations; anticipated
    historical/index work, known ref/path inputs, and framing overhead are combined with completed
-   preflight work and rejected before Gitleaks starts. One five-minute scan-wide deadline covers
+   preflight work and rejected before Gitleaks starts. One ten-minute scan-wide deadline covers
    enumeration, filesystem work, tool probes, and scanning, and each subprocess receives only the
-   remaining time before a terminal deadline check. Historical mirror entries use deterministic
-   per-item namespaces so batch construction is linear.
+   remaining time before a terminal deadline check. This keeps the complete scan finite after the
+   reviewed history grew beyond the original five-minute capacity; byte, item, metadata, logical
+   work, child-process, and cleanup limits remain unchanged. Historical mirror entries use
+   deterministic per-item namespaces so batch construction is linear.
    The only repository-specific false-positive exception targets the inherited `generic-api-key`
    rule and the exact extracted secret `PRIVATE-PARENT-PWS0104-CANARY`. That fixed public value is
    a privacy-test label, not a credential. The exception has no path, commit, baseline, stopword,

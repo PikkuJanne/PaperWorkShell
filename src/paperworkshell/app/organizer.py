@@ -737,8 +737,13 @@ class OrganizerBackend:
                 maximum_width_pixels=maximum_width_pixels,
                 maximum_height_pixels=maximum_height_pixels,
             )
+        # Scan review is an interactive, explicitly cancelable workflow.  Its
+        # outer application deadline spans trusted one-shot AppContainer
+        # setup and revocation as well as the independently bounded worker
+        # operation.  Use the existing service ceiling by default so slow ACL
+        # preparation cannot relabel a safely completed preview as timed out.
         selected_timeout = (
-            _default_organizer_preview_timeout(1) if timeout_seconds is None else timeout_seconds
+            MAX_PAGE_PREVIEW_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
         )
         results = self._thumbnails.get_previews(
             (request,),

@@ -114,6 +114,13 @@ than extending a queue. The dialog also disables adjustment and Update controls 
 active. The first cycle requests Original and then Adjusted; later idle Update requests reuse the
 retained Original and request only the current Adjusted candidate.
 
+The interactive review's default outer application deadline is the existing page-preview service
+ceiling of 3,600 seconds. That deadline includes trusted fresh-AppContainer preparation and
+revocation, which can take longer than an ordinary thumbnail budget on a constrained Windows host.
+It does not widen document-processing authority: Original and Adjusted each retain the production
+worker's independent 60-second wall and 45-second CPU limits, and the user can cancel while the
+review is open. An explicit application caller timeout is forwarded unchanged.
+
 The dialog retains at most one detached Original and one detached Adjusted `QPixmap`. The window
 charges both decoded byte counts against the same `thumbnail_preview_cache_bytes` ceiling as the
 organizer pixmap LRU and evicts organizer previews down to the remaining allowance before accepting

@@ -27,7 +27,7 @@ MAX_SECRET_SCAN_ITEMS: Final = 10_000
 MAX_SECRET_SCAN_METADATA_RECORDS: Final = 50_000
 MAX_SECRET_SCAN_METADATA_BYTES: Final = 16 * 1024 * 1024
 MAX_SECRET_SCAN_WORK_BYTES: Final = 512 * 1024 * 1024
-MAX_SECRET_SCAN_SECONDS: Final = 5 * 60
+MAX_SECRET_SCAN_SECONDS: Final = 10 * 60
 MAX_SCANNER_DIAGNOSTIC_BYTES: Final = 1024 * 1024
 SCANNER_SUBPROCESS_TIMEOUT_SECONDS: Final = 120
 # Job teardown has its own bounded deadline after the operation deadline fires.
@@ -300,7 +300,7 @@ class _SecretScanEnumerationBudget:
         if time.monotonic() - self.started_at >= MAX_SECRET_SCAN_SECONDS:
             raise SecretScanError(
                 "SECRET_SCAN_TIMEOUT",
-                "Repository scanning exceeded the five-minute time limit.",
+                "Repository scanning exceeded the ten-minute time limit.",
             )
 
     def subprocess_timeout(self, maximum: float) -> float:
@@ -309,7 +309,7 @@ class _SecretScanEnumerationBudget:
         if remaining <= 0:
             raise SecretScanError(
                 "SECRET_SCAN_TIMEOUT",
-                "Repository scanning exceeded the five-minute time limit.",
+                "Repository scanning exceeded the ten-minute time limit.",
             )
         return min(maximum, remaining)
 

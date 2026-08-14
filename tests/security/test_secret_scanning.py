@@ -430,6 +430,8 @@ class SecretScanningSecurityTests(unittest.TestCase):
         gitleaks_executable.assert_not_called()
 
     def test_git_metadata_capture_is_byte_bounded_and_record_budget_is_shared(self) -> None:
+        self.assertEqual(10 * 60, dev_tools.MAX_SECRET_SCAN_SECONDS)
+
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(SecretScanError) as oversized:
                 _capture_bytes(

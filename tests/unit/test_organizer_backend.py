@@ -968,6 +968,7 @@ def test_scan_review_uses_literal_original_and_requires_exact_adjusted_preview()
     assert original.variant is ScanReviewPreviewVariant.ORIGINAL
     assert type(thumbnails.requests[0]) is ImagePagePreviewRequest
     assert thumbnails.requests[0].additional_rotation is ImageQuarterTurn.DEGREES_0
+    assert thumbnails.timeout_seen == MAX_PAGE_PREVIEW_TIMEOUT_SECONDS
     assert not backend.state.autosave_pending
     with pytest.raises(ScanReviewError) as not_adjusted:
         backend.apply_scan_review(draft)
@@ -986,11 +987,13 @@ def test_scan_review_uses_literal_original_and_requires_exact_adjusted_preview()
         ScanReviewPreviewVariant.ADJUSTED,
         320,
         240,
+        timeout_seconds=7.5,
     )
     state = backend.apply_scan_review(draft)
 
     assert adjusted.variant is ScanReviewPreviewVariant.ADJUSTED
     assert thumbnails.requests == (adjusted_request,)
+    assert thumbnails.timeout_seen == 7.5
     assert state.autosave_pending
     assert state.pages[0].scan_review_intent == candidate
     assert repository.save_calls == 0

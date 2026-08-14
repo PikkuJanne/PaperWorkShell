@@ -222,9 +222,11 @@ independent 60-second worker wall-time limit. The application thumbnail service 
 monotonic deadline covering the complete serial batch, including trusted worker launch and
 revocation. The organizer's default outer budget is therefore 120 seconds per PDF page in the
 validated subset, capped at the service maximum of 3,600 seconds. An explicit caller timeout is not
-rescaled. This prevents normal trusted Windows isolation setup for a later requested page from
-exhausting a one-page default while leaving the UI responsive, cancelable, and bounded; it does not
-grant a longer untrusted render.
+rescaled. Interactive scan review instead uses that existing 3,600-second service ceiling for its
+outer application deadline because fresh AppContainer ACL preparation and revocation are trusted,
+synchronous setup that can exceed the ordinary one-page budget. The review remains responsive and
+explicitly cancelable, and every untrusted render still has its independent 60-second worker wall
+limit; the longer outer deadline does not grant more document-processing time.
 
 Application exit never stops the backend event loop ahead of backend shutdown. The fallback wait
 processes GUI-thread completion/refusal signals for ten seconds. A timeout leaves the backend loop
