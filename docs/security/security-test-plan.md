@@ -176,8 +176,10 @@ demonstrate all of the following on the supported Windows target:
 2. Process creation is suspended; Job assignment occurs before resume; the inherited handle list
    is exactly standard input/output plus the 92-byte bootstrap reader; no shell is used.
 3. The environment omits user `PATH`, `PATHEXT`, `PYTHONPATH`, command processor, proxy, cloud
-   credential, and user temp canaries. `LOCALAPPDATA`, `TEMP`, and `TMP` resolve only inside the
-   per-launch AppContainer profile.
+   credential, and user temp canaries. The broker constructs `LOCALAPPDATA`, `TEMP`, and `TMP` from
+   the trusted logical Known Folder spelling; a held-file handshake proves Windows maps them once
+   into physical per-launch `AC\Temp`, parent telemetry observes the exact held bytes, the old
+   double-mapped `AC\Packages` tree is absent, and the real user `LocalAppData\Temp` is untouched.
 4. IPv4 and IPv6 TCP connect/listen and UDP send/receive probes run in both the worker and a
    descendant. A non-isolated control proves the local listener is reachable; the listener receives
    no isolated traffic.
@@ -494,6 +496,9 @@ v2 journal must retain the exact evidence and perform no unproved mutation, just
 identity mismatch. A valid conflicting cache is made explicitly readable to the live restricted
 profile; both the initial worker and its descendant must still import the authenticated source,
 leave the source cache byte-identical, and keep the fresh profile-private prefix empty under `-B`.
+The worker must also be unable to create a file through its active `sys.pycache_prefix`; this proves
+the prefix resolves to the broker-guarded physical `AC\Temp\PyCache`, not an unguarded nested
+virtualization namespace.
 The complete live worker/descendant containment suite remains required on the
 production pre-launch path. This does not claim general ACL repair, recovery from an unrecorded
 mutation, or automatic cold deletion of abandoned AppContainer profiles/local temporary trees.

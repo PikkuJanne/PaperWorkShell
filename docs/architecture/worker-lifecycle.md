@@ -134,13 +134,22 @@ shared, hardlinked, or foreign-authority runtime trees.
 The command is a fixed structured argument array, never a shell string:
 
 ```text
-<approved-python> -I -S -B -X utf8 -X pycache_prefix=<profile-root>\PyCache <approved-host-bootstrap>
+<approved-python> -I -S -B -X utf8 -X pycache_prefix=<logical-LocalAppData>\Temp\PyCache <approved-host-bootstrap>
 ```
 
-The broker creates and revalidates that fresh, empty, reparse-free profile-private namespace before
-`CreateProcessW`. The raw `-X` value is bound to the broker-provided profile root, and the worker
-self-audit requires the active cache namespace, `-B`, and an empty directory before negotiation. No
-filename, template value, OCR/document text, case path, or RPC value can alter that array.
+The full-trust broker resolves the current user's logical `FOLDERID_LocalAppData` through the
+Windows Known Folder API; it never trusts an inherited environment value. The raw `-X` value and
+the constructed `LOCALAPPDATA`, `PWS_PROFILE_ROOT`, `TEMP`, and `TMP` use that logical spelling so
+AppContainer path virtualization maps it exactly once. Separately, the broker authenticates,
+creates, guards, samples, and later removes the corresponding physical per-launch AppContainer
+`AC\Temp` tree. The cache guard is the physical `AC\Temp\PyCache` directory. The worker self-audit
+binds the raw logical `-X` value to `PWS_PROFILE_ROOT\Temp\PyCache`, binds the active cache namespace
+to Windows' rewritten `TEMP\PyCache`, requires `TEMP == TMP == LOCALAPPDATA\Temp`, and requires `-B`
+plus an empty cache directory before negotiation. A live parent/child handshake proves a held child
+temporary file is visible only in physical `AC\Temp`, the old double-virtualized `AC\Packages`
+namespace is absent, the full-trust user's real `LocalAppData\Temp` remains untouched, and cache
+mutation is denied. No filename, template value, OCR/document text, case path, or RPC value can
+alter the array.
 
 The PWS-0111 desktop composition launches the approved base CPython executable directly. A Windows
 virtual-environment `python.exe` is itself a launcher that would create a second process, which the
@@ -183,8 +192,10 @@ One generation is created in this order:
    launcher hint, qpdf closure, and OCR-only Tesseract closure remain fixed, validated resources.
 6. Construct an environment containing only the approved Windows/Python names and configured fixed
    virtual-environment/qpdf/Tesseract hints. OCR adds only the exact executable and tessdata paths;
-   it does not add `PATH`, `PATHEXT`, or a user plugin/profile search path. Construct `LOCALAPPDATA`,
-   `TEMP`, and `TMP` beneath that per-launch profile rather than inheriting them.
+   it does not add `PATH`, `PATHEXT`, or a user plugin/profile search path. Resolve the trusted
+   logical `LocalAppData` Known Folder in the broker and spell `LOCALAPPDATA`, `PWS_PROFILE_ROOT`,
+   `TEMP`, and `TMP` from it so AppContainer maps them once into the authenticated physical
+   per-launch profile; never inherit those values.
 7. Create three anonymous pipes and make only the worker ends inheritable.
 8. Build an explicit process-attribute handle list and zero-capability security descriptor.
 9. Create the fixed process suspended, with no window and no shell.

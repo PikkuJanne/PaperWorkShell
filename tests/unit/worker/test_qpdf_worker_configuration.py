@@ -110,7 +110,7 @@ def test_optional_qpdf_is_a_fixed_sanitized_launch_resource(tmp_path: Path) -> N
         os.fspath(config.bootstrap_script),
     )
     profile_root = tmp_path / "profile"
-    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix = profile_root / "Temp" / "PyCache"
     pycache_prefix.mkdir(parents=True)
     assert config.fixed_argv_for_profile(profile_root) == (
         os.fspath(config.python_executable),
@@ -123,6 +123,23 @@ def test_optional_qpdf_is_a_fixed_sanitized_launch_resource(tmp_path: Path) -> N
         f"pycache_prefix={pycache_prefix}",
         os.fspath(config.bootstrap_script),
     )
+    logical_local_app_data = tmp_path / "logical-local-app-data"
+    logical_pycache_prefix = logical_local_app_data / "Temp" / "PyCache"
+    assert config.fixed_argv_for_profile(
+        profile_root,
+        logical_local_app_data=logical_local_app_data,
+    ) == (
+        os.fspath(config.python_executable),
+        "-I",
+        "-S",
+        "-B",
+        "-X",
+        "utf8",
+        "-X",
+        f"pycache_prefix={logical_pycache_prefix}",
+        os.fspath(config.bootstrap_script),
+    )
+    assert os.fspath(profile_root) not in os.fspath(logical_pycache_prefix)
     assert os.fspath(qpdf_executable) not in repr(config)
 
 
@@ -149,7 +166,7 @@ def test_qpdf_inventory_requires_the_exact_configured_executable(
 def test_profile_argv_rejects_a_nonempty_bytecode_namespace(tmp_path: Path) -> None:
     config = _launch_config(tmp_path, include_qpdf=False)
     profile_root = tmp_path / "profile"
-    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix = profile_root / "Temp" / "PyCache"
     pycache_prefix.mkdir(parents=True)
     (pycache_prefix / "unexpected.pyc").write_bytes(b"synthetic cache")
 
@@ -183,6 +200,10 @@ def test_minimal_environment_adds_only_explicit_qpdf(tmp_path: Path) -> None:
         "TMP",
         "WINDIR",
     }
+    assert default_entries["LOCALAPPDATA"] == os.fspath(local_app_data)
+    assert default_entries["PWS_PROFILE_ROOT"] == os.fspath(local_app_data)
+    assert default_entries["TEMP"] == os.fspath(local_app_data / "Temp")
+    assert default_entries["TMP"] == os.fspath(local_app_data / "Temp")
     assert configured_entries == {
         **default_entries,
         "PWS_QPDF_EXECUTABLE": os.fspath(qpdf_executable),

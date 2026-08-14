@@ -188,6 +188,8 @@ _MAX_APPROVED_RESOURCE_ENTRIES: Final = 20_000
 _MAX_APPROVED_RESOURCE_DEPTH: Final = 64
 _MAX_PRIVATE_TEMP_ENTRIES: Final = 4_096
 _MAX_PRIVATE_TEMP_DEPTH: Final = 64
+_PRIVATE_TEMP_SCAN_ATTEMPTS: Final = 10
+_PRIVATE_TEMP_SCAN_RETRY_SECONDS: Final = 0.005
 _PROFILE_DELETE_ATTEMPTS: Final = 5
 _PROFILE_DELETE_RETRY_SECONDS: Final = 0.125
 _PROFILE_CLEANUP_ATTEMPTS: Final = 3
@@ -815,6 +817,24 @@ def _render_mutex_security_descriptor(descriptor: ctypes.c_void_p) -> str:
 
 
 def _acl_recovery_directory_path() -> Path:
+    return (
+        _current_user_local_app_data_path(
+            code=WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            context="access.recovery_location",
+            safe_message="Worker access recovery storage is unavailable.",
+        )
+        / _ACL_RECOVERY_DIRECTORY_NAME
+    )
+
+
+def _current_user_local_app_data_path(
+    *,
+    code: WindowsLaunchErrorCode,
+    context: str,
+    safe_message: str,
+) -> Path:
+    """Resolve the full-trust user's logical LocalAppData known folder."""
+
     folder_id = _Guid(
         data1=0xF1B32785,
         data2=0x6FBA,
@@ -833,28 +853,28 @@ def _acl_recovery_directory_path() -> Path:
     result = get_known_folder(ctypes.byref(folder_id), 0, None, ctypes.byref(rendered))
     if result != 0 or rendered.value is None:
         _reject(
-            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-            "access.recovery_location",
-            "Worker access recovery storage is unavailable.",
+            code,
+            context,
+            safe_message,
         )
     try:
         local_app_data = rendered.value
         if "\x00" in local_app_data or len(local_app_data) > 32_000:
             _reject(
-                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-                "access.recovery_location",
-                "Worker access recovery storage is unavailable.",
+                code,
+                context,
+                safe_message,
             )
         root = Path(local_app_data)
     finally:
         _co_task_mem_free(rendered)
     if not root.is_absolute() or _is_remote_or_device_path(root):
         _reject(
-            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-            "access.recovery_location",
-            "Worker access recovery storage is unavailable.",
+            code,
+            context,
+            safe_message,
         )
-    return root / _ACL_RECOVERY_DIRECTORY_NAME
+    return root
 
 
 def _acl_recovery_directory_security_descriptor() -> ctypes.c_void_p:
@@ -1583,10 +1603,27 @@ class WindowsLaunchConfig:
             os.fspath(self.bootstrap_script),
         )
 
-    def fixed_argv_for_profile(self, local_app_data: Path) -> tuple[str, ...]:
+    def fixed_argv_for_profile(
+        self,
+        local_app_data: Path,
+        *,
+        logical_local_app_data: Path | None = None,
+    ) -> tuple[str, ...]:
         """Bind cache lookup to the launch profile's fresh private namespace."""
 
-        pycache_prefix = _require_private_pycache_prefix(local_app_data)
+        _require_private_pycache_prefix(local_app_data)
+        selected_root = local_app_data if logical_local_app_data is None else logical_local_app_data
+        pycache_prefix = selected_root / "Temp" / _PRIVATE_PYCACHE_DIRECTORY_NAME
+        if (
+            not selected_root.is_absolute()
+            or _is_remote_or_device_path(selected_root)
+            or not _is_within(pycache_prefix, selected_root)
+        ):
+            _reject(
+                WindowsLaunchErrorCode.PROFILE_FAILED,
+                "profile.pycache_identity",
+                "Windows could not authenticate private worker bytecode isolation.",
+            )
         return (
             *self.fixed_argv[:-1],
             "-X",
@@ -4120,7 +4157,7 @@ class _PrivatePycacheGuard:
                     "profile.pycache_guard",
                     "Windows could not authenticate private worker bytecode isolation.",
                 )
-            if _require_private_pycache_prefix(self.path.parent) != self.path:
+            if _require_private_pycache_prefix(self.path.parent.parent) != self.path:
                 _reject(
                     WindowsLaunchErrorCode.PROFILE_FAILED,
                     "profile.pycache_identity",
@@ -4238,7 +4275,7 @@ class _AppContainerProfile:
             local_app_data = _app_container_folder_path(sid)
             _prepare_app_container_temp(local_app_data, sid)
             pycache_guard = _PrivatePycacheGuard.open(
-                local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME,
+                local_app_data / "Temp" / _PRIVATE_PYCACHE_DIRECTORY_NAME,
                 sid,
             )
             pycache_guard.activate(sid)
@@ -4274,7 +4311,7 @@ class _AppContainerProfile:
 
     @property
     def pycache_prefix(self) -> Path:
-        return self.local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+        return self.local_app_data / "Temp" / _PRIVATE_PYCACHE_DIRECTORY_NAME
 
     def require_private_pycache(self) -> None:
         guard = self.pycache_guard
@@ -4435,6 +4472,35 @@ def _app_container_folder_path(sid: ctypes.c_void_p) -> Path:
         _local_free(rendered)
 
 
+def _logical_local_app_data_path(app_container_storage: Path) -> Path:
+    """Resolve the trusted logical path Windows maps once into AppContainer storage."""
+
+    logical_root = _current_user_local_app_data_path(
+        code=WindowsLaunchErrorCode.PROFILE_FAILED,
+        context="profile.logical_root",
+        safe_message="Windows could not authenticate the isolated worker profile mapping.",
+    )
+    packages_root = logical_root / "Packages"
+    expected_storage = (
+        logical_root / "Packages" / app_container_storage.parent.name / app_container_storage.name
+    )
+    if (
+        not app_container_storage.is_absolute()
+        or app_container_storage.name.casefold() != "ac"
+        or packages_root.name.casefold() != "packages"
+        or not logical_root.is_dir()
+        or _is_remote_or_device_path(logical_root)
+        or _normalized_path(expected_storage) != _normalized_path(app_container_storage)
+    ):
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.logical_root",
+            "Windows could not authenticate the isolated worker profile mapping.",
+        )
+    _require_no_reparse_local_path(logical_root)
+    return logical_root
+
+
 def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> None:
     """Provision verified profile-private temp and bytecode lookup roots."""
 
@@ -4471,7 +4537,7 @@ def _prepare_app_container_temp(local_app_data: Path, sid: ctypes.c_void_p) -> N
             "profile.temp_access",
             "Windows could not verify private worker temporary-storage access.",
         )
-    pycache_prefix = local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+    pycache_prefix = temp / _PRIVATE_PYCACHE_DIRECTORY_NAME
     try:
         pycache_prefix.mkdir(mode=0o700, parents=False, exist_ok=False)
     except OSError:
@@ -4501,11 +4567,12 @@ def _private_temp_tree_bytes(root: Path) -> int:
             "profile.temp_measure",
             "Windows could not measure private worker temporary storage.",
         )
-    for attempt in range(2):
+    for attempt in range(_PRIVATE_TEMP_SCAN_ATTEMPTS):
         try:
             return _scan_private_temp_tree_bytes(root)
         except _PrivateTempTreeChanged:
-            if attempt == 0:
+            if attempt + 1 < _PRIVATE_TEMP_SCAN_ATTEMPTS:
+                time.sleep(_PRIVATE_TEMP_SCAN_RETRY_SECONDS)
                 continue
         except OSError:
             pass
@@ -4570,12 +4637,12 @@ def _scan_private_temp_tree_bytes(root: Path) -> int:
                             continue
                         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size < 0:
                             raise OSError
-                        _require_no_private_temp_alternate_streams(
+                        measured_size = _require_no_private_temp_alternate_streams(
                             Path(entry.path),
                             expected_size=info.st_size,
                             is_directory=False,
                         )
-                        total_bytes += info.st_size
+                        total_bytes += measured_size
                         if total_bytes > MAX_SAFE_INTEGER:
                             raise OSError
             except FileNotFoundError as error:
@@ -4635,7 +4702,7 @@ def _require_no_private_temp_alternate_streams(
     *,
     expected_size: int,
     is_directory: bool,
-) -> None:
+) -> int:
     """Fail closed when a path has storage that ``scandir`` cannot account for."""
 
     kernel32 = _kernel32()
@@ -4660,16 +4727,15 @@ def _require_no_private_temp_alternate_streams(
     if not value or value == _INVALID_HANDLE_VALUE:
         failure = ctypes.get_last_error()
         if failure == _ERROR_HANDLE_EOF and is_directory:
-            return
+            return 0
         if failure in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
             raise _PrivateTempTreeChanged
         raise OSError
     try:
-        if (
-            is_directory
-            or stream.stream_name != "::$DATA"
-            or int(stream.stream_size) != expected_size
-        ):
+        if is_directory or stream.stream_name != "::$DATA":
+            raise OSError
+        observed_size = int(stream.stream_size)
+        if observed_size < 0:
             raise OSError
         ctypes.set_last_error(_ERROR_SUCCESS)
         if find_next_stream(wintypes.HANDLE(value), ctypes.byref(stream)):
@@ -4679,6 +4745,7 @@ def _require_no_private_temp_alternate_streams(
             raise _PrivateTempTreeChanged
         if failure != _ERROR_HANDLE_EOF:
             raise OSError
+        return max(expected_size, observed_size)
     finally:
         find_close = kernel32.FindClose
         find_close.argtypes = (wintypes.HANDLE,)
@@ -4739,7 +4806,7 @@ def _retain_private_temp_directory(
 def _require_private_pycache_prefix(local_app_data: Path) -> Path:
     """Return one exact, empty, reparse-free profile-private cache namespace."""
 
-    prefix = local_app_data / _PRIVATE_PYCACHE_DIRECTORY_NAME
+    prefix = local_app_data / "Temp" / _PRIVATE_PYCACHE_DIRECTORY_NAME
     if (
         not local_app_data.is_absolute()
         or _is_remote_or_device_path(local_app_data)
@@ -6134,11 +6201,17 @@ class WindowsProcessLauncher:
         startup.startup_info.standard_output = wintypes.HANDLE(pipes.child_write.value)
         startup.startup_info.standard_error = wintypes.HANDLE(pipes.bootstrap_read.value)
         startup.attribute_list = attributes.pointer
+        logical_local_app_data = _logical_local_app_data_path(local_app_data)
         command_line = ctypes.create_unicode_buffer(
-            subprocess.list2cmdline(self._config.fixed_argv_for_profile(local_app_data))
+            subprocess.list2cmdline(
+                self._config.fixed_argv_for_profile(
+                    local_app_data,
+                    logical_local_app_data=logical_local_app_data,
+                )
+            )
         )
         environment = _minimal_environment_block(
-            local_app_data,
+            logical_local_app_data,
             venv_launcher=self._config.venv_launcher,
             qpdf_executable=self._config.qpdf_executable,
             tesseract_executable=self._config.tesseract_executable,

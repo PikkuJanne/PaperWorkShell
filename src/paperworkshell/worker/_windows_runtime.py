@@ -83,6 +83,8 @@ def _fail(code: IsolationAuditCode) -> None:
 def _private_bytecode_configuration_is_valid(
     profile_root: object,
     local_app_data: object,
+    temp_root: object,
+    tmp_root: object,
     configured_prefix: object,
     active_prefix: object,
 ) -> bool:
@@ -93,35 +95,52 @@ def _private_bytecode_configuration_is_valid(
         or not profile_root
         or type(local_app_data) is not str
         or not local_app_data
+        or type(temp_root) is not str
+        or not temp_root
+        or type(tmp_root) is not str
+        or not tmp_root
         or type(configured_prefix) is not str
         or not configured_prefix
         or type(active_prefix) is not str
         or not active_prefix
+        or "\x00" in local_app_data
+        or "\x00" in temp_root
+        or "\x00" in tmp_root
         or "\x00" in configured_prefix
         or "\x00" in active_prefix
         or "\x00" in profile_root
         or not os.path.isabs(profile_root)
+        or not os.path.isabs(local_app_data)
         or not os.path.isabs(configured_prefix)
         or not os.path.isabs(active_prefix)
+        or not os.path.isabs(temp_root)
+        or not os.path.isabs(tmp_root)
     ):
         return False
-    normalized_profile = os.path.normcase(os.path.abspath(profile_root))
     normalized_local = os.path.normcase(os.path.abspath(local_app_data))
-    normalized_expected = os.path.normcase(
-        os.path.abspath(os.path.join(profile_root, _PRIVATE_PYCACHE_DIRECTORY_NAME))
+    normalized_temp = os.path.normcase(os.path.abspath(temp_root))
+    normalized_tmp = os.path.normcase(os.path.abspath(tmp_root))
+    normalized_configured_expected = os.path.normcase(
+        os.path.abspath(os.path.join(profile_root, "Temp", _PRIVATE_PYCACHE_DIRECTORY_NAME))
+    )
+    normalized_active_expected = os.path.normcase(
+        os.path.abspath(os.path.join(temp_root, _PRIVATE_PYCACHE_DIRECTORY_NAME))
     )
     normalized_configured = os.path.normcase(os.path.abspath(configured_prefix))
     normalized_active = os.path.normcase(os.path.abspath(active_prefix))
     try:
-        local_is_scoped = (
-            os.path.commonpath((normalized_profile, normalized_local)) == normalized_profile
+        temp_is_scoped = (
+            os.path.commonpath((normalized_local, normalized_temp)) == normalized_local
+            and os.path.dirname(normalized_temp) == normalized_local
+            and os.path.basename(normalized_temp).casefold() == "temp"
         )
     except ValueError:
         return False
     return (
-        local_is_scoped
-        and normalized_configured == normalized_expected
-        and normalized_active == normalized_expected
+        temp_is_scoped
+        and normalized_temp == normalized_tmp
+        and normalized_configured == normalized_configured_expected
+        and normalized_active == normalized_active_expected
     )
 
 
@@ -273,12 +292,21 @@ def verify_runtime_isolation() -> RuntimeIsolationEvidence:
         _fail(IsolationAuditCode.ENVIRONMENT_INVALID)
     profile_root = os.environ.get("PWS_PROFILE_ROOT")
     local_app_data = os.environ.get("LOCALAPPDATA")
+    temp_root = os.environ.get("TEMP")
+    tmp_root = os.environ.get("TMP")
     configured_prefix = sys._xoptions.get("pycache_prefix")
-    pycache_prefix = sys.pycache_prefix
+    pycache_prefix = (
+        None
+        if type(temp_root) is not str
+        else os.path.join(temp_root, _PRIVATE_PYCACHE_DIRECTORY_NAME)
+    )
+    sys.pycache_prefix = pycache_prefix
     if (
         not _private_bytecode_configuration_is_valid(
             profile_root,
             local_app_data,
+            temp_root,
+            tmp_root,
             configured_prefix,
             pycache_prefix,
         )

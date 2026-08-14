@@ -366,6 +366,8 @@ def test_production_adapter_reports_incremental_scheduler_peaks(tmp_path: Path) 
 @dataclass(frozen=True, slots=True)
 class _WorkloadInspector:
     derived_sha256: str
+    image_sha256: str
+    marker_sha256: str
 
     def inspect(
         self,
@@ -378,7 +380,7 @@ class _WorkloadInspector:
         assert callable(deadline) and not deadline()
         assert callable(cancellation) and not cancellation()
         assert callable(progress)
-        if source.media_type.value == "png":
+        if source.sha256 == self.image_sha256:
             return CompletedSourceInspection(
                 source.pending_id,
                 source.media_type,
@@ -394,7 +396,7 @@ class _WorkloadInspector:
                 SourceSignatureState.NONE_DETECTED,
                 SourceEncryptionState.UNENCRYPTED,
             )
-        assert source.sha256 == _sha256(MARKER_FIXTURE)
+        assert source.sha256 == self.marker_sha256
         return CompletedSourceInspection(
             source.pending_id,
             source.media_type,
@@ -580,7 +582,14 @@ def test_live_constrained_signed_source_resource_workflow(
         WindowsSourcePrechecker(_import_limits(CONSTRAINED_RESOURCE_POLICY_V1)),
         maximum_page_count=CONSTRAINED_RESOURCE_POLICY_V1.maximum_page_count,
     )
-    ingest = SourceIngestService(sources, _WorkloadInspector(_sha256(derived)))
+    ingest = SourceIngestService(
+        sources,
+        _WorkloadInspector(
+            derived_sha256=_sha256(derived),
+            image_sha256=_sha256(IMAGE_FIXTURE),
+            marker_sha256=_sha256(MARKER_FIXTURE),
+        ),
+    )
     imported_pdf = ingest.import_source(CASE_ID, derived, "workload-pdf.pdf")
     imported_image = ingest.import_source(CASE_ID, IMAGE_FIXTURE, "workload-image.png")
     imported_marker = ingest.import_source(CASE_ID, MARKER_FIXTURE, "workload-marker.pdf")

@@ -578,7 +578,9 @@ class _Worker:
         )
         self.withhold_result = False
         self.result_queries = 2
-        return self.operation_id
+        # Match WorkerClient: cancel returns the cancellation request ID, not
+        # the active operation ID.
+        return _uuid(73)
 
     def terminate(self) -> None:
         self.system.events.append("worker.terminate")

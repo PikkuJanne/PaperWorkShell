@@ -15,6 +15,10 @@ from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_inspection import PdfInspectionError, PdfInspectionErrorCode
 from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError, PdfThumbnailErrorCode
+from paperworkshell.domain.searchable_pdf_export import (
+    SearchablePdfExportError,
+    SearchablePdfExportErrorCode,
+)
 from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_ADDITIONAL_ROTATION_PARAMETER,
     IMAGE_NORMALIZE_CAPABILITY,
@@ -896,6 +900,10 @@ class SearchablePdfExportOperationHandler:
             if error.code is PdfExportErrorCode.TIMED_OUT:
                 return timed_out_operation_result()
             if error.code is PdfExportErrorCode.LIMIT_EXCEEDED:
+                return resource_limited_operation_result()
+            raise
+        except SearchablePdfExportError as error:
+            if error.code is SearchablePdfExportErrorCode.LIMIT_EXCEEDED:
                 return resource_limited_operation_result()
             raise
 

@@ -144,16 +144,18 @@ containing only client-to-worker RPC, worker-to-client RPC, and a one-shot boots
 bootstrap is a fixed 92-byte versioned grant containing only session/worker/case UUIDs and the
 per-launch capability. It is not an argument, environment value, endpoint name, or log field.
 
-The launch environment is constructed from a closed allowlist. `LOCALAPPDATA`, `TEMP`, and `TMP`
-point inside the per-launch AppContainer profile rather than inheriting user locations. That
-ephemeral sandbox storage is writable so Python can start; it is not case authority. The launcher
+The launch environment is constructed from a closed allowlist. The broker resolves the logical
+`LocalAppData` Known Folder itself and derives `LOCALAPPDATA`, `TEMP`, and `TMP` from it rather than
+inheriting user values; AppContainer virtualization maps those spellings once into the physical
+per-launch profile that the broker independently authenticates and samples. That ephemeral sandbox
+storage is writable so Python can start; it is not case authority. The launcher
 authenticates a bounded runtime/code/fixed-tool inventory and grants the profile SID direct,
 non-inheritable read/execute access only on those exact objects. Each file has one current-user
 hardlink guard shared by authenticated overlapping v2 leases. A protected versioned journal
 supports legacy-v1 inherited-root cleanup and v2 exact-object/SID/guard-baseline recovery after a
 crash. Mutable Python bytecode caches are excluded from new authority, and every worker generation
-uses a freshly authenticated empty profile-private `pycache_prefix` plus `-B`, so an ambient valid
-source-tree cache is neither read nor replaced. Old records remain
+uses a freshly authenticated empty `AC\Temp\PyCache` namespace, a raw logical `pycache_prefix`, and
+`-B`, so an ambient valid source-tree cache is neither read nor replaced. Old records remain
 exact-identity fail-closed because a missing/replacement cache path does not prove that the old
 object was not renamed with residual authority. The exact job tree exits before a live lease's
 grants, final shared guard, and profile are removed. See the

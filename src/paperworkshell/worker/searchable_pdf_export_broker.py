@@ -762,12 +762,11 @@ class BrokeredSearchablePdfExporter:
                     self._worker.cancel(CancelReason.SHUTDOWN)
                 reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "searchable.deadline")
             if _cancellation_requested(cancellation) and not cancellation_sent:
-                selected = self._worker.cancel(CancelReason.USER_REQUESTED)
-                if selected != operation_id:
-                    reject_pdf_export(
-                        PdfExportErrorCode.REPORT_INVALID,
-                        "searchable.cancel_binding",
-                    )
+                # WorkerClient.cancel() returns the new cancel request ID. The
+                # client itself binds that request to its single authenticated
+                # active operation; result correlation below remains against the
+                # original operation ID.
+                self._worker.cancel(CancelReason.USER_REQUESTED)
                 cancellation_sent = True
             self._worker.pump(self._policy.pump_interval_seconds)
 

@@ -631,6 +631,33 @@ def test_resource_preflight_reserves_sources_two_outputs_status_and_scratch(
     assert raised.value.context == "export.worker_capacity"
 
 
+def test_resource_preflight_classifies_subreport_output_capacity_as_limit(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(PDF_FIXTURE.read_bytes())
+    plan = _plan(source_path)
+    context = _context(
+        plan,
+        b"x",
+        limits=ResourceLimits(
+            wall_time_ms=30_000,
+            cpu_time_ms=20_000,
+            memory_bytes=32 * 1024 * 1024,
+            temporary_storage_bytes=32 * 1024 * 1024,
+            output_bytes=1,
+            page_count=10,
+            pixel_count=1024 * 1024,
+        ),
+    )
+
+    with pytest.raises(PdfExportError) as raised:
+        operation._adapter_limits(context, plan, 256 * 1024)
+
+    assert raised.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert raised.value.context == "export.worker_capacity"
+
+
 def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request(
     tmp_path: Path,
 ) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import time
@@ -14,6 +15,7 @@ import pytest
 from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
     WindowsProcessLauncher,
+    _logical_local_app_data_path,
 )
 from paperworkshell.worker.client.process import (
     TransportReceiveKind,
@@ -71,20 +73,44 @@ def _assert_profile_removed(profile_folder: Path) -> None:
 def test_live_worker_can_traverse_list_and_write_its_profile_temp(
     worker_test_resources: WorkerTestResources,
 ) -> None:
-    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(
-        _launch_request()
-    )
+    request = _launch_request()
+    measurement_name = f"pws-app-container-measurement-{request.case_id.hex}.tmp"
+    process = WindowsProcessLauncher(_launch_config(worker_test_resources)).launch(request)
     profile_folder = process._profile.local_app_data
+    logical_measurement_path = (
+        _logical_local_app_data_path(profile_folder) / "Temp" / measurement_name
+    )
+    assert not logical_measurement_path.exists()
     try:
         process.transport.send_payload(b"probe")
         received = process.transport.receive_payload(10.0)
         assert received.kind is TransportReceiveKind.PAYLOAD
         assert received.payload is not None
         response = json.loads(received.payload)
+        measurement_path = profile_folder / "Temp" / measurement_name
+        found_measurements = tuple(profile_folder.rglob(measurement_name))
+        assert found_measurements == (measurement_path,), (
+            response,
+            tuple(path.relative_to(profile_folder) for path in found_measurements),
+        )
+        nested_profile_temp = (
+            profile_folder / "Packages" / profile_folder.parent.name / "AC" / "Temp"
+        )
+        assert measurement_path.stat().st_size == response["measurement_bytes"]
+        assert not (profile_folder / "Packages").exists()
+        assert not nested_profile_temp.exists()
+        assert not logical_measurement_path.exists()
+        assert process.private_temp_bytes() == response["measurement_bytes"]
+        process.transport.send_payload(b"release")
+        released = process.transport.receive_payload(10.0)
+        assert released.kind is TransportReceiveKind.PAYLOAD
+        assert released.payload == b"released"
+        assert process.private_temp_bytes() == 0
     finally:
         process.close()
 
     _assert_profile_removed(profile_folder)
+    assert not logical_measurement_path.exists()
     success = {"errno": 0, "ok": True, "winerror": 0}
     assert response["local_name"] == "AC"
     assert response["temp_name"] == "Temp"
@@ -100,3 +126,9 @@ def test_live_worker_can_traverse_list_and_write_its_profile_temp(
     assert response["materialized_temp_list"] == success
     assert response["temp_round_trip"] == success
     assert response["nested_temp_round_trip"] == success
+    assert response["active_cache_stat"] == success
+    assert response["active_cache_list"] == success
+    assert response["pycache_mutation"]["ok"] is False
+    assert response["pycache_mutation"]["errno"] == errno.EACCES
+    assert response["pycache_mutation"]["winerror"] in {0, 5}
+    assert response["measurement_bytes"] == len(b"pws-temp-measurement")

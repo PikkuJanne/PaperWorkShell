@@ -10,6 +10,10 @@ from uuid import UUID
 import pytest
 
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
+from paperworkshell.domain.searchable_pdf_export import (
+    SearchablePdfExportError,
+    SearchablePdfExportErrorCode,
+)
 from paperworkshell.worker.operations import (
     OperationContext,
     RuntimeOperationRegistry,
@@ -190,7 +194,7 @@ class _RecordingAdapter:
             ]
             | None
         ) = None,
-        failure: PdfExportError | RuntimeError | None = None,
+        failure: PdfExportError | SearchablePdfExportError | RuntimeError | None = None,
         after_export: Callable[[OperationContext], None] | None = None,
     ) -> None:
         self.output_factory = _staging_references if output_factory is None else output_factory
@@ -303,6 +307,26 @@ def test_handler_maps_terminal_adapter_failures_without_outputs(
 def test_handler_preserves_retryable_resource_limit_category_on_protocol_v1() -> None:
     adapter = _RecordingAdapter(
         failure=PdfExportError(PdfExportErrorCode.LIMIT_EXCEEDED, "export.synthetic")
+    )
+
+    result = SearchablePdfExportOperationHandler(adapter).execute(_context())
+
+    assert result.outcome is OperationOutcome.FAILED
+    assert result.outputs == ()
+    assert result.error is not None
+    assert result.error.code is ErrorCode.WORKER_OPERATION_FAILED
+    assert result.error.category is ErrorCategory.RESOURCE_LIMIT
+    assert result.error.retry_action is RetryAction.RETRY
+    assert result.error.restart_required is False
+    assert result.error.parameters == ()
+
+
+def test_handler_preserves_searchable_domain_resource_limit_category() -> None:
+    adapter = _RecordingAdapter(
+        failure=SearchablePdfExportError(
+            SearchablePdfExportErrorCode.LIMIT_EXCEEDED,
+            "searchable.synthetic",
+        )
     )
 
     result = SearchablePdfExportOperationHandler(adapter).execute(_context())

@@ -44,6 +44,7 @@ from paperworkshell.domain.ocr import (
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode, reject_pdf_export
 from paperworkshell.domain.pdf_inspection import (
     MAX_PDF_INSPECTION_OBJECTS,
+    MAX_PDF_INSPECTION_REPORT_BYTES,
     PdfInspectionError,
     PdfInspectionLimits,
 )
@@ -613,6 +614,8 @@ def _adapter_limits(
     status_capacity: int,
 ) -> SearchablePdfExportAdapterLimits:
     values = context.limits
+    if values.output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.worker_capacity")
     source_total = sum(source.byte_size for source in plan.sources)
     # Staged sources + candidate + mapped candidate + status stay live while the
     # remaining budget is the sole sequential OCR/page scratch allowance.

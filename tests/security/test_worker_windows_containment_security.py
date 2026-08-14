@@ -179,7 +179,7 @@ def test_private_pycache_prefix_ignores_a_valid_conflicting_source_cache(
     assert cached_run.stdout == b"cached"
 
     profile_root = tmp_path / "profile"
-    pycache_prefix = profile_root / "PyCache"
+    pycache_prefix = profile_root / "Temp" / "PyCache"
     pycache_prefix.mkdir(parents=True)
     isolated_run = subprocess.run(
         (
@@ -204,7 +204,7 @@ def test_private_pycache_configuration_rejects_an_empty_wrong_parent(
     tmp_path: Path,
 ) -> None:
     local_app_data = tmp_path / "profile"
-    expected = local_app_data / "PyCache"
+    expected = local_app_data / "Temp" / "PyCache"
     unrelated = tmp_path / "unrelated" / "PyCache"
     expected.mkdir(parents=True)
     unrelated.mkdir(parents=True)
@@ -214,26 +214,135 @@ def test_private_pycache_configuration_rejects_an_empty_wrong_parent(
     assert _private_bytecode_configuration_is_valid(
         os.fspath(local_app_data),
         os.fspath(local_app_data),
+        os.fspath(local_app_data / "Temp"),
+        os.fspath(local_app_data / "Temp"),
         os.fspath(expected),
         os.fspath(expected),
     )
     assert _private_bytecode_configuration_is_valid(
         os.fspath(local_app_data),
         os.fspath(nested_local_app_data),
+        os.fspath(nested_local_app_data / "Temp"),
+        os.fspath(nested_local_app_data / "Temp"),
         os.fspath(expected),
-        os.fspath(expected),
+        os.fspath(nested_local_app_data / "Temp" / "PyCache"),
     )
     assert not _private_bytecode_configuration_is_valid(
         os.fspath(local_app_data),
         os.fspath(local_app_data),
+        os.fspath(local_app_data / "Temp"),
+        os.fspath(local_app_data / "Temp"),
         os.fspath(unrelated),
         os.fspath(unrelated),
     )
     assert not _private_bytecode_configuration_is_valid(
         os.fspath(local_app_data),
         os.fspath(local_app_data),
+        os.fspath(local_app_data / "Temp"),
+        os.fspath(local_app_data / "Temp"),
         os.fspath(expected),
         os.fspath(unrelated),
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "local", "temp", "tmp", "configured", "active"),
+    (
+        (
+            "relative-profile",
+            "profile",
+            "profile\\Temp",
+            "profile\\Temp",
+            "profile\\Temp\\PyCache",
+            "profile\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "relative-local",
+            "profile\\Temp",
+            "profile\\Temp",
+            "profile\\Temp\\PyCache",
+            "profile\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "profile",
+            "profile\\nested\\Temp",
+            "profile\\nested\\Temp",
+            "profile\\Temp\\PyCache",
+            "profile\\nested\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "profile",
+            "profile\\Temp",
+            "profile\\OtherTemp",
+            "profile\\Temp\\PyCache",
+            "profile\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "profile",
+            "profile\\Temp",
+            "profile\\Temp",
+            "profile\\OtherCache",
+            "profile\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "profile",
+            "profile\\Temp",
+            "profile\\Temp",
+            "profile\\Temp\\PyCache",
+            "profile\\OtherCache",
+        ),
+        (
+            "profile",
+            "profile\x00alias",
+            "profile\\Temp",
+            "profile\\Temp",
+            "profile\\Temp\\PyCache",
+            "profile\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "profile",
+            "profile\\Temp\x00alias",
+            "profile\\Temp",
+            "profile\\Temp\\PyCache",
+            "profile\\Temp\\PyCache",
+        ),
+        (
+            "profile",
+            "profile",
+            "profile\\Temp",
+            "profile\\Temp\x00alias",
+            "profile\\Temp\\PyCache",
+            "profile\\Temp\\PyCache",
+        ),
+    ),
+)
+def test_private_pycache_configuration_rejects_unbound_environment_values(
+    tmp_path: Path,
+    profile: str,
+    local: str,
+    temp: str,
+    tmp: str,
+    configured: str,
+    active: str,
+) -> None:
+    def resolve(value: str) -> str:
+        if value.startswith("relative-"):
+            return value
+        return os.fspath(tmp_path / value)
+
+    assert not _private_bytecode_configuration_is_valid(
+        resolve(profile),
+        resolve(local),
+        resolve(temp),
+        resolve(tmp),
+        resolve(configured),
+        resolve(active),
     )
 
 

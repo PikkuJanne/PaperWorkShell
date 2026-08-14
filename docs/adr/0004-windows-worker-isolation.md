@@ -3,8 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-02
 - Task: PWS-0107
-- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output; PWS-0111 desktop composition startup; PWS-0112 verified PDF export; PWS-0113 persistent worker ACL recovery
-- Decisions: PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038
+- Extensions: PWS-0105 first exact document-handle operation; PWS-0108 bounded thumbnail output; PWS-0111 desktop composition startup; PWS-0112 verified PDF export; PWS-0113 persistent worker ACL recovery; PWS-0208 one-map private-temp measurement and bytecode-guard alignment
+- Decisions: PWS-D012, PWS-D013, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D041
 
 ## Context
 
@@ -83,9 +83,12 @@ restores the recorded inheritance-control bits, verifies the grant, and publishe
 Mutable Python `__pycache__` directories and `.pyc`/`.pyo` leaves are excluded from new inventories.
 The broker binds `pycache_prefix` to a fresh, empty, reparse-free directory inside the ephemeral
 profile, grants that profile only direct non-inheritable read/execute access to the empty root, and
-revalidates it at launch. The worker self-audits the raw profile binding and active namespace before
-negotiation. Together with fixed `-B`, this consumes authenticated source/runtime objects without
-reading or creating source-tree bytecode caches.
+revalidates it at launch. The raw argument uses the broker-resolved logical
+`FOLDERID_LocalAppData\Temp\PyCache` spelling; Windows maps it once to the separately authenticated
+physical AppContainer `AC\Temp\PyCache` directory. The worker binds that raw value to the logical
+profile input and its active namespace to Windows' rewritten `TEMP`, before negotiation. Together
+with fixed `-B`, this consumes authenticated source/runtime objects without reading or creating
+source-tree bytecode caches.
 
 Cleanup publishes `REVOKING`, removes and verifies the exact AppContainer SID on every recorded
 object, and then evaluates the shared guard. An authenticated live `ACTIVE` v2 record for the same
@@ -108,16 +111,19 @@ allowlist-mismatched, identity-changed, conflicting-baseline, or incompletely re
 later ACL work and worker launch. The launcher never guesses which unrecorded ACE to remove, deletes
 recovery evidence to make startup pass, or treats ACL repair as worker-operation replay.
 
-Python startup requires writable profile and temporary locations. `LOCALAPPDATA`, `TEMP`, and
-`TMP` are therefore constructed as paths inside the new per-launch AppContainer profile. They are
-never copied from the launching user's environment and carry no case path. This is ephemeral
-sandbox storage, not case workspace authority. The broker retains the profile until the exact job
-tree has exited, then revokes the temporary runtime/code grants and deletes the profile. Cleanup
-failure is a stable launch-cleanup failure rather than a silent success.
+Python startup requires writable profile and temporary locations. The full-trust broker resolves
+the current user's logical `FOLDERID_LocalAppData` through the Windows Known Folder API and derives
+`LOCALAPPDATA`, `PWS_PROFILE_ROOT`, `TEMP`, and `TMP` from that trusted value; it never copies an
+inherited environment value. AppContainer virtualization maps those spellings once into the new
+physical per-launch profile. The broker independently authenticates and retains that physical
+profile for sampling, guards, and cleanup. The values carry no case path. This is ephemeral sandbox
+storage, not case workspace authority. The broker retains the profile until the exact job tree has
+exited, then revokes the temporary runtime/code grants and deletes the profile. Cleanup failure is
+a stable launch-cleanup failure rather than a silent success.
 
-The environment allowlist is limited to `SYSTEMROOT`/`WINDIR`, `LOCALAPPDATA`, `TEMP`, `TMP`, the
-fixed Python encoding controls `PYTHONIOENCODING` and `PYTHONUTF8`, and the configured fixed startup
-or tool inputs described below. User `PATH`, `PATHEXT`, `PYTHONPATH`, proxy variables, cloud
+The environment allowlist is limited to `SYSTEMROOT`/`WINDIR`, `LOCALAPPDATA`, `PWS_PROFILE_ROOT`,
+`TEMP`, `TMP`, the fixed Python encoding controls `PYTHONIOENCODING` and `PYTHONUTF8`, and the
+configured fixed startup or tool inputs described below. User `PATH`, `PATHEXT`, `PYTHONPATH`, proxy variables, cloud
 credentials, command-processor variables, and other inherited state do not cross the launch
 boundary.
 
@@ -139,7 +145,7 @@ The trusted launcher uses an absolute approved base Python executable, an absolu
 bootstrap script, an approved working directory, and this fixed argument vector:
 
 ```text
-<python.exe> -I -S -B -X utf8 -X pycache_prefix=<profile-root>\PyCache <host_bootstrap.py>
+<python.exe> -I -S -B -X utf8 -X pycache_prefix=<logical-LocalAppData>\Temp\PyCache <host_bootstrap.py>
 ```
 
 It uses `CreateProcessW` directly with no shell. The worker is created suspended and without a

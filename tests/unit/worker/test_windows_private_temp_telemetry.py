@@ -22,7 +22,31 @@ def test_private_temp_scan_counts_only_bounded_regular_file_bytes(tmp_path: Path
     assert windows._private_temp_tree_bytes(tmp_path.resolve()) == 28
 
 
-def test_private_temp_scan_retries_one_concurrent_namespace_change(
+def test_private_temp_stream_size_uses_the_conservative_concurrent_bound(
+    tmp_path: Path,
+) -> None:
+    candidate = tmp_path / "growing.bin"
+    candidate.write_bytes(b"x" * 17)
+
+    assert (
+        windows._require_no_private_temp_alternate_streams(
+            candidate,
+            expected_size=5,
+            is_directory=False,
+        )
+        == 17
+    )
+    assert (
+        windows._require_no_private_temp_alternate_streams(
+            candidate,
+            expected_size=23,
+            is_directory=False,
+        )
+        == 23
+    )
+
+
+def test_private_temp_scan_retries_a_concurrent_namespace_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -39,6 +63,33 @@ def test_private_temp_scan_retries_one_concurrent_namespace_change(
 
     assert windows._private_temp_tree_bytes(tmp_path.resolve()) == 23
     assert calls == 2
+
+
+def test_private_temp_scan_fails_closed_after_bounded_continuous_churn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    sleeps = 0
+
+    def scan(_root: Path) -> int:
+        nonlocal calls
+        calls += 1
+        raise windows._PrivateTempTreeChanged
+
+    def sleep(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+
+    monkeypatch.setattr(windows, "_scan_private_temp_tree_bytes", scan)
+    monkeypatch.setattr("paperworkshell.worker.client._windows.time.sleep", sleep)
+
+    with pytest.raises(windows.WindowsLaunchError) as raised:
+        windows._private_temp_tree_bytes(tmp_path.resolve())
+
+    assert raised.value.context == "profile.temp_measure"
+    assert calls == windows._PRIVATE_TEMP_SCAN_ATTEMPTS
+    assert sleeps == windows._PRIVATE_TEMP_SCAN_ATTEMPTS - 1
 
 
 def test_private_temp_scan_rejects_reparse_entries_without_exposing_names(

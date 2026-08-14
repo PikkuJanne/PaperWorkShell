@@ -106,9 +106,10 @@ sequenceDiagram
    retains the bounded runtime/code/fixed-tool object inventory, and durably records each v2 object
    identity, current-user peer SID, inheritance state, and per-file guard baseline before mutation.
    Overlapping live v2 leases share one hardlink guard per file; the profile receives only direct,
-   non-inheritable read/execute entries on the exact recorded objects. Its constructed
-   `LOCALAPPDATA`, `TEMP`, and `TMP` point into the ephemeral profile; no user environment or case
-   path is inherited.
+   non-inheritable read/execute entries on the exact recorded objects. The broker resolves a trusted
+   logical `LocalAppData` Known Folder spelling and constructs `LOCALAPPDATA`, `TEMP`, and `TMP`
+   beneath it; AppContainer maps those values once into the independently authenticated physical
+   ephemeral profile. No user environment or case path is inherited.
 3. The child is created suspended with a fixed absolute executable/argument array, no shell, and
    exactly three anonymous-pipe handles. The Job Object is configured/assigned before resume and
    covers memory, CPU, process-count, kill-on-close, and descendant termination policy.
