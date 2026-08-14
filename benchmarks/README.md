@@ -29,6 +29,53 @@ It does not emulate or certify a named CPU, RAM allocation, GPU, SSD, HDD, VM, o
 Physical low-end-device testing has not been performed; any future observation is optional and
 non-gating under PWS-D041.
 
+## PWS-0207 recipe-only quality baseline
+
+`pws0207-quality-findings-v1.json` is the canonical sanitized evaluation target for PWS-0207. The
+recorder and validator prove that its 40-hex revision exists as a Git commit, that every bound
+behavior-producing surface is an ordinary blob in that commit, and that the current analyzer, OCR
+producer, organizer/UI correlation, worker protocol/composition, and evaluator stage-zero index
+objects and raw working-file blob IDs exactly match those committed blobs. The authoritative exact
+surface list is documented in the evaluation contract. This permits the baseline, task/bundle
+metadata, and documentation closure to follow the implementation commit without pretending that
+the baseline authenticates unlisted repository surfaces; the final task revision and full gates
+bind the complete change. The artifact also binds the deterministic recipe-corpus
+identity/version/SHA-256, the exact
+quality-analysis profile identity/version/SHA-256, and the real constrained ResourcePolicy
+profile/version. Its eight independent metric-kind rows retain TP, FP, TN, FN, precision, recall,
+false-positive rate, and false-negative rate for the six visual signals plus distinct OCR-failed
+and OCR-low-confidence metrics. The short metric kinds and their exact domain-code mapping are
+documented in the evaluation contract.
+
+The corpus is reconstructed in memory from fixed recipes. The baseline contains no page raster,
+thumbnail, perceptual fingerprint, OCR text, word box, filename, path, metadata value, native tool
+output, or user/machine identity. It is neither a golden document/render, an OCR-recognition
+benchmark, a real-document corpus, nor hardware-performance evidence. Small synthetic classes and
+the deliberately retained confounders make false positives and false negatives visible; they do
+not establish general accuracy. Exact current results and limitations are documented in
+[scan-quality findings evaluation](../docs/development/scan-quality-evaluation.md#baseline-metrics).
+
+Recompute current content-free metrics without writing a file:
+
+```powershell
+python tools/pws0207_quality_evaluation.py evaluate
+```
+
+Validate a recorded baseline against the current corpus/profile/metrics, an existing expected Git
+commit, and clean matching evaluated implementation surfaces:
+
+```powershell
+python tools/pws0207_quality_evaluation.py validate benchmarks/pws0207-quality-findings-v1.json --revision <recorded-40-lowercase-hex>
+```
+
+Baseline creation is an explicit maintainer action. It uses a same-directory fsynced temporary,
+exclusive no-replace publication, and cleanup on failure; it refuses to overwrite an existing
+artifact:
+
+```powershell
+python tools/pws0207_quality_evaluation.py record --revision <40-lowercase-hex> --output benchmarks/pws0207-quality-findings-v1.json
+```
+
 ## PWS-0208 incremental mixed-job evidence
 
 [`pws0208-searchable-mixed-workload-v1.json`](pws0208-searchable-mixed-workload-v1.json) is the

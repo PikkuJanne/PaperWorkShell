@@ -5,12 +5,17 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+from collections.abc import Mapping
 from ctypes import wintypes
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
 
 from paperworkshell.worker.protocol.bootstrap import BOOTSTRAP_BYTES
+from paperworkshell.worker.protocol.operation_scope import (
+    PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT,
+    WorkerOperationScope,
+)
 
 _TOKEN_QUERY: Final = 0x0008
 _TOKEN_IS_APP_CONTAINER: Final = 29
@@ -34,6 +39,7 @@ _ALLOWED_ENVIRONMENT: Final = frozenset(
         "PWS_QPDF_EXECUTABLE",
         "PWS_TESSERACT_EXECUTABLE",
         "PWS_TESSDATA_ROOT",
+        PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT,
         "PYTHONIOENCODING",
         "PYTHONUTF8",
     }
@@ -78,6 +84,27 @@ class RuntimeIsolationEvidence:
 
 def _fail(code: IsolationAuditCode) -> None:
     raise IsolationAuditError(code) from None
+
+
+def _worker_environment_is_valid(environment: Mapping[str, str]) -> bool:
+    if any(
+        type(name) is not str or name.upper() not in _ALLOWED_ENVIRONMENT for name in environment
+    ):
+        return False
+    scope_values = tuple(
+        value
+        for name, value in environment.items()
+        if name.upper() == PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT
+    )
+    if not scope_values:
+        return True
+    if len(scope_values) != 1 or type(scope_values[0]) is not str:
+        return False
+    try:
+        WorkerOperationScope(scope_values[0])
+    except ValueError:
+        return False
+    return True
 
 
 def _private_bytecode_configuration_is_valid(
@@ -288,7 +315,7 @@ def verify_runtime_isolation() -> RuntimeIsolationEvidence:
     is_process_in_job.restype = wintypes.BOOL
     if not is_process_in_job(current_process, None, ctypes.byref(in_job)) or not in_job.value:
         _fail(IsolationAuditCode.JOB_REQUIRED)
-    if any(name.upper() not in _ALLOWED_ENVIRONMENT for name in os.environ):
+    if not _worker_environment_is_valid(os.environ):
         _fail(IsolationAuditCode.ENVIRONMENT_INVALID)
     profile_root = os.environ.get("PWS_PROFILE_ROOT")
     local_app_data = os.environ.get("LOCALAPPDATA")

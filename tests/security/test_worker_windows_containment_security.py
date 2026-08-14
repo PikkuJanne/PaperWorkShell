@@ -20,6 +20,7 @@ import pytest
 from paperworkshell.worker._windows_runtime import (
     _ALLOWED_ENVIRONMENT,
     _private_bytecode_configuration_is_valid,
+    _worker_environment_is_valid,
 )
 from paperworkshell.worker.client import _windows as windows_module
 from paperworkshell.worker.client._windows import (
@@ -37,6 +38,10 @@ from paperworkshell.worker.client.process import (
     WorkerResourcePolicy,
 )
 from paperworkshell.worker.protocol.models import SessionCapability
+from paperworkshell.worker.protocol.operation_scope import (
+    PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT,
+    WorkerOperationScope,
+)
 from tests.security.test_import_prechecks_security import (
     _create_junction,
     _remove_junction,
@@ -78,6 +83,19 @@ def test_fixed_venv_startup_hint_does_not_expand_the_worker_environment_allowlis
     assert "PATH" not in environment
     assert "PYTHONPATH" not in environment
     assert "__PYVENV_LAUNCHER__" not in _ALLOWED_ENVIRONMENT
+
+
+def test_runtime_environment_accepts_only_the_closed_quality_operation_scope() -> None:
+    exact = {
+        "SYSTEMROOT": "C:/Windows",
+        PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT: WorkerOperationScope.QUALITY_OCR_REVIEW.value,
+    }
+
+    assert _worker_environment_is_valid(exact)
+    assert not _worker_environment_is_valid({**exact, "UNKNOWN_SCOPE_KEY": "private"})
+    assert not _worker_environment_is_valid(
+        {**exact, PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT: "future-scope-v9"}
+    )
 
 
 def test_hardlinked_runtime_file_is_rejected_before_access_grant(tmp_path: Path) -> None:

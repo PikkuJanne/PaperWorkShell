@@ -8,10 +8,17 @@ from typing import Any, cast
 
 import pytest
 
+import paperworkshell.worker._windows_broker as broker_module
 from paperworkshell.app.page_previews import ImagePagePreviewGenerator
 from paperworkshell.app.pdf_thumbnails import ThumbnailPageGenerator
 from paperworkshell.app.source_ingest import SourceInspector
+from paperworkshell.domain.pdf_inspection import PdfInspectionError
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError
 from paperworkshell.worker import desktop_composition as composition_module
+from paperworkshell.worker._windows_broker import (
+    WindowsBoundedOutputBuffer,
+    WindowsResultPipe,
+)
 from paperworkshell.worker.client._windows import WindowsProcessLauncher
 from paperworkshell.worker.client.errors import (
     WorkerClientError,
@@ -279,6 +286,46 @@ def test_close_is_idempotent_and_rejects_a_non_owner_thread(
     composition.close()
     assert composition.closed
     assert worker.terminate_calls == 1
+
+
+@pytest.mark.parametrize("authority_kind", ["output", "pipe"])
+def test_close_refuses_retained_result_authority_then_retries_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authority_kind: str,
+) -> None:
+    cleanup_succeeds = False
+    monkeypatch.setattr(broker_module, "_unmap_view", lambda _view: cleanup_succeeds)
+    monkeypatch.setattr(broker_module, "_close_handle", lambda _handle: cleanup_succeeds)
+    if authority_kind == "output":
+        retained: WindowsBoundedOutputBuffer | WindowsResultPipe = WindowsBoundedOutputBuffer(
+            11, 22, 64
+        )
+        expected_error: type[BaseException] = PdfThumbnailError
+        quarantine = broker_module._OUTPUT_CLEANUP_QUARANTINE
+    else:
+        retained = WindowsResultPipe(11, 22)
+        expected_error = PdfInspectionError
+        quarantine = broker_module._PIPE_CLEANUP_QUARANTINE
+
+    with pytest.raises(expected_error):
+        retained.close()
+    raw_composition, worker = _compose_with_fake_client(tmp_path, monkeypatch)
+    composition = cast(Any, raw_composition)
+
+    with pytest.raises(expected_error):
+        composition.close()
+
+    assert not composition.closed
+    assert worker.terminate_calls == 1
+    assert quarantine == [retained]
+
+    cleanup_succeeds = True
+    composition.close()
+
+    assert composition.closed
+    assert worker.terminate_calls == 2
+    assert quarantine == []
 
 
 def test_context_manager_terminates_the_shared_worker(

@@ -25,6 +25,12 @@ from paperworkshell.app.ocr_languages import (
 from paperworkshell.app.organizer import OrganizerBackend
 from paperworkshell.app.page_previews import PagePreviewService
 from paperworkshell.app.pdf_export import PdfExportService
+from paperworkshell.app.quality_analysis import QualityAnalysisService
+from paperworkshell.app.quality_ocr_review import (
+    CancellationProbe as QualityOcrCancellationProbe,
+)
+from paperworkshell.app.quality_ocr_review import DeadlineProbe as QualityOcrDeadlineProbe
+from paperworkshell.app.quality_ocr_review import QualityOcrReviewService
 from paperworkshell.app.recovery import (
     StartupRecoveryDiagnosticSink,
     StartupRecoveryService,
@@ -39,12 +45,20 @@ from paperworkshell.app.source_inspection import SourceInspectorRouter
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
-from paperworkshell.domain.ocr import OcrErrorCode, reject_ocr
+from paperworkshell.domain.ocr import OcrError, OcrErrorCode, reject_ocr
 from paperworkshell.domain.pdf_export import (
     PdfExportErrorCode,
     reject_pdf_export,
 )
 from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_FRAME_BYTES
+from paperworkshell.domain.quality_ocr_review import (
+    MAX_QUALITY_OCR_REVIEW_PIXELS,
+    MAX_QUALITY_OCR_REVIEW_TSV_BYTES,
+    QualityOcrReviewErrorCode,
+    QualityOcrReviewReport,
+    QualityOcrReviewRequest,
+    reject_quality_ocr_review,
+)
 from paperworkshell.domain.recovery import RecoveryErrorCode, reject_recovery
 from paperworkshell.domain.resource_policy import ResourcePolicy, select_resource_policy
 from paperworkshell.domain.searchable_pdf_export import (
@@ -74,6 +88,7 @@ from paperworkshell.worker.client.tesseract_runtime import (
 )
 from paperworkshell.worker.desktop_composition import (
     OCR_WORKER_MAXIMUM_PROCESSES,
+    QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES,
     SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
     DesktopHeavyOperationCoordinator,
     DesktopWorkerCompositionConfig,
@@ -81,6 +96,8 @@ from paperworkshell.worker.desktop_composition import (
     OcrWorkerCompositionConfig,
     PdfExportWorkerComposition,
     PdfExportWorkerCompositionConfig,
+    QualityOcrReviewWorkerComposition,
+    QualityOcrReviewWorkerCompositionConfig,
     SearchablePdfExportWorkerComposition,
     SearchablePdfExportWorkerCompositionConfig,
     create_desktop_heavy_operation_coordinator,
@@ -90,6 +107,8 @@ from paperworkshell.worker.desktop_composition import (
     create_ocr_worker_composition_config,
     create_pdf_export_worker_composition,
     create_pdf_export_worker_composition_config,
+    create_quality_ocr_review_worker_composition,
+    create_quality_ocr_review_worker_composition_config,
     create_searchable_pdf_export_worker_composition,
     create_searchable_pdf_export_worker_composition_config,
 )
@@ -99,6 +118,7 @@ _PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
 _OCR_OUTPUT_BYTES = 128 * 1024 * 1024
 _SEARCHABLE_PDF_OUTPUT_BYTES = 128 * 1024 * 1024
 _SEARCHABLE_PDF_STATUS_BYTES = 2 * 1024 * 1024
+_QUALITY_OCR_REVIEW_TEMPORARY_BYTES = 4 * 1024 * 1024
 _DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE = Path(r"C:\Program Files\qpdf 12.3.2\bin\qpdf.exe")
 
 
@@ -337,6 +357,174 @@ def build_backend(
     return _build_backend(manager, resources=selected_resources)
 
 
+class _BackendWorkerResources:
+    """Idempotently close every worker composition owned by one backend."""
+
+    __slots__ = ("_closed", "_desktop", "_quality_ocr")
+
+    def __init__(
+        self,
+        desktop: Callable[[], None],
+        quality_ocr: Callable[[], None] | None = None,
+    ) -> None:
+        if not callable(desktop) or (quality_ocr is not None and not callable(quality_ocr)):
+            raise ValueError("backend worker resource closer is invalid")
+        self._desktop = desktop
+        self._quality_ocr = quality_ocr
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def add_quality_ocr(self, closer: Callable[[], None]) -> None:
+        if self._closed or self._quality_ocr is not None or not callable(closer):
+            raise ValueError("backend OCR review resource closer is invalid")
+        self._quality_ocr = closer
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        pending: BaseException | None = None
+        quality_ocr = self._quality_ocr
+        if quality_ocr is not None:
+            try:
+                quality_ocr()
+            except BaseException as error:
+                pending = error
+        try:
+            self._desktop()
+        except BaseException as error:
+            if pending is None:
+                pending = error
+        if pending is not None:
+            raise pending
+        self._closed = True
+
+
+class _LazyQualityOcrReviewProcessor:
+    """Admit optional OCR resources only inside an explicit quality review.
+
+    The authenticated runtime inventory is fixed-work but has no elapsed-time
+    guarantee.  Keeping it out of backend initialization prevents it from
+    becoming an optional startup gate.  The backend owner thread creates and
+    later closes the retained composition.
+    """
+
+    __slots__ = ("_composition", "_resources", "_unavailable", "_worker_resources")
+
+    def __init__(
+        self,
+        resources: DesktopApplicationResourceContext,
+        worker_resources: _BackendWorkerResources,
+    ) -> None:
+        if (
+            type(resources) is not DesktopApplicationResourceContext
+            or type(worker_resources) is not _BackendWorkerResources
+        ):
+            reject_quality_ocr_review(
+                QualityOcrReviewErrorCode.MODEL_INVALID,
+                "quality_ocr.lazy_processor",
+            )
+        self._resources = resources
+        self._worker_resources = worker_resources
+        self._composition: QualityOcrReviewWorkerComposition | None = None
+        self._unavailable = False
+
+    def review(
+        self,
+        request: QualityOcrReviewRequest,
+        *,
+        deadline: QualityOcrDeadlineProbe,
+        cancellation: QualityOcrCancellationProbe,
+    ) -> QualityOcrReviewReport:
+        if (
+            type(request) is not QualityOcrReviewRequest
+            or not callable(deadline)
+            or not callable(cancellation)
+        ):
+            reject_quality_ocr_review(
+                QualityOcrReviewErrorCode.MODEL_INVALID,
+                "quality_ocr.lazy_request",
+            )
+        _require_lazy_quality_ocr_active(deadline, cancellation)
+        composition = self._composition
+        if composition is None:
+            if self._unavailable or self._worker_resources.closed:
+                reject_quality_ocr_review(
+                    QualityOcrReviewErrorCode.ENGINE_UNAVAILABLE,
+                    "quality_ocr.lazy_unavailable",
+                )
+            try:
+                created = _optional_quality_ocr_review_composition(self._resources)
+            except OcrError as error:
+                if type(error) is OcrError and error.code is OcrErrorCode.ENGINE_UNAVAILABLE:
+                    self._unavailable = True
+                    reject_quality_ocr_review(
+                        QualityOcrReviewErrorCode.ENGINE_UNAVAILABLE,
+                        "quality_ocr.lazy_admission",
+                    )
+                reject_quality_ocr_review(
+                    QualityOcrReviewErrorCode.INTERNAL_ERROR,
+                    "quality_ocr.lazy_admission",
+                )
+            if created is None:
+                # Admission is expensive fixed-work. Latch this session closed
+                # instead of retrying once per page; restarting establishes a
+                # fresh runtime authority and permits a new admission attempt.
+                self._unavailable = True
+                reject_quality_ocr_review(
+                    QualityOcrReviewErrorCode.ENGINE_UNAVAILABLE,
+                    "quality_ocr.lazy_admission",
+                )
+            try:
+                _require_lazy_quality_ocr_active(deadline, cancellation)
+                self._worker_resources.add_quality_ocr(created.close)
+            except BaseException:
+                created.close()
+                raise
+            self._composition = created
+            composition = created
+        _require_lazy_quality_ocr_active(deadline, cancellation)
+        return composition.reviewer.review(
+            request,
+            deadline=deadline,
+            cancellation=cancellation,
+        )
+
+    def __repr__(self) -> str:
+        return "_LazyQualityOcrReviewProcessor(<local optional runtime>)"
+
+
+def _require_lazy_quality_ocr_active(
+    deadline: QualityOcrDeadlineProbe,
+    cancellation: QualityOcrCancellationProbe,
+) -> None:
+    try:
+        cancelled = cancellation()
+        expired = deadline()
+    except BaseException:
+        reject_quality_ocr_review(
+            QualityOcrReviewErrorCode.INTERNAL_ERROR,
+            "quality_ocr.lazy_control",
+        )
+    if type(cancelled) is not bool or type(expired) is not bool:
+        reject_quality_ocr_review(
+            QualityOcrReviewErrorCode.INTERNAL_ERROR,
+            "quality_ocr.lazy_control",
+        )
+    if cancelled:
+        reject_quality_ocr_review(
+            QualityOcrReviewErrorCode.CANCELLED,
+            "quality_ocr.lazy_cancelled",
+        )
+    if expired:
+        reject_quality_ocr_review(
+            QualityOcrReviewErrorCode.TIMED_OUT,
+            "quality_ocr.lazy_deadline",
+        )
+
+
 def _build_backend(
     manager: CaseWorkspaceManager,
     *,
@@ -366,6 +554,7 @@ def _build_backend(
         thumbnail_cache=thumbnail_cache,
         heavy_operations=selected_resources.heavy_operations,
     )
+    owned_resources = _BackendWorkerResources(composition.close)
     try:
         source_ingest = SourceIngestService(
             source_store,
@@ -379,18 +568,106 @@ def _build_backend(
             composition.image_page_generator,
             composition.image_page_transformer,
         )
+        quality_ocr = QualityOcrReviewService(
+            _LazyQualityOcrReviewProcessor(selected_resources, owned_resources),
+            language_sets=selected_ocr_languages,
+        )
         return OrganizerBackend(
             lifecycle,
             repository,
             source_ingest,
             thumbnails,
             ocr_languages=selected_ocr_languages,
-            close_resources=composition.close,
+            quality_analysis=QualityAnalysisService(
+                thumbnails,
+                maximum_page_count=selected_policy.maximum_page_count,
+                ocr_review=quality_ocr,
+            ),
+            close_resources=owned_resources.close,
             startup_recovery=startup_recovery,
         )
     except BaseException:
-        composition.close()
+        owned_resources.close()
         raise
+
+
+def _optional_quality_ocr_review_composition(
+    resources: DesktopApplicationResourceContext,
+) -> QualityOcrReviewWorkerComposition | None:
+    """Admit the exact app runtime or leave a truthful failed-fact producer."""
+
+    executable = resources._ocr_executable
+    tessdata_root = resources._ocr_tessdata_root
+    if executable is None or tessdata_root is None:
+        return None
+    availability = resources.ocr_languages.snapshot
+    if availability.runtime_status is not OcrLanguageRuntimeStatus.AVAILABLE:
+        return None
+    composition = create_quality_ocr_review_worker_composition(
+        _quality_ocr_review_worker_config(
+            resources.resource_policy,
+            executable,
+            tessdata_root,
+        ),
+        heavy_operations=resources.heavy_operations,
+    )
+    if (
+        composition.runtime_authority_id != resources._ocr_runtime_authority_id
+        or composition.runtime_authority_id != resources.ocr_languages.runtime_authority_id
+    ):
+        composition.close()
+        reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.quality_runtime_authority")
+    return composition
+
+
+def _quality_ocr_review_worker_config(
+    resource_policy: ResourcePolicy,
+    tesseract_executable: Path,
+    tessdata_root: Path,
+) -> QualityOcrReviewWorkerCompositionConfig:
+    selected_policy = _require_resource_policy(resource_policy)
+    (
+        worker_executable,
+        venv_launcher,
+        bootstrap_script,
+        runtime_roots,
+        code_roots,
+        working_directory,
+    ) = _worker_runtime_resources()
+    return create_quality_ocr_review_worker_composition_config(
+        python_executable=worker_executable,
+        venv_launcher=venv_launcher,
+        bootstrap_script=bootstrap_script,
+        runtime_roots=runtime_roots,
+        code_roots=code_roots,
+        working_directory=working_directory,
+        tesseract_executable=tesseract_executable,
+        tessdata_root=tessdata_root,
+        resource_policy=WorkerResourcePolicy(
+            process_memory_bytes=selected_policy.worker_process_memory_bytes,
+            job_memory_bytes=selected_policy.worker_job_memory_bytes,
+            cpu_time_ms=selected_policy.worker_cpu_time_ms,
+            maximum_processes=QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES,
+        ),
+        timeout_policy=WorkerTimeoutPolicy(
+            handshake_seconds=20.0,
+            cancellation_grace_seconds=(selected_policy.cancellation_acknowledgement_ms / 1_000),
+            shutdown_grace_seconds=10.0,
+        ),
+        maximum_heavy_operation_concurrency=(selected_policy.maximum_heavy_operation_concurrency),
+        limits=ResourceLimits(
+            wall_time_ms=60_000,
+            cpu_time_ms=min(45_000, selected_policy.worker_cpu_time_ms),
+            memory_bytes=selected_policy.worker_process_memory_bytes,
+            temporary_storage_bytes=min(
+                _QUALITY_OCR_REVIEW_TEMPORARY_BYTES,
+                selected_policy.maximum_temporary_storage_bytes,
+            ),
+            output_bytes=MAX_QUALITY_OCR_REVIEW_TSV_BYTES,
+            page_count=1,
+            pixel_count=MAX_QUALITY_OCR_REVIEW_PIXELS,
+        ),
+    )
 
 
 def _workspace_quota(resource_policy: ResourcePolicy | None = None) -> WorkspaceQuota:

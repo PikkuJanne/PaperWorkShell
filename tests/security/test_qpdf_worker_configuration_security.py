@@ -136,6 +136,7 @@ def test_worker_environment_allowlist_remains_closed() -> None:
             "PWS_PROFILE_ROOT",
             "PWS_TESSDATA_ROOT",
             "PWS_TESSERACT_EXECUTABLE",
+            "PWS_WORKER_OPERATION_SCOPE",
             "PYTHONIOENCODING",
             "PYTHONUTF8",
         }

@@ -40,6 +40,9 @@ class _EmptyThumbnailService:
     def get_thumbnails(self, *_args: object, **_kwargs: object) -> tuple[()]:
         return ()
 
+    def get_previews(self, *_args: object, **_kwargs: object) -> tuple[()]:
+        return ()
+
 
 def _quota() -> WorkspaceQuota:
     return WorkspaceQuota(

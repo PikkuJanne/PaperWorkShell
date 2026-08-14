@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self, cast
 
+from paperworkshell.worker._windows_broker import (
+    drain_windows_bounded_output_cleanup,
+    drain_windows_result_pipe_cleanup,
+)
 from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
     WindowsProcessLauncher,
@@ -72,6 +76,21 @@ from paperworkshell.worker.protocol.models import (
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     ResourceLimits,
+)
+from paperworkshell.worker.quality_ocr_review_composition import (
+    QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES as QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES,
+)
+from paperworkshell.worker.quality_ocr_review_composition import (
+    QualityOcrReviewWorkerComposition as QualityOcrReviewWorkerComposition,
+)
+from paperworkshell.worker.quality_ocr_review_composition import (
+    QualityOcrReviewWorkerCompositionConfig as QualityOcrReviewWorkerCompositionConfig,
+)
+from paperworkshell.worker.quality_ocr_review_composition import (
+    create_quality_ocr_review_worker_composition as create_quality_ocr_review_worker_composition,
+)
+from paperworkshell.worker.quality_ocr_review_composition import (
+    create_quality_ocr_review_worker_composition_config as create_quality_ocr_review_worker_composition_config,
 )
 from paperworkshell.worker.searchable_pdf_export_composition import (
     SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES as SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
@@ -309,7 +328,22 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         self._require_owner()
         if self._closed:
             return
-        self._worker.terminate()
+        pending: BaseException | None = None
+        try:
+            self._worker.terminate()
+        except BaseException as error:
+            pending = error
+        for drain in (
+            drain_windows_bounded_output_cleanup,
+            drain_windows_result_pipe_cleanup,
+        ):
+            try:
+                drain()
+            except BaseException as error:
+                if pending is None:
+                    pending = error
+        if pending is not None:
+            raise pending
         self._closed = True
 
     def __enter__(self) -> Self:
@@ -397,8 +431,27 @@ class PdfExportWorkerComposition(AbstractContextManager["PdfExportWorkerComposit
         self._require_owner()
         if self._closed:
             return
-        self._pdf_exporter._revoke_permanently()
-        self._worker.terminate()
+        pending: BaseException | None = None
+        try:
+            self._pdf_exporter._revoke_permanently()
+        except BaseException as error:
+            pending = error
+        try:
+            self._worker.terminate()
+        except BaseException as error:
+            if pending is None:
+                pending = error
+        for drain in (
+            drain_windows_bounded_output_cleanup,
+            drain_windows_result_pipe_cleanup,
+        ):
+            try:
+                drain()
+            except BaseException as error:
+                if pending is None:
+                    pending = error
+        if pending is not None:
+            raise pending
         self._closed = True
 
     def __enter__(self) -> Self:

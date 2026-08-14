@@ -11,12 +11,23 @@ from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from paperworkshell.app.organizer import OrganizerPageView, OrganizerViewState
+from paperworkshell.app.quality_analysis import QualityReviewSnapshot
 from paperworkshell.domain.image_transforms import (
     ImageNormalizedCrop,
     ImageTransformIntent,
 )
+from paperworkshell.domain.quality_analysis import (
+    QualityEvidenceKind,
+    QualityFinding,
+    QualityFindingCode,
+)
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
-from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
+from paperworkshell.ui.models import (
+    OrganizerPageListModel,
+    PreviewState,
+    QualityFindingListModel,
+    QualityReviewState,
+)
 from paperworkshell.ui.window import _bounded_preview_rows
 
 CASE_ID = UUID("70000000-0000-4000-8000-000000000001")
@@ -47,16 +58,80 @@ def test_model_exposes_order_rotation_and_textual_preview_accessibility_roles() 
     second = model.index(1, 0)
     assert model.rowCount() == 2
     assert model.data(first, int(Qt.ItemDataRole.DisplayRole)) == (
-        "Page 1 of 2\n0\N{DEGREE SIGN} rotation\nPreview not loaded"
+        "Page 1 of 2\n0\N{DEGREE SIGN} rotation\nPreview not loaded\n"
+        "Quality review not checked for this saved revision"
     )
     assert model.data(first, int(Qt.ItemDataRole.AccessibleTextRole)) == (
-        "Page 1 of 2; rotated 0 degrees; preview not loaded"
+        "Page 1 of 2; rotated 0 degrees; preview not loaded; "
+        "quality review not checked for this saved revision"
     )
     assert model.data(second, model.PreviewStateRole) == PreviewState.UNAVAILABLE.value
     assert model.data(second, model.PageIdRole) == PAGE_TWO
     assert model.flags(first) == Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
     assert not model.flags(first) & Qt.ItemFlag.ItemIsDragEnabled
     assert not model.flags(first) & Qt.ItemFlag.ItemIsDropEnabled
+
+
+def test_quality_snapshot_attaches_by_page_id_without_mutating_or_evicting_previews() -> None:
+    _application()
+    model = OrganizerPageListModel()
+    model.set_organizer_state(
+        _state(
+            OrganizerPageView(PAGE_ONE, 1, 0, True),
+            OrganizerPageView(PAGE_TWO, 2, 0, True),
+        )
+    )
+    image = QImage(8, 12, QImage.Format.Format_RGBA8888)
+    image.fill(QColor("white"))
+    model.set_preview(PAGE_ONE, QPixmap.fromImage(image))
+    finding = QualityFinding(
+        page_id=PAGE_TWO,
+        page_position=2,
+        code=QualityFindingCode.LIKELY_BLUR,
+        evidence_kind=QualityEvidenceKind.LAPLACIAN_MEAN_SQUARE,
+        observed_value=10,
+        threshold_value=20,
+    )
+    snapshot = QualityReviewSnapshot(
+        CASE_ID,
+        2,
+        (PAGE_ONE, PAGE_TWO),
+        (finding,),
+        "scan-quality-v1",
+        "a" * 64,
+    )
+
+    assert model.set_quality_review(snapshot)
+    assert model.quality_review == snapshot
+    assert model.retained_preview_count == 1
+    assert (
+        model.data(model.index(0, 0), model.QualityReviewStateRole)
+        == QualityReviewState.NO_SIGNALS.value
+    )
+    assert model.data(model.index(1, 0), model.QualityFindingCountRole) == 1
+    assert "Needs review: 1 quality signal" in str(
+        model.data(model.index(1, 0), int(Qt.ItemDataRole.DisplayRole))
+    )
+
+    findings = QualityFindingListModel()
+    findings.set_snapshot(snapshot)
+    finding_index = findings.index(0, 0)
+    assert findings.rowCount() == 1
+    assert findings.data(finding_index, findings.PageIdRole) == PAGE_TWO
+    assert findings.data(finding_index, findings.FindingCodeRole) == "likely_blur"
+    assert "Page 2 — Needs review: Likely blur" in str(
+        findings.data(finding_index, int(Qt.ItemDataRole.AccessibleTextRole))
+    )
+    assert findings.flags(finding_index) == (
+        Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+    )
+
+    model.set_organizer_state(OrganizerViewState(CASE_ID, 2, model.pages, True, False, True))
+    assert (
+        model.data(model.index(1, 0), model.QualityReviewStateRole)
+        == QualityReviewState.NOT_CHECKED.value
+    )
+    assert model.retained_preview_count == 1
 
 
 def test_model_detaches_previews_and_discards_removed_page_state() -> None:

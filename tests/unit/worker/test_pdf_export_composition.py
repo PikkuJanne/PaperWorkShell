@@ -189,6 +189,17 @@ def test_close_is_idempotent_and_rejects_a_non_owner_thread(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    drain_calls: list[str] = []
+    monkeypatch.setattr(
+        composition_module,
+        "drain_windows_bounded_output_cleanup",
+        lambda: drain_calls.append("output"),
+    )
+    monkeypatch.setattr(
+        composition_module,
+        "drain_windows_result_pipe_cleanup",
+        lambda: drain_calls.append("pipe"),
+    )
     raw_composition, worker = _compose_with_fake_client(tmp_path, monkeypatch)
     composition = cast(Any, raw_composition)
     exporter = composition.pdf_exporter
@@ -216,6 +227,7 @@ def test_close_is_idempotent_and_rejects_a_non_owner_thread(
     assert composition.closed
     assert exporter.revoked
     assert worker.terminate_calls == 1
+    assert drain_calls == ["output", "pipe"]
 
 
 def test_context_manager_terminates_the_export_worker(

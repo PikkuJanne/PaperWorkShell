@@ -7,7 +7,9 @@ sources, shows bounded page previews, and records page rotation, active-sequence
 undo, redo, and user-confirmed scan transforms. It makes no claim about portal acceptance, legal
 validity, permanent redaction, scan legibility, or universal document validity. The exact draft,
 comparison, confirmation, and bounded-resource contract is documented in
-[`scan-review-ui.md`](scan-review-ui.md).
+[`scan-review-ui.md`](scan-review-ui.md). PWS-0207 adds an explicit saved-revision-bound advisory
+quality check; its finding semantics and limits are documented in
+[`quality-review.md`](quality-review.md).
 
 ## Dependency direction
 
@@ -22,6 +24,11 @@ undo/redo/save state. The manifest remains authoritative; Qt settings do not dup
 state. A `ScanReviewDraft` is deliberately tentative and revision-bound: it is not organizer or
 manifest intent until explicit Apply revalidates it. Changed intent queues one complete candidate;
 an exact no-change Apply closes the review without queuing autosave.
+
+A `QualityReviewSnapshot` is separate ephemeral presentation state bound to the exact case,
+manifest revision, complete ordered active-page tuple, and finding profile. It cannot enter page
+history, autosave, the manifest, a checklist, or a requirement confirmation. The organizer rejects
+unsaved or stale requests before analysis and rechecks the exact session/history/revision after it.
 
 `paperworkshell.__main__` is the sole composition root. Its one narrow worker import is
 `paperworkshell.worker.desktop_composition`, which creates the shared capability-scoped worker
@@ -56,6 +63,15 @@ candidate. Operation and review generations prevent an older result from enablin
 replacing current pixels after cancellation, reset, page/revision change, or dialog close. While
 scan review owns the selected page workflow, ordinary organizer preview scheduling and page
 mutations cannot create concurrent document work behind it.
+
+Page-quality review shares that one global long-operation lane. An explicit request made during an
+ordinary thumbnail batch cancels the real thumbnail token and retains exactly one pending quality
+request for the same saved revision; it starts only after the thumbnail operation drains. Import,
+scan review, autosave, mutation, close, and another quality review cannot overlap it. Operation ID,
+quality generation, case, revision, complete page tuple, and unchanged backend state must all
+correlate before a snapshot is displayed. Cancellation, failure, or state change clears the list
+and publishes no partial result. Ordinary preview scheduling resumes after the quality operation
+finishes.
 
 ## Organizer state and autosave
 
@@ -168,6 +184,37 @@ then rebalances the organizer LRU. Preview pixel dimensions still come from the 
 resource policy; scan review adds no independent cache, executor, subprocess, or unbounded work
 queue.
 
+## Advisory page-quality review
+
+**Check page quality** analyzes the complete current active sequence only after its revision is
+saved. PDF and image parsing/rendering remain in the existing restricted preview path. The
+service consumes one validated opaque page sample at a time, releases page-scoped state before
+requesting the next page, and retains only small private prior-page fingerprints during the call.
+When an authenticated process-session OCR language set is available, the same exact sample enters
+the additive handle-only `ocr.review` version-1 path: one restricted worker is launched and
+terminated per page, and its one recognition invocation returns only a content-free correlated
+aggregate. The UI receives typed findings and scan-profile identity, never the quality sample,
+fingerprint, private TSV, or OCR report. The flow adds no quality-specific cache or persistence
+format and cannot mutate a checklist, manifest, page history, or requirement confirmation.
+
+The desktop disables **Check page quality** while the active saved case has no pages. The lower
+application service intentionally remains total for an exact empty-page request and returns an
+empty snapshot after its initial control check without preview, OCR, or progress callbacks; the UI
+does not turn that service-only empty result into a completed clean review.
+
+Findings say **Likely**, **Suspected**, or **Needs review**. Zero findings is displayed as “No
+review signals were found by these limited checks,” followed by an instruction to review every page
+before export. The eight closed finding codes, exact integer thresholds, image-only source-pixel
+resolution rule, PDF limitation, 180-degree orientation limitation, earliest-prior duplicate rule,
+content-free OCR producer/boundary, expected local-unavailable session latch, terminal safety-fault
+behavior, and private-output limits are
+specified in the [advisory quality-review contract](quality-review.md).
+
+The page model shows a textual review state and finding count for each page. The separate virtual
+finding list contains closed titles/remediation messages only. Activating a row selects, centers,
+focuses, and announces its exact page in the organizer; suspected-duplicate rows identify both page
+positions. The surface has no Resolve, Dismiss, Apply, or Mark complete action.
+
 ## Keyboard and accessibility contract
 
 The page list has drag and drop disabled. Core actions have visible text buttons and keyboard
@@ -183,8 +230,9 @@ shortcuts:
 | Remove from active packet | `Delete` | Remove from packet |
 | Change complete order | `Ctrl+Shift+O` | Keyboard page-order dialog |
 | Review selected image scan | `Ctrl+Shift+A` | Review scan adjustments |
+| Check the saved revision for advisory quality signals | `Ctrl+Shift+Q` | Check page quality |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
-| Cancel import or preview | `Escape` | Cancel current operation |
+| Cancel import, preview, or quality review | `Escape` | Cancel current operation |
 
 Qt widget roles provide accessible names and descriptions. Page rows announce position, rotation,
 and truthful textual preview state. Phase changes, bounded progress checkpoints, completion,
@@ -209,6 +257,14 @@ Reset, Cancel, and Apply all have keyboard paths, accessible names/descriptions,
 logical focus order. Adjusted readiness is textual rather than color-only. Progress, cancellation,
 failure, and Apply completion are announced, while preview widgets describe only their role/state
 and never document imagery or text.
+
+The page-quality group has a focusable textual status, an explicitly named Check action, a virtual
+keyboard findings list, and a visible Go to selected page action. Enter activates the selected
+finding. Queued, active, progress, completion, cancellation, failure, stale invalidation, and
+navigation states are visible and announced; an interrupted review never becomes a no-signal
+state. The group remains reachable in the outer workflow scroll area at enlarged text and
+effective 200-percent scaling. Saving a different process-session OCR language selection clears
+the accepted snapshot/findings and returns every page to **Not checked** before another review.
 
 One global operation-status surface sits outside the case-chooser/organizer page stack. Startup,
 case-list, and create/open failures are therefore both visibly available and announced while the
@@ -255,3 +311,9 @@ stale-result, privacy, keyboard, focus, progress/error, and enlarged-layout cove
 Windows effective-200-percent keyboard and visual checklist and dated agent-operated PASS evidence
 are kept separately in
 [`../accessibility/pws-0203-scan-review-smoke.md`](../accessibility/pws-0203-scan-review-smoke.md).
+
+PWS-0207 adds pure threshold/boundary and malformed-model tests, single-sample sequencing and
+deadline/cancellation tests, exact organizer/UI correlation and stale-result tests, privacy and
+no-mutation checks, virtual-list and keyboard navigation tests, accessible wording/focus/progress
+tests, enlarged-layout checks, and the recipe-only labeled-corpus baseline described in
+[`../development/scan-quality-evaluation.md`](../development/scan-quality-evaluation.md).

@@ -407,6 +407,8 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
             "import paperworkshell.worker.client\n"
             "import paperworkshell.worker.desktop_composition\n"
             "from paperworkshell.worker import desktop_composition\n"
+            "from paperworkshell.worker.desktop_composition import "
+            "QualityOcrReviewWorkerComposition\n"
             "from paperworkshell.export.pdf_destination import "
             "WindowsVerifiedPdfDestination\n"
             "import paperworkshell.export\n",
@@ -461,6 +463,11 @@ def test_application_layer_cannot_import_concrete_storage_adapters() -> None:
             "paperworkshell.__main__",
             "paperworkshell",
             "import paperworkshell.worker.desktop_composition.internal\n",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "import paperworkshell.worker.quality_ocr_review_composition\n",
         ),
     ],
 )

@@ -17,6 +17,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    QUALITY_OCR_REVIEW_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CancelDisposition,
     CapabilityDescriptor,
@@ -42,6 +43,7 @@ from paperworkshell.worker.protocol.models import (
     ocr_process_bound_object_ids,
     pdf_export_bound_object_ids,
     pdf_thumbnail_bound_object_ids,
+    quality_ocr_review_page_id,
     searchable_pdf_export_bound_object_ids,
     searchable_pdf_export_status_capacity_bytes,
     validate_image_normalize_result,
@@ -55,6 +57,8 @@ from paperworkshell.worker.protocol.models import (
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_result,
     validate_pdf_thumbnail_start,
+    validate_quality_ocr_review_result,
+    validate_quality_ocr_review_start,
     validate_searchable_pdf_export_result,
     validate_searchable_pdf_export_start,
 )
@@ -397,6 +401,15 @@ class ConversationState:
                     "ocr.process case, operation, and object identifiers must be distinct",
                 )
             ocr_output_object_id = ocr_bound_object_ids[1]
+        if descriptor == QUALITY_OCR_REVIEW_CAPABILITY:
+            validate_quality_ocr_review_start(payload)
+            quality_page_id = quality_ocr_review_page_id(payload)
+            if quality_page_id in {self.case_id, message.operation_id}:
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "ocr.review case, operation, and page identifiers must be distinct",
+                )
         if descriptor == PDF_THUMBNAIL_CAPABILITY:
             validate_pdf_thumbnail_start(payload)
             thumbnail_bound_object_ids = pdf_thumbnail_bound_object_ids(payload)
@@ -538,6 +551,14 @@ class ConversationState:
                 "RPC_INVALID_PROGRESS",
                 "payload",
                 "ocr.process progress must use its exact numeric page total",
+            )
+        if active.operation_kind == QUALITY_OCR_REVIEW_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.PAGES or payload.total_units != 1
+        ):
+            reject(
+                "RPC_INVALID_PROGRESS",
+                "payload",
+                "ocr.review progress must use one exact page",
             )
         if active.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id and (
             payload.unit is not ProgressUnit.PAGES
@@ -684,6 +705,7 @@ class ConversationState:
             in {
                 NOOP_CAPABILITY.capability_id,
                 PDF_INSPECT_CAPABILITY.capability_id,
+                QUALITY_OCR_REVIEW_CAPABILITY.capability_id,
             }
             and payload.outputs
         ):
@@ -753,6 +775,11 @@ class ConversationState:
                 output_object_id=active.ocr_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
+        if (
+            CapabilityDescriptor(active.operation_kind, active.operation_version)
+            == QUALITY_OCR_REVIEW_CAPABILITY
+        ):
+            validate_quality_ocr_review_result(payload)
         if active.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:
             if active.export_output_object_id is None:
                 reject(

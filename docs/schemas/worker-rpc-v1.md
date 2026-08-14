@@ -15,11 +15,14 @@ extensions adds paths or shell command text to messages. PWS-0202 adds a separat
 `image.transform` operation; it does not widen `image.normalize` version 1. PWS-0204 adds the
 separate `ocr.process` operation for one bounded volatile OCR PDF candidate. PWS-0206 adds the
 separate `pdf.export.searchable` operation for one verified mixed PDF plus a bounded content-free
-page-status document; it changes neither `pdf.export` version 1 nor `ocr.process` version 1. See the
-[worker lifecycle contract](../architecture/worker-lifecycle.md) and
+page-status document; it changes neither `pdf.export` version 1 nor `ocr.process` version 1.
+PWS-0207 adds the separate handle-only `ocr.review` operation for one bounded current-page raster
+and an out-of-band content-free result; it changes neither `ocr.process` nor the generic envelope.
+See the [worker lifecycle contract](../architecture/worker-lifecycle.md),
 [PDF structural-inspection contract](../architecture/pdf-structural-inspection.md), and
 [bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md), and
 [bounded JPEG/PNG intake contract](../architecture/image-intake.md), and
+[advisory page-quality review contract](../architecture/quality-review.md), and
 [verified searchable mixed-output contract](../architecture/searchable-mixed-output.md).
 
 ## Common envelope
@@ -115,6 +118,16 @@ content kind `ocr-pdf-candidate-v1`, exact operation/output correlation, byte si
 The separate canonical result frame carries only IDs, counts, fixed profile/version tokens, and
 digests. It carries no recognized text, filename, path, raw engine message, or command argument.
 
+PWS-0207 adds `ocr.review` version 1. Its start has no logical `inputs` and exactly two distinct
+positive worker-local handle parameters: a read-only bounded volatile `sample_handle` and a
+write-only `result_handle`. The remaining closed parameters bind one page UUID, manifest revision,
+RGBA8 layout/byte count, `sha256-`-prefixed sample and presentation digest tokens, one of the three
+registered OCR language-set tokens, and exact profile `quality-ocr-review-v1`. It accepts one page
+with at most a 256-pixel edge and 65,536 pixels. A terminal protocol result has no output objects;
+the separate bounded canonical report pipe carries only correlated IDs/digests, closed
+configuration/version/status, recognized-word count, and optional integer mean confidence. It
+carries no raster, OCR text, geometry, path, filename, metadata, or native tool message.
+
 PWS-0206 adds `pdf.export.searchable` version 1. Its start has one authenticated canonical plan
 followed by one or more authenticated PDF, JPEG, or PNG `source_read` inputs; four distinct
 positive worker-local plan, output-section, status-section, and result-pipe handles; distinct PDF
@@ -177,7 +190,7 @@ Validation is intentionally split:
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
 version 1, `pdf.export` version 1, `image.normalize` version 1, `image.transform` version 1,
-`ocr.process` version 1, and `pdf.export.searchable` version 1.
+`ocr.process` version 1, `ocr.review` version 1, and `pdf.export.searchable` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
 out-of-policy value fails closed.
@@ -306,6 +319,51 @@ operation/page/output UUIDs, canonical transform-intent digest, engine-profile d
 output geometry, and pixel digest. Cancellation, timeout, malformed input, resource exhaustion,
 and invalid output return no reference. The trusted broker confirms whole-tree termination and
 revalidates every binding before exposing a path-free typed result.
+
+### `ocr.review` handle-only content-free result
+
+`ocr.review` version 1 is an additive one-page operation over an already validated current quality
+raster. It has an empty `inputs` array: it receives no `CaseObjectReference`, source object, PDF,
+JPEG, PNG, path, or persistent artifact authority. Its exact closed parameter set is:
+
+- distinct positive integer `sample_handle` and `result_handle` values;
+- UUID `page_id`, distinct from the envelope case and operation UUIDs;
+- integer `manifest_revision` from zero through the protocol safe-integer maximum;
+- positive integer `width_pixels` and `height_pixels`, each at most 256 and with product at most
+  65,536;
+- integer `row_stride_bytes` from `width_pixels * 4` through that value plus 4,096, and
+  `sample_byte_size` exactly equal to `row_stride_bytes * height_pixels`;
+- token `sample_sha256` and `presentation_sha256`, each exactly
+  `sha256-` followed by 64 lowercase hexadecimal characters;
+- token `language_set_id` equal to `latin-default-v1`, `german-fast-v1`, or
+  `english-german-fast-v1`; and
+- token `profile_id` exactly equal to `quality-ocr-review-v1`.
+
+The broker creates the sample as a fixed-size anonymous pagefile-backed section and duplicates only
+read authority; the result handle carries only bounded write authority to an anonymous pipe. The
+requested limits require exactly one page, a pixel bound covering the sample, output bytes from one
+through 1,048,576, memory covering the sample bytes, and temporary storage covering the sample,
+one packed PPM (`32 + width * height * 3` bytes), and the full requested output bound. Production
+uses the exact sample pixel count, a 1 MiB output cap, and a 4 MiB temporary-storage cap. Progress,
+when present, is only `processing/pages` with exact total one and completed units zero or one.
+
+Every terminal `operation.result` is object-free: `outputs` must be empty even on success. The
+worker instead writes one canonical ASCII report of at most 8,192 bytes to the result pipe. That
+private frame binds report version, operation/case/page UUIDs, manifest revision, raw 64-hex sample
+and presentation digests, the exact language/profile tokens, Tesseract version, terminal
+`succeeded`/`no_text`/`failed` status, recognized-word count from zero through 32,768, and optional
+integer mean confidence from zero through 100,000 milli-units. `succeeded` requires at least one
+word and a confidence value; `no_text` and `failed` require zero words and null confidence. No
+text, word boxes, geometry, page raster, path, filename, metadata, command, stderr, or native
+exception is representable.
+
+The broker terminates the complete one-shot worker Job before it reads the frame, then validates
+every request/report binding. Cancellation, timeout, malformed/oversized report, wrong digest,
+wrong configuration, output object, capability loss, or uncertain termination exposes no fact.
+An unavailable engine/capability becomes an application-level failed fact; missing selected
+language or recognition failure can return a correlated `failed` report that becomes the same
+advisory fact. Neither path claims that recognition inspected text or that text is correct.
+An older peer that does not request and advertise `ocr.review` never negotiates it.
 
 ### `ocr.process` volatile PDF-candidate result
 

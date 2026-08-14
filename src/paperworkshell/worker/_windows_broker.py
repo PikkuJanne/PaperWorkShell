@@ -28,6 +28,7 @@ _PAGE_READWRITE: Final = 0x0000_0004
 _PIPE_BUFFER_BYTES: Final = 8_192
 _READ_CHUNK_BYTES: Final = 1_024
 _OUTPUT_CLEANUP_QUARANTINE: list[Any] = []
+_PIPE_CLEANUP_QUARANTINE: list[Any] = []
 
 
 class _SecurityAttributes(ctypes.Structure):
@@ -55,10 +56,6 @@ def _close_handle(handle: int) -> bool:
         return bool(close_handle(wintypes.HANDLE(handle)))
     except BaseException:
         return False
-
-
-def _close_no_raise(handle: int) -> None:
-    _close_handle(handle)
 
 
 def _unmap_view(view: int) -> bool:
@@ -91,6 +88,47 @@ def _drain_output_cleanup() -> None:
             candidate.close()
         except BaseException:
             pass
+
+
+def drain_windows_bounded_output_cleanup() -> None:
+    """Retry every retained output section once and refuse on residue."""
+
+    _drain_output_cleanup()
+    if _OUTPUT_CLEANUP_QUARANTINE:
+        reject_pdf_thumbnail(
+            PdfThumbnailErrorCode.DESTINATION_FAILED,
+            "broker.output_cleanup_pending",
+        )
+
+
+def _retain_pipe_cleanup(value: Any) -> None:
+    if all(candidate is not value for candidate in _PIPE_CLEANUP_QUARANTINE):
+        _PIPE_CLEANUP_QUARANTINE.append(value)
+
+
+def _release_pipe_cleanup(value: Any) -> None:
+    _PIPE_CLEANUP_QUARANTINE[:] = [
+        candidate for candidate in _PIPE_CLEANUP_QUARANTINE if candidate is not value
+    ]
+
+
+def _drain_pipe_cleanup() -> None:
+    for candidate in tuple(_PIPE_CLEANUP_QUARANTINE):
+        try:
+            candidate.close()
+        except BaseException:
+            pass
+
+
+def drain_windows_result_pipe_cleanup() -> None:
+    """Retry every retained pipe once and refuse while any authority remains."""
+
+    _drain_pipe_cleanup()
+    if _PIPE_CLEANUP_QUARANTINE:
+        reject_pdf_inspection(
+            PdfInspectionErrorCode.INTERNAL_ERROR,
+            "broker.pipe_cleanup_pending",
+        )
 
 
 class WindowsBoundedOutputBuffer(AbstractContextManager["WindowsBoundedOutputBuffer"]):
@@ -126,12 +164,7 @@ class WindowsBoundedOutputBuffer(AbstractContextManager["WindowsBoundedOutputBuf
                 PdfThumbnailErrorCode.WORKER_FAILED,
                 "broker.platform",
             )
-        _drain_output_cleanup()
-        if _OUTPUT_CLEANUP_QUARANTINE:
-            reject_pdf_thumbnail(
-                PdfThumbnailErrorCode.DESTINATION_FAILED,
-                "broker.output_cleanup_pending",
-            )
+        drain_windows_bounded_output_cleanup()
 
         kernel32 = _kernel32()
         create_mapping = kernel32.CreateFileMappingW
@@ -354,6 +387,7 @@ class WindowsResultPipe(AbstractContextManager["WindowsResultPipe"]):
     def create(cls) -> WindowsResultPipe:
         """Create a non-inheritable anonymous channel with a bounded kernel buffer."""
 
+        drain_windows_result_pipe_cleanup()
         kernel32 = _kernel32()
         create_pipe = kernel32.CreatePipe
         create_pipe.argtypes = (
@@ -397,8 +431,8 @@ class WindowsResultPipe(AbstractContextManager["WindowsResultPipe"]):
                     )
             return cls(reader, writer)
         except BaseException:
-            _close_no_raise(writer)
-            _close_no_raise(reader)
+            if reader != 0 or writer != 0:
+                cls(reader, writer).close()
             raise
 
     @property
@@ -477,11 +511,21 @@ class WindowsResultPipe(AbstractContextManager["WindowsResultPipe"]):
 
     def close(self) -> None:
         if self._closed:
+            _release_pipe_cleanup(self)
             return
-        self._closed = True
         writer = self._write_handle
         reader = self._read_handle
-        self._write_handle = 0
-        self._read_handle = 0
-        _close_no_raise(writer)
-        _close_no_raise(reader)
+        writer_closed = _close_handle(writer)
+        reader_closed = _close_handle(reader)
+        if writer_closed:
+            self._write_handle = 0
+        if reader_closed:
+            self._read_handle = 0
+        self._closed = writer_closed and reader_closed
+        if not self._closed:
+            _retain_pipe_cleanup(self)
+            reject_pdf_inspection(
+                PdfInspectionErrorCode.INTERNAL_ERROR,
+                "broker.pipe_cleanup",
+            )
+        _release_pipe_cleanup(self)

@@ -86,6 +86,11 @@ class _TwoPagePdfInspector:
         )
 
 
+class _UnusedPreviews:
+    def get_previews(self, *_args: object, **_kwargs: object) -> tuple[()]:
+        raise AssertionError("preview service is not used by this recovery fixture")
+
+
 def _seed_backend(profile: Path) -> tuple[OrganizerBackend, CaseWorkspaceManager]:
     manager = CaseWorkspaceManager(
         profile_root=profile,
@@ -102,7 +107,7 @@ def _seed_backend(profile: Path) -> tuple[OrganizerBackend, CaseWorkspaceManager
             CaseLifecycleService(WindowsCaseLifecycleStore(manager)),
             WindowsManifestRepository(manager),
             SourceIngestService(source_store, _TwoPagePdfInspector()),
-            cast(Any, object()),
+            cast(Any, _UnusedPreviews()),
         ),
         manager,
     )
@@ -216,6 +221,11 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
 
     monkeypatch.setattr(desktop, "_desktop_worker_config", worker_config)
     monkeypatch.setattr(desktop, "create_desktop_worker_composition", compose)
+    monkeypatch.setattr(
+        desktop,
+        "_optional_quality_ocr_review_composition",
+        lambda _resources: pytest.fail("optional OCR admission ran during backend initialization"),
+    )
 
     backend = desktop._build_backend(fresh_manager, resources=resources)
     try:

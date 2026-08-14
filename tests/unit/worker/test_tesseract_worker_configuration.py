@@ -20,6 +20,10 @@ from paperworkshell.worker.client.tesseract_runtime import (
     TesseractRuntimeAdmissionError,
     admit_packaged_tesseract_runtime,
 )
+from paperworkshell.worker.protocol.operation_scope import (
+    PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT,
+    WorkerOperationScope,
+)
 
 _REAL_RUNTIME_ADMISSION = admit_packaged_tesseract_runtime
 
@@ -272,6 +276,7 @@ def test_minimal_worker_environment_carries_no_ambient_tool_search(
 
     assert entries["PWS_TESSERACT_EXECUTABLE"] == os.fspath(executable)
     assert entries["PWS_TESSDATA_ROOT"] == os.fspath(tessdata)
+    assert PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT not in entries
     assert (
         not {
             "PATH",
@@ -282,4 +287,27 @@ def test_minimal_worker_environment_carries_no_ambient_tool_search(
             "HTTPS_PROXY",
         }
         & entries.keys()
+    )
+
+
+def test_quality_worker_environment_carries_only_the_closed_operation_scope(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    executable = config.tesseract_executable
+    tessdata = config.tessdata_root
+    assert executable is not None
+    assert tessdata is not None
+
+    entries = _environment_entries(
+        _minimal_environment_block(
+            tmp_path / "profile",
+            tesseract_executable=executable,
+            tessdata_root=tessdata,
+            operation_scope=WorkerOperationScope.QUALITY_OCR_REVIEW,
+        )
+    )
+
+    assert entries[PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT] == (
+        WorkerOperationScope.QUALITY_OCR_REVIEW.value
     )

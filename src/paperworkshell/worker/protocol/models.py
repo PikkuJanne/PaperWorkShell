@@ -248,6 +248,7 @@ PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
 IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
+QUALITY_OCR_REVIEW_CAPABILITY: Final = CapabilityDescriptor("ocr.review", 1)
 SEARCHABLE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.searchable", 1)
 
 IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
@@ -284,6 +285,32 @@ OCR_PROCESS_PROFILE_ID_PARAMETER: Final = "profile_id"
 OCR_PROCESS_OUTPUT_CONTENT_KIND: Final = "ocr-pdf-candidate-v1"
 OCR_PROCESS_SOURCE_CONTENT_KINDS: Final = frozenset({"pdf", "jpeg", "png"})
 MAX_OCR_PROCESS_PAGES: Final = 4_096
+
+QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER: Final = "sample_handle"
+QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER: Final = "result_handle"
+QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER: Final = "page_id"
+QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER: Final = "manifest_revision"
+QUALITY_OCR_REVIEW_WIDTH_PARAMETER: Final = "width_pixels"
+QUALITY_OCR_REVIEW_HEIGHT_PARAMETER: Final = "height_pixels"
+QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER: Final = "row_stride_bytes"
+QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER: Final = "sample_byte_size"
+QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER: Final = "sample_sha256"
+QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER: Final = "presentation_sha256"
+QUALITY_OCR_REVIEW_SHA256_TOKEN_PREFIX: Final = "sha256-"
+QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER: Final = "language_set_id"
+QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER: Final = "profile_id"
+QUALITY_OCR_REVIEW_PROFILE_ID_VALUE: Final = "quality-ocr-review-v1"
+QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_VALUES: Final = frozenset(
+    {
+        "latin-default-v1",
+        "german-fast-v1",
+        "english-german-fast-v1",
+    }
+)
+MAX_QUALITY_OCR_REVIEW_EDGE_PIXELS: Final = 256
+MAX_QUALITY_OCR_REVIEW_PIXELS: Final = 256 * 256
+MAX_QUALITY_OCR_REVIEW_ROW_PADDING_BYTES: Final = 4_096
+MAX_QUALITY_OCR_REVIEW_TSV_BYTES: Final = 1024 * 1024
 
 PDF_INSPECT_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 PDF_INSPECT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
@@ -762,6 +789,174 @@ def validate_ocr_process_result(
             "RPC_INVALID_RESULT",
             "payload.outputs",
             "ocr.process output is not bound to its requested staging object and limit",
+        )
+
+
+def validate_quality_ocr_review_start(payload: OperationStartPayload) -> None:
+    """Validate the exact handle-only ``ocr.review`` version-1 contract."""
+
+    if payload.inputs:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "ocr.review version 1 accepts only one bounded private sample section",
+        )
+    expected_names = {
+        QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER,
+        QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER,
+        QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER,
+        QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER,
+        QUALITY_OCR_REVIEW_WIDTH_PARAMETER,
+        QUALITY_OCR_REVIEW_HEIGHT_PARAMETER,
+        QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER,
+        QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER,
+        QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER,
+        QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER,
+        QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER,
+        QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.review version 1 requires its exact closed parameter set",
+        )
+    handles = tuple(
+        parameters[name]
+        for name in (
+            QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER,
+            QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER,
+        )
+    )
+    if (
+        any(
+            parameter.value_type is not ScalarValueType.INTEGER
+            or type(parameter.value) is not int
+            or parameter.value <= 0
+            for parameter in handles
+        )
+        or handles[0].value == handles[1].value
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.review brokered handles must be distinct positive integers",
+        )
+    page = parameters[QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER]
+    if page.value_type is not ScalarValueType.UUID or type(page.value) is not UUID:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.review requires one UUID page identity",
+        )
+    revision = parameters[QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER]
+    integer_names = (
+        QUALITY_OCR_REVIEW_WIDTH_PARAMETER,
+        QUALITY_OCR_REVIEW_HEIGHT_PARAMETER,
+        QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER,
+        QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER,
+    )
+    if (
+        revision.value_type is not ScalarValueType.INTEGER
+        or type(revision.value) is not int
+        or not 0 <= revision.value <= MAX_SAFE_INTEGER
+        or any(
+            parameters[name].value_type is not ScalarValueType.INTEGER
+            or type(parameters[name].value) is not int
+            for name in integer_names
+        )
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.review requires bounded integer sample metadata",
+        )
+    width = cast(int, parameters[QUALITY_OCR_REVIEW_WIDTH_PARAMETER].value)
+    height = cast(int, parameters[QUALITY_OCR_REVIEW_HEIGHT_PARAMETER].value)
+    row_stride = cast(int, parameters[QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER].value)
+    sample_bytes = cast(int, parameters[QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER].value)
+    if (
+        not 1 <= width <= MAX_QUALITY_OCR_REVIEW_EDGE_PIXELS
+        or not 1 <= height <= MAX_QUALITY_OCR_REVIEW_EDGE_PIXELS
+        or width * height > MAX_QUALITY_OCR_REVIEW_PIXELS
+        or not width * 4 <= row_stride <= width * 4 + MAX_QUALITY_OCR_REVIEW_ROW_PADDING_BYTES
+        or sample_bytes != row_stride * height
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.review sample geometry and byte count must agree",
+        )
+    for name in (
+        QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER,
+        QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER,
+    ):
+        parameter = parameters[name]
+        if (
+            parameter.value_type is not ScalarValueType.TOKEN
+            or type(parameter.value) is not str
+            or re.fullmatch(r"sha256-[0-9a-f]{64}", parameter.value) is None
+        ):
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.parameters",
+                "ocr.review digests must be lowercase SHA-256 values",
+            )
+    language = parameters[QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER]
+    profile = parameters[QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER]
+    if (
+        language.value_type is not ScalarValueType.TOKEN
+        or type(language.value) is not str
+        or language.value not in QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_VALUES
+        or profile.value_type is not ScalarValueType.TOKEN
+        or profile.value != QUALITY_OCR_REVIEW_PROFILE_ID_VALUE
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "ocr.review configuration identifiers must be closed version-1 tokens",
+        )
+    limits = payload.requested_limits
+    ppm_bytes = 32 + width * height * 3
+    if (
+        limits.page_count != 1
+        or limits.pixel_count < width * height
+        or not 1 <= limits.output_bytes <= MAX_QUALITY_OCR_REVIEW_TSV_BYTES
+        or sample_bytes > limits.memory_bytes
+        or limits.temporary_storage_bytes < sample_bytes + ppm_bytes + limits.output_bytes
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "ocr.review limits cannot admit the exact sample and bounded OCR output",
+        )
+
+
+def quality_ocr_review_page_id(payload: OperationStartPayload) -> UUID:
+    """Return the page UUID from an already validated OCR-review start."""
+
+    validate_quality_ocr_review_start(payload)
+    for parameter in payload.parameters:
+        if parameter.name == QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER:
+            if parameter.value_type is ScalarValueType.UUID and type(parameter.value) is UUID:
+                return parameter.value
+            break
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "ocr.review page identity is unavailable",
+    )
+
+
+def validate_quality_ocr_review_result(payload: OperationResultPayload) -> None:
+    """Require OCR-review results to remain out-of-band and object-free."""
+
+    if payload.outputs:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "ocr.review cannot publish document objects",
         )
 
 

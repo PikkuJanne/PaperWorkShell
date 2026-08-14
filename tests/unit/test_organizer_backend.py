@@ -32,6 +32,17 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
+from paperworkshell.app.quality_analysis import (
+    QualityAnalysisCancellationProbe,
+    QualityAnalysisError,
+    QualityAnalysisErrorCode,
+    QualityAnalysisProgress,
+    QualityAnalysisProgressPhase,
+    QualityAnalysisProgressSink,
+    QualityAnalysisRequest,
+    QualityPageReviewKind,
+    QualityReviewSnapshot,
+)
 from paperworkshell.app.scan_review import (
     ScanReviewError,
     ScanReviewErrorCode,
@@ -86,6 +97,9 @@ from paperworkshell.domain.page_operations import (
 )
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
+from paperworkshell.domain.quality_analysis import (
+    DEFAULT_QUALITY_ANALYSIS_PROFILE,
+)
 from paperworkshell.domain.recovery import StartupRecoveryResult
 from paperworkshell.domain.source_ingest import SourceImportResult
 
@@ -395,6 +409,50 @@ class _Thumbnails:
         return self.results
 
 
+class _QualityAnalysis:
+    def __init__(
+        self,
+        *,
+        profile_id: str = DEFAULT_QUALITY_ANALYSIS_PROFILE.profile_id,
+        profile_sha256: str = DEFAULT_QUALITY_ANALYSIS_PROFILE.profile_sha256,
+    ) -> None:
+        self.requests: list[QualityAnalysisRequest] = []
+        self.cancellation_seen: QualityAnalysisCancellationProbe | None = None
+        self.progress_seen: QualityAnalysisProgressSink | None = None
+        self.result_factory: Callable[[QualityAnalysisRequest], object] | None = None
+        self.profile_id = profile_id
+        self.profile_sha256 = profile_sha256
+
+    def analyze(
+        self,
+        request: QualityAnalysisRequest,
+        *,
+        cancellation: QualityAnalysisCancellationProbe | None = None,
+        progress: QualityAnalysisProgressSink | None = None,
+    ) -> QualityReviewSnapshot:
+        self.requests.append(request)
+        self.cancellation_seen = cancellation
+        self.progress_seen = progress
+        if progress is not None and request.pages:
+            progress(
+                QualityAnalysisProgress(
+                    QualityAnalysisProgressPhase.PREVIEWING,
+                    0,
+                    len(request.pages),
+                )
+            )
+        if self.result_factory is not None:
+            return cast(QualityReviewSnapshot, self.result_factory(request))
+        return QualityReviewSnapshot(
+            case_id=request.case_id,
+            manifest_revision=request.manifest_revision,
+            page_ids=request.page_ids,
+            findings=(),
+            profile_id=self.profile_id,
+            profile_sha256=self.profile_sha256,
+        )
+
+
 def _review_metadata() -> ImagePageMetadata:
     return ImagePageMetadata(
         source_format=ImageSourceFormat.PNG,
@@ -455,6 +513,7 @@ def _backend(
     *,
     close_resources: Callable[[], None] = lambda: None,
     ocr_languages: OcrLanguageManager | None = None,
+    quality_analysis: _QualityAnalysis | None = None,
 ) -> tuple[OrganizerBackend, _Repository, _Lifecycle, _SourceIngest, _Thumbnails]:
     repository = _Repository(document)
     lifecycle = _Lifecycle(repository)
@@ -468,6 +527,7 @@ def _backend(
             thumbnails,
             close_resources=close_resources,
             ocr_languages=ocr_languages,
+            quality_analysis=quality_analysis,
         ),
         repository,
         lifecycle,
@@ -1329,6 +1389,183 @@ def test_thumbnail_subset_rejects_duplicates_unknown_order_and_over_cap() -> Non
 
 def test_default_thumbnail_deadline_helper_remains_service_capped() -> None:
     assert _default_organizer_preview_timeout(31) == MAX_PAGE_PREVIEW_TIMEOUT_SECONDS
+
+
+def test_quality_review_binds_saved_revision_and_current_page_intent_without_mutation() -> None:
+    quality = _QualityAnalysis()
+    backend, repository, _, _, thumbnails = _backend(
+        _document(page_count=1, include_image=True),
+        quality_analysis=quality,
+    )
+    state = backend.open_case(CASE_ID)
+    backend.rotate_clockwise(IMAGE_PAGE_ID)
+    state = backend.flush_autosave()
+    before_document = copy_manifest_document(repository.current.document)
+    before_save_calls = repository.save_calls
+
+    def cancellation() -> bool:
+        return False
+
+    progress: list[QualityAnalysisProgress] = []
+    progress_callback = progress.append
+
+    snapshot = backend.analyze_quality(
+        expected_case_id=CASE_ID,
+        expected_revision=cast(int, state.revision),
+        cancellation=cancellation,
+        progress=progress_callback,
+    )
+
+    assert snapshot.page_ids == (PAGE_IDS[0], IMAGE_PAGE_ID)
+    assert len(quality.requests) == 1
+    request = quality.requests[0]
+    assert request.case_id == CASE_ID
+    assert request.manifest_revision == state.revision
+    assert tuple(page.kind for page in request.pages) == (
+        QualityPageReviewKind.PDF,
+        QualityPageReviewKind.IMAGE,
+    )
+    assert request.pages[0].pdf_rotation is PdfRenderRotation.DEGREES_0
+    assert request.pages[1].image_intent is not None
+    assert request.pages[1].image_intent.additional_rotation is ImageQuarterTurn.DEGREES_90
+    assert quality.cancellation_seen is cancellation
+    assert quality.progress_seen is progress_callback
+    assert repository.save_calls == before_save_calls
+    assert repository.current.document == before_document
+    assert thumbnails.requests == ()
+    assert backend.state == state
+
+
+def test_quality_review_rejects_stale_or_unsaved_state_before_analysis() -> None:
+    quality = _QualityAnalysis()
+    backend, _, _, _, _ = _backend(
+        _document(page_count=1),
+        quality_analysis=quality,
+    )
+    state = backend.open_case(CASE_ID)
+
+    with pytest.raises(QualityAnalysisError) as wrong_case:
+        backend.analyze_quality(
+            expected_case_id=UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"),
+            expected_revision=cast(int, state.revision),
+        )
+    assert wrong_case.value.code is QualityAnalysisErrorCode.STALE
+
+    with pytest.raises(QualityAnalysisError) as wrong_revision:
+        backend.analyze_quality(
+            expected_case_id=CASE_ID,
+            expected_revision=cast(int, state.revision) + 1,
+        )
+    assert wrong_revision.value.code is QualityAnalysisErrorCode.STALE
+
+    backend.rotate_clockwise(PAGE_IDS[0])
+    with pytest.raises(QualityAnalysisError) as save_pending:
+        backend.analyze_quality(
+            expected_case_id=CASE_ID,
+            expected_revision=cast(int, state.revision),
+        )
+    assert save_pending.value.code is QualityAnalysisErrorCode.SAVE_PENDING
+    assert quality.requests == []
+
+
+def test_quality_review_rejects_reentrant_page_change_and_invalid_service_binding() -> None:
+    quality = _QualityAnalysis()
+    backend, _, _, _, _ = _backend(
+        _document(page_count=1),
+        quality_analysis=quality,
+    )
+    state = backend.open_case(CASE_ID)
+
+    def mutate_on_progress(_progress: QualityAnalysisProgress) -> None:
+        backend.rotate_clockwise(PAGE_IDS[0])
+
+    with pytest.raises(QualityAnalysisError) as changed:
+        backend.analyze_quality(
+            expected_case_id=CASE_ID,
+            expected_revision=cast(int, state.revision),
+            progress=mutate_on_progress,
+        )
+    assert changed.value.code is QualityAnalysisErrorCode.STALE
+
+    backend.flush_autosave()
+    current = backend.state
+    quality.result_factory = lambda request: QualityReviewSnapshot(
+        case_id=request.case_id,
+        manifest_revision=request.manifest_revision,
+        page_ids=(),
+        findings=(),
+        profile_id=DEFAULT_QUALITY_ANALYSIS_PROFILE.profile_id,
+        profile_sha256=DEFAULT_QUALITY_ANALYSIS_PROFILE.profile_sha256,
+    )
+    with pytest.raises(QualityAnalysisError) as invalid:
+        backend.analyze_quality(
+            expected_case_id=CASE_ID,
+            expected_revision=cast(int, current.revision),
+        )
+    assert invalid.value.code is QualityAnalysisErrorCode.RESULT_INVALID
+
+
+def test_quality_service_profile_authority_is_validated_and_cannot_be_forged() -> None:
+    with pytest.raises(QualityAnalysisError) as bad_profile:
+        _backend(
+            _document(page_count=1),
+            quality_analysis=_QualityAnalysis(profile_id="bad id"),
+        )
+    assert bad_profile.value.code is QualityAnalysisErrorCode.MODEL_INVALID
+
+    quality = _QualityAnalysis()
+    backend, _, _, _, _ = _backend(
+        _document(page_count=1),
+        quality_analysis=quality,
+    )
+    state = backend.open_case(CASE_ID)
+    quality.result_factory = lambda request: QualityReviewSnapshot(
+        case_id=request.case_id,
+        manifest_revision=request.manifest_revision,
+        page_ids=request.page_ids,
+        findings=(),
+        profile_id="forged-quality-v1",
+        profile_sha256="f" * 64,
+    )
+
+    with pytest.raises(QualityAnalysisError) as forged:
+        backend.analyze_quality(
+            expected_case_id=CASE_ID,
+            expected_revision=cast(int, state.revision),
+        )
+
+    assert forged.value.code is QualityAnalysisErrorCode.RESULT_INVALID
+
+
+def test_quality_review_rebuilds_adapter_error_without_forwarding_mutable_message() -> None:
+    quality = _QualityAnalysis()
+    backend, _, _, _, _ = _backend(
+        _document(page_count=1),
+        quality_analysis=quality,
+    )
+    state = backend.open_case(CASE_ID)
+    canary = "private OCR text at C:\\private\\source.png"
+
+    def fail(_request: QualityAnalysisRequest) -> object:
+        error = QualityAnalysisError(
+            QualityAnalysisErrorCode.PREVIEW_FAILED,
+            "quality.preview_service",
+        )
+        error.safe_message = canary
+        raise error
+
+    quality.result_factory = fail
+
+    with pytest.raises(QualityAnalysisError) as rebuilt:
+        backend.analyze_quality(
+            expected_case_id=CASE_ID,
+            expected_revision=cast(int, state.revision),
+        )
+
+    assert rebuilt.value.code is QualityAnalysisErrorCode.PREVIEW_FAILED
+    assert rebuilt.value.safe_message != canary
+    assert canary not in str(rebuilt.value)
+    assert canary not in repr(rebuilt.value)
 
 
 def test_restart_reconstructs_saved_projection_without_session_undo() -> None:

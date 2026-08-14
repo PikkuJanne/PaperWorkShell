@@ -204,7 +204,18 @@ def test_composition_registers_only_searchable_capability_and_shares_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    drain_calls: list[str] = []
     monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
+    monkeypatch.setattr(
+        composition_module,
+        "drain_windows_bounded_output_cleanup",
+        lambda: drain_calls.append("output"),
+    )
+    monkeypatch.setattr(
+        composition_module,
+        "drain_windows_result_pipe_cleanup",
+        lambda: drain_calls.append("pipe"),
+    )
     gate = HeavyOperationCoordinator(1)
     composition = create_searchable_pdf_export_worker_composition(
         _config(tmp_path),
@@ -232,6 +243,7 @@ def test_composition_registers_only_searchable_capability_and_shares_gate(
     assert composition.closed
     assert exporter.revoked
     assert worker.terminate_calls == 1
+    assert drain_calls == ["output", "pipe"]
 
 
 def test_composition_rejects_a_different_application_gate(tmp_path: Path) -> None:

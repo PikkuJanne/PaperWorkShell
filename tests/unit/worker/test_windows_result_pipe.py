@@ -140,3 +140,70 @@ def test_failed_local_writer_close_retains_authority_for_context_cleanup(
         assert not _handle_is_open(writer)
     finally:
         channel.close()
+
+
+@pytest.mark.parametrize("failed_handle", [11, 22])
+def test_result_pipe_close_retains_each_failed_handle_and_retries_independently(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_handle: int,
+) -> None:
+    failed_once = False
+    calls: list[int] = []
+
+    def close_handle(handle: int) -> bool:
+        nonlocal failed_once
+        calls.append(handle)
+        if handle == failed_handle and not failed_once:
+            failed_once = True
+            return False
+        return True
+
+    monkeypatch.setattr(broker_module, "_close_handle", close_handle)
+    channel = WindowsResultPipe(11, 22)
+
+    with pytest.raises(PdfInspectionError) as rejected:
+        channel.close()
+
+    assert rejected.value.code is PdfInspectionErrorCode.INTERNAL_ERROR
+    assert rejected.value.context == "broker.pipe_cleanup"
+    assert calls[:2] == [22, 11]
+    assert channel._write_handle == (22 if failed_handle == 22 else 0)
+    assert channel._read_handle == (11 if failed_handle == 11 else 0)
+    assert broker_module._PIPE_CLEANUP_QUARANTINE == [channel]
+
+    channel.close()
+    calls_after_success = tuple(calls)
+    channel.close()
+
+    assert channel._closed
+    assert channel._write_handle == channel._read_handle == 0
+    assert tuple(calls) == calls_after_success
+    assert broker_module._PIPE_CLEANUP_QUARANTINE == []
+
+
+def test_result_pipe_context_retains_failed_cleanup_and_refuses_new_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(broker_module, "_close_handle", lambda _handle: False)
+    channel = WindowsResultPipe(11, 22)
+
+    with pytest.raises(PdfInspectionError):
+        with channel:
+            pass
+
+    assert broker_module._PIPE_CLEANUP_QUARANTINE == [channel]
+    monkeypatch.setattr(
+        broker_module,
+        "_kernel32",
+        lambda: (_ for _ in ()).throw(AssertionError("allocation must remain blocked")),
+    )
+
+    with pytest.raises(PdfInspectionError) as rejected:
+        WindowsResultPipe.create()
+
+    assert rejected.value.context == "broker.pipe_cleanup_pending"
+    assert broker_module._PIPE_CLEANUP_QUARANTINE == [channel]
+
+    monkeypatch.setattr(broker_module, "_close_handle", lambda _handle: True)
+    broker_module.drain_windows_result_pipe_cleanup()
+    assert broker_module._PIPE_CLEANUP_QUARANTINE == []

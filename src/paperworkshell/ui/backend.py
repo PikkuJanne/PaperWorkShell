@@ -19,6 +19,12 @@ from paperworkshell.app.page_previews import (
     PagePreviewErrorCode,
     PagePreviewProgress,
 )
+from paperworkshell.app.quality_analysis import (
+    QualityAnalysisError,
+    QualityAnalysisErrorCode,
+    QualityAnalysisProgress,
+    QualityReviewSnapshot,
+)
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewError,
@@ -123,6 +129,20 @@ def sanitize_ui_failure(
 ) -> UiFailure:
     """Map only known typed failures; never stringify an unknown exception."""
 
+    if type(error) is QualityAnalysisError:
+        try:
+            rebuilt = QualityAnalysisError(error.code, error.context)
+        except BaseException:
+            rebuilt = QualityAnalysisError(
+                QualityAnalysisErrorCode.INTERNAL_ERROR,
+                "quality.operation",
+            )
+        return UiFailure(
+            code=rebuilt.code.value,
+            message=rebuilt.safe_message,
+            retryable=True,
+            operation_id=operation_id,
+        )
     if isinstance(error, _KNOWN_FAILURES):
         return UiFailure(
             code=error.code.value,
@@ -156,6 +176,7 @@ class OrganizerBackendWorker(QObject):
     ocr_languages_failed = Signal(int, object)
     state_changed = Signal(object)
     thumbnails_ready = Signal(int, int, object)
+    quality_review_ready = Signal(int, int, object)
     scan_review_preview_ready = Signal(int, int, object)
     scan_review_started = Signal(int, object)
     scan_review_start_failed = Signal(int, object)
@@ -339,6 +360,74 @@ class OrganizerBackendWorker(QObject):
             )
 
         self._run_long(operation_id, "Preview", action)
+
+    @Slot(int, int, object, int, object)
+    def analyze_quality(
+        self,
+        operation_id: int,
+        generation: int,
+        expected_case_id: object,
+        expected_revision: int,
+        cancellation: object,
+    ) -> None:
+        """Analyze one exact saved organizer revision away from the GUI thread."""
+
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(generation) is not int
+                or generation <= 0
+                or type(expected_case_id) is not UUID
+                or type(expected_revision) is not int
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            before = backend.state
+            if (
+                before.case_id != expected_case_id
+                or before.revision != expected_revision
+                or before.autosave_pending
+            ):
+                raise QualityAnalysisError(
+                    QualityAnalysisErrorCode.STALE,
+                    "quality.ui_bridge_state",
+                )
+            snapshot = backend.analyze_quality(
+                expected_case_id=expected_case_id,
+                expected_revision=expected_revision,
+                cancellation=cancellation.cancelled,
+                progress=lambda value: self._quality_progress(operation_id, value),
+            )
+            after = backend.state
+            if (
+                type(snapshot) is not QualityReviewSnapshot
+                or snapshot.case_id != before.case_id
+                or snapshot.manifest_revision != before.revision
+                or snapshot.page_ids != tuple(page.page_id for page in before.pages)
+                or after != before
+            ):
+                raise QualityAnalysisError(
+                    QualityAnalysisErrorCode.RESULT_INVALID,
+                    "quality.ui_bridge_result",
+                )
+            self.quality_review_ready.emit(operation_id, generation, snapshot)
+            finding_count = len(snapshot.findings)
+            affected_page_count = len({finding.page_id for finding in snapshot.findings})
+            if finding_count:
+                finding_noun = "signal" if finding_count == 1 else "signals"
+                page_noun = "page" if affected_page_count == 1 else "pages"
+                message = (
+                    f"Page quality check finished. {finding_count} review {finding_noun} on "
+                    f"{affected_page_count} {page_noun}. These automatic suggestions need your "
+                    "review."
+                )
+            else:
+                message = (
+                    "Page quality check finished. No review signals were found by these limited "
+                    "checks. Review the pages yourself before export."
+                )
+            self.operation_status_changed.emit(operation_id, message)
+
+        self._run_long(operation_id, "Page quality check", action)
 
     @Slot(int, object, object)
     def begin_scan_review(
@@ -739,6 +828,18 @@ class OrganizerBackendWorker(QObject):
             )
         )
 
+    def _quality_progress(self, operation_id: int, progress: QualityAnalysisProgress) -> None:
+        self.progress_changed.emit(
+            UiProgress(
+                operation="Page quality check",
+                phase=progress.phase.value.replace("_", " "),
+                completed=progress.completed_pages,
+                total=progress.total_pages,
+                cancelable=True,
+                operation_id=operation_id,
+            )
+        )
+
     def _scan_review_progress(self, operation_id: int, progress: PagePreviewProgress) -> None:
         self.scan_review_progress_changed.emit(
             UiProgress(
@@ -832,6 +933,17 @@ class OrganizerBackendWorker(QObject):
                     self.failed.emit(sanitize_ui_failure(error))
                 return
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
+        except QualityAnalysisError as error:
+            if error.code is QualityAnalysisErrorCode.CANCELLED:
+                if operation_id is not None:
+                    self.operation_cancelled.emit(
+                        operation_id,
+                        "Page quality check cancelled. No review results were applied.",
+                    )
+                else:
+                    self.failed.emit(sanitize_ui_failure(error))
+                return
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
         except BaseException as error:
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
 
@@ -899,6 +1011,7 @@ class OrganizerBackendCommands(QObject):
     close_case_requested = Signal()
     import_requested = Signal(int, object, str, object)
     thumbnails_requested = Signal(int, int, object, int, int, object)
+    quality_review_requested = Signal(int, int, object, int, object)
     scan_review_begin_requested = Signal(int, object, object)
     scan_review_preview_requested = Signal(int, int, object, object, int, int, object)
     scan_review_apply_requested = Signal(int, object)
@@ -925,6 +1038,7 @@ class OrganizerBackendCommands(QObject):
         self.close_case_requested.connect(worker.close_case)
         self.import_requested.connect(worker.import_source)
         self.thumbnails_requested.connect(worker.get_thumbnails)
+        self.quality_review_requested.connect(worker.analyze_quality)
         self.scan_review_begin_requested.connect(worker.begin_scan_review)
         self.scan_review_preview_requested.connect(worker.get_scan_review_preview)
         self.scan_review_apply_requested.connect(worker.apply_scan_review)

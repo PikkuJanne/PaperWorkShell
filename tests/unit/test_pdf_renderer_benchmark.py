@@ -2059,6 +2059,10 @@ class PdfRendererBenchmarkWindowsChildTests(unittest.TestCase):
         self.assertEqual("a" * 40, manifest["repository_revision"])
         self.assertEqual(sorted(expected), [entry["path"] for entry in entries])
         self.assertEqual(expected, {entry["path"]: entry["sha256"] for entry in entries})
+        self.assertIn(
+            "code/src/paperworkshell/worker/protocol/operation_scope.py",
+            expected,
+        )
         self.assertNotIn(ROOT, self.resources.stage_root.parents)
         self.assertFalse(
             any(

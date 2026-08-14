@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
 
+from paperworkshell.worker._windows_broker import (
+    drain_windows_bounded_output_cleanup,
+    drain_windows_result_pipe_cleanup,
+)
 from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsProcessLauncher
 from paperworkshell.worker.client.client import WorkerClient
 from paperworkshell.worker.client.errors import (
@@ -195,8 +199,27 @@ class SearchablePdfExportWorkerComposition(
         self._require_owner()
         if self._closed:
             return
-        self._exporter._revoke_permanently()
-        self._worker.terminate()
+        pending: BaseException | None = None
+        try:
+            self._exporter._revoke_permanently()
+        except BaseException as error:
+            pending = error
+        try:
+            self._worker.terminate()
+        except BaseException as error:
+            if pending is None:
+                pending = error
+        for drain in (
+            drain_windows_bounded_output_cleanup,
+            drain_windows_result_pipe_cleanup,
+        ):
+            try:
+                drain()
+            except BaseException as error:
+                if pending is None:
+                    pending = error
+        if pending is not None:
+            raise pending
         self._closed = True
 
     def __enter__(self) -> Self:

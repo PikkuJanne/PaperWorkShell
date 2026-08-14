@@ -46,6 +46,10 @@ from paperworkshell.worker.protocol.bootstrap import (
     encode_bootstrap_grant,
 )
 from paperworkshell.worker.protocol.models import MAX_SAFE_INTEGER
+from paperworkshell.worker.protocol.operation_scope import (
+    PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT,
+    WorkerOperationScope,
+)
 
 if TYPE_CHECKING:
     from paperworkshell.worker.client.process import (
@@ -1413,6 +1417,7 @@ class WindowsLaunchConfig:
     qpdf_executable: Path | None = None
     tesseract_executable: Path | None = None
     tessdata_root: Path | None = None
+    operation_scope: WorkerOperationScope = WorkerOperationScope.ALL
     _tesseract_runtime_root: Path | None = field(
         default=None,
         init=False,
@@ -1425,6 +1430,12 @@ class WindowsLaunchConfig:
         qpdf_paths = () if self.qpdf_executable is None else (self.qpdf_executable,)
         tesseract_paths = () if self.tesseract_executable is None else (self.tesseract_executable,)
         tessdata_paths = () if self.tessdata_root is None else (self.tessdata_root,)
+        if type(self.operation_scope) is not WorkerOperationScope:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.operation_scope",
+                "The worker operation scope is outside the closed launch allowlist.",
+            )
         if (self.tesseract_executable is None) != (self.tessdata_root is None):
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
@@ -6229,6 +6240,7 @@ class WindowsProcessLauncher:
             qpdf_executable=self._config.qpdf_executable,
             tesseract_executable=self._config.tesseract_executable,
             tessdata_root=self._config.tessdata_root,
+            operation_scope=self._config.operation_scope,
         )
         create_process = _kernel32().CreateProcessW
         create_process.argtypes = (
@@ -6303,6 +6315,7 @@ def _minimal_environment_block(
     qpdf_executable: Path | None = None,
     tesseract_executable: Path | None = None,
     tessdata_root: Path | None = None,
+    operation_scope: WorkerOperationScope = WorkerOperationScope.ALL,
 ) -> ctypes.Array[ctypes.c_wchar]:
     get_windows_directory = _kernel32().GetWindowsDirectoryW
     get_windows_directory.argtypes = (wintypes.LPWSTR, wintypes.UINT)
@@ -6324,6 +6337,14 @@ def _minimal_environment_block(
         "TMP": os.fspath(temp),
         "WINDIR": buffer.value,
     }
+    if type(operation_scope) is not WorkerOperationScope:
+        _reject(
+            WindowsLaunchErrorCode.ISOLATION_UNAVAILABLE,
+            "environment.operation_scope",
+            "Windows could not construct the closed worker operation scope.",
+        )
+    if operation_scope is not WorkerOperationScope.ALL:
+        entries[PWS_WORKER_OPERATION_SCOPE_ENVIRONMENT] = operation_scope.value
     if (tesseract_executable is None) != (tessdata_root is None):
         _reject(
             WindowsLaunchErrorCode.ISOLATION_UNAVAILABLE,

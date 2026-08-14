@@ -3,6 +3,7 @@
 - Status: PWS-0204 implementation contract
 - Task: PWS-0204
 - Extension: PWS-0206 [verified searchable mixed-document output](searchable-mixed-output.md)
+- Review extension: PWS-0207 [advisory page-quality review](quality-review.md)
 - Decisions: PWS-D009, PWS-D012, PWS-D013, PWS-D016, PWS-D027, PWS-D034,
   PWS-D036, PWS-D038
 - Worker lifecycle: [Restricted worker lifecycle contract](worker-lifecycle.md)
@@ -26,8 +27,12 @@ not invoke `ocr.process` or consume this broker-owned section; it independently 
 and checks its private page result before publication. `ocr.process` version 1 and its report
 meaning remain unchanged.
 
-PWS-0204 does not expose recognized text or confidence values. Later review findings must use
-“Needs review” and remain subject to user confirmation; they may not mark a checklist requirement
+PWS-0204 does not expose recognized text, word counts, or confidence values. PWS-0207 adds the
+separate `ocr.review` version-1 operation for the exact current bounded quality raster; it does not
+change `ocr.process` or infer confidence from OCR/searchable-PDF success. The review worker
+privately inspects bounded Tesseract stdout TSV, discards recognized bytes and geometry, and emits
+only a page-correlated terminal state, word count, and integer mean confidence. The organizer
+presents any resulting finding as **Needs review**; it cannot mark a checklist requirement
 complete.
 
 ## Trust and authority flow
@@ -58,6 +63,30 @@ The worker never receives a case path, case-directory ACL, manifest, journal, hi
 persistent staging file, external destination, or publication authority. A case UUID or source
 UUID is correlation data, never filesystem authority.
 
+### PWS-0207 quality-review authority
+
+```mermaid
+flowchart LR
+    Sample["Exact current opaque RGBA8 sample"] == "read-only volatile section" ==> Broker["Trusted quality OCR broker"]
+    Broker == "sample reader + report writer" ==> Worker["One-shot restricted worker"]
+    Worker --> Temp["One private bounded PPM"]
+    Worker == "fixed recognition argv" ==> Tesseract["Tesseract 5.5.3 child"]
+    Tesseract == "bounded stdout TSV" ==> Worker
+    Worker == "content-free report" ==> Pipe["Bounded result pipe"]
+    Broker --> Stop["Terminate complete Job tree"]
+    Stop --> Validate["Authenticate report bindings"]
+    Pipe --> Validate
+```
+
+The additive `ocr.review` contract has no protocol input object or source handle. The trusted
+broker copies only the already validated at-most-256-by-256 current sample into an anonymous
+pagefile-backed section and duplicates read-only section and write-only result-pipe rights into a
+fresh worker. That worker writes one private random PPM, performs one recognition invocation, and
+returns no protocol output object. After the complete Job tree terminates, the broker reads the
+canonical report and validates operation, case, manifest revision, page, sample/presentation
+digests, selected language/profile, status, count, confidence, and engine version. It exposes no
+section, raster, path, TSV, or OCR text to the application.
+
 ## Layer and component ownership
 
 | Component | Responsibility | Boundary rule |
@@ -71,6 +100,11 @@ UUID is correlation data, never filesystem authority.
 | `worker.client.tesseract_runtime` | Authenticate the packaged manifest and exact runtime file closure before launch authority is granted | Standard-library-only launcher-side admission; no runtime discovery through `PATH`, registry, current directory, or user profile |
 | `app.ocr_languages` | Present path-free local availability and retain one closed language-set selection | Local-only discovery; no source paths, download action, or arbitrary engine expression |
 | `worker.ocr_composition` | Create the OCR-only launcher/client/broker and share the application heavy-operation gate | Exactly one worker plus at most one active child and one heavy document operation |
+| `domain.quality_ocr_review` | Define the bounded sample request, canonical content-free report, terminal states, and closed failures | Standard-library-only; pixels/digests are redacted from representations and no recognized text field exists |
+| `app.quality_ocr_review` | Select the authenticated process-session language set and translate one exact worker report into an analyzer fact | Expected engine/language unavailability becomes a failed review fact; safety, infrastructure, cancellation, deadline, and result-integrity failures remain terminal |
+| `worker.quality_ocr_review_broker` | Own the volatile sample section/result pipe, one-shot worker lifecycle, resource gate, and complete report correlation | Terminates the worker before report read; no source, case path, or persistent-writer authority |
+| `worker.quality_ocr_review_operation` | Validate/adopt the sample handle, write/remove private PPM, run bounded Tesseract TSV recognition, and emit the canonical report | Worker-only numeric aggregation; recognized bytes/geometry and stderr are discarded |
+| `worker.quality_ocr_review_composition` | Retain capability-scoped launch configuration while creating one fresh worker generation per page | Same authenticated runtime authority and application heavy-operation gate; at most worker plus one child concurrently |
 
 Package initializers remain passive. UI/application code does not import OCRmyPDF, Tesseract,
 `pikepdf`, or an OCR adapter. The desktop composition root may expose only the typed broker port.
@@ -100,6 +134,18 @@ selection, which is then carried explicitly through the request, plan, wire payl
 and report. An explicit ID/profile remains deterministic and is preflighted exactly. Selection is
 not persisted across application restarts, and no unavailable selection falls back to English.
 
+The optional page-quality composition is deliberately lazy. Backend startup creates only its typed
+processor seam; it performs no optional OCR runtime admission or worker launch. On the first
+explicit quality review with an authenticated available selection, the backend owner thread checks
+cancellation/deadline, constructs and adopts the capability-scoped composition, and checks both
+again before launching a page worker. Runtime inventory/admission is fixed-work and bounded in
+scope but has no elapsed-time guarantee, so these checks do not turn it into a promised
+interruptible timed step. Only an expected missing/unavailable local runtime state is latched for
+that process session to avoid repeating expensive work per page or review. Authority, isolation,
+launch, process, transport, protocol, resource-limit, cleanup, and malformed-result failures remain
+terminal. Restart creates a fresh authority and admission attempt; saving a different session
+language selection clears accepted quality findings and returns the UI to **Not checked**.
+
 The `searchable-pdf-v1` engine profile is:
 
 | Setting | Exact value |
@@ -117,6 +163,22 @@ The `searchable-pdf-v1` engine profile is:
 The profile digest changes when one of these semantic settings or either engine version changes.
 Such a change requires reviewed dependency/profile evidence; a version-looking string alone is
 not sufficient.
+
+The separate page-quality OCR profile token is `quality-ocr-review-v1`. It converts only the exact
+opaque current sample to a private binary PPM and invokes the admitted executable with this closed
+shape:
+
+```text
+tesseract <private-random-input.ppm> stdout -l <closed-language-codes> --psm 6 tsv
+```
+
+The private input path is generated by the worker and cannot contain a source filename or user
+value. `<closed-language-codes>` is derived only from the three language-set tokens above, never
+copied from caller text. One successful TSV parse counts only word-level rows with a nonnegative
+numeric confidence and a bounded non-whitespace final field. It never decodes or returns that
+field. Confidence is converted to integer milli-units without floating point; zero accepted words
+is `no_text`, while `succeeded` requires at least one word and a mean confidence. This profile is a
+review heuristic over a resampled 256-pixel presentation, not an OCR-accuracy claim.
 
 OCRmyPDF plugin discovery is allowlist-only. It loads the fixed concurrency, default-filter,
 optimization, and pypdfium built-ins plus PaperWorkShell's Tesseract/progress plugin. It does not
@@ -148,7 +210,8 @@ storage transport; iSCSI-, SAN-, or VHD/VHDX-backed volumes can satisfy it. A mi
 optional file is simply unavailable; a present but changed file invalidates the runtime. Admission
 is repeated before the launcher grants AppContainer access, so failure occurs before process
 creation. Version and language probes use the same boundary before the host advertises
-`ocr.process`.
+`ocr.process` or `ocr.review`; a fresh `ocr.review` worker repeats those fixed probes before its
+one recognition invocation.
 
 The runtime authenticates staged bytes, not upstream distribution signatures. Packaging must
 validate each detached MSYS2 signature against the reviewed signer key before extraction. Neither
@@ -173,8 +236,11 @@ Tesseract launch uses:
 The worker installs a process-creation audit hook before any optional engine is loaded. It rejects
 shell/spawn APIs and any `subprocess.Popen` event whose executable, argument zero, working
 directory, or child environment differs from the fixed launch authority. Tool stdout and stderr
-are merged into one byte-counted stream, retained only for bounded version/language probes, and
-otherwise discarded.
+are drained separately under one shared live byte budget per invocation. Version/language probe
+stdout is retained only within its bound. Ordinary recognition output is discarded. The sole additional retained
+shape is `ocr.review` TSV stdout for an exact private-PPM/closed-language/`--psm 6` invocation;
+stderr remains discarded, cannot contaminate the strict TSV parser, and neither stream enters an
+error or log.
 
 Before that immutable hook is installed, the host seeds Python's platform cache with only the
 already-proven Windows OS family. This prevents the standard library from attempting its ambient
@@ -220,6 +286,18 @@ report continuously measures every worker-private byte. The report limitation is
 the low-resource policy. A limit failure produces no candidate and cannot change an original or
 manifest.
 
+`ocr.review` has a separate, smaller private-storage contract. Production accepts one page,
+at most 65,536 pixels and a 256-pixel edge, at most 4,096 row-padding bytes, a 1 MiB shared
+Tesseract-output budget, a 4 MiB temporary-storage budget, a 60-second operation wall limit, and a
+45-second CPU limit capped again by the selected central `ResourcePolicy`. Before Tesseract runs,
+the worker checks private-temp capacity for the complete requested limit, writes exactly one random
+PPM beneath the authenticated private temp root, and validates opaque alpha while packing RGBA to
+RGB. TSV stays in bounded memory; no TSV file is created. Success, output limit, low-space/capacity
+refusal, cancellation, timeout, engine failure, and malformed output all take the PPM cleanup path;
+cleanup uncertainty is terminal and cannot publish a report. Focused evidence requires no runner
+call after capacity refusal, no leftover artifact for those injected failure paths, and a fresh
+successful retry after the refusal/output-limit path.
+
 ## Progress, cancellation, and terminal behavior
 
 Progress is a closed, content-free record containing only the operation UUID, phase, completed
@@ -237,6 +315,16 @@ complete one-shot worker Job before it reads the
 report or output section and before it releases source authority. A worker crash, malformed
 message/report, timeout, missing engine/language, cancellation-cleanup fault, or unconfirmed Job
 termination yields one stable sanitized failure and no candidate.
+
+For `ocr.review`, worker RPC progress remains only `processing/pages` with an exact total of one;
+the application exposes a content-free OCR-reviewing phase within the whole saved-revision review.
+Cancellation/deadline checks surround lazy construction, heavy-gate acquisition, worker ready,
+operation/result polling, TSV row parsing, private input writing/cleanup, report read, and final
+binding validation. The broker terminates the worker before report read on every page. Expected
+local engine/runtime absence, an unavailable selected language, or an engine-reported recognition
+failure becomes a failed OCR-review fact. Authority, isolation, launch, process, transport,
+protocol, cancellation, timeout, resource-limit, cleanup, malformed-output, and correlation
+failures remain terminal and cannot be presented as no signals found.
 
 ## Candidate validation and lifetime
 
@@ -280,6 +368,5 @@ constrained-resource gate.
 
 Additional deferrals are:
 
-- PWS-0207: OCR confidence and scan-quality review findings;
 - PWS-0801: final packaged dependency/SBOM/license-notice and release-input verification; and
 - PWS-0802/PWS-0803/PWS-0807: packaged-build installation, signing, and release-matrix evidence.

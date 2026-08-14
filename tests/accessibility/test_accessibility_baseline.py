@@ -16,6 +16,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QGroupBox,
     QLabel,
     QListView,
     QPushButton,
@@ -138,11 +139,32 @@ def test_core_controls_have_names_descriptions_and_no_drag_requirement() -> None
             "retryPreviewButton",
             "retrySaveButton",
             "retryCloseButton",
+            "qualityCheckButton",
+            "qualityGoToPageButton",
         ):
             button = window.findChild(QPushButton, object_name)
             assert button is not None
             assert button.accessibleName() or button.text()
             assert button.accessibleDescription()
+
+        quality_group = window.findChild(QGroupBox, "qualityReviewGroup")
+        quality_summary = window.findChild(QLabel, "qualityReviewSummary")
+        quality_findings = window.findChild(QListView, "qualityFindingsList")
+        assert quality_group is not None
+        assert quality_summary is not None
+        assert quality_findings is not None
+        assert quality_group.accessibleName() == "Page quality review"
+        assert "never complete a requirement" in quality_group.accessibleDescription()
+        assert quality_summary.accessibleName() == "Page quality review status"
+        assert quality_summary.wordWrap()
+        assert quality_summary.focusPolicy() is Qt.FocusPolicy.StrongFocus
+        assert quality_findings.accessibleName() == "Page quality findings"
+        assert "navigate without confirming or completing" in (
+            quality_findings.accessibleDescription()
+        )
+        assert not quality_findings.dragEnabled()
+        assert not quality_findings.acceptDrops()
+        assert quality_findings.dragDropMode() is QAbstractItemView.DragDropMode.NoDragDrop
 
 
 def test_keyboard_shortcuts_cover_core_page_actions() -> None:
@@ -582,7 +604,7 @@ def test_cleanup_shutdown_refusal_requires_typed_signal_and_retries_truthfully()
     app = _application()
     with _window() as (window, commands, worker):
         worker.initialized.emit()
-        worker.state_changed.emit(OrganizerViewState.empty())
+        worker.state_changed.emit(_state())
         app.processEvents()
         window._closing_requested = True
         window._set_controls_enabled(False)
@@ -605,6 +627,14 @@ def test_cleanup_shutdown_refusal_requires_typed_signal_and_retries_truthfully()
         assert window._retry_close_button.isVisible()
         assert window._retry_close_button.isEnabled()
         assert not window._retry_save_button.isVisible()
+        assert not window._controls_enabled
+        assert not window._create_case_button.isEnabled()
+        assert not window._import_button.isEnabled()
+        assert not window._ocr_language_button.isEnabled()
+        assert not window._quality_check_button.isEnabled()
+        assert not window._move_earlier_button.isEnabled()
+        assert not window._rotate_button.isEnabled()
+        assert not window._remove_button.isEnabled()
         assert app.focusWidget() is window._retry_close_button
 
         requested: list[bool] = []
@@ -868,6 +898,10 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
                 window._change_order_button,
                 window._undo_button,
                 window._redo_button,
+                window._quality_summary,
+                window._quality_check_button,
+                window._quality_findings_view,
+                window._quality_go_to_page_button,
                 window._status_surface,
                 window._cancel_button,
                 window._retry_save_button,

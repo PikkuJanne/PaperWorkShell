@@ -122,6 +122,7 @@ def test_composition_shares_exact_app_gate_and_requires_ocr_capability(
     config = _config(tmp_path)
     gate = HeavyOperationCoordinator(1)
     observed: dict[str, object] = {}
+    drain_calls: list[str] = []
 
     class FakeLauncher:
         def __init__(self, launch_config: object) -> None:
@@ -158,6 +159,16 @@ def test_composition_shares_exact_app_gate_and_requires_ocr_capability(
     monkeypatch.setattr(composition_module, "WindowsProcessLauncher", FakeLauncher)
     monkeypatch.setattr(composition_module, "WorkerClient", FakeWorker)
     monkeypatch.setattr(composition_module, "BrokeredOcrProcessor", FakeProcessor)
+    monkeypatch.setattr(
+        composition_module,
+        "drain_windows_bounded_output_cleanup",
+        lambda: drain_calls.append("output"),
+    )
+    monkeypatch.setattr(
+        composition_module,
+        "drain_windows_result_pipe_cleanup",
+        lambda: drain_calls.append("pipe"),
+    )
 
     composition = create_ocr_worker_composition(config, heavy_operations=gate)
 
@@ -171,6 +182,7 @@ def test_composition_shares_exact_app_gate_and_requires_ocr_capability(
     assert processor.revoked
     assert cast_fake_worker(observed["worker"]).terminated
     assert composition.closed
+    assert drain_calls == ["output", "pipe"]
 
 
 def cast_fake_worker(value: object) -> Any:

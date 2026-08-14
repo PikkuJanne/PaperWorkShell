@@ -55,6 +55,10 @@ source reader and one fixed-size volatile section mapping; only the broker can w
 cache staging. PWS-0204's separate OCR-only generation receives one immutable-source reader, one
 bounded volatile PDF-section writer, and one bounded report writer. It may start only the exact
 Tesseract child; the broker exposes no OCR text or persistent/searchable derivative.
+PWS-0207 serially reuses validated DF-PREVIEW snapshots and adds the narrower `ocr.review`
+version-1 worker authority: one bounded read-only volatile raster section and one write-only result
+pipe, with no document/source handle, case path, document object, or persistent writer. The
+accepted desktop result remains an ephemeral typed finding snapshot.
 
 ## Boundary inventory
 
@@ -349,6 +353,103 @@ The complete implementation contracts are the
 [before-and-after scan-review UI](../architecture/scan-review-ui.md).
 
 Primary threats: TM-001, TM-002, TM-003, TM-006, TM-011, TM-012, TM-022, TM-023.
+
+## DF-QUALITY-REVIEW — derive ephemeral advisory findings
+
+```mermaid
+flowchart LR
+    Person["Person starts Check page quality"] --> UI["Organizer UI"]
+    UI --> App["Saved-revision quality coordinator"]
+    App --> Preview["Serial mixed-preview service"]
+    Preview ==> PreviewWorker["Existing restricted preview worker"]
+    PreviewWorker == "validated opaque RGBA8" ==> Analyzer["Pure bounded integer analyzer"]
+    PreviewWorker == "same exact current sample" ==> Broker["Quality OCR broker"]
+    Broker == "read-only section + result pipe" ==> OcrWorker["One-shot restricted worker"]
+    OcrWorker --> Tesseract["Admitted local Tesseract"]
+    OcrWorker == "content-free correlated report" ==> Broker
+    Broker --> Analyzer
+    Analyzer --> Snapshot["Ephemeral typed review snapshot"]
+    Snapshot --> UI
+    UI --> Page["Keyboard page navigation and human review"]
+```
+
+1. The user explicitly starts the review. The organizer accepts only one exact saved case revision
+   with the complete current ordered page tuple and current PDF/image presentation intent. Pending
+   autosave, a stale expectation, case switch, or changed history rejects or invalidates the
+   request. The UI prevents a request when there are no active pages; the lower application model
+   still represents an exact empty snapshot without preview work. Starting or displaying a review
+   writes no manifest, journal, page history, checklist, confirmation, diagnostic, or export state.
+2. Preview production serially reuses DF-PREVIEW. A PDF contributes one current-rotation preview
+   bounded to 256 by 256 pixels. A JPEG/PNG contributes one 1-by-1 metadata result for validated
+   encoded dimensions, which is released before one current-intent preview bounded to 256 by 256
+   pixels. Complex source parsing and decoding remain in the restricted preview worker. This reuse
+   may populate DF-PREVIEW's existing bounded disposable cache; PWS-0207 adds no new
+   quality-specific cache or persistence surface.
+3. The application/domain boundary validates exact request/result correlation and opaque RGBA8
+   layout before simple integer analysis. Page processing is serial and releases page-scoped
+   sample/luminance state before the next preview. OCR review may create bounded transient copies
+   of that current sample in the broker section and worker, so “one page at a time” is not a
+   single-physical-buffer claim. One private 64-bit difference hash plus two bounded integer ratios
+   is retained for each earlier page only during this call. No sample, thumbnail, fingerprint, or
+   pixel/source digest enters the finding result or routine presentation; the non-content profile
+   configuration SHA-256 is carried for reproducibility.
+4. The `scan-quality-v1` profile uses integer thresholds and canonical configuration identity.
+   The exact configuration SHA-256 in each snapshot identifies profile settings, not document
+   content or executable code. Low-source-resolution applies only when an image result provides
+   validated encoded pixel dimensions; a PDF thumbnail cannot establish embedded-raster
+   resolution. Sideways projection may suggest 90/270-degree line-like content but cannot reliably
+   detect 180-degree rotation. These and every exact threshold are documented in the
+   [advisory quality-review contract](../architecture/quality-review.md).
+5. Duplicate comparison walks prior pages in active manifest order, keeps at most one duplicate
+   suggestion for the later page, stops at the earliest match, and checks cancellation at least
+   every 32 comparisons. The 4,096-page model cap, selected policy's stricter live limit (currently
+   1,000 pages), and one 3,600-second whole-review deadline bound the otherwise quadratic worst
+   case. The existing selected `ResourcePolicy`, one-heavy-operation gate, worker limits, cache
+   accounting/low-disk behavior, and network denial remain authoritative for preview production.
+6. PWS-0207's separate additive `ocr.review` version-1 producer does not change `ocr.process`.
+   Backend startup performs no optional OCR admission. With an authenticated available selected
+   session language set, the first explicit quality review constructs/adopts the capability-scoped
+   composition on the backend owner thread after cancellation/deadline checks. This local
+   inventory/admission work is bounded in scope but has no elapsed-time guarantee; the coordinator
+   checks cancellation/deadline again immediately afterward. Composition authority is reused, but
+   every page starts and terminates a fresh AppContainer/Job worker before report consumption.
+   The worker receives no protocol input objects or source handle: only an at-most-256-by-256 RGBA8
+   read-only pagefile section, a result-pipe writer, closed page/revision/layout/digest/language/
+   profile parameters, and one-page resource limits. It writes one private bounded PPM, performs
+   fixed `--version`/`--list-langs` admission probes and one recognition invocation with `--psm 6`,
+   and captures TSV on stdout while separately discarding stderr under one shared 1 MiB byte cap.
+   It parses only bounded numeric confidence/count facts, discards word bytes and geometry, removes
+   the PPM or fails on cleanup uncertainty, and returns an object-free canonical report bound to
+   operation, case, revision, page,
+   sample/presentation digests, selected language/profile, status, count, confidence, and engine
+   version. The broker terminates the whole worker tree before reading and authenticating that
+   report. Expected local engine/runtime absence, an unavailable language, or an engine-reported
+   recognition failure maps to a `failed` fact without claiming inspection. Only the expected
+   unavailable lazy-admission state is session-latched; restart creates a fresh authority/admission
+   attempt instead of retrying expensive work for every page. Authority, isolation, launch,
+   process, transport, protocol, resource-limit, cleanup, and malformed-result failures abort the
+   review and publish no snapshot. No TSV file, OCR text, page image, report, or finding is
+   intentionally or authoritatively persisted.
+7. Findings use closed codes, evidence kinds, bounded integers, fixed titles/remediation messages,
+   and **Likely**, **Suspected**, or **Needs review** qualifiers. They cannot apply edits, remove a
+   page, complete a requirement, or certify quality. A no-signal result means only that the limited
+   configured checks did not cross a threshold.
+8. The snapshot is accepted only after exact operation, generation, case, revision, page-order,
+   profile, and unchanged backend/UI-state validation. Cancellation, timeout, malformed output, or
+   stale state exposes no partial snapshot. A state change clears an accepted snapshot; saving a
+   new process-session OCR language selection specifically clears its findings and returns quality
+   state to `not checked`. The UI may queue exactly one quality request behind cancellation of an
+   ordinary preview and resumes normal previews after the quality operation drains. Worker
+   capacity/low-space refusal publishes no report or partial snapshot; private cleanup completes
+   and a fresh review can retry.
+9. Routine errors, progress, logs, and accessibility metadata contain only closed codes, internal
+   IDs, phases, counts, safe static wording, and permitted profile identity. They exclude pixels,
+   thumbnails, fingerprints, OCR/document text, filenames, full paths, metadata, digests, and raw
+   exceptions. The keyboard-accessible virtual findings list navigates to a page for human review;
+   it has no Resolve, Apply, or Mark complete action.
+
+Primary threats: TM-001, TM-002, TM-003, TM-004, TM-008, TM-009, TM-011, TM-012,
+TM-022, TM-023, TM-024, TM-028.
 
 ## DF-OCR — local cleanup and recognition
 

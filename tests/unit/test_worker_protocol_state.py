@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID
 
@@ -12,9 +13,24 @@ from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
+    QUALITY_OCR_REVIEW_CAPABILITY,
+    QUALITY_OCR_REVIEW_HEIGHT_PARAMETER,
+    QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER,
+    QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER,
+    QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER,
+    QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER,
+    QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER,
+    QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER,
+    QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER,
+    QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER,
+    QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER,
+    QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER,
+    QUALITY_OCR_REVIEW_SHA256_TOKEN_PREFIX,
+    QUALITY_OCR_REVIEW_WIDTH_PARAMETER,
     CancelDisposition,
     CancelReason,
     CapabilityDescriptor,
+    CaseObjectReference,
     ClosedReason,
     Direction,
     ErrorCategory,
@@ -32,14 +48,17 @@ from paperworkshell.worker.protocol.models import (
     ProgressStage,
     ProgressUnit,
     ProtocolEnvelope,
+    ReferenceArea,
     ResourceLimits,
     RetryAction,
+    ScalarValueType,
     SessionCapability,
     SessionClosedPayload,
     SessionHelloPayload,
     SessionReadyPayload,
     SessionShutdownPayload,
     ShutdownReason,
+    TaggedScalar,
     WorkerFaultPayload,
 )
 from paperworkshell.worker.protocol.state import ConversationPhase, ConversationState
@@ -58,6 +77,7 @@ START_REQUEST = _uuid(11)
 CANCEL_REQUEST = _uuid(12)
 SHUTDOWN_REQUEST = _uuid(13)
 OPERATION_ID = _uuid(20)
+QUALITY_PAGE_ID = _uuid(30)
 
 
 def _limits(value: int = 10) -> ResourceLimits:
@@ -69,6 +89,90 @@ def _limits(value: int = 10) -> ResourceLimits:
         output_bytes=value,
         page_count=value,
         pixel_count=value,
+    )
+
+
+def _quality_limits() -> ResourceLimits:
+    return ResourceLimits(
+        wall_time_ms=5_000,
+        cpu_time_ms=4_000,
+        memory_bytes=1_048_576,
+        temporary_storage_bytes=8_192,
+        output_bytes=4_096,
+        page_count=1,
+        pixel_count=16,
+    )
+
+
+def _quality_start_payload(*, page_id: UUID = QUALITY_PAGE_ID) -> OperationStartPayload:
+    digest = f"{QUALITY_OCR_REVIEW_SHA256_TOKEN_PREFIX}{'a' * 64}"
+    return OperationStartPayload(
+        QUALITY_OCR_REVIEW_CAPABILITY.capability_id,
+        QUALITY_OCR_REVIEW_CAPABILITY.capability_version,
+        (),
+        (
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER,
+                ScalarValueType.INTEGER,
+                101,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER,
+                ScalarValueType.INTEGER,
+                102,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER,
+                ScalarValueType.UUID,
+                page_id,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER,
+                ScalarValueType.INTEGER,
+                7,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_WIDTH_PARAMETER,
+                ScalarValueType.INTEGER,
+                4,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_HEIGHT_PARAMETER,
+                ScalarValueType.INTEGER,
+                4,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER,
+                ScalarValueType.INTEGER,
+                16,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER,
+                ScalarValueType.INTEGER,
+                64,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER,
+                ScalarValueType.TOKEN,
+                digest,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER,
+                ScalarValueType.TOKEN,
+                digest,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER,
+                ScalarValueType.TOKEN,
+                "latin-default-v1",
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER,
+                ScalarValueType.TOKEN,
+                "quality-ocr-review-v1",
+            ),
+        ),
+        _quality_limits(),
     )
 
 
@@ -160,6 +264,52 @@ def _accept_operation(state: ConversationState, *, message_number: int = 4) -> C
             OperationAcceptedPayload("protocol.noop", 1, _limits()),
             sender_sequence=1,
             message_number=message_number,
+            request_id=START_REQUEST,
+            operation_id=OPERATION_ID,
+        )
+    )
+
+
+def _quality_state(
+    *,
+    page_id: UUID = QUALITY_PAGE_ID,
+    accepted: bool = False,
+) -> ConversationState:
+    registered = ConversationState(
+        SESSION_ID,
+        WORKER_ID,
+        CAPABILITY,
+        CASE_ID,
+        registered_capabilities=(QUALITY_OCR_REVIEW_CAPABILITY,),
+    )
+    state = _negotiate(
+        capabilities=(QUALITY_OCR_REVIEW_CAPABILITY,),
+        initial_state=registered,
+    )
+    state = state.accept(
+        _message(
+            MessageType.OPERATION_START,
+            Direction.CLIENT_TO_WORKER,
+            _quality_start_payload(page_id=page_id),
+            sender_sequence=1,
+            message_number=3,
+            request_id=START_REQUEST,
+            operation_id=OPERATION_ID,
+        )
+    )
+    if not accepted:
+        return state
+    return state.accept(
+        _message(
+            MessageType.OPERATION_ACCEPTED,
+            Direction.WORKER_TO_CLIENT,
+            OperationAcceptedPayload(
+                QUALITY_OCR_REVIEW_CAPABILITY.capability_id,
+                QUALITY_OCR_REVIEW_CAPABILITY.capability_version,
+                _quality_limits(),
+            ),
+            sender_sequence=1,
+            message_number=4,
             request_id=START_REQUEST,
             operation_id=OPERATION_ID,
         )
@@ -409,6 +559,103 @@ class WorkerProtocolStateTests(unittest.TestCase):
         )
         self.assertEqual((NOOP_CAPABILITY, future), state.negotiated_capabilities)
         self.assertEqual(OPERATION_ID, _start(state).active_operation_id)
+
+    def test_quality_ocr_review_advertised_capability_accepts_exact_closed_start(self) -> None:
+        state = _quality_state()
+
+        self.assertEqual(OPERATION_ID, state.active_operation_id)
+        self.assertEqual((QUALITY_OCR_REVIEW_CAPABILITY,), state.negotiated_capabilities)
+
+    def test_quality_ocr_review_rejects_case_operation_and_page_identity_collisions(self) -> None:
+        for page_id in (CASE_ID, OPERATION_ID):
+            with self.subTest(page_id=page_id), self.assertRaises(ProtocolError) as raised:
+                _quality_state(page_id=page_id)
+            self.assertEqual("RPC_INVALID_OPERATION", raised.exception.code)
+
+    def test_quality_ocr_review_rejects_open_profile_language_and_digest_tokens(self) -> None:
+        mutations = (
+            (QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER, "sha256-bad"),
+            (QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER, "sha256-bad"),
+            (QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER, "future-language-v9"),
+            (QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER, "future-profile-v9"),
+        )
+        for name, value in mutations:
+            with self.subTest(name=name):
+                registered = ConversationState(
+                    SESSION_ID,
+                    WORKER_ID,
+                    CAPABILITY,
+                    CASE_ID,
+                    registered_capabilities=(QUALITY_OCR_REVIEW_CAPABILITY,),
+                )
+                state = _negotiate(
+                    capabilities=(QUALITY_OCR_REVIEW_CAPABILITY,),
+                    initial_state=registered,
+                )
+                payload = _quality_start_payload()
+                malformed = replace(
+                    payload,
+                    parameters=tuple(
+                        replace(parameter, value=value) if parameter.name == name else parameter
+                        for parameter in payload.parameters
+                    ),
+                )
+                message = _message(
+                    MessageType.OPERATION_START,
+                    Direction.CLIENT_TO_WORKER,
+                    malformed,
+                    sender_sequence=1,
+                    message_number=3,
+                    request_id=START_REQUEST,
+                    operation_id=OPERATION_ID,
+                )
+                with self.assertRaises(ProtocolError) as raised:
+                    state.accept(message)
+                self.assertEqual("RPC_INVALID_OPERATION", raised.exception.code)
+
+    def test_quality_ocr_review_rejects_malformed_progress_total_and_unit(self) -> None:
+        cases = (
+            OperationProgressPayload(ProgressStage.PROCESSING, 0, 1, ProgressUnit.STEPS),
+            OperationProgressPayload(ProgressStage.PROCESSING, 0, 2, ProgressUnit.PAGES),
+        )
+        for index, progress in enumerate(cases):
+            with self.subTest(progress=progress), self.assertRaises(ProtocolError) as raised:
+                _quality_state(accepted=True).accept(
+                    _message(
+                        MessageType.OPERATION_PROGRESS,
+                        Direction.WORKER_TO_CLIENT,
+                        progress,
+                        sender_sequence=2,
+                        message_number=40 + index,
+                        request_id=START_REQUEST,
+                        operation_id=OPERATION_ID,
+                    )
+                )
+            self.assertEqual("RPC_INVALID_PROGRESS", raised.exception.code)
+
+    def test_quality_ocr_review_rejects_nonempty_result_outputs(self) -> None:
+        output = CaseObjectReference(
+            area=ReferenceArea.OPERATION_STAGING,
+            object_id=_uuid(50),
+            operation_id=OPERATION_ID,
+            content_kind="application.pdf",
+            expected_byte_size=1,
+            expected_sha256="e" * 64,
+        )
+        message = _message(
+            MessageType.OPERATION_RESULT,
+            Direction.WORKER_TO_CLIENT,
+            OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None),
+            sender_sequence=2,
+            message_number=50,
+            request_id=START_REQUEST,
+            operation_id=OPERATION_ID,
+        )
+
+        with self.assertRaises(ProtocolError) as raised:
+            _quality_state(accepted=True).accept(message)
+
+        self.assertEqual("RPC_INVALID_RESULT", raised.exception.code)
 
     def test_progress_regression_and_limit_escalation_are_rejected(self) -> None:
         started = _start(_negotiate())

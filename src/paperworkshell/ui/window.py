@@ -13,6 +13,7 @@ from PySide6.QtCore import (
     QEvent,
     QItemSelection,
     QItemSelectionModel,
+    QModelIndex,
     QObject,
     Qt,
     QTimer,
@@ -57,6 +58,7 @@ from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
     OrganizerViewState,
 )
+from paperworkshell.app.quality_analysis import QualityReviewSnapshot
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewPreviewResult,
@@ -90,7 +92,11 @@ from paperworkshell.ui.backend import (
     UiFailure,
     UiProgress,
 )
-from paperworkshell.ui.models import OrganizerPageListModel, PreviewState
+from paperworkshell.ui.models import (
+    OrganizerPageListModel,
+    PreviewState,
+    QualityFindingListModel,
+)
 from paperworkshell.ui.ocr_languages import OcrLanguageDialog
 from paperworkshell.ui.scan_review import ScanReviewDialog
 
@@ -115,6 +121,7 @@ QLabel:focus {
 class _LongOperationKind(StrEnum):
     IMPORT = "Import"
     PREVIEW = "Preview"
+    QUALITY = "Page quality check"
 
 
 class _ImportPresentationState(StrEnum):
@@ -124,6 +131,15 @@ class _ImportPresentationState(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     REOPEN_REQUIRED = "reopen_required"
+
+
+class _QualityPresentationState(StrEnum):
+    NOT_CHECKED = "not_checked"
+    QUEUED = "queued"
+    ACTIVE = "active"
+    READY = "ready"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +249,26 @@ def _startup_recovery_notice(
         "Ready. Create a case or open an existing case.",
         False,
     )
+
+
+def _quality_state_invalidates_review(
+    prior: OrganizerViewState | None,
+    current: OrganizerViewState,
+) -> bool:
+    """Invalidate ephemeral findings whenever their exact saved page facts can differ."""
+
+    return (
+        prior is None
+        or prior.autosave_pending
+        or current.autosave_pending
+        or prior.case_id != current.case_id
+        or prior.revision != current.revision
+        or prior.pages != current.pages
+    )
+
+
+def _next_generation(current: int) -> int:
+    return 1 if current >= _MAX_OPERATION_ID else current + 1
 
 
 class PageOrderDialog(QDialog):
@@ -380,6 +416,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._model = OrganizerPageListModel(
             maximum_preview_cache_bytes=selected_policy.thumbnail_preview_cache_bytes
         )
+        self._quality_findings_model = QualityFindingListModel()
         self._thumbnail_generation = 0
         self._next_operation_id = 1
         self._active_operation: _LongOperation | None = None
@@ -387,6 +424,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._preview_batch_complete = False
         self._deferred_import: tuple[Path, str] | None = None
         self._deferred_preview_state: OrganizerViewState | None = None
+        self._quality_generation = 0
+        self._pending_quality_request: tuple[UUID, int] | None = None
+        self._active_quality_binding: tuple[UUID, int, int] | None = None
+        self._quality_result_focus_requested = False
+        self._quality_presentation = _QualityPresentationState.NOT_CHECKED
         self._case_reopen_required = False
         self._controls_enabled = False
         self._closing_requested = False
@@ -499,7 +541,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button = QPushButton("Cancel current operation")
         self._cancel_button.setObjectName("cancelButton")
         self._cancel_button.setAccessibleDescription(
-            "Request cancellation of the running import or preview operation. Escape."
+            "Request cancellation of the running document operation, including import, preview, "
+            "or page-quality review. Escape."
         )
         self._cancel_button.clicked.connect(self._cancel_active_operation)
         self._cancel_button.setVisible(False)
@@ -744,6 +787,68 @@ class PaperWorkShellWindow(QMainWindow):
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
+        quality_group = QGroupBox("Page quality review")
+        quality_group.setObjectName("qualityReviewGroup")
+        quality_group.setAccessibleName("Page quality review")
+        quality_group.setAccessibleDescription(
+            "Limited automatic review signals for the exact saved case revision. "
+            "These suggestions never complete a requirement."
+        )
+        quality_layout = QVBoxLayout(quality_group)
+        self._quality_summary = QLabel(
+            "Not checked for this saved revision. Automatic quality signals are suggestions; "
+            "review every page yourself."
+        )
+        self._quality_summary.setObjectName("qualityReviewSummary")
+        self._quality_summary.setAccessibleName("Page quality review status")
+        self._quality_summary.setAccessibleDescription(self._quality_summary.text())
+        self._quality_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self._quality_summary.setWordWrap(True)
+        self._quality_summary.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._quality_summary.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
+        self._quality_findings_view = QListView()
+        self._quality_findings_view.setObjectName("qualityFindingsList")
+        self._quality_findings_view.setAccessibleName("Page quality findings")
+        self._quality_findings_view.setAccessibleDescription(
+            "Use the arrow keys to select a review signal. Press Enter or choose Go to selected "
+            "page to navigate without confirming or completing anything."
+        )
+        self._quality_findings_view.setModel(self._quality_findings_model)
+        self._quality_findings_view.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self._quality_findings_view.setDragEnabled(False)
+        self._quality_findings_view.setAcceptDrops(False)
+        self._quality_findings_view.setDropIndicatorShown(False)
+        self._quality_findings_view.setWordWrap(True)
+        self._quality_findings_view.setResizeMode(QListView.ResizeMode.Adjust)
+        self._quality_findings_view.setUniformItemSizes(False)
+        self._quality_findings_view.activated.connect(self._go_to_quality_finding)
+        self._quality_findings_view.selectionModel().selectionChanged.connect(
+            self._quality_finding_selection_changed
+        )
+        self._quality_check_button = self._action_button(
+            "Check page quality",
+            "qualityCheckButton",
+            "Run limited automatic checks for the exact saved revision. "
+            "Results need human review and never complete a requirement. Ctrl+Shift+Q.",
+        )
+        self._quality_check_button.clicked.connect(self._request_quality_review)
+        self._quality_go_to_page_button = self._action_button(
+            "Go to selected page",
+            "qualityGoToPageButton",
+            "Select and focus the organizer page referenced by the current review signal.",
+        )
+        self._quality_go_to_page_button.clicked.connect(self._go_to_selected_quality_finding)
+        quality_actions = QHBoxLayout()
+        quality_actions.addWidget(self._quality_check_button)
+        quality_actions.addWidget(self._quality_go_to_page_button)
+        quality_actions.addStretch(1)
+        quality_layout.addWidget(self._quality_summary)
+        quality_layout.addWidget(self._quality_findings_view)
+        quality_layout.addLayout(quality_actions)
+        layout.addWidget(quality_group)
+
         tab_chain = (
             self._import_button,
             self._close_case_button,
@@ -756,6 +861,10 @@ class PaperWorkShellWindow(QMainWindow):
             self._change_order_button,
             self._undo_button,
             self._redo_button,
+            self._quality_summary,
+            self._quality_check_button,
+            self._quality_findings_view,
+            self._quality_go_to_page_button,
             self._cancel_button,
             self._retry_preview_button,
             self._retry_save_button,
@@ -785,6 +894,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+R", self._rotate_selected),
             ("Delete", self._remove_selected),
             ("Ctrl+Shift+A", self._request_scan_review),
+            ("Ctrl+Shift+Q", self._request_quality_review),
             ("Ctrl+Shift+L", self._open_ocr_languages),
             ("Ctrl+Shift+O", self._change_full_order),
             ("Ctrl+Shift+R", self._retry_failed_preview),
@@ -805,6 +915,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.ocr_languages_failed.connect(self._ocr_languages_failed)
         self._worker.state_changed.connect(self._state_changed)
         self._worker.thumbnails_ready.connect(self._thumbnails_ready)
+        self._worker.quality_review_ready.connect(self._quality_review_ready)
         self._worker.scan_review_started.connect(self._scan_review_started)
         self._worker.scan_review_start_failed.connect(self._scan_review_start_failed)
         self._worker.scan_review_preview_ready.connect(self._scan_review_preview_ready)
@@ -906,6 +1017,10 @@ class PaperWorkShellWindow(QMainWindow):
     def _ocr_language_selection_saved(self, snapshot: object) -> None:
         if type(snapshot) is not OcrLanguageSnapshot:
             return
+        # OCR findings are configuration-bound as well as revision-bound. A
+        # new process-session language set makes any accepted review stale,
+        # even though it does not mutate the case manifest.
+        self._invalidate_quality_review()
         count = len(snapshot.selected_language_codes)
         noun = "language" if count == 1 else "languages"
         self._ocr_language_saved_message = (
@@ -973,6 +1088,8 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             self._dismiss_scan_review_after_state_change()
         prior_state = self._state
+        if _quality_state_invalidates_review(prior_state, state):
+            self._invalidate_quality_review()
         focused_widget = QApplication.focusWidget()
         preserve_focus = (
             prior_state is not None
@@ -991,6 +1108,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_organizer_guidance()
         self._update_import_availability()
         self._update_preview_retry_action()
+        self._update_quality_actions()
         if state.case_id is None:
             self._preview_refresh_timer.stop()
             self._autosave_timer.stop()
@@ -1017,6 +1135,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._restore_page_selection(selected_page)
         self._update_page_actions()
         self._update_preview_retry_action()
+        self._update_quality_actions()
         if not state.autosave_pending:
             self._schedule_preview_refresh()
         if preserve_focus:
@@ -1083,6 +1202,80 @@ class PaperWorkShellWindow(QMainWindow):
         self._model.touch_previews(retained)
         self._model.evict_previews(
             protected_page_ids=retained,
+        )
+
+    @Slot(int, int, object)
+    def _quality_review_ready(
+        self,
+        operation_id: int,
+        generation: int,
+        snapshot: object,
+    ) -> None:
+        active = self._active_operation
+        binding = self._active_quality_binding
+        if (
+            active is None
+            or active.operation_id != operation_id
+            or active.kind is not _LongOperationKind.QUALITY
+            or binding is None
+            or binding[2] != generation
+            or generation != self._quality_generation
+        ):
+            return
+        if active.cancellation.cancelled():
+            if self._quality_presentation is _QualityPresentationState.ACTIVE:
+                self._model.clear_quality_review()
+                self._quality_findings_model.set_snapshot(None)
+                self._quality_presentation = _QualityPresentationState.CANCELLED
+                self._cancel_button.setEnabled(False)
+                self._update_quality_summary()
+                self._update_quality_actions()
+                self._pending_failure_focus = "quality"
+                self._announce(
+                    "Page quality check cancelled. No review results were applied.",
+                    assertive=True,
+                )
+            return
+        if self._quality_presentation is not _QualityPresentationState.ACTIVE:
+            return
+        state = self._state
+        if (
+            type(snapshot) is not QualityReviewSnapshot
+            or state is None
+            or state.case_id is None
+            or state.autosave_pending
+            or binding[:2] != (state.case_id, state.revision)
+            or snapshot.case_id != state.case_id
+            or snapshot.manifest_revision != state.revision
+            or snapshot.page_ids != tuple(page.page_id for page in state.pages)
+            or not self._model.set_quality_review(snapshot)
+        ):
+            self._reject_quality_result(operation_id)
+            return
+        self._quality_findings_model.set_snapshot(snapshot)
+        self._cancel_button.setEnabled(False)
+        if self._quality_findings_model.rowCount() > 0:
+            index = self._quality_findings_model.index(0, 0)
+            self._quality_findings_view.setCurrentIndex(index)
+            self._quality_findings_view.selectionModel().select(
+                index,
+                QItemSelectionModel.SelectionFlag.ClearAndSelect,
+            )
+        self._quality_presentation = _QualityPresentationState.READY
+        self._update_quality_summary()
+        self._update_quality_actions()
+
+    def _reject_quality_result(self, operation_id: int) -> None:
+        self._failed(
+            UiFailure(
+                code="PWS_UI_QUALITY_RESULT_INVALID",
+                message=(
+                    "PaperWorkShell could not display page-quality review results safely. "
+                    "Run the check again."
+                ),
+                retryable=True,
+                operation_id=operation_id,
+            )
         )
 
     @Slot(int, object)
@@ -1461,6 +1654,17 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         if active is None or active.operation_id != progress.operation_id:
             return
+        if active.cancellation.cancelled():
+            return
+        if active.kind is _LongOperationKind.QUALITY and (
+            self._quality_presentation
+            in {
+                _QualityPresentationState.READY,
+                _QualityPresentationState.FAILED,
+                _QualityPresentationState.CANCELLED,
+            }
+        ):
+            return
         prior = self._last_announced_progress
         phase_changed = prior is None or prior[:2] != (progress.operation, progress.phase)
         announcement_step = max(1, progress.total // 4)
@@ -1472,6 +1676,13 @@ class PaperWorkShellWindow(QMainWindow):
             self._latest_import_progress = progress
             self._import_presentation = _ImportPresentationState.ACTIVE
             self._update_organizer_guidance()
+        elif active.kind is _LongOperationKind.QUALITY:
+            quality_message = (
+                f"Checking this saved revision — {progress.phase}: "
+                f"{progress.completed} of {progress.total}. Results remain automatic suggestions."
+            )
+            self._quality_summary.setText(quality_message)
+            self._quality_summary.setAccessibleDescription(quality_message)
         self._progress.setVisible(True)
         self._progress.setRange(0, progress.total)
         self._progress.setValue(progress.completed)
@@ -1522,6 +1733,8 @@ class PaperWorkShellWindow(QMainWindow):
         if active is None or active.operation_id != operation_id or active.cancellation.cancelled():
             return
         if active.kind is _LongOperationKind.PREVIEW and self._pending_failure_focus == "preview":
+            return
+        if active.kind is _LongOperationKind.QUALITY and self._pending_failure_focus == "quality":
             return
         if active.kind is _LongOperationKind.IMPORT:
             self._hide_error()
@@ -1588,6 +1801,21 @@ class PaperWorkShellWindow(QMainWindow):
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.CANCELLED
             self._update_organizer_guidance()
+        elif (
+            active.kind is _LongOperationKind.PREVIEW and self._pending_quality_request is not None
+        ):
+            return
+        elif (
+            active.kind is _LongOperationKind.PREVIEW
+            and self._quality_presentation is _QualityPresentationState.CANCELLED
+        ):
+            return
+        elif active.kind is _LongOperationKind.QUALITY and self._active_quality_binding is not None:
+            self._model.clear_quality_review()
+            self._quality_findings_model.set_snapshot(None)
+            self._quality_presentation = _QualityPresentationState.CANCELLED
+            self._update_quality_summary()
+            self._pending_failure_focus = "quality"
         self._announce(message, assertive=True)
 
     @Slot(int)
@@ -1596,14 +1824,37 @@ class PaperWorkShellWindow(QMainWindow):
         if active is None or active.operation_id != operation_id:
             return
         finished_preview = active.kind is _LongOperationKind.PREVIEW
+        finished_quality = active.kind is _LongOperationKind.QUALITY
+        quality_result_focus_requested = finished_quality and self._quality_result_focus_requested
         preview_batch_complete = self._preview_batch_complete
         if finished_preview:
             self._model.finish_preview_loading(self._active_preview_page_ids)
         self._finish_active_operation()
+        if finished_quality:
+            self._active_quality_binding = None
+            self._quality_result_focus_requested = False
         if self._closing_requested:
             self._pending_failure_focus = None
             return
         pending_scan_review = self._pending_scan_review_page_id
+        pending_quality = self._pending_quality_request
+        if pending_quality is not None:
+            self._pending_failure_focus = None
+            self._pending_quality_request = None
+            state = self._state
+            if (
+                state is None
+                or state.case_id != pending_quality[0]
+                or state.revision != pending_quality[1]
+                or state.autosave_pending
+                or not state.pages
+            ):
+                self._quality_presentation = _QualityPresentationState.NOT_CHECKED
+                self._update_quality_summary()
+                self._update_quality_actions()
+                return
+            self._start_quality_review(*pending_quality)
+            return
         if pending_scan_review is not None:
             self._pending_failure_focus = None
             self._pending_scan_review_page_id = None
@@ -1636,7 +1887,14 @@ class PaperWorkShellWindow(QMainWindow):
             self._schedule_preview_refresh()
         elif finished_preview and preview_batch_complete:
             self._schedule_preview_refresh()
+        elif finished_quality:
+            self._schedule_preview_refresh()
         self._restore_failure_recovery_focus()
+        if (
+            quality_result_focus_requested
+            and self._quality_presentation is _QualityPresentationState.READY
+        ):
+            self._focus_quality_result_or_action()
 
     @Slot(object)
     def _failed(self, failure: object) -> None:
@@ -1654,6 +1912,8 @@ class PaperWorkShellWindow(QMainWindow):
             and active.operation_id == failure.operation_id
             else None
         )
+        if correlated_kind is _LongOperationKind.QUALITY and self._active_quality_binding is None:
+            return
         if correlated_kind is _LongOperationKind.PREVIEW:
             for page_id in self._active_preview_page_ids:
                 self._model.set_preview_failed(page_id)
@@ -1661,6 +1921,12 @@ class PaperWorkShellWindow(QMainWindow):
         elif correlated_kind is _LongOperationKind.IMPORT:
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.FAILED
+        elif correlated_kind is _LongOperationKind.QUALITY:
+            self._cancel_button.setEnabled(False)
+            self._model.clear_quality_review()
+            self._quality_findings_model.set_snapshot(None)
+            self._quality_presentation = _QualityPresentationState.FAILED
+            self._update_quality_summary()
         self._error_label.setText(f"{failure.code}: {failure.message}")
         self._error_label.setVisible(True)
         pending_save = self._state is not None and self._state.autosave_pending
@@ -1672,9 +1938,12 @@ class PaperWorkShellWindow(QMainWindow):
             self._pending_failure_focus = "preview"
         elif correlated_kind is _LongOperationKind.IMPORT and not self._case_reopen_required:
             self._pending_failure_focus = "import"
+        elif correlated_kind is _LongOperationKind.QUALITY:
+            self._pending_failure_focus = "quality"
         else:
             self._pending_failure_focus = None
         self._update_preview_retry_action()
+        self._update_quality_actions()
         self._update_organizer_guidance()
         self._announce(f"Action failed. {failure.message}", assertive=True)
         if self._retry_save_button.isVisible():
@@ -1698,7 +1967,6 @@ class PaperWorkShellWindow(QMainWindow):
         self._closing_requested = False
         self._closing_import_cleanup = False
         self._update_organizer_guidance()
-        self._set_controls_enabled(True)
         if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
             self._hide_retry_save()
             self._retry_close_button.setVisible(True)
@@ -1711,6 +1979,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._retry_close_button.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._retry_close_button)
             return
+        self._set_controls_enabled(True)
         self._hide_retry_close()
         self._announce(
             "The application remains open because queued changes could not be saved. Retry saving changes.",
@@ -1730,7 +1999,11 @@ class PaperWorkShellWindow(QMainWindow):
         )
 
     def _request_previews(self, state: OrganizerViewState) -> None:
-        if self._case_reopen_required or self._scan_review_is_opening_or_active():
+        if (
+            self._case_reopen_required
+            or self._scan_review_is_opening_or_active()
+            or self._quality_is_pending_or_running()
+        ):
             return
         unsupported = tuple(page.page_id for page in state.pages if not page.preview_supported)
         for page_id in unsupported:
@@ -1787,6 +2060,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
+            or self._quality_is_pending_or_running()
         ):
             return
         self._preview_refresh_timer.start()
@@ -1801,9 +2075,130 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
+            or self._quality_is_pending_or_running()
         ):
             return
         self._request_previews(state)
+
+    def _request_quality_review(self) -> None:
+        """Queue one explicit, revision-bound advisory review."""
+
+        if not self._quality_check_button.isEnabled():
+            return
+        state = self._state
+        if (
+            state is None
+            or state.case_id is None
+            or state.revision is None
+            or state.autosave_pending
+            or not state.pages
+        ):
+            return
+        quality_action_had_focus = self._quality_check_button.hasFocus()
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        self._hide_error()
+        self._model.clear_quality_review()
+        self._quality_findings_model.set_snapshot(None)
+        active = self._active_operation
+        if active is not None:
+            if active.kind is not _LongOperationKind.PREVIEW:
+                return
+            self._pending_quality_request = (state.case_id, state.revision)
+            self._quality_result_focus_requested = quality_action_had_focus
+            self._quality_generation = _next_generation(self._quality_generation)
+            self._quality_presentation = _QualityPresentationState.QUEUED
+            self._cancel_active_preview()
+            self._cancel_button.setEnabled(True)
+            self._update_quality_summary()
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            self._announce(
+                "Stopping the current page preview before the page quality check starts."
+            )
+            return
+        self._quality_result_focus_requested = quality_action_had_focus
+        self._start_quality_review(state.case_id, state.revision)
+
+    def _start_quality_review(self, case_id: UUID, revision: int) -> None:
+        state = self._state
+        if (
+            self._closing_requested
+            or self._active_operation is not None
+            or self._pending_quality_request is not None
+            or state is None
+            or state.case_id != case_id
+            or state.revision != revision
+            or state.autosave_pending
+            or not state.pages
+        ):
+            return
+        check_had_focus = self._quality_check_button.hasFocus()
+        self._quality_generation = _next_generation(self._quality_generation)
+        generation = self._quality_generation
+        operation = self._begin_long_operation(_LongOperationKind.QUALITY)
+        self._active_quality_binding = (case_id, revision, generation)
+        self._quality_presentation = _QualityPresentationState.ACTIVE
+        self._model.clear_quality_review()
+        self._quality_findings_model.set_snapshot(None)
+        self._update_quality_summary()
+        self._update_quality_actions()
+        self._commands.quality_review_requested.emit(
+            operation.operation_id,
+            generation,
+            case_id,
+            revision,
+            operation.cancellation,
+        )
+        if check_had_focus:
+            self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._cancel_button)
+
+    @Slot(object)
+    def _go_to_quality_finding(self, index: object) -> None:
+        if not isinstance(index, QModelIndex) or not index.isValid():
+            return
+        finding = self._quality_findings_model.finding_at(index.row())
+        state = self._state
+        snapshot = self._model.quality_review
+        if finding is None or state is None or snapshot is None:
+            return
+        if (
+            state.case_id != snapshot.case_id
+            or state.revision != snapshot.manifest_revision
+            or state.autosave_pending
+        ):
+            self._invalidate_quality_review()
+            return
+        row = self._model.row_for_page(finding.page_id)
+        if row is None:
+            self._invalidate_quality_review()
+            self._announce(
+                "The page quality results no longer match this organizer. Run the check again.",
+                assertive=True,
+            )
+            return
+        page_index = self._model.index(row, 0)
+        self._page_view.selectionModel().select(
+            page_index,
+            QItemSelectionModel.SelectionFlag.ClearAndSelect,
+        )
+        self._page_view.setCurrentIndex(page_index)
+        self._page_view.scrollTo(page_index, QAbstractItemView.ScrollHint.PositionAtCenter)
+        self._page_view.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._page_view)
+        self._announce(f"Showing page {finding.page_position}. Needs review: {finding.title}.")
+
+    def _go_to_selected_quality_finding(self) -> None:
+        self._go_to_quality_finding(self._quality_findings_view.currentIndex())
+
+    def _quality_finding_selection_changed(
+        self,
+        _selected: QItemSelection,
+        _deselected: QItemSelection,
+    ) -> None:
+        self._update_quality_actions()
 
     def _current_preview_page_ids(self) -> tuple[UUID, ...]:
         state = self._state
@@ -1919,6 +2314,7 @@ class PaperWorkShellWindow(QMainWindow):
             not self._controls_enabled
             or self._closing_requested
             or self._scan_review_is_opening_or_active()
+            or self._quality_is_pending_or_running()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -1994,17 +2390,20 @@ class PaperWorkShellWindow(QMainWindow):
         page_count = self._model.rowCount()
         state = self._state
         scan_review_busy = self._scan_review_is_opening_or_active()
+        quality_busy = self._quality_is_pending_or_running()
         self._close_case_button.setEnabled(
             self._controls_enabled
             and state is not None
             and state.case_id is not None
             and not scan_review_busy
+            and not quality_busy
         )
         editable = (
             self._controls_enabled
             and not self._case_reopen_required
             and not self._import_is_pending_or_running()
             and not scan_review_busy
+            and not quality_busy
         )
         has_selection = editable and 0 <= row < page_count
         self._move_earlier_button.setEnabled(has_selection and row > 0)
@@ -2395,8 +2794,31 @@ class PaperWorkShellWindow(QMainWindow):
             or not self._cancel_button.isEnabled()
         ):
             return
+        if active.kind is _LongOperationKind.QUALITY and self._quality_presentation in {
+            _QualityPresentationState.READY,
+            _QualityPresentationState.FAILED,
+        }:
+            self._cancel_button.setEnabled(False)
+            return
+        if self._pending_quality_request is not None and active.kind is _LongOperationKind.PREVIEW:
+            self._pending_quality_request = None
+            self._quality_generation = _next_generation(self._quality_generation)
+            self._quality_presentation = _QualityPresentationState.CANCELLED
+            self._cancel_button.setEnabled(False)
+            self._update_quality_summary()
+            self._update_quality_actions()
+            self._announce(
+                "Queued page quality check cancelled. No review results were applied.",
+                assertive=True,
+            )
+            return
         active.cancellation.cancel()
         self._cancel_button.setEnabled(False)
+        if active.kind is _LongOperationKind.QUALITY:
+            self._quality_summary.setText(
+                "Cancellation requested. Waiting for the page quality check to stop safely."
+            )
+            self._quality_summary.setAccessibleDescription(self._quality_summary.text())
         self._announce("Cancellation requested. Waiting for the operation to stop.", assertive=True)
 
     def _retry_failed_preview(self) -> None:
@@ -2435,6 +2857,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_preview_retry_action()
+        self._update_quality_actions()
         return operation
 
     def _allocate_operation_id(self) -> int:
@@ -2481,6 +2904,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_preview_retry_action()
+        self._update_quality_actions()
         self._update_organizer_guidance()
 
     def _import_is_pending_or_running(self) -> bool:
@@ -2495,6 +2919,125 @@ class PaperWorkShellWindow(QMainWindow):
             or self._scan_review_start_operation_id is not None
             or self._scan_review_dialog is not None
         )
+
+    def _quality_is_pending_or_running(self) -> bool:
+        active = self._active_operation
+        return self._pending_quality_request is not None or (
+            active is not None and active.kind is _LongOperationKind.QUALITY
+        )
+
+    def _invalidate_quality_review(self) -> None:
+        """Cancel and hide every result that is not exact for the next organizer state."""
+
+        quality_had_focus = (
+            self._quality_findings_view.hasFocus()
+            or self._quality_go_to_page_button.hasFocus()
+            or self._quality_summary.hasFocus()
+        )
+        self._quality_generation = _next_generation(self._quality_generation)
+        self._pending_quality_request = None
+        self._active_quality_binding = None
+        self._quality_result_focus_requested = False
+        active = self._active_operation
+        if active is not None and active.kind is _LongOperationKind.QUALITY:
+            active.cancellation.cancel()
+            self._cancel_button.setEnabled(False)
+        self._model.clear_quality_review()
+        self._quality_findings_model.set_snapshot(None)
+        self._quality_presentation = _QualityPresentationState.NOT_CHECKED
+        self._update_quality_summary()
+        self._update_quality_actions()
+        if quality_had_focus:
+            if self._quality_check_button.isVisible() and self._quality_check_button.isEnabled():
+                self._quality_check_button.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._ensure_widget_visible(self._quality_check_button)
+            else:
+                self._focus_safe_control()
+
+    def _update_quality_summary(self) -> None:
+        presentation = self._quality_presentation
+        snapshot = self._model.quality_review
+        if presentation is _QualityPresentationState.QUEUED:
+            message = (
+                "Page quality check queued. PaperWorkShell is stopping the current preview first. "
+                "No review results are shown yet."
+            )
+        elif presentation is _QualityPresentationState.ACTIVE:
+            message = (
+                "Checking this saved revision. Results are limited automatic suggestions and do "
+                "not complete a requirement."
+            )
+        elif presentation is _QualityPresentationState.READY and snapshot is not None:
+            finding_count = len(snapshot.findings)
+            if finding_count:
+                affected_pages = len({finding.page_id for finding in snapshot.findings})
+                finding_noun = "signal" if finding_count == 1 else "signals"
+                page_noun = "page" if affected_pages == 1 else "pages"
+                message = (
+                    f"Needs review: {finding_count} automatic review {finding_noun} on "
+                    f"{affected_pages} {page_noun}. Select each signal and review the page; these "
+                    "suggestions do not complete a requirement."
+                )
+            else:
+                message = (
+                    "No review signals were found by these limited checks. Review every page "
+                    "yourself before export."
+                )
+        elif presentation is _QualityPresentationState.CANCELLED:
+            message = (
+                "Page quality check cancelled. No review results were applied. Run the check "
+                "again when ready."
+            )
+        elif presentation is _QualityPresentationState.FAILED:
+            message = (
+                "Page quality check did not finish. No review results are shown. Review the Action "
+                "error and run the check again."
+            )
+        else:
+            message = (
+                "Not checked for this saved revision. Automatic quality signals are suggestions; "
+                "review every page yourself."
+            )
+        self._quality_summary.setText(message)
+        self._quality_summary.setAccessibleDescription(message)
+
+    def _update_quality_actions(self) -> None:
+        state = self._state
+        active = self._active_operation
+        check_enabled = (
+            self._controls_enabled
+            and not self._closing_requested
+            and not self._case_reopen_required
+            and state is not None
+            and state.case_id is not None
+            and state.revision is not None
+            and bool(state.pages)
+            and not state.autosave_pending
+            and self._pending_quality_request is None
+            and (active is None or active.kind is _LongOperationKind.PREVIEW)
+            and not self._scan_review_is_opening_or_active()
+        )
+        self._quality_check_button.setEnabled(check_enabled)
+        findings_enabled = (
+            self._controls_enabled
+            and not self._closing_requested
+            and self._model.quality_review is not None
+            and self._quality_findings_model.rowCount() > 0
+        )
+        self._quality_findings_view.setEnabled(findings_enabled)
+        self._quality_go_to_page_button.setEnabled(
+            findings_enabled and self._quality_findings_view.currentIndex().isValid()
+        )
+
+    def _focus_quality_result_or_action(self) -> None:
+        if self._quality_findings_view.isVisible() and self._quality_findings_view.isEnabled():
+            self._quality_findings_view.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._quality_findings_view)
+        elif self._quality_check_button.isVisible() and self._quality_check_button.isEnabled():
+            self._quality_check_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._quality_check_button)
+        else:
+            self._focus_safe_control()
 
     def _update_organizer_guidance(self) -> None:
         state = self._state
@@ -2663,6 +3206,12 @@ class PaperWorkShellWindow(QMainWindow):
             self._import_button.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._import_button)
             return
+        elif target == "quality":
+            self._update_quality_actions()
+            if self._quality_check_button.isVisible() and self._quality_check_button.isEnabled():
+                self._quality_check_button.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._ensure_widget_visible(self._quality_check_button)
+                return
         if self._error_label.isVisible():
             self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._error_label)
@@ -2678,6 +3227,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._case_reopen_required
             and not self._import_is_pending_or_running()
             and not self._scan_review_is_opening_or_active()
+            and not self._quality_is_pending_or_running()
         )
         self._update_ocr_language_availability()
 
@@ -2687,6 +3237,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._closing_requested
             and self._active_operation is None
             and not self._scan_review_is_opening_or_active()
+            and not self._quality_is_pending_or_running()
             and self._ocr_language_dialog is None
             and self._ocr_language_refresh_request_id is None
         )
@@ -2713,6 +3264,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_preview_retry_action()
+        self._update_quality_actions()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Keep the window open until autosave and worker cleanup complete."""
@@ -2740,6 +3292,7 @@ class PaperWorkShellWindow(QMainWindow):
         if queued_import:
             self._import_presentation = _ImportPresentationState.CANCELLED
         self._deferred_preview_state = None
+        self._invalidate_quality_review()
         self._discard_ocr_language_dialog_for_shutdown()
         self._discard_scan_review_for_shutdown()
         if self._cancel_button.hasFocus():

@@ -8,6 +8,7 @@ filesystem, storage-adapter, worker-host, renderer, or PDF-library dependency.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -32,6 +33,18 @@ from paperworkshell.app.page_previews import (
 )
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
+)
+from paperworkshell.app.quality_analysis import (
+    QualityAnalysisCancellationProbe,
+    QualityAnalysisError,
+    QualityAnalysisErrorCode,
+    QualityAnalysisProgressSink,
+    QualityAnalysisRequest,
+    QualityAnalysisService,
+    QualityPageReviewKind,
+    QualityPageReviewRequest,
+    QualityReviewSnapshot,
+    reject_quality_analysis,
 )
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
@@ -107,6 +120,7 @@ from paperworkshell.domain.source_ingest import SourceImportResult
 
 _DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
 MAX_ORGANIZER_PREVIEW_BATCH_PAGES: Final = 8
+_QUALITY_PROFILE_TOKEN: Final = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
 
 
 class _CaseLifecyclePort(Protocol):
@@ -144,6 +158,22 @@ class _PagePreviewServicePort(Protocol):
         cancellation: PreviewCancellationProbe | None = None,
         progress: PagePreviewProgressSink | None = None,
     ) -> tuple[PagePreviewResult, ...]: ...
+
+
+class _QualityAnalysisServicePort(Protocol):
+    @property
+    def profile_id(self) -> str: ...
+
+    @property
+    def profile_sha256(self) -> str: ...
+
+    def analyze(
+        self,
+        request: QualityAnalysisRequest,
+        *,
+        cancellation: QualityAnalysisCancellationProbe | None = None,
+        progress: QualityAnalysisProgressSink | None = None,
+    ) -> QualityReviewSnapshot: ...
 
 
 def _close_nothing() -> None:
@@ -319,6 +349,9 @@ class OrganizerBackend:
         "_lifecycle",
         "_ocr_languages",
         "_pending_committed_import",
+        "_quality_analysis",
+        "_quality_profile_id",
+        "_quality_profile_sha256",
         "_repository",
         "_session",
         "_shutdown",
@@ -337,6 +370,7 @@ class OrganizerBackend:
         close_resources: Callable[[], None] = _close_nothing,
         startup_recovery: StartupRecoveryResult | None = None,
         ocr_languages: OcrLanguageManager | None = None,
+        quality_analysis: _QualityAnalysisServicePort | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -352,6 +386,29 @@ class OrganizerBackend:
                 PageOperationErrorCode.MODEL_INVALID,
                 "organizer.ocr_languages",
             )
+        selected_quality_analysis = (
+            QualityAnalysisService(thumbnails) if quality_analysis is None else quality_analysis
+        )
+        try:
+            quality_profile_id = selected_quality_analysis.profile_id
+            quality_profile_sha256 = selected_quality_analysis.profile_sha256
+        except BaseException:
+            quality_profile_id = None
+            quality_profile_sha256 = None
+        if (
+            not callable(getattr(selected_quality_analysis, "analyze", None))
+            or type(quality_profile_id) is not str
+            or not quality_profile_id
+            or len(quality_profile_id) > 128
+            or _QUALITY_PROFILE_TOKEN.fullmatch(quality_profile_id) is None
+            or type(quality_profile_sha256) is not str
+            or len(quality_profile_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in quality_profile_sha256)
+        ):
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.MODEL_INVALID,
+                "quality.organizer_service",
+            )
         self._lifecycle = lifecycle
         self._repository = repository
         self._source_ingest = source_ingest
@@ -359,6 +416,9 @@ class OrganizerBackend:
         self._close_resources = close_resources
         self._startup_recovery = startup_recovery
         self._ocr_languages = selected_ocr_languages
+        self._quality_analysis = selected_quality_analysis
+        self._quality_profile_id = quality_profile_id
+        self._quality_profile_sha256 = quality_profile_sha256
         self._active_scan_review: _ActiveScanReview | None = None
         self._pending_committed_import: SourceImportResult | None = None
         self._session: _OrganizerSession | None = None
@@ -685,6 +745,93 @@ class OrganizerBackend:
             cancellation=cancellation,
             progress=progress,
         )
+
+    def analyze_quality(
+        self,
+        *,
+        expected_case_id: UUID,
+        expected_revision: int,
+        cancellation: QualityAnalysisCancellationProbe | None = None,
+        progress: QualityAnalysisProgressSink | None = None,
+    ) -> QualityReviewSnapshot:
+        """Return advisory findings for one exact saved organizer revision.
+
+        Analysis is disposable presentation state.  It neither queues page
+        history nor writes, autosaves, or changes requirement confirmations.
+        """
+
+        session = self._require_session()
+        if (
+            type(expected_case_id) is not UUID
+            or expected_case_id.version != 4
+            or type(expected_revision) is not int
+            or not 0 <= expected_revision <= MAX_SAFE_MANIFEST_INTEGER
+        ):
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.MODEL_INVALID,
+                "quality.organizer_expectation",
+            )
+        if (
+            session.snapshot.case_id != expected_case_id
+            or session.snapshot.revision != expected_revision
+        ):
+            reject_quality_analysis(QualityAnalysisErrorCode.STALE, "quality.organizer_revision")
+        if session.autosave.pending:
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.SAVE_PENDING,
+                "quality.organizer_save",
+            )
+        origin_history = session.history
+        request = _quality_analysis_request(session)
+        if not request.pages:
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.MODEL_INVALID,
+                "quality.organizer_pages",
+            )
+        try:
+            snapshot = self._quality_analysis.analyze(
+                request,
+                cancellation=cancellation,
+                progress=progress,
+            )
+        except QualityAnalysisError as error:
+            if type(error) is not QualityAnalysisError:
+                reject_quality_analysis(
+                    QualityAnalysisErrorCode.INTERNAL_ERROR,
+                    "quality.organizer_service",
+                )
+            rebuilt = QualityAnalysisError(error.code, error.context)
+            raise rebuilt from None
+        except BaseException:
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.INTERNAL_ERROR,
+                "quality.organizer_service",
+            )
+        if type(snapshot) is not QualityReviewSnapshot:
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.RESULT_INVALID,
+                "quality.organizer_result",
+            )
+        if (
+            snapshot.case_id != request.case_id
+            or snapshot.manifest_revision != request.manifest_revision
+            or snapshot.page_ids != request.page_ids
+            or snapshot.profile_id != self._quality_profile_id
+            or snapshot.profile_sha256 != self._quality_profile_sha256
+        ):
+            reject_quality_analysis(
+                QualityAnalysisErrorCode.RESULT_INVALID,
+                "quality.organizer_binding",
+            )
+        if (
+            self._session is not session
+            or session.history is not origin_history
+            or session.snapshot.case_id != expected_case_id
+            or session.snapshot.revision != expected_revision
+            or session.autosave.pending
+        ):
+            reject_quality_analysis(QualityAnalysisErrorCode.STALE, "quality.organizer_changed")
+        return snapshot
 
     def begin_scan_review(
         self,
@@ -1074,6 +1221,48 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
             ManifestLoadStatus.RECOVERED,
             ManifestLoadStatus.RECOVERED_MIGRATED,
         },
+    )
+
+
+def _quality_analysis_request(session: _OrganizerSession) -> QualityAnalysisRequest:
+    """Project complete active-page intent without exposing manifest containers."""
+
+    projection = session.history.projection
+    media_by_source = _preview_media_by_source(session.snapshot)
+    pages: list[QualityPageReviewRequest] = []
+    for page_id in projection.page_sequence:
+        page = projection.state_for(page_id)
+        media_type = media_by_source.get(page.page.source_id)
+        if media_type is None:
+            reject_page_operation(
+                PageOperationErrorCode.MANIFEST_INVALID,
+                "organizer.page_source",
+            )
+        if media_type is DetectedMediaType.PDF:
+            if _has_raster_only_transform(page):
+                reject_quality_analysis(
+                    QualityAnalysisErrorCode.MODEL_INVALID,
+                    "quality.organizer_pdf_transform",
+                )
+            pages.append(
+                QualityPageReviewRequest(
+                    page_id=page_id,
+                    kind=QualityPageReviewKind.PDF,
+                    pdf_rotation=PdfRenderRotation(page.quarter_turns_clockwise * 90),
+                )
+            )
+        else:
+            pages.append(
+                QualityPageReviewRequest(
+                    page_id=page_id,
+                    kind=QualityPageReviewKind.IMAGE,
+                    image_intent=_image_transform_intent(page),
+                )
+            )
+    return QualityAnalysisRequest(
+        case_id=session.snapshot.case_id,
+        manifest_revision=session.snapshot.revision,
+        pages=tuple(pages),
     )
 
 

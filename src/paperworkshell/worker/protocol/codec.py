@@ -27,6 +27,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
+    QUALITY_OCR_REVIEW_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     CancelDisposition,
     CancelReason,
@@ -68,6 +69,7 @@ from paperworkshell.worker.protocol.models import (
     validate_pdf_export_start,
     validate_pdf_inspect_start,
     validate_pdf_thumbnail_start,
+    validate_quality_ocr_review_start,
     validate_searchable_pdf_export_start,
 )
 
@@ -578,6 +580,7 @@ class OperationRegistry:
             IMAGE_NORMALIZE_CAPABILITY,
             IMAGE_TRANSFORM_CAPABILITY,
             OCR_PROCESS_CAPABILITY,
+            QUALITY_OCR_REVIEW_CAPABILITY,
             PDF_INSPECT_CAPABILITY,
             PDF_THUMBNAIL_CAPABILITY,
             PDF_EXPORT_CAPABILITY,
@@ -613,6 +616,8 @@ class OperationRegistry:
             validate_image_transform_start(payload)
         if payload.operation_kind == OCR_PROCESS_CAPABILITY.capability_id:
             validate_ocr_process_start(payload)
+        if payload.operation_kind == QUALITY_OCR_REVIEW_CAPABILITY.capability_id:
+            validate_quality_ocr_review_start(payload)
         if payload.operation_kind == PDF_INSPECT_CAPABILITY.capability_id:
             validate_pdf_inspect_start(payload)
         if payload.operation_kind == PDF_THUMBNAIL_CAPABILITY.capability_id:

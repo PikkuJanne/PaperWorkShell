@@ -1432,6 +1432,7 @@ def stage_benchmark_resources(
             PROJECT_ROOT / "src/paperworkshell/worker/protocol/errors.py",
             PROJECT_ROOT / "src/paperworkshell/worker/protocol/framing.py",
             PROJECT_ROOT / "src/paperworkshell/worker/protocol/models.py",
+            PROJECT_ROOT / "src/paperworkshell/worker/protocol/operation_scope.py",
         )
         for source in code_files:
             _stage_git_file(

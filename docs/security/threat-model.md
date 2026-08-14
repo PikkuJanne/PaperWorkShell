@@ -205,6 +205,44 @@ stage empty and safely disposable; quarantine remains reserved for indeterminate
 [bounded PDF-thumbnail service contract](../architecture/pdf-thumbnails.md). Other authority
 profiles remain inaccessible until their owning tasks provide separate evidence.
 
+### Implemented PWS-0207 advisory review boundary
+
+PWS-0207 extends the existing TB-02/TB-03/TB-04 worker boundary with one narrowly registered
+`ocr.review` version-1 capability. Its explicit quality review first reuses the authenticated
+preview flow and receives an already validated, fixed-layout opaque RGBA8 plane. Pure
+application/domain logic calculates bounded integer evidence from that plane; it does not parse or
+decode a PDF, JPEG, or PNG in the desktop process. The OCR broker grants a fresh one-shot worker
+only read access to an exact bounded volatile sample section and write access to one bounded result
+pipe. It grants no document/source handle, case path, document object, cache/persistent-stage
+writer, external destination, or publication authority. The worker may start only the admitted
+local Tesseract executable, under the existing zero-capability AppContainer, Job, network denial,
+process, output, memory/CPU/time, and private-temp controls.
+
+Page work is serial. The preview/analyzer releases page-scoped sample and luminance state before
+the next page, while the OCR broker/worker may hold bounded transient copies of the same current
+sample, one private PPM input, and at most 1 MiB of shared stdout/stderr capture. Private TSV is
+parsed for numeric aggregate facts and discarded; recognized bytes and geometry never cross the
+report pipe. The complete one-shot worker tree terminates before the broker reads and validates the
+object-free report. Small prior-page fingerprints live only for the duration of one call and are
+treated as case-confidential AS-04 values even though they are not persisted. No quality-specific
+cache or authoritative artifact is created.
+
+The accepted output is an AS-05 typed snapshot bound to one case, saved manifest revision, exact
+ordered page tuple, profile identity, and closed findings. Operation/generation and unchanged-state
+checks reject late or cross-revision output before display. The snapshot is presentation state, not
+AS-03 manifest/history/checklist authority, and a state change clears it. Closed wording preserves
+AS-12: every finding is only likely, suspected, or in need of review, while no-signal output is not
+a certification. The OCR aggregate is bound to operation/case/revision/page/sample/presentation,
+the closed selected session language/profile, terminal state, word count, confidence, and engine
+version; recognized text is not accepted or retained. Optional OCR admission is not a backend
+startup gate. The first explicit review adopts the authenticated composition after control checks;
+fixed-work local admission has no elapsed-time guarantee and is rechecked afterward. Only an
+expected local-unavailable result is latched for that application session; authority, isolation,
+launch, process, transport, protocol, resource-limit, cleanup, and malformed-result failures abort
+the review. Restart creates a fresh authority/admission attempt. See
+[DF-QUALITY-REVIEW](data-flows.md#df-quality-review--derive-ephemeral-advisory-findings) and the
+[advisory quality-review contract](../architecture/quality-review.md).
+
 ## Mandatory mitigation principles
 
 1. Preserve originals: external sources are never opened for writing, and every output uses a new

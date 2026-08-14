@@ -13,6 +13,20 @@ from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
+    QUALITY_OCR_REVIEW_CAPABILITY,
+    QUALITY_OCR_REVIEW_HEIGHT_PARAMETER,
+    QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER,
+    QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER,
+    QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER,
+    QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER,
+    QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER,
+    QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER,
+    QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER,
+    QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER,
+    QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER,
+    QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER,
+    QUALITY_OCR_REVIEW_SHA256_TOKEN_PREFIX,
+    QUALITY_OCR_REVIEW_WIDTH_PARAMETER,
     CancelDisposition,
     CancelReason,
     CapabilityDescriptor,
@@ -38,12 +52,14 @@ from paperworkshell.worker.protocol.models import (
     ReferenceArea,
     ResourceLimits,
     RetryAction,
+    ScalarValueType,
     SessionCapability,
     SessionClosedPayload,
     SessionHelloPayload,
     SessionReadyPayload,
     SessionShutdownPayload,
     ShutdownReason,
+    TaggedScalar,
     WorkerFaultPayload,
 )
 
@@ -69,6 +85,70 @@ def _limits() -> ResourceLimits:
         output_bytes=16 * 1024 * 1024,
         page_count=100,
         pixel_count=100_000_000,
+    )
+
+
+def _quality_start() -> OperationStartPayload:
+    digest = f"{QUALITY_OCR_REVIEW_SHA256_TOKEN_PREFIX}{'a' * 64}"
+    return OperationStartPayload(
+        QUALITY_OCR_REVIEW_CAPABILITY.capability_id,
+        QUALITY_OCR_REVIEW_CAPABILITY.capability_version,
+        (),
+        (
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_SAMPLE_HANDLE_PARAMETER,
+                ScalarValueType.INTEGER,
+                101,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_RESULT_HANDLE_PARAMETER,
+                ScalarValueType.INTEGER,
+                102,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_PAGE_ID_PARAMETER,
+                ScalarValueType.UUID,
+                _uuid(30),
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_MANIFEST_REVISION_PARAMETER,
+                ScalarValueType.INTEGER,
+                7,
+            ),
+            TaggedScalar(QUALITY_OCR_REVIEW_WIDTH_PARAMETER, ScalarValueType.INTEGER, 4),
+            TaggedScalar(QUALITY_OCR_REVIEW_HEIGHT_PARAMETER, ScalarValueType.INTEGER, 4),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_ROW_STRIDE_PARAMETER,
+                ScalarValueType.INTEGER,
+                16,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_SAMPLE_BYTES_PARAMETER,
+                ScalarValueType.INTEGER,
+                64,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_SAMPLE_SHA256_PARAMETER,
+                ScalarValueType.TOKEN,
+                digest,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_PRESENTATION_SHA256_PARAMETER,
+                ScalarValueType.TOKEN,
+                digest,
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_LANGUAGE_SET_ID_PARAMETER,
+                ScalarValueType.TOKEN,
+                "latin-default-v1",
+            ),
+            TaggedScalar(
+                QUALITY_OCR_REVIEW_PROFILE_ID_PARAMETER,
+                ScalarValueType.TOKEN,
+                "quality-ocr-review-v1",
+            ),
+        ),
+        ResourceLimits(5_000, 4_000, 1_048_576, 8_192, 4_096, 1, 16),
     )
 
 
@@ -293,6 +373,24 @@ class WorkerProtocolCodecTests(unittest.TestCase):
 
         self.assertEqual(set(MessageType), observed_types)
         self.assertEqual(set(OperationOutcome), observed_outcomes)
+
+    def test_quality_ocr_review_start_round_trips_as_exact_handle_only_v1_payload(self) -> None:
+        message = _envelope(
+            MessageType.OPERATION_START,
+            Direction.CLIENT_TO_WORKER,
+            _quality_start(),
+            message_number=20,
+            operation_id=OPERATION_ID,
+        )
+
+        encoded = encode_message(message)
+        decoded = decode_message(encoded, expected_capability=CAPABILITY)
+
+        self.assertEqual(message, decoded)
+        self.assertEqual(encoded, encode_message(decoded))
+        self.assertNotIn(b'"pixels":', encoded)
+        self.assertNotIn(b"recognized_text", encoded)
+        self.assertNotIn(b"path", encoded)
 
     def test_unknown_operation_descriptors_fail_before_return(self) -> None:
         for message_type, payload, direction in (
