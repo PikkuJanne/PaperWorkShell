@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.1.67",
+  "bundle_version": "0.1.68",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -24,8 +24,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 202679,
-      "sha256": "665681eb755db85ceb9cbf5b1d84e4f356c66dfc480d5ea1cf4506d53d96259d"
+      "bytes": 207487,
+      "sha256": "b11c8b98c6286bdfead636eff93478a90357e92e230933232da2e523d12053f0"
     },
     {
       "path": "TASKS.schema.json",
@@ -56,14 +56,13 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0203",
       "PWS-0205",
       "PWS-0207"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0208 is done: exact source-scoped confirmation now precedes signed or indeterminate PDF modification, outputs retain reason-aware unsigned-derivative wording, and the versioned constrained 12-page workload proves one-page-at-a-time scheduling, bounded complete-tree memory and sampled private temp, cancellation, correlated limit refusal, cleanup, and fresh retry. PWS-0203, PWS-0205, and PWS-0207 are ready; the task selector chooses PWS-0203 next.",
+    "PWS-0203 is done: JPEG/PNG scan review now compares immutable-source Original and exact tentative Adjusted previews, requires explicit confirmed Apply, preserves reset/cancel/failure as non-mutating, and keeps production work serialized, cancelable, and within shared preview-cache budgets; real-Windows keyboard review passed at effective Qt DPR 2.0. PWS-0205 and PWS-0207 are ready; the task selector chooses PWS-0205 next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

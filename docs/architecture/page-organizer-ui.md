@@ -252,7 +252,6 @@ preservation. The dated keyboard-only and NVDA procedure and its current evidenc
 PWS-0203 adds focused draft/apply, suggestion-confirmation, original/adjusted correlation,
 one-active/one-latest-pending scheduling, shared preview-byte accounting, two-pixmap retention,
 stale-result, privacy, keyboard, focus, progress/error, and enlarged-layout coverage. Its real
-Windows effective-200-percent keyboard and visual checklist is kept
-separately in
-[`../accessibility/pws-0203-scan-review-smoke.md`](../accessibility/pws-0203-scan-review-smoke.md);
-result fields remain pending until the recorded run occurs.
+Windows effective-200-percent keyboard and visual checklist and dated agent-operated PASS evidence
+are kept separately in
+[`../accessibility/pws-0203-scan-review-smoke.md`](../accessibility/pws-0203-scan-review-smoke.md).

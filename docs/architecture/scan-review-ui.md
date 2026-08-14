@@ -168,6 +168,6 @@ The UI review uses only repository-synthetic images, including
 `tests/fixtures/synthetic/v1/image/render-calibration-crop-rotate.png`; it does not regenerate or
 promote a golden.
 
-The executable keyboard and effective-200-percent real-Windows scaling procedure, with unfilled result
-fields until the run occurs, is recorded in
+The executable keyboard and effective-200-percent real-Windows scaling procedure and its dated
+agent-operated PASS evidence are recorded in
 [the PWS-0203 scan-review smoke record](../accessibility/pws-0203-scan-review-smoke.md).

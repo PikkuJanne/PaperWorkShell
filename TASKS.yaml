@@ -1614,7 +1614,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0202
@@ -1644,10 +1644,62 @@ tasks:
   - imaging
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-14'
+    revision: e25098f6064236f469f6d34b0a5b8435099e8667
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py check - passed on the clean final implementation revision in
+      4704.2 seconds; 394 format/type surfaces, 13 import layers across 143 source files, 3098 unit tests,
+      388 integration tests with 7 disclosed skips, 331 security tests with 6 disclosed skips, and 31
+      accessibility tests passed, together with every registered schema, fixture, dependency, task, docs,
+      resource, privacy, and quality-self-test validator
+    - .venv\Scripts\python.exe -m pytest -q tests/unit/test_scan_review_service.py
+      tests/unit/test_scan_review_dialog.py tests/unit/test_scan_review_window.py
+      tests/unit/test_scan_review_backend_bridge.py tests/accessibility/test_scan_review_accessibility.py
+      tests/security/test_scan_review_privacy.py - passed; 69 focused scan-review tests in 2.77 seconds
+    - .venv\Scripts\python.exe -m pytest -q tests/unit/test_organizer_backend.py -k scan_review - passed;
+      7 focused backend tests with 21 deselected in 0.35 seconds
+    - .venv\Scripts\python.exe -m pytest -q
+      tests/integration/test_organizer_ui_windows.py::test_live_scan_review_preserves_original_and_reopens_only_applied_intent
+      - passed through the real restricted image worker in 420.52 seconds
+    - .venv\Scripts\python.exe -m pytest -q
+      tests/integration/test_organizer_ui_windows.py::test_live_composition_imports_and_renders_bounded_organizer_previews
+      - passed the production two-page preview regression in 419.29 seconds
+    - .venv\Scripts\python.exe -m pytest -q
+      tests/integration/test_m1_vertical_slice_windows.py::test_m1_vertical_slice_is_deterministic_recoverable_and_private
+      - passed the complete M1 production regression in 1264.35 seconds
+    - Production PaperWorkShell keyboard smoke on Windows 11 Pro build 26200 with PySide6/Qt 6.11.1,
+      Windows base scale 125 percent, QT_SCALE_FACTOR 1.6, and effective Qt DPR 2.0 - passed on
+      2026-08-14; full traversal, keyboard scrolling, compare/adjust/reset/cancel/retry/error/Apply,
+      autosave/reopen, Undo/Redo, immutable-source hash, clean shutdown, and empty ACL-recovery journal
+      were verified with the repository synthetic fixture
+    - .venv\Scripts\python.exe tools/dev.py format-check; validate-schemas; validate-task-graph;
+      validate-dependencies; validate-docs; git diff --check - passed after the final task/evidence
+      transition; all 394 files were formatted, all registered schemas and documentation links were valid,
+      and the graph remained 81 tasks, 240 dependencies, 9 milestones, and 41 decisions
+    notes:
+    - Scan-review draft state is app/UI-ephemeral. Original uses the neutral immutable-source preview;
+      Adjusted binds the exact tentative intent, revision, history, generation, and worker result. Reset,
+      rejection, cancellation, stale output, and failure do not queue a manifest candidate.
+    - Changed Apply constructs the complete canonical intent locally and queues one candidate atomically;
+      exact no-change Apply queues no save. Hostile complete-state results are rejected before presentation,
+      and successful intent persists through autosave/reopen and participates in organizer Undo/Redo.
+    - The dialog and controller provide keyboard alternatives, visible focus, truthful variant-specific
+      progress/cancellation/error states, one active plus one latest pending request, Original retention,
+      bounded two-pixmap lifetime, and shared ResourcePolicy preview-cache accounting. The unmodified
+      constrained policy is covered.
+    - Production organizer preview uses a finite 300-second trusted-setup allowance per requested page,
+      capped at 3600 seconds, while interactive scan review uses the existing 3600-second service ceiling.
+      Every untrusted render remains bounded by the unchanged 60-second wall and 45-second CPU worker limits.
+    - A deliberately terminated one-shot preview worker returned only sanitized IMAGE_PAGE_DEPENDENCY_FAILED,
+      retained Original, focused recovery, and succeeded through a fresh retry. Cancellation remained
+      non-mutating and shutdown left no worker or ACL-recovery entry.
+    - The imported public-synthetic fixture and committed source both retained SHA-256
+      90648e4c601382ca3b96f7282cd2f33a6ef577a223ef185584b088372738ccf3. The image-transforms-v1
+      golden index remained byte-identical at SHA-256
+      c24e01bed73f2d770299c5103d14cd3027aaab7d9b1dfc739caeba8d18970d05; no golden was refreshed.
+    - The real-Windows agent-operated review passed at effective Qt DPR 2.0 in a 960 by 510 logical
+      available work area. NVDA was not run and remains owned by PWS-0209; no PDF/UA, OCR accuracy,
+      document-quality, legal, or human-usability claim is made.
 - id: PWS-0204
   milestone: M2
   title: Integrate OCRmyPDF/Tesseract worker adapter with progress and cancellation

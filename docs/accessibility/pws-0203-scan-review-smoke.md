@@ -7,34 +7,33 @@ Fixture: `tests/fixtures/synthetic/v1/image/render-calibration-crop-rotate.png`
 
 ## Result record
 
-These fields must remain pending until the procedure below is performed on a clean implementation
-revision. The required layout pass uses the real Windows Qt platform at an **effective device-pixel
-ratio of 2.0**. That may be supplied by a dedicated Windows session already configured at 200%, or
-by a process-local Qt multiplier calibrated against the recorded Windows base scale. Offscreen Qt
-and enlarged-font-only coverage remain supplemental. The review must not change the operator's
-system-wide display settings without explicit authorization.
+This record was completed against the clean implementation revision below. The required layout pass
+used the real Windows Qt platform at an **effective device-pixel ratio of 2.0**, supplied by a
+process-local Qt multiplier calibrated against the recorded Windows base scale. Offscreen Qt and
+enlarged-font-only coverage remain supplemental. The review did not change the operator's
+system-wide display settings.
 
 | Field | Result |
 |---|---|
-| Review date | **PENDING** |
-| Reviewer/operator and provenance | **PENDING** |
-| Tested implementation revision | **PENDING** |
-| Windows edition/build | **PENDING** |
-| Python version | **PENDING** |
-| PySide6/Qt version | **PENDING** |
-| Windows base display scale / system DPI | **PENDING** |
-| Process-local Qt scale multiplier | **PENDING — `none` when Windows is already at 200%** |
-| Effective Qt device-pixel ratio | **PENDING — must equal 2.0** |
-| Windows text-size setting | **PENDING** |
-| Logical application viewport | **PENDING** |
-| Keyboard-only result | **PENDING** |
-| Original/adjusted visual comparison result | **PENDING** |
-| Progress/cancellation/error result | **PENDING** |
-| 200-percent reachability result | **PENDING** |
-| Focus anomalies | **PENDING** |
-| Clipped/truncated/unreachable controls | **PENDING** |
-| Residual issues | **PENDING** |
-| Final result | **PENDING — PASS or FAIL only after every required step** |
+| Review date | **2026-08-14** |
+| Reviewer/operator and provenance | **Codex agent using the Windows computer-use controller against the production PaperWorkShell application; the recorded workflow used keyboard input only and was not a human or NVDA review. An earlier pointer-assisted scroll observation was discarded and rerun by keyboard.** |
+| Tested implementation revision | **`e25098f6064236f469f6d34b0a5b8435099e8667`** |
+| Windows edition/build | **Windows 11 Pro, build 26200** |
+| Python version | **3.14.6** |
+| PySide6/Qt version | **PySide6 6.11.1 / Qt 6.11.1** |
+| Windows base display scale / system DPI | **125% / 120 DPI** |
+| Process-local Qt scale multiplier | **1.6 (`QT_SCALE_FACTOR=1.6`)** |
+| Effective Qt device-pixel ratio | **2.0** |
+| Windows text-size setting | **Default 100%; no `TextScaleFactor` override was present** |
+| Logical application viewport | **Available screen geometry was 960 by 510 logical pixels at DPR 2.0; the production dialog used keyboard scrolling under that constraint. A separate dialog/client-area measurement was not instrumented.** |
+| Keyboard-only result | **PASS — case creation, native-chooser import, review opening, full forward/reverse traversal, cancellation, retry, every adjustment category, comparison modes, Reset, rejection, Apply, reopen, Undo, and Redo were completed by keyboard.** |
+| Original/adjusted visual comparison result | **PASS — Original remained the literal immutable-source preview. Quarter-turn candidates were visibly distinct at 90 and 180 degrees while Original remained unchanged.** |
+| Progress/cancellation/error result | **PASS — progress and cancellation were visible and reachable; cancellation applied nothing. A deliberately terminated one-shot preview worker produced only `IMAGE_PAGE_DEPENDENCY_FAILED: A required image-processing component could not complete safely.`, focused the error, retained Original, enabled Update, and a fresh keyboard retry succeeded.** |
+| 200-percent reachability result | **PASS — 25 forward and 25 reverse focus steps showed visible focus without a trap; keyboard-only PageDown moved the review scroll area and all critical actions, status, previews, and recovery controls remained reachable.** |
+| Focus anomalies | **None observed** |
+| Clipped/truncated/unreachable controls | **None observed; wrapped content and keyboard scrolling kept recovery and action controls reachable** |
+| Residual issues | **NVDA was not run; PWS-0209 owns the complete Milestone 2 NVDA gate. The synthetic local smoke case was retained rather than deleting user-profile data without separate authorization.** |
+| Final result | **PASS** |
 
 ## Prerequisites and safety
 
@@ -152,18 +151,39 @@ that gate. If NVDA Speech Viewer is used, record its version and whether it anno
 units, preview state, “Needs review” suggestion wording, bounded progress, cancellation, failure,
 and Apply completion without source names, paths, metadata, hashes, or document content.
 
-NVDA result: **PENDING / NOT RUN**
+NVDA result: **NOT RUN — PWS-0209 owns the complete Milestone 2 NVDA gate.**
 
 ## Automated companion evidence
 
-Record command results and exact test counts after implementation converges:
+The clean implementation revision passed the following companion evidence:
 
 ```text
-.venv\Scripts\python.exe -m pytest -q tests/unit/test_scan_review_service.py tests/unit/test_scan_review_dialog.py
+.venv\Scripts\python.exe tools/dev.py check
+PASS in 4704.2 seconds: 394 format/type surfaces; 13 import layers across 143 source files;
+3098 unit, 388 integration with 7 disclosed skips, 331 security with 6 disclosed skips,
+and 31 accessibility tests; fixtures, schemas, dependencies, task/docs/resource validators,
+the bounded repository secret scan, and all 5 quality self-tests passed.
+
+.venv\Scripts\python.exe -m pytest -q tests/unit/test_scan_review_service.py
+tests/unit/test_scan_review_dialog.py tests/unit/test_scan_review_window.py
+tests/unit/test_scan_review_backend_bridge.py tests/accessibility/test_scan_review_accessibility.py
+tests/security/test_scan_review_privacy.py
+PASS: 69 tests in 2.77 seconds.
+
 .venv\Scripts\python.exe -m pytest -q tests/unit/test_organizer_backend.py -k scan_review
-.venv\Scripts\python.exe -m pytest -q tests/accessibility/test_scan_review_accessibility.py
-.venv\Scripts\python.exe -m pytest -q tests/security/test_scan_review_privacy.py
-.venv\Scripts\python.exe tools/dev.py test-accessibility
+PASS: 7 tests, 21 deselected, in 0.35 seconds.
+
+.venv\Scripts\python.exe -m pytest -q
+tests/integration/test_organizer_ui_windows.py::test_live_scan_review_preserves_original_and_reopens_only_applied_intent
+PASS: 1 test in 420.52 seconds.
+
+.venv\Scripts\python.exe -m pytest -q
+tests/integration/test_organizer_ui_windows.py::test_live_composition_imports_and_renders_bounded_organizer_previews
+PASS: 1 test in 419.29 seconds.
+
+.venv\Scripts\python.exe -m pytest -q
+tests/integration/test_m1_vertical_slice_windows.py::test_m1_vertical_slice_is_deterministic_recoverable_and_private
+PASS: 1 test in 1264.35 seconds.
 ```
 
 Automated tests must cover doubled application text with a constrained 960 by 540 logical viewport,
@@ -171,6 +191,13 @@ but that result remains separate from the manually inspected real-Windows 200-pe
 
 ## Sign-off
 
-Reviewer statement: **PENDING**
+Reviewer statement: **The agent-operated production-app review completed the required keyboard,
+effective-DPR-2.0, progress/cancellation/error, comparison, reset/reject, Apply/persistence, and
+Undo/Redo checks using only the named public synthetic fixture. No applicant data was used. This is
+not a human usability or screen-reader certification.**
 
-Final conclusion and rationale: **PENDING**
+Final conclusion and rationale: **PASS — every PWS-0203 acceptance criterion was exercised on the
+clean implementation revision. Original bytes and the approved golden index remained unchanged;
+tentative work did not mutate the manifest, exact Apply persisted and reopened normally, failure
+and cancellation recovered safely, and all critical controls remained keyboard-reachable at an
+effective Qt DPR of 2.0.**
