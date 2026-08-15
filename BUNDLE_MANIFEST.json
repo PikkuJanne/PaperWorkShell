@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.2",
+  "bundle_version": "0.2.3",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 224435,
-      "sha256": "53351efdc6473be98cf392a3cc70ca39ff0ef3b6b1482f8326c11cd1e72b993a"
+      "bytes": 228339,
+      "sha256": "f93f1da58be1eaad33c46066c436ba037c7082143f0f1f7a6c2a28c2aca14d13"
     },
     {
       "path": "TASKS.schema.json",
@@ -96,11 +96,13 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0209"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0207 implementation is complete and under review: advisory scan-quality analysis, page-correlated OCR review, accessible navigation, bounded worker isolation, and deterministic cleanup are implemented. The revision-bound evaluation baseline and final task evidence remain pending; PWS-0209 stays planned until PWS-0207 is done.",
+    "PWS-0207 is done with revision-bound advisory scan-quality analysis, page-correlated OCR review, accessible navigation, bounded worker isolation, deterministic cleanup, and a recorded synthetic evaluation baseline. PWS-0209 is the sole ready task and remains selected next.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

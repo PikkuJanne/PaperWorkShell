@@ -1931,7 +1931,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: L
-  status: review
+  status: done
   critical_path: false
   depends_on:
   - PWS-0202
@@ -1961,10 +1961,46 @@ tasks:
   - ocr
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-15'
+    revision: 6931e0d071336df09950af9ed86841e816e7b41f
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py check - passed on the revision-bound review snapshot; 432 files passed
+      formatting/lint and strict typing, 13 import layers across 155 source files were valid, 3530 unit tests passed,
+      389 integration tests passed with 7 disclosed capability/environment skips, 353 security tests passed with 6
+      disclosed Windows capability skips, and all 39 accessibility tests passed; fixture, schema, task, docs,
+      portfolio, benchmark, secret-scan, and deliberate quality-violation gates also passed
+    - .venv\Scripts\python.exe tools/pws0207_quality_evaluation.py evaluate; record --revision
+      6931e0d071336df09950af9ed86841e816e7b41f --output benchmarks/pws0207-quality-findings-v1.json; validate - passed;
+      the canonical 2201-byte baseline binds the exact implementation commit, 28 recipe cases, 4 duplicate pairs,
+      eight metric rows, corpus SHA-256 36fad4f6a94e06971ea9e8e3226df18f92050e8f6f14ba1a1dd5b5b4056bfd8e,
+      and profile SHA-256 ac8a174ad72892f7a519090d0497d6382c4e67d34fb1f5b6638fb82f420901b8
+    - .venv\Scripts\python.exe tools/dev.py validate-dependencies - passed; dependency inventory v1 remained valid and
+      this task added no dependency or language-model bytes
+    - .venv\Scripts\python.exe -m pytest -q tests/integration/test_worker_windows_containment.py::test_production_windows_process_creation_has_only_locked_authorities
+      tests/unit/test_tesseract_runner.py tests/unit/worker/test_quality_ocr_review_operation.py - passed; 50 focused
+      tests prove process creation stays in the locked runner after the final containment correction
+    notes:
+    - The versioned integer-only scan-quality profile analyzes one bounded current page sample at a time and emits only
+      typed Likely, Suspected, or Needs review findings for image-only source resolution, blur, clipping, blank content,
+      sideways orientation, earliest-prior similarity, OCR failure, and low confidence. Findings and private
+      fingerprints are ephemeral, revision-bound, and cannot mutate a case, page history, checklist, or requirement.
+    - The additive ocr.review v1 path binds case, revision, page, presentation, sample, selected language, and profile;
+      parses only bounded private TSV word-presence/confidence aggregates; discards text, geometry, stderr, paths, and
+      pixels; and runs in a capability-scoped network-denied one-shot worker. Expected engine/language unavailability
+      is advisory, while authority, launch, isolation, protocol, resource, correlation, and cleanup faults publish no
+      snapshot.
+    - The accessible Ctrl+Shift+Q workflow is explicit and cancelable, uses a virtual keyboard-navigable finding list,
+      returns focus predictably, supports enlarged text, and invalidates stale results on every relevant saved-state or
+      language change. It never runs automatically or presents a no-signal result as certification.
+    - Input/output sections, result pipes, child streams, private temporary files, and every owning composition retain
+      cleanup authority until closure is confirmed; uncertain cleanup makes shutdown refuse and retry. Resource limits,
+      low-space/output-limit failures, cancellation, late results, and fresh retry are regression-tested without case or
+      original mutation.
+    - The synthetic baseline intentionally retains one blur false positive, one clipping false positive, one
+      180-degree-orientation false negative, and one similar-distinct duplicate false positive; it is regression evidence,
+      not real-document accuracy or hardware certification. Its artifact SHA-256 is
+      0948c08c457c8b60d1fdbdf03d4ca0def2d206a1f809826b4fd1804c17cbd074. Live installed-Tesseract recognition remained
+      unavailable on this host and was truthfully skipped; PWS-0209 retains the milestone-wide live/manual gate.
 - id: PWS-0208
   milestone: M2
   title: Harden signed-PDF handling and incremental resource controls
@@ -2064,7 +2100,7 @@ tasks:
   kind: gate
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0201

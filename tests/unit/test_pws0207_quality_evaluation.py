@@ -338,8 +338,7 @@ def test_baseline_loader_is_bounded_and_sanitizes_io_failure(tmp_path: Path) -> 
 
 
 def test_checked_in_baseline_is_canonical_and_matches_current_corpus() -> None:
-    if not BASELINE_PATH.exists():
-        pytest.skip("revision-bound baseline is recorded after the implementation commit")
+    assert BASELINE_PATH.is_file(), "the revision-bound PWS-0207 baseline is required"
     baseline = validate_current_baseline(BASELINE_PATH)
     assert baseline.corpus_sha256 == EXPECTED_CORPUS_SHA256
     assert baseline.profile_sha256 == EXPECTED_PROFILE_SHA256

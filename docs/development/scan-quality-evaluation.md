@@ -118,7 +118,7 @@ evidence-bound `paperworkshell-public-synthetic-v1` corpus.
 
 ## Baseline metrics
 
-The revision-bound baseline target is canonical ASCII JSON. It binds the corpus version and SHA-256,
+The revision-bound baseline is canonical ASCII JSON. It binds the corpus version and SHA-256,
 finding profile version and SHA-256, the actual constrained ResourcePolicy version/profile, and the
 verified implementation revision. The recorder and validator require that the 40-hex object exists
 as a Git commit, that every bound analyzer, OCR producer, organizer/UI correlation, worker
@@ -187,7 +187,8 @@ An exact baseline is a regression oracle, not an accuracy guarantee. A deliberat
 corpus change must explain the changed false-positive/false-negative counts and record a newly
 reviewed baseline rather than refreshing the file merely to pass tests.
 
-The frozen recipe/profile evaluation awaiting final revision binding is:
+The frozen recipe/profile evaluation recorded against implementation revision
+`6931e0d071336df09950af9ed86841e816e7b41f` is:
 
 - corpus SHA-256:
   `36fad4f6a94e06971ea9e8e3226df18f92050e8f6f14ba1a1dd5b5b4056bfd8e`;
@@ -211,17 +212,18 @@ duplicate pair produces a 500,000 ppm false-positive rate because that class con
 negative pairs.
 
 The non-mutating verification command recomputes current metrics and validates the checked-in
-baseline when it exists:
+baseline:
 
 ```text
 python tools/pws0207_quality_evaluation.py evaluate
 python tools/pws0207_quality_evaluation.py validate benchmarks/pws0207-quality-findings-v1.json --revision <recorded-40-lowercase-hex>
 ```
 
-After the implementation revision exists and the evaluated surfaces match it, maintainers record
-the artifact explicitly. The recorder fsyncs a same-directory temporary file, publishes it through
-an exclusive no-replace hard link, removes the temporary name, and refuses to overwrite an existing
-baseline. A failed write/publication leaves no destination and can be retried:
+The artifact was recorded explicitly after the implementation revision existed and every evaluated
+surface matched it. For a future deliberately reviewed replacement, the recorder fsyncs a
+same-directory temporary file, publishes it through an exclusive no-replace hard link, removes the
+temporary name, and refuses to overwrite an existing baseline. A failed write/publication leaves no
+destination and can be retried:
 
 ```text
 python tools/pws0207_quality_evaluation.py record --revision <40-lowercase-hex> --output benchmarks/pws0207-quality-findings-v1.json
