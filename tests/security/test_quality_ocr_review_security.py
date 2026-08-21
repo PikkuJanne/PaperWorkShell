@@ -273,7 +273,15 @@ def test_private_tsv_and_stderr_are_consumed_without_public_or_log_leakage(
     assert isinstance(arguments, tuple)
     private_input = Path(arguments[1])
     assert private_input.parent == private_temp
-    assert arguments[2:] == ("stdout", "-l", "eng", "--psm", "6", "tsv")
+    assert arguments[2:] == (
+        "stdout",
+        "-l",
+        "eng",
+        "--psm",
+        "6",
+        "-c",
+        "tessedit_create_tsv=1",
+    )
     assert not private_input.exists()
     assert tuple(private_temp.iterdir()) == ()
     exposed = (f"{request!r} {adapter!r} {report!r} {caplog.text}").encode()
