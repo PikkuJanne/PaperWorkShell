@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.6",
+  "bundle_version": "0.2.7",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 232930,
-      "sha256": "c954b86bde2571f6eaaf8130150044f4cd7d9e44ab9580b03482f3645980916c"
+      "bytes": 237136,
+      "sha256": "8e372d536f853fc345ea71ec56fc314f88c3e3297ab3d27214243f28ac70a479"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 28009,
-      "sha256": "0f90308a9157ff80a1ebcc875da435f751f61ff3f94ff01995a30e265f2358de"
+      "bytes": 28480,
+      "sha256": "710ca9272397a9c57c898be8f3c896cba0bdfe213c44ead089a93128a487d41b"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -97,12 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0301"
+      "PWS-0302"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0209 is done: the Milestone 2 image/OCR gate passed its mixed searchable-output, cancellation, signed-source, constrained-resource, privacy, accessibility, and recorded manual evidence. PWS-0301 is the sole ready task and begins Milestone 3.",
+    "PWS-0301 is done: the pure normalized page coordinate model preserves the released manifest box meaning across PDF user space, intrinsic and manifest quarter-turns, crop, raster edges, viewports, and explicit display scaling. PWS-0302 is the sole ready task and continues Milestone 3 with the overlay domain model.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

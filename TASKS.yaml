@@ -2198,7 +2198,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0209
@@ -2227,17 +2227,60 @@ tasks:
   - forms
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-21'
+    revision: 9063fffe73f86740f70c2be320ddceca7e905e38
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit
+      - passed on the final closure tree; all repository Python files were formatted, linted, and strictly typed,
+      all 13 import layers across 156 source files were valid, and the complete unit suite passed
+    - .venv\Scripts\python.exe -m pytest -q tests/unit/test_page_coordinates.py;
+      tests/security/test_page_coordinates_security.py; tests/unit/test_page_operations.py;
+      tests/unit/test_scan_transform_operations.py; tests/unit/test_manifest_v2_validation.py;
+      tests/unit/test_image_transforms.py - passed; 122 focused coordinate, hostile-input, compatibility,
+      manifest, operation, and image-transform tests passed
+    - .venv\Scripts\python.exe tools/dev.py test-integration - passed serially on exact clean implementation
+      revision 9063fffe73f86740f70c2be320ddceca7e905e38; 390 tests passed with 8 disclosed Windows
+      link/runtime/private-stage capability skips in 3118.42 seconds
+    - .venv\Scripts\python.exe tools/dev.py test-security; test-accessibility - passed serially; 355 security
+      tests passed with 6 disclosed Windows link-capability skips in 257.45 seconds, and all 39 accessibility
+      tests passed
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; scan-secrets; quality-self-test - passed; 45 public
+      fixtures, 15 renderer references, 6 image-transform references, reachable Git/source bytes, and all 5
+      deliberate quality violations were checked
+    notes:
+    - The pure standard-library domain model names normalized full-page millionths, raw PDF user space,
+      typographic points, continuous raster edges, logical screen coordinates, and device pixels. Intrinsic
+      orientation, MediaBox/CropBox selection, manifest crop, manifest quarter-turn, actual raster dimensions,
+      viewport offset/scale, and device scaling remain explicit stages with deterministic inverses.
+    - The exact released normalized-box shape is unchanged and is now canonical in domain.page_coordinates;
+      page_operations explicitly re-exports that same type. Case-manifest v1/v2 schemas, fingerprints, examples,
+      operation/overlay wire meaning, dependency lock, and renderer request/result contracts were not changed.
+    - Strict boxes reject booleans, floats, inversion, empty spans, and out-of-page edges. Page clipping and
+      render-visibility intersection are separately named opt-in policies that never mutate persisted intent;
+      nearest and outward continuous-edge quantization are explicit.
+    - Rational crop/quarter-turn math and nearest half-up point quantization give exact manifest replay. PDF,
+      viewport, DPR, and /UserUnit geometry that cannot preserve the documented millionth/ULP round-trip bound
+      fails closed; exact outer edges normalize harmless float residue only after bounds are proved.
+    - Fixed-seed randomized properties cover all intrinsic/user quarter-turn combinations, non-zero origins,
+      crops, mixed page sizes, raster sizes, viewport offsets/zoom, and display scales. Known quadrant centres
+      match all four colours in every existing approved intrinsic/additional renderer golden; no golden was
+      refreshed. Supplemental independent stress found no accepted out-of-bound round trip across 500000 PDF,
+      120000 viewport, 300000 DPR, 200000 screen-edge, and 100000 /UserUnit trials.
+    - Coordinate errors and PDF geometry reprs are closed and non-disclosing; hostile mapping/comparison inputs
+      are regression-tested. This pure non-UI task adds no control or interaction and changes no accessibility
+      behavior. It does not claim deskew alignment, overlay rendering, font fidelity, OCR accuracy, PDF/UA,
+      display calibration, portal acceptance, or physical-hardware performance.
+    - PaperWorkShell remains standalone and owns its local cases/data. This task added no sibling dependency,
+      shared schema/service/runtime, adapter, data exchange, or release-interface change; no ThirdLife future
+      note is needed.
 - id: PWS-0302
   milestone: M3
   title: Define overlay domain model and manifest schema extension
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0301
