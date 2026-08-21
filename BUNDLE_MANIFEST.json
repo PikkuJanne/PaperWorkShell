@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.4",
+  "bundle_version": "0.2.5",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 228340,
-      "sha256": "e31d6bb1f1af57bc4f68850a45318e47d8bd85d65eace92fdefc64022ef42f6c"
+      "bytes": 232930,
+      "sha256": "691705d57cf8ddbc89f35644db050bac6cd5e7c59669e81c931864bda2956b4e"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 27350,
-      "sha256": "52e06ca156c7c1a6b354ca820fcea672758f20883027b68dae38b3516704f71a"
+      "bytes": 28009,
+      "sha256": "0f90308a9157ff80a1ebcc875da435f751f61ff3f94ff01995a30e265f2358de"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -96,11 +96,13 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0301"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0209 implementation and gate-owned tests are complete and under review. Final exact-revision quality, constrained-resource, and recorded gate evidence remain pending; PWS-0301 stays planned until PWS-0209 is done.",
+    "PWS-0209 is done: the Milestone 2 image/OCR gate passed its mixed searchable-output, cancellation, signed-source, constrained-resource, privacy, accessibility, and recorded manual evidence. PWS-0301 is the sole ready task and begins Milestone 3.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

@@ -27,8 +27,9 @@ ThirdLife compatibility cut or packaged PaperWorkShell release already exists.
 
 ## Development bootstrap
 
-The repository has completed its foundation and Milestone 1 vertical-slice gates and is implementing
-Milestone 2 image-processing capabilities. It contains the restricted worker, immutable
+The repository has completed its foundation, Milestone 1 vertical-slice, and Milestone 2 image/OCR
+gates and is implementing the Milestone 3 normalized-coordinate and visual-overlay model. It
+contains the restricted worker, immutable
 PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
@@ -131,10 +132,12 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py validate-portfolio-boundary` | Validate standalone ThirdLife boundaries, M8 ownership, and roadmap-bundle integrity |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
 | `py -3.14 tools/dev.py validate-m1-benchmark-report` | Validate the constrained-profile M1 evidence contract |
+| `py -3.14 tools/dev.py validate-pws0208-resource-workload` | Validate the fixed constrained signed-source/OCR workload contract |
 | `py -3.14 tools/dev.py validate-pdf-renderer-benchmark` | Validate the bound synthetic renderer-comparison workload |
 | `py -3.14 tools/dev.py scan-secrets` | Scan reachable Git/index blobs and nonignored local source bytes with Gitleaks |
 | `py -3.14 tools/dev.py quality-self-test` | Prove deliberate format/type/schema/cycle/secret violations are rejected |
 | `py -3.14 tools/dev.py run-m1-vertical-slice` | Run the constrained M1 vertical slice and publish local evidence |
+| `py -3.14 tools/dev.py run-pws0208-resource-workload` | Run the constrained signed-source/OCR workload and publish local evidence |
 | `py -3.14 tools/dev.py benchmark-pdf-renderers` | Compare the pinned PDFium and Qt PDF candidates on Windows |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
@@ -167,6 +170,11 @@ Its keyboard controls, autosave/threading model, bounded import/preview behavior
 verification status are documented in
 [`docs/architecture/page-organizer-ui.md`](docs/architecture/page-organizer-ui.md) and
 [`docs/accessibility/pws-0111-nvda-smoke.md`](docs/accessibility/pws-0111-nvda-smoke.md).
+
+The completed image/OCR milestone, its gate-owned mixed searchable-output scenario, constrained
+resource evidence, and current agent-operated keyboard/NVDA smoke are recorded in
+[`docs/gates/m2-image-ocr-gate.md`](docs/gates/m2-image-ocr-gate.md) and
+[`docs/accessibility/pws-0209-m2-nvda-smoke.md`](docs/accessibility/pws-0209-m2-nvda-smoke.md).
 
 The source tree separates pure domain rules, toolkit-free application orchestration, worker
 lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized

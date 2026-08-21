@@ -2100,7 +2100,7 @@ tasks:
   kind: gate
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0201
@@ -2143,17 +2143,62 @@ tasks:
   - images
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-21'
+    revision: ba6d1268be8e23a6dec521fe03481a81f2d5a717
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit
+      - passed on the clean exact review revision; 434 files were formatted, linted, and strictly typed, 13 import
+      layers across 155 source files were valid, and all 3530 unit tests passed
+    - .venv\Scripts\python.exe tools/dev.py test-integration - passed on review revision
+      9095ae3c8dc405ad3cd7b630df73c7a64d9c7ed7; 394 tests passed with 4 disclosed Windows
+      link/private-stage skips in 4939.75 seconds. The only later code change corrected the matching security-test
+      argv assertion; both gate-owned live tests then passed again on exact revision ba6d1268be8e23a6dec521fe03481a81f2d5a717
+      in 106.44 seconds
+    - .venv\Scripts\python.exe tools/dev.py test-security; test-accessibility - passed on exact revision
+      ba6d1268be8e23a6dec521fe03481a81f2d5a717; 353 security tests passed with 6 disclosed Windows
+      link-capability skips, and all 39 accessibility tests passed
+    - .venv\Scripts\python.exe tools/dev.py run-pws0208-resource-workload; python -m
+      tools.pws0208_resource_evidence; qpdf --check; pdfinfo; pdftoppm all-page review - passed on clean exact revision
+      ba6d1268be8e23a6dec521fe03481a81f2d5a717; the 204075 ms fixed workload completed success, cancellation,
+      correlated limit refusal, cleanup, and retry, then produced a valid 2201-byte report and visually intact
+      128181-byte 12-page unsigned derivative
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-m1-benchmark-report;
+      validate-pws0208-resource-workload; validate-pdf-renderer-benchmark; scan-secrets; quality-self-test - passed;
+      45 public fixtures, 15 renderer references, 6 transform references, 2066 historical blobs, and all 5
+      deliberate quality violations were checked
+    - Production keyboard/NVDA smoke at 125-percent Windows display scaling plus QT_SCALE_FACTOR 1.6 - passed for
+      generated synthetic JPEG import, local-only language management, scan-preview cancellation, quality-review
+      cancellation/retry, advisory finding navigation, effective enlarged layout, clean close, and empty ACL ledger
+    notes:
+    - The admitted 39-file, 27588734-byte Tesseract 5.5.3 English stage intentionally lacks a tsv config. Live gate
+      testing found that the former terminal tsv argument returned plain text with exit zero; the operation now uses
+      the exact built-in `-c tessedit_create_tsv=1` parameter under the runner's strict private-PPM/stdout allowlist.
+    - The gate-owned four-page mixed PDF/JPEG/PNG scenario preserved one born-digital text page and independently
+      verified OCR text on three raster pages. Strict reopen, qpdf structure, page count, encryption, all-page render,
+      order/rotation, destination reopen, original immutability, expected-only manifest history, content-free reports,
+      and zero temporary/retry state all passed.
+    - The content-free quality worker returned only word count/confidence aggregates, cancelled after worker start with
+      no applied snapshot, released heavy-operation capacity, and retried deterministically. The UI/NVDA retry reported
+      one Needs review signal and explicitly stated that automatic suggestions do not complete a requirement.
+    - Exact constrained evidence recorded process-tree peak RSS 330903552 of 1342177280 bytes, worker-process commit
+      103374848 of 536870912 bytes, Job commit 123486208 of 805306368 bytes, private temp 740444 of 536870912 bytes,
+      one full-resolution buffer/result/heavy operation, 13 ms cancellation acknowledgement, complete cleanup, and an
+      empty persistent ACL-recovery ledger. Report SHA-256 is
+      02fcc57495919ff0102c9bd10b7c3d41fd948c6879f7c8e852e07748f81d7619; derivative SHA-256 is
+      63fe1afb3b5213ceb2605764748c6ffb88719fb6f9f8d370f9bdd76c99b67365.
+    - The agent-operated NVDA smoke is not human accessibility certification, and effective approximately 200-percent
+      Qt scaling is not claimed as an actual 200-percent Windows setting. No OCR accuracy, PDF/UA, portal acceptance,
+      legal-signature validity, physical-hardware performance, secure-erasure, or packaged-release claim is made.
+    - PaperWorkShell remains standalone and owns its local cases/data; this task added no sibling dependency, shared
+      schema/service/runtime, adapter, data exchange, or release-interface change. No ThirdLife future note is needed.
 - id: PWS-0301
   milestone: M3
   title: Implement normalized page coordinate model
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0209
