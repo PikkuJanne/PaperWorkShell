@@ -1,7 +1,7 @@
 # Page operation, replay, undo, and redo contract
 
-- Status: Implemented PWS-0110 contract with PWS-0202 scan-transform extensions
-- Tasks: PWS-0110, PWS-0202
+- Status: Implemented PWS-0110 contract with PWS-0202 and PWS-0301 extensions
+- Tasks: PWS-0110, PWS-0202, PWS-0301
 - Decisions: PWS-D010, PWS-D011
 - Depends on: PWS-0006 case-manifest v1; PWS-0109 atomic manifest repository
 
@@ -18,6 +18,10 @@ work, logging, timing, or background scheduling. It uses no third-party package.
 accessible organizer controls; rendering and export tasks consume the recorded intent through their
 own adapters. PWS-0202 adds commands and projection fields for crop, deskew, contrast, and
 background cleanup without moving rendering or worker concerns into the domain layer.
+PWS-0301 moves the released normalized-box codec into the pure
+[normalized page coordinate model](page-coordinate-model.md) and explicitly re-exports that exact
+type here, preserving existing imports and crop serialization without changing either manifest
+schema.
 
 ## Canonical operation replay
 

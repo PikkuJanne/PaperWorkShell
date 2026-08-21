@@ -19,6 +19,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Final, cast
 
+from paperworkshell.domain.page_coordinates import (
+    NORMALIZED_PAGE_MILLIONTHS as NORMALIZED_PAGE_MILLIONTHS,
+)
+
 # ``CANONICAL_SCHEMA_FINGERPRINT`` remains the published v1 identity for
 # compatibility with callers that explicitly validate a historical manifest.
 SUPPORTED_SCHEMA_VERSION: Final = 2
@@ -36,8 +40,6 @@ MAX_REPORTED_ISSUES: Final = 512
 MAX_VALIDATION_STEPS: Final = 1_000_000
 MAX_SCHEMA_RECURSION: Final = 128
 MAX_OUTPUT_NAME_UTF16_CODE_UNITS: Final = 180
-NORMALIZED_PAGE_MILLIONTHS: Final = 1_000_000
-
 _SAFE_PATH_TOKEN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INVALID_JSON_POINTER_ESCAPE: Final = re.compile(r"~(?:[^01]|$)")
 _RFC3339_DATE_TIME: Final = re.compile(

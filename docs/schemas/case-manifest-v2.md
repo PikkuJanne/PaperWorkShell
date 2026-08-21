@@ -49,6 +49,9 @@ operations. Full runtime and cache-key requirements are recorded in the
 [non-destructive scan-transform pipeline](../architecture/image-transform-pipeline.md).
 Background cleanup is a tonal operation, not permanent removal or a redaction claim.
 
+The shared PDF/raster/screen mapping, strict normalized-box codec, and quantization tolerances are
+specified in the [normalized page coordinate model](../architecture/page-coordinate-model.md).
+
 ## Automatic v1-to-v2 migration
 
 A repository load first validates and settles the current manifest and its one recovery checkpoint.

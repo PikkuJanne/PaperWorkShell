@@ -31,12 +31,20 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSnapshot,
     copy_manifest_document,
 )
+from paperworkshell.domain.page_coordinates import (
+    NORMALIZED_PAGE_MILLIONTHS as NORMALIZED_PAGE_MILLIONTHS,
+)
+from paperworkshell.domain.page_coordinates import (
+    NormalizedPageBox as NormalizedPageBox,
+)
+from paperworkshell.domain.page_coordinates import (
+    PageCoordinateError,
+)
 
 MAX_PAGE_COUNT: Final = 4_096
 MAX_PAGE_OPERATION_COUNT: Final = 4_096
 MAX_REPLAY_MEMBERS: Final = 100_000
 MAX_SAFE_MANIFEST_INTEGER: Final = 9_007_199_254_740_991
-NORMALIZED_PAGE_MILLIONTHS: Final = 1_000_000
 LEGACY_PAGE_OPERATION_VERSION: Final = 1
 SCAN_TRANSFORM_OPERATION_VERSION: Final = 2
 # Kept as the default for the released organizer operations. New scan-transform
@@ -97,7 +105,6 @@ _GROUP_MEMBERS: Final = frozenset({"kind", "group_id", "page_ids"})
 _DESKEW_MEMBERS: Final = frozenset({"kind", "page_id", "angle_millidegrees_clockwise"})
 _CONTRAST_MEMBERS: Final = frozenset({"kind", "page_id", "factor_millionths"})
 _BACKGROUND_CLEANUP_MEMBERS: Final = frozenset({"kind", "page_id", "strength_millionths"})
-_BOX_MEMBERS: Final = frozenset({"coordinate_space", "x", "y", "width", "height"})
 
 
 class PageOperationErrorCode(StrEnum):
@@ -341,63 +348,13 @@ def _parse_page_reference(value: object) -> PageReference:
     )
 
 
-@dataclass(frozen=True, slots=True)
-class NormalizedPageBox:
-    """Integer crop rectangle in normalized page millionths."""
-
-    x: int
-    y: int
-    width: int
-    height: int
-    coordinate_space: str = "normalized_page_millionths_v1"
-
-    def __post_init__(self) -> None:
-        values = (self.x, self.y, self.width, self.height)
-        if (
-            self.coordinate_space != "normalized_page_millionths_v1"
-            or any(type(value) is not int for value in values)
-            or not 0 <= self.x <= NORMALIZED_PAGE_MILLIONTHS
-            or not 0 <= self.y <= NORMALIZED_PAGE_MILLIONTHS
-            or not 1 <= self.width <= NORMALIZED_PAGE_MILLIONTHS
-            or not 1 <= self.height <= NORMALIZED_PAGE_MILLIONTHS
-            or self.x + self.width > NORMALIZED_PAGE_MILLIONTHS
-            or self.y + self.height > NORMALIZED_PAGE_MILLIONTHS
-        ):
-            reject_page_operation(PageOperationErrorCode.CROP_INVALID, "page.crop")
-
-    @classmethod
-    def from_manifest(cls, value: Mapping[str, object]) -> NormalizedPageBox:
-        """Parse one exact normalized-box object."""
-
-        copied = _copy_public_mapping(value, context="crop.manifest")
-        return _parse_box(copied)
-
-    def to_manifest(self) -> dict[str, object]:
-        """Serialize to the exact shared case-manifest normalized-box shape."""
-
-        return {
-            "coordinate_space": self.coordinate_space,
-            "x": self.x,
-            "y": self.y,
-            "width": self.width,
-            "height": self.height,
-        }
-
-
 def _parse_box(value: object) -> NormalizedPageBox:
-    box = _require_members(value, _BOX_MEMBERS, context="crop.manifest")
-    coordinate_space = box["coordinate_space"]
-    integers = (box["x"], box["y"], box["width"], box["height"])
-    if type(coordinate_space) is not str or any(type(item) is not int for item in integers):
+    if type(value) is not dict:
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "crop.manifest")
-    x, y, width, height = cast(tuple[int, int, int, int], integers)
-    return NormalizedPageBox(
-        coordinate_space=coordinate_space,
-        x=x,
-        y=y,
-        width=width,
-        height=height,
-    )
+    try:
+        return NormalizedPageBox.from_manifest(value)
+    except PageCoordinateError:
+        reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "crop.manifest")
 
 
 class SequenceChangeReason(StrEnum):

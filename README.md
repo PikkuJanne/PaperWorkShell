@@ -27,9 +27,9 @@ ThirdLife compatibility cut or packaged PaperWorkShell release already exists.
 
 ## Development bootstrap
 
-The repository has completed its foundation, Milestone 1 vertical-slice, and Milestone 2 image/OCR
-gates and is implementing the Milestone 3 normalized-coordinate and visual-overlay model. It
-contains the restricted worker, immutable
+The repository has completed its foundation, Milestone 1 vertical-slice, Milestone 2 image/OCR
+gates, and the Milestone 3 normalized-coordinate model. It is implementing the visual-overlay
+domain model next. It contains the restricted worker, immutable
 PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
@@ -175,6 +175,12 @@ The completed image/OCR milestone, its gate-owned mixed searchable-output scenar
 resource evidence, and current agent-operated keyboard/NVDA smoke are recorded in
 [`docs/gates/m2-image-ocr-gate.md`](docs/gates/m2-image-ocr-gate.md) and
 [`docs/accessibility/pws-0209-m2-nvda-smoke.md`](docs/accessibility/pws-0209-m2-nvda-smoke.md).
+
+The pure normalized page coordinate model maps exact manifest millionths through intrinsic PDF
+orientation, MediaBox/CropBox selection, manifest crop/quarter-turn, actual raster edges, logical
+viewports, and explicit display scaling. Its codec, formulas, clipping policies, `/UserUnit`
+distinction, tolerances, and synthetic golden evidence are documented in
+[`docs/architecture/page-coordinate-model.md`](docs/architecture/page-coordinate-model.md).
 
 The source tree separates pure domain rules, toolkit-free application orchestration, worker
 lifecycle, document adapters, storage, export, templates, preflight, overlays, and sanitized

@@ -7,9 +7,9 @@
   PWS-0108 bounded PDF thumbnails; PWS-0109 atomic manifest persistence; PWS-0110 page operations;
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
-  PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; and PWS-0206
-  verified searchable mixed-document output
-- Decisions: PWS-D002, PWS-D010, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
+  PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; PWS-0206
+  verified searchable mixed-document output; and PWS-0301 normalized page coordinates
+- Decisions: PWS-D002, PWS-D010, PWS-D011, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D018, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
 
@@ -172,6 +172,16 @@ background-cleanup intent and adds pure fixed-width transform/cache contracts in
 domain module imports Pillow, storage, worker orchestration, or UI code. Current manifest v2 is a
 separately fingerprinted schema, while storage alone owns the copy-only transactional migration
 from fully validated frozen v1 input.
+
+PWS-0301 adds `domain.page_coordinates` as the pure standard-library authority for the released
+normalized-box codec and staged normalized/PDF-user/raster/screen transforms. It imports no UI,
+renderer, PDF engine, image engine, worker, storage, or adapter implementation. Existing page
+operations explicitly re-export the canonical box type; image-transform intent retains its
+closed error boundary while sharing the one million-unit constant. MediaBox/CropBox parsing stays
+in the PDF adapter, raster allocation stays with the owning renderer, and callers pass only
+validated primitive geometry into the model. Exact transform order, clipping policies, `/UserUnit`
+distinction, and tolerance bounds are specified in the
+[normalized page coordinate model](page-coordinate-model.md).
 
 PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
 `domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,

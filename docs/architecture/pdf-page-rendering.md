@@ -182,6 +182,11 @@ PWS-0106 does not introduce arbitrary page cropping or normalized user edit coor
 owns user crop intent. A later feature must translate that intent through an explicit versioned
 geometry contract rather than overloading this page-box mode.
 
+PWS-0301 now provides that renderer-independent translation in the
+[normalized page coordinate model](page-coordinate-model.md). It consumes the resolved effective
+box, intrinsic rotation, `/UserUnit`, and actual raster dimensions without changing this
+renderer request/result contract or either released manifest schema.
+
 ### PDF 1.6 UserUnit limitation
 
 PDF 1.6 permits a page `/UserUnit` that changes the physical size of one canvas unit. The

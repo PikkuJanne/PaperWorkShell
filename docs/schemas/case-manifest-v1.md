@@ -79,6 +79,10 @@ Every box has positive integer `width` and `height`; semantic validation additio
 replay drift. A future change to origins, units, or transform order requires a new coordinate-space
 and manifest version rather than changing v1 meaning.
 
+The pure cross-space formulas, strict/clipped box policies, PDF box rules, and round-trip bounds
+that implement this released meaning are specified in the
+[normalized page coordinate model](../architecture/page-coordinate-model.md).
+
 ## Inert overlays and confirmations
 
 Operation and overlay payloads are discriminated closed objects. There is no command, expression,
