@@ -464,7 +464,8 @@ def test_exact_quality_tsv_stdout_is_bounded_and_returned_only_to_worker_consume
             "eng",
             "--psm",
             "6",
-            "tsv",
+            "-c",
+            "tessedit_create_tsv=1",
         ),
         check=False,
     )
@@ -494,7 +495,8 @@ def test_quality_shaped_call_outside_private_temp_cannot_retain_output(
             "eng",
             "--psm",
             "6",
-            "tsv",
+            "-c",
+            "tessedit_create_tsv=1",
         ),
         check=False,
     )
@@ -526,7 +528,8 @@ def test_quality_tsv_stdout_over_limit_terminates_without_error_leakage(
                 "eng",
                 "--psm",
                 "6",
-                "tsv",
+                "-c",
+                "tessedit_create_tsv=1",
             ),
             check=False,
         )

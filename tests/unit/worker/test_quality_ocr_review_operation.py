@@ -432,7 +432,7 @@ def test_temp_capacity_and_stdout_limit_cleanup_allow_fresh_retry(
             nonlocal calls
             calls += 1
             assert arguments[2] == "stdout"
-            assert arguments[-1] == "tsv"
+            assert arguments[-2:] == ("-c", "tessedit_create_tsv=1")
             assert check is False
             if calls == 1:
                 raise TesseractRunnerError(

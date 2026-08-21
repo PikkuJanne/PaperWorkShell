@@ -410,7 +410,8 @@ class WindowsQualityOcrReviewAdapter:
                         "+".join(language_codes),
                         "--psm",
                         "6",
-                        "tsv",
+                        "-c",
+                        "tessedit_create_tsv=1",
                     ),
                     check=False,
                 )

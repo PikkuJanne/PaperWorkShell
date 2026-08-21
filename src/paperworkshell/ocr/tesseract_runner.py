@@ -672,11 +672,11 @@ def _should_retain_bounded_output(
     # its TSV to the bounded stdout pipe while separately bounded stderr is
     # discarded without contaminating the strict TSV parser.
     return (
-        len(arguments) == 8
+        len(arguments) == 9
         and arguments[2] == "stdout"
         and arguments[3] == "-l"
         and _QUALITY_LANGUAGE_ARGUMENT.fullmatch(arguments[4]) is not None
-        and arguments[5:] == ("--psm", "6", "tsv")
+        and arguments[5:] == ("--psm", "6", "-c", "tessedit_create_tsv=1")
         and _is_direct_private_ppm(arguments[1], temporary_directory)
     )
 
