@@ -2150,7 +2150,7 @@ tasks:
       - passed on the clean exact review revision; 434 files were formatted, linted, and strictly typed, 13 import
       layers across 155 source files were valid, and all 3530 unit tests passed
     - .venv\Scripts\python.exe tools/dev.py test-integration - passed on review revision
-      9095ae3c8dc405ad3cd7b630df73c7a64d9c7ed7; 394 tests passed with 4 disclosed Windows
+      9095ae3ef7342841c18e75290a257b370bed8ec2; 394 tests passed with 4 disclosed Windows
       link/private-stage skips in 4939.75 seconds. The only later code change corrected the matching security-test
       argv assertion; both gate-owned live tests then passed again on exact revision ba6d1268be8e23a6dec521fe03481a81f2d5a717
       in 106.44 seconds
