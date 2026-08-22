@@ -2280,7 +2280,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0301
@@ -2311,17 +2311,58 @@ tasks:
   - terminology
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-22'
+    revision: e8bfdc03af35049a944499161f99dee792b2312a
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit
+      - passed on the final closure tree; all 440 Python files were formatted, linted, and strictly typed, all
+      13 import layers across 157 source files were valid, and all 3640 unit tests passed
+    - .venv\Scripts\python.exe -m pytest -q tests/unit/test_overlay_models.py;
+      tests/unit/test_manifest_migrations.py; tests/security/test_overlay_models_security.py - passed; 121
+      focused overlay codec, ordering, visibility, migration, hostile-input, privacy, and terminology tests passed
+    - .venv\Scripts\python.exe tools/dev.py test-integration - passed serially on exact implementation revision
+      e8bfdc03af35049a944499161f99dee792b2312a; 390 tests passed with 8 disclosed Windows
+      link/runtime/private-stage capability skips in 3051.74 seconds
+    - .venv\Scripts\python.exe tools/dev.py test-security; test-accessibility - passed serially; 393 security
+      tests passed with 6 disclosed Windows link-capability skips in 251.12 seconds, and all 39 accessibility
+      tests passed
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-m1-benchmark-report;
+      validate-pdf-renderer-benchmark; validate-pws0208-resource-workload; scan-secrets; quality-self-test -
+      passed; 45 public fixtures, 15 renderer references, 6 image-transform references, reachable Git/source
+      bytes, the task/schema/portfolio graphs, historical resource evidence, and all 5 deliberate quality
+      violations were checked
+    notes:
+    - The released case-manifest v1 wire already contained all eight required overlay types, normalized boxes,
+      internal signature-image asset references, fixed signature terminology, and ordinary-shape intent; v2
+      retained it byte-for-byte. PWS-0302 therefore adds the typed runtime binding without introducing manifest
+      v3, changing either released schema, or changing reviewed fingerprints
+      a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695 (v1) and
+      af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599 (v2).
+    - Pure immutable models and exact codecs cover text, date, checkmark, cross, initials, signature-image,
+      highlight, and simple-shape intent. They reject unsupported versions/types, malformed fonts/sizes/colors/
+      boxes/assets, unknown page or asset references, identifier collisions, and same-page z-index collisions.
+    - Persisted array order is preserved for lossless round trips; deterministic draw order is low-to-high sparse
+      per-page z-index. Visibility is derived as visible, partially_visible, outside_active_crop, or page_inactive;
+      crop projection and inactive pages never clip, move, delete, or rewrite saved full-page intent.
+    - Signature-image terminology is fixed to visual_mark_not_digital_signature and shape intent to
+      visual_overlay_only_not_permanent_removal. Closed fields reject cryptographic-signature, redaction,
+      executable, URI, and path state while user-entered words remain inert text. Errors and representations
+      omit values, paths, identifiers, storage names, and digests, including for hostile mappings and equality.
+    - Positive/negative checked fixtures cover every overlay variant and stable failure code. The unchanged
+      copy-only v1-to-v2 migration preserves populated overlay/asset graphs and retains no-overlay manifests as
+      fresh empty collections without defaults or mutation. No renderer, UI, dependency, font availability,
+      image decoding, resource-processing, or permanent-redaction behavior is claimed by this pure task.
+    - PaperWorkShell remains standalone and owns its local cases and overlay data. This task adds no sibling
+      dependency, shared schema/service/runtime, adapter, data exchange, or release-interface change; no
+      ThirdLife future note is needed.
 - id: PWS-0303
   milestone: M3
   title: Implement vector overlay renderer and font strategy
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0301
