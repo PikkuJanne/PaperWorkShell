@@ -1,0 +1,136 @@
+{
+  "fixture_version": 1,
+  "positive": [
+    {
+      "name": "text",
+      "payload": {
+        "kind": "text",
+        "value": "SYNTHETIC TEXT",
+        "font_token": "paperworkshell-default",
+        "font_size_points": 12,
+        "color": "#000000ff"
+      }
+    },
+    {
+      "name": "date",
+      "payload": {
+        "kind": "date",
+        "value": "2030-01-15",
+        "font_token": "paperworkshell-default",
+        "font_size_points": 11,
+        "color": "#00AAFFFF"
+      }
+    },
+    {
+      "name": "checkmark",
+      "payload": {
+        "kind": "checkmark",
+        "color": "#008000ff"
+      }
+    },
+    {
+      "name": "cross",
+      "payload": {
+        "kind": "cross",
+        "color": "#800000ff"
+      }
+    },
+    {
+      "name": "initials",
+      "payload": {
+        "kind": "initials",
+        "value": "ST",
+        "font_token": "paperworkshell-default",
+        "font_size_points": 10,
+        "color": "#000000ff"
+      }
+    },
+    {
+      "name": "signature-image",
+      "payload": {
+        "kind": "signature_image",
+        "asset_id": "40000000-0000-4000-8000-000000000001",
+        "terminology": "visual_mark_not_digital_signature"
+      }
+    },
+    {
+      "name": "highlight",
+      "payload": {
+        "kind": "highlight",
+        "shape": "rectangle",
+        "fill_color": "#ffff0080",
+        "stroke_color": "#ffff00ff",
+        "intent": "visual_overlay_only_not_permanent_removal"
+      }
+    },
+    {
+      "name": "shape",
+      "payload": {
+        "kind": "shape",
+        "shape": "ellipse",
+        "fill_color": "#0000ff40",
+        "stroke_color": "#0000ffff",
+        "intent": "visual_overlay_only_not_permanent_removal"
+      }
+    }
+  ],
+  "negative": [
+    {
+      "name": "unsupported-kind",
+      "expected_code": "OVERLAY_PAYLOAD_UNSUPPORTED",
+      "payload": {
+        "kind": "redaction"
+      }
+    },
+    {
+      "name": "invalid-font-token",
+      "expected_code": "OVERLAY_FONT_INVALID",
+      "payload": {
+        "kind": "text",
+        "value": "SYNTHETIC TEXT",
+        "font_token": "..\\font.ttf",
+        "font_size_points": 12,
+        "color": "#000000ff"
+      }
+    },
+    {
+      "name": "invalid-font-size",
+      "expected_code": "OVERLAY_FONT_SIZE_INVALID",
+      "payload": {
+        "kind": "date",
+        "value": "2030-01-15",
+        "font_token": "paperworkshell-default",
+        "font_size_points": 289,
+        "color": "#000000ff"
+      }
+    },
+    {
+      "name": "cryptographic-signature-claim",
+      "expected_code": "OVERLAY_SIGNATURE_TERMINOLOGY_INVALID",
+      "payload": {
+        "kind": "signature_image",
+        "asset_id": "40000000-0000-4000-8000-000000000001",
+        "terminology": "digitally_signed"
+      }
+    },
+    {
+      "name": "permanent-redaction-claim",
+      "expected_code": "OVERLAY_SHAPE_INTENT_INVALID",
+      "payload": {
+        "kind": "shape",
+        "shape": "rectangle",
+        "fill_color": "#000000ff",
+        "stroke_color": "#000000ff",
+        "intent": "permanent_redaction"
+      }
+    },
+    {
+      "name": "invalid-color",
+      "expected_code": "OVERLAY_COLOR_INVALID",
+      "payload": {
+        "kind": "checkmark",
+        "color": "black"
+      }
+    }
+  ]
+}

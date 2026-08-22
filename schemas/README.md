@@ -45,10 +45,17 @@ is released.
   [`examples/case-manifest-v2-representative.json`](examples/case-manifest-v2-representative.json)
 - Semantics and migration:
   [`docs/schemas/case-manifest-v2.md`](../docs/schemas/case-manifest-v2.md)
+- Released overlay-v1 runtime binding:
+  [`docs/architecture/overlay-domain-model.md`](../docs/architecture/overlay-domain-model.md)
 
 Version 2 is the current manifest contract. It retains the closed v1 top-level graph and adds
 version-coupled deskew, contrast, and background-cleanup intent. Repository load migrates a fully
 validated v1 copy through the existing transactional recovery journal before returning state.
+PWS-0302 binds the overlay-v1 wire already shared by v1 and v2: per-page z-order is semantic,
+visibility is derived rather than stored, and the signature-image and ordinary-shape terminology
+metadata cannot claim cryptographic signing or permanent removal. No schema bytes or reviewed v1/v2
+fingerprints changed for that runtime binding, and migration fresh-copies both populated and empty
+asset/overlay collections without inserting defaults.
 
 ## Export history v1
 

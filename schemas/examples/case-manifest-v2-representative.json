@@ -237,6 +237,100 @@
         "stroke_color": "#ffff00ff",
         "intent": "visual_overlay_only_not_permanent_removal"
       }
+    },
+    {
+      "overlay_id": "60000000-0000-4000-8000-000000000004",
+      "overlay_version": 1,
+      "page_id": "30000000-0000-4000-8000-000000000001",
+      "box": {
+        "coordinate_space": "normalized_page_millionths_v1",
+        "x": 500000,
+        "y": 100000,
+        "width": 250000,
+        "height": 50000
+      },
+      "z_index": 2,
+      "payload": {
+        "kind": "date",
+        "value": "2030-01-15",
+        "font_token": "paperworkshell-default",
+        "font_size_points": 11,
+        "color": "#00AAFFFF"
+      }
+    },
+    {
+      "overlay_id": "60000000-0000-4000-8000-000000000005",
+      "overlay_version": 1,
+      "page_id": "30000000-0000-4000-8000-000000000001",
+      "box": {
+        "coordinate_space": "normalized_page_millionths_v1",
+        "x": 100000,
+        "y": 200000,
+        "width": 50000,
+        "height": 50000
+      },
+      "z_index": 3,
+      "payload": {
+        "kind": "checkmark",
+        "color": "#008000ff"
+      }
+    },
+    {
+      "overlay_id": "60000000-0000-4000-8000-000000000006",
+      "overlay_version": 1,
+      "page_id": "30000000-0000-4000-8000-000000000001",
+      "box": {
+        "coordinate_space": "normalized_page_millionths_v1",
+        "x": 200000,
+        "y": 200000,
+        "width": 50000,
+        "height": 50000
+      },
+      "z_index": 4,
+      "payload": {
+        "kind": "cross",
+        "color": "#800000ff"
+      }
+    },
+    {
+      "overlay_id": "60000000-0000-4000-8000-000000000007",
+      "overlay_version": 1,
+      "page_id": "30000000-0000-4000-8000-000000000003",
+      "box": {
+        "coordinate_space": "normalized_page_millionths_v1",
+        "x": 250000,
+        "y": 400000,
+        "width": 150000,
+        "height": 50000
+      },
+      "z_index": 1,
+      "payload": {
+        "kind": "initials",
+        "value": "SS",
+        "font_token": "paperworkshell-default",
+        "font_size_points": 10,
+        "color": "#000000ff"
+      }
+    },
+    {
+      "overlay_id": "60000000-0000-4000-8000-000000000008",
+      "overlay_version": 1,
+      "page_id": "30000000-0000-4000-8000-000000000003",
+      "box": {
+        "coordinate_space": "normalized_page_millionths_v1",
+        "x": 500000,
+        "y": 500000,
+        "width": 200000,
+        "height": 150000
+      },
+      "z_index": 2,
+      "payload": {
+        "kind": "shape",
+        "shape": "ellipse",
+        "fill_color": "#0000ff40",
+        "stroke_color": "#0000ffff",
+        "intent": "visual_overlay_only_not_permanent_removal"
+      }
     }
   ],
   "assignments": [

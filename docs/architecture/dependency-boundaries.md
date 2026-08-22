@@ -8,7 +8,8 @@
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
   PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; PWS-0206
-  verified searchable mixed-document output; and PWS-0301 normalized page coordinates
+  verified searchable mixed-document output; PWS-0301 normalized page coordinates; and PWS-0302
+  visual overlay intent
 - Decisions: PWS-D002, PWS-D010, PWS-D011, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D018, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -37,7 +38,7 @@ worker host -> domain
 | `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
 | `imaging` | Worker-only image inspection and transformation adapters; Pillow and its native objects never enter domain, app, or UI code |
 | `ocr` | Worker-only OCRmyPDF/Tesseract orchestration and its exact private PDF-candidate reopen seam; third-party objects and recognized text never cross into domain, app, UI, storage, or GUI-safe worker modules; see the [bounded local OCR contract](ocr-worker.md) |
-| `overlays` | Normalized visual-overlay intent and rendering boundaries |
+| `overlays` | Pure normalized visual-overlay intent, released wire codecs, deterministic ordering, and derived visibility; concrete rendering remains a later adapter boundary documented in the [visual overlay domain model](overlay-domain-model.md) |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
 | `templates` | Declarative, versioned template loading and validation |
@@ -182,6 +183,14 @@ in the PDF adapter, raster allocation stays with the owning renderer, and caller
 validated primitive geometry into the model. Exact transform order, clipping policies, `/UserUnit`
 distinction, and tolerance bounds are specified in the
 [normalized page coordinate model](page-coordinate-model.md).
+
+PWS-0302 adds `overlays.models` as a pure standard-library binding over the overlay-v1 records
+already released in both manifest schemas. It depends only on pure domain coordinate and manifest
+support, preserves persisted array order while deriving draw order from per-page `z_index`, and
+derives crop/page visibility without changing saved intent. It neither imports a renderer nor
+decodes signature-image bytes. The task makes no schema-version transition: v1-to-v2 migration
+deep-copies overlay and asset state, and both reviewed manifest fingerprints remain unchanged. The
+complete contract is specified in the [visual overlay domain model](overlay-domain-model.md).
 
 PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
 `domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,

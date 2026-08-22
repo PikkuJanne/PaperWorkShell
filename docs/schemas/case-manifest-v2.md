@@ -52,6 +52,23 @@ Background cleanup is a tonal operation, not permanent removal or a redaction cl
 The shared PDF/raster/screen mapping, strict normalized-box codec, and quantization tolerances are
 specified in the [normalized page coordinate model](../architecture/page-coordinate-model.md).
 
+## Overlay-v1 runtime binding
+
+PWS-0302 binds the overlay-v1 records already present, with identical meaning, in manifest v1 and
+v2. It does not add a manifest or overlay version and does not change either schema. The pure
+[visual overlay domain model](../architecture/overlay-domain-model.md) validates the released
+text, date, checkmark, cross, initials, signature-image, highlight, and simple-shape payload union.
+
+Saved array order is round-trip state, not draw order. Lower per-page `z_index` values paint first,
+and duplicate `(page_id, z_index)` pairs are invalid. Visibility is derived from `page_sequence`
+and the active crop: `visible` retains the complete record box, `partially_visible` carries a
+strict crop intersection, and `outside_active_crop` and `page_inactive` carry no visible box. These
+states are never persisted, and deriving them never moves, clips, or deletes the full-page
+normalized overlay record. Signature images retain the exact
+`visual_mark_not_digital_signature` metadata, while highlights and shapes retain
+`visual_overlay_only_not_permanent_removal`. User-authored textual values remain inert content and
+are not interpreted as terminology metadata.
+
 ## Automatic v1-to-v2 migration
 
 A repository load first validates and settles the current manifest and its one recovery checkpoint.
@@ -62,9 +79,10 @@ migration candidate is a defensive copy with exactly two changes:
 - `revision` increments by one.
 
 All other members, values, collection order, source hashes and references, page identities and
-sequence, operation identities/order/intent, overlays, assignments, constraints, confirmations,
-timestamps, and export-history references remain equal. In particular, the migration does not add
-neutral cleanup operations or rewrite legacy operation versions.
+sequence, operation identities/order/intent, assets, overlays, assignments, constraints,
+confirmations, timestamps, and export-history references remain equal. Assets, overlay records,
+boxes, and payloads are fresh nested copies with equal values. In particular, the migration does
+not add neutral cleanup operations, infer overlays, or rewrite legacy operation versions.
 
 The complete source is validated with the exact v1 schema and the complete candidate with the
 exact v2 schema. Publication then uses the existing two-stage journal transaction and retained-
@@ -84,9 +102,13 @@ Canonical examples are
 The representative example carries legacy organizer operations and all three v2 scan transforms.
 Negative fixtures cover future and legacy dispatch, an out-of-range deskew angle, and an operation-
 version/payload mismatch. Migration fixtures preserve a complete representative graph and prove
-copy-only, exact, idempotent transactional behavior.
+copy-only, exact, idempotent transactional behavior. Focused migration evidence also proves that
+populated asset/overlay graphs are fresh-copied without value loss and that the required empty
+`assets` and `overlays` collections in the v1 minimal example remain empty after migration.
 
 The v2 parsing/resource envelope remains the bounded v1 envelope: 8 MiB, 64 nesting levels,
 100,000 JSON nodes, and 4,096 items per manifest collection. The runtime validator binds v1 and v2
 to separate reviewed schema fingerprints so supplying one version's schema for the other fails
-closed.
+closed. PWS-0302 leaves those fingerprints unchanged: v1 is
+`a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695` and v2 is
+`af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599`.
