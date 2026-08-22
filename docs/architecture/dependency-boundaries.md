@@ -8,8 +8,8 @@
   PWS-0111 accessible organizer and desktop composition; PWS-0112 deterministic verified PDF
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
   PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; PWS-0206
-  verified searchable mixed-document output; PWS-0301 normalized page coordinates; and PWS-0302
-  visual overlay intent
+  verified searchable mixed-document output; PWS-0301 normalized page coordinates; PWS-0302
+  visual overlay intent; and PWS-0303 deterministic overlay-page rendering
 - Decisions: PWS-D002, PWS-D010, PWS-D011, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D018, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -35,10 +35,10 @@ worker host -> domain
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
 | `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
-| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
+| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium/font-rendering implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic overlay rendering contract](overlay-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
 | `imaging` | Worker-only image inspection and transformation adapters; Pillow and its native objects never enter domain, app, or UI code |
 | `ocr` | Worker-only OCRmyPDF/Tesseract orchestration and its exact private PDF-candidate reopen seam; third-party objects and recognized text never cross into domain, app, UI, storage, or GUI-safe worker modules; see the [bounded local OCR contract](ocr-worker.md) |
-| `overlays` | Pure normalized visual-overlay intent, released wire codecs, deterministic ordering, and derived visibility; concrete rendering remains a later adapter boundary documented in the [visual overlay domain model](overlay-domain-model.md) |
+| `overlays` | Pure normalized visual-overlay intent, released wire codecs, deterministic ordering/visibility, and third-party-free rendering contracts; concrete font, image, and PDF engines remain in the exact worker-only PDF adapter documented in the [visual overlay domain model](overlay-domain-model.md) and [overlay rendering contract](overlay-rendering.md) |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
 | `templates` | Declarative, versioned template loading and validation |
@@ -65,7 +65,10 @@ worker host -> domain
    required `pluggy` and `pydantic` imports only in the exact
    `paperworkshell.ocr.ocrmypdf_adapter` module, and admits `packaging.version` only in the exact
    `paperworkshell.ocr.tesseract_runner` module. Sibling OCR modules and every other layer remain
-   unable to import those dependencies. Pikepdf remains confined to `pdf`; the exact
+   unable to import those dependencies. PWS-0303 admits `fpdf`, `fontTools`, and `uharfbuzz` only
+   in the exact `paperworkshell.pdf.overlay_renderer` module. The pure `overlays.rendering`
+   contract and every sibling PDF module remain unable to import that font-rendering stack.
+   Pikepdf remains confined to `pdf`; the exact
    `ocr` → `pdf.ocr_candidate_verifier` edge returns only a positive page count or closed failure
    after reopening the private candidate. No pikepdf object or general PDF feature crosses that
    seam. Every other layer retains its prior prohibition. The alternative
@@ -191,6 +194,19 @@ derives crop/page visibility without changing saved intent. It neither imports a
 decodes signature-image bytes. The task makes no schema-version transition: v1-to-v2 migration
 deep-copies overlay and asset state, and both reviewed manifest fingerprints remain unchanged. The
 complete contract is specified in the [visual overlay domain model](overlay-domain-model.md).
+
+PWS-0303 adds third-party-free request, geometry, resource, decoded-raster, destination, control,
+placement, and result contracts in `overlays.rendering`. The exact
+`pdf.overlay_renderer` adapter alone imports fpdf2, fontTools, uharfbuzz, and pikepdf. Its exact
+runtime gate also authenticates Pillow (used transitively by fpdf2 to parse only the
+adapter-generated PNG) and qpdf (the native library behind pikepdf), without importing `PIL` or
+weakening the imaging-layer boundary. It consumes only validated overlay projections and
+caller-owned metadata-free RGBA8 streams, emits one bounded
+transparent overlay PDF page, sanitizes and strictly reopens it, then returns content-free facts.
+It neither opens a case asset by path nor accepts a JPEG/PNG source. PWS-0305 must authenticate and
+decode the immutable case asset before constructing the pixel-bound raster contract; PWS-0307 must
+import the verified page as a Form XObject and flatten it. The complete split is specified in the
+[deterministic overlay rendering contract](overlay-rendering.md).
 
 PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
 `domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,

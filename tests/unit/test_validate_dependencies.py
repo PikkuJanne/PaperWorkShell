@@ -212,7 +212,7 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 data = _load_inventory()
                 if mutation == "component-review-after-inventory":
-                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-15"
+                    _component(data, "jsonschema")["maintenance"]["checked_on"] = "2026-08-23"
                 elif mutation == "future-inventory-review":
                     data["reviewed_on"] = "9999-12-31"
                 else:
@@ -495,6 +495,57 @@ class DependencyInventoryValidationTests(unittest.TestCase):
         self.assertIn(
             "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
             self._codes(missing_language_management_ref, repository_checks=True),
+        )
+
+    def test_overlay_font_stack_is_direct_hash_bound_and_notice_complete(self) -> None:
+        data = _load_inventory()
+        for component_id in ("fonttools", "fpdf2", "uharfbuzz"):
+            with self.subTest(component_id=component_id):
+                component = _component(data, component_id)
+                self.assertEqual("direct", component["relationship"])
+                self.assertIn("PWS-D018", component["decision_refs"])
+                self.assertIn("PWS-0303", component["task_refs"])
+
+        font = _component(data, "noto-sans")
+        self.assertEqual("data", font["ecosystem"])
+        self.assertEqual("direct", font["relationship"])
+        self.assertEqual("2.007", font["version"]["selected"])
+        self.assertEqual("OFL-1.1", font["license"]["expression"])
+        self.assertEqual(556_216, font["artifact_evidence"]["size_bytes"])
+        self.assertEqual(
+            "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9",
+            font["artifact_evidence"]["sha256"],
+        )
+        self.assertTrue(_relationship(data, "ocrmypdf", "noto-sans")["enabled"])
+
+        notice = (ROOT / "packaging/licenses/NotoSans-Regular-2.007-OFL-1.1.txt").read_text(
+            encoding="utf-8"
+        )
+        for section in (
+            "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007",
+            "PREAMBLE",
+            "PERMISSION & CONDITIONS",
+            "TERMINATION",
+            "DISCLAIMER",
+        ):
+            self.assertIn(section, notice)
+
+        changed_size = _load_inventory()
+        _component(changed_size, "noto-sans")["artifact_evidence"]["size_bytes"] += 1
+        self.assertIn("DEPENDENCY_RELEASE_PIN_INVALID", self._codes(changed_size))
+
+        disabled_containment = _load_inventory()
+        _relationship(disabled_containment, "ocrmypdf", "noto-sans")["enabled"] = False
+        self.assertIn(
+            "DEPENDENCY_RELATIONSHIP_PROFILE_INVALID",
+            self._codes(disabled_containment),
+        )
+
+        missing_usage_ref = _load_inventory()
+        _component(missing_usage_ref, "uharfbuzz")["task_refs"].remove("PWS-0303")
+        self.assertIn(
+            "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+            self._codes(missing_usage_ref, repository_checks=True),
         )
 
     def test_initial_english_data_admission_does_not_wait_for_pack_management(self) -> None:

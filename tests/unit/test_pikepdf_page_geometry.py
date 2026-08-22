@@ -8,6 +8,11 @@ from typing import BinaryIO
 import pikepdf
 import pytest
 
+from paperworkshell.domain.page_coordinates import (
+    ClockwiseRotation,
+    PdfPageBoxSelection,
+    PdfUserSpaceBox,
+)
 from paperworkshell.domain.pdf_geometry import (
     PdfPageGeometryLimits,
     PdfPageRectangle,
@@ -30,6 +35,7 @@ from paperworkshell.pdf.page_geometry import (
     _InheritedPageValues,
     _read_inherited_page_values,
     _select_bounded_page_from_catalog,
+    to_page_coordinate_geometry,
 )
 
 PageConfigurator = Callable[[pikepdf.Dictionary, pikepdf.Dictionary], None]
@@ -211,6 +217,133 @@ def test_crop_mode_intersects_inherited_crop_with_direct_media() -> None:
 
     geometry = _resolve(_pdf_stream(configure))
     assert geometry.effective_box == PdfPageRectangle(0.0, 20.0, 150.0, 100.0)
+
+
+@pytest.mark.parametrize(
+    ("page_box", "expected_selection", "expected_effective"),
+    (
+        (
+            PdfPageBox.MEDIA,
+            PdfPageBoxSelection.MEDIA,
+            PdfUserSpaceBox(0.0, 0.0, 400.0, 200.0),
+        ),
+        (
+            PdfPageBox.CROP,
+            PdfPageBoxSelection.CROP,
+            PdfUserSpaceBox(0.0, 20.0, 350.0, 200.0),
+        ),
+    ),
+)
+def test_page_coordinate_bridge_preserves_box_selection_and_intersection(
+    page_box: PdfPageBox,
+    expected_selection: PdfPageBoxSelection,
+    expected_effective: PdfUserSpaceBox,
+) -> None:
+    media_box = PdfPageRectangle(0.0, 0.0, 400.0, 200.0)
+    crop_box = PdfPageRectangle(-50.0, 20.0, 350.0, 250.0)
+    effective_box = (
+        media_box
+        if page_box is PdfPageBox.MEDIA
+        else PdfPageRectangle(
+            0.0,
+            20.0,
+            350.0,
+            200.0,
+        )
+    )
+
+    converted = to_page_coordinate_geometry(
+        PdfResolvedPageGeometry(
+            media_box=media_box,
+            crop_box=crop_box,
+            effective_box=effective_box,
+            page_box=page_box,
+            intrinsic_rotation=PdfRenderRotation.DEGREES_0,
+            user_unit=1.0,
+        )
+    )
+
+    assert converted.media_box == PdfUserSpaceBox(0.0, 0.0, 400.0, 200.0)
+    assert converted.crop_box == PdfUserSpaceBox(-50.0, 20.0, 350.0, 250.0)
+    assert converted.page_box is expected_selection
+    assert converted.effective_box == expected_effective
+
+
+@pytest.mark.parametrize(
+    ("source_rotation", "expected_rotation"),
+    (
+        (PdfRenderRotation.DEGREES_0, ClockwiseRotation.DEGREES_0),
+        (PdfRenderRotation.DEGREES_90, ClockwiseRotation.DEGREES_90),
+        (PdfRenderRotation.DEGREES_180, ClockwiseRotation.DEGREES_180),
+        (PdfRenderRotation.DEGREES_270, ClockwiseRotation.DEGREES_270),
+    ),
+)
+def test_page_coordinate_bridge_preserves_rotation_and_user_unit(
+    source_rotation: PdfRenderRotation,
+    expected_rotation: ClockwiseRotation,
+) -> None:
+    box = PdfPageRectangle(10.0, 15.0, 210.0, 115.0)
+    converted = to_page_coordinate_geometry(
+        PdfResolvedPageGeometry(
+            media_box=box,
+            crop_box=box,
+            effective_box=box,
+            page_box=PdfPageBox.MEDIA,
+            intrinsic_rotation=source_rotation,
+            user_unit=2.5,
+        )
+    )
+
+    assert converted.intrinsic_rotation is expected_rotation
+    assert converted.user_unit == 2.5
+
+
+def test_page_coordinate_bridge_maps_invalid_input_to_model_error() -> None:
+    with pytest.raises(PdfRenderError) as raised:
+        to_page_coordinate_geometry(object())  # type: ignore[arg-type]
+
+    assert raised.value.code is PdfRenderErrorCode.MODEL_INVALID
+    assert raised.value.context == "render.geometry.page_coordinates"
+
+
+def test_page_coordinate_bridge_maps_unresolvable_span_to_geometry_error() -> None:
+    narrow_box = PdfPageRectangle(999_999_999.0, 0.0, 1_000_000_000.0, 100.0)
+
+    with pytest.raises(PdfRenderError) as raised:
+        to_page_coordinate_geometry(
+            PdfResolvedPageGeometry(
+                media_box=narrow_box,
+                crop_box=narrow_box,
+                effective_box=narrow_box,
+                page_box=PdfPageBox.MEDIA,
+                intrinsic_rotation=PdfRenderRotation.DEGREES_0,
+                user_unit=1.0,
+            )
+        )
+
+    assert raised.value.code is PdfRenderErrorCode.GEOMETRY_INVALID
+    assert raised.value.context == "render.geometry.page_coordinates"
+    assert "999999999" not in str(raised.value)
+
+
+def test_page_coordinate_bridge_rejects_inconsistent_effective_crop() -> None:
+    media_box = PdfPageRectangle(0.0, 0.0, 400.0, 200.0)
+    crop_box = PdfPageRectangle(-50.0, 20.0, 350.0, 250.0)
+
+    with pytest.raises(PdfRenderError) as raised:
+        to_page_coordinate_geometry(
+            PdfResolvedPageGeometry(
+                media_box=media_box,
+                crop_box=crop_box,
+                effective_box=PdfPageRectangle(10.0, 30.0, 340.0, 190.0),
+                page_box=PdfPageBox.CROP,
+                intrinsic_rotation=PdfRenderRotation.DEGREES_0,
+                user_unit=1.0,
+            )
+        )
+
+    assert raised.value.code is PdfRenderErrorCode.GEOMETRY_INVALID
+    assert raised.value.context == "render.geometry.page_coordinates"
 
 
 @pytest.mark.parametrize(

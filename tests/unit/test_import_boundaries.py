@@ -638,6 +638,31 @@ def test_only_pdf_adapter_may_import_pinned_pdf_engines(engine: str) -> None:
         assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
 
 
+@pytest.mark.parametrize("engine", ("fontTools", "fpdf", "uharfbuzz"))
+def test_only_exact_overlay_renderer_may_import_font_rendering_engines(engine: str) -> None:
+    assert (
+        inspect_source(
+            f"import {engine}\n",
+            module="paperworkshell.pdf.overlay_renderer",
+            package="paperworkshell.pdf",
+            path="overlay_renderer.py",
+        )
+        == ()
+    )
+    for module, package in (
+        ("paperworkshell.pdf.unapproved", "paperworkshell.pdf"),
+        ("paperworkshell.overlays.rendering", "paperworkshell.overlays"),
+        ("paperworkshell.worker.operations", "paperworkshell.worker"),
+    ):
+        violations = inspect_source(
+            f"import {engine}\n",
+            module=module,
+            package=package,
+            path="overlay_engine_violation.py",
+        )
+        assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+
+
 def test_only_imaging_adapter_may_import_pillow() -> None:
     assert (
         inspect_source(

@@ -108,6 +108,7 @@ EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "img2pdf": "python-package",
     "lxml": "python-package",
     "mupdf": "native-library",
+    "noto-sans": "data",
     "ocrmypdf": "python-package",
     "pdfminer-six": "python-package",
     "pdfium": "native-library",
@@ -144,6 +145,7 @@ REQUIRED_COMPONENT_IDS: Final = frozenset(
         "markdown-it-py",
         "mdurl",
         "lxml",
+        "noto-sans",
         "ocrmypdf",
         "pdfminer-six",
         "pi-heif",
@@ -203,6 +205,7 @@ REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
         }
     ),
     "PWS-D017": RENDERER_COMPONENT_IDS,
+    "PWS-D018": frozenset({"fonttools", "fpdf2", "noto-sans", "uharfbuzz"}),
     "PWS-D034": frozenset({"pillow"}),
 }
 ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
@@ -216,6 +219,7 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "img2pdf": frozenset({"PWS-0204"}),
     "markdown-it-py": frozenset({"PWS-0204"}),
     "mdurl": frozenset({"PWS-0204"}),
+    "noto-sans": frozenset({"PWS-0204"}),
     "pdfium": frozenset({"PWS-0106"}),
     "ocrmypdf": frozenset({"PWS-0204"}),
     "pdfminer-six": frozenset({"PWS-0204"}),
@@ -240,13 +244,18 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "uharfbuzz": frozenset({"PWS-0204"}),
 }
 REQUIRED_USAGE_TASK_REFERENCES: Final[dict[str, frozenset[str]]] = {
+    "fonttools": frozenset({"PWS-0303"}),
+    "fpdf2": frozenset({"PWS-0303"}),
+    "noto-sans": frozenset({"PWS-0303"}),
     "pillow": frozenset({"PWS-0201"}),
     "tesseract-language-data": frozenset({"PWS-0205"}),
     "tesseract-language-data-deu": frozenset({"PWS-0205", "PWS-0801", "PWS-0802"}),
+    "uharfbuzz": frozenset({"PWS-0303"}),
 }
 REQUIRED_REVIEWED_RELATIONSHIPS: Final = frozenset(
     {
         ("ocrmypdf", "optional-tool", "ghostscript", False),
+        ("ocrmypdf", "contains", "noto-sans", True),
         ("ocrmypdf", "required-tool", "tesseract", True),
         ("pikepdf", "contains", "qpdf", True),
         ("pypdfium2", "contains", "pdfium", True),
@@ -329,6 +338,7 @@ EXPECTED_TOOL_ARTIFACTS: Final[dict[str, str]] = {
     "uv": "uv-x86_64-pc-windows-msvc.zip",
 }
 EXPECTED_INTEGRITY_ARTIFACTS: Final[dict[str, frozenset[str]]] = {
+    "noto-sans": frozenset({"NotoSans-Regular.ttf"}),
     "tesseract": frozenset(
         {
             "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst",
@@ -368,6 +378,11 @@ EXPECTED_QPDF_BIN_FILES: Final[tuple[str, ...]] = (
     "zlib-flate.exe",
 )
 EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
+    "noto-sans": (
+        "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/"
+        "a2fee443247bf43dab8ad77e14c98b0018a58d08/src/ocrmypdf/data/"
+        "NotoSans-Regular.ttf"
+    ),
     "pdfium": (
         "https://github.com/bblanchon/pdfium-binaries/releases/download/"
         "chromium/7947/pdfium-win-x64.tgz"
@@ -390,7 +405,20 @@ EXPECTED_ARTIFACT_URLS: Final[dict[str, str]] = {
         "mingw-w64-ucrt-x86_64-tesseract-data-deu-4.1.0-3-any.pkg.tar.zst"
     ),
 }
+EXPECTED_ARTIFACT_PROFILES: Final[dict[str, tuple[str, str, int, str]]] = {
+    "noto-sans": (
+        "NotoSans-Regular.ttf",
+        "platform-independent",
+        556_216,
+        "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9",
+    ),
+}
 EXPECTED_RELEASE_URLS: Final[dict[str, str]] = {
+    "noto-sans": (
+        "https://github.com/ocrmypdf/OCRmyPDF/blob/"
+        "a2fee443247bf43dab8ad77e14c98b0018a58d08/src/ocrmypdf/data/"
+        "NotoSans-Regular.ttf"
+    ),
     "pdfium": "https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/7947",
     "qt-pdf": "https://pypi.org/project/PySide6-Addons/6.11.1/",
     "tesseract": ("https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-tesseract-ocr"),
@@ -416,6 +444,7 @@ EXPECTED_PURL_BASES: Final[dict[str, str]] = {
     "cpython": "pkg:generic/cpython",
     "git": "pkg:github/git/git",
     "gitleaks": "pkg:github/gitleaks/gitleaks",
+    "noto-sans": "pkg:generic/noto-sans",
     "qpdf": "pkg:generic/qpdf",
     "uv": "pkg:github/astral-sh/uv",
 }
@@ -448,6 +477,7 @@ EXPECTED_PROJECT_URLS: Final[dict[str, str]] = {
     "mupdf": "https://mupdf.com/",
     "mypy": "https://github.com/python/mypy",
     "mypy-extensions": "https://github.com/python/mypy_extensions",
+    "noto-sans": "https://github.com/notofonts/latin-greek-cyrillic",
     "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF",
     "packaging": "https://github.com/pypa/packaging",
     "pathspec": "https://github.com/cpburnz/python-pathspec",
@@ -515,6 +545,10 @@ EXPECTED_LICENSE_URLS: Final[dict[str, str]] = {
     "mupdf": "https://mupdf.com/releases",
     "mypy": "https://github.com/python/mypy/blob/v2.3.0/LICENSE",
     "mypy-extensions": "https://github.com/python/mypy_extensions/blob/1.1.0/LICENSE",
+    "noto-sans": (
+        "https://github.com/notofonts/latin-greek-cyrillic/blob/"
+        "0c7e5ee3312638800f9cc2162cc621a82695d02e/OFL.txt"
+    ),
     "ocrmypdf": "https://github.com/ocrmypdf/OCRmyPDF/blob/v17.10.0/LICENSE",
     "packaging": "https://github.com/pypa/packaging/blob/26.2/LICENSE",
     "pathspec": "https://github.com/cpburnz/python-pathspec/blob/v1.1.1/LICENSE",
@@ -613,6 +647,7 @@ EXPECTED_LICENSE_POLICIES: Final[dict[str, tuple[str, str | None, bool, bool, bo
     "mupdf": ("AGPL-3.0-or-later OR LicenseRef-Artifex-Commercial", None, True, True, False, True),
     "mypy": ("MIT", None, True, False, False, False),
     "mypy-extensions": ("MIT", None, True, False, False, False),
+    "noto-sans": ("OFL-1.1", None, True, False, False, False),
     "ocrmypdf": (
         "MPL-2.0 AND Apache-2.0 AND OFL-1.1 AND Zlib",
         None,
@@ -887,7 +922,7 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "fonttools": (
         "python-package",
-        "transitive",
+        "direct",
         "approved",
         ("worker",),
         "planned",
@@ -900,7 +935,7 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "fpdf2": (
         "python-package",
-        "transitive",
+        "direct",
         "approved",
         ("worker",),
         "planned",
@@ -1092,6 +1127,19 @@ EXPECTED_ADMISSION_PROFILES: Final[
         "developer-host",
         False,
         False,
+    ),
+    "noto-sans": (
+        "data",
+        "direct",
+        "approved",
+        ("data", "worker"),
+        "planned",
+        False,
+        False,
+        True,
+        "data-only",
+        True,
+        True,
     ),
     "ocrmypdf": (
         "python-package",
@@ -1537,7 +1585,7 @@ EXPECTED_ADMISSION_PROFILES: Final[
     ),
     "uharfbuzz": (
         "python-package",
-        "transitive",
+        "direct",
         "approved",
         ("worker",),
         "planned",
@@ -1650,6 +1698,12 @@ EXPECTED_SBOM_PROFILES: Final[dict[str, tuple[str, str, str, str | None]]] = {
     "mupdf": ("MuPDF", "library", "Artifex Software Inc.", "upstream-release-inventory"),
     "mypy": ("mypy", "application", "mypy contributors", "uv.lock"),
     "mypy-extensions": ("mypy-extensions", "library", "mypy contributors", "uv.lock"),
+    "noto-sans": (
+        "Noto Sans Regular",
+        "data",
+        "Google LLC and Noto Project contributors",
+        "upstream-release-inventory",
+    ),
     "ocrmypdf": ("OCRmyPDF", "application", "OCRmyPDF contributors", "upstream-release-inventory"),
     "packaging": ("packaging", "library", "Python Packaging Authority", "uv.lock"),
     "pathspec": ("pathspec", "library", "pathspec contributors", "uv.lock"),
@@ -2960,6 +3014,13 @@ def _component_semantic_issues(
             evidence_artifact = cast(str, artifact_evidence["artifact"])
             evidence_url = cast(str, artifact_evidence["url"])
             evidence_sha256 = cast(str, artifact_evidence["sha256"])
+            evidence_profile = (
+                evidence_artifact,
+                cast(str, artifact_evidence["target_platform"]),
+                cast(int, artifact_evidence["size_bytes"]),
+                evidence_sha256,
+            )
+            expected_evidence_profile = EXPECTED_ARTIFACT_PROFILES.get(component_id)
             evidence_host = urlsplit(evidence_url).hostname
             evidence_parts = [
                 part for part in unquote(urlsplit(evidence_url).path).split("/") if part
@@ -2991,6 +3052,10 @@ def _component_semantic_issues(
                 and evidence_origin_valid
                 and len(set(evidence_sha256)) > 1
                 and (verification == "git-commit" or evidence_hash_pair in integrity_hash_pairs)
+                and (
+                    expected_evidence_profile is None
+                    or evidence_profile == expected_evidence_profile
+                )
             )
             if not evidence_valid:
                 _add_issue(
@@ -3347,11 +3412,7 @@ def _authority_reference_issues(
                 ),
             )
         admission_gates = set(ADMISSION_TASK_GATES.get(component_id, frozenset()))
-        if (
-            "PWS-D016" in component_decisions
-            and component["ecosystem"] == "data"
-            and component_id != "tesseract-language-data"
-        ):
+        if component["ecosystem"] == "data" and component_id.startswith("tesseract-language-data-"):
             admission_gates.update({"PWS-0204", "PWS-0205"})
         if not admission_gates.issubset(component_tasks):
             _add_issue(

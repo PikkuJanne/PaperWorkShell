@@ -2,7 +2,7 @@
 
 `PWS-0005` defines how PaperWorkShell admits, updates, packages, and reports third-party
 components. It implements the dependency controls required by `PWS-D014`, `PWS-D015`,
-`PWS-D016`, `PWS-D017`, and `PWS-D034`.
+`PWS-D016`, `PWS-D017`, `PWS-D018`, and `PWS-D034`.
 
 This is an engineering admission policy, not legal advice. Unclear license or redistribution
 rights are a release blocker and require maintainer review; uncertainty is never resolved by
@@ -321,6 +321,33 @@ not block PWS-0105 development, but unresolved redistribution rights are a PWS-0
 blocker: lxml and therefore pikepdf must not be marked `bundled` or `shipped` until maintainer or
 legal review closes the issue. PWS-0801 must also reconcile every qpdf/Pillow codec and runtime
 file, stage all licenses and notices, and generate the final SBOM and packaged-file inventory.
+
+### Overlay PDF and font stack
+
+PWS-0303 promotes the already resolved fpdf2 2.8.8, fonttools 4.63.0, and uharfbuzz 0.56.0
+packages to exact direct worker dependencies. fpdf2 owns the overlay-page PDF boundary, fonttools
+provides deterministic metrics and subsetting for the one reviewed font, and uharfbuzz provides
+deterministic Unicode shaping. Their versions and Windows-compatible artifact hashes are unchanged
+from the OCRmyPDF 17.10.0 lock closure; the direct declarations make independent overlay use and
+its redistribution obligations explicit.
+
+The only admitted overlay font is `NotoSans-Regular.ttf` version 2.007, consumed from the exact
+OCRmyPDF wheel rather than discovered from Windows. It is 556,216 bytes with SHA-256
+`2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9`. The reviewed file has
+3,053 Unicode cmap entries and covers the representative Latin, Greek, Cyrillic, and Devanagari
+strings exercised by PWS-0303. It does not cover every Unicode script or emoji; unsupported glyphs must fail explicitly,
+never substitute an ambient font or silently render a missing-glyph box. Checkmarks, crosses, and
+other overlay marks use vector primitives rather than depending on absent symbol glyphs.
+
+Noto Sans is a separately inventoried direct data component and remains contained by OCRmyPDF for
+artifact ownership. It is OFL-1.1 and may be embedded or subset, but the redistributed source font
+must retain its copyright and complete license notice. The checked-in notice is
+[`NotoSans-Regular-2.007-OFL-1.1.txt`](../../packaging/licenses/NotoSans-Regular-2.007-OFL-1.1.txt).
+fonttools uses MIT terms and uharfbuzz uses Apache-2.0. fpdf2 uses LGPL-3.0-only and includes the
+separately inventoried ICC profile terms, so PWS-0801 must provide notices, corresponding source,
+and a replaceable/relinkable library layout in addition to verifying every packaged hash and SBOM
+edge. None of these components needs runtime network access, and all remain worker-only or
+data-only.
 
 ### OCRmyPDF, Tesseract, and Ghostscript
 

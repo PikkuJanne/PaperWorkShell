@@ -8,12 +8,21 @@ from typing import BinaryIO, Final
 
 import pikepdf
 
+from paperworkshell.domain.page_coordinates import (
+    ClockwiseRotation,
+    PageCoordinateError,
+    PdfPageBoxSelection,
+    PdfPageCoordinateGeometry,
+    PdfUserSpaceBox,
+)
 from paperworkshell.domain.pdf_geometry import (
     PdfPageGeometryLimits,
+    PdfPageRectangle,
     PdfResolvedPageGeometry,
     resolve_pdf_page_geometry,
 )
 from paperworkshell.domain.pdf_rendering import (
+    PdfPageBox,
     PdfPageRenderLimits,
     PdfPageRenderRequest,
     PdfRenderError,
@@ -39,6 +48,17 @@ _NAME_PARENT: Final = pikepdf.Name("/Parent")
 _NAME_ROTATE: Final = pikepdf.Name("/Rotate")
 _NAME_TYPE: Final = pikepdf.Name("/Type")
 _NAME_USER_UNIT: Final = pikepdf.Name("/UserUnit")
+
+_PAGE_BOX_SELECTION: Final = {
+    PdfPageBox.MEDIA: PdfPageBoxSelection.MEDIA,
+    PdfPageBox.CROP: PdfPageBoxSelection.CROP,
+}
+_CLOCKWISE_ROTATION: Final = {
+    0: ClockwiseRotation.DEGREES_0,
+    90: ClockwiseRotation.DEGREES_90,
+    180: ClockwiseRotation.DEGREES_180,
+    270: ClockwiseRotation.DEGREES_270,
+}
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -202,6 +222,58 @@ class PikePdfPageGeometryResolver:
         if result is None:
             reject_pdf_rendering(PdfRenderErrorCode.INTERNAL_ERROR, "render.geometry.adapter")
         return result
+
+
+def to_page_coordinate_geometry(
+    geometry: PdfResolvedPageGeometry,
+) -> PdfPageCoordinateGeometry:
+    """Bridge resolved adapter geometry into the normalized-coordinate model."""
+
+    if type(geometry) is not PdfResolvedPageGeometry:
+        reject_pdf_rendering(
+            PdfRenderErrorCode.MODEL_INVALID,
+            "render.geometry.page_coordinates",
+        )
+    try:
+        converted = PdfPageCoordinateGeometry(
+            media_box=_to_user_space_box(geometry.media_box),
+            crop_box=_to_user_space_box(geometry.crop_box),
+            page_box=_PAGE_BOX_SELECTION[geometry.page_box],
+            intrinsic_rotation=_CLOCKWISE_ROTATION[int(geometry.intrinsic_rotation)],
+            user_unit=geometry.user_unit,
+        )
+    except PageCoordinateError:
+        reject_pdf_rendering(
+            PdfRenderErrorCode.GEOMETRY_INVALID,
+            "render.geometry.page_coordinates",
+        )
+    converted_effective = converted.effective_box
+    source_effective = geometry.effective_box
+    if (
+        converted_effective.left,
+        converted_effective.bottom,
+        converted_effective.right,
+        converted_effective.top,
+    ) != (
+        source_effective.left,
+        source_effective.bottom,
+        source_effective.right,
+        source_effective.top,
+    ):
+        reject_pdf_rendering(
+            PdfRenderErrorCode.GEOMETRY_INVALID,
+            "render.geometry.page_coordinates",
+        )
+    return converted
+
+
+def _to_user_space_box(rectangle: PdfPageRectangle) -> PdfUserSpaceBox:
+    return PdfUserSpaceBox(
+        left=rectangle.left,
+        bottom=rectangle.bottom,
+        right=rectangle.right,
+        top=rectangle.top,
+    )
 
 
 def _select_bounded_page_from_catalog(

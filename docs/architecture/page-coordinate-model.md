@@ -1,7 +1,8 @@
 # Normalized page coordinate model
 
-- Status: Implemented PWS-0301 contract
+- Status: Implemented PWS-0301 contract; PWS-0303 overlay-placement extension
 - Task: PWS-0301
+- Extension: PWS-0303 deterministic overlay-page placement
 - Decisions: PWS-D011, PWS-D018
 - Depends on: PWS-0006 manifest contracts; PWS-0209 Milestone 2 gate
 
@@ -157,6 +158,29 @@ point has passed the closed viewport check, exact outer edges are normalized to 
 so harmless floating-point residue cannot turn the model's own output into an out-of-bounds
 inverse input.
 
+## Overlay-page placement seam
+
+PWS-0303 consumes the pure `PdfPageCoordinateGeometry` only after the PDF adapter has converted its
+validated `PdfResolvedPageGeometry` through `pdf.page_geometry.to_page_coordinate_geometry`. It
+creates a full logical overlay canvas in physical typographic points after intrinsic source
+orientation and before manifest crop or rotation. Authoring boxes remain top-left-origin on that
+canvas. The generated one-page PDF, like every PDF page/Form, exposes bottom-left-origin PDF
+coordinates.
+
+`OverlayPdfPlacementMatrix` maps those **generated PDF/Form coordinates**, not top-left authoring
+coordinates, into the selected source page's raw PDF user space. Its scale therefore includes the
+inverse of `/UserUnit`, and its quarter-turn reflects intrinsic `/Rotate`. The matrix maps every
+full-canvas corner to the same raw edge produced by the normalized-coordinate model, including
+non-zero page-box origins, CropBox selection, all four intrinsic rotations, and `/UserUnit 2`.
+
+PWS-0307 must convert the verified overlay page with pikepdf
+`as_form_xobject(handle_transformations=False)` and invoke the
+result through the recorded matrix while assembling the derivative. It must not use pikepdf
+`add_overlay()`: automatic page placement would bypass the explicit raw-user-space contract. The
+source and placed Form then receive the same manifest crop and accumulated rotation. PWS-0303 does
+not itself mutate a source page or publish an export. See the [deterministic overlay rendering
+contract](overlay-rendering.md).
+
 ## Verification boundary
 
 Fixed-seed generated tests cover non-zero origins, effective MediaBox/CropBox selection, all
@@ -166,6 +190,8 @@ approved `render-geometry-matrix` PNG references for every intrinsic and additio
 Those references were reused without refresh. `/UserUnit 2` has a separate raw-versus-physical
 assertion.
 
-This proves deterministic coordinate decisions and placement against synthetic renderer evidence.
-It does not claim PDF/UA conformance, physical-device display calibration, arbitrary deskew
-alignment, font fidelity, portal acceptance, or overlay rendering completion.
+PWS-0301 proves deterministic coordinate decisions and placement against synthetic renderer
+evidence. PWS-0303 additionally proves the overlay-canvas matrix against those same pure transforms
+and renders separate synthetic overlay goldens. Neither task claims PDF/UA conformance,
+physical-device display calibration, arbitrary deskew alignment, portal acceptance, flattened
+export compatibility, or completion of the PWS-0307 reader matrix.

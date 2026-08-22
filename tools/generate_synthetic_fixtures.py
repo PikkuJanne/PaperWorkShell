@@ -851,6 +851,75 @@ def _render_embedded_type3_font_pdf() -> bytes:
     )
 
 
+def _multilingual_type3_tounicode_pdf() -> bytes:
+    """Build a no-asset Type3 carrier with explicit multilingual Unicode mappings."""
+
+    to_unicode = b"\n".join(
+        (
+            b"%!PS-Adobe-3.0 Resource-CMap",
+            b"/CIDInit /ProcSet findresource begin",
+            b"12 dict begin",
+            b"begincmap",
+            b"/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+            b"/CMapName /PWSMultilingual def",
+            b"/CMapType 2 def",
+            b"1 begincodespacerange",
+            b"<20> <2B>",
+            b"endcodespacerange",
+            b"12 beginbfchar",
+            b"<20> <0020>",
+            b"<21> <0050>",
+            b"<22> <0057>",
+            b"<23> <0053>",
+            b"<24> <0063>",
+            b"<25> <0061>",
+            b"<26> <0066>",
+            b"<27> <00E9>",
+            b"<28> <03A9>",
+            b"<29> <0394>",
+            b"<2A> <0416>",
+            b"<2B> <042F>",
+            b"endbfchar",
+            b"endcmap",
+            b"CMapName currentdict /CMap defineresource pop",
+            b"end",
+            b"end",
+        )
+    )
+    font = (
+        b"<< /Type /Font /Subtype /Type3 /Name /F1 /FontBBox [0 0 600 700] "
+        b"/FontMatrix [0.001 0 0 0.001 0 0] "
+        b"/CharProcs << /Space 5 0 R /Latin 6 0 R /Greek 7 0 R /Cyrillic 8 0 R >> "
+        b"/Encoding << /Type /Encoding /Differences "
+        b"[32 /Space /Latin /Latin /Latin /Latin /Latin /Latin /Latin "
+        b"/Greek /Greek /Cyrillic /Cyrillic] >> "
+        b"/FirstChar 32 /LastChar 43 "
+        b"/Widths [250 600 600 600 600 600 600 600 600 600 600 600] "
+        b"/Resources << >> /ToUnicode 9 0 R >>"
+    )
+    content = b"BT /F1 24 Tf 54 700 Td <2122232024252627202829202A2B> Tj ET"
+    marker = f"{SYNTHETIC_MARKER}: stdlib multilingual Type3 ToUnicode carrier"
+    return _serialize_pdf(
+        (
+            b"<< /Type /Catalog /Pages 2 0 R /Lang (mul) >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Resources << /Font << /F1 4 0 R >> >> /Contents 10 0 R >>"
+            ),
+            font,
+            _pdf_stream(b"250 0 0 0 0 0 d1"),
+            _pdf_stream(b"600 0 0 0 600 700 d1 40 w 40 20 520 640 re S 80 80 m 480 580 l S"),
+            _pdf_stream(b"600 0 0 0 600 700 d1 40 w 300 650 m 40 20 l 560 20 l h S"),
+            _pdf_stream(b"600 0 0 0 600 700 d1 40 w 60 20 m 540 650 l 60 650 m 540 20 l S"),
+            _pdf_stream(to_unicode),
+            _pdf_stream(content),
+            b"<< /Producer (" + _pdf_literal(marker) + b") >>",
+        ),
+        info_object=11,
+    )
+
+
 def _render_missing_font_fallback_pdf() -> bytes:
     """Build a font-resource fixture with no embedded program or Base-14 name."""
 
@@ -1702,6 +1771,22 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _render_embedded_type3_font_pdf,
         ),
         _fixture(
+            "pdf-multilingual-tounicode",
+            "pdf/multilingual-tounicode.pdf",
+            "application/pdf",
+            ("multilingual",),
+            "multilingual-type3-tounicode-pdf-v1",
+            {
+                "page_count": 1,
+                "font_subtype": "Type3",
+                "to_unicode_mapping_count": 12,
+                "script_groups": "Latin,Greek,Cyrillic",
+                "expected_extracted_text": "PWS café ΩΔ ЖЯ",
+                "external_font_asset": False,
+            },
+            _multilingual_type3_tounicode_pdf,
+        ),
+        _fixture(
             "pdf-render-missing-font-fallback",
             "pdf/render-missing-font-fallback.pdf",
             "application/pdf",
@@ -2084,10 +2169,7 @@ def _coverage() -> list[JsonValue]:
     for fixture in build_committed_fixtures():
         for category in fixture.categories:
             committed.setdefault(category, []).append(fixture.fixture_id)
-    scheduled = {
-        "multilingual": ("PWS-0303", "font-engine-required"),
-        "rtl": ("PWS-0704", "rtl-layout-engine-required"),
-    }
+    scheduled = {"rtl": ("PWS-0704", "rtl-layout-engine-required")}
     required_categories = (
         "annotation",
         "attachment",

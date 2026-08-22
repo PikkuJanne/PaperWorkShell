@@ -46,13 +46,13 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
 
         self.assertEqual([], index_issues)
         self.assertIsNotNone(index_summary)
-        self.assertEqual(45, index_summary.fixture_count if index_summary else 0)
+        self.assertEqual(46, index_summary.fixture_count if index_summary else 0)
         self.assertEqual(24, index_summary.coverage_count if index_summary else 0)
         self.assertEqual(
             len(EXPECTED_NEGATIVE_CODES), index_summary.negative_count if index_summary else 0
         )
         self.assertEqual([], corpus_issues)
-        self.assertEqual(45, corpus_summary.fixture_count if corpus_summary else 0)
+        self.assertEqual(46, corpus_summary.fixture_count if corpus_summary else 0)
         self.assertEqual(15, corpus_summary.golden_reference_count if corpus_summary else 0)
         self.assertEqual(
             6,

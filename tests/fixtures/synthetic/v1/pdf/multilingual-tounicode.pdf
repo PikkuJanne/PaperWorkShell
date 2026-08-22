@@ -1,0 +1,99 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Lang (mul) >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 10 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type3 /Name /F1 /FontBBox [0 0 600 700] /FontMatrix [0.001 0 0 0.001 0 0] /CharProcs << /Space 5 0 R /Latin 6 0 R /Greek 7 0 R /Cyrillic 8 0 R >> /Encoding << /Type /Encoding /Differences [32 /Space /Latin /Latin /Latin /Latin /Latin /Latin /Latin /Greek /Greek /Cyrillic /Cyrillic] >> /FirstChar 32 /LastChar 43 /Widths [250 600 600 600 600 600 600 600 600 600 600 600] /Resources << >> /ToUnicode 9 0 R >>
+endobj
+5 0 obj
+<< /Length 16 >>
+stream
+250 0 0 0 0 0 d1
+endstream
+endobj
+6 0 obj
+<< /Length 64 >>
+stream
+600 0 0 0 600 700 d1 40 w 40 20 520 640 re S 80 80 m 480 580 l S
+endstream
+endobj
+7 0 obj
+<< /Length 56 >>
+stream
+600 0 0 0 600 700 d1 40 w 300 650 m 40 20 l 560 20 l h S
+endstream
+endobj
+8 0 obj
+<< /Length 63 >>
+stream
+600 0 0 0 600 700 d1 40 w 60 20 m 540 650 l 60 650 m 540 20 l S
+endstream
+endobj
+9 0 obj
+<< /Length 490 >>
+stream
+%!PS-Adobe-3.0 Resource-CMap
+/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /PWSMultilingual def
+/CMapType 2 def
+1 begincodespacerange
+<20> <2B>
+endcodespacerange
+12 beginbfchar
+<20> <0020>
+<21> <0050>
+<22> <0057>
+<23> <0053>
+<24> <0063>
+<25> <0061>
+<26> <0066>
+<27> <00E9>
+<28> <03A9>
+<29> <0394>
+<2A> <0416>
+<2B> <042F>
+endbfchar
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end
+endstream
+endobj
+10 0 obj
+<< /Length 59 >>
+stream
+BT /F1 24 Tf 54 700 Td <2122232024252627202829202A2B> Tj ET
+endstream
+endobj
+11 0 obj
+<< /Producer (PWS-SYNTHETIC-FIXTURE: stdlib multilingual Type3 ToUnicode carrier) >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000015 00000 n 
+0000000076 00000 n 
+0000000133 00000 n 
+0000000260 00000 n 
+0000000708 00000 n 
+0000000774 00000 n 
+0000000888 00000 n 
+0000000994 00000 n 
+0000001107 00000 n 
+0000001648 00000 n 
+0000001758 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R /Info 11 0 R >>
+startxref
+1859
+%%EOF

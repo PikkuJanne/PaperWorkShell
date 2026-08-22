@@ -125,9 +125,10 @@
     },
     {
       "category": "multilingual",
-      "status": "scheduled",
-      "scheduled_task": "PWS-0303",
-      "reason_code": "font-engine-required"
+      "status": "committed",
+      "fixture_ids": [
+        "pdf-multilingual-tounicode"
+      ]
     },
     {
       "category": "page-size",
@@ -434,6 +435,31 @@
         "page_count": 2,
         "text_page_count": 1,
         "image_page_count": 1
+      },
+      "provenance": {
+        "kind": "algorithmic",
+        "source_material": "none",
+        "contains_personal_data": false,
+        "review_decision": "PWS-D035"
+      }
+    },
+    {
+      "id": "pdf-multilingual-tounicode",
+      "path": "pdf/multilingual-tounicode.pdf",
+      "media_type": "application/pdf",
+      "bytes": 2178,
+      "sha256": "2aafe0351f678133ed845f624c2e9699118f74372057f7567e12814ed5925235",
+      "categories": [
+        "multilingual"
+      ],
+      "recipe": "multilingual-type3-tounicode-pdf-v1",
+      "construction_assertions": {
+        "page_count": 1,
+        "font_subtype": "Type3",
+        "to_unicode_mapping_count": 12,
+        "script_groups": "Latin,Greek,Cyrillic",
+        "expected_extracted_text": "PWS caf\u00e9 \u03a9\u0394 \u0416\u042f",
+        "external_font_asset": false
       },
       "provenance": {
         "kind": "algorithmic",

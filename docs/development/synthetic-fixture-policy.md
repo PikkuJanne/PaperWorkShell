@@ -3,7 +3,7 @@
 - Status: Binding foundation policy
 - Task: PWS-0009
 - Decision: PWS-D035
-- Last reviewed: 2026-08-03
+- Last reviewed: 2026-08-22
 
 PaperWorkShell treats every document and image as hostile and potentially sensitive. The routine
 repository and CI corpus is therefore **public synthetic-only**: it is built from fixed algorithms
@@ -41,10 +41,12 @@ PDF DeviceCMYK and ICCBased structures, a stored annotation appearance, a synthe
 font, an unembedded synthetic Type1 missing-font fallback case, high page dimensions, complete
 framing with a broken page tree, and analytical RGB reference images. These are construction
 assertions and independent analytical oracles, not evidence that a selected renderer has executed
-them. A `scheduled` entry names a later task that can honestly
-construct and verify a remaining class:
+them. PWS-0303 adds a separate standard-library Type3 carrier whose explicit `ToUnicode` CMap
+extracts the fixed synthetic sample `PWS café ΩΔ ЖЯ`. Its four generated geometric CharProcs and
+Latin, Greek, and Cyrillic mappings use no product font, system font, downloaded asset, or external
+source material. A `scheduled` entry names a later task that can honestly construct and verify the
+remaining class:
 
-- rendered multilingual and complex-script text: PWS-0303;
 - right-to-left layout behavior: PWS-0704.
 
 The committed `cmyk` category is deliberately limited to PDF rendering: it contains DeviceCMYK
@@ -57,9 +59,11 @@ swatch relationships without inventing an exact RGB golden. Predictable CMYK beh
 standalone JPEG/PNG intake is proved separately by PWS-0201's algorithmic in-memory image corpus;
 it is not claimed by these PDF renderer fixtures.
 
-The Unicode category is committed as an NFC Unicode-named PDF path, which needs no font or feature
-engine. It does not claim rendered Unicode page content; that distinct behavior remains with the
-font strategy task.
+The Unicode category remains an NFC Unicode-named PDF path, which needs no font or feature engine.
+The separate multilingual category is an extraction and font-resource construction oracle. Its
+abstract glyph programs deliberately do not claim product-font appearance, complex shaping, or
+right-to-left layout behavior; those properties require the renderer and font-strategy evidence
+owned by their implementation tasks.
 
 The password-required fixture uses a deterministic, test-only weak Standard Security Handler R2
 construction and a public synthetic password token recorded in the index. It exists only to prove
@@ -69,10 +73,12 @@ script-marker fixture contains an orphaned structural token unreachable from the
 Their shared index category preserves the released schema vocabulary; adapter tests distinguish the
 two construction assertions.
 
-The embedded-font case uses a PDF Type3 font whose one geometric glyph procedure is generated from
-fixed operators. It contains no copied font program, system font, text sample, or third-party font
-asset. It proves only that an embedded PDF font resource and glyph program are present; broader
-Unicode shaping and product font selection remain separately gated.
+The embedded-font renderer case uses a PDF Type3 font whose one geometric glyph procedure is
+generated from fixed operators. The multilingual carrier uses four similarly generated procedures
+plus an explicit twelve-entry `ToUnicode` mapping. Neither contains a copied font program, system
+font, third-party font asset, or external text sample. They prove only their indexed resource,
+mapping, extraction, and bounded-rendering properties; product Unicode font selection and shaping
+remain separately gated.
 
 The missing-font case names a repository-owned synthetic BaseFont but deliberately embeds no font
 program. Its selected-renderer oracle is semantic rather than a captured bitmap: rendering must

@@ -1,7 +1,8 @@
 # Visual overlay domain model
 
-- Status: Implemented PWS-0302 contract
+- Status: Implemented PWS-0302 contract; PWS-0303 rendering extension
 - Task: PWS-0302
+- Extension: PWS-0303 deterministic overlay-page rendering
 - Decisions: PWS-D010, PWS-D018, PWS-D020, PWS-D036
 - Depends on: PWS-0301 normalized page coordinates
 
@@ -41,7 +42,9 @@ The payload union is unchanged from the released schemas:
 Empty textual values, mixed-case hexadecimal RGBA digits, and every syntactically valid released
 font token remain wire-compatible. The model does not normalize those values or infer a display
 value. Font availability, deterministic fallback, and concrete vector placement belong to
-PWS-0303.
+[PWS-0303](overlay-rendering.md). The initial concrete renderer recognizes only
+`paperworkshell-default`; another syntactically valid token remains valid saved intent but fails
+closed at rendering until a later reviewed font profile admits it.
 
 The only released asset record is a case-internal `signature_image`. It has an internal UUID-based
 storage name, JPEG or PNG media type, positive byte count, and SHA-256 digest. A signature-image
@@ -106,8 +109,13 @@ Unknown future manifest or overlay versions fail before mutation. Migration neve
 
 ## Deferred work
 
-This contract intentionally stops at pure intent and derived visibility. PWS-0303 owns concrete
-rendering and font strategy; PWS-0304 owns create/update/delete commands; PWS-0305 owns bounded
-signature-image intake; PWS-0306 owns accessible editor controls; and PWS-0307 owns flattening and
-reopen/render verification. None of those deferrals permits an external service or sibling product
-to own PaperWorkShell case data.
+The pure model still stops at intent and derived visibility. PWS-0303 adds a separate pure render
+request/result contract and a worker-only PDF adapter; it does not add editing commands, decode a
+stored signature image, mutate a case, or flatten an export. The [overlay rendering
+contract](overlay-rendering.md) specifies that boundary and the selected font strategy.
+
+PWS-0304 owns create/update/delete commands; PWS-0305 owns authenticated, bounded signature-image
+intake and the bridge from an immutable encoded case asset to metadata-free RGBA8 pixels; PWS-0306
+owns accessible editor controls; and PWS-0307 owns Form-XObject flattening plus reopen/render and
+reader verification. None of those deferrals permits an external service or sibling product to own
+PaperWorkShell case data.

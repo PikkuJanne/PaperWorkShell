@@ -76,7 +76,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(45, len(self.fixtures))
+        self.assertEqual(46, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -126,7 +126,34 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
             ["pdf-render-cmyk", "pdf-render-colorspaces"],
             by_category["cmyk"]["fixture_ids"],
         )
+        self.assertEqual("committed", by_category["multilingual"]["status"])
+        self.assertEqual(
+            ["pdf-multilingual-tounicode"],
+            by_category["multilingual"]["fixture_ids"],
+        )
+        self.assertNotIn("scheduled_task", by_category["multilingual"])
         self.assertEqual("PWS-0704", by_category["rtl"]["scheduled_task"])
+
+    def test_multilingual_fixture_has_closed_tounicode_mappings(self) -> None:
+        fixture = self.by_id["pdf-multilingual-tounicode"]
+        content = fixture.content
+
+        self.assertEqual(("multilingual",), fixture.categories)
+        self.assertEqual("multilingual-type3-tounicode-pdf-v1", fixture.recipe)
+        self.assertIn(b"/Subtype /Type3", content)
+        self.assertIn(b"/ToUnicode 9 0 R", content)
+        self.assertIn(b"12 beginbfchar", content)
+        for mapping in (
+            b"<27> <00E9>",
+            b"<28> <03A9>",
+            b"<29> <0394>",
+            b"<2A> <0416>",
+            b"<2B> <042F>",
+        ):
+            with self.subTest(mapping=mapping):
+                self.assertIn(mapping, content)
+        self.assertNotIn(b"/FontFile", content)
+        self.assertEqual("PWS café ΩΔ ЖЯ", fixture.expected["expected_extracted_text"])
 
     def test_classic_pdfs_have_correct_xref_offsets_and_stream_lengths(self) -> None:
         for fixture in self.fixtures:
@@ -597,10 +624,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(45, count)
+        self.assertEqual(46, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(46, len(first))
+        self.assertEqual(47, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 

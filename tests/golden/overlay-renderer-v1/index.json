@@ -1,0 +1,72 @@
+{
+  "approval": {
+    "rationale": "corrected-pws-0303-rendering-baseline-after-audit",
+    "reviewed_at": "2026-08-22",
+    "reviewer_role": "implementation-agent",
+    "status": "approved"
+  },
+  "engine_profile": {
+    "font_sha256": "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9",
+    "font_version": "Version 2.007",
+    "fonttools": "4.63.0",
+    "fpdf2": "2.8.8",
+    "ocrmypdf": "17.10.0",
+    "pdfium": "152.0.7947.0",
+    "pikepdf": "10.10.0",
+    "pillow": "12.3.0",
+    "pypdfium2": "5.12.1",
+    "qpdf": "12.3.2",
+    "uharfbuzz": "0.56.0",
+    "zlib_compile": "1.3.1.zlib-ng",
+    "zlib_ng": "2.2.4",
+    "zlib_runtime": "1.3.1.zlib-ng"
+  },
+  "golden_set_id": "paperworkshell-overlay-renderer-v1",
+  "policy": {
+    "automatic_refresh": false,
+    "classification": "public-synthetic-only",
+    "comparison": "exact-rgba8",
+    "decision_refs": [
+      "PWS-D015",
+      "PWS-D018",
+      "PWS-D034"
+    ],
+    "task_ref": "PWS-0303"
+  },
+  "references": [
+    {
+      "expected_text": "Synthetic overlay text\r\n31/12/2030 XY",
+      "height_pixels": 600,
+      "id": "primitives",
+      "path": "primitives.png",
+      "pdf_sha256": "d1f588e40946e9baaa95022aee15ba606bfc7382dc42c2be19512bbc0c513f98",
+      "png_sha256": "382b3bcc9549816bf59de5b7df7082da2b2a5bfa7976b9eba856ab25630ca71a",
+      "purpose": "Text, date, initials, check, cross, highlight, ellipse, and line placement.",
+      "rgba_sha256": "3f771dd0855b4c891425c9a0458a447ecbf8bc83ad9c243972ffb5252de5463b",
+      "width_pixels": 480
+    },
+    {
+      "expected_text": "R\u00e9sum\u00e9 \u00c5ngstr\u00f6m\r\n\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac \u03a9\u03bc\u03ad\u03b3\u03b1\r\n\u0420\u0443\u0441\u0441\u043a\u0438\u0439 \u0416\u042f\r\n\u0939\u093f\u0928\u094d\u0926\u0940 \u0928\u092e\u0938\u094d\u0924\u0947",
+      "height_pixels": 600,
+      "id": "unicode-shaping",
+      "path": "unicode-shaping.png",
+      "pdf_sha256": "c0cf9bff2edf873a80389f062bec543aaa7584f9d20871990cb4bb490ae0a0fe",
+      "png_sha256": "96e1c9c7add33830db8616f5d2d707a0b8021e95f4af1274dd2fc95e4de62309",
+      "purpose": "Noto Sans Latin, Greek, Cyrillic, and Devanagari shaping without substitution.",
+      "rgba_sha256": "d396424972daac7982125b9bb1754e80e7123964585d0ac16e87c25ba7c9ce5a",
+      "width_pixels": 480
+    },
+    {
+      "expected_text": "Visual signature image (not a digital signature)",
+      "height_pixels": 600,
+      "id": "signature-image",
+      "path": "signature-image.png",
+      "pdf_sha256": "1a250f9928fe31312db9172bc33372d541651738d00cf31c9d207444d1f4d16c",
+      "png_sha256": "be036674b97a52aeadc9f915e6e71a05fdd4196d4d5940cb6f1a6669a8e4938d",
+      "purpose": "Authenticated metadata-free RGBA image aspect-fit and vector frame placement.",
+      "rgba_sha256": "c3fa74bea457a96457e711760bdad1ad650500de21916677dfacc36ba3553234",
+      "width_pixels": 480
+    }
+  ],
+  "schema_version": 1
+}
