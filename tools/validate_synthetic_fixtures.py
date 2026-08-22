@@ -42,6 +42,12 @@ from tools.image_transform_goldens import (
     GOLDEN_DIRECTORY as IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
 )
 from tools.image_transform_goldens import validate_committed_golden_set
+from tools.overlay_render_goldens import (
+    build_artifacts as build_overlay_golden_artifacts,
+)
+from tools.overlay_render_goldens import (
+    canonical_index_bytes as canonical_overlay_golden_index_bytes,
+)
 
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "33229d2fdd6a84377fd10bdc690634037307862257f938f9a6c4c053ef954f2e"
@@ -55,6 +61,7 @@ MAX_JSON_STRING_CODEPOINTS: Final = 16_384
 MAX_COLLECTION_MEMBERS: Final = 512
 MAX_CORPUS_ENTRIES: Final = 128
 MAX_FIXTURE_BYTES: Final = 1 * 1024 * 1024
+OVERLAY_GOLDEN_DIRECTORY: Final = Path("tests/golden/overlay-renderer-v1")
 EXPECTED_NEGATIVE_CODES: Final[dict[str, str]] = {
     "duplicate-key.json": "FIXTURE_INDEX_JSON_DUPLICATE_KEY",
     "future-version.json": "FIXTURE_INDEX_VERSION_FUTURE",
@@ -216,6 +223,7 @@ class FixtureCorpusSummary:
     fixture_count: int
     golden_reference_count: int
     image_transform_golden_reference_count: int
+    overlay_golden_reference_count: int
     total_fixture_bytes: int
     repository_history_blob_count: int
     repository_index_blob_count: int
@@ -1127,6 +1135,77 @@ def _validate_renderer_goldens(
     return len(references), []
 
 
+def _validate_overlay_goldens(
+    root: Path,
+) -> tuple[int | None, frozenset[bytes], list[FixtureIssue]]:
+    """Bind the reviewed PWS-0303 raster references into repository privacy approval."""
+
+    try:
+        artifacts = build_overlay_golden_artifacts()
+        expected = {"index.json": canonical_overlay_golden_index_bytes(artifacts)}
+        expected.update({f"{artifact.case_id}.png": artifact.png_bytes for artifact in artifacts})
+    except Exception:
+        return (
+            None,
+            frozenset(),
+            [
+                _issue(
+                    "FIXTURE_OVERLAY_GOLDEN_RENDER_FAILED",
+                    OVERLAY_GOLDEN_DIRECTORY.as_posix(),
+                    "$",
+                    "overlay golden reconstruction failed closed",
+                )
+            ],
+        )
+    golden_root = root / OVERLAY_GOLDEN_DIRECTORY
+    actual_files, inventory_issues = _enumerate_committed_files(
+        golden_root,
+        document=OVERLAY_GOLDEN_DIRECTORY.as_posix(),
+    )
+    if actual_files is None:
+        return None, frozenset(), inventory_issues
+    if actual_files != {Path(name) for name in expected}:
+        return (
+            None,
+            frozenset(),
+            [
+                _issue(
+                    "FIXTURE_OVERLAY_GOLDEN_SET_MISMATCH",
+                    OVERLAY_GOLDEN_DIRECTORY.as_posix(),
+                    "$",
+                    "overlay golden inventory differs from the approved reconstruction",
+                )
+            ],
+        )
+    approved: set[bytes] = set()
+    for name, expected_content in expected.items():
+        document = (OVERLAY_GOLDEN_DIRECTORY / name).as_posix()
+        content, content_issues = _read_regular_bytes(
+            golden_root / name,
+            trusted_root=root,
+            maximum_bytes=MAX_FIXTURE_BYTES,
+            document=document,
+            code_prefix="FIXTURE_OVERLAY_GOLDEN_CONTENT",
+        )
+        if content is None:
+            return None, frozenset(), content_issues
+        if content != expected_content:
+            return (
+                None,
+                frozenset(),
+                [
+                    _issue(
+                        "FIXTURE_OVERLAY_GOLDEN_CONTENT_MISMATCH",
+                        document,
+                        "$",
+                        "overlay golden bytes differ from the approved reconstruction",
+                    )
+                ],
+            )
+        approved.add(hashlib.sha256(content).digest())
+    return len(artifacts), frozenset(approved), []
+
+
 def validate_fixture_corpus(
     root: Path = PROJECT_ROOT,
     *,
@@ -1262,6 +1341,13 @@ def validate_fixture_corpus(
             return None, content_issues
         approved_digests.add(hashlib.sha256(content).digest())
 
+    overlay_golden_count, overlay_golden_digests, overlay_golden_issues = _validate_overlay_goldens(
+        root
+    )
+    if overlay_golden_count is None:
+        return None, overlay_golden_issues
+    approved_digests.update(overlay_golden_digests)
+
     history_blob_count = 0
     index_blob_count = 0
     working_file_count = 0
@@ -1291,6 +1377,7 @@ def validate_fixture_corpus(
             fixture_count=len(generated),
             golden_reference_count=golden_reference_count,
             image_transform_golden_reference_count=transform_golden_count,
+            overlay_golden_reference_count=overlay_golden_count,
             total_fixture_bytes=total_bytes,
             repository_history_blob_count=history_blob_count,
             repository_index_blob_count=index_blob_count,
@@ -1340,7 +1427,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{summary.fixture_count} deterministic public synthetic fixtures "
             f"and {summary.golden_reference_count} analytical renderer references "
             f"plus {summary.image_transform_golden_reference_count} approved image-transform "
-            "references "
+            f"and {summary.overlay_golden_reference_count} approved overlay references "
             f"({summary.total_fixture_bytes} corpus bytes), "
             f"{summary.repository_history_blob_count} historical blobs, "
             f"{summary.repository_index_blob_count} index blobs, and "

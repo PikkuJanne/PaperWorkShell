@@ -128,6 +128,13 @@ refreshes the approved version-1 files. The exact transform order, case matrix, 
 are defined in the
 [image-transform pipeline contract](../architecture/image-transform-pipeline.md).
 
+PWS-0303 uses the separate `overlay-renderer-v1` golden family for reviewed fpdf2/PDFium output.
+Its canonical approved index and three RGBA render references are reconstructed from fixed public
+overlay cases under the exact engine/font profile. `validate-fixtures` requires the exact closed
+inventory and byte-for-byte reconstruction before adding those four tracked blobs' digests to the
+repository document/image allowlist. A missing, extra, or changed overlay golden therefore fails
+before repository privacy scanning; candidate PDFs and review artifacts remain outside Git.
+
 The signed-marker fixture contains an unsigned PDF signature field only. It is not a digital
 signature, does not contain a signature image, and carries no validity claim. The handwriting
 demonstration is an algorithmic abstract stroke pattern explicitly marked as not a signature.
