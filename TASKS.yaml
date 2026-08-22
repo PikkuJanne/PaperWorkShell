@@ -2362,7 +2362,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0301
@@ -2396,17 +2396,61 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-22'
+    revision: 7eece7e7df1e7b239b41e5aa981192f740e7a730
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit -
+      passed on the final task-evidence tree; all Python files were formatted, linted, and strictly typed, all 13
+      import layers were valid, and the complete unit lane passed sequentially
+    - .venv\Scripts\python.exe -m pytest -q tests/unit/test_overlay_rendering.py;
+      tests/unit/test_overlay_render_goldens.py; tests/security/test_overlay_renderer_security.py - passed; 103
+      focused rendering-contract, font, geometry, staging, hostile-input, structure-verification, and golden-tool
+      tests passed
+    - .venv\Scripts\python.exe -m pytest -q tests/integration/test_overlay_renderer_goldens.py; tools/overlay_render_goldens.py
+      --validate - passed; all 5 approved golden render/reopen/extract tests passed and the approval inventory,
+      digests, dimensions, and renderer fingerprint were current
+    - .venv\Scripts\python.exe tools/dev.py test-integration - passed serially on exact implementation revision
+      7eece7e7df1e7b239b41e5aa981192f740e7a730; 395 tests passed with 8 disclosed Windows
+      link/runtime/private-stage capability skips in 3054.24 seconds
+    - .venv\Scripts\python.exe tools/dev.py test-security; test-accessibility - passed serially; 455 security
+      tests passed with 6 disclosed Windows link-capability skips in 248.21 seconds, and all 39 accessibility
+      tests passed
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-m1-benchmark-report;
+      validate-pdf-renderer-benchmark; validate-pws0208-resource-workload; scan-secrets; quality-self-test -
+      passed; 46 public fixtures, 15 renderer references, 6 image-transform references, 3 approved overlay
+      references, reachable Git/source bytes, the task/schema/portfolio graphs, historical resource evidence, and
+      all 5 deliberate quality violations were checked
+    notes:
+    - A pure, versioned rendering request/result/error contract keeps PDF and font-library objects in the PDF
+      adapter. The adapter deterministically emits vector text, dates, checkmarks, crosses, initials, highlights,
+      simple shapes, and authenticated RGBA signature-image placement without modifying source documents.
+    - Page geometry covers MediaBox/CropBox offsets, all four page rotations, and UserUnit. Text uses the bundled
+      Noto Sans 2.007 snapshot with exact font authentication, HarfBuzz shaping, CIDFontType2 embedding,
+      ToUnicode and ActualText mappings, conservative ink-bound checks, and explicit missing-glyph rejection;
+      ADR 0009 records the OFL-1.1 redistribution and deterministic subsetting strategy.
+    - The renderer validates recursive PDF structure and resources, prohibits actions, scripts, attachments,
+      external references, hidden/unexpected content, and malformed object graphs, and reopens/verifies staged
+      derivatives before returning a digest. Bounded reads, immutable font snapshots, exact dependency closure,
+      sanitized stable errors/logs, rollback-protected staging, and caller quarantine/discard obligations cover
+      hostile-input, privacy, resource, and failure paths.
+    - Three synthetic golden pages were regenerated after the final audit, reviewed at candidate and independent
+      Poppler-render levels, explicitly approved on 2026-08-22, and bound into fixture privacy validation. Golden
+      approval is review-gated and records exact tool, font, renderer, source, and output fingerprints.
+    - Independent boundary, final-code, and fixture-binding audits found no remaining actionable P0-P2 issue.
+      This task adds no UI control; the existing accessibility lane remains green. Source-page composition and
+      flattening remain intentionally scoped to PWS-0307, so the adapter returns a verified intermediate overlay
+      PDF rather than claiming a final export.
+    - PaperWorkShell remains standalone and owns its local cases, assets, fonts, intermediate files, and output
+      decisions. This task adds no sibling dependency, shared schema/service/runtime, adapter, data exchange, or
+      release-interface change; no ThirdLife future note is needed.
 - id: PWS-0304
   milestone: M3
   title: Implement text, date, checkmark, cross, and initials tools
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0302
@@ -2447,7 +2491,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0302

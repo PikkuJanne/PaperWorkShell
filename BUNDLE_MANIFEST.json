@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.8",
+  "bundle_version": "0.2.9",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 241168,
-      "sha256": "2e053ba4309863649503c7a25e0b426e6ea6244f44d95aeb4665f01c562d0c74"
+      "bytes": 245469,
+      "sha256": "f2e8c77f8fa36b9df0086a02ccf65b61d035b4f06a972661c7c91fb3b78095d8"
     },
     {
       "path": "TASKS.schema.json",
@@ -97,12 +97,13 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0303"
+      "PWS-0304",
+      "PWS-0305"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0302 is done: the pure visual-overlay domain model binds the already-released overlay-v1 wire without changing either manifest schema or fingerprint, preserves normalized intent and array round trips, derives deterministic z-order and four-state crop/page visibility, and fixes signature-image and ordinary-shape terminology. PWS-0303 is the sole ready task and continues Milestone 3 with the vector renderer and font strategy.",
+    "PWS-0303 is done: the deterministic vector overlay adapter renders every core overlay primitive with authenticated Unicode font embedding, exact page geometry, bounded hostile-input handling, prohibited-content verification, approved synthetic goldens, and documented redistribution strategy. PWS-0304 and PWS-0305 are now ready and continue Milestone 3 with editable core marks and signature-image asset placement.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
