@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.10",
+  "bundle_version": "0.2.11",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 249645,
-      "sha256": "baa1598a09a975763a4939c4ff0e8843a0701849334df24d7274cc20e9292fa8"
+      "bytes": 254457,
+      "sha256": "6a0b303accd471b4c4cd1672e666eff2885e903bd76f9a533c88103e5595a513"
     },
     {
       "path": "TASKS.schema.json",
@@ -97,12 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0305"
+      "PWS-0306"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0304 is done: bounded application/domain commands and an accessible keyboard-complete modal create, edit, move, resize, delete, undo, redo, atomically persist, and safely retry text, raw display-date, checkmark, cross, and initials overlays without logging field values or modifying originals. PWS-0305 remains ready and continues Milestone 3 with signature-image asset import and placement.",
+    "PWS-0305 is done: private immutable signature-image intake, a dedicated bounded network-denied raster worker, normalized placement, explicit visual-only confirmation, accessible cancellation, and truthful manifest-first unused-asset cleanup preserve originals and avoid cryptographic claims. PWS-0306 is now ready and continues Milestone 3 with the accessible full-page overlay editor.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

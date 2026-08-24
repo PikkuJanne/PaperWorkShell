@@ -2531,7 +2531,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0302
@@ -2565,17 +2565,64 @@ tasks:
   - terminology
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-24'
+    revision: b86047d199689ace1ba790e56e6187d352600e22
+    commands:
+    - uv run python tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the
+      final task-evidence tree; all 483 Python files were formatted and linted, all 13 import layers across 170 source
+      files were valid, strict typing passed, and the complete unit lane passed sequentially
+    - uv run pytest -q tests/unit/test_signature_images.py tests/unit/test_signature_image_workflow.py
+      tests/unit/test_organizer_backend.py tests/unit/test_signature_image_dialogs.py
+      tests/unit/test_signature_image_window.py tests/unit/test_signature_image_coordinates.py
+      tests/accessibility/test_signature_image_accessibility.py; and the focused storage/raster worker suites - passed;
+      118 focused domain, application, normalized-coordinate, keyboard UI, accessibility, storage, cancellation,
+      deadline, hostile-input, and live-worker tests passed
+    - uv run python tools/dev.py test-integration - passed on the exact implementation revision; 404 tests passed with
+      9 disclosed Windows link/runtime/private-stage capability skips in 3258.81 seconds, including real Windows
+      signature raster/storage, organizer UI, startup recovery, ACL recovery, containment, and deterministic
+      restart/re-export paths
+    - uv run python tools/dev.py test-security; test-accessibility - passed; 480 security tests passed with 6 disclosed
+      Windows link-capability skips in 266.62 seconds, and all 46 accessibility tests passed
+    - uv run python -m tools.pws0207_quality_evaluation record/validate --revision
+      b86047d199689ace1ba790e56e6187d352600e22 - passed; the reviewed corpus/profile digests and all eight metric rows
+      were unchanged, and only the exact implementation revision binding was renewed
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-m1-benchmark-report;
+      validate-pdf-renderer-benchmark; validate-pws0208-resource-workload; scan-secrets; quality-self-test - passed;
+      repository fixtures, schemas, task/portfolio graphs, dependency evidence, historical resource/renderer evidence,
+      reachable Git/source bytes, and deliberate quality violations were checked
+    notes:
+    - A toolkit-free signature-image workflow copies a pinned local JPEG/PNG into randomized immutable case storage,
+      records only content-free identifiers and digests, obtains a bounded straight-alpha preview from the
+      network-denied worker, and requires explicit visual-only and whole-image/background confirmation before one
+      normalized placement is committed atomically.
+    - The UI uses “Place signature image” and repeatedly states that the mark is a visual image, not a digital or
+      qualified electronic signature. Keyboard-complete review and removal dialogs expose exact normalized placement,
+      checkerboard/background guidance, explicit keep/remove-if-unused policy, progress, cancellation, focus recovery,
+      and truthful retained/removed/already-absent cleanup outcomes.
+    - Manifest v1/v2 intentionally has no crop/background-transform recipe. The reviewed whole oriented image is the
+      durable asset, transparent pixels are preserved, opaque backgrounds remain, and the placement box is normalized
+      against existing rotated/cropped page geometry; no speculative schema field or in-place schema mutation was
+      introduced.
+    - Asset prepare, commit, borrow, manifest-first cleanup, and startup recovery authenticate exact Windows handles,
+      private ACLs, identity, size, hash, ADS/link/reparse/sparse state, quota, cancellation, deadlines, and uncertain
+      commits. Terminal progress observers cannot turn a durable commit into an apparent failure; interrupted cleanup
+      retains the case copy and never changes the external original.
+    - The dedicated signature raster capability validates closed RPC/artifact payloads, exact reduced handles, JPEG/PNG
+      media, color-profile policy, dimensions, pixels, memory, output bytes, temporary storage, timeout, cancellation,
+      cleanup, and the exact 4,000,000-pixel boundary. Decoder output is deterministic straight RGBA with transparent
+      RGB zeroed, and worker output is treated as untrusted until fully validated.
+    - Independent storage/composition, UI/accessibility, and security/privacy audits found and closed cancelability,
+      retained-status wording, terminal progress, and artifact-header budget issues, with no remaining actionable P0-P2
+      finding. PaperWorkShell remains standalone, owns all local case/asset/overlay state, adds no sibling dependency or
+      release-interface change, and preserves the existing human-readable visual-signature statement.
 - id: PWS-0306
   milestone: M3
   title: Build accessible overlay editor UI
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0304
