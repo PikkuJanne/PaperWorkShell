@@ -1125,6 +1125,22 @@ def _scan_git_blobs(
     return len(blobs)
 
 
+def _uncovered_index_scan_inputs(
+    historical_path_entries: Sequence[_PathBlobEntry],
+    index_entries: Sequence[_PathBlobEntry],
+    historical_blobs: Sequence[tuple[str, int]],
+    index_blobs: Sequence[tuple[str, int]],
+) -> tuple[list[_PathBlobEntry], list[tuple[str, int]]]:
+    """Return index inputs whose physical scan is not identical to historical coverage."""
+
+    historical_path_inputs = set(historical_path_entries)
+    historical_raw_inputs = set(historical_blobs)
+    return (
+        [entry for entry in index_entries if entry not in historical_path_inputs],
+        [blob for blob in index_blobs if blob not in historical_raw_inputs],
+    )
+
+
 def _scan_git_message_objects(
     git: str,
     root: Path,
@@ -2437,6 +2453,12 @@ def _scan_repository_checked(
             "a Git object exceeds the 50 MiB scanner limit.",
         )
     index_blobs = sorted({(entry.object_id, entry.object_size) for entry in index_entries})
+    uncovered_index_entries, uncovered_index_blobs = _uncovered_index_scan_inputs(
+        historical_path_entries,
+        index_entries,
+        historical_blobs,
+        index_blobs,
+    )
     raw_item_overhead = len(RAW_SCAN_SENTINEL) + 1
     anticipated_source_byte_work = (
         sum(raw_item_overhead + len(ref_name) for ref_name in history_roots.ref_names)
@@ -2454,7 +2476,7 @@ def _scan_repository_checked(
         + sum(
             (entry.object_size + len(RAW_SCAN_SENTINEL))
             * (6 if _path_rule_alias(entry.relative_path) is not None else 4)
-            for entry in (*historical_path_entries, *index_entries)
+            for entry in (*historical_path_entries, *uncovered_index_entries)
         )
         + 2
         * sum(
@@ -2464,7 +2486,7 @@ def _scan_repository_checked(
                     object_size + raw_item_overhead
                     for _, _, object_size in historical_message_objects
                 ),
-                *(object_size + raw_item_overhead for _, object_size in index_blobs),
+                *(object_size + raw_item_overhead for _, object_size in uncovered_index_blobs),
             )
         )
     )
@@ -2548,7 +2570,7 @@ def _scan_repository_checked(
         git,
         root,
         trusted_ignore,
-        index_entries,
+        uncovered_index_entries,
         category="index path/blob",
         budget=enumeration_budget,
     )
@@ -2568,14 +2590,15 @@ def _scan_repository_checked(
         batcher=batcher,
         budget=enumeration_budget,
     )
-    index_count = _scan_git_blobs(
+    _scan_git_blobs(
         git,
         root,
-        index_blobs,
+        uncovered_index_blobs,
         category="index blob",
         batcher=batcher,
         budget=enumeration_budget,
     )
+    index_count = len(index_blobs)
 
     tracked_count = _scan_working_paths(
         gitleaks,

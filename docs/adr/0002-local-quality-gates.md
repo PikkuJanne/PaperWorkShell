@@ -38,6 +38,11 @@ machine-independent limits without inventing physical-hardware equivalence.
    path-set, and selected working-file content snapshots are rechecked after scanning; changes
    observed between those capture/check points fail closed. The scan is a bounded snapshot check,
    not an atomic lock against a writer that changes the repository after its terminal observation.
+   Within one invocation, an exact index path/blob input reuses completed historical physical work
+   only when its path, object ID, and size are identical; raw index bytes may likewise reuse an
+   identical historical object ID and size. Both categories remain captured, bounded, logically
+   counted, and mutation-checked. A distinct path or changed object is scanned independently, and
+   every historical path/blob association remains covered.
    Git replacement objects and commit-graph acceleration are disabled so physical object parent
    links are inspected; shallow repositories and nonempty legacy graft metadata are rejected as
    incomplete ancestry. Scanner subprocesses remove Git environment overrides that could redirect

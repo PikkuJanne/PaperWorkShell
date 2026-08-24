@@ -188,6 +188,11 @@ configuration-name exclusions). Renames, deleted historical versions, direct tre
 commit histories (such as `ORIG_HEAD`) from every registered linked worktree, Git's one-level
 `AUTO_MERGE` tree, every entry in multi-record `FETCH_HEAD`/`MERGE_HEAD` metadata, direct root-ref
 blobs, nested annotated tags, commit messages, and one blob used under multiple names are included.
+Within one invocation, the physical raw scan reuses a historical result for an index blob only
+when object ID and size match, and the path-aware scan reuses historical work only when path,
+object ID, and size all match. Exact-index capture, limits, logical counts, and final mutation
+checks are unchanged. A staged-only blob, a changed object at the same path, or an existing blob
+staged under a different path remains separate physical work, including its controlled alias.
 Both history walks start from the object IDs in the initial ordinary/pseudo-ref snapshot instead
 of querying live refs again. A fixed text sentinel is prepended only to the scanner input/mirror so
 Gitleaks examines raw PDF/archive/application bytes

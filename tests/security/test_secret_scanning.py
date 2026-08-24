@@ -30,6 +30,7 @@ from tools.dev import (
     _SecretScanBatcher,
     _SecretScanEnumerationBudget,
     _trusted_gitleaks_config,
+    _uncovered_index_scan_inputs,
     scan_repository,
 )
 from tools.quality_self_test import _secret_violation
@@ -485,6 +486,26 @@ class SecretScanningSecurityTests(unittest.TestCase):
 
         self.assertEqual("SECRET_SCAN_TIMEOUT", subprocess_timed_out.exception.code)
 
+    def test_exact_historical_index_inputs_reuse_only_identical_physical_work(self) -> None:
+        exact_path = _PathBlobEntry(Path("node_modules/exact.pfx"), "a" * 40, 10)
+        historical_source = _PathBlobEntry(Path("historical-source.bin"), "b" * 40, 20)
+        same_blob_new_path = _PathBlobEntry(Path("renamed.pfx"), "b" * 40, 20)
+        same_path_changed_blob = _PathBlobEntry(Path("node_modules/exact.pfx"), "c" * 40, 11)
+        novel_path_and_blob = _PathBlobEntry(Path("novel.txt"), "d" * 40, 30)
+
+        uncovered_paths, uncovered_blobs = _uncovered_index_scan_inputs(
+            (exact_path, historical_source),
+            (exact_path, same_blob_new_path, same_path_changed_blob, novel_path_and_blob),
+            (("a" * 40, 10), ("b" * 40, 20)),
+            (("a" * 40, 10), ("b" * 40, 20), ("c" * 40, 11), ("d" * 40, 30)),
+        )
+
+        self.assertEqual(
+            [same_blob_new_path, same_path_changed_blob, novel_path_and_blob],
+            uncovered_paths,
+        )
+        self.assertEqual([("c" * 40, 11), ("d" * 40, 30)], uncovered_blobs)
+
     def test_aggregate_historical_work_fails_before_gitleaks_starts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -847,9 +868,12 @@ class SecretScanningSecurityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             git = _initialize_repository(root)
+            path_constrained_bytes = b"\x30\x82\x00\x04\x00\xffsynthetic"
+            (root / "historical-source.bin").write_bytes(path_constrained_bytes)
+            _commit_all(git, root, "add synthetic historical raw input")
             path_constrained = root / "node_modules" / "synthetic.pfx"
             path_constrained.parent.mkdir()
-            path_constrained.write_bytes(b"\x30\x82\x00\x04\x00\xffsynthetic")
+            path_constrained.write_bytes(path_constrained_bytes)
 
             for state in ("untracked", "staged"):
                 with self.subTest(state=state):
@@ -873,7 +897,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
                     self.assertIn("SECRET_SCAN_FINDING", output)
                     self.assertNotIn("synthetic.pfx", output)
 
-            history_commands = (
+            committed = subprocess.run(
                 (
                     git,
                     "-c",
@@ -884,6 +908,24 @@ class SecretScanningSecurityTests(unittest.TestCase):
                     "-m",
                     "synthetic path-constrained file",
                 ),
+                cwd=root,
+                check=False,
+                shell=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, committed.returncode, committed.stderr)
+            captured_stdout = io.StringIO()
+            captured_stderr = io.StringIO()
+            with redirect_stdout(captured_stdout), redirect_stderr(captured_stderr):
+                result = scan_repository(root)
+            output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
+
+            self.assertEqual(42, result, output)
+            self.assertIn("SECRET_SCAN_FINDING", output)
+            self.assertNotIn("synthetic.pfx", output)
+
+            history_commands = (
                 (git, "rm", "node_modules/synthetic.pfx"),
                 (
                     git,
