@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -10,6 +11,7 @@ from uuid import UUID
 import pytest
 
 import paperworkshell.app.organizer as organizer_module
+from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.ocr_languages import (
     OcrLanguageDiscoveryResult,
     OcrLanguageManager,
@@ -89,6 +91,7 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSnapshot,
     copy_manifest_document,
 )
+from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.page_operations import (
     PageCommand,
     PageCommandHistory,
@@ -102,6 +105,8 @@ from paperworkshell.domain.quality_analysis import (
 )
 from paperworkshell.domain.recovery import StartupRecoveryResult
 from paperworkshell.domain.source_ingest import SourceImportResult
+from paperworkshell.overlays.commands import CreateCoreOverlayCommand
+from paperworkshell.overlays.models import OverlayError, OverlayErrorCode, OverlayKind
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000111")
 PDF_SOURCE_ID = UUID("20000000-0000-4000-8000-000000000111")
@@ -1638,3 +1643,174 @@ def test_shutdown_retries_resource_cleanup_after_the_case_session_is_closed() ->
 
     assert close_attempts == 2
     assert backend.state == OrganizerViewState.empty()
+
+
+def test_core_overlay_editor_flushes_page_intent_then_applies_exact_date_atomically() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    backend.rotate_clockwise(PAGE_IDS[0])
+    rotated = backend.state
+    assert rotated.autosave_pending
+
+    editor = backend.begin_core_overlay_tools(PAGE_IDS[0])
+
+    assert editor.manifest_revision == 1
+    assert repository.save_calls == 1
+    opened = backend.state
+    assert not opened.autosave_pending
+    raw_date = " 24. VIII. 2033 / exact display \n"
+    overlay_id = UUID("6f400000-0000-4000-8000-000000000001")
+    edited = editor.create(
+        OverlayKind.DATE,
+        value=raw_date,
+        id_factory=lambda: overlay_id,
+    )
+
+    state = backend.apply_core_overlay_tools(edited)
+
+    assert repository.save_calls == 2
+    assert state.revision == 2
+    assert not state.autosave_pending
+    overlays = cast(list[dict[str, object]], repository.current.document["overlays"])
+    saved = next(record for record in overlays if record["overlay_id"] == str(overlay_id))
+    payload = cast(dict[str, object], saved["payload"])
+    assert payload["kind"] == OverlayKind.DATE.value
+    assert payload["value"] == raw_date
+    assert repository.current.document["page_operations"]
+
+
+def test_core_overlay_editor_cancel_mutates_nothing_and_releases_exclusive_phase() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    editor = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    edited = editor.create(
+        OverlayKind.CHECKMARK,
+        id_factory=lambda: UUID("6f400000-0000-4000-8000-000000000002"),
+    )
+
+    with pytest.raises(OverlayError) as exclusive:
+        backend.rotate_clockwise(PAGE_IDS[0])
+    assert exclusive.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+
+    backend.cancel_core_overlay_tools(edited)
+
+    assert repository.save_calls == 0
+    assert repository.current.document["overlays"] == []
+    state = backend.rotate_clockwise(PAGE_IDS[0])
+    assert state.autosave_pending
+
+
+def test_core_overlay_apply_failure_retains_exact_retry_and_forbids_false_cancel() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    editor = backend.begin_core_overlay_tools(PAGE_IDS[0]).create(
+        OverlayKind.INITIALS,
+        value="PRIVATE_RETRY_CANARY",
+        id_factory=lambda: UUID("6f400000-0000-4000-8000-000000000003"),
+    )
+    repository.fail_saves = 1
+
+    with pytest.raises(ManifestRepositoryError):
+        backend.apply_core_overlay_tools(editor)
+
+    assert backend.state.autosave_pending
+    with pytest.raises(OverlayError) as cancel_pending:
+        backend.cancel_core_overlay_tools(editor)
+    assert cancel_pending.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    with pytest.raises(OverlayError) as generic_flush:
+        backend.flush_autosave()
+    assert generic_flush.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    with pytest.raises(OverlayError) as generic_retry:
+        backend.retry_autosave()
+    assert generic_retry.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 1
+
+    saved = backend.apply_core_overlay_tools(editor)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    overlays = cast(list[dict[str, object]], repository.current.document["overlays"])
+    assert len(overlays) == 1
+
+
+def test_core_overlay_retry_replaces_pending_candidate_after_undo_to_opening_state() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    opening = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    edited = opening.create(
+        OverlayKind.CHECKMARK,
+        id_factory=lambda: UUID("6f400000-0000-4000-8000-000000000004"),
+    )
+    repository.fail_saves = 1
+
+    with pytest.raises(ManifestRepositoryError):
+        backend.apply_core_overlay_tools(edited)
+
+    reverted = edited.undo()
+    assert not reverted.changed
+
+    saved = backend.apply_core_overlay_tools(reverted)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    assert repository.current.document["overlays"] == []
+
+
+def test_core_overlay_editor_rejects_stale_or_forged_binding_without_queueing() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    editor = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    other_document = _document(page_count=1)
+    other_document["revision"] = 1
+    forged = CoreOverlayToolsState.from_snapshot(_snapshot(other_document), PAGE_IDS[0])
+
+    with pytest.raises(OverlayError) as stale:
+        backend.apply_core_overlay_tools(forged)
+
+    assert stale.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 0
+    backend.cancel_core_overlay_tools(editor)
+
+
+def test_core_overlay_editor_rejects_a_prior_same_revision_page_session() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    prior = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    backend.cancel_core_overlay_tools(prior)
+    current = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    stale = prior.create(
+        OverlayKind.CROSS,
+        id_factory=lambda: UUID("6f400000-0000-4000-8000-000000000005"),
+    )
+
+    with pytest.raises(OverlayError) as rejected:
+        backend.apply_core_overlay_tools(stale)
+
+    assert rejected.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 0
+    backend.cancel_core_overlay_tools(current)
+
+
+def test_core_overlay_editor_rejects_copied_authority_with_foreign_page_history() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=2))
+    backend.open_case(CASE_ID)
+    opening = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    foreign_history = opening.history.execute(
+        CreateCoreOverlayCommand(
+            OverlayKind.TEXT,
+            PAGE_IDS[1],
+            NormalizedPageBox(10_000, 10_000, 100_000, 50_000),
+            "PRIVATE_FOREIGN_PAGE_CANARY",
+        ),
+        id_factory=lambda: UUID("6f400000-0000-4000-8000-000000000006"),
+    )
+    forged = replace(opening)
+    object.__setattr__(forged, "history", foreign_history)
+
+    with pytest.raises(OverlayError) as rejected:
+        backend.apply_core_overlay_tools(forged)
+
+    assert rejected.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 0
+    assert repository.current.document["overlays"] == []
+    backend.cancel_core_overlay_tools(opening)

@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from threading import Event, Lock
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 from uuid import UUID
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
 from paperworkshell.app.page_previews import (
@@ -50,12 +51,19 @@ from paperworkshell.domain.source_ingest import (
     SourceIngestError,
     SourceIngestErrorCode,
 )
+from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 
 
 class OrganizerBackendFactory(Protocol):
     """Construct the complete backend on its permanent owner thread."""
 
     def __call__(self) -> OrganizerBackend: ...
+
+
+class _SanitizableFailure(Protocol):
+    code: StrEnum
+    context: str
+    safe_message: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +123,7 @@ _KNOWN_FAILURES: Final = (
     OcrError,
     PagePreviewError,
     PageOperationError,
+    OverlayError,
     PdfThumbnailError,
     RecoveryError,
     ScanReviewError,
@@ -129,6 +138,17 @@ def sanitize_ui_failure(
 ) -> UiFailure:
     """Map only known typed failures; never stringify an unknown exception."""
 
+    if type(error) is OverlayError:
+        try:
+            rebuilt_overlay = OverlayError(error.code, error.context)
+        except BaseException:
+            rebuilt_overlay = OverlayError(OverlayErrorCode.MODEL_INVALID, "overlay.operation")
+        return UiFailure(
+            code=rebuilt_overlay.code.value,
+            message=rebuilt_overlay.safe_message,
+            retryable=False,
+            operation_id=operation_id,
+        )
     if type(error) is QualityAnalysisError:
         try:
             rebuilt = QualityAnalysisError(error.code, error.context)
@@ -143,19 +163,33 @@ def sanitize_ui_failure(
             retryable=True,
             operation_id=operation_id,
         )
-    if isinstance(error, _KNOWN_FAILURES):
-        return UiFailure(
-            code=error.code.value,
-            message=error.safe_message,
-            retryable=isinstance(
-                error,
-                (
-                    ImagePageError,
-                    ManifestRepositoryError,
-                    PagePreviewError,
-                    PdfThumbnailError,
+    if type(error) in _KNOWN_FAILURES:
+        selected = cast(_SanitizableFailure, error)
+        try:
+            rebuilt_failure = cast(
+                _SanitizableFailure,
+                type(error)(selected.code, selected.context),
+            )
+        except BaseException:
+            return UiFailure(
+                code="PWS_UI_UNEXPECTED",
+                message=(
+                    "PaperWorkShell could not complete that action. "
+                    "Try again or restart the application."
                 ),
-            ),
+                retryable=True,
+                operation_id=operation_id,
+            )
+        return UiFailure(
+            code=rebuilt_failure.code.value,
+            message=rebuilt_failure.safe_message,
+            retryable=type(error)
+            in {
+                ImagePageError,
+                ManifestRepositoryError,
+                PagePreviewError,
+                PdfThumbnailError,
+            },
             operation_id=operation_id,
         )
     return UiFailure(
@@ -163,6 +197,23 @@ def sanitize_ui_failure(
         message="PaperWorkShell could not complete that action. Try again or restart the application.",
         retryable=True,
         operation_id=operation_id,
+    )
+
+
+def _core_overlay_apply_state_matches(
+    editor_state: CoreOverlayToolsState,
+    state: OrganizerViewState,
+) -> bool:
+    allowed_revisions = {
+        editor_state.manifest_revision,
+        editor_state.manifest_revision + 1,
+    }
+    return (
+        state.case_id == editor_state.case_id
+        and state.revision in allowed_revisions
+        and (not editor_state.changed or state.revision == editor_state.manifest_revision + 1)
+        and not state.autosave_pending
+        and any(page.page_id == editor_state.page_id for page in state.pages)
     )
 
 
@@ -187,6 +238,12 @@ class OrganizerBackendWorker(QObject):
     scan_review_applied = Signal(int, object)
     scan_review_apply_failed = Signal(int, object)
     scan_review_discard_failed = Signal(object)
+    core_overlay_tools_started = Signal(int, object)
+    core_overlay_tools_start_failed = Signal(int, object)
+    core_overlay_tools_applied = Signal(int, object)
+    core_overlay_tools_apply_failed = Signal(int, object)
+    core_overlay_tools_cancelled = Signal(int)
+    core_overlay_tools_cancel_failed = Signal(int, object)
     progress_changed = Signal(object)
     status_changed = Signal(str)
     operation_status_changed = Signal(int, str)
@@ -638,6 +695,149 @@ class OrganizerBackendWorker(QObject):
         except BaseException as error:
             self.scan_review_discard_failed.emit(sanitize_ui_failure(error))
 
+    @Slot(int, object)
+    def begin_core_overlay_tools(self, operation_id: int, page_id: object) -> None:
+        """Open one exact keyboard form-mark draft on the backend thread."""
+
+        if type(operation_id) is not int or operation_id <= 0 or type(page_id) is not UUID:
+            self.core_overlay_tools_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid visual form-mark request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.core_overlay_tools_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            state = backend.begin_core_overlay_tools(page_id)
+            organizer_state = backend.state
+            if (
+                type(state) is not CoreOverlayToolsState
+                or type(organizer_state) is not OrganizerViewState
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.core_overlay_tools_start_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        # Beginning an editor can flush prior page intent. Publish that durable
+        # revision before the revision-bound editor reaches the window.
+        self.state_changed.emit(organizer_state)
+        self.core_overlay_tools_started.emit(operation_id, state)
+
+    @Slot(int, object)
+    def apply_core_overlay_tools(self, operation_id: int, editor_state: object) -> None:
+        """Persist one validated local form-mark draft and publish its organizer state."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not CoreOverlayToolsState
+        ):
+            self.core_overlay_tools_apply_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected invalid visual form-mark changes.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.core_overlay_tools_apply_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            state = backend.apply_core_overlay_tools(editor_state)
+            current = backend.state
+            if (
+                type(state) is not OrganizerViewState
+                or type(current) is not OrganizerViewState
+                or state != current
+                or not _core_overlay_apply_state_matches(editor_state, state)
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.core_overlay_tools_apply_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.state_changed.emit(state)
+        self.core_overlay_tools_applied.emit(operation_id, state)
+
+    @Slot(int, object)
+    def cancel_core_overlay_tools(self, operation_id: int, editor_state: object) -> None:
+        """Release one matching draft without mutating or saving the case."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not CoreOverlayToolsState
+        ):
+            self.core_overlay_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid visual form-mark cancellation.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.core_overlay_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.cancel_core_overlay_tools(editor_state)
+        except BaseException as error:
+            self.core_overlay_tools_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.core_overlay_tools_cancelled.emit(operation_id)
+
     @Slot(object)
     def rotate_clockwise(self, page_id: object) -> None:
         """Queue one clockwise quarter-turn for the selected page."""
@@ -1016,6 +1216,9 @@ class OrganizerBackendCommands(QObject):
     scan_review_preview_requested = Signal(int, int, object, object, int, int, object)
     scan_review_apply_requested = Signal(int, object)
     scan_review_cancel_requested = Signal(object)
+    core_overlay_tools_begin_requested = Signal(int, object)
+    core_overlay_tools_apply_requested = Signal(int, object)
+    core_overlay_tools_cancel_requested = Signal(int, object)
     rotate_requested = Signal(object)
     remove_requested = Signal(object)
     move_requested = Signal(object, int)
@@ -1043,6 +1246,9 @@ class OrganizerBackendCommands(QObject):
         self.scan_review_preview_requested.connect(worker.get_scan_review_preview)
         self.scan_review_apply_requested.connect(worker.apply_scan_review)
         self.scan_review_cancel_requested.connect(worker.cancel_scan_review)
+        self.core_overlay_tools_begin_requested.connect(worker.begin_core_overlay_tools)
+        self.core_overlay_tools_apply_requested.connect(worker.apply_core_overlay_tools)
+        self.core_overlay_tools_cancel_requested.connect(worker.cancel_core_overlay_tools)
         self.rotate_requested.connect(worker.rotate_clockwise)
         self.remove_requested.connect(worker.remove_page)
         self.move_requested.connect(worker.move_page)

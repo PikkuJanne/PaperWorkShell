@@ -1,8 +1,9 @@
 # Visual overlay domain model
 
-- Status: Implemented PWS-0302 contract; PWS-0303 rendering extension
+- Status: Implemented PWS-0302 contract; PWS-0303 rendering; PWS-0304 editing extension
 - Task: PWS-0302
 - Extension: PWS-0303 deterministic overlay-page rendering
+- Editing extension: PWS-0304 core visual form-mark commands and keyboard dialog
 - Decisions: PWS-D010, PWS-D018, PWS-D020, PWS-D036
 - Depends on: PWS-0301 normalized page coordinates
 
@@ -114,8 +115,10 @@ request/result contract and a worker-only PDF adapter; it does not add editing c
 stored signature image, mutate a case, or flatten an export. The [overlay rendering
 contract](overlay-rendering.md) specifies that boundary and the selected font strategy.
 
-PWS-0304 owns create/update/delete commands; PWS-0305 owns authenticated, bounded signature-image
-intake and the bridge from an immutable encoded case asset to metadata-free RGBA8 pixels; PWS-0306
-owns accessible editor controls; and PWS-0307 owns Form-XObject flattening plus reopen/render and
-reader verification. None of those deferrals permits an external service or sibling product to own
-PaperWorkShell case data.
+PWS-0304 now owns bounded create/update/delete commands, ephemeral undo/redo history, and the
+non-canvas keyboard form-mark dialog described in [Core visual form-mark tools](core-overlay-tools.md).
+PWS-0305 owns authenticated, bounded signature-image intake and the bridge from an immutable encoded
+case asset to metadata-free RGBA8 pixels; PWS-0306 owns the full-page accessible editor, composited
+preview, selection geometry, zoom, guides, snapping, and pointer interaction; and PWS-0307 owns
+Form-XObject flattening plus reopen/render and reader verification. None of those deferrals permits
+an external service or sibling product to own PaperWorkShell case data.

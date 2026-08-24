@@ -85,6 +85,14 @@ class OverlayErrorCode(StrEnum):
     SIGNATURE_TERMINOLOGY_INVALID = "OVERLAY_SIGNATURE_TERMINOLOGY_INVALID"
     SHAPE_INVALID = "OVERLAY_SHAPE_INVALID"
     SHAPE_INTENT_INVALID = "OVERLAY_SHAPE_INTENT_INVALID"
+    RECORD_UNKNOWN = "OVERLAY_RECORD_UNKNOWN"
+    CORE_TOOL_UNSUPPORTED = "OVERLAY_CORE_TOOL_UNSUPPORTED"
+    EDIT_KIND_MISMATCH = "OVERLAY_EDIT_KIND_MISMATCH"
+    SELECTION_REQUIRED = "OVERLAY_SELECTION_REQUIRED"
+    UNDO_UNAVAILABLE = "OVERLAY_UNDO_UNAVAILABLE"
+    REDO_UNAVAILABLE = "OVERLAY_REDO_UNAVAILABLE"
+    CONCURRENT_CHANGE = "OVERLAY_CONCURRENT_CHANGE"
+    ID_GENERATION_FAILED = "OVERLAY_ID_GENERATION_FAILED"
 
 
 _SAFE_ERROR_MESSAGES: Final[dict[OverlayErrorCode, str]] = {
@@ -126,6 +134,22 @@ _SAFE_ERROR_MESSAGES: Final[dict[OverlayErrorCode, str]] = {
     OverlayErrorCode.SHAPE_INVALID: "The ordinary visual shape is invalid.",
     OverlayErrorCode.SHAPE_INTENT_INVALID: (
         "An ordinary visual shape cannot claim permanent removal of information."
+    ),
+    OverlayErrorCode.RECORD_UNKNOWN: "The selected visual overlay is no longer available.",
+    OverlayErrorCode.CORE_TOOL_UNSUPPORTED: (
+        "This visual-overlay tool is not available in the core form-marking editor."
+    ),
+    OverlayErrorCode.EDIT_KIND_MISMATCH: (
+        "The selected visual overlay cannot use that type of edit."
+    ),
+    OverlayErrorCode.SELECTION_REQUIRED: "Select a visual overlay before using this action.",
+    OverlayErrorCode.UNDO_UNAVAILABLE: "There is no session visual-overlay edit to undo.",
+    OverlayErrorCode.REDO_UNAVAILABLE: "There is no session visual-overlay edit to redo.",
+    OverlayErrorCode.CONCURRENT_CHANGE: (
+        "The visual overlays changed before this edit could be saved. Try the edit again."
+    ),
+    OverlayErrorCode.ID_GENERATION_FAILED: (
+        "PaperWorkShell could not allocate a unique visual-overlay identifier."
     ),
 }
 

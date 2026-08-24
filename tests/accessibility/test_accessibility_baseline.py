@@ -133,6 +133,7 @@ def test_core_controls_have_names_descriptions_and_no_drag_requirement() -> None
             "removeButton",
             "scanReviewButton",
             "changeOrderButton",
+            "editFormMarksButton",
             "undoButton",
             "redoButton",
             "cancelButton",
@@ -173,10 +174,14 @@ def test_keyboard_shortcuts_cover_core_page_actions() -> None:
         rotations: list[UUID] = []
         removals: list[UUID] = []
         undos: list[bool] = []
+        overlay_tools: list[UUID] = []
         commands.move_requested.connect(lambda page_id, offset: moves.append((page_id, offset)))
         commands.rotate_requested.connect(lambda page_id: rotations.append(page_id))
         commands.remove_requested.connect(lambda page_id: removals.append(page_id))
         commands.undo_requested.connect(lambda: undos.append(True))
+        commands.core_overlay_tools_begin_requested.connect(
+            lambda _operation_id, page_id: overlay_tools.append(page_id)
+        )
         worker.initialized.emit()
         worker.state_changed.emit(_state())
         _application().processEvents()
@@ -185,11 +190,17 @@ def test_keyboard_shortcuts_cover_core_page_actions() -> None:
         QTest.keyClick(window, Qt.Key.Key_R, Qt.KeyboardModifier.ControlModifier)
         QTest.keyClick(window, Qt.Key.Key_Delete)
         QTest.keyClick(window, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+        QTest.keyClick(
+            window,
+            Qt.Key.Key_F,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
 
         assert moves == [(PAGE_ONE, 1)]
         assert rotations == [PAGE_ONE]
         assert removals == [PAGE_ONE]
         assert undos == [True]
+        assert overlay_tools == [PAGE_ONE]
 
 
 def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() -> None:
@@ -200,12 +211,16 @@ def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() ->
         undos: list[bool] = []
         redos: list[bool] = []
         creates: list[bool] = []
+        overlay_tools: list[UUID] = []
         commands.move_requested.connect(lambda page_id, offset: moves.append((page_id, offset)))
         commands.rotate_requested.connect(lambda page_id: rotations.append(page_id))
         commands.remove_requested.connect(lambda page_id: removals.append(page_id))
         commands.undo_requested.connect(lambda: undos.append(True))
         commands.redo_requested.connect(lambda: redos.append(True))
         commands.create_case_requested.connect(lambda: creates.append(True))
+        commands.core_overlay_tools_begin_requested.connect(
+            lambda _operation_id, page_id: overlay_tools.append(page_id)
+        )
         worker.initialized.emit()
         worker.state_changed.emit(replace(_state(), can_undo=False, can_redo=False))
         _application().processEvents()
@@ -218,14 +233,21 @@ def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() ->
         assert undos == []
         assert redos == []
         assert creates == []
+        assert overlay_tools == []
 
         window._set_controls_enabled(False)
         QTest.keyClick(window, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier)
         QTest.keyClick(window, Qt.Key.Key_R, Qt.KeyboardModifier.ControlModifier)
         QTest.keyClick(window, Qt.Key.Key_Delete)
+        QTest.keyClick(
+            window,
+            Qt.Key.Key_F,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
         assert moves == []
         assert rotations == []
         assert removals == []
+        assert overlay_tools == []
 
 
 def test_progress_error_and_cancellation_are_textual_focusable_and_announced() -> None:

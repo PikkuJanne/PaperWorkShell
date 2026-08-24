@@ -1647,7 +1647,9 @@ class SecretScanningSecurityTests(unittest.TestCase):
 
         output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
         self.assertEqual(1, result, output)
-        self.assertIn("SECRET_SCAN_POLICY_INVALID", output)
+        # Newer Git versions reject the unsupported extension during repository discovery before
+        # the scanner can classify the value itself. Both outcomes fail closed before enumeration.
+        self.assertRegex(output, r"SECRET_SCAN_(?:POLICY_INVALID|GIT_FAILED)")
         self.assertNotIn("synthetic.pfx", output)
 
     def test_path_and_content_rule_covers_historical_and_unstaged_binary(self) -> None:

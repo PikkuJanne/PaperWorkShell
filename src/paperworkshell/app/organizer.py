@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Final, Protocol, cast
 from uuid import UUID
 
+from paperworkshell.app.core_overlay_tools import (
+    CoreOverlayToolsState,
+    is_core_overlay_announcement_safe,
+)
 from paperworkshell.app.manifest_repository import ManifestAutosaveService
 from paperworkshell.app.ocr_languages import (
     OcrLanguageManager,
@@ -117,6 +121,7 @@ from paperworkshell.domain.recovery import (
     reject_recovery,
 )
 from paperworkshell.domain.source_ingest import SourceImportResult
+from paperworkshell.overlays.models import OverlayErrorCode, reject_overlay
 
 _DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
 MAX_ORGANIZER_PREVIEW_BATCH_PAGES: Final = 8
@@ -344,6 +349,7 @@ class OrganizerBackend:
     """
 
     __slots__ = (
+        "_active_core_overlay_tools",
         "_active_scan_review",
         "_close_resources",
         "_lifecycle",
@@ -419,6 +425,7 @@ class OrganizerBackend:
         self._quality_analysis = selected_quality_analysis
         self._quality_profile_id = quality_profile_id
         self._quality_profile_sha256 = quality_profile_sha256
+        self._active_core_overlay_tools: CoreOverlayToolsState | None = None
         self._active_scan_review: _ActiveScanReview | None = None
         self._pending_committed_import: SourceImportResult | None = None
         self._session: _OrganizerSession | None = None
@@ -513,6 +520,7 @@ class OrganizerBackend:
         """Flush pending edits and rebuild state from the latest durable snapshot."""
 
         session = self._require_session()
+        self._require_core_overlay_tools_inactive()
         self._active_scan_review = None
         pending = self._pending_committed_import
         if pending is not None:
@@ -531,6 +539,7 @@ class OrganizerBackend:
         """Drain autosave before releasing the active case lease."""
 
         session = self._session
+        self._require_core_overlay_tools_inactive()
         self._active_scan_review = None
         if session is None:
             self._lifecycle.close_case()
@@ -566,6 +575,7 @@ class OrganizerBackend:
         """Import once, then report a closed post-commit organizer refresh outcome."""
 
         session = self._require_session()
+        self._require_core_overlay_tools_inactive()
         self._active_scan_review = None
         pending = self._pending_committed_import
         if pending is not None:
@@ -649,6 +659,67 @@ class OrganizerBackend:
         )
         return self._queue_history(session, history)
 
+    def begin_core_overlay_tools(self, page_id: UUID) -> CoreOverlayToolsState:
+        """Open one exclusive, revision-bound core-overlay editing draft.
+
+        Existing organizer intent is durably flushed first so the overlay draft
+        can never replace a coalesced page-edit candidate.  The returned state
+        is toolkit-free and performs no persistence until explicitly applied.
+        """
+
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_review")
+        _require_active_page(session.history.projection, page_id)
+        self.flush_autosave()
+        editor_state = CoreOverlayToolsState.from_snapshot(session.snapshot, page_id)
+        self._active_core_overlay_tools = editor_state
+        return editor_state
+
+    def apply_core_overlay_tools(
+        self,
+        editor_state: CoreOverlayToolsState,
+    ) -> OrganizerViewState:
+        """Atomically queue and save one exact local core-overlay draft."""
+
+        session = self._require_session()
+        if type(editor_state) is not CoreOverlayToolsState:
+            reject_overlay(OverlayErrorCode.MODEL_INVALID, "overlay.editor_apply")
+        if self._active_scan_review is not None:
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_review")
+        opening_state = self._active_core_overlay_tools
+        if opening_state is None or not _core_overlay_editor_binding_matches(
+            opening_state,
+            editor_state,
+        ):
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_active")
+        _require_active_page(session.history.projection, editor_state.page_id)
+        if not editor_state.changed and not session.autosave.pending:
+            self._active_core_overlay_tools = None
+            return self.state
+        candidate = editor_state.to_candidate(session.snapshot)
+        session.autosave.queue(candidate)
+        self._active_scan_review = None
+        state = self._flush_autosave_unchecked()
+        self._active_core_overlay_tools = None
+        return state
+
+    def cancel_core_overlay_tools(self, editor_state: CoreOverlayToolsState) -> None:
+        """Discard one matching local draft without queueing or saving anything."""
+
+        session = self._require_session()
+        opening_state = self._active_core_overlay_tools
+        if (
+            type(editor_state) is not CoreOverlayToolsState
+            or opening_state is None
+            or not _core_overlay_editor_binding_matches(opening_state, editor_state)
+        ):
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_cancel")
+        if session.autosave.pending:
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_cancel_pending")
+        self._active_core_overlay_tools = None
+
     def undo(self) -> OrganizerViewState:
         """Undo exactly one session page operation and queue the resulting state."""
 
@@ -663,6 +734,13 @@ class OrganizerBackend:
 
     def flush_autosave(self) -> OrganizerViewState:
         """Persist every queued edit, retaining pending state after a failure."""
+
+        self._require_session()
+        self._require_core_overlay_tools_inactive()
+        return self._flush_autosave_unchecked()
+
+    def _flush_autosave_unchecked(self) -> OrganizerViewState:
+        """Drain autosave after the caller has established its exclusive phase."""
 
         session = self._require_session()
         result = session.autosave.flush()
@@ -842,6 +920,7 @@ class OrganizerBackend:
         """Begin one provisional JPEG/PNG review without changing page history."""
 
         session = self._require_session()
+        self._require_core_overlay_tools_inactive()
         if self._active_scan_review is not None:
             reject_scan_review(
                 ScanReviewErrorCode.ALREADY_ACTIVE,
@@ -999,6 +1078,7 @@ class OrganizerBackend:
 
         if self._shutdown:
             return
+        self._active_core_overlay_tools = None
         self.close_case()
         self._close_resources()
         self._shutdown = True
@@ -1106,6 +1186,10 @@ class OrganizerBackend:
                 "organizer.shutdown",
             )
 
+    def _require_core_overlay_tools_inactive(self) -> None:
+        if self._active_core_overlay_tools is not None:
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_exclusive")
+
     def _queue_history(
         self,
         session: _OrganizerSession,
@@ -1113,6 +1197,7 @@ class OrganizerBackend:
         *,
         preserve_scan_review: bool = False,
     ) -> OrganizerViewState:
+        self._require_core_overlay_tools_inactive()
         candidate = history.to_candidate(session.snapshot)
         session.autosave.queue(candidate)
         session.history = history
@@ -1131,6 +1216,27 @@ def _session_from_load(
         history=PageCommandHistory.from_snapshot(snapshot),
         autosave=ManifestAutosaveService(repository, snapshot.case_id),
         load_status=loaded.status,
+    )
+
+
+def _core_overlay_editor_binding_matches(
+    opening: CoreOverlayToolsState,
+    candidate: CoreOverlayToolsState,
+) -> bool:
+    """Compare only the non-content authority tuple for one exclusive editor."""
+
+    return (
+        type(opening) is CoreOverlayToolsState
+        and type(candidate) is CoreOverlayToolsState
+        and opening.case_id == candidate.case_id
+        and opening.manifest_revision == candidate.manifest_revision
+        and opening.page_id == candidate.page_id
+        and opening.editor_session_id == candidate.editor_session_id
+        and is_core_overlay_announcement_safe(candidate.announcement)
+        and candidate.history.is_page_scoped_extension_of(
+            opening.history,
+            opening.page_id,
+        )
     )
 
 

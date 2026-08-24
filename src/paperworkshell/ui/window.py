@@ -53,6 +53,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from paperworkshell.app.core_overlay_tools import (
+    CoreOverlayToolsState,
+    is_core_overlay_announcement_safe,
+)
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
@@ -98,6 +102,10 @@ from paperworkshell.ui.models import (
     QualityFindingListModel,
 )
 from paperworkshell.ui.ocr_languages import OcrLanguageDialog
+from paperworkshell.ui.overlay_tools import (
+    CoreOverlayToolsDialog,
+    safe_core_overlay_failure,
+)
 from paperworkshell.ui.scan_review import ScanReviewDialog
 
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
@@ -264,6 +272,29 @@ def _quality_state_invalidates_review(
         or prior.case_id != current.case_id
         or prior.revision != current.revision
         or prior.pages != current.pages
+    )
+
+
+def _core_overlay_apply_result_matches(
+    dialog: CoreOverlayToolsDialog,
+    result: OrganizerViewState,
+    current: OrganizerViewState | None,
+) -> bool:
+    """Correlate a save result to the exact open draft without trusting its strings."""
+
+    draft = dialog.state
+    allowed_revisions = {
+        draft.manifest_revision,
+        draft.manifest_revision + 1,
+    }
+    return (
+        type(current) is OrganizerViewState
+        and current == result
+        and result.case_id == draft.case_id
+        and result.revision in allowed_revisions
+        and (not draft.changed or result.revision == draft.manifest_revision + 1)
+        and not result.autosave_pending
+        and any(page.page_id == draft.page_id for page in result.pages)
     )
 
 
@@ -459,6 +490,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._ocr_language_dialog: OcrLanguageDialog | None = None
         self._ocr_language_refresh_request_id: int | None = None
         self._ocr_language_saved_message: str | None = None
+        self._core_overlay_tools_dialog: CoreOverlayToolsDialog | None = None
+        self._core_overlay_tools_start_operation_id: int | None = None
+        self._core_overlay_tools_apply_operation_id: int | None = None
+        self._core_overlay_tools_cancel_operation_id: int | None = None
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
@@ -762,6 +797,13 @@ class PaperWorkShellWindow(QMainWindow):
             "changeOrderButton",
             "Open the explicit keyboard page-order dialog. Ctrl+Shift+O.",
         )
+        self._core_overlay_tools_button = self._action_button(
+            "Edit form marks…",
+            "editFormMarksButton",
+            "Add or edit text, date, checkmark, cross, and initials visual marks without "
+            "requiring a pointer. Ctrl+Shift+F.",
+        )
+        self._core_overlay_tools_button.setAccessibleName("Add or edit visual form marks")
         self._undo_button = self._action_button(
             "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
         )
@@ -774,6 +816,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._remove_button.clicked.connect(self._remove_selected)
         self._scan_review_button.clicked.connect(self._request_scan_review)
         self._change_order_button.clicked.connect(self._change_full_order)
+        self._core_overlay_tools_button.clicked.connect(self._request_core_overlay_tools)
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
         action_layout.addWidget(self._move_earlier_button, 0, 0)
@@ -784,6 +827,7 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._change_order_button, 1, 2)
         action_layout.addWidget(self._undo_button, 2, 0)
         action_layout.addWidget(self._redo_button, 2, 1)
+        action_layout.addWidget(self._core_overlay_tools_button, 2, 2)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -859,6 +903,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._remove_button,
             self._scan_review_button,
             self._change_order_button,
+            self._core_overlay_tools_button,
             self._undo_button,
             self._redo_button,
             self._quality_summary,
@@ -897,6 +942,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+Shift+Q", self._request_quality_review),
             ("Ctrl+Shift+L", self._open_ocr_languages),
             ("Ctrl+Shift+O", self._change_full_order),
+            ("Ctrl+Shift+F", self._request_core_overlay_tools),
             ("Ctrl+Shift+R", self._retry_failed_preview),
             ("Escape", self._cancel_active_operation),
         )
@@ -926,6 +972,14 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.scan_review_applied.connect(self._scan_review_applied)
         self._worker.scan_review_apply_failed.connect(self._scan_review_apply_failed)
         self._worker.scan_review_discard_failed.connect(self._scan_review_discard_failed)
+        self._worker.core_overlay_tools_started.connect(self._core_overlay_tools_started)
+        self._worker.core_overlay_tools_start_failed.connect(self._core_overlay_tools_start_failed)
+        self._worker.core_overlay_tools_applied.connect(self._core_overlay_tools_applied)
+        self._worker.core_overlay_tools_apply_failed.connect(self._core_overlay_tools_apply_failed)
+        self._worker.core_overlay_tools_cancelled.connect(self._core_overlay_tools_cancelled)
+        self._worker.core_overlay_tools_cancel_failed.connect(
+            self._core_overlay_tools_cancel_failed
+        )
         self._worker.progress_changed.connect(self._progress_changed)
         self._worker.status_changed.connect(self._status_changed)
         self._worker.operation_status_changed.connect(self._operation_status_changed)
@@ -1966,6 +2020,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._closing_requested = False
         self._closing_import_cleanup = False
+        self._dismiss_core_overlay_tools_after_shutdown_refusal()
         self._update_organizer_guidance()
         if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
             self._hide_retry_save()
@@ -1976,8 +2031,7 @@ class PaperWorkShellWindow(QMainWindow):
                 "Retry closing PaperWorkShell.",
                 assertive=True,
             )
-            self._retry_close_button.setFocus(Qt.FocusReason.OtherFocusReason)
-            self._ensure_widget_visible(self._retry_close_button)
+            QTimer.singleShot(0, self._focus_retry_close_after_shutdown_refusal)
             return
         self._set_controls_enabled(True)
         self._hide_retry_close()
@@ -1986,8 +2040,21 @@ class PaperWorkShellWindow(QMainWindow):
             assertive=True,
         )
         self._retry_save_button.setVisible(True)
-        self._retry_save_button.setFocus()
+        QTimer.singleShot(0, self._focus_retry_save_after_shutdown_refusal)
+
+    def _focus_retry_save_after_shutdown_refusal(self) -> None:
+        if self._closing_requested or not self._retry_save_button.isVisible():
+            return
+        self.activateWindow()
+        self._retry_save_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._retry_save_button)
+
+    def _focus_retry_close_after_shutdown_refusal(self) -> None:
+        if self._closing_requested or not self._retry_close_button.isVisible():
+            return
+        self.activateWindow()
+        self._retry_close_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._retry_close_button)
 
     @Slot()
     def shutdown_wait_timed_out(self) -> None:
@@ -2391,12 +2458,14 @@ class PaperWorkShellWindow(QMainWindow):
         state = self._state
         scan_review_busy = self._scan_review_is_opening_or_active()
         quality_busy = self._quality_is_pending_or_running()
+        overlay_tools_busy = self._core_overlay_tools_is_opening_or_active()
         self._close_case_button.setEnabled(
             self._controls_enabled
             and state is not None
             and state.case_id is not None
             and not scan_review_busy
             and not quality_busy
+            and not overlay_tools_busy
         )
         editable = (
             self._controls_enabled
@@ -2404,6 +2473,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._import_is_pending_or_running()
             and not scan_review_busy
             and not quality_busy
+            and not overlay_tools_busy
         )
         has_selection = editable and 0 <= row < page_count
         self._move_earlier_button.setEnabled(has_selection and row > 0)
@@ -2425,6 +2495,7 @@ class PaperWorkShellWindow(QMainWindow):
             and selected_page.scan_review_intent is not None
         )
         self._change_order_button.setEnabled(editable and page_count > 1)
+        self._core_overlay_tools_button.setEnabled(has_selection)
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -2738,6 +2809,199 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._model.evict_previews(maximum_bytes=remaining)
 
+    def _request_core_overlay_tools(self) -> None:
+        """Open the keyboard-complete core form-mark editor for the selected page."""
+
+        if not self._core_overlay_tools_button.isEnabled():
+            return
+        page_id = self._selected_page_id()
+        if page_id is None or not self._prepare_for_mutation():
+            return
+        if self._core_overlay_tools_is_opening_or_active():
+            return
+        operation_id = self._allocate_operation_id()
+        self._core_overlay_tools_start_operation_id = operation_id
+        self._autosave_timer.stop()
+        self._hide_error()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce("Opening visual form-mark editor. No changes have been applied.")
+        self._commands.core_overlay_tools_begin_requested.emit(operation_id, page_id)
+
+    @Slot(int, object)
+    def _core_overlay_tools_started(self, operation_id: int, editor_state: object) -> None:
+        expected = self._core_overlay_tools_start_operation_id
+        if operation_id != expected:
+            return
+        self._core_overlay_tools_start_operation_id = None
+        if (
+            self._closing_requested
+            or type(editor_state) is not CoreOverlayToolsState
+            or self._state is None
+            or editor_state.case_id != self._state.case_id
+            or editor_state.manifest_revision != self._state.revision
+            or editor_state.page_id != self._selected_page_id()
+            or not is_core_overlay_announcement_safe(editor_state.announcement)
+            or self._core_overlay_tools_dialog is not None
+        ):
+            if (
+                not self._closing_requested
+                and type(editor_state) is CoreOverlayToolsState
+                and self._core_overlay_tools_dialog is None
+            ):
+                cancel_operation_id = self._allocate_operation_id()
+                self._core_overlay_tools_cancel_operation_id = cancel_operation_id
+                self._commands.core_overlay_tools_cancel_requested.emit(
+                    cancel_operation_id,
+                    editor_state,
+                )
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            return
+        dialog = CoreOverlayToolsDialog(editor_state, self)
+        dialog.apply_requested.connect(self._apply_core_overlay_tools)
+        dialog.finished.connect(self._core_overlay_tools_finished)
+        self._core_overlay_tools_dialog = dialog
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        dialog.open()
+
+    @Slot(int, object)
+    def _core_overlay_tools_start_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._core_overlay_tools_start_operation_id:
+            return
+        self._core_overlay_tools_start_operation_id = None
+        if self._state is not None and self._state.autosave_pending and not self._closing_requested:
+            self._autosave_timer.start()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_core_overlay_tools_failure(failure)
+
+    @Slot(object)
+    def _apply_core_overlay_tools(self, editor_state: object) -> None:
+        dialog = self._core_overlay_tools_dialog
+        if (
+            dialog is None
+            or type(editor_state) is not CoreOverlayToolsState
+            or editor_state is not dialog.state
+            or self._core_overlay_tools_apply_operation_id is not None
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        self._core_overlay_tools_apply_operation_id = operation_id
+        self._commands.core_overlay_tools_apply_requested.emit(operation_id, editor_state)
+
+    @Slot(int, object)
+    def _core_overlay_tools_applied(self, operation_id: int, state: object) -> None:
+        if operation_id != self._core_overlay_tools_apply_operation_id:
+            return
+        self._core_overlay_tools_apply_operation_id = None
+        dialog = self._core_overlay_tools_dialog
+        if dialog is None:
+            return
+        if type(state) is not OrganizerViewState or not _core_overlay_apply_result_matches(
+            dialog,
+            state,
+            self._state,
+        ):
+            dialog.set_apply_failed(
+                "PWS_UI_RESPONSE_INVALID",
+                "PaperWorkShell received an invalid save confirmation. Try saving again.",
+            )
+            return
+        if dialog.set_apply_succeeded():
+            self._announce("Visual form marks applied and saved.")
+
+    @Slot(int, object)
+    def _core_overlay_tools_apply_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._core_overlay_tools_apply_operation_id:
+            return
+        self._core_overlay_tools_apply_operation_id = None
+        dialog = self._core_overlay_tools_dialog
+        if dialog is None:
+            return
+        if type(failure) is UiFailure:
+            dialog.set_apply_failed(failure.code, failure.message)
+            return
+        dialog.set_apply_failed(
+            "PWS_UI_RESPONSE_INVALID",
+            "PaperWorkShell received an invalid save failure. Try saving again.",
+        )
+
+    @Slot(int)
+    def _core_overlay_tools_finished(self, _result: int) -> None:
+        dialog = self._core_overlay_tools_dialog
+        if dialog is None:
+            return
+        state = dialog.state
+        cancelled = (
+            _result != int(QDialog.DialogCode.Accepted)
+            and not dialog.commit_started
+            and self._core_overlay_tools_apply_operation_id is None
+        )
+        dialog.deleteLater()
+        self._core_overlay_tools_dialog = None
+        self._core_overlay_tools_apply_operation_id = None
+        if cancelled:
+            operation_id = self._allocate_operation_id()
+            self._core_overlay_tools_cancel_operation_id = operation_id
+            self._commands.core_overlay_tools_cancel_requested.emit(operation_id, state)
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        if (
+            not cancelled
+            and not self._closing_requested
+            and self._core_overlay_tools_button.isEnabled()
+        ):
+            QTimer.singleShot(0, self._focus_core_overlay_tools_button_after_dialog)
+
+    @Slot(int)
+    def _core_overlay_tools_cancelled(self, operation_id: int) -> None:
+        if operation_id != self._core_overlay_tools_cancel_operation_id:
+            return
+        self._core_overlay_tools_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce("Visual form-mark changes cancelled. Nothing was applied.")
+        if not self._closing_requested and self._core_overlay_tools_button.isEnabled():
+            QTimer.singleShot(0, self._focus_core_overlay_tools_button_after_dialog)
+
+    def _focus_core_overlay_tools_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._core_overlay_tools_button.isEnabled():
+            return
+        self.activateWindow()
+        self._core_overlay_tools_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._core_overlay_tools_button)
+
+    @Slot(int, object)
+    def _core_overlay_tools_cancel_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._core_overlay_tools_cancel_operation_id:
+            return
+        self._core_overlay_tools_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_core_overlay_tools_failure(failure)
+
+    def _show_core_overlay_tools_failure(self, failure: object) -> None:
+        code = failure.code if type(failure) is UiFailure else None
+        message = failure.message if type(failure) is UiFailure else None
+        safe_code, safe_message = safe_core_overlay_failure(code, message)
+        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._error_label.setVisible(True)
+        self._announce(
+            f"Visual form-mark editor could not finish. {safe_message}",
+            assertive=True,
+        )
+        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._error_label)
+
     def _show_scan_review_failure(self, failure: UiFailure) -> None:
         self._error_label.setText(f"{failure.code}: {failure.message}")
         self._error_label.setVisible(True)
@@ -2920,6 +3184,14 @@ class PaperWorkShellWindow(QMainWindow):
             or self._scan_review_dialog is not None
         )
 
+    def _core_overlay_tools_is_opening_or_active(self) -> bool:
+        return (
+            self._core_overlay_tools_start_operation_id is not None
+            or self._core_overlay_tools_dialog is not None
+            or self._core_overlay_tools_apply_operation_id is not None
+            or self._core_overlay_tools_cancel_operation_id is not None
+        )
+
     def _quality_is_pending_or_running(self) -> bool:
         active = self._active_operation
         return self._pending_quality_request is not None or (
@@ -3016,6 +3288,7 @@ class PaperWorkShellWindow(QMainWindow):
             and self._pending_quality_request is None
             and (active is None or active.kind is _LongOperationKind.PREVIEW)
             and not self._scan_review_is_opening_or_active()
+            and not self._core_overlay_tools_is_opening_or_active()
         )
         self._quality_check_button.setEnabled(check_enabled)
         findings_enabled = (
@@ -3173,6 +3446,7 @@ class PaperWorkShellWindow(QMainWindow):
             and self._active_operation is None
             and not self._closing_requested
             and not self._scan_review_is_opening_or_active()
+            and not self._core_overlay_tools_is_opening_or_active()
         )
         if self._retry_preview_button.hasFocus() and not enabled:
             self._focus_safe_control()
@@ -3228,6 +3502,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._import_is_pending_or_running()
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
+            and not self._core_overlay_tools_is_opening_or_active()
         )
         self._update_ocr_language_availability()
 
@@ -3238,6 +3513,7 @@ class PaperWorkShellWindow(QMainWindow):
             and self._active_operation is None
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
+            and not self._core_overlay_tools_is_opening_or_active()
             and self._ocr_language_dialog is None
             and self._ocr_language_refresh_request_id is None
         )
@@ -3257,6 +3533,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._remove_button,
             self._scan_review_button,
             self._change_order_button,
+            self._core_overlay_tools_button,
             self._undo_button,
             self._redo_button,
         ):
@@ -3295,6 +3572,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._invalidate_quality_review()
         self._discard_ocr_language_dialog_for_shutdown()
         self._discard_scan_review_for_shutdown()
+        self._discard_core_overlay_tools_for_shutdown()
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
         self._cancel_active_operation_silently()
@@ -3326,3 +3604,41 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.deleteLater()
             self._commands.scan_review_cancel_requested.emit(draft)
         self._clear_scan_review_presentation()
+
+    def _discard_core_overlay_tools_for_shutdown(self) -> None:
+        dialog = self._core_overlay_tools_dialog
+        if dialog is None or dialog.apply_pending:
+            return
+        state = dialog.state
+        try:
+            dialog.finished.disconnect(self._core_overlay_tools_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._core_overlay_tools_dialog = None
+        if dialog.commit_started:
+            # A retained draft can be edited after a failed Apply. Queue its
+            # latest exact state before shutdown so an older pending candidate
+            # cannot be saved while newer local changes are silently dropped.
+            operation_id = self._allocate_operation_id()
+            self._commands.core_overlay_tools_apply_requested.emit(operation_id, state)
+        else:
+            operation_id = self._allocate_operation_id()
+            self._core_overlay_tools_cancel_operation_id = operation_id
+            self._commands.core_overlay_tools_cancel_requested.emit(operation_id, state)
+
+    def _dismiss_core_overlay_tools_after_shutdown_refusal(self) -> None:
+        """Expose the main retry surface after shutdown clears editor authority."""
+
+        dialog = self._core_overlay_tools_dialog
+        if dialog is None:
+            return
+        try:
+            dialog.finished.disconnect(self._core_overlay_tools_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._core_overlay_tools_dialog = None
+        self._core_overlay_tools_apply_operation_id = None
