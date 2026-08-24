@@ -99,8 +99,10 @@ announcements to prove the prohibited values do not cross those seams.
 
 The workflow is usable without a pointer and never relies on color or a bitmap preview alone.
 Progress, cancellation, errors, confirmation state, placement coordinates, completion, and cleanup
-outcomes have accessible text. The later PWS-0306 editor owns richer on-page selection, guides,
-zoom/pan, and keyboard manipulation across all overlay types.
+outcomes have accessible text. The PWS-0306 [accessible overlay
+editor](accessible-overlay-editor.md) now provides richer on-page selection, guides, zoom/pan, and
+keyboard geometry manipulation across all overlay types while preserving this workflow's explicit
+signature asset cleanup boundary.
 
 PaperWorkShell remains standalone and owns its case assets, decoded transient rasters, overlays, and
 manifest transactions. This work adds no sibling repository, shared service, database, schema,

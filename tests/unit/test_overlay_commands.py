@@ -211,18 +211,26 @@ def test_no_op_replacements_do_not_consume_history() -> None:
     assert not history.can_undo
 
 
-def test_loaded_records_are_not_undoable_and_non_core_records_reject_core_edits() -> None:
+def test_loaded_records_allow_geometry_only_edits_but_reject_non_core_deletion() -> None:
     history = OverlayCommandHistory.from_snapshot(_snapshot())
     _assert_error(OverlayErrorCode.UNDO_UNAVAILABLE, history.undo)
     _assert_error(OverlayErrorCode.REDO_UNAVAILABLE, history.redo)
     shape_id = UUID("60000000-0000-4000-8000-000000000008")
+    before = history.record_for(shape_id)
+    moved = history.execute(ReplaceOverlayBoxCommand(shape_id, BOX))
+    after = moved.record_for(shape_id)
+    assert after.box == BOX
+    assert after.payload == before.payload
+    assert after.z_index == before.z_index
+    assert moved.undo().overlays == history.overlays
     _assert_error(
         OverlayErrorCode.CORE_TOOL_UNSUPPORTED,
-        lambda: history.execute(ReplaceOverlayBoxCommand(shape_id, BOX)),
+        lambda: moved.execute(DeleteOverlayCommand(shape_id)),
     )
+    signature_id = UUID("60000000-0000-4000-8000-000000000002")
     _assert_error(
         OverlayErrorCode.CORE_TOOL_UNSUPPORTED,
-        lambda: history.execute(DeleteOverlayCommand(shape_id)),
+        lambda: history.execute(DeleteOverlayCommand(signature_id)),
     )
 
 

@@ -64,6 +64,24 @@ def _state() -> CoreOverlayToolsState:
     return CoreOverlayToolsState.from_snapshot(snapshot, page_id)
 
 
+def _loaded_state_without_local_history() -> CoreOverlayToolsState:
+    document = cast(
+        dict[str, object],
+        json.loads(REPRESENTATIVE_MANIFEST.read_text(encoding="utf-8")),
+    )
+    snapshot = ManifestSnapshot(
+        UUID(cast(str, document["case_id"])),
+        cast(int, document["schema_version"]),
+        cast(int, document["revision"]),
+        document,
+        "a" * 64,
+        "core_overlay_loaded_test_cas",
+    )
+    page_id = UUID(cast(list[str], document["page_sequence"])[0])
+    state = CoreOverlayToolsState.from_snapshot(snapshot, page_id)
+    return state.select(state.records[0].overlay_id)
+
+
 @contextmanager
 def _dialog(state: CoreOverlayToolsState | None = None) -> Iterator[CoreOverlayToolsDialog]:
     app = _application()
@@ -253,6 +271,24 @@ def test_apply_request_stays_open_until_sanitized_success_or_failure() -> None:
         assert not apply_button.isEnabled()
         assert not cancel_button.isEnabled()
         assert dialog.commit_started
+        applying_status = status.text()
+        zoom = dialog.findChild(QComboBox, "overlayEditorZoomCombo")
+        fit = dialog.findChild(QPushButton, "overlayEditorFitPageButton")
+        pan = dialog.findChild(QPushButton, "overlayEditorPanCenterButton")
+        assert zoom is not None and fit is not None and pan is not None
+        assert not zoom.isEnabled() and not fit.isEnabled() and not pan.isEnabled()
+        QTest.keyClick(
+            dialog,
+            Qt.Key.Key_Equal,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        QTest.keyClick(
+            dialog,
+            Qt.Key.Key_G,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        app.processEvents()
+        assert status.text() == applying_status
         assert dialog.set_apply_succeeded()
         app.processEvents()
         assert dialog.result() == int(QDialog.DialogCode.Accepted)
@@ -270,7 +306,7 @@ def test_apply_request_stays_open_until_sanitized_success_or_failure() -> None:
         assert dialog.commit_started
         assert status.text() == (
             "PWS_UI_REQUEST_INVALID: PaperWorkShell could not confirm that visual "
-            "form-mark change safely. Changes are retained for retry."
+            "overlay change safely. Changes are retained for retry."
         )
         assert PRIVATE_VALUE not in status.text()
         assert apply_button.isEnabled()
@@ -291,6 +327,37 @@ def test_apply_request_stays_open_until_sanitized_success_or_failure() -> None:
         _activate(apply_button)
         assert dialog.apply_pending
         assert dialog.set_apply_succeeded()
+
+
+def test_unavailable_undo_and_redo_never_desynchronize_dirty_fields_from_draft() -> None:
+    initial = _loaded_state_without_local_history()
+    assert not initial.can_undo and not initial.can_redo
+    with _dialog(initial) as dialog:
+        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
+        apply_button = dialog.findChild(QPushButton, "applyFormMarksButton")
+        assert left is not None and apply_button is not None
+        original_left = left.value()
+
+        left.setValue(original_left + 1_234)
+        QTest.keyClick(dialog, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+        _application().processEvents()
+        assert left.value() == original_left
+        assert dialog.state.selected_record is not None
+        assert dialog.state.selected_record.box.x == original_left
+
+        left.setValue(original_left + 2_345)
+        QTest.keyClick(dialog, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
+        _application().processEvents()
+        assert left.value() == original_left + 2_345
+        assert dialog.state.selected_record is not None
+        assert dialog.state.selected_record.box.x == left.value()
+
+        requests: list[CoreOverlayToolsState] = []
+        dialog.apply_requested.connect(requests.append)
+        _activate(apply_button)
+        assert requests == [dialog.state]
+        assert requests[0].selected_record is not None
+        assert requests[0].selected_record.box.x == left.value()
 
 
 def test_supplementary_unicode_limit_preserves_4096_code_points_and_rejects_4097() -> None:

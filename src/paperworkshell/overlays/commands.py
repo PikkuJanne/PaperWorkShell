@@ -49,6 +49,7 @@ CORE_OVERLAY_KINDS: Final = frozenset(
         OverlayKind.INITIALS,
     }
 )
+EDITOR_GEOMETRY_OVERLAY_KINDS: Final = frozenset(OverlayKind)
 
 _TEXTUAL_CORE_KINDS: Final = frozenset({OverlayKind.TEXT, OverlayKind.DATE, OverlayKind.INITIALS})
 _MARK_CORE_KINDS: Final = frozenset({OverlayKind.CHECKMARK, OverlayKind.CROSS})
@@ -396,7 +397,7 @@ class OverlayCommandHistory:
         elif type(command) is ReplaceOverlayBoxCommand:
             index = _record_index(self._overlays, command.overlay_id)
             before = self._overlays[index]
-            _require_core_record(before)
+            _require_editor_geometry_record(before)
             if before.box == command.box:
                 return self
             after = OverlayRecord(
@@ -584,6 +585,11 @@ def _require_core_record(record: OverlayRecord) -> None:
         reject_overlay(OverlayErrorCode.CORE_TOOL_UNSUPPORTED, "overlay.command_record")
 
 
+def _require_editor_geometry_record(record: OverlayRecord) -> None:
+    if type(record) is not OverlayRecord or record.kind not in EDITOR_GEOMETRY_OVERLAY_KINDS:
+        reject_overlay(OverlayErrorCode.CORE_TOOL_UNSUPPORTED, "overlay.command_record")
+
+
 def _next_top_z_index(records: Sequence[OverlayRecord], page_id: UUID) -> int:
     page_records = [record.z_index for record in records if record.page_id == page_id]
     if not page_records:
@@ -630,10 +636,30 @@ def _apply_delta(
 
 
 def _delta_is_scoped_to_page(delta: _OverlayDelta, page_id: UUID) -> bool:
-    records = tuple(record for record in (delta.before, delta.after) if record is not None)
-    return bool(records) and all(
-        record.page_id == page_id and record.kind in CORE_OVERLAY_KINDS for record in records
+    before = delta.before
+    after = delta.after
+    records = tuple(record for record in (before, after) if record is not None)
+    if not records or any(record.page_id != page_id for record in records):
+        return False
+    if before is None or after is None:
+        return all(record.kind in CORE_OVERLAY_KINDS for record in records)
+    common_identity = (
+        before.overlay_id == after.overlay_id
+        and before.kind is after.kind
+        and before.kind in EDITOR_GEOMETRY_OVERLAY_KINDS
+        and before.page_id == after.page_id
+        and before.z_index == after.z_index
+        and before.overlay_version == after.overlay_version
     )
+    if not common_identity:
+        return False
+    box_only = before.payload == after.payload and before.box != after.box
+    core_payload_only = (
+        before.kind in CORE_OVERLAY_KINDS
+        and before.box == after.box
+        and before.payload != after.payload
+    )
+    return box_only or core_payload_only
 
 
 def _overlay_state_key(records: Sequence[OverlayRecord]) -> bytes:

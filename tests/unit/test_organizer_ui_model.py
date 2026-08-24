@@ -31,6 +31,7 @@ from paperworkshell.ui.models import (
 from paperworkshell.ui.window import _bounded_preview_rows
 
 CASE_ID = UUID("70000000-0000-4000-8000-000000000001")
+OTHER_CASE_ID = UUID("70000000-0000-4000-8000-000000000002")
 PAGE_ONE = UUID("71000000-0000-4000-8000-000000000001")
 PAGE_TWO = UUID("71000000-0000-4000-8000-000000000002")
 
@@ -84,6 +85,10 @@ def test_quality_snapshot_attaches_by_page_id_without_mutating_or_evicting_previ
     image = QImage(8, 12, QImage.Format.Format_RGBA8888)
     image.fill(QColor("white"))
     model.set_preview(PAGE_ONE, QPixmap.fromImage(image))
+    retained_preview = model.preview(PAGE_ONE)
+    assert retained_preview is not None
+    assert retained_preview.size() == image.size()
+    assert model.preview(PAGE_TWO) is None
     finding = QualityFinding(
         page_id=PAGE_TWO,
         page_position=2,
@@ -157,6 +162,29 @@ def test_model_detaches_previews_and_discards_removed_page_state() -> None:
     assert model.row_for_page(PAGE_ONE) is None
     assert model.page_id_at(0) == PAGE_TWO
     assert model.data(model.index(0, 0), model.PreviewStateRole) == PreviewState.NOT_LOADED.value
+
+
+def test_case_change_discards_preview_when_page_identifier_is_reused() -> None:
+    _application()
+    page = OrganizerPageView(PAGE_ONE, 1, 0, True)
+    model = OrganizerPageListModel()
+    model.set_organizer_state(_state(page))
+    image = QImage(8, 12, QImage.Format.Format_RGBA8888)
+    image.fill(QColor("darkred"))
+    model.set_preview(PAGE_ONE, QPixmap.fromImage(image))
+    assert model.preview(PAGE_ONE) is not None
+    assert model.retained_preview_count == 1
+    assert model.retained_preview_bytes > 0
+
+    model.set_organizer_state(OrganizerViewState(OTHER_CASE_ID, 2, (page,), True, False, False))
+
+    index = model.index(0, 0)
+    assert model.page_id_at(0) == PAGE_ONE
+    assert model.preview(PAGE_ONE) is None
+    assert model.data(index, model.PreviewStateRole) == PreviewState.NOT_LOADED.value
+    assert model.data(index, int(Qt.ItemDataRole.DecorationRole)) is None
+    assert model.retained_preview_count == 0
+    assert model.retained_preview_bytes == 0
 
 
 def test_rotation_invalidates_stale_pixels_before_autosave_preview_suppression() -> None:

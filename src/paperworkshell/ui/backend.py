@@ -868,6 +868,45 @@ class OrganizerBackendWorker(QObject):
             return
         self.core_overlay_tools_cancelled.emit(operation_id)
 
+    @Slot(int)
+    def abort_core_overlay_tools(self, operation_id: int) -> None:
+        """Release a backend draft whose returned presentation state was unusable."""
+
+        if type(operation_id) is not int or operation_id <= 0:
+            self.core_overlay_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid visual overlay abort request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.core_overlay_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.abort_core_overlay_tools()
+        except BaseException as error:
+            self.core_overlay_tools_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.core_overlay_tools_cancelled.emit(operation_id)
+
     @Slot(int, object, object, object)
     def prepare_signature_image(
         self,
@@ -1477,6 +1516,7 @@ class OrganizerBackendCommands(QObject):
     core_overlay_tools_begin_requested = Signal(int, object)
     core_overlay_tools_apply_requested = Signal(int, object)
     core_overlay_tools_cancel_requested = Signal(int, object)
+    core_overlay_tools_abort_requested = Signal(int)
     signature_image_prepare_requested = Signal(int, object, object, object)
     signature_image_place_requested = Signal(int, object, object)
     signature_image_cancel_requested = Signal(int, object)
@@ -1512,6 +1552,7 @@ class OrganizerBackendCommands(QObject):
         self.core_overlay_tools_begin_requested.connect(worker.begin_core_overlay_tools)
         self.core_overlay_tools_apply_requested.connect(worker.apply_core_overlay_tools)
         self.core_overlay_tools_cancel_requested.connect(worker.cancel_core_overlay_tools)
+        self.core_overlay_tools_abort_requested.connect(worker.abort_core_overlay_tools)
         self.signature_image_prepare_requested.connect(worker.prepare_signature_image)
         self.signature_image_place_requested.connect(worker.place_signature_image)
         self.signature_image_cancel_requested.connect(worker.cancel_signature_image)

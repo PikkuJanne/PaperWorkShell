@@ -157,7 +157,8 @@ class OrganizerPageListModel(QAbstractListModel):
     def set_organizer_state(self, state: OrganizerViewState) -> None:
         """Replace rows and discard previews invalidated by page facts."""
 
-        prior_pages = {page.page_id: page for page in self._pages}
+        case_changed = self._case_id != state.case_id
+        prior_pages = {} if case_changed else {page.page_id: page for page in self._pages}
         retain_quality_review = (
             self._quality_review is not None
             and not state.autosave_pending
@@ -168,6 +169,11 @@ class OrganizerPageListModel(QAbstractListModel):
         )
         retained = {page.page_id for page in state.pages}
         self.beginResetModel()
+        if case_changed:
+            self._previews.clear()
+            self._preview_costs.clear()
+            self._preview_states.clear()
+            self._retained_preview_bytes = 0
         self._pages = state.pages
         self._case_id = state.case_id
         self._revision = state.revision
@@ -329,6 +335,13 @@ class OrganizerPageListModel(QAbstractListModel):
         """Return one page's current presentation state."""
 
         return self._preview_states.get(page_id)
+
+    def preview(self, page_id: UUID) -> QPixmap | None:
+        """Return the shared bounded GUI preview for one current page, if ready."""
+
+        if type(page_id) is not UUID or self._preview_states.get(page_id) is not PreviewState.READY:
+            return None
+        return self._previews.get(page_id)
 
     @property
     def retained_preview_count(self) -> int:

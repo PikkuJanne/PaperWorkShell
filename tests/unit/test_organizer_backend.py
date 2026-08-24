@@ -2184,3 +2184,37 @@ def test_core_overlay_editor_rejects_copied_authority_with_foreign_page_history(
     assert repository.save_calls == 0
     assert repository.current.document["overlays"] == []
     backend.cancel_core_overlay_tools(opening)
+
+
+def test_core_overlay_editor_private_authority_rejects_mutated_returned_opening() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=2))
+    backend.open_case(CASE_ID)
+    opening = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    object.__setattr__(opening, "page_id", PAGE_IDS[1])
+    forged = opening.create(
+        OverlayKind.CROSS,
+        id_factory=lambda: UUID("6f400000-0000-4000-8000-000000000007"),
+    )
+
+    with pytest.raises(OverlayError) as rejected:
+        backend.apply_core_overlay_tools(forged)
+
+    assert rejected.value.code is OverlayErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 0
+    assert repository.current.document["overlays"] == []
+    backend.abort_core_overlay_tools()
+
+
+def test_core_overlay_editor_abort_releases_private_authority_for_reopen() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=1))
+    backend.open_case(CASE_ID)
+    rejected_presentation = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    object.__setattr__(rejected_presentation, "announcement", "PRIVATE_INVALID_ANNOUNCEMENT")
+
+    backend.abort_core_overlay_tools()
+    reopened = backend.begin_core_overlay_tools(PAGE_IDS[0])
+
+    assert reopened.editor_session_id != rejected_presentation.editor_session_id
+    assert repository.save_calls == 0
+    assert repository.current.document["overlays"] == []
+    backend.cancel_core_overlay_tools(reopened)

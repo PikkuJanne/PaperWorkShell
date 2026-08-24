@@ -1,8 +1,9 @@
-"""Toolkit-free keyboard editing facade for the five core visual-overlay tools.
+"""Toolkit-free authority for core tools and geometry editing of every overlay kind.
 
 The facade owns only an ephemeral, revision-bound editing draft.  It never
 opens a document, writes a manifest, infers a date, or exposes field values in
-its summaries and representations.  Persistence remains an explicit
+its summaries and representations. Signature removal remains outside this
+authority so its case-asset cleanup policy stays explicit. Persistence remains an explicit
 application-layer commit through :class:`OrganizerBackend`.
 """
 
@@ -22,6 +23,7 @@ from paperworkshell.domain.page_coordinates import (
 )
 from paperworkshell.overlays.commands import (
     CORE_OVERLAY_KINDS,
+    EDITOR_GEOMETRY_OVERLAY_KINDS,
     CreateCoreOverlayCommand,
     DeleteOverlayCommand,
     OverlayCommandHistory,
@@ -35,12 +37,14 @@ from paperworkshell.overlays.models import (
     OverlayKind,
     OverlayRecord,
     RgbaColor,
+    ShapeOverlayPayload,
     TextualOverlayPayload,
     reject_overlay,
 )
 
 KEYBOARD_MOVE_STEP_MILLIONTHS: Final = 10_000
 KEYBOARD_FINE_MOVE_STEP_MILLIONTHS: Final = 1_000
+GUIDE_STEPS_MILLIONTHS: Final = (10_000, 25_000, 50_000, 100_000)
 
 
 class KeyboardDirection(StrEnum):
@@ -139,6 +143,12 @@ CORE_OVERLAY_TOOL_DESCRIPTORS: Final = (
 _DESCRIPTOR_BY_KIND: Final = {
     descriptor.kind: descriptor for descriptor in CORE_OVERLAY_TOOL_DESCRIPTORS
 }
+_EDITOR_KIND_ACCESSIBLE_NAMES: Final = {
+    **{descriptor.kind: descriptor.accessible_name for descriptor in CORE_OVERLAY_TOOL_DESCRIPTORS},
+    OverlayKind.SIGNATURE_IMAGE: "Signature image visual mark",
+    OverlayKind.HIGHLIGHT: "Highlight visual mark",
+    OverlayKind.SHAPE: "Shape visual mark",
+}
 _SAFE_EDITOR_ANNOUNCEMENTS: Final = frozenset(
     {
         "Visual form-mark editor ready.",
@@ -156,14 +166,23 @@ _SAFE_EDITOR_ANNOUNCEMENTS: Final = frozenset(
             f"{descriptor.accessible_name} removed.",
         )
     }
+    | {f"{accessible_name} selected." for accessible_name in _EDITOR_KIND_ACCESSIBLE_NAMES.values()}
     | {
-        f"{descriptor.accessible_name} moved {direction.value}."
-        for descriptor in CORE_OVERLAY_TOOL_DESCRIPTORS
+        f"{accessible_name} position and size updated."
+        for accessible_name in _EDITOR_KIND_ACCESSIBLE_NAMES.values()
+    }
+    | {
+        f"{accessible_name} snapped to the nearest guides."
+        for accessible_name in _EDITOR_KIND_ACCESSIBLE_NAMES.values()
+    }
+    | {
+        f"{accessible_name} moved {direction.value}."
+        for accessible_name in _EDITOR_KIND_ACCESSIBLE_NAMES.values()
         for direction in KeyboardDirection
     }
     | {
-        f"{descriptor.accessible_name} {dimension} {change}."
-        for descriptor in CORE_OVERLAY_TOOL_DESCRIPTORS
+        f"{accessible_name} {dimension} {change}."
+        for accessible_name in _EDITOR_KIND_ACCESSIBLE_NAMES.values()
         for dimension in ("width", "height")
         for change in ("increased", "decreased")
     }
@@ -207,6 +226,47 @@ def core_overlay_record_summary(record: OverlayRecord, position: int, total: int
     )
 
 
+def overlay_editor_kind_accessible_name(kind: OverlayKind) -> str:
+    """Return fixed, non-disclosing editor terminology for every released overlay kind."""
+
+    if type(kind) is not OverlayKind:
+        reject_overlay(OverlayErrorCode.CORE_TOOL_UNSUPPORTED, "overlay.editor_kind")
+    name = _EDITOR_KIND_ACCESSIBLE_NAMES.get(kind)
+    if name is None:
+        reject_overlay(OverlayErrorCode.CORE_TOOL_UNSUPPORTED, "overlay.editor_kind")
+    return name
+
+
+def overlay_editor_record_accessible_name(record: OverlayRecord) -> str:
+    """Return a fixed type name, including a non-private shape primitive."""
+
+    if type(record) is not OverlayRecord:
+        reject_overlay(OverlayErrorCode.MODEL_INVALID, "overlay.editor_record_name")
+    name = overlay_editor_kind_accessible_name(record.kind)
+    if type(record.payload) is ShapeOverlayPayload:
+        return f"{record.payload.shape.value.capitalize()} {name.casefold()}"
+    return name
+
+
+def overlay_editor_record_summary(record: OverlayRecord, position: int, total: int) -> str:
+    """Describe any page overlay by type and geometry without exposing its payload."""
+
+    if (
+        type(record) is not OverlayRecord
+        or record.kind not in EDITOR_GEOMETRY_OVERLAY_KINDS
+        or type(position) is not int
+        or type(total) is not int
+        or not 1 <= position <= total
+    ):
+        reject_overlay(OverlayErrorCode.MODEL_INVALID, "overlay.editor_summary")
+    box = record.box
+    return (
+        f"{overlay_editor_record_accessible_name(record)}, item {position} of {total}; "
+        f"left {_percent_text(box.x)}; top {_percent_text(box.y)}; "
+        f"width {_percent_text(box.width)}; height {_percent_text(box.height)}."
+    )
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class CoreOverlayToolsState:
     """One exact, local editing draft bound to a case revision and active page."""
@@ -238,13 +298,13 @@ class CoreOverlayToolsState:
             if type(self.selected_overlay_id) is not UUID:
                 reject_overlay(OverlayErrorCode.IDENTIFIER_INVALID, "overlay.selection")
             record = self.history.record_for(self.selected_overlay_id)
-            if record.page_id != self.page_id or record.kind not in CORE_OVERLAY_KINDS:
+            if record.page_id != self.page_id or record.kind not in EDITOR_GEOMETRY_OVERLAY_KINDS:
                 reject_overlay(OverlayErrorCode.RECORD_UNKNOWN, "overlay.selection")
 
     def __repr__(self) -> str:
         return (
             "CoreOverlayToolsState("
-            f"overlay_count={len(self.records)!r}, selected={self.selected_overlay_id is not None!r}, "
+            f"overlay_count={len(self.editor_records)!r}, selected={self.selected_overlay_id is not None!r}, "
             f"can_undo={self.can_undo!r}, can_redo={self.can_redo!r})"
         )
 
@@ -281,8 +341,24 @@ class CoreOverlayToolsState:
         )
 
     @property
+    def editor_records(self) -> tuple[OverlayRecord, ...]:
+        """Return every released overlay kind on this page in stable stack order."""
+
+        return tuple(
+            sorted(
+                (
+                    record
+                    for record in self.history.overlays
+                    if record.page_id == self.page_id
+                    and record.kind in EDITOR_GEOMETRY_OVERLAY_KINDS
+                ),
+                key=lambda record: (record.z_index, record.overlay_id.int),
+            )
+        )
+
+    @property
     def selected_record(self) -> OverlayRecord | None:
-        """Return the selected core record without inferring a replacement selection."""
+        """Return the selected page overlay without inferring a replacement selection."""
 
         if self.selected_overlay_id is None:
             return None
@@ -301,16 +377,16 @@ class CoreOverlayToolsState:
         return self.history.can_undo
 
     def select(self, overlay_id: UUID) -> Self:
-        """Select one core record on the bound page; selection is not history."""
+        """Select one released overlay on the bound page; selection is not history."""
 
         if type(overlay_id) is not UUID:
             reject_overlay(OverlayErrorCode.IDENTIFIER_INVALID, "overlay.selection")
         record = self.history.record_for(overlay_id)
-        if record.page_id != self.page_id or record.kind not in CORE_OVERLAY_KINDS:
+        if record.page_id != self.page_id or record.kind not in EDITOR_GEOMETRY_OVERLAY_KINDS:
             reject_overlay(OverlayErrorCode.RECORD_UNKNOWN, "overlay.selection")
         return self._transition(
             selected_overlay_id=overlay_id,
-            announcement=f"{core_overlay_tool_descriptor(record.kind).accessible_name} selected.",
+            announcement=f"{overlay_editor_kind_accessible_name(record.kind)} selected.",
         )
 
     def create(
@@ -343,7 +419,7 @@ class CoreOverlayToolsState:
     def replace_selected_box(self, box: NormalizedPageBox) -> Self:
         """Apply one exact full-page normalized position and size."""
 
-        record = self._require_selected()
+        record = self._require_selected_for_geometry()
         if type(box) is not NormalizedPageBox:
             reject_overlay(OverlayErrorCode.BOX_INVALID, "overlay.editor_box")
         if box == record.box:
@@ -351,7 +427,9 @@ class CoreOverlayToolsState:
         history = self.history.execute(ReplaceOverlayBoxCommand(record.overlay_id, box))
         return self._transition(
             history=history,
-            announcement=f"{core_overlay_tool_descriptor(record.kind).accessible_name} position and size updated.",
+            announcement=(
+                f"{overlay_editor_kind_accessible_name(record.kind)} position and size updated."
+            ),
         )
 
     def move_selected(
@@ -362,7 +440,7 @@ class CoreOverlayToolsState:
     ) -> Self:
         """Move the selection by a fixed keyboard step, rejecting page-edge overflow."""
 
-        record = self._require_selected()
+        record = self._require_selected_for_geometry()
         selected_direction = _require_direction(direction)
         if type(fine) is not bool:
             reject_overlay(OverlayErrorCode.MODEL_INVALID, "overlay.keyboard_step")
@@ -390,7 +468,7 @@ class CoreOverlayToolsState:
         return self._transition(
             history=history,
             announcement=(
-                f"{core_overlay_tool_descriptor(record.kind).accessible_name} moved "
+                f"{overlay_editor_kind_accessible_name(record.kind)} moved "
                 f"{selected_direction.value}."
             ),
         )
@@ -403,7 +481,7 @@ class CoreOverlayToolsState:
     ) -> Self:
         """Resize width or height by a fixed keyboard step without clipping."""
 
-        record = self._require_selected()
+        record = self._require_selected_for_geometry()
         selected_direction = _require_direction(direction)
         if type(fine) is not bool:
             reject_overlay(OverlayErrorCode.MODEL_INVALID, "overlay.keyboard_step")
@@ -433,7 +511,37 @@ class CoreOverlayToolsState:
         return self._transition(
             history=history,
             announcement=(
-                f"{core_overlay_tool_descriptor(record.kind).accessible_name} {dimension} {change}."
+                f"{overlay_editor_kind_accessible_name(record.kind)} {dimension} {change}."
+            ),
+        )
+
+    def snap_selected(self, guide_step_millionths: int) -> Self:
+        """Move the selected box origin to the nearest deterministic full-page guides."""
+
+        record = self._require_selected_for_geometry()
+        if (
+            type(guide_step_millionths) is not int
+            or guide_step_millionths not in GUIDE_STEPS_MILLIONTHS
+        ):
+            reject_overlay(OverlayErrorCode.MODEL_INVALID, "overlay.guide_step")
+        x = _nearest_guide_origin(
+            record.box.x,
+            guide_step_millionths,
+            NORMALIZED_PAGE_MILLIONTHS - record.box.width,
+        )
+        y = _nearest_guide_origin(
+            record.box.y,
+            guide_step_millionths,
+            NORMALIZED_PAGE_MILLIONTHS - record.box.height,
+        )
+        box = NormalizedPageBox(x, y, record.box.width, record.box.height)
+        if box == record.box:
+            return self
+        history = self.history.execute(ReplaceOverlayBoxCommand(record.overlay_id, box))
+        return self._transition(
+            history=history,
+            announcement=(
+                f"{overlay_editor_kind_accessible_name(record.kind)} snapped to the nearest guides."
             ),
         )
 
@@ -446,7 +554,7 @@ class CoreOverlayToolsState:
     ) -> Self:
         """Replace same-kind payload properties while keeping user content opaque."""
 
-        record = self._require_selected()
+        record = self._require_selected_core()
         payload = record.payload
         if type(payload) is TextualOverlayPayload:
             color = payload.color if color_value is None else RgbaColor(color_value)
@@ -481,7 +589,7 @@ class CoreOverlayToolsState:
     def delete_selected(self) -> Self:
         """Delete the selected record from the local draft."""
 
-        record = self._require_selected()
+        record = self._require_selected_core()
         history = self.history.execute(DeleteOverlayCommand(record.overlay_id))
         return self._transition(
             history=history,
@@ -529,12 +637,18 @@ class CoreOverlayToolsState:
         y = min(100_000 + offset, NORMALIZED_PAGE_MILLIONTHS - descriptor.default_height)
         return NormalizedPageBox(x, y, descriptor.default_width, descriptor.default_height)
 
-    def _require_selected(self) -> OverlayRecord:
+    def _require_selected_for_geometry(self) -> OverlayRecord:
         record = self.selected_record
         if record is None:
             reject_overlay(OverlayErrorCode.SELECTION_REQUIRED, "overlay.selection")
-        if record.page_id != self.page_id or record.kind not in CORE_OVERLAY_KINDS:
+        if record.page_id != self.page_id or record.kind not in EDITOR_GEOMETRY_OVERLAY_KINDS:
             reject_overlay(OverlayErrorCode.RECORD_UNKNOWN, "overlay.selection")
+        return record
+
+    def _require_selected_core(self) -> OverlayRecord:
+        record = self._require_selected_for_geometry()
+        if record.kind not in CORE_OVERLAY_KINDS:
+            reject_overlay(OverlayErrorCode.CORE_TOOL_UNSUPPORTED, "overlay.selection")
         return record
 
     def _transition(
@@ -575,7 +689,7 @@ def _retained_selection(
         record = history.record_for(selected_overlay_id)
     except OverlayError:
         return None
-    if record.page_id != page_id or record.kind not in CORE_OVERLAY_KINDS:
+    if record.page_id != page_id or record.kind not in EDITOR_GEOMETRY_OVERLAY_KINDS:
         return None
     return selected_overlay_id
 
@@ -583,3 +697,11 @@ def _retained_selection(
 def _percent_text(value: int) -> str:
     whole, fraction = divmod(value, 10_000)
     return f"{whole}.{fraction:04d} percent"
+
+
+def _round_to_guide(value: int, step: int) -> int:
+    return ((value + step // 2) // step) * step
+
+
+def _nearest_guide_origin(value: int, step: int, maximum_origin: int) -> int:
+    return min(_round_to_guide(value, step), (maximum_origin // step) * step)

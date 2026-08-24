@@ -17,6 +17,7 @@ from paperworkshell.app.core_overlay_tools import (
     KeyboardDirection,
     core_overlay_record_summary,
     core_overlay_tool_descriptor,
+    overlay_editor_record_summary,
 )
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
@@ -197,7 +198,7 @@ def test_candidate_is_exact_revision_bound_and_preserves_every_unrelated_member(
     assert stale.value.code is OverlayErrorCode.CONCURRENT_CHANGE
 
 
-def test_inactive_page_and_non_core_selection_are_rejected_by_editor_boundary() -> None:
+def test_inactive_page_is_rejected_and_every_overlay_kind_has_geometry_path() -> None:
     document = _document()
     sequence = cast(list[str], document["page_sequence"])
     sequence.remove(str(PAGE_THREE))
@@ -205,11 +206,47 @@ def test_inactive_page_and_non_core_selection_are_rejected_by_editor_boundary() 
         CoreOverlayToolsState.from_snapshot(_snapshot(document), PAGE_THREE)
     assert inactive.value.code is OverlayErrorCode.PAGE_UNKNOWN
 
+    observed: set[OverlayKind] = set()
+    for page_id in (PAGE_ONE, PAGE_THREE):
+        state = CoreOverlayToolsState.from_snapshot(_snapshot(), page_id)
+        for position, record in enumerate(state.editor_records, start=1):
+            observed.add(record.kind)
+            selected = state.select(record.overlay_id)
+            summary = overlay_editor_record_summary(
+                record,
+                position,
+                len(state.editor_records),
+            )
+            assert record.kind.value.replace("_", " ").split()[0].casefold() in summary.casefold()
+            moved = selected.move_selected(KeyboardDirection.RIGHT, fine=True)
+            assert moved.selected_record is not None
+            assert moved.selected_record.box.x == record.box.x + 1_000
+            assert moved.selected_record.payload == record.payload
+            resized = moved.resize_selected(KeyboardDirection.DOWN, fine=True)
+            assert resized.selected_record is not None
+            assert resized.selected_record.box.height == record.box.height + 1_000
+            assert resized.selected_record.payload == record.payload
+    assert observed == set(OverlayKind)
+
+
+def test_snap_is_normalized_deterministic_and_rejects_unknown_spacing() -> None:
     state = CoreOverlayToolsState.from_snapshot(_snapshot(), PAGE_ONE)
-    shape = next(record for record in state.history.overlays if record.kind is OverlayKind.SHAPE)
+    selected = state.select(state.editor_records[0].overlay_id).replace_selected_box(
+        NormalizedPageBox(123_456, 234_567, 300_000, 100_000)
+    )
+    snapped = selected.snap_selected(50_000)
+    assert snapped.selected_record is not None
+    assert snapped.selected_record.box == NormalizedPageBox(100_000, 250_000, 300_000, 100_000)
+    assert snapped.snap_selected(50_000) is snapped
+    edge = selected.replace_selected_box(
+        NormalizedPageBox(876_543, 900_001, 123_457, 99_999)
+    ).snap_selected(50_000)
+    assert edge.selected_record is not None
+    assert edge.selected_record.box.x == 850_000
+    assert edge.selected_record.box.y == 900_000
     with pytest.raises(OverlayError) as unsupported:
-        state.select(shape.overlay_id)
-    assert unsupported.value.code is OverlayErrorCode.RECORD_UNKNOWN
+        snapped.snap_selected(33_333)
+    assert unsupported.value.code is OverlayErrorCode.MODEL_INVALID
 
 
 def test_editor_rejects_noncanonical_presentation_announcement() -> None:

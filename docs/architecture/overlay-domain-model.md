@@ -115,11 +115,13 @@ request/result contract and a worker-only PDF adapter; it does not add editing c
 stored signature image, mutate a case, or flatten an export. The [overlay rendering
 contract](overlay-rendering.md) specifies that boundary and the selected font strategy.
 
-PWS-0304 now owns bounded create/update/delete commands, ephemeral undo/redo history, and the
-non-canvas keyboard form-mark dialog described in [Core visual form-mark tools](core-overlay-tools.md).
+PWS-0304 established bounded core create/update/delete commands, ephemeral undo/redo history, and
+the exact keyboard form-mark path retained inside [Core visual form-mark
+tools](core-overlay-tools.md).
 PWS-0305 now provides [authenticated, bounded signature-image intake](signature-image-assets.md) and
-the bridge from an immutable encoded case asset to metadata-free RGBA8 pixels; PWS-0306 owns the
-full-page accessible editor, composited preview, selection geometry, zoom, guides, snapping, and
-pointer interaction; and PWS-0307 owns
+the bridge from an immutable encoded case asset to metadata-free RGBA8 pixels. PWS-0306 now provides
+the [full-page accessible editor](accessible-overlay-editor.md), bounded page projection, selection
+geometry, zoom, guides, snapping, and pointer interaction without changing the released model.
+PWS-0307 owns
 Form-XObject flattening plus reopen/render and reader verification. None of those deferrals permits
 an external service or sibling product to own PaperWorkShell case data.

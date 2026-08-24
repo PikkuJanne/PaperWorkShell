@@ -136,6 +136,7 @@ from paperworkshell.domain.signature_images import (
     reject_signature_image,
 )
 from paperworkshell.domain.source_ingest import SourceImportResult
+from paperworkshell.overlays.commands import OverlayCommandHistory
 from paperworkshell.overlays.models import (
     OverlayCollection,
     OverlayErrorCode,
@@ -437,6 +438,17 @@ class _ActiveScanReview:
     apply_eligible_intent: ImageTransformIntent | None = None
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _CoreOverlayEditorAuthority:
+    """Backend-private opening facts that are never shared with the GUI."""
+
+    case_id: UUID
+    manifest_revision: int
+    page_id: UUID
+    editor_session_id: UUID
+    opening_history: OverlayCommandHistory
+
+
 class OrganizerBackend:
     """Coordinate one active organizer without importing a desktop toolkit.
 
@@ -539,7 +551,7 @@ class OrganizerBackend:
         self._quality_profile_id = quality_profile_id
         self._quality_profile_sha256 = quality_profile_sha256
         self._signature_images = signature_images
-        self._active_core_overlay_tools: CoreOverlayToolsState | None = None
+        self._active_core_overlay_tools: _CoreOverlayEditorAuthority | None = None
         self._active_scan_review: _ActiveScanReview | None = None
         self._active_signature_draft_id: UUID | None = None
         self._pending_committed_import: SourceImportResult | None = None
@@ -789,7 +801,13 @@ class OrganizerBackend:
         _require_active_page(session.history.projection, page_id)
         self.flush_autosave()
         editor_state = CoreOverlayToolsState.from_snapshot(session.snapshot, page_id)
-        self._active_core_overlay_tools = editor_state
+        self._active_core_overlay_tools = _CoreOverlayEditorAuthority(
+            editor_state.case_id,
+            editor_state.manifest_revision,
+            editor_state.page_id,
+            editor_state.editor_session_id,
+            OverlayCommandHistory.from_snapshot(session.snapshot),
+        )
         return editor_state
 
     def apply_core_overlay_tools(
@@ -819,6 +837,14 @@ class OrganizerBackend:
         state = self._flush_autosave_unchecked()
         self._active_core_overlay_tools = None
         return state
+
+    def abort_core_overlay_tools(self) -> None:
+        """Release the backend-held draft when its presentation result is unusable."""
+
+        session = self._require_session()
+        if self._active_core_overlay_tools is None or session.autosave.pending:
+            reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_abort")
+        self._active_core_overlay_tools = None
 
     def cancel_core_overlay_tools(self, editor_state: CoreOverlayToolsState) -> None:
         """Discard one matching local draft without queueing or saving anything."""
@@ -1549,13 +1575,13 @@ def _session_from_load(
 
 
 def _core_overlay_editor_binding_matches(
-    opening: CoreOverlayToolsState,
+    opening: _CoreOverlayEditorAuthority,
     candidate: CoreOverlayToolsState,
 ) -> bool:
     """Compare only the non-content authority tuple for one exclusive editor."""
 
     return (
-        type(opening) is CoreOverlayToolsState
+        type(opening) is _CoreOverlayEditorAuthority
         and type(candidate) is CoreOverlayToolsState
         and opening.case_id == candidate.case_id
         and opening.manifest_revision == candidate.manifest_revision
@@ -1563,7 +1589,7 @@ def _core_overlay_editor_binding_matches(
         and opening.editor_session_id == candidate.editor_session_id
         and is_core_overlay_announcement_safe(candidate.announcement)
         and candidate.history.is_page_scoped_extension_of(
-            opening.history,
+            opening.opening_history,
             opening.page_id,
         )
     )

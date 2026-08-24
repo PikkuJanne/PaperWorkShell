@@ -1,6 +1,6 @@
 # Core visual form-mark tools
 
-- Status: Implemented by PWS-0304
+- Status: Implemented by PWS-0304; full-page geometry extension implemented by PWS-0306
 - Decisions: PWS-D011, PWS-D018, PWS-D030
 - Depends on: PWS-0301 coordinates, PWS-0302 overlay intent, PWS-0303 font strategy
 
@@ -17,16 +17,20 @@ The implementation has three narrow layers:
 |---|---|
 | `paperworkshell.overlays.commands` | Pure validated commands, compact reversible deltas, exact overlay-state replay, and candidate construction |
 | `paperworkshell.app.core_overlay_tools` | Revision/page binding, ephemeral selection, deterministic defaults, keyboard movement/resizing, content-free labels and summaries |
-| `paperworkshell.ui.overlay_tools` | A keyboard-complete list-and-properties dialog with no document parsing or persistence authority |
+| `paperworkshell.ui.overlay_tools` | A keyboard-complete full-page projection, native list, exact properties, and display controls with no document parsing or persistence authority |
 
-PWS-0306 still owns the full-page composited editor, visual selection outlines, mouse hit testing,
-drag handles, guides, snapping, zoom, pan, preview invalidation, and assistive canvas geometry. The
-PWS-0304 dialog is an exact non-canvas keyboard path that the later editor may reuse.
+PWS-0306 now extends this same authority with the [accessible overlay
+editor](accessible-overlay-editor.md): selection and geometry for all released kinds, visual
+selection outlines, bounded pointer hit testing and drag, a resize handle, dashed guides,
+normalized snapping, fixed zoom, named pan alternatives, preview invalidation, and meaningful
+assistive geometry. The PWS-0304 exact list/property path remains authoritative.
 
 ## Command and history contract
 
-The command set is closed: create one core overlay, replace one normalized box, replace a same-kind
-core payload, or delete one overlay. Selection is transient UI state and is neither persisted nor
+The command set is closed: create one core overlay, replace one normalized box for any released
+overlay kind, replace a same-kind core payload, or delete one core overlay. A non-core box delta
+must retain exact identity, page, kind, payload, z-index, and version. Selection is transient UI
+state and is neither persisted nor
 undoable. Every command produces one immutable before/after delta; history does not retain a copy
 of the whole overlay array for every step.
 
@@ -41,9 +45,11 @@ and user-entered display value.
 
 Candidate construction accepts only a current overlay array that is an exact state previously
 produced by the history. An unknown concurrent overlay change fails with `OVERLAY_CONCURRENT_CHANGE`.
-At the organizer boundary, a submitted history must also replay from the exact opening history and
-every owned delta must affect only the editor's bound page. Copying the session authority onto a
-history for another known page is rejected before autosave.
+At the organizer boundary, a submitted history must also replay from a separately reconstructed,
+backend-private opening history and every owned delta must affect only the editor's bound page.
+The backend retains only independent scalar authority plus that unshared history; reflective
+mutation of the GUI-returned draft cannot mutate the authority baseline. Copying the session
+authority onto a history for another known page is rejected before autosave.
 The candidate is a defensive copy of the latest manifest and replaces only `overlays`; pages,
 assets, page operations, assignments, constraints, confirmations, export-history references,
 timestamps, and revisions remain owned by their existing services. The complete overlay collection
@@ -117,7 +123,9 @@ is dismissed and the existing main save/cleanup retry surface receives focus.
 The Qt bridge publishes any revision created by the opening flush before it publishes the bound
 editor. Apply completion must then match the exact current case, bound page, non-pending autosave
 state, and permitted revision transition in both the backend bridge and window. A malformed or exact
-but uncorrelated terminal payload leaves the dialog open on a sanitized retry path.
+but uncorrelated terminal payload leaves the dialog open on a sanitized retry path. If the returned
+start presentation itself is malformed, the bridge uses a state-free abort operation so the rejected
+object is never trusted to release backend authority.
 
 This exclusive phase avoids two whole-manifest candidates silently replacing each other. A future
 full editor may introduce a reviewed unified temporal journal, but PWS-0304 does not invent one or

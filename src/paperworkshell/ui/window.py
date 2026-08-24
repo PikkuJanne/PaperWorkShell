@@ -60,6 +60,7 @@ from paperworkshell.app.core_overlay_tools import (
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
+    OrganizerPageView,
     OrganizerSignatureImageDeleteOutcome,
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
@@ -84,6 +85,12 @@ from paperworkshell.domain.image_pages import (
 from paperworkshell.domain.image_transforms import (
     ImagePageTransformResult,
     ImagePageTransformSnapshot,
+)
+from paperworkshell.domain.page_coordinates import (
+    ClockwiseRotation,
+    NormalizedPageBox,
+    PageCoordinateTransform,
+    RenderedImageSize,
 )
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult, PdfThumbnailSnapshot
 from paperworkshell.domain.recovery import (
@@ -309,6 +316,33 @@ def _core_overlay_apply_result_matches(
         and (not draft.changed or result.revision == draft.manifest_revision + 1)
         and not result.autosave_pending
         and any(page.page_id == draft.page_id for page in result.pages)
+    )
+
+
+def _overlay_editor_display_facts(
+    page: OrganizerPageView,
+) -> tuple[PageCoordinateTransform, bool]:
+    """Build exact crop/quarter-turn facts and disclose whether pointer mapping is safe."""
+
+    if type(page) is not OrganizerPageView:
+        raise ValueError("page must be an OrganizerPageView")
+    crop = NormalizedPageBox.full_page()
+    pointer_mapping_enabled = True
+    if page.scan_review_intent is not None:
+        source_crop = page.scan_review_intent.crop
+        crop = NormalizedPageBox(
+            source_crop.x,
+            source_crop.y,
+            source_crop.width,
+            source_crop.height,
+        )
+        pointer_mapping_enabled = page.scan_review_intent.deskew_angle_millidegrees_clockwise == 0
+    return (
+        PageCoordinateTransform(
+            manifest_crop=crop,
+            manifest_rotation=ClockwiseRotation(page.rotation_degrees),
+        ),
+        pointer_mapping_enabled,
     )
 
 
@@ -823,12 +857,12 @@ class PaperWorkShellWindow(QMainWindow):
             "Open the explicit keyboard page-order dialog. Ctrl+Shift+O.",
         )
         self._core_overlay_tools_button = self._action_button(
-            "Edit form marks…",
+            "Edit visual overlays…",
             "editFormMarksButton",
-            "Add or edit text, date, checkmark, cross, and initials visual marks without "
-            "requiring a pointer. Ctrl+Shift+F.",
+            "Open the full-page overlay editor. Create core visual marks and select, move, or "
+            "resize every overlay type without requiring a pointer. Ctrl+Shift+F.",
         )
-        self._core_overlay_tools_button.setAccessibleName("Add or edit visual form marks")
+        self._core_overlay_tools_button.setAccessibleName("Edit visual overlays")
         self._place_signature_image_button = self._action_button(
             "Place signature image…",
             "placeSignatureImageButton",
@@ -2152,6 +2186,7 @@ class PaperWorkShellWindow(QMainWindow):
         if (
             self._case_reopen_required
             or self._scan_review_is_opening_or_active()
+            or self._core_overlay_tools_is_opening_or_active()
             or self._quality_is_pending_or_running()
             or self._signature_image_is_opening_or_active()
         ):
@@ -2211,6 +2246,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
+            or self._core_overlay_tools_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2226,6 +2262,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
+            or self._core_overlay_tools_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2917,6 +2954,8 @@ class PaperWorkShellWindow(QMainWindow):
         operation_id = self._allocate_operation_id()
         self._core_overlay_tools_start_operation_id = operation_id
         self._autosave_timer.stop()
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
         self._hide_error()
         self._update_import_availability()
         self._update_page_actions()
@@ -2940,22 +2979,40 @@ class PaperWorkShellWindow(QMainWindow):
             or not is_core_overlay_announcement_safe(editor_state.announcement)
             or self._core_overlay_tools_dialog is not None
         ):
-            if (
-                not self._closing_requested
-                and type(editor_state) is CoreOverlayToolsState
-                and self._core_overlay_tools_dialog is None
-            ):
+            if not self._closing_requested and self._core_overlay_tools_dialog is None:
                 cancel_operation_id = self._allocate_operation_id()
                 self._core_overlay_tools_cancel_operation_id = cancel_operation_id
-                self._commands.core_overlay_tools_cancel_requested.emit(
-                    cancel_operation_id,
-                    editor_state,
-                )
+                self._commands.core_overlay_tools_abort_requested.emit(cancel_operation_id)
             self._update_import_availability()
             self._update_page_actions()
             self._update_quality_actions()
             return
-        dialog = CoreOverlayToolsDialog(editor_state, self)
+        matching_pages = tuple(
+            page for page in self._state.pages if page.page_id == editor_state.page_id
+        )
+        if len(matching_pages) != 1:
+            cancel_operation_id = self._allocate_operation_id()
+            self._core_overlay_tools_cancel_operation_id = cancel_operation_id
+            self._commands.core_overlay_tools_abort_requested.emit(cancel_operation_id)
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            return
+        transform, pointer_mapping_enabled = _overlay_editor_display_facts(matching_pages[0])
+        preview = self._model.preview(editor_state.page_id)
+        display_size = (
+            RenderedImageSize(preview.width(), preview.height())
+            if preview is not None and not preview.isNull()
+            else None
+        )
+        dialog = CoreOverlayToolsDialog(
+            editor_state,
+            self,
+            page_transform=transform,
+            page_preview=preview if pointer_mapping_enabled else None,
+            page_display_size=display_size,
+            pointer_mapping_enabled=pointer_mapping_enabled,
+        )
         dialog.apply_requested.connect(self._apply_core_overlay_tools)
         dialog.finished.connect(self._core_overlay_tools_finished)
         self._core_overlay_tools_dialog = dialog
@@ -3009,7 +3066,7 @@ class PaperWorkShellWindow(QMainWindow):
             )
             return
         if dialog.set_apply_succeeded():
-            self._announce("Visual form marks applied and saved.")
+            self._announce("Visual overlay changes applied and saved.")
 
     @Slot(int, object)
     def _core_overlay_tools_apply_failed(self, operation_id: int, failure: object) -> None:
@@ -3063,7 +3120,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Visual form-mark changes cancelled. Nothing was applied.")
+        self._announce("Visual overlay changes cancelled. Nothing was applied.")
         if not self._closing_requested and self._core_overlay_tools_button.isEnabled():
             QTimer.singleShot(0, self._focus_core_overlay_tools_button_after_dialog)
 
@@ -4084,6 +4141,17 @@ class PaperWorkShellWindow(QMainWindow):
 
         if self._closing_requested:
             return
+        overlay_dialog = self._core_overlay_tools_dialog
+        if (
+            overlay_dialog is not None
+            and not overlay_dialog.apply_pending
+            and overlay_dialog.latest_state_for_shutdown() is None
+        ):
+            self._announce(
+                "Resolve the visual overlay editor fields before closing PaperWorkShell.",
+                assertive=True,
+            )
+            return
         retrying_cleanup = self._retry_close_button.isVisible()
         queued_import = self._deferred_import is not None
         active = self._active_operation
@@ -4137,7 +4205,9 @@ class PaperWorkShellWindow(QMainWindow):
         dialog = self._core_overlay_tools_dialog
         if dialog is None or dialog.apply_pending:
             return
-        state = dialog.state
+        state = dialog.latest_state_for_shutdown()
+        if state is None:
+            return
         try:
             dialog.finished.disconnect(self._core_overlay_tools_finished)
         except RuntimeError:
