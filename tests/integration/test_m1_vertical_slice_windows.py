@@ -71,6 +71,7 @@ from paperworkshell.storage.quotas import (
     QuotaReservationSnapshot,
     WorkspaceUsage,
 )
+from paperworkshell.storage.signature_images import WindowsSignatureImageAssetStore
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -189,6 +190,10 @@ def _build_stack(
         _desktop_worker_config(CONSTRAINED_RESOURCE_POLICY_V1),
         prepared_sources=sources,
         committed_pages=sources,
+        committed_signature_images=WindowsSignatureImageAssetStore(
+            manager,
+            WindowsSourcePrechecker(limits),
+        ),
         thumbnail_cache=WindowsThumbnailCacheStore(manager),
         heavy_operations=HeavyOperationCoordinator(
             CONSTRAINED_RESOURCE_POLICY_V1.maximum_heavy_operation_concurrency

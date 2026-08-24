@@ -94,6 +94,14 @@ def _build_operation_registry(
     except Exception:
         pass
     try:
+        from paperworkshell.worker.signature_image_raster_operation import (
+            build_signature_image_raster_operation_handler,
+        )
+
+        handlers.append(build_signature_image_raster_operation_handler())
+    except Exception:
+        pass
+    try:
         from paperworkshell.worker.image_transform_operation import (
             build_image_transform_operation_handler,
         )

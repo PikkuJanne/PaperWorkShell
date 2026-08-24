@@ -21,6 +21,7 @@ from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
     OrganizerBackend,
     OrganizerImportRefreshStatus,
+    OrganizerSignatureImageDeleteOutcome,
     OrganizerViewState,
     _default_organizer_preview_timeout,
 )
@@ -49,6 +50,12 @@ from paperworkshell.app.scan_review import (
     ScanReviewError,
     ScanReviewErrorCode,
     ScanReviewPreviewVariant,
+)
+from paperworkshell.app.signature_images import (
+    SignatureImagePlacementChoice,
+    SignatureImagePlacementDraft,
+    SignatureImagePlacementRequest,
+    SignatureImageWorkflowPort,
 )
 from paperworkshell.app.source_ingest import (
     DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
@@ -104,9 +111,36 @@ from paperworkshell.domain.quality_analysis import (
     DEFAULT_QUALITY_ANALYSIS_PROFILE,
 )
 from paperworkshell.domain.recovery import StartupRecoveryResult
+from paperworkshell.domain.signature_images import (
+    SignatureImageCleanupResult,
+    SignatureImageCleanupStatus,
+    SignatureImageError,
+    SignatureImageErrorCode,
+    SignatureImagePlacementCommitResult,
+    SignatureImageProgress,
+)
 from paperworkshell.domain.source_ingest import SourceImportResult
 from paperworkshell.overlays.commands import CreateCoreOverlayCommand
-from paperworkshell.overlays.models import OverlayError, OverlayErrorCode, OverlayKind
+from paperworkshell.overlays.models import (
+    OverlayAssetKind,
+    OverlayAssetMediaType,
+    OverlayAssetRecord,
+    OverlayCollection,
+    OverlayError,
+    OverlayErrorCode,
+    OverlayKind,
+    SignatureImageOverlayPayload,
+)
+from paperworkshell.overlays.signature_commands import (
+    CreateSignatureImageCommand,
+    DeleteSignatureImageCommand,
+    SignatureAssetCleanupIntent,
+    SignatureAssetDeletePolicy,
+    SignatureImageManifestChange,
+    create_signature_image_candidate,
+    delete_signature_image_candidate,
+)
+from paperworkshell.overlays.signature_rasters import SignatureImagePreview
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000111")
 PDF_SOURCE_ID = UUID("20000000-0000-4000-8000-000000000111")
@@ -120,6 +154,9 @@ PAGE_IDS = (
 IMAGE_PAGE_ID = UUID("30000000-0000-4000-8000-000000000114")
 IMPORTED_PAGE_ID = UUID("30000000-0000-4000-8000-000000000115")
 IMPORT_OPERATION_ID = UUID("50000000-0000-4000-8000-000000000111")
+SIGNATURE_DRAFT_ID = UUID("70000000-0000-4000-8000-000000000111")
+SIGNATURE_ASSET_ID = UUID("40000000-0000-4000-8000-000000000111")
+SIGNATURE_OVERLAY_ID = UUID("60000000-0000-4000-8000-000000000111")
 STAMP = "2026-08-05T10:00:00Z"
 
 
@@ -458,6 +495,177 @@ class _QualityAnalysis:
         )
 
 
+class _SignatureImages:
+    """Small durable fake for organizer-exclusive phase and refresh evidence."""
+
+    def __init__(
+        self,
+        repository: _Repository,
+        *,
+        fail_cancel_cleanup: bool = False,
+        fail_asset_cleanup: bool = False,
+    ) -> None:
+        self._repository = repository
+        self._active: tuple[ManifestSnapshot, SignatureImagePlacementDraft] | None = None
+        self._fail_cancel_cleanup = fail_cancel_cleanup
+        self._fail_asset_cleanup = fail_asset_cleanup
+        self.cleanup_revisions: list[int] = []
+        self.close_calls = 0
+
+    def begin(
+        self,
+        snapshot: ManifestSnapshot,
+        page_id: UUID,
+        source_path: Path,
+        *,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
+        progress: Callable[[SignatureImageProgress], None],
+    ) -> SignatureImagePlacementDraft:
+        del source_path, progress
+        assert not cancellation() and not deadline()
+        preview = SignatureImagePreview(
+            SIGNATURE_ASSET_ID,
+            1,
+            1,
+            4,
+            bytes((0, 0, 0, 0)),
+            True,
+            False,
+            False,
+            20,
+            10,
+        )
+        draft = SignatureImagePlacementDraft(
+            SIGNATURE_DRAFT_ID,
+            snapshot.case_id,
+            snapshot.revision,
+            page_id,
+            preview,
+        )
+        self._active = (snapshot, draft)
+        return draft
+
+    def commit(
+        self,
+        request: SignatureImagePlacementRequest,
+        *,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
+        progress: Callable[[SignatureImageProgress], None],
+    ) -> SignatureImagePlacementCommitResult:
+        del progress
+        assert not cancellation() and not deadline()
+        assert request.disclaimer_confirmed and request.whole_image_and_background_confirmed
+        active = self._active
+        assert active is not None and request.draft_id == active[1].draft_id
+        snapshot, draft = active
+        asset = OverlayAssetRecord(
+            SIGNATURE_ASSET_ID,
+            OverlayAssetKind.SIGNATURE_IMAGE,
+            f"{SIGNATURE_ASSET_ID}.bin",
+            OverlayAssetMediaType.PNG,
+            4,
+            "e" * 64,
+        )
+        change = create_signature_image_candidate(
+            snapshot,
+            CreateSignatureImageCommand(
+                snapshot.case_id,
+                snapshot.revision,
+                asset,
+                SIGNATURE_OVERLAY_ID,
+                draft.page_id,
+                request.box,
+            ),
+        )
+        candidate = change.candidate_document
+        candidate["revision"] = snapshot.revision + 1
+        candidate["updated_at"] = "2026-08-05T10:01:00Z"
+        self._repository.current = _snapshot(candidate)
+        self._repository.save_calls += 1
+        self._active = None
+        return SignatureImagePlacementCommitResult(
+            snapshot.case_id,
+            SIGNATURE_ASSET_ID,
+            SIGNATURE_OVERLAY_ID,
+            snapshot.revision + 1,
+        )
+
+    def cancel(self, draft_id: UUID) -> None:
+        active = self._active
+        assert active is not None and active[1].draft_id == draft_id
+        self._active = None
+        if self._fail_cancel_cleanup:
+            raise SignatureImageError(
+                SignatureImageErrorCode.CLEANUP_FAILED,
+                "signature.test_cleanup",
+            )
+
+    def placements(
+        self,
+        snapshot: ManifestSnapshot,
+        page_id: UUID,
+    ) -> tuple[SignatureImagePlacementChoice, ...]:
+        collection = OverlayCollection.from_manifest_document(snapshot.document)
+        records = tuple(
+            record
+            for record in collection.overlays
+            if record.page_id == page_id and type(record.payload) is SignatureImageOverlayPayload
+        )
+        return tuple(
+            SignatureImagePlacementChoice(
+                record.overlay_id, page_id, record.box, index, len(records)
+            )
+            for index, record in enumerate(records, start=1)
+        )
+
+    def delete_candidate(
+        self,
+        snapshot: ManifestSnapshot,
+        page_id: UUID,
+        overlay_id: UUID,
+        policy: SignatureAssetDeletePolicy,
+    ) -> SignatureImageManifestChange:
+        return delete_signature_image_candidate(
+            snapshot,
+            DeleteSignatureImageCommand(
+                snapshot.case_id,
+                snapshot.revision,
+                overlay_id,
+                page_id,
+                policy,
+            ),
+        )
+
+    def cleanup_deleted_asset(
+        self,
+        intent: SignatureAssetCleanupIntent,
+        *,
+        case_id: UUID,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
+        progress: Callable[[SignatureImageProgress], None],
+    ) -> SignatureImageCleanupResult | None:
+        del cancellation, deadline, progress
+        if not intent.requires_file_removal:
+            return None
+        asset = intent.asset
+        assert asset is not None
+        self.cleanup_revisions.append(self._repository.current.revision)
+        if self._fail_asset_cleanup:
+            raise RuntimeError("private native cleanup detail")
+        return SignatureImageCleanupResult(
+            case_id,
+            asset.asset_id,
+            SignatureImageCleanupStatus.REMOVED,
+        )
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self._active = None
+
+
 def _review_metadata() -> ImagePageMetadata:
     return ImagePageMetadata(
         source_format=ImageSourceFormat.PNG,
@@ -519,6 +727,7 @@ def _backend(
     close_resources: Callable[[], None] = lambda: None,
     ocr_languages: OcrLanguageManager | None = None,
     quality_analysis: _QualityAnalysis | None = None,
+    signature_images: SignatureImageWorkflowPort | None = None,
 ) -> tuple[OrganizerBackend, _Repository, _Lifecycle, _SourceIngest, _Thumbnails]:
     repository = _Repository(document)
     lifecycle = _Lifecycle(repository)
@@ -533,12 +742,173 @@ def _backend(
             close_resources=close_resources,
             ocr_languages=ocr_languages,
             quality_analysis=quality_analysis,
+            signature_images=signature_images,
         ),
         repository,
         lifecycle,
         source_ingest,
         thumbnails,
     )
+
+
+def _signature_backend(
+    *,
+    fail_cancel_cleanup: bool = False,
+    fail_asset_cleanup: bool = False,
+) -> tuple[OrganizerBackend, _Repository, _SignatureImages]:
+    repository = _Repository(_document(page_count=1))
+    workflow = _SignatureImages(
+        repository,
+        fail_cancel_cleanup=fail_cancel_cleanup,
+        fail_asset_cleanup=fail_asset_cleanup,
+    )
+    backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        signature_images=workflow,
+    )
+    return backend, repository, workflow
+
+
+def test_signature_image_placement_refreshes_then_deletes_before_asset_cleanup() -> None:
+    backend, repository, workflow = _signature_backend()
+    opened = backend.open_case(CASE_ID)
+    page_id = opened.pages[0].page_id
+    draft = backend.begin_signature_image(
+        page_id,
+        Path("synthetic-private-signature.png"),
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+
+    placement = backend.commit_signature_image(
+        SignatureImagePlacementRequest(
+            draft.draft_id,
+            NormalizedPageBox(100_000, 200_000, 300_000, 100_000),
+            True,
+            True,
+        ),
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+
+    assert not placement.refresh_required
+    assert placement.state.revision == 1
+    choices = backend.signature_image_placements(page_id)
+    assert len(choices) == 1 and choices[0].overlay_id == SIGNATURE_OVERLAY_ID
+
+    deletion = backend.delete_signature_image(
+        page_id,
+        choices[0].overlay_id,
+        SignatureAssetDeletePolicy.REMOVE_IF_UNUSED,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+
+    assert deletion.state.revision == 2
+    assert deletion.cleanup_result is not None
+    assert deletion.cleanup_result.status is SignatureImageCleanupStatus.REMOVED
+    assert workflow.cleanup_revisions == [2]
+    collection = OverlayCollection.from_manifest_document(repository.current.document)
+    assert SIGNATURE_OVERLAY_ID not in {record.overlay_id for record in collection.overlays}
+    assert SIGNATURE_ASSET_ID not in {asset.asset_id for asset in collection.assets}
+
+    backend.rotate_clockwise(page_id)
+    backend.flush_autosave()
+    rebased = OverlayCollection.from_manifest_document(repository.current.document)
+    assert SIGNATURE_OVERLAY_ID not in {record.overlay_id for record in rebased.overlays}
+    assert SIGNATURE_ASSET_ID not in {asset.asset_id for asset in rebased.assets}
+
+
+def test_signature_delete_reports_sanitized_cleanup_warning_after_durable_removal() -> None:
+    backend, repository, workflow = _signature_backend(fail_asset_cleanup=True)
+    page_id = backend.open_case(CASE_ID).pages[0].page_id
+    draft = backend.begin_signature_image(
+        page_id,
+        Path("synthetic-private-signature.png"),
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+    backend.commit_signature_image(
+        SignatureImagePlacementRequest(
+            draft.draft_id,
+            NormalizedPageBox(100_000, 200_000, 300_000, 100_000),
+            True,
+            True,
+        ),
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+
+    outcome = backend.delete_signature_image(
+        page_id,
+        SIGNATURE_OVERLAY_ID,
+        SignatureAssetDeletePolicy.REMOVE_IF_UNUSED,
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+
+    assert outcome.state.revision == 2
+    assert outcome.cleanup_result is None
+    assert outcome.cleanup_warning is not None
+    assert "unused case copy could not be removed" in outcome.cleanup_warning
+    assert "private native cleanup detail" not in outcome.safe_message
+    assert workflow.cleanup_revisions == [2]
+    collection = OverlayCollection.from_manifest_document(repository.current.document)
+    assert SIGNATURE_OVERLAY_ID not in {record.overlay_id for record in collection.overlays}
+    assert SIGNATURE_ASSET_ID not in {asset.asset_id for asset in collection.assets}
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    (
+        (SignatureImageCleanupStatus.RETAINED, "case copy was retained"),
+        (SignatureImageCleanupStatus.NOT_REQUESTED, "case copy was retained"),
+        (SignatureImageCleanupStatus.ALREADY_ABSENT, "case copy was already absent"),
+        (SignatureImageCleanupStatus.REMOVED, "unused case copy was cleaned up"),
+    ),
+)
+def test_signature_delete_message_matches_exact_cleanup_status(
+    status: SignatureImageCleanupStatus,
+    expected: str,
+) -> None:
+    backend, _repository, _workflow = _signature_backend()
+    state = backend.open_case(CASE_ID)
+    outcome = OrganizerSignatureImageDeleteOutcome(
+        state,
+        SignatureImageCleanupResult(CASE_ID, SIGNATURE_ASSET_ID, status),
+        None,
+    )
+
+    assert expected in outcome.safe_message
+
+
+def test_signature_cancel_cleanup_failure_does_not_strand_organizer_exclusivity() -> None:
+    backend, _repository, _workflow = _signature_backend(fail_cancel_cleanup=True)
+    state = backend.open_case(CASE_ID)
+    page_id = state.pages[0].page_id
+    draft = backend.begin_signature_image(
+        page_id,
+        Path("synthetic-private-signature.png"),
+        cancellation=lambda: False,
+        deadline=lambda: False,
+        progress=lambda _progress: None,
+    )
+
+    with pytest.raises(SignatureImageError) as raised:
+        backend.cancel_signature_image(draft.draft_id)
+
+    assert raised.value.code is SignatureImageErrorCode.CLEANUP_FAILED
+    edited = backend.rotate_clockwise(page_id)
+    assert edited.autosave_pending
 
 
 def test_list_create_open_and_close_expose_only_path_free_state() -> None:

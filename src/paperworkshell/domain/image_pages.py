@@ -142,9 +142,10 @@ class ImageQuarterTurn(IntEnum):
 
 
 class ImageAlphaNormalizationPolicy(StrEnum):
-    """Closed policy for converting every accepted source to opaque pixels."""
+    """Closed policies for deterministic RGBA8 normalization."""
 
     COMPOSITE_ON_OPAQUE_WHITE = "composite_on_opaque_white"
+    PRESERVE_STRAIGHT_ALPHA = "preserve_straight_alpha"
 
 
 class ImagePixelFormat(StrEnum):
@@ -157,6 +158,7 @@ class ImageRasterBackground(StrEnum):
     """Closed normalized raster background."""
 
     OPAQUE_WHITE = "opaque_white"
+    PRESERVED_ALPHA = "preserved_alpha"
 
 
 class ImagePagePreviewProgressPhase(StrEnum):
@@ -322,7 +324,7 @@ class ImagePageMetadata:
         if (
             type(self.source_format) is not ImageSourceFormat
             or type(self.source_color_model) is not ImageSourceColorModel
-            or self.alpha_policy is not ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+            or type(self.alpha_policy) is not ImageAlphaNormalizationPolicy
             or type(self.exif_orientation) is not ImageExifOrientation
             or type(self.has_alpha) is not bool
             or type(self.has_embedded_color_profile) is not bool
@@ -448,7 +450,7 @@ class ImageNormalizationRequest:
         if (
             type(self.expected_source_format) is not ImageSourceFormat
             or type(self.additional_rotation) is not ImageQuarterTurn
-            or self.alpha_policy is not ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+            or type(self.alpha_policy) is not ImageAlphaNormalizationPolicy
             or type(self.request_version) is not int
             or self.request_version != IMAGE_NORMALIZATION_REQUEST_VERSION
         ):
@@ -708,7 +710,7 @@ def _fit_image_dimensions(
 
 @dataclass(frozen=True, slots=True, repr=False)
 class ImageNormalizationResult:
-    """Decoder-neutral facts for one normalized opaque RGBA8 page."""
+    """Decoder-neutral facts for one normalized packed RGBA8 raster."""
 
     metadata: ImagePageMetadata
     additional_rotation: ImageQuarterTurn
@@ -728,10 +730,17 @@ class ImageNormalizationResult:
         if (
             type(self.metadata) is not ImagePageMetadata
             or type(self.additional_rotation) is not ImageQuarterTurn
-            or self.alpha_policy is not ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+            or type(self.alpha_policy) is not ImageAlphaNormalizationPolicy
             or self.alpha_policy is not self.metadata.alpha_policy
             or self.pixel_format is not ImagePixelFormat.RGBA8
-            or self.background is not ImageRasterBackground.OPAQUE_WHITE
+            or (
+                self.alpha_policy is ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+                and self.background is not ImageRasterBackground.OPAQUE_WHITE
+            )
+            or (
+                self.alpha_policy is ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA
+                and self.background is not ImageRasterBackground.PRESERVED_ALPHA
+            )
             or type(self.result_version) is not int
             or self.result_version != IMAGE_NORMALIZATION_RESULT_VERSION
         ):
@@ -828,7 +837,11 @@ def _enum_code(value: StrEnum, codes: dict[str, int]) -> int:
 def encode_image_page_artifact_header(header: ImagePageArtifactHeader) -> bytes:
     """Encode one exact current-version image artifact header."""
 
-    if type(header) is not ImagePageArtifactHeader:
+    if (
+        type(header) is not ImagePageArtifactHeader
+        or header.result.alpha_policy is not ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+        or header.result.background is not ImageRasterBackground.OPAQUE_WHITE
+    ):
         reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.header")
     metadata = header.result.metadata
     flags = 0

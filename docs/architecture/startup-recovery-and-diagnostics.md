@@ -30,7 +30,7 @@ claim that document contents or external destinations were revalidated.
 |---|---|
 | `domain.recovery` | Path-free case/startup results, closed issue/error codes, deterministic ordering, and bounded counts |
 | `app.recovery` | Toolkit-free startup orchestration and aggregate sanitized diagnostic events |
-| `storage.recovery` | Authenticated manifest-first case scan, stable/retired export-history recovery, export-retry settlement hook, source-orphan cleanup, thumbnail-stage cleanup, and case-temp cleanup |
+| `storage.recovery` | Authenticated manifest-first case scan, stable/retired export-history recovery, export-retry settlement hook, manifest-referenced originals cleanup, thumbnail-stage cleanup, and case-temp cleanup |
 | `domain.pdf_export_retry` | Versioned `PREPARED`/`COMMITTED` receipt envelopes, strict codec, bounded inventory, and reserved export IDs |
 | `app.export_history` | History-only restart settlement and independent proof checks; no worker or destination port |
 | `storage.export_retry` | Private case-journal publication, readback, classification, and exact receipt disposal |
@@ -67,10 +67,12 @@ Startup applies this order independently to each canonical internal case candida
 5. Retain an authenticated case authority and transaction guard, then revalidate the exact
    manifest identity, digest, and CAS token used to plan cleanup.
 6. Revalidate stable/retired export history under that cleanup transaction. A history or retry
-   recovery failure returns attention before source, thumbnail, or generic temp cleanup.
-7. Scan at most 4,096 entries in `originals/`. Remove only canonical random UUIDv4 `.bin` objects
-   not referenced by that exact manifest. Unexpected names, aliases, links, sparse objects,
-   alternate streams, identity changes, and deletion failures are retained and reported.
+   recovery failure returns attention before originals, thumbnail, or generic temp cleanup.
+7. Scan at most 8,192 entries in `originals/`, the combined schema maximum for `sources` and
+   `assets`. Retain canonical storage names referenced by either collection, including a currently
+   unused signature-image asset that remains in the manifest. Remove only canonical random UUIDv4
+   `.bin` objects not referenced by that exact manifest. Unexpected names, aliases, links, sparse
+   objects, alternate streams, identity changes, and deletion failures are retained and reported.
 8. Remove authenticated stale thumbnail stages through their owning bounded cache API.
 9. Inventory and remove authenticated disposable objects below the fixed `temp/` root through the
    workspace quota policy. The root itself is preserved.
@@ -81,7 +83,7 @@ Startup applies this order independently to each canonical internal case candida
 Cleanup authority never comes from a displayed path or journal payload. Every mutation remains
 below one authenticated case root and uses the owning adapter's no-follow identity, link, stream,
 permission, quota, and transaction checks. The scanner does not clean `journal/` generally,
-rewrite `manifest.json` directly, remove a referenced source, or cross into a sibling case,
+rewrite `manifest.json` directly, remove a manifest-referenced original, or cross into a sibling case,
 external original, or export destination.
 
 ## Durable PDF export retry states
@@ -131,14 +133,15 @@ revision or mutation count. Recovery may report these closed attention condition
 - an export-recovery service failure that is not mislabeled as an invalid receipt; or
 - missing, corrupt, mismatched, or ambiguous stable/retired export-history authority.
 
+The established source-named result fields cover the complete `originals/` cleanup for compatibility.
 Counts distinguish removed source orphans, retained source artifacts, removed thumbnail stages,
 temp files/directories, repaired/pending/ambiguous/invalid export receipts, and released logical
 bytes. These are operation facts, not evidence of secure erasure. A recovery failure preserves the
 last valid manifest and imported originals and returns a stable sanitized error.
 
 Cleanup reports retain every deletion and released-byte count already confirmed before a later
-ordinary failure. An unexpected source, thumbnail, or temp item failure stops or returns a partial
-phase report rather than erasing those facts; later mutation does not continue after an
+ordinary failure. An unexpected original-object, thumbnail, or temp item failure stops or returns a
+partial phase report rather than erasing those facts; later mutation does not continue after an
 unclassified coordinator-level failure. Process-control exceptions still propagate.
 
 Restoring an authenticated retirement changes the case status to `recovered`, including when no
@@ -245,7 +248,7 @@ worker-operation replay. Complete details are in the [worker lifecycle](worker-l
 Pure tests cover recovery-result invariants, deterministic ordering, diagnostics event matrices,
 canonical encoding, capacity bounds, copy-before-retain behavior, summary rendering, receipt
 phase/correlation rules, and history-only restart settlement. Windows integration tests cover
-manifest-first recovery, invalid-case isolation, source/thumbnail/temp cleanup, receipt settlement
+manifest-first recovery, invalid-case isolation, originals/thumbnail/temp cleanup, receipt settlement
 before generic temp cleanup, independent manifest-to-history validation, authenticated unique
 retirement restoration before committed replay, strict-prefix retirement cleanup, committed replay
 without worker/destination calls, proven prepared settlement, retained ambiguous preparation, and

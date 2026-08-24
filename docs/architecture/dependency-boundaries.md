@@ -203,10 +203,12 @@ adapter-generated PNG) and qpdf (the native library behind pikepdf), without imp
 weakening the imaging-layer boundary. It consumes only validated overlay projections and
 caller-owned metadata-free RGBA8 streams, emits one bounded
 transparent overlay PDF page, sanitizes and strictly reopens it, then returns content-free facts.
-It neither opens a case asset by path nor accepts a JPEG/PNG source. PWS-0305 must authenticate and
-decode the immutable case asset before constructing the pixel-bound raster contract; PWS-0307 must
-import the verified page as a Form XObject and flatten it. The complete split is specified in the
-[deterministic overlay rendering contract](overlay-rendering.md).
+It neither opens a case asset by path nor accepts a JPEG/PNG source. PWS-0305's
+[`storage.signature_images`](signature-image-assets.md) adapter authenticates the immutable encoded
+case asset and its `image.signature_raster` worker boundary decodes it before constructing the
+pixel-bound raster contract; PWS-0307 must import the verified page as a Form XObject and flatten it.
+The complete split is specified in the [deterministic overlay rendering
+contract](overlay-rendering.md).
 
 PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
 `domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,

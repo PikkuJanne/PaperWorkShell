@@ -60,6 +60,8 @@ from paperworkshell.app.core_overlay_tools import (
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import (
     MAX_ORGANIZER_PREVIEW_BATCH_PAGES,
+    OrganizerSignatureImageDeleteOutcome,
+    OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
 )
 from paperworkshell.app.quality_analysis import QualityReviewSnapshot
@@ -67,6 +69,12 @@ from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewPreviewResult,
     ScanReviewPreviewVariant,
+)
+from paperworkshell.app.signature_images import (
+    SIGNATURE_IMAGE_DISCLAIMER,
+    SignatureImagePlacementChoice,
+    SignatureImagePlacementDraft,
+    SignatureImagePlacementRequest,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex
 from paperworkshell.domain.image_pages import (
@@ -88,6 +96,7 @@ from paperworkshell.domain.resource_policy import (
     ResourcePolicy,
     select_resource_policy,
 )
+from paperworkshell.domain.signature_images import SignatureImageErrorCode
 from paperworkshell.ui.backend import (
     OperationCancellation,
     OrganizerBackendCommands,
@@ -107,6 +116,10 @@ from paperworkshell.ui.overlay_tools import (
     safe_core_overlay_failure,
 )
 from paperworkshell.ui.scan_review import ScanReviewDialog
+from paperworkshell.ui.signature_images import (
+    SignatureImageDeleteDialog,
+    SignatureImagePlacementDialog,
+)
 
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
 _THUMBNAIL_WIDTH: Final = 240
@@ -130,6 +143,7 @@ class _LongOperationKind(StrEnum):
     IMPORT = "Import"
     PREVIEW = "Preview"
     QUALITY = "Page quality check"
+    SIGNATURE_IMAGE = "Signature image"
 
 
 class _ImportPresentationState(StrEnum):
@@ -494,6 +508,17 @@ class PaperWorkShellWindow(QMainWindow):
         self._core_overlay_tools_start_operation_id: int | None = None
         self._core_overlay_tools_apply_operation_id: int | None = None
         self._core_overlay_tools_cancel_operation_id: int | None = None
+        self._signature_image_source_path: Path | None = None
+        self._signature_image_page_id: UUID | None = None
+        self._signature_image_prepare_operation_id: int | None = None
+        self._signature_image_place_operation_id: int | None = None
+        self._signature_image_cancel_operation_id: int | None = None
+        self._signature_image_list_request_id: int | None = None
+        self._signature_image_delete_operation_id: int | None = None
+        self._signature_image_dialog: SignatureImagePlacementDialog | None = None
+        self._signature_image_delete_dialog: SignatureImageDeleteDialog | None = None
+        self._signature_image_retry_after_cancel = False
+        self._signature_image_committed = False
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
@@ -804,6 +829,20 @@ class PaperWorkShellWindow(QMainWindow):
             "requiring a pointer. Ctrl+Shift+F.",
         )
         self._core_overlay_tools_button.setAccessibleName("Add or edit visual form marks")
+        self._place_signature_image_button = self._action_button(
+            "Place signature image…",
+            "placeSignatureImageButton",
+            f"Choose, preview, and place a local JPEG or PNG as a visual image. "
+            f"{SIGNATURE_IMAGE_DISCLAIMER} Ctrl+Shift+S.",
+        )
+        self._place_signature_image_button.setAccessibleName("Place signature image")
+        self._remove_signature_image_button = self._action_button(
+            "Remove signature image…",
+            "removeSignatureImageButton",
+            "Select a visual signature-image placement and explicitly choose whether to keep "
+            "its case copy or remove it only when unused. Ctrl+Shift+D.",
+        )
+        self._remove_signature_image_button.setAccessibleName("Remove signature image")
         self._undo_button = self._action_button(
             "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
         )
@@ -817,6 +856,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._scan_review_button.clicked.connect(self._request_scan_review)
         self._change_order_button.clicked.connect(self._change_full_order)
         self._core_overlay_tools_button.clicked.connect(self._request_core_overlay_tools)
+        self._place_signature_image_button.clicked.connect(self._choose_signature_image)
+        self._remove_signature_image_button.clicked.connect(
+            self._request_signature_image_placements
+        )
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
         action_layout.addWidget(self._move_earlier_button, 0, 0)
@@ -828,6 +871,8 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._undo_button, 2, 0)
         action_layout.addWidget(self._redo_button, 2, 1)
         action_layout.addWidget(self._core_overlay_tools_button, 2, 2)
+        action_layout.addWidget(self._place_signature_image_button, 3, 0)
+        action_layout.addWidget(self._remove_signature_image_button, 3, 1)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -903,9 +948,11 @@ class PaperWorkShellWindow(QMainWindow):
             self._remove_button,
             self._scan_review_button,
             self._change_order_button,
-            self._core_overlay_tools_button,
             self._undo_button,
             self._redo_button,
+            self._core_overlay_tools_button,
+            self._place_signature_image_button,
+            self._remove_signature_image_button,
             self._quality_summary,
             self._quality_check_button,
             self._quality_findings_view,
@@ -943,6 +990,8 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+Shift+L", self._open_ocr_languages),
             ("Ctrl+Shift+O", self._change_full_order),
             ("Ctrl+Shift+F", self._request_core_overlay_tools),
+            ("Ctrl+Shift+S", self._choose_signature_image),
+            ("Ctrl+Shift+D", self._request_signature_image_placements),
             ("Ctrl+Shift+R", self._retry_failed_preview),
             ("Escape", self._cancel_active_operation),
         )
@@ -980,6 +1029,20 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.core_overlay_tools_cancel_failed.connect(
             self._core_overlay_tools_cancel_failed
         )
+        self._worker.signature_image_prepared.connect(self._signature_image_prepared)
+        self._worker.signature_image_prepare_failed.connect(self._signature_image_prepare_failed)
+        self._worker.signature_image_placed.connect(self._signature_image_placed)
+        self._worker.signature_image_place_failed.connect(self._signature_image_place_failed)
+        self._worker.signature_image_cancelled.connect(self._signature_image_cancelled)
+        self._worker.signature_image_cancel_failed.connect(self._signature_image_cancel_failed)
+        self._worker.signature_image_placements_ready.connect(
+            self._signature_image_placements_ready
+        )
+        self._worker.signature_image_placements_failed.connect(
+            self._signature_image_placements_failed
+        )
+        self._worker.signature_image_deleted.connect(self._signature_image_deleted)
+        self._worker.signature_image_delete_failed.connect(self._signature_image_delete_failed)
         self._worker.progress_changed.connect(self._progress_changed)
         self._worker.status_changed.connect(self._status_changed)
         self._worker.operation_status_changed.connect(self._operation_status_changed)
@@ -1813,12 +1876,13 @@ class PaperWorkShellWindow(QMainWindow):
         if (
             active is None
             or active.operation_id != operation_id
-            or active.kind is not _LongOperationKind.IMPORT
+            or active.kind not in {_LongOperationKind.IMPORT, _LongOperationKind.SIGNATURE_IMAGE}
         ):
             return
         self._case_reopen_required = True
-        self._latest_import_progress = None
-        self._import_presentation = _ImportPresentationState.REOPEN_REQUIRED
+        if active.kind is _LongOperationKind.IMPORT:
+            self._latest_import_progress = None
+            self._import_presentation = _ImportPresentationState.REOPEN_REQUIRED
         self._update_organizer_guidance()
         self._preview_refresh_timer.stop()
         self._autosave_timer.stop()
@@ -1892,6 +1956,25 @@ class PaperWorkShellWindow(QMainWindow):
             return
         pending_scan_review = self._pending_scan_review_page_id
         pending_quality = self._pending_quality_request
+        pending_signature_image = (
+            finished_preview
+            and self._signature_image_source_path is not None
+            and self._signature_image_page_id is not None
+            and self._signature_image_prepare_operation_id is None
+            and self._signature_image_dialog is None
+        )
+        if pending_signature_image:
+            self._pending_failure_focus = None
+            if self._selected_page_id() != self._signature_image_page_id:
+                self._clear_signature_image_source()
+                self._announce(
+                    "The selected page changed before the signature image could be prepared. "
+                    "Select a page and try again.",
+                    assertive=True,
+                )
+                return
+            self._start_signature_image_prepare()
+            return
         if pending_quality is not None:
             self._pending_failure_focus = None
             self._pending_quality_request = None
@@ -2070,6 +2153,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._quality_is_pending_or_running()
+            or self._signature_image_is_opening_or_active()
         ):
             return
         unsupported = tuple(page.page_id for page in state.pages if not page.preview_supported)
@@ -2292,6 +2376,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or not self._import_button.isEnabled()
             or self._scan_review_is_opening_or_active()
+            or self._signature_image_is_opening_or_active()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -2316,7 +2401,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._queue_import(source_path, source_path.name)
 
     def _queue_import(self, source_path: Path, display_name: str) -> None:
-        if self._case_reopen_required or self._scan_review_is_opening_or_active():
+        if (
+            self._case_reopen_required
+            or self._scan_review_is_opening_or_active()
+            or self._signature_image_is_opening_or_active()
+        ):
             return
         state = self._state
         self._deferred_preview_state = (
@@ -2382,6 +2471,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or self._scan_review_is_opening_or_active()
             or self._quality_is_pending_or_running()
+            or self._signature_image_is_opening_or_active()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -2459,6 +2549,7 @@ class PaperWorkShellWindow(QMainWindow):
         scan_review_busy = self._scan_review_is_opening_or_active()
         quality_busy = self._quality_is_pending_or_running()
         overlay_tools_busy = self._core_overlay_tools_is_opening_or_active()
+        signature_image_busy = self._signature_image_is_opening_or_active()
         self._close_case_button.setEnabled(
             self._controls_enabled
             and state is not None
@@ -2466,6 +2557,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not scan_review_busy
             and not quality_busy
             and not overlay_tools_busy
+            and not signature_image_busy
         )
         editable = (
             self._controls_enabled
@@ -2474,6 +2566,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not scan_review_busy
             and not quality_busy
             and not overlay_tools_busy
+            and not signature_image_busy
         )
         has_selection = editable and 0 <= row < page_count
         self._move_earlier_button.setEnabled(has_selection and row > 0)
@@ -2496,6 +2589,8 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._change_order_button.setEnabled(editable and page_count > 1)
         self._core_overlay_tools_button.setEnabled(has_selection)
+        self._place_signature_image_button.setEnabled(has_selection)
+        self._remove_signature_image_button.setEnabled(has_selection)
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -3002,6 +3097,404 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._error_label)
 
+    def _choose_signature_image(self) -> None:
+        """Choose one local JPEG/PNG without retaining or displaying its name."""
+
+        if not self._place_signature_image_button.isEnabled():
+            return
+        page_id = self._selected_page_id()
+        if page_id is None:
+            return
+        selected, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Place signature image",
+            "",
+            "Signature images (*.png *.jpg *.jpeg);;All files (*)",
+        )
+        if not selected:
+            self._announce("Signature-image selection cancelled.")
+            return
+        self._signature_image_source_path = Path(selected)
+        self._signature_image_page_id = page_id
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        active = self._active_operation
+        if active is not None:
+            if active.kind is not _LongOperationKind.PREVIEW:
+                self._clear_signature_image_source()
+                return
+            self._cancel_active_preview()
+            self._update_page_actions()
+            self._announce("Stopping the current page preview before preparing the visual image.")
+            return
+        self._start_signature_image_prepare()
+
+    def _start_signature_image_prepare(self) -> None:
+        source_path = self._signature_image_source_path
+        page_id = self._signature_image_page_id
+        if (
+            source_path is None
+            or page_id is None
+            or self._active_operation is not None
+            or self._closing_requested
+            or self._signature_image_dialog is not None
+        ):
+            return
+        operation = self._begin_long_operation(_LongOperationKind.SIGNATURE_IMAGE)
+        self._signature_image_prepare_operation_id = operation.operation_id
+        self._hide_error()
+        self._announce(
+            "Preparing a private signature-image preview. You can cancel this operation."
+        )
+        self._commands.signature_image_prepare_requested.emit(
+            operation.operation_id,
+            page_id,
+            source_path,
+            operation.cancellation,
+        )
+
+    @Slot(int, object)
+    def _signature_image_prepared(self, operation_id: int, draft: object) -> None:
+        if operation_id != self._signature_image_prepare_operation_id:
+            return
+        self._signature_image_prepare_operation_id = None
+        if (
+            self._closing_requested
+            or type(draft) is not SignatureImagePlacementDraft
+            or draft.page_id != self._signature_image_page_id
+            or draft.page_id != self._selected_page_id()
+            or self._state is None
+            or draft.case_id != self._state.case_id
+            or draft.manifest_revision != self._state.revision
+            or self._signature_image_dialog is not None
+        ):
+            if type(draft) is SignatureImagePlacementDraft:
+                self._request_signature_image_cancel(draft.draft_id)
+            else:
+                self._clear_signature_image_source()
+            return
+        dialog = SignatureImagePlacementDialog(draft, self)
+        dialog.place_requested.connect(self._place_signature_image)
+        dialog.retry_requested.connect(self._retry_signature_image)
+        dialog.cancel_operation_requested.connect(self._cancel_active_operation)
+        dialog.finished.connect(self._signature_image_dialog_finished)
+        self._signature_image_dialog = dialog
+        self._signature_image_committed = False
+        self._update_page_actions()
+        self._update_quality_actions()
+        dialog.open()
+
+    @Slot(int, object)
+    def _signature_image_prepare_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._signature_image_prepare_operation_id:
+            return
+        self._signature_image_prepare_operation_id = None
+        self._clear_signature_image_source()
+        self._update_page_actions()
+        if type(failure) is UiFailure:
+            self._failed(failure)
+
+    @Slot(object)
+    def _place_signature_image(self, request: object) -> None:
+        dialog = self._signature_image_dialog
+        if (
+            dialog is None
+            or type(request) is not SignatureImagePlacementRequest
+            or request.draft_id != dialog.draft.draft_id
+            or self._signature_image_place_operation_id is not None
+            or self._active_operation is not None
+        ):
+            return
+        operation = self._begin_long_operation(_LongOperationKind.SIGNATURE_IMAGE)
+        self._signature_image_place_operation_id = operation.operation_id
+        self._commands.signature_image_place_requested.emit(
+            operation.operation_id,
+            request,
+            operation.cancellation,
+        )
+
+    @Slot(int, object)
+    def _signature_image_placed(self, operation_id: int, outcome: object) -> None:
+        if operation_id != self._signature_image_place_operation_id:
+            return
+        self._signature_image_place_operation_id = None
+        dialog = self._signature_image_dialog
+        if (
+            dialog is None
+            or type(outcome) is not OrganizerSignatureImagePlacementOutcome
+            or outcome.committed_placement.case_id != dialog.draft.case_id
+        ):
+            if dialog is not None:
+                dialog.show_failure("PWS_UI_RESPONSE_INVALID", None)
+            return
+        self._signature_image_committed = True
+        dialog.mark_placed()
+        self._clear_signature_image_source()
+        self._announce(outcome.safe_message, assertive=outcome.refresh_required)
+
+    @Slot(int, object)
+    def _signature_image_place_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._signature_image_place_operation_id:
+            return
+        self._signature_image_place_operation_id = None
+        dialog = self._signature_image_dialog
+        if dialog is None:
+            return
+        code = failure.code if type(failure) is UiFailure else None
+        message = failure.message if type(failure) is UiFailure else None
+        if code == SignatureImageErrorCode.CANCELLED.value:
+            try:
+                dialog.finished.disconnect(self._signature_image_dialog_finished)
+            except RuntimeError:
+                pass
+            dialog.done(QDialog.DialogCode.Rejected)
+            dialog.deleteLater()
+            self._signature_image_dialog = None
+            self._signature_image_committed = False
+            self._signature_image_retry_after_cancel = False
+            self._clear_signature_image_source()
+            self._pending_failure_focus = "signature_image"
+            self._update_page_actions()
+            self._update_quality_actions()
+            self._announce(
+                "Signature-image placement cancelled. No placement was committed.",
+                assertive=True,
+            )
+            return
+        dialog.show_failure(code, message)
+
+    @Slot()
+    def _retry_signature_image(self) -> None:
+        dialog = self._signature_image_dialog
+        if dialog is None or self._signature_image_cancel_operation_id is not None:
+            return
+        self._signature_image_retry_after_cancel = True
+        self._request_signature_image_cancel(dialog.draft.draft_id)
+
+    @Slot(int)
+    def _signature_image_dialog_finished(self, result: int) -> None:
+        dialog = self._signature_image_dialog
+        if dialog is None:
+            return
+        draft_id = dialog.draft.draft_id
+        dialog.deleteLater()
+        self._signature_image_dialog = None
+        cancelled = (
+            result != int(QDialog.DialogCode.Accepted)
+            and not self._signature_image_committed
+            and self._signature_image_cancel_operation_id is None
+        )
+        if cancelled:
+            self._request_signature_image_cancel(draft_id)
+        self._signature_image_committed = False
+        self._update_page_actions()
+        self._update_quality_actions()
+
+    def _request_signature_image_cancel(self, draft_id: UUID) -> None:
+        if self._signature_image_cancel_operation_id is not None:
+            return
+        operation_id = self._allocate_operation_id()
+        self._signature_image_cancel_operation_id = operation_id
+        self._commands.signature_image_cancel_requested.emit(operation_id, draft_id)
+
+    @Slot(int)
+    def _signature_image_cancelled(self, operation_id: int) -> None:
+        if operation_id != self._signature_image_cancel_operation_id:
+            return
+        self._signature_image_cancel_operation_id = None
+        retry = self._signature_image_retry_after_cancel
+        self._signature_image_retry_after_cancel = False
+        dialog = self._signature_image_dialog
+        if dialog is not None:
+            try:
+                dialog.finished.disconnect(self._signature_image_dialog_finished)
+            except RuntimeError:
+                pass
+            dialog.done(QDialog.DialogCode.Rejected)
+            dialog.deleteLater()
+            self._signature_image_dialog = None
+        if retry:
+            self._start_signature_image_prepare()
+        else:
+            self._clear_signature_image_source()
+            self._announce("Signature-image placement cancelled. Nothing was applied.")
+        self._update_page_actions()
+        self._update_quality_actions()
+        if (
+            not retry
+            and not self._closing_requested
+            and self._place_signature_image_button.isEnabled()
+        ):
+            QTimer.singleShot(0, self._focus_signature_image_button_after_dialog)
+
+    def _focus_signature_image_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._place_signature_image_button.isEnabled():
+            return
+        self.activateWindow()
+        self._place_signature_image_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._place_signature_image_button)
+
+    def _focus_remove_signature_image_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._remove_signature_image_button.isEnabled():
+            return
+        self.activateWindow()
+        self._remove_signature_image_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._remove_signature_image_button)
+
+    @Slot(int, object)
+    def _signature_image_cancel_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._signature_image_cancel_operation_id:
+            return
+        self._signature_image_cancel_operation_id = None
+        self._signature_image_retry_after_cancel = False
+        dialog = self._signature_image_dialog
+        if dialog is not None:
+            code = failure.code if type(failure) is UiFailure else None
+            message = failure.message if type(failure) is UiFailure else None
+            dialog.show_failure(code, message)
+        self._clear_signature_image_source()
+        self._update_page_actions()
+
+    def _request_signature_image_placements(self) -> None:
+        if not self._remove_signature_image_button.isEnabled():
+            return
+        page_id = self._selected_page_id()
+        if page_id is None or not self._prepare_for_mutation():
+            return
+        if self._active_operation is not None:
+            return
+        request_id = self._allocate_operation_id()
+        self._signature_image_list_request_id = request_id
+        self._signature_image_page_id = page_id
+        self._update_page_actions()
+        self._commands.signature_image_placements_requested.emit(request_id, page_id)
+
+    @Slot(int, object)
+    def _signature_image_placements_ready(self, request_id: int, choices: object) -> None:
+        if request_id != self._signature_image_list_request_id:
+            return
+        self._signature_image_list_request_id = None
+        expected_page_id = self._signature_image_page_id
+        if (
+            expected_page_id is None
+            or expected_page_id != self._selected_page_id()
+            or type(choices) is not tuple
+            or any(
+                type(choice) is not SignatureImagePlacementChoice
+                or choice.page_id != expected_page_id
+                or choice.position != index
+                or choice.total != len(choices)
+                for index, choice in enumerate(choices, start=1)
+            )
+        ):
+            self._announce(
+                "PaperWorkShell could not verify the signature-image placement list safely.",
+                assertive=True,
+            )
+            self._clear_signature_image_source()
+            return
+        if not choices:
+            self._announce("There are no signature-image placements on the selected page.")
+            self._clear_signature_image_source()
+            self._update_page_actions()
+            self._place_signature_image_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            return
+        dialog = SignatureImageDeleteDialog(choices, self)
+        dialog.delete_requested.connect(self._delete_signature_image)
+        dialog.cancel_operation_requested.connect(self._cancel_active_operation)
+        dialog.finished.connect(self._signature_image_delete_dialog_finished)
+        self._signature_image_delete_dialog = dialog
+        self._update_page_actions()
+        dialog.open()
+
+    @Slot(int, object)
+    def _signature_image_placements_failed(self, request_id: int, failure: object) -> None:
+        if request_id != self._signature_image_list_request_id:
+            return
+        self._signature_image_list_request_id = None
+        self._clear_signature_image_source()
+        self._update_page_actions()
+        if type(failure) is UiFailure:
+            self._failed(failure)
+
+    @Slot(object, object)
+    def _delete_signature_image(self, overlay_id: object, policy: object) -> None:
+        if (
+            self._signature_image_delete_dialog is None
+            or type(overlay_id) is not UUID
+            or self._signature_image_page_id is None
+            or self._signature_image_delete_operation_id is not None
+            or self._active_operation is not None
+        ):
+            return
+        operation = self._begin_long_operation(_LongOperationKind.SIGNATURE_IMAGE)
+        self._signature_image_delete_operation_id = operation.operation_id
+        self._commands.signature_image_delete_requested.emit(
+            operation.operation_id,
+            self._signature_image_page_id,
+            overlay_id,
+            policy,
+            operation.cancellation,
+        )
+
+    @Slot(int, object)
+    def _signature_image_deleted(self, operation_id: int, outcome: object) -> None:
+        if operation_id != self._signature_image_delete_operation_id:
+            return
+        self._signature_image_delete_operation_id = None
+        dialog = self._signature_image_delete_dialog
+        if dialog is None or type(outcome) is not OrganizerSignatureImageDeleteOutcome:
+            if dialog is not None:
+                dialog.show_failure("PWS_UI_RESPONSE_INVALID", None)
+            return
+        dialog.mark_deleted()
+        self._announce(outcome.safe_message, assertive=outcome.cleanup_warning is not None)
+
+    @Slot(int, object)
+    def _signature_image_delete_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._signature_image_delete_operation_id:
+            return
+        self._signature_image_delete_operation_id = None
+        dialog = self._signature_image_delete_dialog
+        if dialog is None:
+            return
+        code = failure.code if type(failure) is UiFailure else None
+        message = failure.message if type(failure) is UiFailure else None
+        if code == SignatureImageErrorCode.CANCELLED.value:
+            try:
+                dialog.finished.disconnect(self._signature_image_delete_dialog_finished)
+            except RuntimeError:
+                pass
+            dialog.done(QDialog.DialogCode.Rejected)
+            dialog.deleteLater()
+            self._signature_image_delete_dialog = None
+            self._clear_signature_image_source()
+            self._pending_failure_focus = "signature_image_delete"
+            self._update_page_actions()
+            self._announce(
+                "Signature-image removal cancelled. The placement was not removed.",
+                assertive=True,
+            )
+            return
+        dialog.show_failure(code, message)
+
+    @Slot(int)
+    def _signature_image_delete_dialog_finished(self, _result: int) -> None:
+        dialog = self._signature_image_delete_dialog
+        if dialog is None:
+            return
+        dialog.deleteLater()
+        self._signature_image_delete_dialog = None
+        self._signature_image_delete_operation_id = None
+        self._clear_signature_image_source()
+        self._update_page_actions()
+        if not self._closing_requested and self._remove_signature_image_button.isEnabled():
+            self._remove_signature_image_button.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _clear_signature_image_source(self) -> None:
+        self._signature_image_source_path = None
+        self._signature_image_page_id = None
+
     def _show_scan_review_failure(self, failure: UiFailure) -> None:
         self._error_label.setText(f"{failure.code}: {failure.message}")
         self._error_label.setVisible(True)
@@ -3035,6 +3528,7 @@ class PaperWorkShellWindow(QMainWindow):
             not self._controls_enabled
             or self._closing_requested
             or self._case_reopen_required
+            or self._signature_image_is_opening_or_active()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -3190,6 +3684,19 @@ class PaperWorkShellWindow(QMainWindow):
             or self._core_overlay_tools_dialog is not None
             or self._core_overlay_tools_apply_operation_id is not None
             or self._core_overlay_tools_cancel_operation_id is not None
+        )
+
+    def _signature_image_is_opening_or_active(self) -> bool:
+        active = self._active_operation
+        return (
+            self._signature_image_prepare_operation_id is not None
+            or self._signature_image_place_operation_id is not None
+            or self._signature_image_cancel_operation_id is not None
+            or self._signature_image_list_request_id is not None
+            or self._signature_image_delete_operation_id is not None
+            or self._signature_image_dialog is not None
+            or self._signature_image_delete_dialog is not None
+            or (active is not None and active.kind is _LongOperationKind.SIGNATURE_IMAGE)
         )
 
     def _quality_is_pending_or_running(self) -> bool:
@@ -3486,6 +3993,22 @@ class PaperWorkShellWindow(QMainWindow):
                 self._quality_check_button.setFocus(Qt.FocusReason.OtherFocusReason)
                 self._ensure_widget_visible(self._quality_check_button)
                 return
+        elif target == "signature_image":
+            self._update_page_actions()
+            if (
+                self._place_signature_image_button.isVisible()
+                and self._place_signature_image_button.isEnabled()
+            ):
+                QTimer.singleShot(0, self._focus_signature_image_button_after_dialog)
+                return
+        elif target == "signature_image_delete":
+            self._update_page_actions()
+            if (
+                self._remove_signature_image_button.isVisible()
+                and self._remove_signature_image_button.isEnabled()
+            ):
+                QTimer.singleShot(0, self._focus_remove_signature_image_button_after_dialog)
+                return
         if self._error_label.isVisible():
             self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._error_label)
@@ -3503,6 +4026,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._signature_image_is_opening_or_active()
         )
         self._update_ocr_language_availability()
 
@@ -3514,6 +4038,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._signature_image_is_opening_or_active()
             and self._ocr_language_dialog is None
             and self._ocr_language_refresh_request_id is None
         )
@@ -3534,6 +4059,8 @@ class PaperWorkShellWindow(QMainWindow):
             self._scan_review_button,
             self._change_order_button,
             self._core_overlay_tools_button,
+            self._place_signature_image_button,
+            self._remove_signature_image_button,
             self._undo_button,
             self._redo_button,
         ):
@@ -3573,6 +4100,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._discard_ocr_language_dialog_for_shutdown()
         self._discard_scan_review_for_shutdown()
         self._discard_core_overlay_tools_for_shutdown()
+        self._discard_signature_images_for_shutdown()
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
         self._cancel_active_operation_silently()
@@ -3627,6 +4155,31 @@ class PaperWorkShellWindow(QMainWindow):
             operation_id = self._allocate_operation_id()
             self._core_overlay_tools_cancel_operation_id = operation_id
             self._commands.core_overlay_tools_cancel_requested.emit(operation_id, state)
+
+    def _discard_signature_images_for_shutdown(self) -> None:
+        """Dismiss detached previews; backend shutdown owns retained-asset cleanup."""
+
+        placement = self._signature_image_dialog
+        if placement is not None:
+            try:
+                placement.finished.disconnect(self._signature_image_dialog_finished)
+            except RuntimeError:
+                pass
+            placement.done(QDialog.DialogCode.Rejected)
+            placement.deleteLater()
+        deletion = self._signature_image_delete_dialog
+        if deletion is not None:
+            try:
+                deletion.finished.disconnect(self._signature_image_delete_dialog_finished)
+            except RuntimeError:
+                pass
+            deletion.done(QDialog.DialogCode.Rejected)
+            deletion.deleteLater()
+        self._signature_image_dialog = None
+        self._signature_image_delete_dialog = None
+        self._signature_image_retry_after_cancel = False
+        self._signature_image_committed = False
+        self._clear_signature_image_source()
 
     def _dismiss_core_overlay_tools_after_shutdown_refusal(self) -> None:
         """Expose the main retry surface after shutdown clears editor authority."""

@@ -17,6 +17,7 @@ import PIL
 from PIL import Image, ImageFile, PngImagePlugin, UnidentifiedImageError
 
 from paperworkshell.domain.image_pages import (
+    ImageAlphaNormalizationPolicy,
     ImageExifOrientation,
     ImageNormalizationLimits,
     ImageNormalizationRequest,
@@ -25,6 +26,7 @@ from paperworkshell.domain.image_pages import (
     ImagePageErrorCode,
     ImagePageMetadata,
     ImageQuarterTurn,
+    ImageRasterBackground,
     ImageSourceColorModel,
     ImageSourceFormat,
     plan_image_normalization_layout,
@@ -89,6 +91,7 @@ class _MetadataScan:
     record_count: int
     byte_count: int
     has_embedded_color_profile: bool
+    has_non_srgb_color_profile: bool
     has_exif: bool
     exif_orientation: ImageExifOrientation
 
@@ -132,6 +135,7 @@ class PillowImageDecoder:
             facts = _authenticate_source(source, request, limits, control)
             _seek_exact(source, 0, "image.source_seek")
             scan = _scan_metadata(source, expected_format, facts.byte_size, limits, control)
+            _require_supported_color_profile(scan, request)
             _seek_exact(source, 0, "image.source_seek")
             with _serialized_decoder(control):
                 with _pillow_limits(limits, scan):
@@ -237,8 +241,9 @@ def _decode_and_normalize(
         _require_active(control)
         converted = _convert_to_rgba(working)
         working = _replace_image(working, converted)
-        opaque = _composite_opaque_white(working, has_alpha=has_alpha)
-        working = _replace_image(working, opaque)
+        if request.alpha_policy is ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE:
+            opaque = _composite_opaque_white(working, has_alpha=has_alpha)
+            working = _replace_image(working, opaque)
         _require_active(control)
         if working.size != (layout.width_pixels, layout.height_pixels):
             try:
@@ -254,8 +259,15 @@ def _decode_and_normalize(
         pixels = working.tobytes("raw", "RGBA")
         _close_image_no_raise(working)
         working = None
-        if len(pixels) != layout.byte_count or any(
-            alpha != 255 for alpha in memoryview(pixels)[3::4]
+        if request.alpha_policy is ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA:
+            pixels = _canonicalize_fully_transparent_rgb(
+                pixels,
+                row_stride=layout.row_stride_bytes,
+                control=control,
+            )
+        if len(pixels) != layout.byte_count or (
+            request.alpha_policy is ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+            and any(alpha != 255 for alpha in memoryview(pixels)[3::4])
         ):
             reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.decoder_pixels")
         digest = _write_exact(destination, pixels, layout.row_stride_bytes, control)
@@ -268,6 +280,12 @@ def _decode_and_normalize(
             row_stride_bytes=layout.row_stride_bytes,
             bytes_written=layout.byte_count,
             pixel_sha256=digest,
+            alpha_policy=request.alpha_policy,
+            background=(
+                ImageRasterBackground.OPAQUE_WHITE
+                if request.alpha_policy is ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+                else ImageRasterBackground.PRESERVED_ALPHA
+            ),
         )
         validate_image_normalization_result(request, limits, result)
         return result
@@ -359,6 +377,26 @@ def _scan_metadata(
     reject_image_page(ImagePageErrorCode.MODEL_INVALID, "image.source_format")
 
 
+def _require_supported_color_profile(
+    scan: _MetadataScan,
+    request: ImageNormalizationRequest,
+) -> None:
+    """Keep the straight-alpha signature profile deterministic without parsing ICC data.
+
+    The released opaque page-normalization profile retains its existing behavior.  Signature
+    rasters instead become unprofiled DeviceRGB values, so an embedded ICC profile or PNG
+    chromaticity/gamma declaration must fail before Pillow parses the image.  A well-formed PNG
+    ``sRGB`` rendering-intent chunk is compatible with that fixed interpretation.
+    """
+
+    if request.alpha_policy is not ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA:
+        return
+    if scan.has_embedded_color_profile:
+        reject_image_page(ImagePageErrorCode.UNSUPPORTED, "image.signature_icc_profile")
+    if scan.has_non_srgb_color_profile:
+        reject_image_page(ImagePageErrorCode.UNSUPPORTED, "image.signature_color_profile")
+
+
 def _scan_png(
     source: BinaryIO,
     byte_size: int,
@@ -382,6 +420,7 @@ def _scan_png(
     palette_entries: int | None = None
     seen_singleton_metadata: set[bytes] = set()
     has_icc = False
+    has_non_srgb_color_profile = False
     has_exif = False
     orientation = ImageExifOrientation.NORMAL
     while offset < byte_size:
@@ -463,6 +502,10 @@ def _scan_png(
             _require_metadata_budget(metadata_bytes, limits)
         if chunk_type in _PNG_METADATA_CHUNKS:
             has_icc = has_icc or chunk_type == b"iCCP"
+            has_non_srgb_color_profile = has_non_srgb_color_profile or chunk_type in {
+                b"cHRM",
+                b"gAMA",
+            }
             if chunk_type == b"eXIf":
                 if has_exif:
                     reject_image_page(
@@ -479,12 +522,17 @@ def _scan_png(
                 )
         payload_crc = crc32(chunk_type)
         ihdr_payload: bytes | None = None
+        srgb_payload: bytes | None = None
+        if chunk_type == b"sRGB" and length != 1:
+            reject_image_page(ImagePageErrorCode.METADATA_INVALID, "image.png_srgb")
         remaining = length
         while remaining:
             _require_active(control)
             chunk = _read_exact(source, min(remaining, _SCAN_BLOCK_BYTES))
             if chunk_type == b"IHDR":
                 ihdr_payload = chunk
+            elif chunk_type == b"sRGB":
+                srgb_payload = chunk
             payload_crc = crc32(chunk, payload_crc)
             remaining -= len(chunk)
         expected_crc = int.from_bytes(_read_exact(source, 4), "big")
@@ -496,6 +544,8 @@ def _scan_png(
                 reject_image_page(ImagePageErrorCode.MALFORMED, "image.png_ihdr")
             png_bit_depth = ihdr_payload[8]
             png_color_type = ihdr_payload[9]
+        elif chunk_type == b"sRGB" and (srgb_payload is None or srgb_payload[0] not in range(4)):
+            reject_image_page(ImagePageErrorCode.METADATA_INVALID, "image.png_srgb")
         saw_ihdr = saw_ihdr or chunk_type == b"IHDR"
         saw_idat = saw_idat or chunk_type == b"IDAT"
         if chunk_type == b"IEND":
@@ -505,7 +555,14 @@ def _scan_png(
             break
     if not (saw_ihdr and saw_idat and saw_iend) or offset != byte_size:
         reject_image_page(ImagePageErrorCode.MALFORMED, "image.png_framing")
-    return _MetadataScan(metadata_records, metadata_bytes, has_icc, has_exif, orientation)
+    return _MetadataScan(
+        metadata_records,
+        metadata_bytes,
+        has_icc,
+        has_non_srgb_color_profile,
+        has_exif,
+        orientation,
+    )
 
 
 def _valid_png_chunk_type(chunk_type: bytes) -> bool:
@@ -559,6 +616,7 @@ def _scan_jpeg(
                 metadata_records,
                 metadata_bytes,
                 has_icc,
+                False,
                 has_exif,
                 orientation,
             )
@@ -852,6 +910,46 @@ def _composite_opaque_white(image: Image.Image, *, has_alpha: bool) -> Image.Ima
     except Exception:
         _close_image_no_raise(white)
         reject_image_page(ImagePageErrorCode.DEPENDENCY_FAILED, "image.decoder_color")
+
+
+def _canonicalize_fully_transparent_rgb(
+    pixels: bytes,
+    *,
+    row_stride: int,
+    control: ImageNormalizationControl,
+) -> bytes:
+    """Clear hidden RGB samples where alpha is zero while retaining straight alpha."""
+
+    if (
+        type(pixels) is not bytes
+        or type(row_stride) is not int
+        or row_stride < 4
+        or row_stride % 4
+        or len(pixels) % row_stride
+    ):
+        reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.decoder_pixels")
+    view = memoryview(pixels)
+    found_transparent = False
+    for row_start in range(0, len(pixels), row_stride):
+        _require_active(control)
+        if any(alpha == 0 for alpha in view[row_start + 3 : row_start + row_stride : 4]):
+            found_transparent = True
+            break
+    if not found_transparent:
+        return pixels
+    try:
+        canonical = bytearray(pixels)
+    except MemoryError:
+        reject_image_page(ImagePageErrorCode.LIMIT_EXCEEDED, "image.limit_memory")
+    for row_start in range(0, len(canonical), row_stride):
+        _require_active(control)
+        for offset in range(row_start, row_start + row_stride, 4):
+            if canonical[offset + 3] == 0:
+                canonical[offset : offset + 3] = b"\x00\x00\x00"
+    try:
+        return bytes(canonical)
+    except MemoryError:
+        reject_image_page(ImagePageErrorCode.LIMIT_EXCEEDED, "image.limit_memory")
 
 
 def _write_exact(

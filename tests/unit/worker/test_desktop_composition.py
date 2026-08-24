@@ -50,8 +50,12 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_TRANSFORM_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CapabilityDescriptor,
     ResourceLimits,
+)
+from paperworkshell.worker.signature_image_raster_broker import (
+    CommittedSignatureImageAssetStore,
 )
 
 
@@ -65,6 +69,9 @@ class _CommittedPages:
         return None
 
     def borrow_committed_image_page(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def borrow_committed_signature_image(self, *_args: object, **_kwargs: object) -> None:
         return None
 
 
@@ -200,6 +207,7 @@ def _compose_with_fake_client(
         _config(tmp_path),
         prepared_sources=prepared,
         committed_pages=committed,
+        committed_signature_images=cast(CommittedSignatureImageAssetStore, committed),
         thumbnail_cache=cache,
         heavy_operations=HeavyOperationCoordinator(1),
     )
@@ -222,17 +230,20 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     assert callable(image_port.get_or_generate)
     assert callable(composition.image_page_transformer.transform)
     assert callable(composition.image_source_inspector.inspect)
+    assert callable(composition.signature_image_rasterizer.rasterize_committed)
     assert isinstance(worker.launcher, WindowsProcessLauncher)
     assert worker.required_capabilities == (
         IMAGE_NORMALIZE_CAPABILITY,
         IMAGE_TRANSFORM_CAPABILITY,
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
+        SIGNATURE_IMAGE_RASTER_CAPABILITY,
     )
     assert cast(Any, source_port)._worker is worker
     assert cast(Any, thumbnail_port)._worker is worker
     assert cast(Any, image_port)._worker is worker
     assert cast(Any, composition.image_page_transformer)._worker is worker
+    assert cast(Any, composition.signature_image_rasterizer)._worker is worker
     assert cast(Any, source_port)._heavy_operations is cast(Any, thumbnail_port)._heavy_operations
     assert composition.heavy_operation_snapshot().maximum_concurrency == 1
     assert worker.constructed_thread == threading.get_ident()
@@ -251,6 +262,7 @@ def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(
             _config(tmp_path),
             prepared_sources=prepared,
             committed_pages=committed,
+            committed_signature_images=cast(CommittedSignatureImageAssetStore, committed),
             thumbnail_cache=cache,
             heavy_operations=HeavyOperationCoordinator(2),
         )
@@ -353,6 +365,7 @@ def test_configuration_and_composition_representations_never_disclose_paths(
         config,
         prepared_sources=prepared,
         committed_pages=committed,
+        committed_signature_images=cast(CommittedSignatureImageAssetStore, committed),
         thumbnail_cache=cache,
         heavy_operations=HeavyOperationCoordinator(1),
     )
@@ -385,6 +398,7 @@ def test_factory_rejects_invalid_structural_ports_with_sanitized_error(
             _config(tmp_path),
             prepared_sources=cast(PreparedSourceHandleBroker, prepared),
             committed_pages=cast(CommittedPdfPageStore, committed),
+            committed_signature_images=cast(CommittedSignatureImageAssetStore, committed),
             thumbnail_cache=cast(ThumbnailCacheStore, cache),
             heavy_operations=HeavyOperationCoordinator(1),
         )

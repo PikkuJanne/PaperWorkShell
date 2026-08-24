@@ -11,6 +11,7 @@ import pytest
 from PIL import Image, PngImagePlugin
 
 from paperworkshell.domain.image_pages import (
+    ImageAlphaNormalizationPolicy,
     ImageExifOrientation,
     ImageNormalizationLimits,
     ImageNormalizationRequest,
@@ -207,6 +208,9 @@ def _normalize(
     maximum_size: tuple[int, int] = (256, 256),
     limits: ImageNormalizationLimits | None = None,
     control: _Control | None = None,
+    alpha_policy: ImageAlphaNormalizationPolicy = (
+        ImageAlphaNormalizationPolicy.COMPOSITE_ON_OPAQUE_WHITE
+    ),
 ) -> tuple[ImageNormalizationResult, bytes]:
     request = ImageNormalizationRequest(
         expected_source_format=format,
@@ -215,6 +219,7 @@ def _normalize(
         maximum_width_pixels=maximum_size[0],
         maximum_height_pixels=maximum_size[1],
         additional_rotation=rotation,
+        alpha_policy=alpha_policy,
     )
     sink = BytesIO()
     result = PillowImageDecoder().normalize(
@@ -318,6 +323,96 @@ def test_unrelated_jpeg_app1_and_app2_are_not_reported_as_exif_or_icc() -> None:
     assert not result.metadata.has_exif
     assert not result.metadata.has_embedded_color_profile
     assert result.metadata.metadata_record_count >= 2
+
+
+def test_straight_alpha_canonicalizes_hidden_rgb_but_preserves_partial_alpha() -> None:
+    image = Image.new("RGBA", (2, 1))
+    image.putdata(((71, 82, 93, 0), (11, 22, 33, 128)))
+    sink = BytesIO()
+    image.save(sink, format="PNG")
+    image.close()
+
+    result, pixels = _normalize(
+        sink.getvalue(),
+        ImageSourceFormat.PNG,
+        alpha_policy=ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA,
+    )
+
+    assert result.alpha_policy is ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA
+    assert pixels[:4] == b"\x00\x00\x00\x00"
+    assert pixels[4:] == bytes((11, 22, 33, 128))
+
+
+def test_signature_profile_rejects_embedded_icc_before_pillow_but_opaque_profile_is_unchanged() -> (
+    None
+):
+    private_profile = b"ICC_PROFILE\x00\x01\x01PRIVATE-ICC-CANARY"
+    original = _encode(format="JPEG")
+    payload = original[:2] + _jpeg_segment(0xE2, private_profile) + original[2:]
+    real_open = Image.open
+
+    with patch.object(Image, "open", wraps=real_open) as observed_open:
+        with pytest.raises(ImagePageError) as caught:
+            _normalize(
+                payload,
+                ImageSourceFormat.JPEG,
+                alpha_policy=ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA,
+            )
+
+        assert caught.value.code is ImagePageErrorCode.UNSUPPORTED
+        assert caught.value.context == "image.signature_icc_profile"
+        assert "PRIVATE-ICC-CANARY" not in str(caught.value)
+        assert caught.value.__cause__ is None
+        assert caught.value.__context__ is None
+        observed_open.assert_not_called()
+
+        opaque, _pixels = _normalize(payload, ImageSourceFormat.JPEG)
+        observed_open.assert_called_once()
+        assert opaque.metadata.has_embedded_color_profile
+
+
+@pytest.mark.parametrize("chunk_type", (b"gAMA", b"cHRM"))
+def test_signature_profile_rejects_distinguishable_non_srgb_png_metadata(
+    chunk_type: bytes,
+) -> None:
+    payload_size = 4 if chunk_type == b"gAMA" else 32
+    payload = _insert_png_chunk_after(
+        _encode(format="PNG"),
+        b"IHDR",
+        _png_chunk(chunk_type, bytes(payload_size)),
+    )
+
+    with pytest.raises(ImagePageError) as caught:
+        _normalize(
+            payload,
+            ImageSourceFormat.PNG,
+            alpha_policy=ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA,
+        )
+
+    assert caught.value.code is ImagePageErrorCode.UNSUPPORTED
+    assert caught.value.context == "image.signature_color_profile"
+
+
+def test_signature_profile_accepts_well_formed_srgb_intent_and_rejects_invalid_intent() -> None:
+    original = _encode(format="PNG")
+    accepted = _insert_png_chunk_after(original, b"IHDR", _png_chunk(b"sRGB", b"\x00"))
+
+    result, _pixels = _normalize(
+        accepted,
+        ImageSourceFormat.PNG,
+        alpha_policy=ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA,
+    )
+    assert not result.metadata.has_embedded_color_profile
+
+    invalid = _insert_png_chunk_after(original, b"IHDR", _png_chunk(b"sRGB", b"\x04"))
+    with pytest.raises(ImagePageError) as caught:
+        _normalize(
+            invalid,
+            ImageSourceFormat.PNG,
+            alpha_policy=ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA,
+        )
+    assert caught.value.code is ImagePageErrorCode.METADATA_INVALID
+    assert caught.value.context == "image.png_srgb"
 
 
 def test_png_rejects_duplicate_ihdr_before_decoder_access() -> None:
@@ -632,6 +727,22 @@ def test_metadata_release_keeps_only_transparency_needed_for_pixel_conversion() 
         assert image.text == {}  # type: ignore[attr-defined]
     finally:
         image.close()
+
+
+def test_transparent_rgb_canonicalization_remains_cooperatively_cancellable() -> None:
+    control = _Control(cancel_after=2)
+
+    with pytest.raises(ImagePageError) as caught:
+        pillow_decoder._canonicalize_fully_transparent_rgb(
+            bytes((91, 82, 73, 0)) * 2,
+            row_stride=4,
+            control=control,
+        )
+
+    assert caught.value.code is ImagePageErrorCode.CANCELLED
+    assert caught.value.context == "image.cancelled"
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
 
 
 @pytest.mark.parametrize(

@@ -56,6 +56,7 @@ THUMBNAIL_STAGE_ID = UUID("43000000-0000-4000-8000-000000000003")
 TEMP_STAGE_ID = UUID("44000000-0000-4000-8000-000000000004")
 SOURCE_ID = UUID("45000000-0000-4000-8000-000000000005")
 PAGE_ID = UUID("46000000-0000-4000-8000-000000000006")
+ASSET_ID = UUID("47000000-0000-4000-8000-000000000007")
 CREATED_AT = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
 
 
@@ -156,6 +157,55 @@ def test_startup_recovers_manifest_then_cleans_orphans_thumbnail_stages_and_temp
     assert list(layout.temp.iterdir()) == []
 
 
+def test_startup_recovery_preserves_unused_manifest_asset_in_originals(
+    tmp_path: Path,
+) -> None:
+    manager, layout = _stack(tmp_path)
+    asset_payload = b"synthetic-unused-signature-image-asset"
+    orphan_payload = b"synthetic-unreferenced-original"
+    asset_path = layout.originals / f"{ASSET_ID}.bin"
+    orphan_path = layout.originals / f"{ORPHAN_ID}.bin"
+    asset_path.write_bytes(asset_payload)
+    orphan_path.write_bytes(orphan_payload)
+
+    repository = WindowsManifestRepository(manager)
+    opened = repository.load(CASE_ID).snapshot
+    candidate = _next_manifest(opened.document)
+    assets = cast(list[object], candidate["assets"])
+    assets.append(
+        {
+            "asset_id": str(ASSET_ID),
+            "kind": "signature_image",
+            "storage_name": f"{ASSET_ID}.bin",
+            "media_type": "image/png",
+            "byte_size": len(asset_payload),
+            "sha256": hashlib.sha256(asset_payload).hexdigest(),
+        }
+    )
+    repository.save(
+        CASE_ID,
+        candidate,
+        expected_revision=opened.revision,
+        expected_sha256=opened.sha256,
+        expected_cas_token=opened.cas_token,
+    )
+    checkpoint = (layout.journal / "latest.json").read_bytes()
+    layout.manifest.write_bytes(b'{"schema_version":2')
+
+    result = build_windows_startup_recovery_service(manager).recover_startup()
+
+    case = result.cases[0]
+    assert case.status is CaseRecoveryStatus.RECOVERED
+    assert case.manifest_revision == 1
+    assert case.issues == ()
+    assert case.removed_source_orphans == 1
+    assert case.retained_source_artifacts == 0
+    assert case.released_bytes == len(orphan_payload)
+    assert asset_path.read_bytes() == asset_payload
+    assert not orphan_path.exists()
+    assert layout.manifest.read_bytes() == checkpoint
+
+
 def test_invalid_case_is_reported_unavailable_without_cleaning_any_artifact(
     tmp_path: Path,
 ) -> None:
@@ -245,7 +295,7 @@ def test_unexpected_cleanup_failure_is_not_mislabeled_as_case_change(
     def fail_cleanup(*_args: object, **_kwargs: object) -> object:
         raise RuntimeError("synthetic cleanup failure")
 
-    monkeypatch.setattr(recovery_module, "_cleanup_source_orphans", fail_cleanup)
+    monkeypatch.setattr(recovery_module, "_cleanup_original_orphans", fail_cleanup)
 
     result = build_windows_startup_recovery_service(manager).recover_startup()
 
@@ -357,7 +407,7 @@ def test_unexpected_later_source_candidate_failure_retains_confirmed_counts(
     temp_evidence.write_bytes(b"source-candidate-failure-temp-evidence")
     original_delete = cast(
         Callable[[Path, WindowsHandle], tuple[bool, int]],
-        recovery_module.__dict__["_delete_exact_source"],
+        recovery_module.__dict__["_delete_exact_original"],
     )
 
     def fail_second_candidate(path: Path, root: WindowsHandle) -> tuple[bool, int]:
@@ -367,7 +417,7 @@ def test_unexpected_later_source_candidate_failure_retains_confirmed_counts(
 
     monkeypatch.setattr(
         recovery_module,
-        "_delete_exact_source",
+        "_delete_exact_original",
         fail_second_candidate,
     )
 

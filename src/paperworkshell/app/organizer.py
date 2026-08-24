@@ -58,6 +58,12 @@ from paperworkshell.app.scan_review import (
     ScanReviewPreviewVariant,
     reject_scan_review,
 )
+from paperworkshell.app.signature_images import (
+    SignatureImagePlacementChoice,
+    SignatureImagePlacementDraft,
+    SignatureImagePlacementRequest,
+    SignatureImageWorkflowPort,
+)
 from paperworkshell.app.source_ingest import (
     DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
 )
@@ -120,8 +126,26 @@ from paperworkshell.domain.recovery import (
     StartupRecoveryResult,
     reject_recovery,
 )
+from paperworkshell.domain.signature_images import (
+    SignatureImageCleanupResult,
+    SignatureImageCleanupStatus,
+    SignatureImageError,
+    SignatureImageErrorCode,
+    SignatureImagePlacementCommitResult,
+    SignatureImageProgress,
+    reject_signature_image,
+)
 from paperworkshell.domain.source_ingest import SourceImportResult
-from paperworkshell.overlays.models import OverlayErrorCode, reject_overlay
+from paperworkshell.overlays.models import (
+    OverlayCollection,
+    OverlayErrorCode,
+    SignatureImageOverlayPayload,
+    reject_overlay,
+)
+from paperworkshell.overlays.signature_commands import (
+    SignatureAssetDeletePolicy,
+    SignatureImageManifestChange,
+)
 
 _DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
 MAX_ORGANIZER_PREVIEW_BATCH_PAGES: Final = 8
@@ -323,6 +347,79 @@ class OrganizerImportOutcome:
         return "Import committed and the organizer was refreshed."
 
 
+class OrganizerSignatureImageRefreshStatus(StrEnum):
+    """Closed organizer refresh state after an atomic placement commit."""
+
+    REFRESHED = "refreshed"
+    REOPEN_REQUIRED = "reopen_required"
+
+
+@dataclass(frozen=True, slots=True)
+class OrganizerSignatureImagePlacementOutcome:
+    """Durable placement result plus an honest organizer refresh outcome."""
+
+    committed_placement: SignatureImagePlacementCommitResult
+    state: OrganizerViewState
+    refresh_status: OrganizerSignatureImageRefreshStatus
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.committed_placement) is not SignatureImagePlacementCommitResult
+            or type(self.state) is not OrganizerViewState
+            or type(self.refresh_status) is not OrganizerSignatureImageRefreshStatus
+            or self.state.case_id != self.committed_placement.case_id
+        ):
+            reject_signature_image(SignatureImageErrorCode.RESULT_INVALID, "signature.outcome")
+
+    @property
+    def refresh_required(self) -> bool:
+        return self.refresh_status is OrganizerSignatureImageRefreshStatus.REOPEN_REQUIRED
+
+    @property
+    def safe_message(self) -> str:
+        if self.refresh_required:
+            return (
+                "Signature image placed. Close and reopen the case before continuing so the "
+                "organizer can refresh."
+            )
+        return "Signature image placed as a visual image only."
+
+
+@dataclass(frozen=True, slots=True)
+class OrganizerSignatureImageDeleteOutcome:
+    """Durable placement deletion with truthful best-effort asset cleanup."""
+
+    state: OrganizerViewState
+    cleanup_result: SignatureImageCleanupResult | None
+    cleanup_warning: str | None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.state) is not OrganizerViewState
+            or (
+                self.cleanup_result is not None
+                and type(self.cleanup_result) is not SignatureImageCleanupResult
+            )
+            or (self.cleanup_warning is not None and type(self.cleanup_warning) is not str)
+            or (self.cleanup_result is not None and self.cleanup_warning is not None)
+        ):
+            reject_signature_image(
+                SignatureImageErrorCode.RESULT_INVALID, "signature.delete_outcome"
+            )
+
+    @property
+    def safe_message(self) -> str:
+        if self.cleanup_warning is not None:
+            return self.cleanup_warning
+        if self.cleanup_result is None:
+            return "Signature-image placement removed. The case copy was retained."
+        if self.cleanup_result.status is SignatureImageCleanupStatus.REMOVED:
+            return "Signature-image placement removed. The unused case copy was cleaned up."
+        if self.cleanup_result.status is SignatureImageCleanupStatus.ALREADY_ABSENT:
+            return "Signature-image placement removed. The unused case copy was already absent."
+        return "Signature-image placement removed. The case copy was retained."
+
+
 @dataclass(slots=True)
 class _OrganizerSession:
     snapshot: ManifestSnapshot
@@ -351,6 +448,7 @@ class OrganizerBackend:
     __slots__ = (
         "_active_core_overlay_tools",
         "_active_scan_review",
+        "_active_signature_draft_id",
         "_close_resources",
         "_lifecycle",
         "_ocr_languages",
@@ -361,6 +459,7 @@ class OrganizerBackend:
         "_repository",
         "_session",
         "_shutdown",
+        "_signature_images",
         "_source_ingest",
         "_startup_recovery",
         "_thumbnails",
@@ -377,6 +476,7 @@ class OrganizerBackend:
         startup_recovery: StartupRecoveryResult | None = None,
         ocr_languages: OcrLanguageManager | None = None,
         quality_analysis: _QualityAnalysisServicePort | None = None,
+        signature_images: SignatureImageWorkflowPort | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -415,6 +515,19 @@ class OrganizerBackend:
                 QualityAnalysisErrorCode.MODEL_INVALID,
                 "quality.organizer_service",
             )
+        if signature_images is not None and any(
+            not callable(getattr(signature_images, method, None))
+            for method in (
+                "begin",
+                "commit",
+                "cancel",
+                "placements",
+                "delete_candidate",
+                "cleanup_deleted_asset",
+                "close",
+            )
+        ):
+            reject_signature_image(SignatureImageErrorCode.MODEL_INVALID, "signature.organizer")
         self._lifecycle = lifecycle
         self._repository = repository
         self._source_ingest = source_ingest
@@ -425,8 +538,10 @@ class OrganizerBackend:
         self._quality_analysis = selected_quality_analysis
         self._quality_profile_id = quality_profile_id
         self._quality_profile_sha256 = quality_profile_sha256
+        self._signature_images = signature_images
         self._active_core_overlay_tools: CoreOverlayToolsState | None = None
         self._active_scan_review: _ActiveScanReview | None = None
+        self._active_signature_draft_id: UUID | None = None
         self._pending_committed_import: SourceImportResult | None = None
         self._session: _OrganizerSession | None = None
         self._shutdown = False
@@ -719,6 +834,176 @@ class OrganizerBackend:
         if session.autosave.pending:
             reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_cancel_pending")
         self._active_core_overlay_tools = None
+
+    def begin_signature_image(
+        self,
+        page_id: UUID,
+        source_path: Path,
+        *,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
+        progress: Callable[[SignatureImageProgress], None],
+    ) -> SignatureImagePlacementDraft:
+        """Prepare and preview one private image without committing it."""
+
+        session = self._require_session()
+        workflow = self._require_signature_images()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.scan_review")
+        if self._active_signature_draft_id is not None:
+            reject_signature_image(
+                SignatureImageErrorCode.CONFIRMATION_REQUIRED,
+                "signature.active_draft",
+            )
+        _require_active_page(session.history.projection, page_id)
+        self.flush_autosave()
+        draft = workflow.begin(
+            session.snapshot,
+            page_id,
+            source_path,
+            cancellation=cancellation,
+            deadline=deadline,
+            progress=progress,
+        )
+        if (
+            type(draft) is not SignatureImagePlacementDraft
+            or draft.case_id != session.snapshot.case_id
+            or draft.manifest_revision != session.snapshot.revision
+            or draft.page_id != page_id
+        ):
+            if type(draft) is SignatureImagePlacementDraft:
+                try:
+                    workflow.cancel(draft.draft_id)
+                except BaseException:
+                    pass
+            reject_signature_image(SignatureImageErrorCode.RESULT_INVALID, "signature.draft")
+        self._active_signature_draft_id = draft.draft_id
+        return draft
+
+    def commit_signature_image(
+        self,
+        request: SignatureImagePlacementRequest,
+        *,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
+        progress: Callable[[SignatureImageProgress], None],
+    ) -> OrganizerSignatureImagePlacementOutcome:
+        """Commit one explicitly confirmed prepared image and refresh the organizer."""
+
+        session = self._require_session()
+        workflow = self._require_signature_images()
+        if (
+            type(request) is not SignatureImagePlacementRequest
+            or self._active_signature_draft_id != request.draft_id
+        ):
+            reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.commit_draft")
+        result = workflow.commit(
+            request,
+            cancellation=cancellation,
+            deadline=deadline,
+            progress=progress,
+        )
+        self._active_signature_draft_id = None
+        return self._reconcile_signature_image_commit(session, result)
+
+    def cancel_signature_image(self, draft_id: UUID) -> None:
+        """Discard one retained prepared image without changing the manifest."""
+
+        self._require_session()
+        workflow = self._require_signature_images()
+        if type(draft_id) is not UUID or self._active_signature_draft_id != draft_id:
+            reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.cancel")
+        try:
+            workflow.cancel(draft_id)
+        finally:
+            # The coordinator releases its retained authority before asking the
+            # lease to clean up.  Do not strand the organizer's exclusive phase
+            # if that best-effort cleanup reports a failure.
+            self._active_signature_draft_id = None
+
+    def signature_image_placements(
+        self,
+        page_id: UUID,
+    ) -> tuple[SignatureImagePlacementChoice, ...]:
+        """List visual signature images on one active page for explicit deletion."""
+
+        session = self._require_session()
+        workflow = self._require_signature_images()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.scan_review")
+        self.flush_autosave()
+        choices = workflow.placements(session.snapshot, page_id)
+        if type(choices) is not tuple or any(
+            type(choice) is not SignatureImagePlacementChoice for choice in choices
+        ):
+            reject_signature_image(SignatureImageErrorCode.RESULT_INVALID, "signature.placements")
+        return choices
+
+    def delete_signature_image(
+        self,
+        page_id: UUID,
+        overlay_id: UUID,
+        policy: SignatureAssetDeletePolicy,
+        *,
+        cancellation: Callable[[], bool],
+        deadline: Callable[[], bool],
+        progress: Callable[[SignatureImageProgress], None],
+    ) -> OrganizerSignatureImageDeleteOutcome:
+        """Persist one exact placement deletion, then clean only an unused asset."""
+
+        if not callable(cancellation) or not callable(deadline) or not callable(progress):
+            reject_signature_image(SignatureImageErrorCode.MODEL_INVALID, "signature.cleanup")
+        if cancellation():
+            reject_signature_image(SignatureImageErrorCode.CANCELLED, "signature.cleanup")
+        if deadline():
+            reject_signature_image(SignatureImageErrorCode.TIMED_OUT, "signature.cleanup")
+        session = self._require_session()
+        workflow = self._require_signature_images()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.scan_review")
+        self.flush_autosave()
+        change = workflow.delete_candidate(
+            session.snapshot,
+            page_id,
+            overlay_id,
+            policy,
+        )
+        if type(change) is not SignatureImageManifestChange:
+            reject_signature_image(SignatureImageErrorCode.RESULT_INVALID, "signature.delete")
+        session.autosave.queue(change.candidate_document)
+        state = self._flush_autosave_unchecked()
+        cleanup: SignatureImageCleanupResult | None = None
+        warning: str | None = None
+        try:
+            cleanup = workflow.cleanup_deleted_asset(
+                change.cleanup_intent,
+                case_id=change.case_id,
+                cancellation=cancellation,
+                deadline=deadline,
+                progress=progress,
+            )
+        except SignatureImageError as error:
+            if error.code is SignatureImageErrorCode.CANCELLED:
+                warning = (
+                    "Signature-image placement removed. Cleanup was cancelled; "
+                    "the case copy was retained."
+                )
+            elif error.code is SignatureImageErrorCode.TIMED_OUT:
+                warning = (
+                    "Signature-image placement removed. Cleanup reached its time limit; "
+                    "the case copy was retained."
+                )
+            else:
+                warning = error.safe_message
+        except BaseException:
+            warning = SignatureImageError(
+                SignatureImageErrorCode.CLEANUP_FAILED,
+                "signature.cleanup",
+            ).safe_message
+        return OrganizerSignatureImageDeleteOutcome(state, cleanup, warning)
 
     def undo(self) -> OrganizerViewState:
         """Undo exactly one session page operation and queue the resulting state."""
@@ -1079,6 +1364,10 @@ class OrganizerBackend:
         if self._shutdown:
             return
         self._active_core_overlay_tools = None
+        workflow = self._signature_images
+        self._active_signature_draft_id = None
+        if workflow is not None:
+            workflow.close()
         self.close_case()
         self._close_resources()
         self._shutdown = True
@@ -1119,6 +1408,38 @@ class OrganizerBackend:
             result,
             refreshed_state,
             OrganizerImportRefreshStatus.REFRESHED,
+        )
+
+    def _reconcile_signature_image_commit(
+        self,
+        session: _OrganizerSession,
+        result: SignatureImagePlacementCommitResult,
+    ) -> OrganizerSignatureImagePlacementOutcome:
+        """Best-effort refresh after the asset-plus-overlay durable commit point."""
+
+        try:
+            loaded = _require_load_result(
+                self._repository.load(session.snapshot.case_id),
+                session.snapshot.case_id,
+            )
+            _require_committed_signature_image(loaded.snapshot, result)
+            replacement = _session_from_load(self._repository, loaded)
+            refreshed_state = _view_state(replacement)
+        except BaseException:
+            return OrganizerSignatureImagePlacementOutcome(
+                result,
+                _view_state(session),
+                OrganizerSignatureImageRefreshStatus.REOPEN_REQUIRED,
+            )
+        try:
+            session.autosave.close()
+        except BaseException:
+            pass
+        self._session = replacement
+        return OrganizerSignatureImagePlacementOutcome(
+            result,
+            refreshed_state,
+            OrganizerSignatureImageRefreshStatus.REFRESHED,
         )
 
     def _require_scan_review(
@@ -1189,6 +1510,14 @@ class OrganizerBackend:
     def _require_core_overlay_tools_inactive(self) -> None:
         if self._active_core_overlay_tools is not None:
             reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_exclusive")
+        if self._active_signature_draft_id is not None:
+            reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.exclusive")
+
+    def _require_signature_images(self) -> SignatureImageWorkflowPort:
+        workflow = self._signature_images
+        if workflow is None:
+            reject_signature_image(SignatureImageErrorCode.INTERNAL_ERROR, "signature.unavailable")
+        return workflow
 
     def _queue_history(
         self,
@@ -1288,6 +1617,29 @@ def _require_committed_import(
             ManifestRepositoryErrorCode.REVISION_CONFLICT,
             "organizer.import_reconciliation",
         )
+
+
+def _require_committed_signature_image(
+    snapshot: ManifestSnapshot,
+    result: SignatureImagePlacementCommitResult,
+) -> None:
+    """Prove that a refreshed manifest contains the exact durable placement."""
+
+    collection = OverlayCollection.from_manifest_document(snapshot.document)
+    asset_found = any(asset.asset_id == result.asset_id for asset in collection.assets)
+    overlay_found = any(
+        record.overlay_id == result.overlay_id
+        and type(record.payload) is SignatureImageOverlayPayload
+        and record.payload.asset_id == result.asset_id
+        for record in collection.overlays
+    )
+    if (
+        snapshot.case_id != result.case_id
+        or snapshot.revision < result.manifest_revision
+        or not asset_found
+        or not overlay_found
+    ):
+        reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.reconciliation")
 
 
 def _view_state(session: _OrganizerSession) -> OrganizerViewState:

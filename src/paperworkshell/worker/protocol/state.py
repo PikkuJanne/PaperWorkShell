@@ -19,6 +19,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CancelDisposition,
     CapabilityDescriptor,
     ClosedReason,
@@ -46,6 +47,7 @@ from paperworkshell.worker.protocol.models import (
     quality_ocr_review_page_id,
     searchable_pdf_export_bound_object_ids,
     searchable_pdf_export_status_capacity_bytes,
+    signature_image_raster_bound_object_ids,
     validate_image_normalize_result,
     validate_image_normalize_start,
     validate_image_transform_result,
@@ -61,6 +63,8 @@ from paperworkshell.worker.protocol.models import (
     validate_quality_ocr_review_start,
     validate_searchable_pdf_export_result,
     validate_searchable_pdf_export_start,
+    validate_signature_image_raster_result,
+    validate_signature_image_raster_start,
 )
 
 MAX_TRACKED_MESSAGES: Final = 4_096
@@ -86,6 +90,7 @@ class _ActiveOperation:
     operation_version: int
     requested_limits: ResourceLimits
     image_normalize_output_object_id: UUID | None = None
+    signature_image_raster_output_object_id: UUID | None = None
     image_transform_output_object_id: UUID | None = None
     ocr_output_object_id: UUID | None = None
     thumbnail_cache_object_id: UUID | None = None
@@ -349,6 +354,7 @@ class ConversationState:
         if descriptor == PDF_INSPECT_CAPABILITY:
             validate_pdf_inspect_start(payload)
         image_normalize_output_object_id: UUID | None = None
+        signature_image_raster_output_object_id: UUID | None = None
         image_transform_output_object_id: UUID | None = None
         ocr_output_object_id: UUID | None = None
         thumbnail_cache_object_id: UUID | None = None
@@ -371,6 +377,21 @@ class ConversationState:
                     "image.normalize case, operation, and object identifiers must be distinct",
                 )
             image_normalize_output_object_id = image_bound_object_ids[1]
+        if descriptor == SIGNATURE_IMAGE_RASTER_CAPABILITY:
+            validate_signature_image_raster_start(payload)
+            signature_bound_object_ids = signature_image_raster_bound_object_ids(payload)
+            signature_correlated_ids = (
+                self.case_id,
+                message.operation_id,
+                *signature_bound_object_ids,
+            )
+            if len(set(signature_correlated_ids)) != len(signature_correlated_ids):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "image.signature_raster correlation identifiers must be distinct",
+                )
+            signature_image_raster_output_object_id = signature_bound_object_ids[1]
         if descriptor == IMAGE_TRANSFORM_CAPABILITY:
             validate_image_transform_start(payload)
             transform_bound_object_ids = image_transform_bound_object_ids(payload)
@@ -473,6 +494,7 @@ class ConversationState:
                 operation_version=payload.operation_version,
                 requested_limits=payload.requested_limits,
                 image_normalize_output_object_id=image_normalize_output_object_id,
+                signature_image_raster_output_object_id=(signature_image_raster_output_object_id),
                 image_transform_output_object_id=image_transform_output_object_id,
                 ocr_output_object_id=ocr_output_object_id,
                 thumbnail_cache_object_id=thumbnail_cache_object_id,
@@ -741,6 +763,22 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 output_object_id=active.image_normalize_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if (
+            CapabilityDescriptor(active.operation_kind, active.operation_version)
+            == SIGNATURE_IMAGE_RASTER_CAPABILITY
+        ):
+            if active.signature_image_raster_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "image.signature_raster result binding is unavailable",
+                )
+            validate_signature_image_raster_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.signature_image_raster_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         if (

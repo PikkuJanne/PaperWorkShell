@@ -140,8 +140,8 @@ descent metrics are conservative ink distances from the emitted baseline, not gl
 
 ## Signature-image trust boundary
 
-The overlay adapter deliberately does not parse the case asset's JPEG/PNG bytes. PWS-0305 owns the
-future bridge that must:
+The overlay adapter deliberately does not parse the case asset's JPEG/PNG bytes. The PWS-0305
+[signature-image asset boundary](signature-image-assets.md) provides the bridge that:
 
 1. authenticate the immutable encoded case asset against its manifest `AssetRecord` identity,
    media type, byte size, digest, and protected case location;
@@ -153,8 +153,8 @@ future bridge that must:
    row stride, byte count, and pixel SHA-256.
 
 The stored encoded `AssetRecord` remains authority for the immutable case file. The decoded
-`OverlayRasterAsset` becomes render authority for the exact pixel representation. A compliant
-bridge proves the ID relationship and both identities; neither record substitutes for the other.
+`OverlayRasterAsset` becomes render authority for the exact pixel representation. The bridge proves
+the ID relationship and both identities; neither record substitutes for the other.
 
 PWS-0303 takes one bounded snapshot of exactly the required sources and immutable raster metadata.
 Using only that snapshot, it authenticates pixel length and SHA-256 while reading in bounded chunks,

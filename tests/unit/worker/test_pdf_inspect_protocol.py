@@ -20,6 +20,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CaseObjectReference,
     Direction,
     MessageType,
@@ -118,6 +119,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
     assert DEFAULT_OPERATION_REGISTRY.capabilities == (
         NOOP_CAPABILITY,
         IMAGE_NORMALIZE_CAPABILITY,
+        SIGNATURE_IMAGE_RASTER_CAPABILITY,
         IMAGE_TRANSFORM_CAPABILITY,
         OCR_PROCESS_CAPABILITY,
         QUALITY_OCR_REVIEW_CAPABILITY,

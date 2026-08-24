@@ -36,6 +36,7 @@ from paperworkshell.app.recovery import (
     StartupRecoveryService,
 )
 from paperworkshell.app.searchable_pdf_export import SearchablePdfExportService
+from paperworkshell.app.signature_images import SignatureImageWorkflowCoordinator
 from paperworkshell.app.source_ingest import (
     CommittedPdfSourceBatchStore,
     CommittedSearchablePdfSourceBatchStore,
@@ -74,6 +75,7 @@ from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.recovery import WindowsStartupRecoveryStore
+from paperworkshell.storage.signature_images import WindowsSignatureImageAssetStore
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -546,11 +548,16 @@ def _build_backend(
         WindowsSourcePrechecker(_import_limits(selected_policy)),
         maximum_page_count=selected_policy.maximum_page_count,
     )
+    signature_image_store = WindowsSignatureImageAssetStore(
+        manager,
+        WindowsSourcePrechecker(_import_limits(selected_policy)),
+    )
     thumbnail_cache = WindowsThumbnailCacheStore(manager)
     composition = create_desktop_worker_composition(
         _desktop_worker_config(selected_policy),
         prepared_sources=source_store,
         committed_pages=source_store,
+        committed_signature_images=signature_image_store,
         thumbnail_cache=thumbnail_cache,
         heavy_operations=selected_resources.heavy_operations,
     )
@@ -585,6 +592,10 @@ def _build_backend(
             ),
             close_resources=owned_resources.close,
             startup_recovery=startup_recovery,
+            signature_images=SignatureImageWorkflowCoordinator(
+                signature_image_store,
+                composition.signature_image_rasterizer,
+            ),
         )
     except BaseException:
         owned_resources.close()

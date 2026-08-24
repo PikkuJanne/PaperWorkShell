@@ -145,6 +145,9 @@ class _UnusedWorkerPort:
     def transform(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not transform a preview")
 
+    def preview_prepared(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not rasterize a signature image")
+
 
 class _Composition:
     source_inspector = _UnusedWorkerPort()
@@ -152,6 +155,7 @@ class _Composition:
     thumbnail_generator = _UnusedWorkerPort()
     image_page_generator = _UnusedWorkerPort()
     image_page_transformer = _UnusedWorkerPort()
+    signature_image_rasterizer = _UnusedWorkerPort()
 
     def __init__(self) -> None:
         self.closed = False

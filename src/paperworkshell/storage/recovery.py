@@ -41,7 +41,10 @@ from paperworkshell.storage.export_history import (
     PdfExportHistoryRecoveryStatus,
     WindowsPdfExportHistoryRepository,
 )
-from paperworkshell.storage.manifest_codec import MAX_MANIFEST_BYTES
+from paperworkshell.storage.manifest_codec import (
+    MAX_MANIFEST_BYTES,
+    MAX_MANIFEST_COLLECTION_ITEMS,
+)
 from paperworkshell.storage.manifest_repository import (
     WindowsManifestRepository,
     validate_manifest_payload,
@@ -57,9 +60,12 @@ from paperworkshell.storage.workspace import (
     CleanupTarget,
 )
 
-_MAXIMUM_SOURCE_ENTRIES: Final = 4_096
+_MANIFEST_ORIGINAL_COLLECTIONS: Final = ("sources", "assets")
+_MAXIMUM_ORIGINAL_ENTRIES: Final = MAX_MANIFEST_COLLECTION_ITEMS * len(
+    _MANIFEST_ORIGINAL_COLLECTIONS
+)
 _MAXIMUM_CASE_SETTLEMENT_ATTEMPTS: Final = 2
-_SOURCE_STORAGE_NAME: Final = re.compile(
+_ORIGINAL_STORAGE_NAME: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.bin\Z"
 )
 
@@ -394,7 +400,7 @@ class WindowsStartupRecoveryStore:
                         raise _ExportHistoryUnresolved from None
                     history_restored = history_status is PdfExportHistoryRecoveryStatus.RESTORED
                     try:
-                        source = _cleanup_source_orphans(authority, snapshot)
+                        source = _cleanup_original_orphans(authority, snapshot)
                     except WorkspaceError:
                         add_issue(RecoveryIssueCode.SOURCE_ARTIFACTS_RETAINED)
                     except Exception:
@@ -511,11 +517,13 @@ def _require_current_snapshot(
         raise _ManifestChanged from None
 
 
-def _cleanup_source_orphans(
+def _cleanup_original_orphans(
     authority: AuthenticatedCase,
     snapshot: ManifestSnapshot,
 ) -> _SourceCleanupReport:
-    expected = _manifest_source_names(snapshot)
+    """Populate the established source-named result fields for originals cleanup."""
+
+    expected = _manifest_original_names(snapshot)
     root_path = authority.layout.originals
     removed = 0
     retained = 0
@@ -526,20 +534,20 @@ def _cleanup_source_orphans(
             require_expected_handle(root, root_path, directory=True)
             verify_private_acl(root)
             require_no_alternate_streams(root_path)
-            names = _bounded_names(root_path)
+            names = _bounded_original_names(root_path)
             candidates = [
                 name
                 for name in names
-                if name not in expected and _SOURCE_STORAGE_NAME.fullmatch(name) is not None
+                if name not in expected and _ORIGINAL_STORAGE_NAME.fullmatch(name) is not None
             ]
             retained = sum(
-                name not in expected and _SOURCE_STORAGE_NAME.fullmatch(name) is None
+                name not in expected and _ORIGINAL_STORAGE_NAME.fullmatch(name) is None
                 for name in names
             )
             report_ready = True
             for index, name in enumerate(candidates):
                 try:
-                    was_removed, byte_count = _delete_exact_source(root_path / name, root)
+                    was_removed, byte_count = _delete_exact_original(root_path / name, root)
                     if was_removed:
                         removed += 1
                         released += byte_count
@@ -597,36 +605,37 @@ def _cleanup_source_orphans(
     return _SourceCleanupReport(removed, retained, released)
 
 
-def _manifest_source_names(snapshot: ManifestSnapshot) -> frozenset[str]:
+def _manifest_original_names(snapshot: ManifestSnapshot) -> frozenset[str]:
     document = snapshot.document
-    raw_sources = document.get("sources")
-    if type(raw_sources) is not list:
-        reject_recovery(RecoveryErrorCode.INTERNAL_ERROR, "recovery.manifest_sources")
     names: set[str] = set()
-    for raw_source in cast(list[object], raw_sources):
-        if type(raw_source) is not dict:
-            reject_recovery(RecoveryErrorCode.INTERNAL_ERROR, "recovery.manifest_source")
-        storage_name = cast(dict[str, object], raw_source).get("storage_name")
-        if (
-            type(storage_name) is not str
-            or _SOURCE_STORAGE_NAME.fullmatch(storage_name) is None
-            or storage_name in names
-        ):
-            reject_recovery(RecoveryErrorCode.INTERNAL_ERROR, "recovery.manifest_source")
-        names.add(storage_name)
+    for collection_name in _MANIFEST_ORIGINAL_COLLECTIONS:
+        raw_records = document.get(collection_name)
+        if type(raw_records) is not list:
+            reject_recovery(RecoveryErrorCode.INTERNAL_ERROR, "recovery.manifest_originals")
+        for raw_record in cast(list[object], raw_records):
+            if type(raw_record) is not dict:
+                reject_recovery(RecoveryErrorCode.INTERNAL_ERROR, "recovery.manifest_original")
+            storage_name = cast(dict[str, object], raw_record).get("storage_name")
+            if (
+                type(storage_name) is not str
+                or _ORIGINAL_STORAGE_NAME.fullmatch(storage_name) is None
+                or storage_name in names
+            ):
+                reject_recovery(RecoveryErrorCode.INTERNAL_ERROR, "recovery.manifest_original")
+            names.add(storage_name)
     return frozenset(names)
 
 
-def _bounded_names(path: Path) -> tuple[str, ...]:
+def _bounded_original_names(path: Path) -> tuple[str, ...]:
     try:
         names: list[str] = []
         with os.scandir(path) as iterator:
             for entry in iterator:
-                if len(names) >= _MAXIMUM_SOURCE_ENTRIES:
+                if len(names) >= _MAXIMUM_ORIGINAL_ENTRIES:
                     reject(
                         WorkspaceErrorCode.SCAN_LIMIT_EXCEEDED,
-                        "recovery.source_entries",
-                        "Source recovery exceeded its configured entry limit.",
+                        "recovery.original_entries",
+                        "Originals recovery exceeded its configured entry limit.",
                     )
                 names.append(entry.name)
     except WorkspaceError:
@@ -634,13 +643,13 @@ def _bounded_names(path: Path) -> tuple[str, ...]:
     except OSError:
         reject(
             WorkspaceErrorCode.IDENTITY_CHANGED,
-            "recovery.source_scan",
-            "Source recovery could not authenticate the case inventory.",
+            "recovery.original_scan",
+            "Originals recovery could not authenticate the case inventory.",
         )
     return tuple(sorted(names, key=str.casefold))
 
 
-def _delete_exact_source(path: Path, root: WindowsHandle) -> tuple[bool, int]:
+def _delete_exact_original(path: Path, root: WindowsHandle) -> tuple[bool, int]:
     if not os.path.lexists(path):
         return False, 0
     with open_handle(path, delete=True) as handle:
@@ -650,8 +659,8 @@ def _delete_exact_source(path: Path, root: WindowsHandle) -> tuple[bool, int]:
         if initial.is_reparse_point or initial.is_sparse or initial.link_count != 1:
             reject(
                 WorkspaceErrorCode.ALIAS_DETECTED,
-                "recovery.source_identity",
-                "An orphan source candidate could not be authenticated safely.",
+                "recovery.original_identity",
+                "An orphan original candidate could not be authenticated safely.",
             )
         require_no_alternate_streams(path)
         current = handle.refresh_info()
@@ -666,8 +675,8 @@ def _delete_exact_source(path: Path, root: WindowsHandle) -> tuple[bool, int]:
         ):
             reject(
                 WorkspaceErrorCode.IDENTITY_CHANGED,
-                "recovery.source_changed",
-                "An orphan source candidate changed before cleanup.",
+                "recovery.original_changed",
+                "An orphan original candidate changed before cleanup.",
             )
         require_no_alternate_streams(path)
         handle.mark_for_deletion()

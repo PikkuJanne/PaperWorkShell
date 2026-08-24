@@ -29,6 +29,7 @@ from paperworkshell.worker.protocol.models import (
     PROTOCOL_VERSION,
     QUALITY_OCR_REVIEW_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CancelDisposition,
     CancelReason,
     CapabilityDescriptor,
@@ -71,6 +72,7 @@ from paperworkshell.worker.protocol.models import (
     validate_pdf_thumbnail_start,
     validate_quality_ocr_review_start,
     validate_searchable_pdf_export_start,
+    validate_signature_image_raster_start,
 )
 
 _ENVELOPE_FIELDS: Final = frozenset(
@@ -578,6 +580,7 @@ class OperationRegistry:
         return (
             NOOP_CAPABILITY,
             IMAGE_NORMALIZE_CAPABILITY,
+            SIGNATURE_IMAGE_RASTER_CAPABILITY,
             IMAGE_TRANSFORM_CAPABILITY,
             OCR_PROCESS_CAPABILITY,
             QUALITY_OCR_REVIEW_CAPABILITY,
@@ -612,6 +615,8 @@ class OperationRegistry:
             )
         if payload.operation_kind == IMAGE_NORMALIZE_CAPABILITY.capability_id:
             validate_image_normalize_start(payload)
+        if payload.operation_kind == SIGNATURE_IMAGE_RASTER_CAPABILITY.capability_id:
+            validate_signature_image_raster_start(payload)
         if payload.operation_kind == IMAGE_TRANSFORM_CAPABILITY.capability_id:
             validate_image_transform_start(payload)
         if payload.operation_kind == OCR_PROCESS_CAPABILITY.capability_id:

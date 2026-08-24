@@ -86,6 +86,13 @@ from paperworkshell.worker.protocol.models import (
     SEARCHABLE_PDF_EXPORT_STATUS_CONTENT_KIND,
     SEARCHABLE_PDF_EXPORT_STATUS_HANDLE_PARAMETER,
     SEARCHABLE_PDF_EXPORT_STATUS_OBJECT_ID_PARAMETER,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_MAXIMUM_HEIGHT_PARAMETER,
+    SIGNATURE_IMAGE_RASTER_MAXIMUM_WIDTH_PARAMETER,
+    SIGNATURE_IMAGE_RASTER_OUTPUT_CONTENT_KIND,
+    SIGNATURE_IMAGE_RASTER_OUTPUT_HANDLE_PARAMETER,
+    SIGNATURE_IMAGE_RASTER_OUTPUT_OBJECT_ID_PARAMETER,
+    SIGNATURE_IMAGE_RASTER_SOURCE_HANDLE_PARAMETER,
     CapabilityDescriptor,
     CaseObjectReference,
     ErrorCategory,
@@ -239,6 +246,150 @@ class ImageNormalizeOperationHandler:
             OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
         )
         return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+@dataclass(frozen=True, slots=True)
+class SignatureImageRasterOperationRequest:
+    """Path-free authority and bounds for one straight-alpha signature raster."""
+
+    source_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    output_object_id: UUID
+    maximum_width_pixels: int
+    maximum_height_pixels: int
+
+    def __post_init__(self) -> None:
+        handles = (self.source_handle, self.output_handle)
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+            or type(self.maximum_width_pixels) is not int
+            or self.maximum_width_pixels <= 0
+            or type(self.maximum_height_pixels) is not int
+            or self.maximum_height_pixels <= 0
+        ):
+            raise ValueError("validated signature-raster parameters are unavailable")
+
+
+class SignatureImageRasterAdapter(Protocol):
+    """Injected adapter consuming one asset handle and one bounded output section."""
+
+    def discard_handles(
+        self,
+        context: OperationContext,
+        request: SignatureImageRasterOperationRequest,
+    ) -> None: ...
+
+    def rasterize(
+        self,
+        context: OperationContext,
+        request: SignatureImageRasterOperationRequest,
+    ) -> CaseObjectReference: ...
+
+
+@dataclass(frozen=True, slots=True)
+class SignatureImageRasterOperationHandler:
+    """Coordinate the closed ``image.signature_raster`` operation."""
+
+    adapter: SignatureImageRasterAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return SIGNATURE_IMAGE_RASTER_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _signature_image_raster_operation_request(context)
+        context.report_progress(
+            OperationProgressPayload(ProgressStage.PROCESSING, 0, 1, ProgressUnit.PAGES)
+        )
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+        try:
+            output = self.adapter.rasterize(context, request)
+        except ImagePageError as error:
+            if error.code is ImagePageErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is ImagePageErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            if error.code is ImagePageErrorCode.LIMIT_EXCEEDED:
+                return resource_limited_operation_result()
+            if error.code is ImagePageErrorCode.UNSUPPORTED and error.context in {
+                "image.signature_icc_profile",
+                "image.signature_color_profile",
+            }:
+                return _unsupported_signature_image_profile_result()
+            raise
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_signature_image_raster_output(context, request, output)
+        context.report_progress(
+            OperationProgressPayload(ProgressStage.PROCESSING, 1, 1, ProgressUnit.PAGES)
+        )
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+def _signature_image_raster_operation_request(
+    context: OperationContext,
+) -> SignatureImageRasterOperationRequest:
+    return SignatureImageRasterOperationRequest(
+        source_handle=_positive_integer_parameter(
+            context, SIGNATURE_IMAGE_RASTER_SOURCE_HANDLE_PARAMETER
+        ),
+        output_handle=_positive_integer_parameter(
+            context, SIGNATURE_IMAGE_RASTER_OUTPUT_HANDLE_PARAMETER
+        ),
+        output_object_id=_uuid_parameter(
+            context, SIGNATURE_IMAGE_RASTER_OUTPUT_OBJECT_ID_PARAMETER
+        ),
+        maximum_width_pixels=_positive_integer_parameter(
+            context, SIGNATURE_IMAGE_RASTER_MAXIMUM_WIDTH_PARAMETER
+        ),
+        maximum_height_pixels=_positive_integer_parameter(
+            context, SIGNATURE_IMAGE_RASTER_MAXIMUM_HEIGHT_PARAMETER
+        ),
+    )
+
+
+def _require_signature_image_raster_output(
+    context: OperationContext,
+    request: SignatureImageRasterOperationRequest,
+    output: CaseObjectReference,
+) -> None:
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != SIGNATURE_IMAGE_RASTER_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+    ):
+        raise ValueError("signature-raster adapter returned an invalid staging reference")
+
+
+def _unsupported_signature_image_profile_result() -> OperationResultPayload:
+    """Return one value-free category for the signature profile's color-policy rejection."""
+
+    return OperationResultPayload(
+        OperationOutcome.FAILED,
+        (),
+        ErrorPayload(
+            ErrorCode.WORKER_OPERATION_FAILED,
+            ErrorCategory.UNSUPPORTED,
+            RetryAction.USER_ACTION,
+            False,
+            (),
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)

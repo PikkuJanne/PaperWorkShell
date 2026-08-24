@@ -246,6 +246,7 @@ PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
+SIGNATURE_IMAGE_RASTER_CAPABILITY: Final = CapabilityDescriptor("image.signature_raster", 1)
 IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
 QUALITY_OCR_REVIEW_CAPABILITY: Final = CapabilityDescriptor("ocr.review", 1)
@@ -258,6 +259,13 @@ IMAGE_NORMALIZE_MAXIMUM_WIDTH_PARAMETER: Final = "maximum_width_pixels"
 IMAGE_NORMALIZE_MAXIMUM_HEIGHT_PARAMETER: Final = "maximum_height_pixels"
 IMAGE_NORMALIZE_ADDITIONAL_ROTATION_PARAMETER: Final = "additional_rotation"
 IMAGE_NORMALIZE_OUTPUT_CONTENT_KIND: Final = "image-normalized-rgba-v1"
+
+SIGNATURE_IMAGE_RASTER_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
+SIGNATURE_IMAGE_RASTER_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
+SIGNATURE_IMAGE_RASTER_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
+SIGNATURE_IMAGE_RASTER_MAXIMUM_WIDTH_PARAMETER: Final = "maximum_width_pixels"
+SIGNATURE_IMAGE_RASTER_MAXIMUM_HEIGHT_PARAMETER: Final = "maximum_height_pixels"
+SIGNATURE_IMAGE_RASTER_OUTPUT_CONTENT_KIND: Final = "signature-image-rgba-v1"
 
 IMAGE_TRANSFORM_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 IMAGE_TRANSFORM_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
@@ -1119,6 +1127,162 @@ def validate_image_normalize_start(payload: OperationStartPayload) -> None:
             "RPC_INVALID_OPERATION",
             "payload.parameters",
             "image.normalize rotation must be a clockwise quarter-turn",
+        )
+
+
+def validate_signature_image_raster_start(payload: OperationStartPayload) -> None:
+    """Validate the exact, path-free ``image.signature_raster`` version-1 contract."""
+
+    if len(payload.inputs) != 1:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "image.signature_raster version 1 requires exactly one asset reference",
+        )
+    source = payload.inputs[0]
+    if (
+        source.area is not ReferenceArea.ASSET_READ
+        or source.operation_id is not None
+        or source.content_kind not in {"jpeg", "png"}
+        or source.expected_byte_size is None
+        or source.expected_byte_size < 1
+        or source.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "image.signature_raster requires one authenticated JPEG or PNG asset reference",
+        )
+    expected_names = {
+        SIGNATURE_IMAGE_RASTER_SOURCE_HANDLE_PARAMETER,
+        SIGNATURE_IMAGE_RASTER_OUTPUT_HANDLE_PARAMETER,
+        SIGNATURE_IMAGE_RASTER_OUTPUT_OBJECT_ID_PARAMETER,
+        SIGNATURE_IMAGE_RASTER_MAXIMUM_WIDTH_PARAMETER,
+        SIGNATURE_IMAGE_RASTER_MAXIMUM_HEIGHT_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.signature_raster version 1 requires its exact closed parameter set",
+        )
+    handles = tuple(
+        parameters[name]
+        for name in (
+            SIGNATURE_IMAGE_RASTER_SOURCE_HANDLE_PARAMETER,
+            SIGNATURE_IMAGE_RASTER_OUTPUT_HANDLE_PARAMETER,
+        )
+    )
+    if (
+        any(
+            parameter.value_type is not ScalarValueType.INTEGER
+            or type(parameter.value) is not int
+            or parameter.value <= 0
+            for parameter in handles
+        )
+        or handles[0].value == handles[1].value
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.signature_raster brokered handles must be distinct positive integers",
+        )
+    output_object = parameters[SIGNATURE_IMAGE_RASTER_OUTPUT_OBJECT_ID_PARAMETER]
+    if (
+        output_object.value_type is not ScalarValueType.UUID
+        or type(output_object.value) is not UUID
+        or output_object.value == source.object_id
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.signature_raster output identity must be a distinct UUID",
+        )
+    for name in (
+        SIGNATURE_IMAGE_RASTER_MAXIMUM_WIDTH_PARAMETER,
+        SIGNATURE_IMAGE_RASTER_MAXIMUM_HEIGHT_PARAMETER,
+    ):
+        parameter = parameters[name]
+        if (
+            parameter.value_type is not ScalarValueType.INTEGER
+            or type(parameter.value) is not int
+            or parameter.value <= 0
+        ):
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.parameters",
+                "image.signature_raster dimensions must be positive integers",
+            )
+    width = cast(int, parameters[SIGNATURE_IMAGE_RASTER_MAXIMUM_WIDTH_PARAMETER].value)
+    height = cast(int, parameters[SIGNATURE_IMAGE_RASTER_MAXIMUM_HEIGHT_PARAMETER].value)
+    if width > payload.requested_limits.pixel_count // height:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "image.signature_raster dimensions exceed the requested pixel limit",
+        )
+
+
+def signature_image_raster_bound_object_ids(
+    payload: OperationStartPayload,
+) -> tuple[UUID, UUID]:
+    """Return asset and output UUIDs from an already validated raster start."""
+
+    validate_signature_image_raster_start(payload)
+    for parameter in payload.parameters:
+        if parameter.name == SIGNATURE_IMAGE_RASTER_OUTPUT_OBJECT_ID_PARAMETER:
+            if parameter.value_type is ScalarValueType.UUID and type(parameter.value) is UUID:
+                return payload.inputs[0].object_id, parameter.value
+            break
+    reject(
+        "RPC_INVALID_OPERATION",
+        "payload.parameters",
+        "image.signature_raster output object identifier is unavailable",
+    )
+
+
+def validate_signature_image_raster_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    output_object_id: UUID,
+    maximum_output_bytes: int,
+) -> None:
+    """Bind a signature-raster terminal result to its bounded staging output."""
+
+    _require_uuid4(operation_id, "operation_id")
+    _require_uuid4(output_object_id, "payload.outputs.object_id")
+    _require_int(maximum_output_bytes, "payload.requested_limits.output_bytes", minimum=1)
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful image.signature_raster results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 1:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful image.signature_raster results require one staging output",
+        )
+    output = payload.outputs[0]
+    if (
+        output_object_id == operation_id
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != output_object_id
+        or output.operation_id != operation_id
+        or output.content_kind != SIGNATURE_IMAGE_RASTER_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "image.signature_raster output is not bound to its requested staging object",
         )
 
 

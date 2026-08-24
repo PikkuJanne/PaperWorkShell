@@ -48,6 +48,7 @@ from paperworkshell.domain.source_ingest import (
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
+from paperworkshell.storage.signature_images import WindowsSignatureImageAssetStore
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
@@ -170,6 +171,10 @@ def _live_image_backend(profile: Path) -> OrganizerBackend:
         _desktop_worker_config(),
         prepared_sources=source_store,
         committed_pages=source_store,
+        committed_signature_images=WindowsSignatureImageAssetStore(
+            manager,
+            WindowsSourcePrechecker(_limits()),
+        ),
         thumbnail_cache=WindowsThumbnailCacheStore(manager),
         heavy_operations=HeavyOperationCoordinator(1),
     )
@@ -264,6 +269,10 @@ def test_live_composition_imports_and_renders_bounded_organizer_previews(tmp_pat
         _desktop_worker_config(),
         prepared_sources=source_store,
         committed_pages=source_store,
+        committed_signature_images=WindowsSignatureImageAssetStore(
+            manager,
+            WindowsSourcePrechecker(_limits()),
+        ),
         thumbnail_cache=cache,
         heavy_operations=HeavyOperationCoordinator(1),
     )

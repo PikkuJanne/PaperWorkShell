@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import threading
 from contextlib import AbstractContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Self, cast
 
+from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
+from paperworkshell.domain.signature_images import (
+    SIGNATURE_IMAGE_RASTER_ARTIFACT_HEADER_BYTES,
+)
 from paperworkshell.worker._windows_broker import (
     drain_windows_bounded_output_cleanup,
     drain_windows_result_pipe_cleanup,
@@ -75,6 +79,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
     ResourceLimits,
 )
 from paperworkshell.worker.quality_ocr_review_composition import (
@@ -107,12 +112,18 @@ from paperworkshell.worker.searchable_pdf_export_composition import (
 from paperworkshell.worker.searchable_pdf_export_composition import (
     create_searchable_pdf_export_worker_composition_config as create_searchable_pdf_export_worker_composition_config,
 )
+from paperworkshell.worker.signature_image_raster_broker import (
+    BrokeredSignatureImageRasterizer,
+    CommittedSignatureImageAssetStore,
+    SignatureImageRasterBrokerPolicy,
+)
 
 _REQUIRED_DESKTOP_CAPABILITIES = (
     IMAGE_NORMALIZE_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    SIGNATURE_IMAGE_RASTER_CAPABILITY,
 )
 _REQUIRED_PDF_EXPORT_CAPABILITIES = (PDF_EXPORT_CAPABILITY,)
 
@@ -120,6 +131,21 @@ _REQUIRED_PDF_EXPORT_CAPABILITIES = (PDF_EXPORT_CAPABILITY,)
 # must not import the worker-host coordinator module directly.  Keep creation
 # and the public type alias at this established seam.
 DesktopHeavyOperationCoordinator = HeavyOperationCoordinator
+
+
+def _signature_image_raster_limits(image_limits: ResourceLimits) -> ResourceLimits:
+    """Preserve raw-pixel capacity while budgeting the signature artifact header."""
+
+    return replace(
+        image_limits,
+        output_bytes=(
+            image_limits.output_bytes
+            + max(
+                0,
+                SIGNATURE_IMAGE_RASTER_ARTIFACT_HEADER_BYTES - IMAGE_PAGE_ARTIFACT_HEADER_BYTES,
+            )
+        ),
+    )
 
 
 def create_desktop_heavy_operation_coordinator(
@@ -239,6 +265,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         "_image_page_generator",
         "_image_source_inspector",
         "_image_page_transformer",
+        "_signature_image_rasterizer",
         "_owner_thread_id",
         "_source_inspector",
         "_thumbnail_generator",
@@ -253,6 +280,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         image_source_inspector: BrokeredImageSourceInspector,
         image_page_generator: BrokeredImagePageGenerator,
         image_page_transformer: BrokeredImagePageTransformer,
+        signature_image_rasterizer: BrokeredSignatureImageRasterizer,
         heavy_operations: HeavyOperationCoordinator,
     ) -> None:
         self._worker = worker
@@ -261,6 +289,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         self._image_source_inspector = image_source_inspector
         self._image_page_generator = image_page_generator
         self._image_page_transformer = image_page_transformer
+        self._signature_image_rasterizer = signature_image_rasterizer
         self._heavy_operations = heavy_operations
         self._owner_thread_id = threading.get_ident()
         self._closed = False
@@ -294,6 +323,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         """Expose bounded canonical transforms over committed image pages."""
 
         return self._image_page_transformer
+
+    @property
+    def signature_image_rasterizer(self) -> BrokeredSignatureImageRasterizer:
+        """Expose authenticated straight-alpha signature-image preparation."""
+
+        return self._signature_image_rasterizer
 
     def resource_snapshot(self) -> WorkerResourceSnapshot | None:
         """Forward safe worker accounting without exposing process authority."""
@@ -482,6 +517,7 @@ def create_desktop_worker_composition(
     *,
     prepared_sources: PreparedSourceHandleBroker,
     committed_pages: CommittedPdfPageStore,
+    committed_signature_images: CommittedSignatureImageAssetStore,
     committed_image_pages: CommittedImagePageStore | None = None,
     thumbnail_cache: ThumbnailCacheStore,
     heavy_operations: HeavyOperationCoordinator,
@@ -502,6 +538,7 @@ def create_desktop_worker_composition(
         else committed_image_pages
     )
     _require_port(selected_image_pages, ("borrow_committed_image_page",))
+    _require_port(committed_signature_images, ("borrow_committed_signature_image",))
     _require_port(thumbnail_cache, ("lookup", "create_stage"))
 
     launcher = WindowsProcessLauncher(config._launch_config)
@@ -537,6 +574,14 @@ def create_desktop_worker_composition(
         config.image_transform_policy,
         heavy_operations=heavy_operations,
     )
+    signature_image_rasterizer = BrokeredSignatureImageRasterizer(
+        worker,
+        committed_signature_images,
+        SignatureImageRasterBrokerPolicy(
+            _signature_image_raster_limits(config.image_policy.limits)
+        ),
+        heavy_operations=heavy_operations,
+    )
     return DesktopWorkerComposition(
         worker,
         inspector,
@@ -544,6 +589,7 @@ def create_desktop_worker_composition(
         image_inspector,
         image_generator,
         image_transformer,
+        signature_image_rasterizer,
         heavy_operations,
     )
 

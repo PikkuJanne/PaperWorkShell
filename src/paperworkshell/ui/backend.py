@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from threading import Event, Lock
+from time import monotonic
 from typing import Final, Protocol, cast
 from uuid import UUID
 
@@ -14,7 +15,12 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
-from paperworkshell.app.organizer import OrganizerBackend, OrganizerViewState
+from paperworkshell.app.organizer import (
+    OrganizerBackend,
+    OrganizerSignatureImageDeleteOutcome,
+    OrganizerSignatureImagePlacementOutcome,
+    OrganizerViewState,
+)
 from paperworkshell.app.page_previews import (
     PagePreviewError,
     PagePreviewErrorCode,
@@ -31,6 +37,12 @@ from paperworkshell.app.scan_review import (
     ScanReviewError,
     ScanReviewPreviewVariant,
 )
+from paperworkshell.app.signature_images import (
+    SIGNATURE_IMAGE_WORKFLOW_TIMEOUT_SECONDS,
+    SignatureImagePlacementChoice,
+    SignatureImagePlacementDraft,
+    SignatureImagePlacementRequest,
+)
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.image_transforms import ImageTransformIntent
@@ -46,12 +58,18 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailErrorCode,
 )
 from paperworkshell.domain.recovery import RecoveryError
+from paperworkshell.domain.signature_images import (
+    SignatureImageError,
+    SignatureImageErrorCode,
+    SignatureImageProgress,
+)
 from paperworkshell.domain.source_ingest import (
     SourceImportProgress,
     SourceIngestError,
     SourceIngestErrorCode,
 )
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
+from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
 
 
 class OrganizerBackendFactory(Protocol):
@@ -127,6 +145,7 @@ _KNOWN_FAILURES: Final = (
     PdfThumbnailError,
     RecoveryError,
     ScanReviewError,
+    SignatureImageError,
     SourceIngestError,
 )
 
@@ -189,6 +208,7 @@ def sanitize_ui_failure(
                 ManifestRepositoryError,
                 PagePreviewError,
                 PdfThumbnailError,
+                SignatureImageError,
             },
             operation_id=operation_id,
         )
@@ -244,6 +264,16 @@ class OrganizerBackendWorker(QObject):
     core_overlay_tools_apply_failed = Signal(int, object)
     core_overlay_tools_cancelled = Signal(int)
     core_overlay_tools_cancel_failed = Signal(int, object)
+    signature_image_prepared = Signal(int, object)
+    signature_image_prepare_failed = Signal(int, object)
+    signature_image_placed = Signal(int, object)
+    signature_image_place_failed = Signal(int, object)
+    signature_image_cancelled = Signal(int)
+    signature_image_cancel_failed = Signal(int, object)
+    signature_image_placements_ready = Signal(int, object)
+    signature_image_placements_failed = Signal(int, object)
+    signature_image_deleted = Signal(int, object)
+    signature_image_delete_failed = Signal(int, object)
     progress_changed = Signal(object)
     status_changed = Signal(str)
     operation_status_changed = Signal(int, str)
@@ -838,6 +868,205 @@ class OrganizerBackendWorker(QObject):
             return
         self.core_overlay_tools_cancelled.emit(operation_id)
 
+    @Slot(int, object, object, object)
+    def prepare_signature_image(
+        self,
+        operation_id: int,
+        page_id: object,
+        source_path: object,
+        cancellation: object,
+    ) -> None:
+        """Prepare a bounded worker preview without exposing the source name."""
+
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(page_id) is not UUID
+                or not isinstance(source_path, Path)
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            deadline_at = monotonic() + SIGNATURE_IMAGE_WORKFLOW_TIMEOUT_SECONDS
+            try:
+                draft = backend.begin_signature_image(
+                    page_id,
+                    source_path,
+                    cancellation=cancellation.cancelled,
+                    deadline=lambda: monotonic() >= deadline_at,
+                    progress=lambda value: self._signature_image_progress(operation_id, value),
+                )
+                state = backend.state
+                if (
+                    type(draft) is not SignatureImagePlacementDraft
+                    or type(state) is not OrganizerViewState
+                    or draft.case_id != state.case_id
+                    or draft.manifest_revision != state.revision
+                    or draft.page_id != page_id
+                ):
+                    raise TypeError
+            except BaseException as error:
+                self.signature_image_prepare_failed.emit(
+                    operation_id,
+                    sanitize_ui_failure(error, operation_id=operation_id),
+                )
+                return
+            self.state_changed.emit(state)
+            self.signature_image_prepared.emit(operation_id, draft)
+
+        self._run_long(operation_id, "Signature image preview", action)
+
+    @Slot(int, object, object)
+    def place_signature_image(
+        self,
+        operation_id: int,
+        request: object,
+        cancellation: object,
+    ) -> None:
+        """Commit one explicitly reviewed visual image placement."""
+
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(request) is not SignatureImagePlacementRequest
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            deadline_at = monotonic() + SIGNATURE_IMAGE_WORKFLOW_TIMEOUT_SECONDS
+            try:
+                outcome = backend.commit_signature_image(
+                    request,
+                    cancellation=cancellation.cancelled,
+                    deadline=lambda: monotonic() >= deadline_at,
+                    progress=lambda value: self._signature_image_progress(operation_id, value),
+                )
+                if type(outcome) is not OrganizerSignatureImagePlacementOutcome:
+                    raise TypeError
+            except BaseException as error:
+                self.signature_image_place_failed.emit(
+                    operation_id,
+                    sanitize_ui_failure(error, operation_id=operation_id),
+                )
+                return
+            self.state_changed.emit(outcome.state)
+            if outcome.refresh_required:
+                self.case_reopen_required.emit(operation_id, outcome.safe_message)
+            else:
+                self.operation_status_changed.emit(operation_id, outcome.safe_message)
+            self.signature_image_placed.emit(operation_id, outcome)
+
+        self._run_long(operation_id, "Place signature image", action)
+
+    @Slot(int, object)
+    def cancel_signature_image(self, operation_id: int, draft_id: object) -> None:
+        """Abort one retained image after dialog cancellation or failed apply."""
+
+        backend = self._backend
+        if (
+            backend is None
+            or type(operation_id) is not int
+            or operation_id <= 0
+            or type(draft_id) is not UUID
+        ):
+            self.signature_image_cancel_failed.emit(
+                operation_id if type(operation_id) is int else 0,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell could not discard the signature image safely.",
+                    retryable=True,
+                    operation_id=(operation_id if type(operation_id) is int else None),
+                ),
+            )
+            return
+        try:
+            backend.cancel_signature_image(draft_id)
+        except BaseException as error:
+            self.signature_image_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.signature_image_cancelled.emit(operation_id)
+
+    @Slot(int, object)
+    def list_signature_image_placements(self, request_id: int, page_id: object) -> None:
+        """Publish content-free placement choices for one active page."""
+
+        backend = self._backend
+        if (
+            backend is None
+            or type(request_id) is not int
+            or request_id <= 0
+            or type(page_id) is not UUID
+        ):
+            self.signature_image_placements_failed.emit(
+                request_id if type(request_id) is int else 0,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell could not list signature-image placements safely.",
+                    retryable=True,
+                    operation_id=(request_id if type(request_id) is int else None),
+                ),
+            )
+            return
+        try:
+            choices = backend.signature_image_placements(page_id)
+            state = backend.state
+            if (
+                type(choices) is not tuple
+                or any(type(choice) is not SignatureImagePlacementChoice for choice in choices)
+                or type(state) is not OrganizerViewState
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.signature_image_placements_failed.emit(
+                request_id,
+                sanitize_ui_failure(error, operation_id=request_id),
+            )
+            return
+        self.state_changed.emit(state)
+        self.signature_image_placements_ready.emit(request_id, choices)
+
+    @Slot(int, object, object, object, object)
+    def delete_signature_image(
+        self,
+        operation_id: int,
+        page_id: object,
+        overlay_id: object,
+        policy: object,
+        cancellation: object,
+    ) -> None:
+        """Persist an exact deletion and report its explicit cleanup outcome."""
+
+        def action(backend: OrganizerBackend) -> None:
+            try:
+                if (
+                    type(page_id) is not UUID
+                    or type(overlay_id) is not UUID
+                    or type(policy) is not SignatureAssetDeletePolicy
+                    or type(cancellation) is not OperationCancellation
+                ):
+                    raise TypeError
+                deadline_at = monotonic() + SIGNATURE_IMAGE_WORKFLOW_TIMEOUT_SECONDS
+                outcome = backend.delete_signature_image(
+                    page_id,
+                    overlay_id,
+                    policy,
+                    cancellation=cancellation.cancelled,
+                    deadline=lambda: monotonic() >= deadline_at,
+                    progress=lambda value: self._signature_image_progress(operation_id, value),
+                )
+                if type(outcome) is not OrganizerSignatureImageDeleteOutcome:
+                    raise TypeError
+            except BaseException as error:
+                self.signature_image_delete_failed.emit(
+                    operation_id,
+                    sanitize_ui_failure(error, operation_id=operation_id),
+                )
+                return
+            self.state_changed.emit(outcome.state)
+            self.operation_status_changed.emit(operation_id, outcome.safe_message)
+            self.signature_image_deleted.emit(operation_id, outcome)
+
+        self._run_long(operation_id, "Remove signature image", action)
+
     @Slot(object)
     def rotate_clockwise(self, page_id: object) -> None:
         """Queue one clockwise quarter-turn for the selected page."""
@@ -1052,6 +1281,24 @@ class OrganizerBackendWorker(QObject):
             )
         )
 
+    def _signature_image_progress(
+        self,
+        operation_id: int,
+        progress: SignatureImageProgress,
+    ) -> None:
+        if type(progress) is not SignatureImageProgress:
+            raise TypeError
+        self.progress_changed.emit(
+            UiProgress(
+                operation="Signature image",
+                phase=progress.phase.value.replace("_", " "),
+                completed=progress.completed_units,
+                total=progress.total_units,
+                cancelable=True,
+                operation_id=operation_id,
+            )
+        )
+
     def _run_long(
         self,
         operation_id: int,
@@ -1144,6 +1391,17 @@ class OrganizerBackendWorker(QObject):
                     self.failed.emit(sanitize_ui_failure(error))
                 return
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
+        except SignatureImageError as error:
+            if error.code is SignatureImageErrorCode.CANCELLED:
+                if operation_id is not None:
+                    self.operation_cancelled.emit(
+                        operation_id,
+                        "Signature-image operation cancelled. No new placement was committed.",
+                    )
+                else:
+                    self.failed.emit(sanitize_ui_failure(error))
+                return
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
         except BaseException as error:
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
 
@@ -1219,6 +1477,11 @@ class OrganizerBackendCommands(QObject):
     core_overlay_tools_begin_requested = Signal(int, object)
     core_overlay_tools_apply_requested = Signal(int, object)
     core_overlay_tools_cancel_requested = Signal(int, object)
+    signature_image_prepare_requested = Signal(int, object, object, object)
+    signature_image_place_requested = Signal(int, object, object)
+    signature_image_cancel_requested = Signal(int, object)
+    signature_image_placements_requested = Signal(int, object)
+    signature_image_delete_requested = Signal(int, object, object, object, object)
     rotate_requested = Signal(object)
     remove_requested = Signal(object)
     move_requested = Signal(object, int)
@@ -1249,6 +1512,11 @@ class OrganizerBackendCommands(QObject):
         self.core_overlay_tools_begin_requested.connect(worker.begin_core_overlay_tools)
         self.core_overlay_tools_apply_requested.connect(worker.apply_core_overlay_tools)
         self.core_overlay_tools_cancel_requested.connect(worker.cancel_core_overlay_tools)
+        self.signature_image_prepare_requested.connect(worker.prepare_signature_image)
+        self.signature_image_place_requested.connect(worker.place_signature_image)
+        self.signature_image_cancel_requested.connect(worker.cancel_signature_image)
+        self.signature_image_placements_requested.connect(worker.list_signature_image_placements)
+        self.signature_image_delete_requested.connect(worker.delete_signature_image)
         self.rotate_requested.connect(worker.rotate_clockwise)
         self.remove_requested.connect(worker.remove_page)
         self.move_requested.connect(worker.move_page)
