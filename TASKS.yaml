@@ -2450,7 +2450,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0302
@@ -2481,10 +2481,50 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-24'
+    revision: 3d645374dd4f5c979300ce7db3edb81c3e1670d2
+    commands:
+    - uv run python tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the
+      final task-evidence tree; all 458 Python files were formatted, linted, and strictly typed, all 13 import layers
+      across 162 source files were valid, and the complete unit lane passed sequentially
+    - uv run pytest -q tests/unit/test_overlay_commands.py tests/unit/test_core_overlay_tools.py
+      tests/unit/test_organizer_backend.py tests/unit/test_overlay_tools_dialog.py tests/unit/test_overlay_tools_window.py
+      tests/security/test_core_overlay_tools_privacy.py tests/security/test_overlay_commands_security.py
+      tests/accessibility/test_core_overlay_tools_accessibility.py - passed; all 100 focused command-history,
+      application/session, keyboard UI, retry, hostile-input, privacy, and accessibility tests passed
+    - uv run python tools/dev.py test-integration - passed on the exact implementation revision; 395 tests passed with
+      9 disclosed Windows link/runtime/private-stage capability skips in 3077.25 seconds, including the real-Windows
+      overlay persistence path
+    - uv run python tools/dev.py test-security; test-accessibility - passed; 470 security tests passed with 6 disclosed
+      Windows link-capability skips in 253.51 seconds, and all 43 accessibility tests passed
+    - uv run python tools/pws0207_quality_evaluation.py evaluate; validate
+      benchmarks/pws0207-quality-findings-v1.json --revision 3d645374dd4f5c979300ce7db3edb81c3e1670d2 -
+      passed; the reviewed corpus/profile digests and all eight metric rows were unchanged, and only the exact
+      implementation revision binding was renewed
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-m1-benchmark-report;
+      validate-pdf-renderer-benchmark; validate-pws0208-resource-workload; scan-secrets; quality-self-test - passed;
+      repository fixtures, schemas, task/portfolio graphs, dependency evidence, historical resource/renderer evidence,
+      reachable Git/source bytes, and deliberate quality violations were checked
+    notes:
+    - Pure, bounded commands create, select, replace, move, resize, edit, delete, undo, and redo text, raw display-date,
+      checkmark, cross, and initials overlays. Compact immutable deltas preserve unrelated manifest members, reserve IDs
+      across branches, replay deterministically, and reject forged page, session, history, or state provenance.
+    - The Ctrl+Shift+F modal is keyboard-complete, scrollable, focus-safe, and accessible. It supports exact millionth
+      geometry, closed defaults, Alt-arrow movement, Alt+Shift-arrow resizing, Delete, Ctrl+Z/Ctrl+Y, and explicit
+      Apply/Cancel while retaining failed drafts for exact retry. UTF-16 capacity preserves 4096 supplementary code
+      points, and an existing unpaired surrogate must be explicitly replaced rather than silently changed.
+    - Overlay editing owns an exclusive revision/page/session authority over organizer autosave. Apply persists and
+      reopens through the existing atomic manifest repository before success; failed persistence remains retryable,
+      generic autosave cannot commit behind the modal, shutdown retains the latest draft, and originals are never
+      modified or overwritten.
+    - Announcements, row summaries, representations, logs, and failures use closed content-free vocabularies. Exact
+      known error types are reconstructed from stable codes/context, hostile subclasses and arbitrary UI messages fail
+      generically, and the Git 2.53 secret-scan regression accepts either sanitized fail-closed code when Git rejects an
+      invalid ref-storage extension before scanner policy classification.
+    - Independent domain, UI/lifecycle, and security/privacy audits found no remaining actionable P0-P2 issue. No schema,
+      migration, dependency, overlay-rendering contract, or release interface changed; PaperWorkShell remains standalone
+      and owns all local case, overlay, and persistence state, with no sibling or service dependency.
 - id: PWS-0305
   milestone: M3
   title: Implement signature-image asset import and placement
