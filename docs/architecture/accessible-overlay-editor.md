@@ -139,7 +139,7 @@ Automated evidence covers all eight overlay kinds, coarse and fine keyboard geom
 selection/value accessibility interfaces, exact snapping, crop/rotation/deskew display facts,
 partial and outside-crop behavior, topmost pointer selection and one-command drag, zoom/pan intent
 invariance, focus/tab order, 200%-font constrained layout, and prohibited surface/log tokens. The
-manual NVDA and Windows 200% scenario is recorded in
+interactive NVDA and application-effective 200% Qt scaling scenario is recorded in
 `docs/accessibility/pws-0306-overlay-editor-nvda-smoke.md`.
 
 PWS-0306 adds no schema, migration, dependency, worker RPC, export format, or release interface.

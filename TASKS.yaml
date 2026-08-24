@@ -2622,7 +2622,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: done
   critical_path: true
   depends_on:
   - PWS-0304
@@ -2655,17 +2655,60 @@ tasks:
   - forms
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-25'
+    revision: 56e187710f0131f11fb4227efd1a75e1be6d3f1e
+    commands:
+    - uv run python tools/dev.py format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the
+      final task-evidence tree; all 487 Python files were formatted and linted, all 13 import layers across 171 source
+      files were valid, strict typing passed, and the complete unit lane passed sequentially
+    - uv run python -m pytest tests/unit/test_core_overlay_tools.py tests/unit/test_organizer_backend.py
+      tests/unit/test_organizer_ui_model.py tests/unit/test_overlay_commands.py tests/unit/test_overlay_editor.py
+      tests/unit/test_overlay_tools_dialog.py tests/unit/test_overlay_tools_window.py
+      tests/accessibility/test_core_overlay_tools_accessibility.py tests/security/test_overlay_editor_privacy.py -
+      passed; all 124 focused overlay domain, application, keyboard UI, accessibility, and privacy tests passed
+    - docs/accessibility/pws-0306-overlay-editor-nvda-smoke.md - completed with NVDA 2026.1.1 and application-effective
+      200% Qt scaling; all eight overlay kinds, exact fields, coarse/fine movement and resize, snap, pan, fit, zoom,
+      focus wrap, simulated-caller Apply, and Escape/Cancel were exercised with the documented operator limitations
+    - uv run python tools/dev.py test-integration - passed serially on the implementation tree; 404 tests passed with
+      9 disclosed Windows link/runtime/private-stage capability skips in 4766.32 seconds, including real contained
+      rendering, organizer, OCR/export, ACL recovery, worker-containment, and overlay lifecycle paths
+    - uv run python tools/dev.py test-security; test-accessibility - passed serially; 482 security tests passed with 6
+      disclosed Windows link-capability skips in 317.37 seconds, and all 50 accessibility tests passed
+    - uv run python -m tools.pws0207_quality_evaluation record/validate --revision
+      56e187710f0131f11fb4227efd1a75e1be6d3f1e - passed; the reviewed corpus/profile digests and all eight metric rows
+      were unchanged, and only the exact implementation revision binding was renewed
+    - tools/dev.py validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-m1-benchmark-report;
+      validate-pdf-renderer-benchmark; validate-pws0208-resource-workload; scan-secrets; quality-self-test - passed;
+      repository fixtures, schemas, task/portfolio graphs, dependency evidence, historical resource/renderer evidence,
+      bounded reachable Git/source bytes, and deliberate quality violations were checked
+    notes:
+    - The production overlay editor exposes a native selection list, exact normalized geometry fields, named property
+      controls, focus-visible keyboard actions, and accessible state/feedback for all eight released overlay kinds;
+      pointer placement is optional and canvas-only state is never the sole interaction path.
+    - Coarse/fine movement and resize, guides, snap, pan, fit, zoom, crop, rotation, and deskew use canonical page
+      geometry and clamped normalized intent. View scale and panning never alter saved placement, and no-op or failed
+      caller operations preserve the authoritative overlay selection and editor state.
+    - Assistive-technology representations, announcements, errors, and routine logs remain content-free. Signature
+      wording identifies a visual image rather than a digital signature, and ordinary highlight/shape controls never
+      claim permanent removal or redaction.
+    - The NVDA record is an interactive Codex computer-use scenario, not a human screen-reader certification. It
+      documents NVDA 2026.1.1, effective device-pixel ratio 2.0, keyboard traversal and announcements, and the explicit
+      limitation that Apply used a synthetic in-memory caller while Escape exercised actual dialog cancellation.
+    - A cumulative quality-gate capacity regression was closed without raising the 512 MiB limit or excluding inputs;
+      exact history/index physical scans are reused only for identical object/size or path/object/size tuples, while
+      logical counts, changed/staged-only inputs, distinct path aliases, final mutation checks, and all limits remain.
+      The canonical full-history scan and staged-binary detection self-test passed after support commit 8124aed.
+    - Independent implementation, accessibility/lifecycle, security/privacy, and completion-evidence audits found and
+      closed all actionable P0-P2 issues. PaperWorkShell remains standalone, owns all local case/overlay state, adds no
+      sibling dependency, and changes no release interface or interoperability contract.
 - id: PWS-0307
   milestone: M3
   title: Flatten overlays during export and validate reader compatibility
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0112
