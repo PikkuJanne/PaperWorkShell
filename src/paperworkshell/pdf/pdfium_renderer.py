@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import struct
 import threading
 from collections.abc import Buffer, Iterator
 from contextlib import contextmanager
@@ -49,8 +50,7 @@ EXPECTED_PDFIUM_BUILD: Final = 7_947
 
 _PDFIUM_LOCK: Final = threading.Lock()
 _LOCK_POLL_SECONDS: Final = 0.05
-_GEOMETRY_RELATIVE_TOLERANCE: Final = 1e-6
-_GEOMETRY_ABSOLUTE_TOLERANCE: Final = 1e-5
+_MAXIMUM_PDFIUM_PIXEL_QUANTIZATION_DELTA: Final = 1
 
 
 class _SourceProtocolFault(ValueError):
@@ -375,7 +375,7 @@ def _render_document(
             reject_pdf_rendering(PdfRenderErrorCode.PAGE_OUT_OF_RANGE, "render.page_index")
 
         page = _load_page(document, request.page_index, wrapped_source)
-        _set_and_verify_geometry(page, geometry, plan)
+        render_scale = _set_and_verify_geometry(page, geometry, plan)
         require_pdf_render_active(control)
         digest = _render_bitmap(
             page,
@@ -385,6 +385,7 @@ def _render_document(
             limits,
             control,
             plan,
+            render_scale,
         )
         wrapped_source.raise_if_faulted()
     except BaseException as error:
@@ -423,14 +424,22 @@ def _render_bitmap(
     limits: PdfPageRenderLimits,
     control: PdfRenderControl,
     plan: PdfPageRenderGeometry,
+    render_scale: float | None = None,
 ) -> str:
     maker = _CheckedBitmapMaker(plan.layout)
+    selected_scale = plan.scale_pixels_per_unit if render_scale is None else render_scale
+    if (
+        type(selected_scale) is not float
+        or not math.isfinite(selected_scale)
+        or selected_scale <= 0
+    ):
+        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
     digest: str | None = None
     operation_error: BaseException | None = None
     try:
         try:
             bitmap = page.render(
-                scale=plan.scale_pixels_per_unit,
+                scale=selected_scale,
                 rotation=int(request.additional_rotation),
                 crop=(0, 0, 0, 0),
                 may_draw_forms=False,
@@ -556,7 +565,7 @@ def _set_and_verify_geometry(
     page: Any,
     geometry: PdfResolvedPageGeometry,
     plan: PdfPageRenderGeometry,
-) -> None:
+) -> float:
     box = geometry.effective_box
     media = geometry.media_box
     try:
@@ -575,52 +584,106 @@ def _set_and_verify_geometry(
 
     if type(rotation) is not int or rotation != int(geometry.intrinsic_rotation):
         reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.rotation")
+    expected_bbox = tuple(
+        _pdfium_float(value) for value in (box.left, box.bottom, box.right, box.top)
+    )
     if (
         type(bbox) is not tuple
         or len(bbox) != 4
-        or not all(
-            _geometry_equal(actual, expected)
-            for actual, expected in zip(
-                bbox,
-                (box.left, box.bottom, box.right, box.top),
-                strict=True,
-            )
-        )
+        or any(type(value) is not float for value in bbox)
+        or bbox != expected_bbox
     ):
         reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
 
-    oriented_width, oriented_height = box.width, box.height
+    native_width = _pdfium_float(expected_bbox[2] - expected_bbox[0])
+    native_height = _pdfium_float(expected_bbox[3] - expected_bbox[1])
     if geometry.intrinsic_rotation in (
         PdfRenderRotation.DEGREES_90,
         PdfRenderRotation.DEGREES_270,
     ):
-        oriented_width, oriented_height = oriented_height, oriented_width
+        native_width, native_height = native_height, native_width
+    expected_page_size = (native_width, native_height)
     if (
         type(page_size) is not tuple
         or len(page_size) != 2
-        or not _geometry_equal(page_size[0], oriented_width)
-        or not _geometry_equal(page_size[1], oriented_height)
+        or any(type(value) is not float for value in page_size)
+        or page_size != expected_page_size
     ):
-        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
-
-    try:
-        native_width = math.ceil(float(page_size[0]) * plan.scale_pixels_per_unit)
-        native_height = math.ceil(float(page_size[1]) * plan.scale_pixels_per_unit)
-    except OverflowError, TypeError, ValueError:
         reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
     if plan.resolved.intrinsic_rotation is not geometry.intrinsic_rotation:
         reject_pdf_rendering(PdfRenderErrorCode.INTERNAL_ERROR, "render.pdfium.geometry")
+    return _reconciled_render_scale(page_size, geometry, plan)
+
+
+def _reconciled_render_scale(
+    page_size: tuple[float, float],
+    geometry: PdfResolvedPageGeometry,
+    plan: PdfPageRenderGeometry,
+) -> float:
+    """Fit the exact planned layout to PDFium's authenticated float32 page size."""
+
+    target_width = plan.layout.width_pixels
+    target_height = plan.layout.height_pixels
     if (
         plan.combined_rotation in (PdfRenderRotation.DEGREES_90, PdfRenderRotation.DEGREES_270)
     ) != (
         geometry.intrinsic_rotation in (PdfRenderRotation.DEGREES_90, PdfRenderRotation.DEGREES_270)
     ):
-        native_width, native_height = native_height, native_width
-    if (native_width, native_height) != (
-        plan.layout.width_pixels,
-        plan.layout.height_pixels,
+        target_width, target_height = target_height, target_width
+
+    width, height = page_size
+    planned_scale = plan.scale_pixels_per_unit
+    if (
+        type(width) is not float
+        or type(height) is not float
+        or not math.isfinite(width)
+        or not math.isfinite(height)
+        or width <= 0
+        or height <= 0
+        or type(planned_scale) is not float
+        or not math.isfinite(planned_scale)
+        or planned_scale <= 0
     ):
         reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
+    try:
+        unadjusted = (
+            math.ceil(width * planned_scale),
+            math.ceil(height * planned_scale),
+        )
+    except OverflowError, TypeError, ValueError:
+        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
+    targets = (target_width, target_height)
+    if unadjusted == targets:
+        return planned_scale
+    if any(
+        abs(actual - target) > _MAXIMUM_PDFIUM_PIXEL_QUANTIZATION_DELTA
+        for actual, target in zip(unadjusted, targets, strict=True)
+    ):
+        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
+
+    lower = max((target_width - 1) / width, (target_height - 1) / height)
+    upper = min(target_width / width, target_height / height)
+    if not math.isfinite(lower) or not math.isfinite(upper) or not 0 <= lower < upper:
+        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
+    above_lower = math.nextafter(lower, math.inf)
+    candidate = min(max(planned_scale, above_lower), upper)
+    candidates = (
+        candidate,
+        math.nextafter(candidate, 0.0),
+        upper,
+        math.nextafter(upper, 0.0),
+        above_lower,
+    )
+    for selected in candidates:
+        if (
+            math.isfinite(selected)
+            and selected > lower
+            and selected <= upper
+            and math.ceil(width * selected) == target_width
+            and math.ceil(height * selected) == target_height
+        ):
+            return selected
+    reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
 
 
 def _bitmap_matches_layout(bitmap: Any, layout: PdfRasterLayout) -> bool:
@@ -740,17 +803,16 @@ def _settle_pdfium_lifecycle(
         raise operation_error
 
 
-def _geometry_equal(actual: object, expected: float) -> bool:
-    return (
-        type(actual) is float
-        and math.isfinite(actual)
-        and math.isclose(
-            actual,
-            expected,
-            rel_tol=_GEOMETRY_RELATIVE_TOLERANCE,
-            abs_tol=_GEOMETRY_ABSOLUTE_TOLERANCE,
-        )
-    )
+def _pdfium_float(value: float) -> float:
+    """Round one validated page coordinate exactly as PDFium's FS_FLOAT boundary."""
+
+    try:
+        selected = struct.unpack("=f", struct.pack("=f", value))[0]
+    except OverflowError, TypeError, struct.error:
+        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
+    if type(selected) is not float or not math.isfinite(selected):
+        reject_pdf_rendering(PdfRenderErrorCode.DEPENDENCY_FAILED, "render.pdfium.geometry")
+    return selected
 
 
 def _zero_buffer(view: memoryview) -> None:

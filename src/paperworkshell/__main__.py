@@ -14,6 +14,10 @@ from paperworkshell.app.export_history import (
     PdfExportHistoryService,
     PdfExportRetryRecoveryService,
 )
+from paperworkshell.app.flattened_pdf_export import (
+    FlattenedPdfExportService,
+    FlattenedPdfRasterizer,
+)
 from paperworkshell.app.ocr import CommittedSourcePageStore, OcrService
 from paperworkshell.app.ocr_languages import (
     SUPPORTED_OCR_LANGUAGE_CODES,
@@ -67,6 +71,10 @@ from paperworkshell.domain.searchable_pdf_export import (
     reject_searchable_pdf_export,
 )
 from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
+from paperworkshell.overlays.exporting import (
+    FlattenedPdfExportErrorCode,
+    reject_flattened_pdf_export,
+)
 from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_destination import WindowsExportDestination
@@ -89,11 +97,14 @@ from paperworkshell.worker.client.tesseract_runtime import (
     tesseract_runtime_authority_id,
 )
 from paperworkshell.worker.desktop_composition import (
+    FLATTENED_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
     OCR_WORKER_MAXIMUM_PROCESSES,
     QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES,
     SEARCHABLE_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
     DesktopHeavyOperationCoordinator,
     DesktopWorkerCompositionConfig,
+    FlattenedPdfExportWorkerComposition,
+    FlattenedPdfExportWorkerCompositionConfig,
     OcrWorkerComposition,
     OcrWorkerCompositionConfig,
     PdfExportWorkerComposition,
@@ -105,6 +116,8 @@ from paperworkshell.worker.desktop_composition import (
     create_desktop_heavy_operation_coordinator,
     create_desktop_worker_composition,
     create_desktop_worker_composition_config,
+    create_flattened_pdf_export_worker_composition,
+    create_flattened_pdf_export_worker_composition_config,
     create_ocr_worker_composition,
     create_ocr_worker_composition_config,
     create_pdf_export_worker_composition,
@@ -117,6 +130,7 @@ from paperworkshell.worker.desktop_composition import (
 from paperworkshell.worker.protocol.models import ResourceLimits
 
 _PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
+_FLATTENED_PDF_OUTPUT_BYTES = 512 * 1024 * 1024
 _OCR_OUTPUT_BYTES = 128 * 1024 * 1024
 _SEARCHABLE_PDF_OUTPUT_BYTES = 128 * 1024 * 1024
 _SEARCHABLE_PDF_STATUS_BYTES = 2 * 1024 * 1024
@@ -296,6 +310,52 @@ def build_windows_pdf_export_service(
             manifests,
         ),
         WindowsPdfExportRetryRepository(manager),
+    )
+
+
+def build_windows_flattened_pdf_export_service(
+    manager: CaseWorkspaceManager,
+    sources: CommittedPdfSourceBatchStore,
+    rasterizer: FlattenedPdfRasterizer,
+    composition: FlattenedPdfExportWorkerComposition,
+    *,
+    resources: DesktopApplicationResourceContext,
+) -> FlattenedPdfExportService:
+    """Wire case assets and persistence around the flattened export worker."""
+
+    if (
+        not isinstance(manager, CaseWorkspaceManager)
+        or not isinstance(sources, CommittedPdfSourceBatchStore)
+        or not isinstance(rasterizer, FlattenedPdfRasterizer)
+        or type(composition) is not FlattenedPdfExportWorkerComposition
+        or composition.closed
+        or type(resources) is not DesktopApplicationResourceContext
+        or composition.heavy_operations is not resources.heavy_operations
+    ):
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.MODEL_INVALID,
+            "flattened.composition",
+        )
+    selected_policy = resources.resource_policy
+    manifests = WindowsManifestRepository(manager)
+    return FlattenedPdfExportService(
+        manifests,
+        sources,
+        rasterizer,
+        composition.exporter,
+        WindowsVerifiedPdfDestination(
+            WindowsExportDestination(
+                minimum_free_space_reserve_bytes=(
+                    selected_policy.minimum_export_free_space_reserve_bytes
+                )
+            )
+        ),
+        PdfExportHistoryService(
+            WindowsPdfExportHistoryRepository(manager),
+            manifests,
+        ),
+        WindowsPdfExportRetryRepository(manager),
+        selected_policy,
     )
 
 
@@ -789,6 +849,86 @@ def build_windows_pdf_export_worker_composition(
     selected_resources = _require_application_resource_context(resources, required=True)
     return create_pdf_export_worker_composition(
         build_windows_pdf_export_worker_config(
+            qpdf_executable,
+            resource_policy=selected_resources.resource_policy,
+        ),
+        heavy_operations=selected_resources.heavy_operations,
+    )
+
+
+def build_windows_flattened_pdf_export_limits(
+    resource_policy: ResourcePolicy | None = None,
+) -> ResourceLimits:
+    """Return bounded source, raster, candidate, and verification budgets."""
+
+    selected_policy = _require_resource_policy(resource_policy)
+    output_bytes = min(
+        _FLATTENED_PDF_OUTPUT_BYTES,
+        selected_policy.maximum_temporary_storage_bytes // 2,
+    )
+    return ResourceLimits(
+        wall_time_ms=120_000,
+        cpu_time_ms=90_000,
+        memory_bytes=min(512 * 1024 * 1024, selected_policy.worker_process_memory_bytes),
+        temporary_storage_bytes=selected_policy.maximum_temporary_storage_bytes,
+        output_bytes=output_bytes,
+        page_count=selected_policy.maximum_page_count,
+        pixel_count=selected_policy.maximum_preview_pixels_per_page,
+    )
+
+
+def build_windows_flattened_pdf_export_worker_config(
+    qpdf_executable: Path | None = None,
+    *,
+    resource_policy: ResourcePolicy | None = None,
+) -> FlattenedPdfExportWorkerCompositionConfig:
+    """Compose flattened export with fixed qpdf and central resource policy."""
+
+    selected_policy = _require_resource_policy(resource_policy)
+    selected_qpdf = _configured_qpdf_executable(qpdf_executable)
+    (
+        worker_executable,
+        venv_launcher,
+        bootstrap_script,
+        runtime_roots,
+        code_roots,
+        working_directory,
+    ) = _worker_runtime_resources()
+    return create_flattened_pdf_export_worker_composition_config(
+        python_executable=worker_executable,
+        venv_launcher=venv_launcher,
+        bootstrap_script=bootstrap_script,
+        runtime_roots=runtime_roots,
+        code_roots=code_roots,
+        working_directory=working_directory,
+        qpdf_executable=selected_qpdf,
+        resource_policy=WorkerResourcePolicy(
+            process_memory_bytes=selected_policy.worker_process_memory_bytes,
+            job_memory_bytes=selected_policy.worker_job_memory_bytes,
+            cpu_time_ms=selected_policy.worker_cpu_time_ms,
+            maximum_processes=FLATTENED_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
+        ),
+        timeout_policy=WorkerTimeoutPolicy(
+            handshake_seconds=20.0,
+            cancellation_grace_seconds=(selected_policy.cancellation_acknowledgement_ms / 1_000),
+            shutdown_grace_seconds=10.0,
+        ),
+        maximum_heavy_operation_concurrency=(selected_policy.maximum_heavy_operation_concurrency),
+        resource_sampling_interval_ms=selected_policy.resource_sampling_interval_ms,
+        pump_interval_seconds=selected_policy.resource_sampling_interval_ms / 1_000,
+        limits=build_windows_flattened_pdf_export_limits(selected_policy),
+    )
+
+
+def build_windows_flattened_pdf_export_worker_composition(
+    resources: DesktopApplicationResourceContext,
+    qpdf_executable: Path | None = None,
+) -> FlattenedPdfExportWorkerComposition:
+    """Compose flattened export with the sole app-scoped heavy-work gate."""
+
+    selected_resources = _require_application_resource_context(resources, required=True)
+    return create_flattened_pdf_export_worker_composition(
+        build_windows_flattened_pdf_export_worker_config(
             qpdf_executable,
             resource_policy=selected_resources.resource_policy,
         ),

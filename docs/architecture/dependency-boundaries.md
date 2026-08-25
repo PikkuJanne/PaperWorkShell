@@ -34,8 +34,8 @@ worker host -> domain
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
 | `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
 | `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
-| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
-| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium/font-rendering implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic overlay rendering contract](overlay-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), and [verified searchable mixed-output contract](searchable-mixed-output.md) |
+| `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), [deterministic verified PDF-export contract](pdf-export.md), [verified searchable mixed-output contract](searchable-mixed-output.md), and [verified flattened visual-overlay export contract](flattened-overlay-export.md) |
+| `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium/font-rendering implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic overlay rendering contract](overlay-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), [verified searchable mixed-output contract](searchable-mixed-output.md), and [verified flattened visual-overlay export contract](flattened-overlay-export.md) |
 | `imaging` | Worker-only image inspection and transformation adapters; Pillow and its native objects never enter domain, app, or UI code |
 | `ocr` | Worker-only OCRmyPDF/Tesseract orchestration and its exact private PDF-candidate reopen seam; third-party objects and recognized text never cross into domain, app, UI, storage, or GUI-safe worker modules; see the [bounded local OCR contract](ocr-worker.md) |
 | `overlays` | Pure normalized visual-overlay intent, released wire codecs, deterministic ordering/visibility, and third-party-free rendering contracts; concrete font, image, and PDF engines remain in the exact worker-only PDF adapter documented in the [visual overlay domain model](overlay-domain-model.md) and [overlay rendering contract](overlay-rendering.md) |
@@ -206,9 +206,15 @@ transparent overlay PDF page, sanitizes and strictly reopens it, then returns co
 It neither opens a case asset by path nor accepts a JPEG/PNG source. PWS-0305's
 [`storage.signature_images`](signature-image-assets.md) adapter authenticates the immutable encoded
 case asset and its `image.signature_raster` worker boundary decodes it before constructing the
-pixel-bound raster contract; PWS-0307 must import the verified page as a Form XObject and flatten it.
+pixel-bound raster contract. PWS-0307 adds pure `overlays.exporting` plan/report contracts and an
+application coordinator that retains exact source and asset authority without importing PDF
+engines. Its separately composed broker transfers only canonical plan, immutable-source,
+operation-scoped RGBA, bounded output, and content-free report handles. The worker-side
+`pdf.flattened_export_adapter` imports each verified overlay page as an explicit Form XObject and
+flattens it without annotations, viewer-generated appearances, or persistent write authority.
 The complete split is specified in the [deterministic overlay rendering
-contract](overlay-rendering.md).
+contract](overlay-rendering.md) and the [verified flattened visual-overlay export
+contract](flattened-overlay-export.md).
 
 PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
 `domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,

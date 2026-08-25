@@ -3,6 +3,7 @@
 - Status: Binding implementation contract
 - Task: PWS-0112
 - Extension: PWS-0206 [verified searchable mixed-document output](searchable-mixed-output.md)
+- Extension: PWS-0307 [verified flattened visual-overlay export](flattened-overlay-export.md)
 - Decisions: PWS-D009, PWS-D011, PWS-D015, PWS-D029, PWS-D037, PWS-D038
 
 ## Scope and claims
@@ -27,6 +28,13 @@ path; OCR-required pages must independently pass the supported text-presence che
 counted as having extractable text. See
 [Verified searchable mixed-document output](searchable-mixed-output.md) for the closed page matrix
 and limited claims.
+
+PWS-0307 likewise leaves this base capability unchanged and adds `pdf.export.flattened` version 1.
+Its separate plan binds active crops, visible overlay intent, and authenticated placed-signature
+RGBA metadata; its transient report wraps the unchanged structural report with exact Form-placement,
+font-policy, and visual-signature terminology checks. See
+[Verified flattened visual-overlay export](flattened-overlay-export.md) for the authority flow,
+explicit Form-XObject placement, resource bounds, and limited compatibility claims.
 
 ## Layer ownership
 

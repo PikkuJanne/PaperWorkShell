@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import traceback
 from io import BytesIO
 from pathlib import Path
@@ -12,7 +13,13 @@ import pypdfium2 as pdfium  # type: ignore[import-untyped]
 import pytest
 from PIL import Image
 
-from paperworkshell.domain.pdf_geometry import PdfPageGeometryLimits
+from paperworkshell.domain.pdf_geometry import (
+    PdfPageGeometryLimits,
+    PdfPageRectangle,
+    PdfPageRenderGeometry,
+    PdfResolvedPageGeometry,
+    fit_pdf_page_geometry,
+)
 from paperworkshell.domain.pdf_rendering import (
     PdfPageBox,
     PdfPageRenderLimits,
@@ -41,6 +48,34 @@ class _Control:
 
     def deadline_expired(self) -> bool:
         return self.expired
+
+
+class _GeometryPage:
+    def __init__(
+        self,
+        *,
+        bbox: tuple[float, float, float, float],
+        size: tuple[float, float],
+        rotation: PdfRenderRotation,
+    ) -> None:
+        self.bbox = bbox
+        self.size = size
+        self.rotation = rotation
+
+    def set_mediabox(self, *_values: float) -> None:
+        return
+
+    def set_cropbox(self, *_values: float) -> None:
+        return
+
+    def get_rotation(self) -> int:
+        return int(self.rotation)
+
+    def get_bbox(self) -> tuple[float, float, float, float]:
+        return self.bbox
+
+    def get_size(self) -> tuple[float, float]:
+        return self.size
 
 
 class _ChunkedSource:
@@ -122,6 +157,40 @@ def _renderer() -> PdfiumPageRenderer:
     return PdfiumPageRenderer(PdfPageGeometryLimits(1_000_000, 1_000_000))
 
 
+def _float32_crop_geometry() -> tuple[
+    PdfResolvedPageGeometry,
+    PdfPageRenderGeometry,
+    tuple[float, float, float, float],
+    tuple[float, float],
+]:
+    media = PdfPageRectangle(0.0, 0.0, 36.0, 24.0)
+    crop = PdfPageRectangle(0.372924, 0.523992, 34.80966, 19.120752)
+    geometry = PdfResolvedPageGeometry(
+        media_box=media,
+        crop_box=crop,
+        effective_box=crop,
+        page_box=PdfPageBox.CROP,
+        intrinsic_rotation=PdfRenderRotation.DEGREES_180,
+        user_unit=2.0,
+    )
+    plan = fit_pdf_page_geometry(
+        geometry,
+        PdfPageRenderRequest(0, 512, 512, page_box=PdfPageBox.CROP),
+        _limits(),
+    )
+    bbox = (
+        pdfium_renderer_module._pdfium_float(crop.left),
+        pdfium_renderer_module._pdfium_float(crop.bottom),
+        pdfium_renderer_module._pdfium_float(crop.right),
+        pdfium_renderer_module._pdfium_float(crop.top),
+    )
+    size = (
+        pdfium_renderer_module._pdfium_float(bbox[2] - bbox[0]),
+        pdfium_renderer_module._pdfium_float(bbox[3] - bbox[1]),
+    )
+    return geometry, plan, bbox, size
+
+
 def _fixture_paths() -> dict[str, Path]:
     index = json.loads((_FIXTURE_ROOT / "index.json").read_text(encoding="utf-8"))
     return {item["id"]: _FIXTURE_ROOT / item["path"] for item in index["fixtures"]}
@@ -172,6 +241,60 @@ def _assert_sanitized_error(error: PdfRenderError, *canaries: str) -> None:
     for canary in canaries:
         assert canary not in str(error)
         assert canary not in formatted
+
+
+def test_pdfium_float32_crop_rounding_reconciles_to_the_exact_bounded_layout() -> None:
+    geometry, plan, bbox, size = _float32_crop_geometry()
+    page = _GeometryPage(
+        bbox=bbox,
+        size=size,
+        rotation=geometry.intrinsic_rotation,
+    )
+
+    render_scale = pdfium_renderer_module._set_and_verify_geometry(page, geometry, plan)
+
+    assert render_scale < plan.scale_pixels_per_unit
+    assert (
+        math.ceil(size[0] * render_scale),
+        math.ceil(size[1] * render_scale),
+    ) == (plan.layout.width_pixels, plan.layout.height_pixels)
+
+
+def test_pdfium_geometry_rejects_a_genuine_one_pixel_oversize() -> None:
+    geometry, plan, bbox, size = _float32_crop_geometry()
+    oversize = (
+        (plan.layout.width_pixels + 0.25) / plan.scale_pixels_per_unit,
+        size[1],
+    )
+    assert math.ceil(oversize[0] * plan.scale_pixels_per_unit) == (plan.layout.width_pixels + 1)
+    page = _GeometryPage(
+        bbox=bbox,
+        size=oversize,
+        rotation=geometry.intrinsic_rotation,
+    )
+
+    with pytest.raises(PdfRenderError) as raised:
+        pdfium_renderer_module._set_and_verify_geometry(page, geometry, plan)
+
+    assert raised.value.code is PdfRenderErrorCode.DEPENDENCY_FAILED
+    assert raised.value.context == "render.pdfium.geometry"
+
+
+def test_pdfium_scale_reconciliation_rejects_more_than_one_pixel_of_drift() -> None:
+    geometry, plan, _bbox, size = _float32_crop_geometry()
+    displaced_size = (
+        (plan.layout.width_pixels + 1.25) / plan.scale_pixels_per_unit,
+        size[1],
+    )
+    assert math.ceil(displaced_size[0] * plan.scale_pixels_per_unit) == (
+        plan.layout.width_pixels + 2
+    )
+
+    with pytest.raises(PdfRenderError) as raised:
+        pdfium_renderer_module._reconciled_render_scale(displaced_size, geometry, plan)
+
+    assert raised.value.code is PdfRenderErrorCode.DEPENDENCY_FAILED
+    assert raised.value.context == "render.pdfium.geometry"
 
 
 def test_pdfium_renderer_matches_complete_analytical_golden_matrix() -> None:

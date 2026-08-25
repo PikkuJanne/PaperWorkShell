@@ -390,10 +390,94 @@ class OverlayPageGeometry:
         top = Decimal(box.y) * height / scale
         right = Decimal(box.right) * width / scale
         bottom = Decimal(box.bottom) * height / scale
-        return OverlayCanvasBox(float(left), float(top), float(right), float(bottom))
+        emitted_left, emitted_right = _representational_canvas_axis(left, right, width)
+        emitted_top, emitted_bottom = _representational_canvas_axis(top, bottom, height)
+        return OverlayCanvasBox(
+            emitted_left,
+            emitted_top,
+            emitted_right,
+            emitted_bottom,
+        )
+
+    def contained_box_for(
+        self,
+        box: NormalizedPageBox,
+        *,
+        within: NormalizedPageBox,
+    ) -> OverlayCanvasBox:
+        """Map a positive sub-box into its parent's representational canvas box."""
+
+        if (
+            type(box) is not NormalizedPageBox
+            or type(within) is not NormalizedPageBox
+            or box.x < within.x
+            or box.y < within.y
+            or box.right > within.right
+            or box.bottom > within.bottom
+        ):
+            reject_overlay_rendering(
+                OverlayRenderErrorCode.GEOMETRY_INVALID,
+                "overlay.normalized_box",
+            )
+        parent = self.box_for(within)
+        child = self.box_for(box)
+        left, right = _contained_canvas_axis(
+            child.left,
+            child.right,
+            parent.left,
+            parent.right,
+        )
+        top, bottom = _contained_canvas_axis(
+            child.top,
+            child.bottom,
+            parent.top,
+            parent.bottom,
+        )
+        return OverlayCanvasBox(left, top, right, bottom)
 
     def __repr__(self) -> str:
         return "OverlayPageGeometry(<page-values-hidden>)"
+
+
+def _representational_canvas_axis(
+    start: Decimal,
+    end: Decimal,
+    canvas_extent: Decimal,
+) -> tuple[float, float]:
+    """Keep every positive normalized span representable on the emitted point grid."""
+
+    emitted_start = start.quantize(OVERLAY_RENDER_POINT_QUANTUM, rounding=ROUND_HALF_UP)
+    emitted_end = end.quantize(OVERLAY_RENDER_POINT_QUANTUM, rounding=ROUND_HALF_UP)
+    if emitted_start < emitted_end:
+        return float(emitted_start), float(emitted_end)
+
+    emitted_extent = canvas_extent.quantize(
+        OVERLAY_RENDER_POINT_QUANTUM,
+        rounding=ROUND_HALF_UP,
+    )
+    candidate_end = emitted_start + OVERLAY_RENDER_POINT_QUANTUM
+    if candidate_end <= emitted_extent:
+        emitted_end = candidate_end
+    else:
+        emitted_end = emitted_extent
+        emitted_start = emitted_extent - OVERLAY_RENDER_POINT_QUANTUM
+    return float(emitted_start), float(emitted_end)
+
+
+def _contained_canvas_axis(
+    child_start: float,
+    child_end: float,
+    parent_start: float,
+    parent_end: float,
+) -> tuple[float, float]:
+    contained_start = max(child_start, parent_start)
+    contained_end = min(child_end, parent_end)
+    if contained_start < contained_end:
+        return contained_start, contained_end
+    quantum = float(OVERLAY_RENDER_POINT_QUANTUM)
+    if child_end <= parent_start:
+        return parent_start, min(parent_start + quantum, parent_end)
+    return max(parent_start, parent_end - quantum), parent_end
 
 
 @dataclass(frozen=True, slots=True)

@@ -226,6 +226,38 @@ def test_overlay_pdf_placement_matches_normalized_coordinate_transform(
 
 
 @pytest.mark.parametrize(
+    ("box", "expected"),
+    (
+        (
+            NormalizedPageBox(500_000, 500_000, 1, 1),
+            (300.0, 360.0, 300.01, 360.01),
+        ),
+        (
+            NormalizedPageBox(8, 6, 1, 1),
+            (0.0, 0.0, 0.01, 0.01),
+        ),
+        (
+            NormalizedPageBox(999_999, 999_999, 1, 1),
+            (599.99, 719.99, 600.0, 720.0),
+        ),
+        (
+            NormalizedPageBox(100_000, 200_000, 300_000, 400_000),
+            (60.0, 144.0, 240.0, 432.0),
+        ),
+    ),
+)
+def test_positive_normalized_boxes_have_noncollapsed_representational_canvas_boxes(
+    box: NormalizedPageBox,
+    expected: tuple[float, float, float, float],
+) -> None:
+    geometry = OverlayPageGeometry.from_pdf_geometry(_geometry())
+
+    actual = geometry.box_for(box)
+
+    assert (actual.left, actual.top, actual.right, actual.bottom) == expected
+
+
+@pytest.mark.parametrize(
     ("x", "y"),
     (
         (True, 0.0),
@@ -702,6 +734,207 @@ def test_consecutive_identical_shapes_reestablish_graphics_state(
     assert commands.count(("w", ("4.00",))) == 2
     if primitive is not ShapePrimitive.LINE:
         assert commands.count(("rg", ("0", "1", "0"))) == 2
+
+
+@pytest.mark.parametrize("size", (1, 5, 8, 10))
+@pytest.mark.parametrize("origin", ("center", "rounding-boundary", "lower-right"))
+def test_tiny_released_overlay_types_are_origin_invariant_and_deterministic(
+    size: int,
+    origin: str,
+) -> None:
+    if origin == "center":
+        x, y = 500_000, 500_000
+    elif origin == "rounding-boundary":
+        x, y = 8, 6
+    else:
+        x = y = 1_000_000 - size
+    box = NormalizedPageBox(x, y, size, size)
+    pixels = bytes((255, 0, 0, 255))
+    raster = OverlayRasterAsset(
+        ASSET_ID,
+        width_pixels=1,
+        height_pixels=1,
+        row_stride_bytes=4,
+        byte_count=len(pixels),
+        pixel_sha256=hashlib.sha256(pixels).hexdigest(),
+    )
+    source = _RasterSource(raster, pixels)
+    source.seek(2)
+    asset_record = OverlayAssetRecord(
+        ASSET_ID,
+        OverlayAssetKind.SIGNATURE_IMAGE,
+        f"{ASSET_ID}.bin",
+        OverlayAssetMediaType.PNG,
+        128,
+        "a" * 64,
+    )
+    payloads: tuple[
+        TextualOverlayPayload
+        | MarkOverlayPayload
+        | ShapeOverlayPayload
+        | SignatureImageOverlayPayload,
+        ...,
+    ] = (
+        TextualOverlayPayload(
+            OverlayKind.TEXT,
+            "",
+            DEFAULT_FONT_TOKEN,
+            12,
+            RgbaColor("#000000ff"),
+        ),
+        TextualOverlayPayload(
+            OverlayKind.DATE,
+            " ",
+            DEFAULT_FONT_TOKEN,
+            12,
+            RgbaColor("#000000ff"),
+        ),
+        TextualOverlayPayload(
+            OverlayKind.INITIALS,
+            "X",
+            DEFAULT_FONT_TOKEN,
+            12,
+            RgbaColor("#00000000"),
+        ),
+        MarkOverlayPayload(OverlayKind.CHECKMARK, RgbaColor("#102030ff")),
+        MarkOverlayPayload(OverlayKind.CROSS, RgbaColor("#405060ff")),
+        MarkOverlayPayload(OverlayKind.CHECKMARK, RgbaColor("#10203000")),
+        ShapeOverlayPayload(
+            OverlayKind.HIGHLIGHT,
+            ShapePrimitive.RECTANGLE,
+            RgbaColor("#ffff0080"),
+            RgbaColor("#00000000"),
+        ),
+        ShapeOverlayPayload(
+            OverlayKind.SHAPE,
+            ShapePrimitive.RECTANGLE,
+            RgbaColor("#00000000"),
+            RgbaColor("#204060ff"),
+        ),
+        ShapeOverlayPayload(
+            OverlayKind.SHAPE,
+            ShapePrimitive.ELLIPSE,
+            RgbaColor("#0080ffff"),
+            RgbaColor("#00000000"),
+        ),
+        ShapeOverlayPayload(
+            OverlayKind.SHAPE,
+            ShapePrimitive.LINE,
+            RgbaColor("#00000000"),
+            RgbaColor("#603090ff"),
+        ),
+        ShapeOverlayPayload(
+            OverlayKind.SHAPE,
+            ShapePrimitive.RECTANGLE,
+            RgbaColor("#10203000"),
+            RgbaColor("#40506000"),
+        ),
+        SignatureImageOverlayPayload(ASSET_ID),
+    )
+    records = tuple(_record(index, payload, box) for index, payload in enumerate(payloads, start=1))
+    request = _request(records, assets=(asset_record,))
+
+    first, first_result = _render(request, raster_sources={ASSET_ID: source})
+    second, second_result = _render(request, raster_sources={ASSET_ID: source})
+
+    assert first == second
+    assert first_result == second_result
+    assert source.tell() == 2
+    assert first_result.embedded_font_count == 1
+    assert first_result.image_count == 1
+    assert len(first_result.placements) == len(records)
+    no_paint_indexes = {0, 1, 2, 5, 10}
+    for index, (record, placement) in enumerate(zip(records, first_result.placements, strict=True)):
+        assert placement.overlay_id == record.overlay_id
+        assert placement.kind is record.kind
+        assert placement.z_index == record.z_index
+        assert placement.requested_box.width == pytest.approx(0.01)
+        assert placement.requested_box.height == pytest.approx(0.01)
+        assert placement.clip_box == placement.requested_box
+        assert (placement.painted_box is None) is (index in no_paint_indexes)
+        if placement.painted_box is not None:
+            assert placement.painted_box == placement.requested_box
+
+
+def test_tiny_partial_crop_uses_a_clip_inside_the_representational_box() -> None:
+    record = _record(
+        1,
+        MarkOverlayPayload(OverlayKind.CHECKMARK, RgbaColor("#ff0000ff")),
+        NormalizedPageBox(500_000, 500_000, 10, 10),
+    )
+    request = _request(
+        (record,),
+        active_crop=NormalizedPageBox(500_009, 0, 499_991, 1_000_000),
+    )
+
+    _data, result = _render(request)
+
+    placement = result.placements[0]
+    assert placement.requested_box == OverlayCanvasBox(300.0, 360.0, 300.01, 360.01)
+    assert placement.clip_box == placement.requested_box
+    assert placement.painted_box == placement.requested_box
+
+
+def test_tiny_mixed_shape_fallback_prefers_visible_fill_over_low_alpha_stroke() -> None:
+    request = _request(
+        (
+            _record(
+                1,
+                ShapeOverlayPayload(
+                    OverlayKind.SHAPE,
+                    ShapePrimitive.RECTANGLE,
+                    RgbaColor("#00ff00ff"),
+                    RgbaColor("#ff000001"),
+                ),
+                NormalizedPageBox(500_000, 500_000, 1, 1),
+            ),
+        )
+    )
+
+    data, result = _render(request)
+    commands = _content_commands(data)
+
+    assert result.placements[0].painted_box == result.placements[0].requested_box
+    assert ("rg", ("0", "1", "0")) in commands
+    assert ("rg", ("1", "0", "0")) not in commands
+
+
+def test_extreme_signature_aspect_ratio_uses_one_contained_emitted_cell() -> None:
+    width = 100
+    pixels = bytes((255, 0, 0, 255)) * width
+    raster = OverlayRasterAsset(
+        ASSET_ID,
+        width_pixels=width,
+        height_pixels=1,
+        row_stride_bytes=width * 4,
+        byte_count=len(pixels),
+        pixel_sha256=hashlib.sha256(pixels).hexdigest(),
+    )
+    source = _RasterSource(raster, pixels)
+    asset_record = OverlayAssetRecord(
+        ASSET_ID,
+        OverlayAssetKind.SIGNATURE_IMAGE,
+        f"{ASSET_ID}.bin",
+        OverlayAssetMediaType.PNG,
+        128,
+        "a" * 64,
+    )
+    request = _request(
+        (
+            _record(
+                1,
+                SignatureImageOverlayPayload(ASSET_ID),
+                NormalizedPageBox(500_000, 500_000, 1, 1),
+            ),
+        ),
+        assets=(asset_record,),
+    )
+
+    _data, result = _render(request, raster_sources={ASSET_ID: source})
+
+    placement = result.placements[0]
+    assert placement.requested_box == OverlayCanvasBox(300.0, 360.0, 300.01, 360.01)
+    assert placement.painted_box == placement.requested_box
 
 
 def test_live_renderer_draws_all_non_image_primitives_and_sanitizes_catalog() -> None:

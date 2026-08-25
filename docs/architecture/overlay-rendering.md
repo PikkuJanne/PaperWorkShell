@@ -56,6 +56,16 @@ Lower `z_index` values paint first. A partially visible overlay is painted at it
 record box under a clip to the derived crop intersection. It is never resized to the visible
 portion. Empty text is a valid no-paint placement with zero content-free text metrics.
 
+Normalized intent remains authoritative below the PDF command grid. If nearest 0.01-point edge
+rounding would collapse a positive saved box, the renderer uses one deterministic 0.01-point
+representational cell; a cell on the lower or right canvas edge shifts inward. Normal boxes retain
+their existing nearest-edge coordinates. A sub-cell crop is contained within its parent record's
+representational cell. Marks and shapes whose minimum stroke cannot leave a positive interior use a
+contained one-cell paint fallback, and an aspect-fit signature dimension that would round to zero
+uses a contained one-cell dimension without changing normal-size aspect fitting. Empty or
+whitespace-only text and fully transparent vector intent remain valid no-paint placements at this
+boundary. Non-empty visible text still fails closed when its shaped ink cannot fit.
+
 Each record uses an fpdf2 `local_context()` outside its crop clip. This pairs the emitted PDF
 graphics-state save/restore with fpdf2's own cached font, color, opacity, and line-width state, so
 consecutive records with the same non-default style still emit and paint that style independently.
@@ -189,13 +199,15 @@ units without treating `/UserUnit 2` as ordinary one-point units. Tests bind all
 the PWS-0301 transform for non-zero origins, MediaBox/CropBox selection, every intrinsic turn, and
 `/UserUnit 2`.
 
-PWS-0307 must use the verified overlay page's pikepdf
+PWS-0307 uses the verified overlay page's pikepdf
 `as_form_xobject(handle_transformations=False)` representation and invoke
 that Form through the recorded matrix in the destination document. It must not call `add_overlay()`
 and accept automatic placement, because that would bypass the explicit coordinate contract. The
 source page and placed Form then undergo the same manifest crop and accumulated quarter-turn before
-flattened export verification. This task does not alter the current PWS-0112 rule that rejects
-active overlays from an export path that has not implemented PWS-0307.
+flattened export verification. The complete authority, composition, and verification path is in
+[Verified flattened visual-overlay export](flattened-overlay-export.md). This does not alter the
+PWS-0112 rule that rejects active overlays from any export path that has not explicitly implemented
+the flattened-overlay contract.
 
 ## Resource and lifecycle controls
 

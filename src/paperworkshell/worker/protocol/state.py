@@ -9,6 +9,7 @@ from uuid import UUID
 
 from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
+    FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_SAFE_INTEGER,
@@ -33,12 +34,14 @@ from paperworkshell.worker.protocol.models import (
     ProgressUnit,
     ProtocolEnvelope,
     ProtocolErrorPayload,
+    ReferenceArea,
     ResourceLimits,
     SessionCapability,
     SessionClosedPayload,
     SessionHelloPayload,
     SessionReadyPayload,
     WorkerFaultPayload,
+    flattened_pdf_export_bound_object_ids,
     image_normalize_bound_object_ids,
     image_transform_bound_object_ids,
     ocr_process_bound_object_ids,
@@ -48,6 +51,8 @@ from paperworkshell.worker.protocol.models import (
     searchable_pdf_export_bound_object_ids,
     searchable_pdf_export_status_capacity_bytes,
     signature_image_raster_bound_object_ids,
+    validate_flattened_pdf_export_result,
+    validate_flattened_pdf_export_start,
     validate_image_normalize_result,
     validate_image_normalize_start,
     validate_image_transform_result,
@@ -95,6 +100,7 @@ class _ActiveOperation:
     ocr_output_object_id: UUID | None = None
     thumbnail_cache_object_id: UUID | None = None
     export_output_object_id: UUID | None = None
+    flattened_export_output_object_id: UUID | None = None
     searchable_export_output_object_id: UUID | None = None
     searchable_export_status_object_id: UUID | None = None
     searchable_export_status_capacity_bytes: int | None = None
@@ -359,6 +365,7 @@ class ConversationState:
         ocr_output_object_id: UUID | None = None
         thumbnail_cache_object_id: UUID | None = None
         export_output_object_id: UUID | None = None
+        flattened_export_output_object_id: UUID | None = None
         searchable_export_output_object_id: UUID | None = None
         searchable_export_status_object_id: UUID | None = None
         searchable_export_status_capacity_bytes: int | None = None
@@ -457,6 +464,31 @@ class ConversationState:
                     "pdf.export operation and object identifiers must be distinct",
                 )
             export_output_object_id = export_bound_object_ids[-1]
+        if descriptor == FLATTENED_PDF_EXPORT_CAPABILITY:
+            validate_flattened_pdf_export_start(payload)
+            flattened_bound_object_ids = flattened_pdf_export_bound_object_ids(payload)
+            flattened_correlated_ids = (
+                self.case_id,
+                message.operation_id,
+                *flattened_bound_object_ids,
+            )
+            if len(set(flattened_correlated_ids)) != len(flattened_correlated_ids):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "operation_id",
+                    "flattened PDF export correlation identifiers must be distinct",
+                )
+            if any(
+                reference.operation_id != message.operation_id
+                for reference in payload.inputs
+                if reference.area is ReferenceArea.OPERATION_TEMP
+            ):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "payload.inputs",
+                    "flattened PDF temporary input scope must match its operation",
+                )
+            flattened_export_output_object_id = flattened_bound_object_ids[-1]
         if descriptor == SEARCHABLE_PDF_EXPORT_CAPABILITY:
             validate_searchable_pdf_export_start(payload)
             searchable_bound_object_ids = searchable_pdf_export_bound_object_ids(payload)
@@ -499,6 +531,7 @@ class ConversationState:
                 ocr_output_object_id=ocr_output_object_id,
                 thumbnail_cache_object_id=thumbnail_cache_object_id,
                 export_output_object_id=export_output_object_id,
+                flattened_export_output_object_id=flattened_export_output_object_id,
                 searchable_export_output_object_id=(searchable_export_output_object_id),
                 searchable_export_status_object_id=(searchable_export_status_object_id),
                 searchable_export_status_capacity_bytes=(searchable_export_status_capacity_bytes),
@@ -590,6 +623,15 @@ class ConversationState:
                 "RPC_INVALID_PROGRESS",
                 "payload",
                 "searchable PDF export progress must use its exact numeric page total",
+            )
+        if active.operation_kind == FLATTENED_PDF_EXPORT_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.PAGES
+            or payload.total_units != active.requested_limits.page_count
+        ):
+            reject(
+                "RPC_INVALID_PROGRESS",
+                "payload",
+                "flattened PDF export progress must use its exact numeric page total",
             )
         if active.progress_seen:
             if payload.completed_units < active.completed_units:
@@ -829,6 +871,19 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 output_object_id=active.export_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if active.operation_kind == FLATTENED_PDF_EXPORT_CAPABILITY.capability_id:
+            if active.flattened_export_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "flattened PDF export result binding is unavailable",
+                )
+            validate_flattened_pdf_export_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.flattened_export_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         if active.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id:

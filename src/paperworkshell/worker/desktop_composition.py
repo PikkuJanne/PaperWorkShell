@@ -31,6 +31,21 @@ from paperworkshell.worker.client.models import (
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.flattened_pdf_export_composition import (
+    FLATTENED_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES as FLATTENED_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
+)
+from paperworkshell.worker.flattened_pdf_export_composition import (
+    FlattenedPdfExportWorkerComposition as FlattenedPdfExportWorkerComposition,
+)
+from paperworkshell.worker.flattened_pdf_export_composition import (
+    FlattenedPdfExportWorkerCompositionConfig as FlattenedPdfExportWorkerCompositionConfig,
+)
+from paperworkshell.worker.flattened_pdf_export_composition import (
+    create_flattened_pdf_export_worker_composition as create_flattened_pdf_export_worker_composition,
+)
+from paperworkshell.worker.flattened_pdf_export_composition import (
+    create_flattened_pdf_export_worker_composition_config as create_flattened_pdf_export_worker_composition_config,
+)
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator, HeavyOperationSnapshot
 from paperworkshell.worker.image_page_broker import (
     BrokeredImagePageGenerator,

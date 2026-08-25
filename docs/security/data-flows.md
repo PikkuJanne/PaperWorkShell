@@ -59,6 +59,10 @@ PWS-0207 serially reuses validated DF-PREVIEW snapshots and adds the narrower `o
 version-1 worker authority: one bounded read-only volatile raster section and one write-only result
 pipe, with no document/source handle, case path, document object, or persistent writer. The
 accepted desktop result remains an ephemeral typed finding snapshot.
+PWS-0307 adds a distinct `pdf.export.flattened` version-1 generation. It receives one canonical
+plan reader, exact immutable-PDF source readers, exact operation-scoped RGBA8 signature-raster
+readers, one bounded volatile PDF writer, and one content-free result writer. It receives no
+encoded signature image, case path, manifest/history writer, or external destination authority.
 
 ## Boundary inventory
 
@@ -626,6 +630,80 @@ The complete contract and deterministic fixture provenance are in
 
 Primary threats: TM-001, TM-002, TM-003, TM-005, TM-006, TM-008, TM-011, TM-012, TM-014, TM-016,
 TM-022, TM-023, TM-024, TM-028.
+
+## DF-FLATTENED-OVERLAYS — compose ordinary page content and verify
+
+```mermaid
+sequenceDiagram
+    participant App as Trusted flattened-export coordinator
+    participant Assets as Committed signature-asset rasterizer
+    participant Broker as Trusted handle broker
+    participant Worker as Restricted one-shot worker
+    participant PDF as Overlay/pikepdf/qpdf/PDFium adapters
+    participant Destination as No-replace destination
+    App->>App: Project visible overlays and enforce signed-source consent
+    App->>Assets: Decode each required committed asset sequentially
+    Assets-->>App: Authenticated bounded RGBA8 raster
+    App->>Broker: Exact plan, source lease, raster map, and limits
+    Broker->>Worker: Plan/source/raster readers plus output/report writers
+    Worker->>PDF: Stage and rehash sources; render one overlay page at a time
+    PDF->>PDF: Import explicit Form; materialize crop/rotation without generated interaction dependency
+    PDF->>PDF: Strict reopen, graph/placement/font checks, qpdf, every-page PDFium render
+    PDF-->>Worker: Content-free verified report and candidate facts
+    Worker-->>Broker: Correlated report plus bounded volatile PDF
+    Broker->>Worker: Terminate and confirm complete Job tree
+    Broker->>Broker: Revalidate sources, report, size, digest, and candidate bytes
+    Broker-->>App: Authenticated single-pass candidate
+    App->>Destination: Publish new derivative only after verification
+```
+
+1. TB-02 accepts only additive `pdf.export.flattened` version 1. Neither `pdf.export` version 1 nor
+   the manifest/export-history schemas change meaning. The canonical plan binds page order,
+   effective crop/rotation, visible overlay intent, exact RGBA metadata, and the base export
+   profile. Every UUID namespace and transferred authority is distinct and current-generation.
+2. Placed-signature JPEG/PNG bytes are authenticated and decoded through the existing image worker
+   before flattened-export authority exists. The flattened worker receives only exact, read-only,
+   operation-scoped RGBA8 sections. Aggregate retained raster bytes and pixels derive from the
+   central `ResourcePolicy`; assets are decoded sequentially, every result is rebound to the exact
+   requested dimensions and RGBA layout, and no unbounded raster cache exists. The metadata-only
+   plan also proves the plan-plus-sources-plus-rasters total fits the 256-reference RPC ceiling
+   before decode, authority allocation, or launch; the broker independently rechecks it.
+3. The broker transfers no path. Source PDFs are copied and rehashed in worker-private temporary
+   storage; raster sections are mapped read-only and authenticated before rendering. The worker
+   imports each verified overlay page as an explicit Form XObject, materializes crop and rotation,
+   and the generated overlay graph creates no annotation, widget, AcroForm, action, script, XFA,
+   attachment, or viewer-generated appearance dependency. The base export copies and binds
+   page-local source content/resources and stored annotation appearances, but it does not certify
+   catalog-dependent widget, action, named-destination, or similar behavior. Page-reachable
+   optional-content dependencies are rejected because their Catalog visibility policy is not
+   copied. PWS-0105/preflight reports source features and PWS-0405/PWS-0501 own later policy.
+4. The adapter reserves every bounded page-reachable content-stream `Do` name before adding its
+   resource. Direct source content must have balanced graphics/text/marked-content/compatibility
+   scopes, and its ordered decoded middle streams are fingerprinted across save. The adapter then
+   strictly reopens the candidate and verifies exact Form names, matrices, boxes, invocation counts,
+   the unchanged middle streams, a canonical full generated-Form-graph fingerprint, embedded-font
+   resources, signature-image facts, and prohibited interactive keys in that generated graph. The
+   trusted overlay page and an actual-imported-Form harness must produce identical independently
+   authenticated white/black PDFium rasters. Opaque vector/text paint keeps a mandatory region hit;
+   partial-alpha eligibility is limited to full-bbox dense rectangle fills and signature windows
+   whose every contributing alpha sample is at least two. Other sparse, faint, or subpixel paint
+   keeps the exact graph and full-raster differential proof without a false fixed-resolution
+   rejection. Valid empty or fully transparent no-paint intent is handled explicitly rather than
+   inferred from operator presence.
+   It then runs the fixed qpdf check
+   and renders every final page with PDFium. Missing, blanked, clipped-away, or grossly displaced
+   Forms, changed nested resources/source content, malformed output, unknown required state, output
+   overflow, or renderer failure blocks the report and candidate.
+5. Cancellation, timeout, source/asset race, disk-full, mapping failure, protocol fault, and cleanup
+   uncertainty terminate the generation and expose no authoritative candidate. Only after complete
+   Job-tree termination does the broker reauthenticate sources and the bounded output/report.
+   Publication then reuses the established no-replace destination and history settlement path.
+
+The full contract and reader-evidence boundary are documented in
+[Verified flattened visual-overlay export](../architecture/flattened-overlay-export.md).
+
+Primary threats: TM-001, TM-002, TM-003, TM-005, TM-006, TM-008, TM-009, TM-011, TM-012, TM-014,
+TM-015, TM-016, TM-020, TM-022, TM-023, TM-025.
 
 ## DF-EXPORT — plan, build, reopen, verify, and commit derivative
 

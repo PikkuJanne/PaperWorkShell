@@ -134,6 +134,16 @@ def _build_operation_registry(
     except Exception:
         pass
     try:
+        from paperworkshell.worker.flattened_pdf_export_operation import (
+            build_flattened_pdf_export_operation_handler,
+        )
+
+        flattened_handler = build_flattened_pdf_export_operation_handler()
+        if flattened_handler is not None:
+            handlers.append(flattened_handler)
+    except Exception:
+        pass
+    try:
         from paperworkshell.worker.ocr_operation import (
             build_ocr_process_operation_handler,
         )

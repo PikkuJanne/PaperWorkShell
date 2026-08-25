@@ -19,7 +19,17 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportError,
     SearchablePdfExportErrorCode,
 )
+from paperworkshell.overlays.exporting import (
+    FlattenedPdfExportError,
+    FlattenedPdfExportErrorCode,
+)
 from paperworkshell.worker.protocol.models import (
+    FLATTENED_PDF_EXPORT_CAPABILITY,
+    FLATTENED_PDF_EXPORT_OUTPUT_CONTENT_KIND,
+    FLATTENED_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+    FLATTENED_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+    FLATTENED_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+    FLATTENED_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
     IMAGE_NORMALIZE_ADDITIONAL_ROTATION_PARAMETER,
     IMAGE_NORMALIZE_CAPABILITY,
     IMAGE_NORMALIZE_MAXIMUM_HEIGHT_PARAMETER,
@@ -971,6 +981,140 @@ def _require_pdf_export_output(
         or output.expected_sha256 is None
     ):
         raise ValueError("PDF-export adapter returned an invalid staging reference")
+
+
+@dataclass(frozen=True, slots=True)
+class FlattenedPdfExportOperationRequest:
+    """Transferred authority for one overlay-aware flattened PDF export."""
+
+    plan_handle: int = field(repr=False)
+    output_handle: int = field(repr=False)
+    result_handle: int = field(repr=False)
+    output_object_id: UUID
+
+    def __post_init__(self) -> None:
+        handles = (self.plan_handle, self.output_handle, self.result_handle)
+        if (
+            any(type(handle) is not int or handle <= 0 for handle in handles)
+            or len(set(handles)) != len(handles)
+            or type(self.output_object_id) is not UUID
+            or self.output_object_id.version != 4
+        ):
+            raise ValueError("validated flattened-PDF export parameters are unavailable")
+
+
+class FlattenedPdfExportAdapter(Protocol):
+    """Injected adapter consuming all transferred flattened-export authority."""
+
+    def discard_handles(
+        self,
+        context: OperationContext,
+        request: FlattenedPdfExportOperationRequest,
+    ) -> None:
+        """Consume transfer handles when terminal state prevents dispatch."""
+
+    def export(
+        self,
+        context: OperationContext,
+        request: FlattenedPdfExportOperationRequest,
+    ) -> CaseObjectReference:
+        """Create, verify, report, and return one flattened-PDF staging output."""
+
+
+@dataclass(frozen=True, slots=True)
+class FlattenedPdfExportOperationHandler:
+    """Coordinate ``pdf.export.flattened`` around one injected adapter."""
+
+    adapter: FlattenedPdfExportAdapter
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return FLATTENED_PDF_EXPORT_CAPABILITY
+
+    def execute(self, context: OperationContext) -> OperationResultPayload:
+        request = _flattened_pdf_export_operation_request(context)
+        total_pages = context.limits.page_count
+        context.report_progress(
+            OperationProgressPayload(
+                ProgressStage.PROCESSING,
+                0,
+                total_pages,
+                ProgressUnit.PAGES,
+            )
+        )
+        if context.cancel_requested.is_set():
+            self.adapter.discard_handles(context, request)
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            self.adapter.discard_handles(context, request)
+            return timed_out_operation_result()
+
+        try:
+            output = self.adapter.export(context, request)
+        except FlattenedPdfExportError as error:
+            if error.code is FlattenedPdfExportErrorCode.CANCELLED:
+                return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+            if error.code is FlattenedPdfExportErrorCode.TIMED_OUT:
+                return timed_out_operation_result()
+            if error.code is FlattenedPdfExportErrorCode.LIMIT_EXCEEDED:
+                return resource_limited_operation_result()
+            raise
+
+        if context.cancel_requested.is_set():
+            return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        if context.deadline_expired():
+            return timed_out_operation_result()
+        _require_flattened_pdf_export_output(context, request, output)
+        context.report_progress(
+            OperationProgressPayload(
+                ProgressStage.PROCESSING,
+                total_pages,
+                total_pages,
+                ProgressUnit.PAGES,
+            )
+        )
+        return OperationResultPayload(OperationOutcome.SUCCEEDED, (output,), None)
+
+
+def _flattened_pdf_export_operation_request(
+    context: OperationContext,
+) -> FlattenedPdfExportOperationRequest:
+    return FlattenedPdfExportOperationRequest(
+        plan_handle=_positive_integer_parameter(
+            context,
+            FLATTENED_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+        ),
+        output_handle=_positive_integer_parameter(
+            context,
+            FLATTENED_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+        ),
+        result_handle=_positive_integer_parameter(
+            context,
+            FLATTENED_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        ),
+        output_object_id=_uuid_parameter(
+            context,
+            FLATTENED_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+        ),
+    )
+
+
+def _require_flattened_pdf_export_output(
+    context: OperationContext,
+    request: FlattenedPdfExportOperationRequest,
+    output: CaseObjectReference,
+) -> None:
+    if (
+        type(output) is not CaseObjectReference
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != request.output_object_id
+        or output.operation_id != context.operation_id
+        or output.content_kind != FLATTENED_PDF_EXPORT_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= context.limits.output_bytes
+        or output.expected_sha256 is None
+    ):
+        raise ValueError("flattened-PDF adapter returned an invalid staging reference")
 
 
 @dataclass(frozen=True, slots=True)

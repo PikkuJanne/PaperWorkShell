@@ -10,6 +10,7 @@ import pytest
 from paperworkshell.worker.protocol.codec import DEFAULT_OPERATION_REGISTRY
 from paperworkshell.worker.protocol.errors import ProtocolError
 from paperworkshell.worker.protocol.models import (
+    FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_MESSAGE_BYTES,
@@ -209,6 +210,7 @@ def test_pdf_thumbnail_is_registered_and_round_trips_its_exact_contract() -> Non
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         PDF_EXPORT_CAPABILITY,
+        FLATTENED_PDF_EXPORT_CAPABILITY,
         SEARCHABLE_PDF_EXPORT_CAPABILITY,
     )
     assert accepted_start.payload == payload

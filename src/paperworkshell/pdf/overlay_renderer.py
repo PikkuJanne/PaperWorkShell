@@ -849,7 +849,10 @@ def _generate_overlay(
             visible_box = projection.visible_box
             if visible_box is None:
                 reject_overlay_rendering(OverlayRenderErrorCode.MODEL_INVALID, "overlay.visibility")
-            clip_box = request.geometry.box_for(visible_box)
+            clip_box = request.geometry.contained_box_for(
+                visible_box,
+                within=record.box,
+            )
             placement = _draw_record(
                 document,
                 record,
@@ -1085,6 +1088,7 @@ def _draw_text(
     document.set_font(OVERLAY_FONT_FPDF_FAMILY, size=payload.font_size_points)
     document.set_text_shaping(True, direction="ltr")
     shaped = _shape_text_ink(document, payload, font_profile)
+    color = _rgba(payload.color)
     box_left = Decimal(str(box.left))
     box_top = Decimal(str(box.top))
     box_right = Decimal(str(box.right))
@@ -1094,7 +1098,7 @@ def _draw_text(
     painted: OverlayCanvasBox | None = None
     ascent = Decimal(0)
     descent = Decimal(0)
-    if shaped.has_ink:
+    if shaped.has_ink and color[3] > 0:
         ink_left = cast(Decimal, shaped.left_points)
         ink_bottom = cast(Decimal, shaped.bottom_points)
         ink_right = cast(Decimal, shaped.right_points)
@@ -1130,10 +1134,15 @@ def _draw_text(
         )
         ascent = max(Decimal(0), ink_top)
         descent = max(Decimal(0), -ink_bottom)
+    elif shaped.has_ink:
+        ink_bottom = cast(Decimal, shaped.bottom_points)
+        ink_top = cast(Decimal, shaped.top_points)
+        baseline = baseline.quantize(OVERLAY_RENDER_POINT_QUANTUM, rounding=ROUND_HALF_UP)
+        ascent = max(Decimal(0), ink_top)
+        descent = max(Decimal(0), -ink_bottom)
     else:
         baseline = baseline.quantize(OVERLAY_RENDER_POINT_QUANTUM, rounding=ROUND_HALF_UP)
 
-    color = _rgba(payload.color)
     document.set_text_color(*color[:3])
     with document.local_context(fill_opacity=color[3]):
         _emit_whole_shaped_line(document, payload, origin_x, baseline)
@@ -1346,14 +1355,19 @@ def _point_on_emitted_grid(*, preferred: Decimal, lower: Decimal, upper: Decimal
 
 def _draw_mark(
     document: FPDF, payload: MarkOverlayPayload, box: OverlayCanvasBox
-) -> OverlayCanvasBox:
+) -> OverlayCanvasBox | None:
     color = _rgba(payload.color)
+    if color[3] == 0:
+        return None
     stroke = _quantize_point(
         min(
             _MAXIMUM_MARK_STROKE_POINTS,
             max(_MINIMUM_MARK_STROKE_POINTS, min(box.width, box.height) / _MARK_STROKE_DIVISOR),
         )
     )
+    if stroke >= min(box.width, box.height):
+        _draw_minimum_cell(document, box, color)
+        return box
     inset = stroke / 2
     left = box.left + inset
     top = box.top + inset
@@ -1391,8 +1405,15 @@ def _draw_signature_image(
     scale = min(width_ratio, height_ratio)
     width = _quantize_point(raster.metadata.width_pixels * scale)
     height = _quantize_point(raster.metadata.height_pixels * scale)
-    left = _quantize_point(box.left + (box.width - width) / 2)
-    top = _quantize_point(box.top + (box.height - height) / 2)
+    if width <= 0 or height <= 0:
+        quantum = float(OVERLAY_RENDER_POINT_QUANTUM)
+        width = min(box.width, max(quantum, width))
+        height = min(box.height, max(quantum, height))
+        left = _contained_centered_origin(box.left, box.right, width)
+        top = _contained_centered_origin(box.top, box.bottom, height)
+    else:
+        left = _quantize_point(box.left + (box.width - width) / 2)
+        top = _quantize_point(box.top + (box.height - height) / 2)
     document.image(BytesIO(raster.png_bytes), x=left, y=top, w=width, h=height)
     return OverlayCanvasBox(left, top, left + width, top + height)
 
@@ -1419,6 +1440,9 @@ def _draw_shape(
     if payload.shape is ShapePrimitive.LINE:
         if stroke_color[3] == 0:
             return None
+        if stroke >= min(box.width, box.height):
+            _draw_minimum_cell(document, box, stroke_color)
+            return box
         inset = stroke / 2
         with document.local_context(stroke_opacity=stroke_color[3]):
             document.line(
@@ -1439,13 +1463,31 @@ def _draw_shape(
     width = box.width - 2 * inset
     height = box.height - 2 * inset
     if width <= 0 or height <= 0:
-        reject_overlay_rendering(OverlayRenderErrorCode.GEOMETRY_INVALID, "overlay.shape_box")
+        _draw_minimum_cell(document, box, fill if draw_fill else stroke_color)
+        return box
     with document.local_context(fill_opacity=fill[3], stroke_opacity=stroke_color[3]):
         if payload.shape is ShapePrimitive.RECTANGLE:
             document.rect(left, top, width, height, style=style)
         else:
             document.ellipse(left, top, width, height, style=style)
     return box
+
+
+def _draw_minimum_cell(
+    document: FPDF,
+    box: OverlayCanvasBox,
+    color: tuple[int, int, int, float],
+) -> None:
+    """Paint one contained cell when the requested primitive is below its stroke floor."""
+
+    document.set_fill_color(*color[:3])
+    with document.local_context(fill_opacity=color[3]):
+        document.rect(box.left, box.top, box.width, box.height, style="F")
+
+
+def _contained_centered_origin(start: float, end: float, extent: float) -> float:
+    centered = _quantize_point(start + ((end - start) - extent) / 2)
+    return min(max(centered, start), end - extent)
 
 
 def _rgba(color: RgbaColor) -> tuple[int, int, int, float]:

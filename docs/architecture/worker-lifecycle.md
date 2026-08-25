@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
-- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, PWS-0204 OCR, PWS-0206 searchable-export, and PWS-0208 signed-source-admission extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206, PWS-0208
+- Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, PWS-0204 OCR, PWS-0206 searchable-export, PWS-0208 signed-source-admission, and PWS-0307 flattened-overlay-export extensions
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206, PWS-0208, PWS-0307
 - Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D016, PWS-D021, PWS-D027, PWS-D028, PWS-D029, PWS-D036, PWS-D037, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -21,8 +21,9 @@ plugins or advertised as a capability.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
 version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` version 1,
-`ocr.process` version 1, and the additive `pdf.export.searchable` version 1 when each operation's
-exact resources pass admission. The no-op still proves process/protocol lifecycle without
+`ocr.process` version 1, and the additive `pdf.export.searchable` and `pdf.export.flattened`
+version-1 capabilities when each operation's exact resources pass admission. The no-op still
+proves process/protocol lifecycle without
 document authority. PWS-0105 proves exact prepared-source read-handle transfer, a write-only
 bounded result pipe, worker-private copy verification, pikepdf/libqpdf structural inspection, and
 one-shot worker revocation. PWS-0108 adds one committed-source read handle and one fixed-size
@@ -37,7 +38,8 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 [non-destructive scan-transform contract](image-transform-pipeline.md),
 [bounded local OCR worker contract](ocr-worker.md), and
 [deterministic verified PDF-export contract](pdf-export.md), extended by
-[verified searchable mixed-document output](searchable-mixed-output.md).
+[verified searchable mixed-document output](searchable-mixed-output.md) and
+[verified flattened visual-overlay export](flattened-overlay-export.md).
 
 ## Component ownership
 
@@ -66,6 +68,9 @@ the [PDF structural-inspection contract](pdf-structural-inspection.md),
 | `worker.process_creation_policy` | Install a worker-wide audit hook that permits only the exact configured qpdf/Tesseract subprocess shape | Loaded after isolation and before optional engines; shell/spawn and ambient executable discovery are denied |
 | `worker.pdf_export_broker` | Authenticate one manifest-bound source batch, broker exact plan/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; never receives or publishes a destination path |
 | `worker.pdf_export_operation` | Adopt exact source/plan/output/report handles, copy and rehash sources in one private operation directory, assemble and verify, and write one correlated report | Host-side only; receives no case, manifest, history, or destination authority |
+| `app.flattened_pdf_export` | Project visible manifest overlays, rasterize authenticated placed-signature assets sequentially, retain exact PDF sources, publish a verified derivative, and settle unchanged export history | Toolkit/engine-free coordination; no native PDF object, asset path, or persistent destination authority crosses into the worker contract |
+| `worker.flattened_pdf_export_broker` | Authenticate the base source batch and operation-scoped RGBA rasters, broker exact plan/source/raster/output/report handles, terminate the one-shot generation, revalidate sources, and expose only the bounded verified candidate | Structural ports only; receives no case path, encoded signature image, manifest writer, history writer, or destination path |
+| `worker.flattened_pdf_export_operation` | Adopt exact plan/source/raster/output/report handles, stage and rehash source PDFs, map exact RGBA sections read-only, flatten explicit Form XObjects, and write one correlated report | Host-side only; all native parsing/rendering and private paths remain inside the restricted worker |
 | `app.searchable_pdf_export` | Project manifest-v2 intent, retain an authenticated mixed source batch, call one structural broker, reuse no-replace destination/history ports, and return the exact page report | Toolkit/engine-free; no document path or third-party object enters the pure service contract |
 | `worker.searchable_pdf_export_plan` / `status` / `report` | Canonically encode/decode the bounded worker plan, content-free page outcomes, and correlated report | Host/client wire seams only; unknown members/versions, text values, and noncanonical bytes fail closed |
 | `worker.operations.SearchablePdfExportOperationHandler` | Adopt the additive plan/source/output/status/report handles and invoke one injected searchable adapter | Host-side only; no case, manifest, history, cache, or destination authority |

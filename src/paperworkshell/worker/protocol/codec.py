@@ -11,6 +11,7 @@ from uuid import UUID
 
 from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
+    FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_JSON_COLLECTION_ITEMS,
@@ -64,6 +65,7 @@ from paperworkshell.worker.protocol.models import (
     ShutdownReason,
     TaggedScalar,
     WorkerFaultPayload,
+    validate_flattened_pdf_export_start,
     validate_image_normalize_start,
     validate_image_transform_start,
     validate_ocr_process_start,
@@ -587,6 +589,7 @@ class OperationRegistry:
             PDF_INSPECT_CAPABILITY,
             PDF_THUMBNAIL_CAPABILITY,
             PDF_EXPORT_CAPABILITY,
+            FLATTENED_PDF_EXPORT_CAPABILITY,
             SEARCHABLE_PDF_EXPORT_CAPABILITY,
         )
 
@@ -629,6 +632,8 @@ class OperationRegistry:
             validate_pdf_thumbnail_start(payload)
         if payload.operation_kind == PDF_EXPORT_CAPABILITY.capability_id:
             validate_pdf_export_start(payload)
+        if payload.operation_kind == FLATTENED_PDF_EXPORT_CAPABILITY.capability_id:
+            validate_flattened_pdf_export_start(payload)
         if payload.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id:
             validate_searchable_pdf_export_start(payload)
 

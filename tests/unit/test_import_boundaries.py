@@ -408,7 +408,8 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
             "import paperworkshell.worker.desktop_composition\n"
             "from paperworkshell.worker import desktop_composition\n"
             "from paperworkshell.worker.desktop_composition import "
-            "QualityOcrReviewWorkerComposition\n"
+            "QualityOcrReviewWorkerComposition, "
+            "FlattenedPdfExportWorkerComposition\n"
             "from paperworkshell.export.pdf_destination import "
             "WindowsVerifiedPdfDestination\n"
             "import paperworkshell.export\n",

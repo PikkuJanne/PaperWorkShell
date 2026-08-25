@@ -1,7 +1,7 @@
 # PDF page-rendering contract
 
-- Status: PWS-0106 adapter accepted with PWS-0108 thumbnail-service integration
-- Tasks: PWS-0106, PWS-0108
+- Status: PWS-0106 adapter accepted with PWS-0108 thumbnail-service and PWS-0307 export-verification integration
+- Tasks: PWS-0106, PWS-0108, PWS-0307
 - Decisions: PWS-D012, PWS-D013, PWS-D017, PWS-D019, PWS-D034
 - ADR: [ADR 0005 renderer selection](../adr/0005-pdf-renderer-selection.md)
 - Worker boundary: [Restricted worker lifecycle contract](worker-lifecycle.md)
@@ -171,6 +171,14 @@ Geometry is resolved in unrotated PDF user space:
    dimension therefore equals its requested maximum and the other never exceeds its maximum.
    Reject a scale above 1,000,000 pixels per user-space unit before float conversion or native
    calls, then validate final dimensions, stride, pixels, and bytes before bitmap allocation.
+
+PDFium receives page boundaries and render scale as IEEE-754 binary32 values. After the exact
+decimal fit above, the adapter authenticates the native binary32 box and page dimensions and may
+select the smallest binary32 scale in the exact ceiling interval only when native quantization
+would otherwise add at most one pixel. A change outside that interval, a drift over one pixel, or
+any genuine oversize remains a geometry/result failure. This reconciliation prevents harmless
+binary32 boundary rounding from turning a planned limiting dimension into one extra pixel without
+weakening the exact requested maxima.
 
 The selected pypdfium2 `crop=` argument is a **bitmap-level crop applied after rotation**. A PDF
 user-space CropBox must not be passed to it as if both coordinate systems were identical. The

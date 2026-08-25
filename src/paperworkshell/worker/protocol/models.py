@@ -245,6 +245,7 @@ NOOP_CAPABILITY: Final = CapabilityDescriptor("protocol.noop", 1)
 PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
+FLATTENED_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.flattened", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
 SIGNATURE_IMAGE_RASTER_CAPABILITY: Final = CapabilityDescriptor("image.signature_raster", 1)
 IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
@@ -343,6 +344,16 @@ PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "pdf-export-pdf"
 MAX_PDF_EXPORT_PLAN_BYTES: Final = 2 * 1024 * 1024
 MAX_PDF_EXPORT_PAGES: Final = 4_096
 MAX_PDF_EXPORT_SOURCES: Final = MAX_JSON_COLLECTION_ITEMS - 1
+
+FLATTENED_PDF_EXPORT_PLAN_HANDLE_PARAMETER: Final = "plan_handle"
+FLATTENED_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
+FLATTENED_PDF_EXPORT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
+FLATTENED_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
+FLATTENED_PDF_EXPORT_PLAN_CONTENT_KIND: Final = "flattened-pdf-export-plan-v1"
+FLATTENED_PDF_EXPORT_RASTER_CONTENT_KIND: Final = "overlay-rgba8-v1"
+FLATTENED_PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "flattened-pdf-v1"
+MAX_FLATTENED_PDF_EXPORT_INPUT_REFERENCES: Final = MAX_JSON_COLLECTION_ITEMS
+MAX_FLATTENED_PDF_EXPORT_RASTER_ASSETS: Final = MAX_JSON_COLLECTION_ITEMS - 2
 
 SEARCHABLE_PDF_EXPORT_PLAN_HANDLE_PARAMETER: Final = "plan_handle"
 SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
@@ -1970,6 +1981,236 @@ def validate_pdf_export_result(
         )
 
 
+def validate_flattened_pdf_export_start(payload: OperationStartPayload) -> None:
+    """Validate additive ``pdf.export.flattened`` version-1 authority."""
+
+    if not 2 <= len(payload.inputs) <= MAX_FLATTENED_PDF_EXPORT_INPUT_REFERENCES:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "flattened PDF export requires one plan and at least one PDF source",
+        )
+    plan = payload.inputs[0]
+    if (
+        plan.area is not ReferenceArea.OPERATION_TEMP
+        or plan.operation_id is None
+        or plan.content_kind != FLATTENED_PDF_EXPORT_PLAN_CONTENT_KIND
+        or plan.expected_byte_size is None
+        or not 1 <= plan.expected_byte_size <= MAX_PDF_EXPORT_PLAN_BYTES
+        or plan.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "flattened PDF export requires one bounded operation-scoped plan",
+        )
+
+    source_count = 0
+    raster_count = 0
+    raster_started = False
+    raster_bytes = 0
+    total_input_bytes = plan.expected_byte_size
+    for reference in payload.inputs[1:]:
+        size = reference.expected_byte_size
+        if reference.area is ReferenceArea.SOURCE_READ:
+            if (
+                raster_started
+                or reference.operation_id is not None
+                or reference.content_kind != "pdf"
+                or size is None
+                or size < 1
+                or reference.expected_sha256 is None
+            ):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "payload.inputs",
+                    "flattened PDF sources must precede raster sections and be authenticated PDFs",
+                )
+            source_count += 1
+        elif reference.area is ReferenceArea.OPERATION_TEMP:
+            raster_started = True
+            if (
+                reference.operation_id is None
+                or reference.content_kind != FLATTENED_PDF_EXPORT_RASTER_CONTENT_KIND
+                or size is None
+                or size < 4
+                or size % 4 != 0
+                or reference.expected_sha256 is None
+            ):
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "payload.inputs",
+                    "flattened PDF raster inputs must be exact operation-scoped RGBA8 sections",
+                )
+            raster_count += 1
+            if raster_bytes > MAX_SAFE_INTEGER - size:
+                reject(
+                    "RPC_INVALID_OPERATION",
+                    "payload.requested_limits",
+                    "flattened PDF raster size total is invalid",
+                )
+            raster_bytes += size
+        else:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.inputs",
+                "flattened PDF inputs use an unsupported reference area",
+            )
+        if size is None or total_input_bytes > MAX_SAFE_INTEGER - size:
+            reject(
+                "RPC_INVALID_OPERATION",
+                "payload.requested_limits",
+                "flattened PDF input size total is invalid",
+            )
+        total_input_bytes += size
+    if source_count < 1 or raster_count > MAX_FLATTENED_PDF_EXPORT_RASTER_ASSETS:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "flattened PDF input reference counts exceed the supported profile",
+        )
+
+    input_object_ids = tuple(reference.object_id for reference in payload.inputs)
+    if len(set(input_object_ids)) != len(input_object_ids):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.inputs",
+            "flattened PDF input object identifiers must be distinct",
+        )
+
+    expected_names = {
+        FLATTENED_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+        FLATTENED_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+        FLATTENED_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        FLATTENED_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER,
+    }
+    parameters = {parameter.name: parameter for parameter in payload.parameters}
+    if len(payload.parameters) != len(expected_names) or set(parameters) != expected_names:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "flattened PDF export requires its exact closed parameter set",
+        )
+    handles = tuple(
+        parameters[name]
+        for name in (
+            FLATTENED_PDF_EXPORT_PLAN_HANDLE_PARAMETER,
+            FLATTENED_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
+            FLATTENED_PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+        )
+    )
+    if any(
+        parameter.value_type is not ScalarValueType.INTEGER
+        or type(parameter.value) is not int
+        or parameter.value <= 0
+        for parameter in handles
+    ) or len({parameter.value for parameter in handles}) != len(handles):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "flattened PDF handles must be distinct positive integers",
+        )
+    output_object = parameters[FLATTENED_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER]
+    if (
+        output_object.value_type is not ScalarValueType.UUID
+        or type(output_object.value) is not UUID
+        or output_object.value in set(input_object_ids)
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "flattened PDF output identity must be a distinct UUID",
+        )
+
+    limits = payload.requested_limits
+    if limits.page_count > MAX_PDF_EXPORT_PAGES:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "flattened PDF page limit exceeds the supported profile",
+        )
+    if (
+        raster_bytes > limits.memory_bytes
+        or raster_bytes // 4 > limits.pixel_count
+        or total_input_bytes > limits.temporary_storage_bytes
+        or limits.output_bytes > limits.temporary_storage_bytes - total_input_bytes
+    ):
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.requested_limits",
+            "flattened PDF inputs and output exceed their resource budgets",
+        )
+
+
+def flattened_pdf_export_bound_object_ids(payload: OperationStartPayload) -> tuple[UUID, ...]:
+    """Return plan, source, raster, and output IDs from a validated start."""
+
+    validate_flattened_pdf_export_start(payload)
+    output_object_id: UUID | None = None
+    for parameter in payload.parameters:
+        if parameter.name == FLATTENED_PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER:
+            if parameter.value_type is ScalarValueType.UUID and type(parameter.value) is UUID:
+                output_object_id = parameter.value
+            break
+    if output_object_id is None:
+        reject(
+            "RPC_INVALID_OPERATION",
+            "payload.parameters",
+            "flattened PDF output object identifier is unavailable",
+        )
+    return (*tuple(reference.object_id for reference in payload.inputs), output_object_id)
+
+
+def flattened_pdf_export_output_object_id(payload: OperationStartPayload) -> UUID:
+    """Return the flattened-PDF staging UUID from a validated start."""
+
+    return flattened_pdf_export_bound_object_ids(payload)[-1]
+
+
+def validate_flattened_pdf_export_result(
+    payload: OperationResultPayload,
+    *,
+    operation_id: UUID,
+    output_object_id: UUID,
+    maximum_output_bytes: int,
+) -> None:
+    """Bind success to one exact bounded flattened-PDF staging section."""
+
+    _require_uuid4(operation_id, "operation_id")
+    _require_uuid4(output_object_id, "payload.outputs.object_id")
+    _require_int(maximum_output_bytes, "payload.requested_limits.output_bytes", minimum=1)
+    if payload.outcome is not OperationOutcome.SUCCEEDED:
+        if payload.outputs:
+            reject(
+                "RPC_INVALID_RESULT",
+                "payload.outputs",
+                "unsuccessful flattened PDF results cannot carry outputs",
+            )
+        return
+    if len(payload.outputs) != 1:
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "successful flattened PDF results require exactly one staging output",
+        )
+    output = payload.outputs[0]
+    if (
+        output_object_id == operation_id
+        or output.area is not ReferenceArea.OPERATION_STAGING
+        or output.object_id != output_object_id
+        or output.operation_id != operation_id
+        or output.content_kind != FLATTENED_PDF_EXPORT_OUTPUT_CONTENT_KIND
+        or output.expected_byte_size is None
+        or not 1 <= output.expected_byte_size <= maximum_output_bytes
+        or output.expected_sha256 is None
+    ):
+        reject(
+            "RPC_INVALID_RESULT",
+            "payload.outputs",
+            "flattened PDF output is not bound to its requested staging object and limit",
+        )
+
+
 def validate_searchable_pdf_export_start(payload: OperationStartPayload) -> None:
     """Validate the additive ``pdf.export.searchable`` version-1 contract."""
 
@@ -2553,7 +2794,11 @@ class ProtocolEnvelope:
                 if reference.area in {ReferenceArea.SOURCE_READ, ReferenceArea.ASSET_READ}:
                     continue
                 if (
-                    self.payload.operation_kind == PDF_EXPORT_CAPABILITY.capability_id
+                    self.payload.operation_kind
+                    in {
+                        PDF_EXPORT_CAPABILITY.capability_id,
+                        FLATTENED_PDF_EXPORT_CAPABILITY.capability_id,
+                    }
                     and reference.area is ReferenceArea.OPERATION_TEMP
                     and reference.operation_id == operation_id
                 ):
