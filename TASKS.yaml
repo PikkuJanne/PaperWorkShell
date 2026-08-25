@@ -2808,6 +2808,14 @@ tasks:
       validate-portfolio-boundary; validate-docs; validate-m1-benchmark-report; validate-pws0208-resource-workload;
       validate-pdf-renderer-benchmark - passed; 82 tasks, 243 dependency edges, 9 milestones, 42 decisions, all
       registered contracts, and the 14-file standalone portfolio bundle remained valid
+    - uv run --locked --no-sync python tools/dev.py validate-fixtures in an exact single-branch clean clone - passed;
+      validated 46 deterministic public synthetic fixtures, 15 renderer references, 6 image-transform and 3 overlay
+      references across 2,319 historical blobs, 748 index blobs, and 776 working files
+    - uv run --locked --no-sync python tools/dev.py scan-secrets in the same exact clean clone - passed; Gitleaks
+      covered 2,319 historical blobs, 252 commit/tag objects, 2,352 historical path/blob pairs, 748 index blobs, 776
+      tracked files, and zero nonignored untracked files
+    - uv run --locked --no-sync python tools/dev.py quality-self-test in the same exact clean clone - passed; all five
+      deliberate format, type, schema, dependency-cycle, and staged-binary secret violations were detected and cleaned
     notes:
     - The production worker validates versioned overlay-aware requests, executes through bounded private buffers,
       supports progress/cancellation/timeout and deterministic cleanup, and commits only verified derivatives. It never
@@ -2825,6 +2833,10 @@ tasks:
       observed delete-pending. Commit f5a7c23747d48e535c00dab468040311d25a97bc now classifies only that authenticated
       namespace transition as retryable; unsafe types, reparse points, unclassified Win32 failures, and sticky
       measurement uncertainty remain fail-closed. Four serial live repetitions and the full integration lane passed.
+    - Fixture, secret, and quality self-tests used a single-branch clean clone of the recorded commit so unrelated
+      untracked workspace files and Codex-local recovery refs containing ignored synthetic render evidence were not
+      mistaken for release-branch content. The clone had complete branch history, a clean index/worktree, and no
+      nonignored untracked files.
     - PaperWorkShell remains standalone, owns all local case/document/overlay data, creates no sibling dependency, and
       changes no release interface or interoperability contract.
 - id: PWS-0308
