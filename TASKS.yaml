@@ -2708,7 +2708,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: blocked
   critical_path: true
   depends_on:
   - PWS-0112
@@ -2739,12 +2739,94 @@ tasks:
   - export
   - overlays
   - compatibility
-  blocker: null
+  blocker:
+    reason: >-
+      The required four-viewer Windows matrix is incomplete: Adobe Acrobat Reader is not installed, and the approved
+      browser-control surface blocks further local file URL interaction before qualifying Chrome and Firefox runs can
+      be completed.
+    evidence:
+    - >-
+      W1 is UNAVAILABLE: both standard Reader/Acrobat executable locations are absent and machine/user uninstall
+      registries contain no Adobe Reader or Acrobat entry.
+    - >-
+      W2 passed the complete five-page, four-zoom, three-search, non-interactivity, and close/reopen procedure in
+      Microsoft Edge 151.0.4129.101 against the recorded immutable artifact.
+    - >-
+      W3 has only a non-qualifying partial observation in Chrome 151.0.7922.174; W4 was not run in Firefox 154.0.
+      Agent-controlled local file interaction was denied by the browser security policy, and no bypass was attempted.
+    - >-
+      The documented completion rule requires W1 through W4 all to pass against the same PDF SHA-256.
+    requested_action: Install a supported Adobe Acrobat Reader and have a human operator complete the exact W1, W3,
+      and W4 procedures against the recorded immutable PDF, then record all three qualifying PASS results. Do not
+      bypass browser security controls or substitute another viewer for a named slot.
   evidence:
     completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    revision: e088bb7dd10088f3eb454763e3fd4bd203706eb4
+    commands:
+    - uv run --locked --no-sync python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed on
+      the review-evidence tree; all 513 files were formatted and linted, all 13 import layers across 180 source files
+      were valid, and strict typing passed across 513 source files
+    - uv run python -m pytest tests/unit/test_flattened_export_adapter.py tests/unit/test_flattened_pdf_export.py
+      tests/unit/test_flattened_pdf_export_app.py tests/unit/test_flattened_pdf_export_entrypoint.py
+      tests/unit/test_overlay_rendering.py tests/unit/test_pws0307_overlay_reader_corpus.py and all flattened worker unit
+      modules - passed; all 299 focused unit tests passed in 789.50 seconds, including white/black visibility probes,
+      resource-graph stress, exact stream representation, dormant Do names, and optional-content rejection
+    - uv run python -m pytest tests/integration/test_flattened_pdf_export_worker_windows.py
+      tests/integration/test_pdfium_renderer.py - passed; all 31 focused integration tests passed in 124.35 seconds,
+      including the two real restricted Windows worker paths
+    - uv run python -m pytest selected flattened-export security, resource-budget, logging, malformed-message,
+      cancellation, timeout, and cleanup coverage - passed; all 67 focused security tests passed
+    - uv run --locked --no-sync python tools/pws0307_overlay_reader_corpus.py for two new PDF/JSON destination pairs -
+      passed; both pairs were byte-identical, the five-page PDF was 9,485 bytes with SHA-256
+      05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e, and the content-free JSON SHA-256 was
+      23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21
+    - qpdf 12.3.2 --check; Poppler 25.07.0 pdfinfo, pdftotext, and pdftoppm at 144 dpi - passed; the PDF reopened
+      without syntax/recovery/stream errors, was unencrypted with five pages, all three overlay values extracted, and
+      every rendered overlay was visually present in the planned geometry
+    - docs/compatibility/pws-0307-overlay-reader-matrix.md W2 interactive run - passed in Edge 151.0.4129.101; pages
+      1→2→3→4→5→4→3→2→1, Fit Page/100%/200%/400%, all three searches, non-interactivity, and close/reopen passed
+    - uv run --locked --no-sync python tools/pws0207_quality_evaluation.py validate
+      benchmarks/pws0207-quality-findings-v1.json --revision f5a7c23747d48e535c00dab468040311d25a97bc - passed;
+      the reviewed corpus/profile digests and all eight metric rows were unchanged, then revision-only evidence was
+      bound in support commit 7d7e7fae1720bb2d9090798f5f085edbdc520474
+    - uv run --locked --no-sync python -m pytest tests/unit/worker/test_windows_private_temp_telemetry.py
+      tests/unit/worker/test_client_resource_telemetry.py - passed; 28 tests prove delete-pending namespace churn is
+      retried with every retained handle closed while non-directory/reparse authorities and persistent uncertainty
+      remain fail-closed
+    - uv run --locked --no-sync python -m pytest
+      tests/integration/test_flattened_pdf_export_worker_windows.py::test_live_output_bound_failure_is_correlated_terminated_clean_and_private
+      - passed in four serial post-recovery fresh-process repetitions; the output-bound failure remained correlated,
+      tree-terminated, clean, and backed by complete private-temp telemetry
+    - uv run --locked --no-sync python tools/dev.py test-unit - passed; all 4,116 unit tests passed in 577.29 seconds
+      on the revision-bound evidence tree
+    - uv run --locked --no-sync python tools/dev.py test-integration - passed; 409 tests passed and 9 documented
+      Windows privilege or absent admitted-runtime/private-stage cases skipped in 3,491.26 seconds
+    - uv run --locked --no-sync python tools/dev.py test-security - passed; 482 tests passed and 6 documented Windows
+      link-capability cases skipped in 238.51 seconds
+    - uv run --locked --no-sync python tools/dev.py test-accessibility - passed; all 50 accessibility tests passed
+    - uv run --locked --no-sync python tools/dev.py validate-schemas; validate-dependencies; validate-task-graph;
+      validate-portfolio-boundary; validate-docs; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark - passed; 82 tasks, 243 dependency edges, 9 milestones, 42 decisions, all
+      registered contracts, and the 14-file standalone portfolio bundle remained valid
+    notes:
+    - The production worker validates versioned overlay-aware requests, executes through bounded private buffers,
+      supports progress/cancellation/timeout and deterministic cleanup, and commits only verified derivatives. It never
+      mutates an imported original or overwrites an external source path.
+    - Text/date/initials use the pinned embedded subset Type0/CIDFontType2/FontFile2/ToUnicode strategy. All eight
+      overlay kinds are flattened into page content with crop/rotation/UserUnit-aware placement and no interactive
+      appearance dependency; placed signature images remain visual marks and ordinary shapes never claim redaction.
+    - Strict output verification rejects optional content, active annotations/widgets/actions, malformed or aliased
+      resource graphs, inherited-content surprises, missing/displaced/faint overlays, unsafe stream/resource growth,
+      and any reopen/render/semantic mismatch before destination commit.
+    - Independent implementation, PDF-graph, visibility-oracle, security/privacy, and completion audits found no
+      remaining actionable P0-P2 issue. The only incomplete acceptance criterion is the external four-viewer manual
+      matrix recorded above; therefore the task is blocked rather than done.
+    - A live output-limit integration run exposed a bounded private-temp sampling race when a retained directory was
+      observed delete-pending. Commit f5a7c23747d48e535c00dab468040311d25a97bc now classifies only that authenticated
+      namespace transition as retryable; unsafe types, reparse points, unclassified Win32 failures, and sticky
+      measurement uncertainty remain fail-closed. Four serial live repetitions and the full integration lane passed.
+    - PaperWorkShell remains standalone, owns all local case/document/overlay data, creates no sibling dependency, and
+      changes no release interface or interoperability contract.
 - id: PWS-0308
   milestone: M3
   title: Run Milestone 3 overlay gate

@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.12",
+  "bundle_version": "0.2.13",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 259117,
-      "sha256": "d05ea992340f8d9771dd5d6c483c2a29d2b8c5004dba7a4b11508c480fe1523b"
+      "bytes": 266898,
+      "sha256": "9ec2db4f0ebcab36a725a4cdaf409281e68318fc7e44e70bfebcbd321e7bd0fc"
     },
     {
       "path": "TASKS.schema.json",
@@ -96,13 +96,11 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0307"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0306 is done: the accessible full-page overlay editor provides native selection and exact property controls, keyboard movement/resize/snap, zoom/pan/guides, truthful signature/non-redaction wording, content-free assistive-technology state, and normalized placement that is independent of view scale. PWS-0307 is now ready and continues Milestone 3 with verified flattened overlay export and reader compatibility.",
+    "PWS-0307 is blocked after review: the bounded flattened-overlay export, strict reopen/render/semantic verification, deterministic five-page corpus, independent PDF inspections, and a complete Microsoft Edge reader run passed. The required four-viewer matrix remains incomplete because Adobe Acrobat Reader is absent and qualifying Chrome/Firefox local-file runs require a human operator; PWS-0308 therefore remains planned.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

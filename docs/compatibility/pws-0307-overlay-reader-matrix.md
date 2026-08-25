@@ -120,12 +120,29 @@ usernames, accounts, browser profiles, or unrelated installed software.
 
 | Slot | Viewer name | Viewer version/build | Built-in viewer/configuration | Windows edition/version/build/architecture | Repository revision | Generator version | PDF SHA-256 | PDF bytes | Evidence JSON SHA-256 | UTC date | Operator role | Pages checked | Zooms checked | Text/date/initials search | Noninteractive observation | Close/reopen | Result | Content-free observations |
 |---|---|---|---|---|---|---:|---|---:|---|---|---|---|---|---|---|---|---|---|
-| W1 | Adobe Acrobat Reader | TBD | Desktop Reader | TBD | TBD | 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | NOT RUN | None |
-| W2 | Microsoft Edge PDF viewer | TBD | Built-in viewer | TBD | TBD | 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | NOT RUN | None |
-| W3 | Google Chrome PDF viewer | TBD | Built-in viewer | TBD | TBD | 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | NOT RUN | None |
-| W4 | Mozilla Firefox PDF viewer | TBD | Built-in viewer | TBD | TBD | 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | NOT RUN | None |
+| W1 | Adobe Acrobat Reader | Not installed | Desktop Reader absent | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `08bbf60b83c575c21440240547844645f7002ccb` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | UNAVAILABLE | Both standard Reader/Acrobat executable locations were absent and all machine/user uninstall registries returned no Adobe Reader or Acrobat entry. No substitute viewer was counted. |
+| W2 | Microsoft Edge PDF viewer | 151.0.4129.101 (Official build) (64-bit) | Built-in Adobe-powered viewer; no external extension/delegation | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `08bbf60b83c575c21440240547844645f7002ccb` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | 1→2→3→4→5→4→3→2→1 | Fit Page, 100%, 200%, 400% | 3/3 found | PASS | PASS | PASS | Five pages reported. Text/date/initials, marks, ellipse, signature-image visual mark, and highlight remained present, contained, oriented, and unclipped. Overlay clicks and 12 Tab presses exposed no document widget, form field, annotation editor, script, attachment, or external action. The same local PDF reopened successfully. The installed Edge executable later updated to 151.0.4129.107; this row records the version shown by the About UI during the qualifying run. |
+| W3 | Google Chrome PDF viewer | 151.0.7922.174 (Official build) (64-bit) | Built-in viewer opened the local PDF; no delegation | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `08bbf60b83c575c21440240547844645f7002ccb` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | Pages 1-2 observed only; non-qualifying partial run | 88% and 400% observed only | NOT RUN | NOT RUN | NOT RUN | NOT RUN | Chrome reported five pages and visibly rendered the same final artifact, including page-1 text/date/initials and the page-2 mark thumbnail. The control surface then denied further local `file:` interaction under its browser security policy. Search, the complete page/zoom sequence, non-interactivity, and close/reopen were therefore not completed; no alternate or indirect bypass was attempted. |
+| W4 | Mozilla Firefox PDF viewer | 154.0 installed-file version; About UI not run | Built-in viewer not exercised | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `08bbf60b83c575c21440240547844645f7002ccb` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | Firefox is installed, but a qualifying local-file run was not attempted after the browser security boundary stopped agent-controlled `file:` viewer interaction. A human operator must complete the exact procedure without bypassing that control. |
 
-Overall PWS-0307 manual reader result: **NOT RUN**.
+## Independent automated and rendered-artifact evidence
+
+- The two independently generated no-replace PDF/JSON pairs were byte-identical. The recorded PDF
+  is 9,485 bytes with SHA-256
+  `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e`; the evidence JSON
+  SHA-256 is `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21`.
+- qpdf 12.3.2 reported no syntax, recovery, or stream-encoding errors. Poppler 25.07.0 reported five
+  unencrypted pages, extracted all three page-1 overlay values, and rendered all five pages at
+  144 dpi. The rendered pages were visually inspected: every expected overlay was visible and in
+  its planned geometry. Poppler emitted only disclosed source-font substitution warnings for the
+  synthetic legacy source resources; the overlay subset font remained embedded.
+- The production generator's pinned PDFium path rendered all pages, strict reopen and output-graph
+  validation passed, and the semantic fingerprint was
+  `162ab8bdbbefd3b91ecea8b35ae9836b63e21548dd56384622a472cebc0c2e07`.
+
+Overall PWS-0307 manual reader result: **INCOMPLETE**. W2 passed, W1 is unavailable, and W3-W4
+do not contain qualifying complete runs. The implementation and automated artifact evidence are
+ready for review, but the four-viewer completion rule is not satisfied.
 
 ## Deferred platform ownership
 
