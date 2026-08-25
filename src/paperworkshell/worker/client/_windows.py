@@ -4813,7 +4813,9 @@ def _retain_private_temp_directory(
     handle = _OwnedHandle(value)
     try:
         info = _query_retained_resource_info(handle.value)
-        if not info.is_directory or info.is_reparse_point or info.delete_pending:
+        if info.delete_pending:
+            raise _PrivateTempTreeChanged
+        if not info.is_directory or info.is_reparse_point:
             raise OSError
     except BaseException:
         if not _close_owned_handle_bounded(handle):

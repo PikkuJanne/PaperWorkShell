@@ -65,6 +65,76 @@ def test_private_temp_scan_retries_a_concurrent_namespace_change(
     assert calls == 2
 
 
+def test_private_temp_scan_retries_a_delete_pending_retained_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "bounded.bin").write_bytes(b"bounded")
+    query = windows._query_retained_resource_info
+    close = windows._close_owned_handle_bounded
+    calls = 0
+    closes = 0
+
+    def query_with_one_delete_pending(handle: int) -> windows._RetainedResourceInfo:
+        nonlocal calls
+        calls += 1
+        info = query(handle)
+        if calls == 1:
+            return replace(info, delete_pending=True)
+        return info
+
+    def observed_close(handle: windows._OwnedHandle) -> bool:
+        nonlocal closes
+        closes += 1
+        return close(handle)
+
+    monkeypatch.setattr(windows, "_query_retained_resource_info", query_with_one_delete_pending)
+    monkeypatch.setattr(windows, "_close_owned_handle_bounded", observed_close)
+
+    assert windows._private_temp_tree_bytes(tmp_path.resolve()) == 7
+    assert calls == 3
+    assert closes == 2
+
+
+@pytest.mark.parametrize(
+    ("is_directory", "is_reparse_point"),
+    ((False, False), (True, True)),
+)
+def test_private_temp_scan_does_not_retry_an_unsafe_retained_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    is_directory: bool,
+    is_reparse_point: bool,
+) -> None:
+    query = windows._query_retained_resource_info
+    close = windows._close_owned_handle_bounded
+    calls = 0
+    closes = 0
+
+    def query_with_unsafe_type(handle: int) -> windows._RetainedResourceInfo:
+        nonlocal calls
+        calls += 1
+        return replace(
+            query(handle),
+            is_directory=is_directory,
+            is_reparse_point=is_reparse_point,
+        )
+
+    def observed_close(handle: windows._OwnedHandle) -> bool:
+        nonlocal closes
+        closes += 1
+        return close(handle)
+
+    monkeypatch.setattr(windows, "_query_retained_resource_info", query_with_unsafe_type)
+    monkeypatch.setattr(windows, "_close_owned_handle_bounded", observed_close)
+
+    with pytest.raises(windows.WindowsLaunchError):
+        windows._private_temp_tree_bytes(tmp_path.resolve())
+
+    assert calls == 1
+    assert closes == 1
+
+
 def test_private_temp_scan_fails_closed_after_bounded_continuous_churn(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
