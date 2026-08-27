@@ -20,6 +20,7 @@ from tools.pws0307_overlay_reader_corpus import (
     build_reader_corpus_plan,
     generate_reader_corpus,
 )
+from tools.pws0307_reader_test import APPROVED_READER_ARTIFACT
 
 
 def _overlay_form(page: pikepdf.Page) -> pikepdf.Stream:
@@ -87,6 +88,13 @@ def test_generator_is_byte_deterministic_and_records_actual_production_checks(
 
     assert first_pdf.read_bytes() == second_pdf.read_bytes()
     assert first_json.read_bytes() == second_json.read_bytes()
+    assert len(first_pdf.read_bytes()) == APPROVED_READER_ARTIFACT.pdf_byte_size
+    assert hashlib.sha256(first_pdf.read_bytes()).hexdigest() == APPROVED_READER_ARTIFACT.pdf_sha256
+    assert len(first_json.read_bytes()) == APPROVED_READER_ARTIFACT.evidence_byte_size
+    assert (
+        hashlib.sha256(first_json.read_bytes()).hexdigest()
+        == APPROVED_READER_ARTIFACT.evidence_sha256
+    )
     assert first_summary == second_summary == json.loads(first_json.read_text(encoding="utf-8"))
     artifact = cast(dict[str, object], first_summary["artifact"])
     assert artifact == {

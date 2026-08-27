@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.13",
+  "bundle_version": "0.2.14",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 268123,
-      "sha256": "1a80abcbe304c34612b310e74d7c47fe16656581dbe38ddbc511398da421e0a6"
+      "bytes": 272354,
+      "sha256": "d8efadea44d67f6782c8caaa4705c54f9f2d4f63a8ee3615ce7762256c4f1e1e"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 28480,
-      "sha256": "710ca9272397a9c57c898be8f3c896cba0bdfe213c44ead089a93128a487d41b"
+      "bytes": 28594,
+      "sha256": "d5da7695b00441c296c8019df57c2c289ea79b1894ba94dfff3837992e5df8eb"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -100,7 +100,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0307 is blocked after review: the bounded flattened-overlay export, strict reopen/render/semantic verification, deterministic five-page corpus, independent PDF inspections, and a complete Microsoft Edge reader run passed. The required four-viewer matrix remains incomplete because Adobe Acrobat Reader is absent and qualifying Chrome/Firefox local-file runs require a human operator; PWS-0308 therefore remains planned.",
+    "PWS-0307 is blocked after review: implementation, automated verification, the exact immutable corpus, and W2 Edge passed. Adobe Acrobat is now installed, and a location-independent guided tool pins that W2 artifact and records bounded content-free evidence; qualifying human W1 Reader/free-reduced, W3 Chrome, and W4 Firefox runs remain required before PWS-0308.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

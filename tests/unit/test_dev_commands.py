@@ -50,6 +50,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "run-m1-vertical-slice",
             "run-pws0208-resource-workload",
             "benchmark-pdf-renderers",
+            "pws0307-reader-test",
         }
 
         self.assertLessEqual(required, set(COMMANDS))
@@ -70,6 +71,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertNotIn("run-m1-vertical-slice", CHECK_COMMANDS)
         self.assertNotIn("run-pws0208-resource-workload", CHECK_COMMANDS)
         self.assertNotIn("benchmark-pdf-renderers", CHECK_COMMANDS)
+        self.assertNotIn("pws0307-reader-test", CHECK_COMMANDS)
         self.assertNotIn("generate-fixtures", CHECK_COMMANDS)
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)
         self.assertIn("format-check", CHECK_COMMANDS)
@@ -81,6 +83,10 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertEqual(
             ("python", "-m", "mypy", "src", "tools", "tests"),
             COMMANDS["typecheck"].arguments,
+        )
+        self.assertEqual(
+            ("python", "-m", "tools.pws0307_reader_test"),
+            COMMANDS["pws0307-reader-test"].arguments,
         )
 
     def test_secret_scan_arguments_are_local_redacted_and_bounded(self) -> None:

@@ -219,6 +219,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         "Compare the pinned PDF renderers on the versioned synthetic corpus.",
         include_in_check=False,
     ),
+    "pws0307-reader-test": CommandSpec(
+        ("python", "-m", "tools.pws0307_reader_test"),
+        "Prepare, guide, and record the remaining PWS-0307 reader checks.",
+        include_in_check=False,
+    ),
 }
 
 CHECK_COMMANDS: Final = tuple(

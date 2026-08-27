@@ -2741,13 +2741,12 @@ tasks:
   - compatibility
   blocker:
     reason: >-
-      The required four-viewer Windows matrix is incomplete: Adobe Acrobat Reader is not installed, and the approved
-      browser-control surface blocks further local file URL interaction before qualifying Chrome and Firefox runs can
-      be completed.
+      The required four-viewer Windows matrix is incomplete. Adobe Acrobat is now installed and the exact test pack is
+      ready, but qualifying human W1 Adobe, W3 Chrome, and W4 Firefox observations have not yet been recorded.
     evidence:
     - >-
-      W1 is UNAVAILABLE: both standard Reader/Acrobat executable locations are absent and machine/user uninstall
-      registries contain no Adobe Reader or Acrobat entry.
+      W1 is now available for testing: the installed unified Adobe desktop executable reports product Adobe Acrobat
+      26.1.21789.0. The About version/effective mode and complete protocol-2 viewer observations remain NOT RUN.
     - >-
       W2 passed the complete five-page, four-zoom, three-search, non-interactivity, and close/reopen procedure in
       Microsoft Edge 151.0.4129.101 against the recorded immutable artifact.
@@ -2755,10 +2754,14 @@ tasks:
       W3 has only a non-qualifying partial observation in Chrome 151.0.7922.174; W4 was not run in Firefox 154.0.
       Agent-controlled local file interaction was denied by the browser security policy, and no bypass was attempted.
     - >-
-      The documented completion rule requires W1 through W4 all to pass against the same PDF SHA-256.
-    requested_action: Install a supported Adobe Acrobat Reader and have a human operator complete the exact W1, W3,
-      and W4 procedures against the recorded immutable PDF, then record all three qualifying PASS results. Do not
-      bypass browser security controls or substitute another viewer for a named slot.
+      The guided keyboard-only recorder was exercised from C:\Windows\System32. It created/reused only the exact
+      W2-bound 9,485-byte PDF/JSON pair, displayed one authoritative path, and preserved content-free closed attempts.
+    - >-
+      The documented completion rule still requires W1 through W4 all to pass against PDF SHA-256
+      05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e.
+    requested_action: Run the single documented pws0307-reader-test command and complete menu choices 1, 3, and 4.
+      Stop when the tool reports MATRIX READY FOR CODEX REVIEW; do not bypass browser controls, edit the artifact, or
+      substitute another viewer for a named slot.
   evidence:
     completed_at: null
     revision: e088bb7dd10088f3eb454763e3fd4bd203706eb4
@@ -2816,6 +2819,34 @@ tasks:
       tracked files, and zero nonignored untracked files
     - uv run --locked --no-sync python tools/dev.py quality-self-test in the same exact clean clone - passed; all five
       deliberate format, type, schema, dependency-cycle, and staged-binary secret violations were detected and cleaned
+    - uv --directory C:\projects\PaperWorkShell run --locked python -m tools.pws0307_reader_test prepare from
+      C:\Windows\System32 - passed; the helper created its ignored workspace, generated and independently reverified
+      the exact W2-bound PDF/JSON bytes, printed one authoritative PDF path, and required no cd, parent creation,
+      continuation backticks, manual destinations, or manual hash commands
+    - uv --directory C:\projects\PaperWorkShell run --locked python tools/dev.py pws0307-reader-test from
+      C:\Windows\System32 - passed; a second run safely reused and reverified the exact pair, displayed the restartable
+      keyboard menu, preserved W2, reported W1/W3/W4 NOT RUN, and exited without changing evidence
+    - uv run --locked --no-sync python -m pytest tests/unit/test_pws0307_reader_test.py
+      tests/unit/test_dev_commands.py; tests/unit/test_pws0307_overlay_reader_corpus.py - passed; 34 guided-workflow and
+      command tests plus 7 subtests passed, and all 4 production-corpus tests passed in 104.08 seconds with exact pinned
+      PDF size/hash and evidence JSON hash regression assertions
+    - uv run --locked --no-sync python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed;
+      all 516 Python files were formatted and linted, all 13 import layers across 180 source files were valid, and strict
+      typing passed across all 516 source files
+    - uv run --locked --no-sync python tools/dev.py test-unit - passed; all 4,142 unit tests passed serially in 540.22
+      seconds on the protocol-2 evidence tree, including exact-pair reuse/conflict/rollback, concurrent card creation,
+      closed result derivation, interactive retry/completion, strict calendar timestamps, duplicate-key rejection,
+      tamper rejection, path/link safety, content-free output, and the real flattened-export corpus binding
+    - uv run --locked --no-sync python -m pytest tests/security/test_pws0307_reader_test_privacy.py - passed; all 16
+      focused privacy tests proved exact closed result schemas, Windows-only capture, Reader-only W1 qualification, and
+      rejection of paths, names, profiles, accounts, notes, arbitrary OS text, and unsafe version input without value
+      reflection in errors
+    - uv run --locked --no-sync python tools/dev.py validate-docs; validate-task-graph;
+      validate-portfolio-boundary - passed; documentation links, the 82-task/243-edge graph, and the 14-file standalone
+      portfolio bundle including refreshed canonical README/TASKS hashes remained valid
+    - Poppler pdftoppm at 144 dpi plus visual inspection of all five newly prepared pages - passed; text/date/initials,
+      check/cross, ellipse, signature-image visual mark, and highlight were present, contained, legible, and consistent
+      with the fixed page scenarios; disclosed legacy source-font substitution warnings were unchanged
     notes:
     - The production worker validates versioned overlay-aware requests, executes through bounded private buffers,
       supports progress/cancellation/timeout and deterministic cleanup, and commits only verified derivatives. It never
@@ -2826,9 +2857,10 @@ tasks:
     - Strict output verification rejects optional content, active annotations/widgets/actions, malformed or aliased
       resource graphs, inherited-content surprises, missing/displaced/faint overlays, unsafe stream/resource growth,
       and any reopen/render/semantic mismatch before destination commit.
-    - Independent implementation, PDF-graph, visibility-oracle, security/privacy, and completion audits found no
-      remaining actionable P0-P2 issue. The only incomplete acceptance criterion is the external four-viewer manual
-      matrix recorded above; therefore the task is blocked rather than done.
+    - Independent implementation, PDF-graph, visibility-oracle, security/privacy, UX, and completion audits found no
+      remaining actionable P0-P2 issue after the guided workflow was tightened to preserve exact schemas, Reader-only
+      W1 qualification, Windows provenance, valid UTC times, retryable input, and concurrent no-replace behavior. The
+      only incomplete acceptance criterion is the external four-viewer manual matrix; the task remains blocked.
     - A live output-limit integration run exposed a bounded private-temp sampling race when a retained directory was
       observed delete-pending. Commit f5a7c23747d48e535c00dab468040311d25a97bc now classifies only that authenticated
       namespace transition as retryable; unsafe types, reparse points, unclassified Win32 failures, and sticky
@@ -2839,6 +2871,14 @@ tasks:
       nonignored untracked files.
     - PaperWorkShell remains standalone, owns all local case/document/overlay data, creates no sibling dependency, and
       changes no release interface or interoperability contract.
+    - Human preparation no longer exposes the low-level generator's existing-parent/no-replace requirements. The
+      stable pws0307-reader-test command owns an ignored fixed workspace, pins the exact already accepted artifact,
+      rejects an older self-consistent but byte-different corpus, and records only bounded closed answers with no
+      free-text or absolute path in result JSON.
+    - Adobe's current unified Windows application uses a common Acrobat/Reader executable whose enabled features depend
+      on entitlement. W1 qualifies only when the Adobe UI confirms Reader/free/reduced mode. Standard, Pro,
+      mode-not-shown, extensions, and delegated viewers remain non-gating; the recorder cancels without writing a W1
+      result for those states. This methodology clarification changes neither product behavior nor the release interface.
 - id: PWS-0308
   milestone: M3
   title: Run Milestone 3 overlay gate
