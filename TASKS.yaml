@@ -2979,7 +2979,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: ready
+  status: done
   critical_path: true
   depends_on:
   - PWS-0007
@@ -3010,17 +3010,50 @@ tasks:
   - supply-chain
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-27'
+    revision: 5e0e7101cdd1af9c865fd616903b2d74a23720f4
+    commands:
+    - uv run --locked --no-sync python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed;
+      all 525 files were formatted/linted/strictly typed and 13 import layers across 185 source files were valid
+    - uv run --locked --no-sync python tools/dev.py test-unit - passed on implementation revision
+      5e0e7101cdd1af9c865fd616903b2d74a23720f4; all 4208 tests passed in 1181.67 seconds
+    - uv run --locked --no-sync python tools/dev.py test-integration - passed; 430 tests passed in 6896.13 seconds with 10
+      disclosed Windows-link and optional private-runtime/artifact-stage capability skips
+    - uv run --locked --no-sync python tools/dev.py test-security; test-accessibility - passed; 505 security tests passed
+      in 324.56 seconds with 6 disclosed Windows-link capability skips, and all 50 accessibility tests passed
+    - Focused loader, runtime-schema, repository, and hostile-input corpus - passed; 92 tests passed, 1 real-symlink
+      capability test skipped under WinError 1314, and 8 parameterized subtests passed
+    - uv run --locked --no-sync python tools/dev.py validate-schemas; validate-dependencies; validate-task-graph;
+      validate-docs; validate-portfolio-boundary; check-import-boundaries - passed
+    - Wheel and source-distribution inspection - passed; both artifacts contain the exact canonical template-v1 schema,
+      all runtime loader modules, and an isolated installed-wheel fingerprint check
+    notes:
+    - The loader accepts bounded UTF-8 JSON data only, dispatches exact schema version 1 against a fingerprint-bound
+      packaged schema, and rejects duplicate keys, floats/non-finite numbers, unsafe integers, excessive structure,
+      future versions, semantic rule violations, and executable or eligibility/trust-like fields with stable sanitized
+      errors.
+    - External artifact evidence binds the selected bytes to an exact byte count and SHA-256 plus explicit signature
+      status and verification time. The provenance source-document SHA-256 remains a separate declarative claim and is
+      never treated as the template artifact checksum.
+    - The Windows repository resolves only administrator-approved opaque keys under one fixed local catalog and retains
+      the authenticated handle while reading. Traversal, absolute/UNC/device/ADS/reserved paths, reparse points,
+      hardlinks, sparse/offline/recall files, final-path changes, oversize files, and mid-read replacement fail closed.
+    - Runtime validation matched the established tooling validator across 7498 generated mutations plus explicit
+      lifecycle and semantic boundary cases with zero acceptance divergences. Immutable snapshots return fresh mutable
+      document copies so caller changes cannot alter validated state.
+    - Current, review-due, and expired states expose plain-language provenance, integrity, signature, verification,
+      review, and expiry facts. Expired or invalid artifacts block use; no GUI changed and no human test was required.
+    - Tests prove that loading invokes no subprocess, imports no template-selected module, opens no arbitrary path, makes
+      no network request, leaks no attacker-controlled exception detail, and does not access or mutate case storage.
+    - No dependency was added. PaperWorkShell remains a standalone owner of local templates and case data; no sibling
+      repository, shared service/schema/runtime, adapter, data exchange, or release-interface change was introduced.
 - id: PWS-0402
   milestone: M4
   title: Create generic portal application template v1
   kind: implementation
   priority: P0
   effort: M
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0401

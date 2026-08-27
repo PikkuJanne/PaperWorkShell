@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 277350,
-      "sha256": "2f7a66a119b92501c61343ba0e8e3702c9dfba45428b92a85b37fd4392789ac1"
+      "bytes": 280873,
+      "sha256": "a711d1faf73dd3275bb57533c15891578038d7322ed6c4a874c9f79bf8a0ad36"
     },
     {
       "path": "TASKS.schema.json",
@@ -97,12 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0401"
+      "PWS-0402"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0308 is done: the Milestone 3 visual-overlay gate passed complete coordinate/property, rendering, signature-image, keyboard/NVDA, flattened-export, privacy, cleanup, and W1-W4 reader evidence. PWS-0401 is the sole ready task. The accepted reader matrix will not be repeated; future human tests must minimize setup, transcription, and repetition and use comfortably large, clearly aligned visual targets unless size or offset is the property under test.",
+    "PWS-0401 is done: the local data-only template loader binds exact artifact bytes to external integrity evidence, validates schema and lifecycle state against the frozen v1 contract, rejects executable content and unsafe Windows paths, and exposes plain-language provenance and review facts without touching case storage. PWS-0402 is the sole ready task; PWS-0403 remains planned until PWS-0402 is done. The accepted PWS-0307 reader matrix will not be repeated, and future human tests must minimize setup, transcription, and repetition and use comfortably large, clearly aligned visual targets unless size or offset is the property under test.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
