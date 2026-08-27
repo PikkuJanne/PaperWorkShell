@@ -91,6 +91,14 @@ _DOCUMENT_SIGNATURES: Final = (
     b"II*\x00",
     b"MM\x00*",
 )
+# PWS-0308 reviewed one historical PWS-0307 Python test-source blob whose first
+# 1 KiB contained a literal synthetic PDF signature as recipe data. The current
+# source constructs that signature from octets so it cannot recur. Git history
+# is intentionally not rewritten, therefore only this exact public source-blob
+# digest is admitted; it does not authorize any document or image fixture.
+_REVIEWED_HISTORICAL_RECIPE_SOURCE_DIGESTS: Final[frozenset[bytes]] = frozenset(
+    {bytes.fromhex("ca57acc856752be907532260ab7f591b4e99ed3bfadc9508684850998041e13b")}
+)
 _RESERVED_EMAIL_SUFFIXES: Final = (b".invalid", b".example", b".test", b".localhost")
 _RESERVED_EMAIL_DOMAINS: Final = (b"example.com", b"example.net", b"example.org")
 _MAX_PAN_CANDIDATE_STARTS: Final = 4_096
@@ -1056,7 +1064,10 @@ def _repository_inspector(
     def inspect(content: bytes) -> None:
         if _looks_like_document(content):
             digest = hashlib.sha256(content).digest()
-            if digest not in approved_document_digests:
+            if (
+                digest not in approved_document_digests
+                and digest not in _REVIEWED_HISTORICAL_RECIPE_SOURCE_DIGESTS
+            ):
                 raise RepositoryPrivacyFinding(
                     "FIXTURE_UNINDEXED_DOCUMENT",
                     "repository snapshot contains an unapproved document or image blob",

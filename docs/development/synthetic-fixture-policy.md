@@ -3,7 +3,7 @@
 - Status: Binding foundation policy
 - Task: PWS-0009
 - Decision: PWS-D035
-- Last reviewed: 2026-08-22
+- Last reviewed: 2026-08-27
 
 PaperWorkShell treats every document and image as hostile and potentially sensitive. The routine
 repository and CI corpus is therefore **public synthetic-only**: it is built from fixed algorithms
@@ -163,6 +163,15 @@ bytes must either match an approved generated fixture digest or validation fails
 structured-data patterns are also rejected without echoing the matched path or value. Git author,
 committer, tagger, and folded-mergetag identity records are provenance rather than fixture content;
 Gitleaks still scans their raw bytes in the separate `scan-secrets` lane.
+
+One reviewed historical exception admits only SHA-256
+`ca57acc856752be907532260ab7f591b4e99ed3bfadc9508684850998041e13b`. It is the exact public,
+synthetic PWS-0307 Python test-source blob that formerly placed a PDF magic signature literally in
+its first 1 KiB while constructing an in-memory unit-test artifact. It is source recipe text, not a
+document or image fixture. The current source constructs the signature from numeric octets so the
+false positive cannot recur; the old reachable blob remains because repository history is not
+rewritten. A security regression admits that exact digest and rejects a one-byte neighbor. This
+exception does not authorize any other blob, path, fixture, document, or image.
 
 IBAN detection uses the fixed country lengths in the
 [SWIFT IBAN Registry Release 102](https://www.swift.com/swift_resource/9606) (June 2026) and

@@ -22,8 +22,10 @@ from tools.generate_synthetic_fixtures import (
 from tools.validate_synthetic_fixtures import (
     _IBAN_LENGTHS,
     _MAX_PAN_CANDIDATE_STARTS,
+    _REVIEWED_HISTORICAL_RECIPE_SOURCE_DIGESTS,
     RepositoryPrivacyFinding,
     _contains_prohibited_pattern,
+    _looks_like_document,
     _repository_inspector,
 )
 
@@ -34,6 +36,7 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
         root: Path,
         *arguments: str,
         input_bytes: bytes | None = None,
+        strip_output: bool = True,
     ) -> bytes:
         completed = subprocess.run(  # noqa: S603 - fixed Git test setup with literal arguments
             ["git", *arguments],
@@ -44,7 +47,7 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             input=input_bytes,
         )
         self.assertEqual(0, completed.returncode, completed.stderr.decode(errors="replace"))
-        return completed.stdout.strip()
+        return completed.stdout.strip() if strip_output else completed.stdout
 
     def _git(self, root: Path, *arguments: str) -> None:
         self._git_output(root, *arguments)
@@ -220,6 +223,34 @@ class SyntheticFixtureSecurityTests(unittest.TestCase):
             inspect(approved + b"x")
 
         self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
+
+    def test_reviewed_historical_recipe_source_exception_is_exact(self) -> None:
+        git_blob_id = "63a6c9a1a8c236a3fde3d42c9bfc1145283ef3a1"
+        historical_source = self._git_output(
+            PROJECT_ROOT,
+            "cat-file",
+            "blob",
+            git_blob_id,
+            strip_output=False,
+        )
+        historical_digest = hashlib.sha256(historical_source).digest()
+        self.assertEqual(
+            frozenset({historical_digest}),
+            _REVIEWED_HISTORICAL_RECIPE_SOURCE_DIGESTS,
+        )
+        self.assertTrue(_looks_like_document(historical_source))
+
+        inspect = _repository_inspector(frozenset())
+        inspect(historical_source)
+        with self.assertRaises(RepositoryPrivacyFinding) as raised:
+            inspect(historical_source + b"\n")
+
+        self.assertEqual("FIXTURE_UNINDEXED_DOCUMENT", raised.exception.code)
+
+    def test_current_pws0307_test_source_does_not_look_like_a_document(self) -> None:
+        current_source = (PROJECT_ROOT / "tests/unit/test_pws0307_reader_test.py").read_bytes()
+
+        self.assertFalse(_looks_like_document(current_source))
 
     def test_deleted_historical_document_blob_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -3,7 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-01
 - Amended: 2026-08-12 by PWS-0115 low-resource contract migration; 2026-08-14 by PWS-0203
-  quality-gate closure after bounded repository-history growth
+  quality-gate closure after bounded repository-history growth; 2026-08-27 by PWS-0308 for one
+  exact historical source-recipe digest exception
 - Task: PWS-0003
 - Decisions: PWS-D003, PWS-D034, PWS-D035
 
@@ -83,6 +84,12 @@ machine-independent limits without inventing physical-hardware equivalence.
    a privacy-test label, not a credential. The exception has no path, commit, baseline, stopword,
    or pattern-family scope. A security regression proves the exact value is accepted while a
    one-character neighbor and a runtime-assembled realistic access-key shape are still detected.
+   Separately, repository fixture inspection admits SHA-256
+   `ca57acc856752be907532260ab7f591b4e99ed3bfadc9508684850998041e13b` and no neighboring digest.
+   This is the exact public PWS-0307 Python test-source blob whose in-memory synthetic-PDF recipe
+   formerly put a literal document magic signature in its first 1 KiB. The current source builds
+   the signature from numeric octets; the historical exception avoids rewriting reachable Git
+   history and does not authorize a document, image, fixture family, path, or pattern.
 4. The aggregate suite includes a negative self-test that creates temporary synthetic violations
    for formatting, typing, schema format, graph cycles, and secret detection. The secret case
    proves exact staged PDF-like bytes are scanned after working bytes change. Temporary Git setup
