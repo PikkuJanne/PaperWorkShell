@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.15",
+  "bundle_version": "0.2.16",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 272848,
-      "sha256": "3accba9e32c9a4e7d541f8a11a1753de1d017326362864e22250912f3b8fb226"
+      "bytes": 277350,
+      "sha256": "2f7a66a119b92501c61343ba0e8e3702c9dfba45428b92a85b37fd4392789ac1"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 28580,
-      "sha256": "add7c7aabd73fedba53fa6ab9445d825c679cd28dea647e48b5ed6ac760169f3"
+      "bytes": 28568,
+      "sha256": "848d66bdbf609a4c09963eeaaec90809e2b9b80d5b88f7173d901b46a9dad02d"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -97,12 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0308"
+      "PWS-0401"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0307 is done: W1 Adobe Reader/free-reduced, W2 Edge, W3 Chrome, and W4 Firefox passed against one immutable flattened-overlay artifact after complete automated, security, accessibility, and rendered-output evidence. PWS-0308 is the sole ready task. Future human tests must minimize setup and repetition and use comfortably large, clearly aligned visual targets unless size or offset is the property under test.",
+    "PWS-0308 is done: the Milestone 3 visual-overlay gate passed complete coordinate/property, rendering, signature-image, keyboard/NVDA, flattened-export, privacy, cleanup, and W1-W4 reader evidence. PWS-0401 is the sole ready task. The accepted reader matrix will not be repeated; future human tests must minimize setup, transcription, and repetition and use comfortably large, clearly aligned visual targets unless size or offset is the property under test.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

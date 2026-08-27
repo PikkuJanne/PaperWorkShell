@@ -27,9 +27,9 @@ ThirdLife compatibility cut or packaged PaperWorkShell release already exists.
 
 ## Development bootstrap
 
-The repository has completed its foundation, Milestone 1 vertical-slice, Milestone 2 image/OCR
-gates, and the Milestone 3 normalized-coordinate model. It is implementing the visual-overlay
-domain model next. It contains the restricted worker, immutable
+The repository has completed its foundation, Milestone 1 vertical-slice, Milestone 2 image/OCR,
+and Milestone 3 visual-overlay gates. It is implementing the Milestone 4 safe template loader next.
+It contains the restricted worker, immutable
 PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The

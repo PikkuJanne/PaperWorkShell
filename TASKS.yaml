@@ -2885,7 +2885,7 @@ tasks:
   kind: gate
   priority: P0
   effort: L
-  status: ready
+  status: done
   critical_path: true
   depends_on:
   - PWS-0301
@@ -2923,17 +2923,63 @@ tasks:
   - overlays
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-27'
+    revision: 3ba5e978f20c00dd860f6baa6f2e798d0e8725ea
+    commands:
+    - .venv\Scripts\python.exe tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed; 516 files
+      were formatted/linted/strictly typed and 13 import layers across 180 source files were valid
+    - .venv\Scripts\python.exe tools/dev.py test-unit - passed on full product revision
+      da349eb57c117956aec940c6e8a2f54e668eaba2; all 4142 tests passed, including deterministic coordinate/property,
+      renderer, signature-image, and flattened-export behavior
+    - .venv\Scripts\python.exe tools/dev.py test-integration - passed on full product revision
+      da349eb57c117956aec940c6e8a2f54e668eaba2; 409 tests passed with 9 disclosed Windows-link and optional
+      Tesseract-private-stage skips, and every M3 production path ran
+    - .venv\Scripts\python.exe tools/dev.py test-security; test-accessibility - passed; 500 security tests passed on
+      exact gate evidence revision 3ba5e978f20c00dd860f6baa6f2e798d0e8725ea with 6 disclosed Windows
+      link-capability skips, and all 50 accessibility tests passed on full product revision da349eb
+    - Clean tools/dev.py validate-fixtures; scan-secrets; quality-self-test - passed on exact gate evidence revision
+      3ba5e978f20c00dd860f6baa6f2e798d0e8725ea; 46 public fixtures, 15 analytical renderer references, 6 transform
+      and 3 overlay references, 2341 historical blobs, 751 index blobs, 779 working files, zero nonignored untracked
+      files, and all 5 deliberate quality violations were checked
+    - tools/dev.py validate-schemas; validate-dependencies; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pdf-renderer-benchmark;
+      validate-pws0208-resource-workload - passed
+    - Production overlay-editor keyboard/NVDA record plus PWS-0307 W1 Adobe Reader/free-reduced, W2 Edge, W3 Chrome,
+      and W4 Firefox reader protocol - passed as a composite manual demonstration against one immutable artifact
+    notes:
+    - PWS-0301 through PWS-0307 are done. Fixed-seed coordinate properties and the five-page production corpus cover
+      MediaBox/CropBox, non-zero origins, intrinsic and added right-angle rotation, mixed page sizes, viewport/display
+      scaling, and `/UserUnit`.
+    - Authenticated Noto Sans Regular 2.007, deterministic subsetting/shaping, `/FontFile2`, `/ToUnicode`, and
+      `/ActualText` passed representative Latin Extended, Greek, Cyrillic, and Devanagari goldens. Unsupported
+      directionality, controls, missing glyphs, Arabic, Hebrew, CJK, and emoji fail closed; no universal Unicode claim
+      is made.
+    - The agent-operated NVDA record exercised all eight released overlay kinds and the production dialog without a
+      mouse at effective DPR 2.0. Apply used an in-memory callback and Escape exercised actual cancellation;
+      production persistence/export is proved separately by automated integration, so this is composite evidence and
+      not a human end-to-end session or accessibility certification.
+    - The immutable 9485-byte flattened PDF SHA-256 is
+      05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e; evidence JSON SHA-256 is
+      23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21. All four named reader versions passed page
+      traversal, Fit Page/100/200/400-percent zoom, 3/3 searches, non-interactivity, and close/reopen.
+    - The maintainer accepted the complete W1-W4 matrix and directed that it not be repeated. Small imagery and a
+      poorly centered translucent comparison target made the test inefficient; future human tests must minimize setup,
+      transcription, and repetition and use comfortably large, clearly aligned targets unless size/offset is under
+      test. This is ergonomics feedback, not a product defect.
+    - The clean gate found one historical Python unit-source blob whose literal synthetic PDF signature triggered the
+      document-data scanner. Current source constructs the signature from octets; one exact reviewed SHA-256 admits
+      only that public historical recipe blob, a one-byte neighbor still fails closed, and no history rewrite or broad
+      fixture/path exception was introduced.
+    - PaperWorkShell remains standalone and owns its local cases, overlays, signature-image assets, and derivatives;
+      this gate added no sibling dependency, shared schema/service/runtime, adapter, data exchange, or release-interface
+      change. No ThirdLife future note is needed.
 - id: PWS-0401
   milestone: M4
   title: Implement safe template loader and validator
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0007
