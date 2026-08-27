@@ -126,7 +126,7 @@ unrestricted same-account case outside this guarantee.
 | TB-05 | Import/storage adapter to external source | Classify local/device/network policy before open; use one read-only handle for bounded streaming copy/hash; never treat a partial copy as a source record |
 | TB-06 | Export staging to external destination | Classify destination policy, commit exact verified bytes through a destination-local temporary file, verify size/digest, reject original/prior-output aliases, then atomically replace only that new derivative name |
 | TB-07 | Diagnostics collector to user-selected bundle destination | Freeze an allowlisted snapshot/entry manifest, preview and confirm that exact snapshot, then write it locally without recollection or implicit attachment/upload |
-| TB-08 | Template store to template loader | Data-only parse, schema/version/provenance/expiry limits, explicit trust display; no imports/expressions/commands or file/network dereference |
+| TB-08 | Template store to template loader | Opaque catalog key and same-handle fixed-local byte snapshot; external exact-size/SHA/signature status before strict data-only version/schema/semantic/lifecycle validation; explicit claim/trust display; no template path, imports, expressions, commands, case writer, or file/network dereference |
 | TB-09 | Optional updater to network/install boundary | Separate from document worker; no case data; authenticated metadata/package; channel and rollback policy |
 | TB-10 | Case storage to other local users/processes | Random internal names, restrictive permissions, lock/retention policy, no promise against account/admin compromise |
 
@@ -345,8 +345,10 @@ effect before mitigations. Every threat is mapped in
 - Application cleanup governs application-created files. OS crash dumps, swap, filesystem
   journals, indexers, antivirus products, backups, and synchronized folders can retain platform
   artifacts; v0.1 provides best-effort, user-driven deletion and makes no forensic-erasure claim.
-- Template schema validity proves safe structure, not authenticity or suitability. Provenance,
-  trust state, expiry, and user review remain visible and separately enforced.
+- Template schema validity proves safe structure, not authenticity or suitability. PWS-0401 binds
+  exact bytes to a trusted local catalog checksum/signature status before decoding, but cannot
+  authenticate an attacker able to rewrite both application and catalog. Embedded provenance stays
+  labeled as a claim; external trust state, lifecycle dates, and review-due state remain visible.
 - Resource-limit values are provisional until owning tasks measure and record boundary evidence.
   Incomplete worker isolation or egress denial is gate-blocking, not an accepted residual risk.
 - Signed-source detection is not cryptographic signature validation and may return unknown.

@@ -9,7 +9,8 @@
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
   PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; PWS-0206
   verified searchable mixed-document output; PWS-0301 normalized page coordinates; PWS-0302
-  visual overlay intent; and PWS-0303 deterministic overlay-page rendering
+  visual overlay intent; PWS-0303 deterministic overlay-page rendering; and PWS-0401 safe
+  declarative template loading
 - Decisions: PWS-D002, PWS-D010, PWS-D011, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D018, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -41,8 +42,8 @@ worker host -> domain
 | `overlays` | Pure normalized visual-overlay intent, released wire codecs, deterministic ordering/visibility, and third-party-free rendering contracts; concrete font, image, and PDF engines remain in the exact worker-only PDF adapter documented in the [visual overlay domain model](overlay-domain-model.md) and [overlay rendering contract](overlay-rendering.md) |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
 | `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
-| `templates` | Declarative, versioned template loading and validation |
-| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), and [Deterministic verified PDF-export contract](pdf-export.md) |
+| `templates` | Path-free, standard-library-only declarative template decoding, exact version/schema/semantic/lifecycle validation, immutable snapshots, and user-ready provenance/trust presentation; see the [safe declarative template-loading contract](template-loading.md) |
+| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source and local-template leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), [Deterministic verified PDF-export contract](pdf-export.md), and [Safe declarative template-loading contract](template-loading.md) |
 | `diagnostics` | Closed, content-free records, canonical structured logging, and deterministic safe summary rendering; PWS-0805 owns later preview/confirmation/bundle writing |
 
 ## Enforced import rules
@@ -215,6 +216,14 @@ flattens it without annotations, viewer-generated appearances, or persistent wri
 The complete split is specified in the [deterministic overlay rendering
 contract](overlay-rendering.md) and the [verified flattened visual-overlay export
 contract](flattened-overlay-export.md).
+
+PWS-0401 keeps exact-byte trust, strict JSON/version/schema/semantic validation, lifecycle state,
+immutable snapshots, and plain presentation facts in the standard-library-only `templates` layer.
+It does not import the repository-only `jsonschema` validator. `storage.template_repository` alone
+maps an opaque template key through a trusted catalog to one fixed-local Windows file and returns a
+same-handle authenticated byte snapshot; template data never supplies a path or gains filesystem,
+network, subprocess, worker, or case-write authority. The complete split is specified in the
+[safe declarative template-loading contract](template-loading.md).
 
 PWS-0204 adds path-free OCR request, progress, error, report, and volatile-candidate contracts in
 `domain.ocr`. `worker.ocr_broker` owns source-lease authentication, exact reduced handle transfer,

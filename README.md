@@ -281,9 +281,12 @@ paths are never persisted in it.
 
 The declarative template v1 contract, synthetic example, provenance/lifecycle fields, packaging
 rules, and non-executable boundary are documented in
-[`docs/schemas/template-v1.md`](docs/schemas/template-v1.md). Repository validation is strict,
-bounded, offline, and clock-independent; runtime loading, trust display, and freshness warnings
-remain owned by `PWS-0401`.
+[`docs/schemas/template-v1.md`](docs/schemas/template-v1.md). The implemented runtime loader binds
+one opaque catalog key to exact bytes and external checksum/signature evidence, applies a packaged
+fingerprint-bound schema with strict bounded validation, rejects unsafe/future/expired content, and
+returns immutable data plus explicitly labeled provenance, verification, and review state without
+file/network/subprocess or case-write authority. Its trust and Windows storage boundary is
+documented in [`docs/architecture/template-loading.md`](docs/architecture/template-loading.md).
 
 The version-1 worker RPC envelope, lifecycle, capability negotiation, logical case-object
 references, bounded decoding rules, and sanitized error contract are documented in

@@ -81,8 +81,11 @@ The template schema is a closed, self-contained Draft 2020-12 contract for proce
 guidance, unconditional checklist counts/order, output constraints, inert provenance, lifecycle
 dates, warnings, and user-review confirmations. It provides no executable, condition, eligibility,
 legal-decision, automatic-completion, path, or arbitrary filename-format surface. Embedded
-provenance is explicitly untrusted; the future loader derives trust externally and never
-dereferences a template URL.
+provenance is explicitly untrusted; the runtime loader derives trust externally and never
+dereferences a template URL. The implemented PWS-0401 runtime keeps a byte-identical packaged copy
+of this schema, authenticates its canonical semantic fingerprint, binds the exact loaded bytes to
+external catalog evidence, and exposes labeled provenance and lifecycle state through the
+[`safe template-loading contract`](../docs/architecture/template-loading.md).
 
 ## Worker RPC v1
 

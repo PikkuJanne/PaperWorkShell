@@ -125,13 +125,33 @@ verified_on <= review_due_on <= expires_on
 Date ordering is deterministic and independent of a machine clock. Operational expiry is evaluated
 against an explicit trusted `as_of` date supplied by the loader. The template is valid through its
 `expires_on` date and expired when `as_of` is later. Repository fixtures use a fixed reference date
-so tests do not change with wall-clock time. `PWS-0401` owns user-visible review-due and expiry
-behavior and must recheck the loaded snapshot before it can affect a case.
+so tests do not change with wall-clock time. The PWS-0401 loader reports `current` before
+`review_due_on`, reports a non-blocking `review_due` state from that date through `expires_on`, and
+rejects the day after expiry. It also rejects an `as_of` date before either the externally recorded
+catalog verification date or the embedded `verified_on` claim.
+
+## Runtime exact-byte loading
+
+[`paperworkshell.templates.loader`](../../src/paperworkshell/templates/loader.py) implements the
+runtime boundary described in the
+[`safe declarative template-loading contract`](../architecture/template-loading.md). A trusted
+catalog maps an opaque template ID/version key to one bounded immutable byte snapshot plus expected
+byte count, template SHA-256, catalog verification date, and external signature status. The loader
+checks that evidence before decoding the same bytes, dispatches the version, authenticates a
+byte-identical packaged schema copy by its canonical semantic fingerprint, applies the full v1
+rules, and confirms the embedded ID/version matches the requested key.
+
+Successful results are immutable defensive snapshots. Their toolkit-free presentation state labels
+publisher/source values and all embedded lifecycle dates as template claims while separately
+showing catalog checksum verification and external signature status. Loading has no case writer;
+binding the accepted key and exact digest into `template_ref` remains a separate explicit M4 case
+action. Failures therefore cannot partially attach a template or corrupt a case.
 
 ## Validation and security envelope
 
-[`tools/validate_templates.py`](../../tools/validate_templates.py) adds deterministic checks that
-JSON Schema cannot express:
+Both the repository validator in
+[`tools/validate_templates.py`](../../tools/validate_templates.py) and the standard-library runtime
+loader apply deterministic checks that JSON Schema cannot express:
 
 - bounded, strict UTF-8 JSON decoding with duplicate-key, non-finite-number, and non-integer-number
   rejection;
