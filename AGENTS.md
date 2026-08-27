@@ -261,6 +261,10 @@ Tests should use the most direct level available: widget/unit checks, automated 
 ### 9.2 Required test behavior
 
 - Tests must be deterministic and independent of the user's documents.
+- Human tests must minimize setup, transcription, and repeated work. Provide one stable entry point
+  with explicit recovery, make synthetic visual targets comfortably large with intended alignment
+  obvious unless size or offset is itself under test, and do not repeat accepted evidence solely to
+  improve test ergonomics.
 - Tests must clean up case and temporary directories.
 - Network-dependent tests are prohibited for core processing.
 - External executables and language packs should have capability-detection tests and clear skips only where the task permits optional availability.

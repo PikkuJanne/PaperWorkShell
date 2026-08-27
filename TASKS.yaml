@@ -2708,7 +2708,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: blocked
+  status: done
   critical_path: true
   depends_on:
   - PWS-0112
@@ -2739,31 +2739,9 @@ tasks:
   - export
   - overlays
   - compatibility
-  blocker:
-    reason: >-
-      The required four-viewer Windows matrix is incomplete. Adobe Acrobat is now installed and the exact test pack is
-      ready, but qualifying human W1 Adobe, W3 Chrome, and W4 Firefox observations have not yet been recorded.
-    evidence:
-    - >-
-      W1 is now available for testing: the installed unified Adobe desktop executable reports product Adobe Acrobat
-      26.1.21789.0. The About version/effective mode and complete protocol-2 viewer observations remain NOT RUN.
-    - >-
-      W2 passed the complete five-page, four-zoom, three-search, non-interactivity, and close/reopen procedure in
-      Microsoft Edge 151.0.4129.101 against the recorded immutable artifact.
-    - >-
-      W3 has only a non-qualifying partial observation in Chrome 151.0.7922.174; W4 was not run in Firefox 154.0.
-      Agent-controlled local file interaction was denied by the browser security policy, and no bypass was attempted.
-    - >-
-      The guided keyboard-only recorder was exercised from C:\Windows\System32. It created/reused only the exact
-      W2-bound 9,485-byte PDF/JSON pair, displayed one authoritative path, and preserved content-free closed attempts.
-    - >-
-      The documented completion rule still requires W1 through W4 all to pass against PDF SHA-256
-      05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e.
-    requested_action: Run the single documented pws0307-reader-test command and complete menu choices 1, 3, and 4.
-      Stop when the tool reports MATRIX READY FOR CODEX REVIEW; do not bypass browser controls, edit the artifact, or
-      substitute another viewer for a named slot.
+  blocker: null
   evidence:
-    completed_at: null
+    completed_at: '2026-08-27'
     revision: e088bb7dd10088f3eb454763e3fd4bd203706eb4
     commands:
     - uv run --locked --no-sync python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed on
@@ -2847,6 +2825,22 @@ tasks:
     - Poppler pdftoppm at 144 dpi plus visual inspection of all five newly prepared pages - passed; text/date/initials,
       check/cross, ellipse, signature-image visual mark, and highlight were present, contained, legible, and consistent
       with the fixed page scenarios; disclosed legacy source-font substitution warnings were unchanged
+    - uv --directory C:\projects\PaperWorkShell run --locked python -m tools.pws0307_reader_test status - passed; the
+      helper reverified the immutable 9,485-byte, five-page PDF and evidence JSON, derived PASS for W1 Adobe Reader
+      2026.001.21789, W3 Chrome 151.0.7922.174, and W4 Firefox 154.0.1 from their closed protocol-2 attempt files, and
+      reported MATRIX READY FOR CODEX REVIEW while preserving the qualifying W2 Edge result
+    - PowerShell Get-FileHash -Algorithm SHA256 over the guided workspace pair - passed; the PDF remained
+      05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e and the content-free evidence JSON remained
+      23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21
+    - PowerShell Get-FileHash -Algorithm SHA256 over the three closed protocol-2 attempts - passed; W1 was
+      fca305704bd7c5d58d20bdaf7c83b21ef1c42c310f19d6104864a40b842a96bb, W3 was
+      06835ab5a4836980921cbe283a7c59ddb54a1fe92b05ea2109fd842fdaf44f4b, and W4 was
+      4ab9354884d86c675e043fb66caa30b918b30dde3d1186ccab4771685d535018
+    - uv run --locked python -m pytest tests/unit/test_pws0307_reader_test.py
+      tests/security/test_pws0307_reader_test_privacy.py; tools/dev.py format-check; lint; typecheck;
+      validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary; git diff --check - passed
+      after final evidence closure; all 42 focused helper/privacy tests passed, 516 source files remained formatted and
+      strictly typed, and the 82-task/243-edge graph plus 14-file standalone bundle were valid
     notes:
     - The production worker validates versioned overlay-aware requests, executes through bounded private buffers,
       supports progress/cancellation/timeout and deterministic cleanup, and commits only verified derivatives. It never
@@ -2860,7 +2854,8 @@ tasks:
     - Independent implementation, PDF-graph, visibility-oracle, security/privacy, UX, and completion audits found no
       remaining actionable P0-P2 issue after the guided workflow was tightened to preserve exact schemas, Reader-only
       W1 qualification, Windows provenance, valid UTC times, retryable input, and concurrent no-replace behavior. The
-      only incomplete acceptance criterion is the external four-viewer manual matrix; the task remains blocked.
+      external W1-W4 Windows reader matrix is now complete against one immutable artifact, satisfying the final
+      acceptance criterion.
     - A live output-limit integration run exposed a bounded private-temp sampling race when a retained directory was
       observed delete-pending. Commit f5a7c23747d48e535c00dab468040311d25a97bc now classifies only that authenticated
       namespace transition as retryable; unsafe types, reparse points, unclassified Win32 failures, and sticky
@@ -2879,13 +2874,18 @@ tasks:
       on entitlement. W1 qualifies only when the Adobe UI confirms Reader/free/reduced mode. Standard, Pro,
       mode-not-shown, extensions, and delegated viewers remain non-gating; the recorder cancels without writing a W1
       result for those states. This methodology clarification changes neither product behavior nor the release interface.
+    - The maintainer accepted the completed four-viewer PASS and directed that it not be repeated. Small imagery and a
+      translucent-rectangle comparison target that was poorly centered for convenient review made the exercise less
+      efficient than necessary; future human tests must use larger, clearer, visibly aligned targets and a low-friction
+      workflow unless size or offset is the property under test. This feedback does not invalidate the accepted result
+      or change the immutable corpus.
 - id: PWS-0308
   milestone: M3
   title: Run Milestone 3 overlay gate
   kind: gate
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0301

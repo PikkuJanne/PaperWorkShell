@@ -14,12 +14,13 @@ This matrix makes no claim of universal reader compatibility, portal acceptance,
 PDF/A conformance, PDF/UA conformance, tagged-PDF reading order, or creation or validation of a
 digital signature. The signature-image scenario is a placed visual mark only.
 
-## Quick start - remaining human checks
+## Guided human checks
 
-W2 Edge already has a qualifying result. Complete only W1 Adobe, W3 Chrome, and W4 Firefox. The
-guided tool owns folder creation, corpus generation, exact hash verification, common metadata, and
-content-free result files. The human does not type an output path, create a folder, calculate a
-hash, edit JSON, or transcribe the long evidence table.
+The qualifying W1-W4 matrix is complete and accepted; do not repeat it for PWS-0307. The retained
+procedure below documents how this evidence was recorded. Any later task owns its own artifact,
+matrix scope, and procedure. The guided tool owns folder creation, corpus generation, exact hash
+verification, common metadata, and content-free result files. The human does not type an output
+path, create a folder, calculate a hash, edit JSON, or transcribe the long evidence table.
 
 Open PowerShell in any directory - including `C:\Windows\System32` - and paste this one complete
 line. Do not add continuation backticks or backslashes:
@@ -165,10 +166,10 @@ revision at which a later manual run was performed.
 
 | Slot | Viewer name | Viewer About version/build | Built-in viewer/configuration | Windows edition/version/build/architecture | Artifact implementation revision | Generator version | PDF SHA-256 | PDF bytes | Evidence JSON SHA-256 | UTC date | Operator role | Pages checked | Zooms checked | Text/date/initials search | Noninteractive observation | Close/reopen | Result | Content-free observations |
 |---|---|---|---|---|---|---:|---|---:|---|---|---|---|---|---|---|---|---|---|
-| W1 | Adobe Acrobat Reader desktop PDF viewer | NOT RUN | Unified Adobe desktop executable detected; Reader/free/reduced mode not yet confirmed | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-27 | Codex read-only installation probe | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | Adobe Acrobat is installed. Executable metadata reports version 26.1.21789.0, but installed-file metadata is not About evidence. A qualifying protocol-2 Reader/free/reduced-mode run is still required. |
+| W1 | Adobe Acrobat Reader desktop PDF viewer | 2026.001.21789 | Reader/free/reduced mode confirmed in the Adobe UI | Windows 11 Professional 10.0.26200 / AMD64 | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-27 | Human operator | 1→2→3→4→5→4→3→2→1 | Fit Page, 100%, 200%, 400% | 3/3 found | PASS | PASS | PASS | Protocol 2 attempt 01 at 15:20:44Z; every closed check passed, with no defect category or affected page. |
 | W2 | Microsoft Edge PDF viewer | 151.0.4129.101 | Built-in Adobe-powered viewer; no external extension/delegation | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | 1→2→3→4→5→4→3→2→1 | Fit Page, 100%, 200%, 400% | 3/3 found | PASS | PASS | PASS | Five pages reported. Text/date/initials, marks, ellipse, signature-image visual mark, and highlight remained present, contained, oriented, and unclipped. Overlay clicks and 12 Tab presses exposed no document widget, form field, annotation editor, script, attachment, or external action. The same local PDF reopened successfully. The installed Edge executable later updated to 151.0.4129.107; this row records the numeric dotted About version during the qualifying run. |
-| W3 | Google Chrome PDF viewer | 151.0.7922.174 | Built-in viewer opened the local PDF; no delegation | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | Pages 1-2 observed only; non-qualifying partial run | 88% and 400% observed only | NOT RUN | NOT RUN | NOT RUN | NOT RUN | Chrome reported five pages and visibly rendered the same final artifact, including page-1 text/date/initials and the page-2 mark thumbnail. The control surface then denied further local `file:` interaction under its browser security policy. Search, the complete page/zoom sequence, non-interactivity, and close/reopen were therefore not completed; no alternate or indirect bypass was attempted. |
-| W4 | Mozilla Firefox PDF viewer | NOT RUN | Built-in viewer not exercised | Windows 11 Pro 10.0.26200 / build 26200 / 64-bit | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-25 | Codex computer-use operator | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | NOT RUN | Firefox is installed; installed-file version 154.0 is not About evidence. A qualifying local-file run was not attempted after the browser security boundary stopped agent-controlled `file:` viewer interaction. A human operator must complete the exact procedure without bypassing that control. |
+| W3 | Google Chrome built-in PDF viewer | 151.0.7922.174 | Built-in local PDF viewer confirmed; no delegation | Windows 11 Professional 10.0.26200 / AMD64 | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-27 | Human operator | 1→2→3→4→5→4→3→2→1 | Fit Page, 100%, 200%, 400% | 3/3 found | PASS | PASS | PASS | Protocol 2 attempt 01 at 15:23:09Z; every closed check passed, with no defect category or affected page. |
+| W4 | Mozilla Firefox built-in PDF viewer | 154.0.1 | Built-in local PDF viewer confirmed; no delegation | Windows 11 Professional 10.0.26200 / AMD64 | `e088bb7dd10088f3eb454763e3fd4bd203706eb4` | 1 | `05faf2055ccb07d85eca7afdb5f446c2b3aeba895d07c2f5fab4d769059fda3e` | 9485 | `23c3ea41b4f58739c43a2ef9b805fc6b957a713e10749989b51bad5b1c6c3c21` | 2026-08-27 | Human operator | 1→2→3→4→5→4→3→2→1 | Fit Page, 100%, 200%, 400% | 3/3 found | PASS | PASS | PASS | Protocol 2 attempt 01 at 15:24:25Z; every closed check passed, with no defect category or affected page. |
 
 ## Independent automated and rendered-artifact evidence
 
@@ -185,10 +186,16 @@ revision at which a later manual run was performed.
   validation passed, and the semantic fingerprint was
   `162ab8bdbbefd3b91ecea8b35ae9836b63e21548dd56384622a472cebc0c2e07`.
 
-Overall PWS-0307 manual reader result: **INCOMPLETE**. W2 passed. Adobe is now available, but W1,
-W3, and W4 do not yet contain qualifying complete runs. The implementation, automated artifact
-evidence, and guided protocol-2 recorder are ready; the four-viewer completion rule is not yet
-satisfied.
+Overall PWS-0307 manual reader result: **PASS**. W1, W2, W3, and W4 all passed the complete
+procedure against the same immutable PDF SHA-256. The W1, W3, and W4 protocol-2 records contain
+closed, content-free observations and the guided helper independently reported
+`MATRIX READY FOR CODEX REVIEW`.
+
+The maintainer accepted this completed matrix and directed that it not be repeated. The physically
+small imagery and a translucent-rectangle comparison target that was poorly centered for convenient
+review made the exercise harder than necessary. Future human-test corpora must preserve required
+geometry coverage while using larger, clearer, visibly aligned comparison targets. This usability
+feedback does not invalidate the accepted PASS or authorize changing the immutable corpus.
 
 ## Deferred platform ownership
 

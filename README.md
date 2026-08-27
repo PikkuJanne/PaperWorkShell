@@ -139,7 +139,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py run-m1-vertical-slice` | Run the constrained M1 vertical slice and publish local evidence |
 | `py -3.14 tools/dev.py run-pws0208-resource-workload` | Run the constrained signed-source/OCR workload and publish local evidence |
 | `py -3.14 tools/dev.py benchmark-pdf-renderers` | Compare the pinned PDFium and Qt PDF candidates on Windows |
-| `py -3.14 tools/dev.py pws0307-reader-test` | Prepare, guide, and record the remaining PWS-0307 reader checks |
+| `py -3.14 tools/dev.py pws0307-reader-test` | Prepare, guide, and record PWS-0307 reader checks |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
 On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).
