@@ -1,0 +1,65 @@
+{
+  "fixture_version": 1,
+  "cases": [
+    {
+      "fixture_id": "synthetic-clear-packet",
+      "case_id": "10000000-0000-4000-8000-000000000001",
+      "document_id": "20000000-0000-4000-8000-000000000001",
+      "page_id": "30000000-0000-4000-8000-000000000001",
+      "document_count": 1,
+      "quality_review_needed": false,
+      "user_confirmation_recorded": true,
+      "expected_codes": []
+    },
+    {
+      "fixture_id": "synthetic-blocking-error",
+      "case_id": "10000000-0000-4000-8000-000000000002",
+      "document_id": "20000000-0000-4000-8000-000000000002",
+      "page_id": "30000000-0000-4000-8000-000000000002",
+      "document_count": 0,
+      "quality_review_needed": false,
+      "user_confirmation_recorded": true,
+      "expected_codes": [
+        "SYNTHETIC_REQUIRED_DOCUMENT_MISSING"
+      ]
+    },
+    {
+      "fixture_id": "synthetic-warning",
+      "case_id": "10000000-0000-4000-8000-000000000003",
+      "document_id": "20000000-0000-4000-8000-000000000003",
+      "page_id": "30000000-0000-4000-8000-000000000003",
+      "document_count": 1,
+      "quality_review_needed": true,
+      "user_confirmation_recorded": true,
+      "expected_codes": [
+        "SYNTHETIC_PAGE_QUALITY_REVIEW"
+      ]
+    },
+    {
+      "fixture_id": "synthetic-confirmation-required",
+      "case_id": "10000000-0000-4000-8000-000000000004",
+      "document_id": "20000000-0000-4000-8000-000000000004",
+      "page_id": "30000000-0000-4000-8000-000000000004",
+      "document_count": 1,
+      "quality_review_needed": false,
+      "user_confirmation_recorded": false,
+      "expected_codes": [
+        "SYNTHETIC_ASSIGNMENT_CONFIRMATION_REQUIRED"
+      ]
+    },
+    {
+      "fixture_id": "synthetic-all-finding-classes",
+      "case_id": "10000000-0000-4000-8000-000000000005",
+      "document_id": "20000000-0000-4000-8000-000000000005",
+      "page_id": "30000000-0000-4000-8000-000000000005",
+      "document_count": 0,
+      "quality_review_needed": true,
+      "user_confirmation_recorded": false,
+      "expected_codes": [
+        "SYNTHETIC_REQUIRED_DOCUMENT_MISSING",
+        "SYNTHETIC_ASSIGNMENT_CONFIRMATION_REQUIRED",
+        "SYNTHETIC_PAGE_QUALITY_REVIEW"
+      ]
+    }
+  ]
+}
