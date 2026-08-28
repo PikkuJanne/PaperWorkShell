@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "packet_set_id": "generic-portal-packets-v1",
+  "template": {
+    "template_id": "generic-portal-application",
+    "template_version": "1.1.0",
+    "byte_size": 7145,
+    "sha256": "f06ca149a4ff049de49a8a671352e43527900287dd898c7a49e24871d1b6d9bd"
+  },
+  "scenarios": [
+    {
+      "scenario_id": "complete",
+      "documents": [
+        {
+          "document_id": "application-form-01",
+          "fixture_id": "pdf-born-digital",
+          "requirement_id": "application-form"
+        },
+        {
+          "document_id": "identity-evidence-01",
+          "fixture_id": "pdf-page-geometry",
+          "requirement_id": "identity-evidence"
+        },
+        {
+          "document_id": "address-evidence-01",
+          "fixture_id": "png-ocr-raster-text",
+          "requirement_id": "address-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-01",
+          "fixture_id": "pdf-mixed",
+          "requirement_id": "supporting-evidence"
+        }
+      ],
+      "expected_findings": []
+    },
+    {
+      "scenario_id": "missing",
+      "documents": [
+        {
+          "document_id": "application-form-01",
+          "fixture_id": "pdf-born-digital",
+          "requirement_id": "application-form"
+        },
+        {
+          "document_id": "identity-evidence-01",
+          "fixture_id": "pdf-page-geometry",
+          "requirement_id": "identity-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-01",
+          "fixture_id": "pdf-mixed",
+          "requirement_id": "supporting-evidence"
+        }
+      ],
+      "expected_findings": [
+        {
+          "code": "GENERIC_PACKET_REQUIREMENT_MISSING",
+          "requirement_id": "address-evidence",
+          "observed_count": 0,
+          "minimum": 1,
+          "maximum": 2
+        }
+      ]
+    },
+    {
+      "scenario_id": "excessive",
+      "documents": [
+        {
+          "document_id": "application-form-01",
+          "fixture_id": "pdf-born-digital",
+          "requirement_id": "application-form"
+        },
+        {
+          "document_id": "identity-evidence-01",
+          "fixture_id": "pdf-page-geometry",
+          "requirement_id": "identity-evidence"
+        },
+        {
+          "document_id": "address-evidence-01",
+          "fixture_id": "png-ocr-raster-text",
+          "requirement_id": "address-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-01",
+          "fixture_id": "pdf-mixed",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-02",
+          "fixture_id": "pdf-image-only",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-03",
+          "fixture_id": "pdf-ocr-raster-text",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-04",
+          "fixture_id": "pdf-ocr-readable-mixed",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-05",
+          "fixture_id": "pdf-render-calibration",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-06",
+          "fixture_id": "pdf-render-cmyk",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-07",
+          "fixture_id": "pdf-render-colorspaces",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-08",
+          "fixture_id": "pdf-render-embedded-type3-font",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-09",
+          "fixture_id": "pdf-render-geometry-matrix",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-10",
+          "fixture_id": "pdf-render-transparency",
+          "requirement_id": "supporting-evidence"
+        },
+        {
+          "document_id": "supporting-evidence-11",
+          "fixture_id": "pdf-multilingual-tounicode",
+          "requirement_id": "supporting-evidence"
+        }
+      ],
+      "expected_findings": [
+        {
+          "code": "GENERIC_PACKET_REQUIREMENT_EXCESSIVE",
+          "requirement_id": "supporting-evidence",
+          "observed_count": 11,
+          "minimum": 1,
+          "maximum": 10
+        }
+      ]
+    }
+  ]
+}

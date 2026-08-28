@@ -18,6 +18,15 @@ from tools.validate_dependencies import (
     INVENTORY_PATH,
     INVENTORY_SCHEMA_PATH,
 )
+from tools.validate_generic_portal_template import (
+    CANONICAL_TEMPLATE_PATH as GENERIC_TEMPLATE_PATH,
+)
+from tools.validate_generic_portal_template import (
+    PACKAGED_TEMPLATE_PATH as PACKAGED_GENERIC_TEMPLATE_PATH,
+)
+from tools.validate_generic_portal_template import (
+    PACKET_FIXTURE_PATH as GENERIC_PACKET_FIXTURE_PATH,
+)
 from tools.validate_schemas import (
     EXPORT_HISTORY_PACKAGED_SCHEMA_PATH,
     EXPORT_HISTORY_SCHEMA_PATH,
@@ -58,6 +67,9 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("tools/dev.py"),
             Path("uv.lock"),
             FIXTURE_INDEX_PATH,
+            GENERIC_TEMPLATE_PATH,
+            PACKAGED_GENERIC_TEMPLATE_PATH,
+            GENERIC_PACKET_FIXTURE_PATH,
         ):
             (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(PROJECT_ROOT / relative_path, root / relative_path)
@@ -90,6 +102,11 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / FIXTURE_NEGATIVE_DIRECTORY,
             root / FIXTURE_NEGATIVE_DIRECTORY,
+        )
+        shutil.copytree(
+            PROJECT_ROOT / FIXTURE_INDEX_PATH.parent,
+            root / FIXTURE_INDEX_PATH.parent,
+            dirs_exist_ok=True,
         )
 
     def test_checked_in_schema_registry_passes(self) -> None:
@@ -136,6 +153,17 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             messages = validation_messages(root)
 
         self.assertTrue(any("TEMPLATE_POSITIVE_FIXTURE_INVALID" in message for message in messages))
+
+    def test_changed_generic_portal_template_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._copy_registry_root(root)
+            with (root / GENERIC_TEMPLATE_PATH).open("ab") as stream:
+                stream.write(b"\n")
+
+            messages = validation_messages(root)
+
+        self.assertTrue(any("GENERIC_TEMPLATE_DIGEST_MISMATCH" in message for message in messages))
 
     def test_invalid_dependency_inventory_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

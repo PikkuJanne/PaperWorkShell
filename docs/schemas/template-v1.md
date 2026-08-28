@@ -7,6 +7,13 @@ synthetic example is
 The contract is a self-contained JSON Schema Draft 2020-12 resource and is always evaluated
 offline.
 
+PWS-0402 publishes the first complete built-in workflow as
+[`generic-portal-application` content version `1.1.0`](../templates/generic-portal-application-v1.md).
+The accepted minimal example already identifies `generic-portal-application` / `1.0.0` and remains
+byte-for-byte unchanged. Schema version 1 and template content version 1.1.0 are independent: the
+new content uses the existing grammar and a new catalog key rather than assigning different bytes
+to the accepted 1.0.0 identity.
+
 ## Authority and trust
 
 A template is data, not authority to execute work or decide whether a person qualifies for a
@@ -53,6 +60,14 @@ hide in an extension bag.
 contract grammar. A new template version changes the content for one `template_id`. Once published,
 the same `(template_id, template_version)` must continue to identify the same externally digested
 bytes.
+
+The complete 1.1.0 workflow keeps all rules unconditional and procedural. Its category counts,
+order, output choices, byte/page/file limits, and safe filename stems are generic planning defaults,
+not claims about a portal. Its identity-document guidance asks the user to consult current
+instructions about front and back sides rather than encoding a jurisdictional rule. Its
+confirmations retain `records_review_only`; assignment and persisted user-confirmation behavior is
+owned by PWS-0403, runtime constraint and filename evaluation by PWS-0406, and output planning and
+verified export by PWS-0407.
 
 ## Instructions, requirements, and ordering
 

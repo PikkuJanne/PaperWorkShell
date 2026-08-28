@@ -21,6 +21,7 @@ from tools.validate_dependencies import (
     INVENTORY_SCHEMA_PATH,
     validate_dependency_fixture_set,
 )
+from tools.validate_generic_portal_template import validate_generic_portal_template
 from tools.validate_manifests import (
     CURRENT_MANIFEST_SCHEMA_PATH,
     MANIFEST_SCHEMA_PATH,
@@ -46,6 +47,7 @@ def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
     _, manifest_issues = validate_manifest_fixture_set(root)
     _, fixture_index_issues = validate_fixture_index_set(root)
     _, template_issues = validate_template_fixture_set(root)
+    _, generic_portal_issues = validate_generic_portal_template(root)
     _, rpc_issues = validate_worker_rpc_fixture_set(root)
     _, dependency_issues = validate_dependency_fixture_set(root)
     m1_benchmark_issues = validate_report_schema(root)
@@ -54,6 +56,7 @@ def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
         + [issue.render() for issue in manifest_issues]
         + [issue.render() for issue in fixture_index_issues]
         + [issue.render() for issue in template_issues]
+        + [issue.render() for issue in generic_portal_issues]
         + [issue.render() for issue in rpc_issues]
         + [issue.render() for issue in dependency_issues]
         + [issue.render() for issue in m1_benchmark_issues]
@@ -84,6 +87,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(f"OK: validated synthetic fixture index v1 with {FIXTURE_INDEX_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated declarative-template v1 with {TEMPLATE_SCHEMA_PATH.as_posix()}.")
+    print("OK: validated generic-portal template and count-only synthetic packet scenarios.")
     print(f"OK: validated worker-RPC v1 with {RPC_SCHEMA_PATH.as_posix()}.")
     print(f"OK: validated dependency inventory v1 with {INVENTORY_SCHEMA_PATH.as_posix()}.")
     print(

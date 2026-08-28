@@ -3,7 +3,7 @@
 - Status: Binding foundation policy
 - Task: PWS-0009
 - Decision: PWS-D035
-- Last reviewed: 2026-08-27
+- Last reviewed: 2026-08-28
 
 PaperWorkShell treats every document and image as hostile and potentially sensitive. The routine
 repository and CI corpus is therefore **public synthetic-only**: it is built from fixed algorithms
@@ -138,6 +138,27 @@ before repository privacy scanning; candidate PDFs and review artifacts remain o
 The signed-marker fixture contains an unsigned PDF signature field only. It is not a digital
 signature, does not contain a signature image, and carries no validity claim. The handwriting
 demonstration is an algorithmic abstract stroke pattern explicitly marked as not a signature.
+
+## Structural template packet mappings
+
+PWS-0402 adds bounded structural-only mappings for the
+[`generic-portal-application` 1.1.0 template](../templates/generic-portal-application-v1.md). They
+exercise one assignment set within all declared count ranges, one with missing address evidence,
+and one with excessive supporting evidence. The canonical mapping is
+[`tests/fixtures/templates/v1/generic-portal-packets.json`](../../tests/fixtures/templates/v1/generic-portal-packets.json).
+
+These mappings are not PDF or image fixtures and add no document bytes to the public corpus. They
+contain only the exact template digest, opaque synthetic document IDs, references to existing
+public-corpus fixture IDs, requirement assignments, and expected structural count records. They
+contain no name, address, identity number, application answer, copied document text, image pixel,
+filename, path, or portal claim. The identity assignment references an ordinary geometry fixture;
+it does not portray identity evidence or front/back identity content. “Complete” means structurally
+within the template's inclusive count ranges only; it is not a claim of eligibility, legal
+sufficiency, identity verification, legibility, correctness, submission, or acceptance.
+
+PWS-0402 mapping checks do not implement case assignment, preflight, constraints, or export.
+PWS-0403 owns persisted user-confirmed assignments, PWS-0406 owns file/page/byte and safe-name
+evaluation, and PWS-0407 owns deterministic output planning and verified derivative creation.
 
 ## Regeneration and validation
 

@@ -28,8 +28,9 @@ ThirdLife compatibility cut or packaged PaperWorkShell release already exists.
 ## Development bootstrap
 
 The repository has completed its foundation, Milestone 1 vertical-slice, Milestone 2 image/OCR,
-and Milestone 3 visual-overlay gates. It is implementing the Milestone 4 safe template loader next.
-It contains the restricted worker, immutable
+and Milestone 3 visual-overlay gates, plus the Milestone 4 safe template loader and first complete
+built-in generic application template. The next Milestone 4 implementation is the user-confirmed
+checklist and document-assignment workflow. It contains the restricted worker, immutable
 PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
@@ -287,6 +288,12 @@ fingerprint-bound schema with strict bounded validation, rejects unsafe/future/e
 returns immutable data plus explicitly labeled provenance, verification, and review state without
 file/network/subprocess or case-write authority. Its trust and Windows storage boundary is
 documented in [`docs/architecture/template-loading.md`](docs/architecture/template-loading.md).
+The separately versioned
+[`generic-portal-application` 1.1.0 artifact](templates/builtin/generic-portal-application-v1.1.0.json)
+provides jurisdiction-neutral category, ordering, filename, output-limit, and user-review guidance.
+Its generic planning defaults, synthetic complete/missing/excessive packet mappings, and explicit
+non-goals are documented in
+[`docs/templates/generic-portal-application-v1.md`](docs/templates/generic-portal-application-v1.md).
 
 The version-1 worker RPC envelope, lifecycle, capability negotiation, logical case-object
 references, bounded decoding rules, and sanitized error contract are documented in

@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "template_id": "generic-portal-application",
+  "template_version": "1.1.0",
+  "scope": "document_packaging_only",
+  "title": "Generic portal application packet",
+  "locale": "en",
+  "provenance": {
+    "source_kind": "built_in",
+    "publisher": "PaperWorkShell project",
+    "source_reference": "pws.generic.portal.application",
+    "source_url": null,
+    "source_document_sha256": null,
+    "assertion_status": "untrusted_embedded_claims",
+    "trust_policy": "external_verification_required"
+  },
+  "lifecycle": {
+    "verified_on": "2026-08-28",
+    "review_due_on": "2027-02-28",
+    "expires_on": "2027-08-28"
+  },
+  "instructions": [
+    {
+      "instruction_id": "organize-generic-packet",
+      "text": "Use this template to organize a generic application packet. It does not replace the current instructions from the organization you will send the packet to."
+    },
+    {
+      "instruction_id": "compare-current-instructions",
+      "text": "Before adding files, obtain the current application instructions and compare their document types, page order, filenames, number of files, and size limits with this template."
+    },
+    {
+      "instruction_id": "assign-and-review",
+      "text": "Assign each document to the matching category, then review the assignment and order yourself. PaperWorkShell does not decide whether a document satisfies a requirement."
+    },
+    {
+      "instruction_id": "review-pages",
+      "text": "Before submission, review every included page for readability and check that no page or side you intend to send is missing."
+    },
+    {
+      "instruction_id": "export-locally",
+      "text": "PaperWorkShell creates files on this device. It does not submit them."
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "application-form",
+      "title": "Application form",
+      "guidance": "Add the current application form intended for this packet. Review every page you intend to send. PaperWorkShell does not decide whether the form is complete or correct.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 1
+      }
+    },
+    {
+      "requirement_id": "identity-evidence",
+      "title": "Identity evidence",
+      "guidance": "Add the identity document or documents requested by the current application instructions. If an identity document has a front and back, check whether the current instructions ask for both sides. Include each side they ask for, and review that each side is readable.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 2
+      }
+    },
+    {
+      "requirement_id": "address-evidence",
+      "title": "Proof of address",
+      "guidance": "Add the proof of address requested by the current application instructions. Review that every intended page is present and readable.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 2
+      }
+    },
+    {
+      "requirement_id": "supporting-evidence",
+      "title": "Supporting evidence",
+      "guidance": "Add the supporting documents requested by the current application instructions. Review their assignment and order yourself.",
+      "count": {
+        "unit": "documents",
+        "minimum": 1,
+        "maximum": 10
+      }
+    }
+  ],
+  "requirement_order": [
+    "application-form",
+    "identity-evidence",
+    "address-evidence",
+    "supporting-evidence"
+  ],
+  "output": {
+    "output_version": 1,
+    "allowed_modes": ["combined_pdf", "separate_pdfs", "zip"],
+    "default_mode": "combined_pdf",
+    "encryption_policy": "must_be_unencrypted",
+    "flatten_policy": "required",
+    "limits": {
+      "maximum_file_count": 4,
+      "maximum_total_bytes": 10485760,
+      "maximum_file_bytes": 5242880,
+      "maximum_pages_per_file": 100
+    },
+    "filename_policy": {
+      "policy_version": 1,
+      "pattern": "safe_static_stem_with_counter_v1",
+      "package_stem": "generic-application-packet",
+      "requirement_stems": [
+        {
+          "requirement_id": "application-form",
+          "stem": "application-form"
+        },
+        {
+          "requirement_id": "identity-evidence",
+          "stem": "identity-evidence"
+        },
+        {
+          "requirement_id": "address-evidence",
+          "stem": "address-evidence"
+        },
+        {
+          "requirement_id": "supporting-evidence",
+          "stem": "supporting-evidence"
+        }
+      ],
+      "collision_policy": "append_counter",
+      "extension_policy": "derive_from_output_mode"
+    }
+  },
+  "warnings": [
+    {
+      "warning_id": "generic-profile-review",
+      "severity": "information",
+      "message": "The numeric limits and filenames in this generic template are an example packaging profile. Compare them with the current application instructions before export.",
+      "scope": {
+        "kind": "package"
+      }
+    },
+    {
+      "warning_id": "identity-sides-review",
+      "severity": "needs_review",
+      "message": "Review whether each side of the identity evidence requested by the current instructions is present and readable.",
+      "scope": {
+        "kind": "requirement",
+        "requirement_id": "identity-evidence"
+      }
+    },
+    {
+      "warning_id": "page-readability-review",
+      "severity": "needs_review",
+      "message": "Review every included page for readability, correct orientation, and missing content.",
+      "scope": {
+        "kind": "package"
+      }
+    },
+    {
+      "warning_id": "packaging-only-boundary",
+      "severity": "information",
+      "message": "PaperWorkShell checks only the packaging rules configured in this template. It does not decide eligibility, provide legal advice, verify identity, submit documents, or guarantee acceptance.",
+      "scope": {
+        "kind": "package"
+      }
+    }
+  ],
+  "confirmations": [
+    {
+      "confirmation_id": "current-instructions-reviewed",
+      "statement": "I compared the included document types and counts with the current application instructions.",
+      "scope": {
+        "kind": "package"
+      },
+      "actor": "user",
+      "effect": "records_review_only"
+    },
+    {
+      "confirmation_id": "identity-sides-reviewed",
+      "statement": "I compared the identity evidence with the current application instructions and reviewed whether each requested side is present and readable.",
+      "scope": {
+        "kind": "requirement",
+        "requirement_id": "identity-evidence"
+      },
+      "actor": "user",
+      "effect": "records_review_only"
+    },
+    {
+      "confirmation_id": "pages-reviewed",
+      "statement": "I reviewed every included page for readability and checked that no page or side I intend to send is missing.",
+      "scope": {
+        "kind": "package"
+      },
+      "actor": "user",
+      "effect": "records_review_only"
+    },
+    {
+      "confirmation_id": "package-arrangement-reviewed",
+      "statement": "I reviewed the document assignments, page order, and filenames shown for this package.",
+      "scope": {
+        "kind": "package"
+      },
+      "actor": "user",
+      "effect": "records_review_only"
+    }
+  ]
+}

@@ -72,8 +72,12 @@ not the digest of the complete append-only history file.
 ## Declarative template v1
 
 - Contract: [`template-v1.schema.json`](template-v1.schema.json)
-- Canonical synthetic example:
+- Canonical minimal synthetic example (`generic-portal-application` / `1.0.0`):
   [`examples/template-v1-minimal.json`](examples/template-v1-minimal.json)
+- Complete built-in workflow (`generic-portal-application` / `1.1.0`):
+  [`templates/builtin/generic-portal-application-v1.1.0.json`](../templates/builtin/generic-portal-application-v1.1.0.json)
+- Complete workflow semantics and structural scenarios:
+  [`docs/templates/generic-portal-application-v1.md`](../docs/templates/generic-portal-application-v1.md)
 - Data-only semantics, trust boundaries, and evolution policy:
   [`docs/schemas/template-v1.md`](../docs/schemas/template-v1.md)
 
@@ -86,6 +90,12 @@ dereferences a template URL. The implemented PWS-0401 runtime keeps a byte-ident
 of this schema, authenticates its canonical semantic fingerprint, binds the exact loaded bytes to
 external catalog evidence, and exposes labeled provenance and lifecycle state through the
 [`safe template-loading contract`](../docs/architecture/template-loading.md).
+
+The 1.0.0 minimal example remains immutable under its accepted identity. PWS-0402 uses content
+version 1.1.0 for the complete workflow while retaining schema version 1. The complete template's
+counts, order, output modes, numeric limits, and filenames are generic planning defaults, not facts
+about a portal. Its confirmations record user review only; PWS-0403, PWS-0406, and PWS-0407 own
+assignment, constraint/filename evaluation, and verified output planning respectively.
 
 ## Worker RPC v1
 

@@ -98,6 +98,26 @@ Snapshot and presentation representations omit template text, URLs, paths, and f
 Stable `TEMPLATE_*` failures contain only a closed code, safe structural context, and actionable
 plain-language message.
 
+## Complete built-in workflow content
+
+PWS-0402 adds the complete
+[`generic-portal-application` 1.1.0 content contract](../templates/generic-portal-application-v1.md)
+without widening this loader. The accepted PWS-0007 minimal fixture remains the distinct
+`generic-portal-application` / `1.0.0` exact-byte artifact. A caller must select the complete
+workflow with the full 1.1.0 key, and the catalog must bind that key to the exact canonical bytes.
+The canonical and packaged 1.1.0 copies remain byte-identical.
+
+Its built-in publisher, source reference, and lifecycle dates are still embedded claims.
+`verified_on` records project review of the generic content against the schema and product
+boundaries; it is not evidence that a portal was checked. The loader independently reports catalog
+checksum/signature facts, makes review due non-blocking, and rejects the template after expiry.
+
+Loading returns inert validated content only. It does not assign case documents, count requirements,
+record a user's review, evaluate output limits or filenames, plan an export, or report portal
+acceptance. PWS-0403 owns assignment and user-confirmed checklist state, PWS-0406 owns runtime
+constraint and safe-filename evaluation, and PWS-0407 owns deterministic output planning and
+verified derivative creation.
+
 ## Case safety and resource behavior
 
 Loading is inspection only. The repository protocol has one `read` operation and the loader has no
