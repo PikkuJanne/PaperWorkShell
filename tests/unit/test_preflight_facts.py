@@ -31,11 +31,14 @@ from paperworkshell.domain.quality_analysis import (
     QualityFindingCode,
 )
 from paperworkshell.preflight.facts import (
+    CasePageDetailsAvailability,
+    CasePagePreflightFact,
     CasePreflightFacts,
     CaseSourcePreflightFact,
     ChecklistFactAvailability,
     ChecklistPreflightFacts,
     OutputItemPreflightFact,
+    OutputOverlayFlatteningAvailability,
     OutputPlanAvailability,
     OutputPlanPreflightFacts,
     QualityFactAvailability,
@@ -549,6 +552,148 @@ def test_pdf_inspection_fact_retains_full_result_and_explicit_absence_states() -
     assert image.pdf_result is None
 
 
+def test_case_page_details_bind_geometry_and_overlay_counts_to_active_page_order() -> None:
+    page_details = (
+        CasePagePreflightFact(
+            page_id=PAGE_ID,
+            position=1,
+            source_id=PDF_SOURCE_ID,
+            source_page_number=1,
+            width_millipoints=612_000,
+            height_millipoints=792_000,
+            overlay_count=2,
+            unapplied_overlay_count=1,
+            ordinary_shape_count=1,
+        ),
+        CasePagePreflightFact(
+            page_id=SECOND_PAGE_ID,
+            position=2,
+            source_id=IMAGE_SOURCE_ID,
+            source_page_number=1,
+            width_millipoints=595_000,
+            height_millipoints=842_000,
+            overlay_count=0,
+            unapplied_overlay_count=0,
+            ordinary_shape_count=0,
+        ),
+    )
+    facts = CasePreflightFacts(
+        case_id=CASE_ID,
+        manifest_revision=MANIFEST_REVISION,
+        template_binding=_template_binding(),
+        sources=_canonical_facts()[0].sources,
+        active_page_ids=(PAGE_ID, SECOND_PAGE_ID),
+        page_details_availability=CasePageDetailsAvailability.CURRENT,
+        page_details=page_details,
+    )
+
+    assert facts.page_details == page_details
+    assert "612000" not in repr(facts)
+    assert "height" not in repr(page_details[0]).casefold()
+
+
+@pytest.mark.parametrize(
+    "page_details",
+    (
+        (
+            CasePagePreflightFact(
+                PAGE_ID,
+                1,
+                PDF_SOURCE_ID,
+                1,
+                612_000,
+                792_000,
+                1,
+                0,
+                0,
+            ),
+        ),
+        (
+            CasePagePreflightFact(
+                SECOND_PAGE_ID,
+                1,
+                PDF_SOURCE_ID,
+                1,
+                612_000,
+                792_000,
+                1,
+                0,
+                0,
+            ),
+            CasePagePreflightFact(
+                PAGE_ID,
+                2,
+                PDF_SOURCE_ID,
+                2,
+                612_000,
+                792_000,
+                0,
+                0,
+                0,
+            ),
+        ),
+    ),
+)
+def test_current_case_page_details_require_complete_exact_active_page_binding(
+    page_details: tuple[CasePagePreflightFact, ...],
+) -> None:
+    with pytest.raises(PreflightError) as captured:
+        CasePreflightFacts(
+            case_id=CASE_ID,
+            manifest_revision=MANIFEST_REVISION,
+            template_binding=_template_binding(),
+            sources=_canonical_facts()[0].sources,
+            active_page_ids=(PAGE_ID, SECOND_PAGE_ID),
+            page_details_availability=CasePageDetailsAvailability.CURRENT,
+            page_details=page_details,
+        )
+
+    assert captured.value.code is PreflightErrorCode.MODEL_INVALID
+    assert captured.value.context == "preflight.case_page_details"
+
+
+def test_case_page_detail_change_participates_in_canonical_input_identity() -> None:
+    def case_with_width(width_millipoints: int) -> CasePreflightFacts:
+        original = _canonical_facts()[0]
+        return CasePreflightFacts(
+            case_id=original.case_id,
+            manifest_revision=original.manifest_revision,
+            template_binding=original.template_binding,
+            sources=original.sources,
+            active_page_ids=original.active_page_ids,
+            page_details_availability=CasePageDetailsAvailability.CURRENT,
+            page_details=(
+                CasePagePreflightFact(
+                    PAGE_ID,
+                    1,
+                    PDF_SOURCE_ID,
+                    1,
+                    width_millipoints,
+                    792_000,
+                    0,
+                    0,
+                    0,
+                ),
+                CasePagePreflightFact(
+                    SECOND_PAGE_ID,
+                    2,
+                    IMAGE_SOURCE_ID,
+                    1,
+                    595_000,
+                    842_000,
+                    0,
+                    0,
+                    0,
+                ),
+            ),
+        )
+
+    first = PreflightInput(_authority(), PreflightDependency.CASE, case_with_width(612_000))
+    changed = PreflightInput(_authority(), PreflightDependency.CASE, case_with_width(613_000))
+
+    assert first.revision_sha256 != changed.revision_sha256
+
+
 def test_template_checklist_quality_and_output_absence_states_are_explicit() -> None:
     not_selected = TemplatePreflightFacts(
         CASE_ID,
@@ -708,6 +853,64 @@ def test_output_plan_rejects_repeated_pages_across_items() -> None:
 
     assert captured.value.code is PreflightErrorCode.MODEL_INVALID
     assert captured.value.context == "preflight.output_items"
+
+
+def test_output_plan_binds_flattened_overlay_pages_to_exact_partition_order() -> None:
+    output = OutputPlanPreflightFacts(
+        CASE_ID,
+        MANIFEST_REVISION,
+        OutputPlanAvailability.CURRENT,
+        "combined_pdf",
+        (
+            OutputItemPreflightFact(
+                OUTPUT_KEY,
+                1,
+                (PAGE_ID, SECOND_PAGE_ID),
+                12_345,
+            ),
+        ),
+        OutputOverlayFlatteningAvailability.CURRENT,
+        (PAGE_ID,),
+    )
+
+    assert output.flattened_overlay_page_ids == (PAGE_ID,)
+    assert "page_id" not in repr(output).casefold()
+
+    for invalid_pages in ((SECOND_PAGE_ID, PAGE_ID), (OUTSIDE_PAGE_ID,)):
+        with pytest.raises(PreflightError) as captured:
+            OutputPlanPreflightFacts(
+                CASE_ID,
+                MANIFEST_REVISION,
+                OutputPlanAvailability.CURRENT,
+                "combined_pdf",
+                output.items,
+                OutputOverlayFlatteningAvailability.CURRENT,
+                invalid_pages,
+            )
+        assert captured.value.context == "preflight.output_overlay_pages"
+
+
+def test_unavailable_overlay_flattening_rejects_asserted_page_evidence() -> None:
+    with pytest.raises(PreflightError) as captured:
+        OutputPlanPreflightFacts(
+            CASE_ID,
+            MANIFEST_REVISION,
+            OutputPlanAvailability.CURRENT,
+            "combined_pdf",
+            (
+                OutputItemPreflightFact(
+                    OUTPUT_KEY,
+                    1,
+                    (PAGE_ID, SECOND_PAGE_ID),
+                    12_345,
+                ),
+            ),
+            OutputOverlayFlatteningAvailability.UNAVAILABLE,
+            (PAGE_ID,),
+        )
+
+    assert captured.value.code is PreflightErrorCode.MODEL_INVALID
+    assert captured.value.context == "preflight.output_overlay_pages"
 
 
 def test_maximum_partitioned_output_plan_is_wrappable_and_canonically_bound() -> None:

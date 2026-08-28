@@ -76,6 +76,62 @@ class CaseSourcePreflightFact:
         )
 
 
+class CasePageDetailsAvailability(StrEnum):
+    """Whether current geometry and overlay projections cover every active page."""
+
+    CURRENT = "current"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class CasePagePreflightFact:
+    """One active page's content-free geometry and visual-intent summary."""
+
+    page_id: UUID
+    position: int
+    source_id: UUID
+    source_page_number: int
+    width_millipoints: int
+    height_millipoints: int
+    overlay_count: int
+    unapplied_overlay_count: int
+    ordinary_shape_count: int
+
+    def __post_init__(self) -> None:
+        _require_uuid4(self.page_id, "preflight.case_page")
+        _require_uuid4(self.source_id, "preflight.case_page_source")
+        numeric_values = (
+            self.position,
+            self.source_page_number,
+            self.width_millipoints,
+            self.height_millipoints,
+            self.overlay_count,
+            self.unapplied_overlay_count,
+            self.ordinary_shape_count,
+        )
+        if (
+            self.page_id == self.source_id
+            or any(type(value) is not int for value in numeric_values)
+            or not 1 <= self.position <= MAX_PREFLIGHT_PAGES
+            or not 1 <= self.source_page_number <= MAX_PREFLIGHT_PAGES
+            or not 1 <= self.width_millipoints <= MAX_PREFLIGHT_STATEMENT_VERSION
+            or not 1 <= self.height_millipoints <= MAX_PREFLIGHT_STATEMENT_VERSION
+            or not 0 <= self.overlay_count <= MAX_PREFLIGHT_PAGES
+            or not 0 <= self.unapplied_overlay_count <= self.overlay_count
+            or not 0 <= self.ordinary_shape_count <= self.overlay_count
+        ):
+            reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.case_page")
+
+    def __repr__(self) -> str:
+        return (
+            "CasePagePreflightFact("
+            f"position={self.position!r}, source_page_number={self.source_page_number!r}, "
+            f"overlay_count={self.overlay_count!r}, "
+            f"unapplied_overlay_count={self.unapplied_overlay_count!r}, "
+            f"ordinary_shape_count={self.ordinary_shape_count!r})"
+        )
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class CasePreflightFacts(PreflightFactValue):
     """Authoritative case inventory needed to correlate other fact groups."""
@@ -85,6 +141,8 @@ class CasePreflightFacts(PreflightFactValue):
     template_binding: TemplateBinding | None
     sources: tuple[CaseSourcePreflightFact, ...] = field(repr=False)
     active_page_ids: tuple[UUID, ...] = field(repr=False)
+    page_details_availability: CasePageDetailsAvailability = CasePageDetailsAvailability.UNAVAILABLE
+    page_details: tuple[CasePagePreflightFact, ...] = field(default=(), repr=False)
 
     def __post_init__(self) -> None:
         _require_case_revision(self.case_id, self.manifest_revision, "preflight.case")
@@ -107,6 +165,23 @@ class CasePreflightFacts(PreflightFactValue):
         )
         if self.case_id in self.source_ids or self.case_id in self.active_page_ids:
             reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.case_namespace")
+        if (
+            type(self.page_details_availability) is not CasePageDetailsAvailability
+            or type(self.page_details) is not tuple
+            or len(self.page_details) > MAX_PREFLIGHT_PAGES
+            or any(type(item) is not CasePagePreflightFact for item in self.page_details)
+        ):
+            reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.case_page_details")
+        if self.page_details_availability is CasePageDetailsAvailability.CURRENT:
+            if (
+                tuple(item.page_id for item in self.page_details) != self.active_page_ids
+                or tuple(item.position for item in self.page_details)
+                != tuple(range(1, len(self.page_details) + 1))
+                or any(item.source_id not in self.source_ids for item in self.page_details)
+            ):
+                reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.case_page_details")
+        elif self.page_details:
+            reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.case_page_details")
 
     @property
     def source_ids(self) -> tuple[UUID, ...]:
@@ -116,7 +191,8 @@ class CasePreflightFacts(PreflightFactValue):
         return (
             "CasePreflightFacts("
             f"manifest_revision={self.manifest_revision!r}, "
-            f"source_count={len(self.sources)}, page_count={len(self.active_page_ids)})"
+            f"source_count={len(self.sources)}, page_count={len(self.active_page_ids)}, "
+            f"page_details_availability={self.page_details_availability.value!r})"
         )
 
 
@@ -414,6 +490,13 @@ class OutputPlanAvailability(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class OutputOverlayFlatteningAvailability(StrEnum):
+    """Whether an exact output plan identifies every page whose overlays will flatten."""
+
+    CURRENT = "current"
+    UNAVAILABLE = "unavailable"
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class OutputItemPreflightFact:
     """One deterministic plan target without a proposed filename or path."""
@@ -461,6 +544,10 @@ class OutputPlanPreflightFacts(PreflightFactValue):
     availability: OutputPlanAvailability
     output_mode: str
     items: tuple[OutputItemPreflightFact, ...] = field(repr=False)
+    overlay_flattening_availability: OutputOverlayFlatteningAvailability = (
+        OutputOverlayFlatteningAvailability.UNAVAILABLE
+    )
+    flattened_overlay_page_ids: tuple[UUID, ...] = field(default=(), repr=False)
 
     def __post_init__(self) -> None:
         _require_case_revision(self.case_id, self.manifest_revision, "preflight.output_plan")
@@ -470,6 +557,7 @@ class OutputPlanPreflightFacts(PreflightFactValue):
             or type(self.items) is not tuple
             or len(self.items) > MAX_PREFLIGHT_OUTPUTS
             or any(type(item) is not OutputItemPreflightFact for item in self.items)
+            or type(self.overlay_flattening_availability) is not OutputOverlayFlatteningAvailability
         ):
             reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.output_plan")
         if self.availability is OutputPlanAvailability.CURRENT:
@@ -483,14 +571,41 @@ class OutputPlanPreflightFacts(PreflightFactValue):
                 or len(set(page_ids)) != len(page_ids)
             ):
                 reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.output_items")
+            _require_uuid_inventory(
+                self.flattened_overlay_page_ids,
+                maximum=MAX_PREFLIGHT_PAGES,
+                allow_empty=True,
+                context="preflight.output_overlay_pages",
+            )
+            if self.overlay_flattening_availability is OutputOverlayFlatteningAvailability.CURRENT:
+                flattened_page_ids = frozenset(self.flattened_overlay_page_ids)
+                if self.flattened_overlay_page_ids != tuple(
+                    page_id for page_id in page_ids if page_id in flattened_page_ids
+                ):
+                    reject_preflight(
+                        PreflightErrorCode.MODEL_INVALID,
+                        "preflight.output_overlay_pages",
+                    )
+            elif self.flattened_overlay_page_ids:
+                reject_preflight(
+                    PreflightErrorCode.MODEL_INVALID,
+                    "preflight.output_overlay_pages",
+                )
         elif self.items:
             reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.output_items")
+        elif (
+            self.overlay_flattening_availability
+            is not OutputOverlayFlatteningAvailability.UNAVAILABLE
+            or self.flattened_overlay_page_ids
+        ):
+            reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.output_overlay_pages")
 
     def __repr__(self) -> str:
         return (
             "OutputPlanPreflightFacts("
             f"manifest_revision={self.manifest_revision!r}, "
-            f"availability={self.availability.value!r}, output_count={len(self.items)})"
+            f"availability={self.availability.value!r}, output_count={len(self.items)}, "
+            f"overlay_flattening_availability={self.overlay_flattening_availability.value!r})"
         )
 
 
@@ -724,11 +839,14 @@ def _require_token(value: object, context: str) -> str:
 
 
 __all__ = (
+    "CasePageDetailsAvailability",
+    "CasePagePreflightFact",
     "CaseSourcePreflightFact",
     "CasePreflightFacts",
     "ChecklistFactAvailability",
     "ChecklistPreflightFacts",
     "OutputItemPreflightFact",
+    "OutputOverlayFlatteningAvailability",
     "OutputPlanAvailability",
     "OutputPlanPreflightFacts",
     "QualityFactAvailability",
