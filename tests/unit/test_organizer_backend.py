@@ -36,6 +36,13 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
+from paperworkshell.app.portal_constraints import (
+    ConstraintDraftInput,
+    ConstraintEditorError,
+    ConstraintEditorErrorCode,
+    ConstraintEditorState,
+    PortalConstraintWorkflowService,
+)
 from paperworkshell.app.quality_analysis import (
     QualityAnalysisCancellationProbe,
     QualityAnalysisError,
@@ -795,6 +802,50 @@ def _checklist_backend() -> tuple[OrganizerBackend, _Repository, ChecklistWorkfl
         checklist=workflow,
     )
     return backend, repository, workflow
+
+
+def _portal_constraints_backend() -> tuple[
+    OrganizerBackend,
+    _Repository,
+    PortalConstraintWorkflowService,
+]:
+    repository = _Repository(_document())
+    loader = SafeTemplateLoader(built_in_template_repository())
+    checklist = ChecklistWorkflowService(
+        loader,
+        GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+        as_of=date(2026, 8, 28),
+        clock=lambda: datetime(2026, 8, 28, 12, tzinfo=UTC),
+    )
+    workflow = PortalConstraintWorkflowService(
+        loader,
+        GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+        as_of=date(2026, 8, 28),
+    )
+    backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        checklist=checklist,
+        portal_constraints=workflow,
+    )
+    return backend, repository, workflow
+
+
+def _edited_portal_constraints(opening: ConstraintEditorState) -> ConstraintEditorState:
+    constraints = opening.constraints
+    return opening.replace(
+        ConstraintDraftInput(
+            constraints.allowed_modes,
+            constraints.encryption_policy,
+            4,
+            constraints.maximum_total_bytes,
+            constraints.maximum_file_bytes,
+            25,
+            ("reviewed-packet",),
+        )
+    )
 
 
 def test_signature_image_placement_refreshes_then_deletes_before_asset_cleanup() -> None:
@@ -2533,3 +2584,117 @@ def test_checklist_abort_releases_private_authority_for_reopen() -> None:
     assert reopened.editor_session_id != rejected_presentation.editor_session_id
     assert repository.save_calls == 0
     backend.cancel_checklist(reopened)
+
+
+def test_portal_constraints_begin_flushes_page_intent_and_cancel_discards_draft() -> None:
+    backend, repository, _workflow = _portal_constraints_backend()
+    backend.open_case(CASE_ID)
+    backend.rotate_clockwise(PAGE_IDS[0])
+
+    opening = backend.begin_portal_constraints()
+    edited = _edited_portal_constraints(opening)
+
+    assert opening.manifest_revision == 1
+    assert repository.save_calls == 1
+    assert not backend.state.autosave_pending
+    backend.cancel_portal_constraints(edited)
+    assert repository.save_calls == 1
+    assert repository.current.document["constraints"] == {
+        "constraints_version": 1,
+        "allowed_output_modes": ["combined_pdf"],
+        "encryption_policy": "must_be_unencrypted",
+    }
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_portal_constraints_apply_uses_organizer_autosave_and_changes_only_subset() -> None:
+    backend, repository, _workflow = _portal_constraints_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_portal_constraints()
+    edited = _edited_portal_constraints(opening)
+    sources_before = copy_manifest_document({"sources": repository.current.document["sources"]})[
+        "sources"
+    ]
+    pages_before = copy_manifest_document({"pages": repository.current.document["pages"]})["pages"]
+
+    saved = backend.apply_portal_constraints(edited)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    assert repository.save_calls == 1
+    persisted = cast(dict[str, object], repository.current.document["constraints"])
+    assert persisted["constraints_version"] == 1
+    assert persisted["maximum_file_count"] == 4
+    assert persisted["maximum_pages_per_file"] == 25
+    assert persisted["requested_output_names"] == ["reviewed-packet.pdf"]
+    assert repository.current.document["sources"] == sources_before
+    assert repository.current.document["pages"] == pages_before
+    assert repository.current.document["assignments"] == []
+
+
+def test_portal_constraints_failed_save_retains_exact_retry_and_exclusivity() -> None:
+    backend, repository, _workflow = _portal_constraints_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_portal_constraints()
+    edited = _edited_portal_constraints(opening)
+    repository.fail_saves = 1
+
+    with pytest.raises(ManifestRepositoryError):
+        backend.apply_portal_constraints(edited)
+
+    assert backend.state.autosave_pending
+    blocked_actions: tuple[Callable[[], object], ...] = (
+        lambda: backend.cancel_portal_constraints(edited),
+        lambda: backend.rotate_clockwise(PAGE_IDS[0]),
+        backend.begin_checklist,
+        backend.retry_autosave,
+    )
+    for action in blocked_actions:
+        with pytest.raises(ConstraintEditorError) as blocked:
+            action()
+        assert blocked.value.code in {
+            ConstraintEditorErrorCode.SESSION_MISMATCH,
+            ConstraintEditorErrorCode.WORKFLOW_ACTIVE,
+        }
+
+    saved = backend.apply_portal_constraints(edited)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    assert repository.save_calls == 2
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_portal_constraints_rejects_forged_state_and_abort_allows_reopen() -> None:
+    backend, repository, _workflow = _portal_constraints_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_portal_constraints()
+    forged = replace(
+        opening,
+        editor_session_id=UUID("72000000-0000-4000-8000-000000000111"),
+    )
+
+    with pytest.raises(ConstraintEditorError) as forged_failure:
+        backend.apply_portal_constraints(forged)
+
+    assert forged_failure.value.code is ConstraintEditorErrorCode.SESSION_MISMATCH
+    assert repository.save_calls == 0
+    backend.abort_portal_constraints()
+    reopened = backend.begin_portal_constraints()
+    assert reopened.editor_session_id != opening.editor_session_id
+    backend.cancel_portal_constraints(reopened)
+
+
+def test_portal_constraints_unchanged_apply_is_noop_and_releases_authority() -> None:
+    backend, repository, _workflow = _portal_constraints_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_portal_constraints()
+
+    unchanged = backend.apply_portal_constraints(opening)
+
+    assert unchanged.revision == 0
+    assert not unchanged.autosave_pending
+    assert repository.save_calls == 0
+    reopened = backend.begin_portal_constraints()
+    assert reopened.editor_session_id != opening.editor_session_id
+    backend.cancel_portal_constraints(reopened)

@@ -69,6 +69,10 @@ from paperworkshell.app.organizer import (
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
 )
+from paperworkshell.app.portal_constraints import (
+    ConstraintEditorState,
+    is_constraint_announcement_safe,
+)
 from paperworkshell.app.quality_analysis import QualityReviewSnapshot
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
@@ -117,6 +121,7 @@ from paperworkshell.ui.backend import (
     UiProgress,
 )
 from paperworkshell.ui.checklist import ChecklistEditorDialog
+from paperworkshell.ui.constraints import ConstraintEditorDialog
 from paperworkshell.ui.models import (
     OrganizerPageListModel,
     PreviewState,
@@ -330,6 +335,28 @@ def _checklist_apply_result_matches(
     current: OrganizerViewState | None,
 ) -> bool:
     """Correlate one checklist save to the exact detached editor draft."""
+
+    draft = dialog.state
+    allowed_revisions = {
+        draft.manifest_revision,
+        draft.manifest_revision + 1,
+    }
+    return (
+        type(current) is OrganizerViewState
+        and current == result
+        and result.case_id == draft.case_id
+        and result.revision in allowed_revisions
+        and (not draft.changed or result.revision == draft.manifest_revision + 1)
+        and not result.autosave_pending
+    )
+
+
+def _portal_constraints_apply_result_matches(
+    dialog: ConstraintEditorDialog,
+    result: OrganizerViewState,
+    current: OrganizerViewState | None,
+) -> bool:
+    """Correlate one constraint save to the exact detached editor draft."""
 
     draft = dialog.state
     allowed_revisions = {
@@ -573,6 +600,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._checklist_start_operation_id: int | None = None
         self._checklist_apply_operation_id: int | None = None
         self._checklist_cancel_operation_id: int | None = None
+        self._portal_constraints_dialog: ConstraintEditorDialog | None = None
+        self._portal_constraints_start_operation_id: int | None = None
+        self._portal_constraints_apply_operation_id: int | None = None
+        self._portal_constraints_cancel_operation_id: int | None = None
         self._signature_image_source_path: Path | None = None
         self._signature_image_page_id: UUID | None = None
         self._signature_image_prepare_operation_id: int | None = None
@@ -916,6 +947,13 @@ class PaperWorkShellWindow(QMainWindow):
             "Ready. Ctrl+Shift+C.",
         )
         self._checklist_button.setAccessibleName("Review packet checklist")
+        self._portal_constraints_button = self._action_button(
+            "Review package constraints…",
+            "portalConstraintsButton",
+            "Review allowed package formats, encryption policy, optional limits, and safe "
+            "requested names. These local checks do not guarantee portal acceptance.",
+        )
+        self._portal_constraints_button.setAccessibleName("Review package constraints")
         self._undo_button = self._action_button(
             "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
         )
@@ -934,6 +972,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._request_signature_image_placements
         )
         self._checklist_button.clicked.connect(self._request_checklist)
+        self._portal_constraints_button.clicked.connect(self._request_portal_constraints)
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
         action_layout.addWidget(self._move_earlier_button, 0, 0)
@@ -948,6 +987,7 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._place_signature_image_button, 3, 0)
         action_layout.addWidget(self._remove_signature_image_button, 3, 1)
         action_layout.addWidget(self._checklist_button, 3, 2)
+        action_layout.addWidget(self._portal_constraints_button, 4, 0, 1, 3)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -1029,6 +1069,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._place_signature_image_button,
             self._remove_signature_image_button,
             self._checklist_button,
+            self._portal_constraints_button,
             self._quality_summary,
             self._quality_check_button,
             self._quality_findings_view,
@@ -1112,6 +1153,14 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.checklist_apply_failed.connect(self._checklist_apply_failed)
         self._worker.checklist_cancelled.connect(self._checklist_cancelled)
         self._worker.checklist_cancel_failed.connect(self._checklist_cancel_failed)
+        self._worker.portal_constraints_started.connect(self._portal_constraints_started)
+        self._worker.portal_constraints_start_failed.connect(self._portal_constraints_start_failed)
+        self._worker.portal_constraints_applied.connect(self._portal_constraints_applied)
+        self._worker.portal_constraints_apply_failed.connect(self._portal_constraints_apply_failed)
+        self._worker.portal_constraints_cancelled.connect(self._portal_constraints_cancelled)
+        self._worker.portal_constraints_cancel_failed.connect(
+            self._portal_constraints_cancel_failed
+        )
         self._worker.signature_image_prepared.connect(self._signature_image_prepared)
         self._worker.signature_image_prepare_failed.connect(self._signature_image_prepare_failed)
         self._worker.signature_image_placed.connect(self._signature_image_placed)
@@ -2188,6 +2237,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._closing_import_cleanup = False
         self._dismiss_core_overlay_tools_after_shutdown_refusal()
         self._dismiss_checklist_after_shutdown_refusal()
+        self._dismiss_portal_constraints_after_shutdown_refusal()
         self._update_organizer_guidance()
         if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
             self._hide_retry_save()
@@ -2238,6 +2288,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
+            or self._portal_constraints_is_opening_or_active()
             or self._quality_is_pending_or_running()
             or self._signature_image_is_opening_or_active()
         ):
@@ -2299,6 +2350,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
+            or self._portal_constraints_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2316,6 +2368,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
+            or self._portal_constraints_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2640,6 +2693,7 @@ class PaperWorkShellWindow(QMainWindow):
         quality_busy = self._quality_is_pending_or_running()
         overlay_tools_busy = self._core_overlay_tools_is_opening_or_active()
         checklist_busy = self._checklist_is_opening_or_active()
+        portal_constraints_busy = self._portal_constraints_is_opening_or_active()
         signature_image_busy = self._signature_image_is_opening_or_active()
         self._close_case_button.setEnabled(
             self._controls_enabled
@@ -2649,6 +2703,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not quality_busy
             and not overlay_tools_busy
             and not checklist_busy
+            and not portal_constraints_busy
             and not signature_image_busy
         )
         editable = (
@@ -2659,6 +2714,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not quality_busy
             and not overlay_tools_busy
             and not checklist_busy
+            and not portal_constraints_busy
             and not signature_image_busy
         )
         has_selection = editable and 0 <= row < page_count
@@ -2685,6 +2741,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._place_signature_image_button.setEnabled(has_selection)
         self._remove_signature_image_button.setEnabled(has_selection)
         self._checklist_button.setEnabled(
+            editable and state is not None and state.case_id is not None
+        )
+        self._portal_constraints_button.setEnabled(
             editable and state is not None and state.case_id is not None
         )
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
@@ -3011,6 +3070,7 @@ class PaperWorkShellWindow(QMainWindow):
         if (
             self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
+            or self._portal_constraints_is_opening_or_active()
         ):
             return
         operation_id = self._allocate_operation_id()
@@ -3405,6 +3465,197 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setVisible(True)
         self._announce(
             f"Checklist editor could not finish. {safe_message}",
+            assertive=True,
+        )
+        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._error_label)
+
+    def _request_portal_constraints(self) -> None:
+        """Open the exclusive, keyboard-complete packaging-constraint editor."""
+
+        if not self._portal_constraints_button.isEnabled() or not self._prepare_for_mutation():
+            return
+        if self._portal_constraints_is_opening_or_active():
+            return
+        operation_id = self._allocate_operation_id()
+        self._portal_constraints_start_operation_id = operation_id
+        self._autosave_timer.stop()
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        self._hide_error()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce(
+            "Opening package constraints. These local checks do not guarantee portal acceptance."
+        )
+        self._commands.portal_constraints_begin_requested.emit(operation_id)
+
+    @Slot(int, object)
+    def _portal_constraints_started(self, operation_id: int, editor_state: object) -> None:
+        if operation_id != self._portal_constraints_start_operation_id:
+            return
+        self._portal_constraints_start_operation_id = None
+        current = self._state
+        if (
+            self._closing_requested
+            or type(editor_state) is not ConstraintEditorState
+            or current is None
+            or editor_state.case_id != current.case_id
+            or editor_state.manifest_revision != current.revision
+            or not is_constraint_announcement_safe(editor_state.announcement)
+            or self._portal_constraints_dialog is not None
+        ):
+            if not self._closing_requested and self._portal_constraints_dialog is None:
+                cancel_operation_id = self._allocate_operation_id()
+                self._portal_constraints_cancel_operation_id = cancel_operation_id
+                self._commands.portal_constraints_abort_requested.emit(cancel_operation_id)
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            return
+        dialog = ConstraintEditorDialog(editor_state, self)
+        dialog.apply_requested.connect(self._apply_portal_constraints)
+        dialog.finished.connect(self._portal_constraints_finished)
+        self._portal_constraints_dialog = dialog
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        dialog.open()
+
+    @Slot(int, object)
+    def _portal_constraints_start_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._portal_constraints_start_operation_id:
+            return
+        self._portal_constraints_start_operation_id = None
+        if self._state is not None and self._state.autosave_pending and not self._closing_requested:
+            self._autosave_timer.start()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_portal_constraints_failure(failure)
+
+    @Slot(object)
+    def _apply_portal_constraints(self, editor_state: object) -> None:
+        dialog = self._portal_constraints_dialog
+        if (
+            dialog is None
+            or type(editor_state) is not ConstraintEditorState
+            or editor_state is not dialog.state
+            or self._portal_constraints_apply_operation_id is not None
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        self._portal_constraints_apply_operation_id = operation_id
+        self._commands.portal_constraints_apply_requested.emit(operation_id, editor_state)
+
+    @Slot(int, object)
+    def _portal_constraints_applied(self, operation_id: int, state: object) -> None:
+        if operation_id != self._portal_constraints_apply_operation_id:
+            return
+        self._portal_constraints_apply_operation_id = None
+        dialog = self._portal_constraints_dialog
+        if dialog is None:
+            return
+        if type(state) is not OrganizerViewState or not _portal_constraints_apply_result_matches(
+            dialog,
+            state,
+            self._state,
+        ):
+            dialog.mark_apply_failed(
+                "PWS_UI_RESPONSE_INVALID",
+                "PaperWorkShell received an invalid constraint save confirmation.",
+            )
+            return
+        if dialog.mark_applied():
+            self._announce("Package constraints applied and saved.")
+
+    @Slot(int, object)
+    def _portal_constraints_apply_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._portal_constraints_apply_operation_id:
+            return
+        self._portal_constraints_apply_operation_id = None
+        dialog = self._portal_constraints_dialog
+        if dialog is None:
+            return
+        if type(failure) is UiFailure:
+            dialog.mark_apply_failed(failure.code, failure.message)
+            return
+        dialog.mark_apply_failed(
+            "PWS_UI_RESPONSE_INVALID",
+            "PaperWorkShell received an invalid constraint save failure.",
+        )
+
+    @Slot(int)
+    def _portal_constraints_finished(self, result: int) -> None:
+        dialog = self._portal_constraints_dialog
+        if dialog is None:
+            return
+        state = dialog.state
+        cancelled = (
+            result != int(QDialog.DialogCode.Accepted)
+            and not dialog.commit_started
+            and self._portal_constraints_apply_operation_id is None
+        )
+        dialog.deleteLater()
+        self._portal_constraints_dialog = None
+        self._portal_constraints_apply_operation_id = None
+        if cancelled:
+            operation_id = self._allocate_operation_id()
+            self._portal_constraints_cancel_operation_id = operation_id
+            self._commands.portal_constraints_cancel_requested.emit(operation_id, state)
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        if (
+            not cancelled
+            and not self._closing_requested
+            and self._portal_constraints_button.isEnabled()
+        ):
+            QTimer.singleShot(0, self._focus_portal_constraints_button_after_dialog)
+
+    @Slot(int)
+    def _portal_constraints_cancelled(self, operation_id: int) -> None:
+        if operation_id != self._portal_constraints_cancel_operation_id:
+            return
+        self._portal_constraints_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce("Package constraint changes cancelled. Nothing was applied.")
+        if not self._closing_requested and self._portal_constraints_button.isEnabled():
+            QTimer.singleShot(0, self._focus_portal_constraints_button_after_dialog)
+
+    def _focus_portal_constraints_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._portal_constraints_button.isEnabled():
+            return
+        self.activateWindow()
+        self._portal_constraints_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._portal_constraints_button)
+
+    @Slot(int, object)
+    def _portal_constraints_cancel_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._portal_constraints_cancel_operation_id:
+            return
+        self._portal_constraints_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_portal_constraints_failure(failure)
+
+    def _show_portal_constraints_failure(self, failure: object) -> None:
+        safe_code = (
+            failure.code if type(failure) is UiFailure else "PWS_UI_CONSTRAINT_RESPONSE_INVALID"
+        )
+        safe_message = (
+            failure.message
+            if type(failure) is UiFailure
+            else "PaperWorkShell could not finish the constraint action safely. Try again."
+        )
+        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._error_label.setVisible(True)
+        self._announce(
+            f"Package constraint editor could not finish. {safe_message}",
             assertive=True,
         )
         self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -4007,6 +4258,14 @@ class PaperWorkShellWindow(QMainWindow):
             or self._checklist_cancel_operation_id is not None
         )
 
+    def _portal_constraints_is_opening_or_active(self) -> bool:
+        return (
+            self._portal_constraints_start_operation_id is not None
+            or self._portal_constraints_dialog is not None
+            or self._portal_constraints_apply_operation_id is not None
+            or self._portal_constraints_cancel_operation_id is not None
+        )
+
     def _signature_image_is_opening_or_active(self) -> bool:
         active = self._active_operation
         return (
@@ -4118,6 +4377,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
+            and not self._portal_constraints_is_opening_or_active()
         )
         self._quality_check_button.setEnabled(check_enabled)
         findings_enabled = (
@@ -4277,6 +4537,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
+            and not self._portal_constraints_is_opening_or_active()
         )
         if self._retry_preview_button.hasFocus() and not enabled:
             self._focus_safe_control()
@@ -4350,6 +4611,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
+            and not self._portal_constraints_is_opening_or_active()
             and not self._signature_image_is_opening_or_active()
         )
         self._update_ocr_language_availability()
@@ -4363,6 +4625,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
+            and not self._portal_constraints_is_opening_or_active()
             and not self._signature_image_is_opening_or_active()
             and self._ocr_language_dialog is None
             and self._ocr_language_refresh_request_id is None
@@ -4387,6 +4650,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._place_signature_image_button,
             self._remove_signature_image_button,
             self._checklist_button,
+            self._portal_constraints_button,
             self._undo_button,
             self._redo_button,
         ):
@@ -4421,6 +4685,17 @@ class PaperWorkShellWindow(QMainWindow):
                 assertive=True,
             )
             return
+        constraint_dialog = self._portal_constraints_dialog
+        if (
+            constraint_dialog is not None
+            and not constraint_dialog.apply_pending
+            and constraint_dialog.latest_state_for_shutdown() is None
+        ):
+            self._announce(
+                "Resolve the package constraint editor fields before closing PaperWorkShell.",
+                assertive=True,
+            )
+            return
         retrying_cleanup = self._retry_close_button.isVisible()
         queued_import = self._deferred_import is not None
         active = self._active_operation
@@ -4438,6 +4713,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._discard_scan_review_for_shutdown()
         self._discard_core_overlay_tools_for_shutdown()
         self._discard_checklist_for_shutdown()
+        self._discard_portal_constraints_for_shutdown()
         self._discard_signature_images_for_shutdown()
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
@@ -4520,6 +4796,29 @@ class PaperWorkShellWindow(QMainWindow):
             self._checklist_cancel_operation_id = operation_id
             self._commands.checklist_cancel_requested.emit(operation_id, state)
 
+    def _discard_portal_constraints_for_shutdown(self) -> None:
+        dialog = self._portal_constraints_dialog
+        if dialog is None or dialog.apply_pending:
+            return
+        state = dialog.latest_state_for_shutdown()
+        if state is None:
+            return
+        try:
+            dialog.finished.disconnect(self._portal_constraints_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._portal_constraints_dialog = None
+        if dialog.commit_started:
+            # Retry the latest complete state collected from the live form before shutdown.
+            operation_id = self._allocate_operation_id()
+            self._commands.portal_constraints_apply_requested.emit(operation_id, state)
+        else:
+            operation_id = self._allocate_operation_id()
+            self._portal_constraints_cancel_operation_id = operation_id
+            self._commands.portal_constraints_cancel_requested.emit(operation_id, state)
+
     def _discard_signature_images_for_shutdown(self) -> None:
         """Dismiss detached previews; backend shutdown owns retained-asset cleanup."""
 
@@ -4574,3 +4873,18 @@ class PaperWorkShellWindow(QMainWindow):
         dialog.deleteLater()
         self._checklist_dialog = None
         self._checklist_apply_operation_id = None
+
+    def _dismiss_portal_constraints_after_shutdown_refusal(self) -> None:
+        """Expose the main retry surface after shutdown clears constraint authority."""
+
+        dialog = self._portal_constraints_dialog
+        if dialog is None:
+            return
+        try:
+            dialog.finished.disconnect(self._portal_constraints_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._portal_constraints_dialog = None
+        self._portal_constraints_apply_operation_id = None

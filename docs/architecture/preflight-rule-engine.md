@@ -1,11 +1,12 @@
 # Typed preflight rule engine
 
-- Status: PWS-0404 implementation contract
-- Task: PWS-0404
+- Status: PWS-0404 engine plus PWS-0405/PWS-0406 policy contracts
+- Tasks: PWS-0404, PWS-0405, PWS-0406
 - Decisions: PWS-D025, PWS-D026, PWS-D037
 - Checklist input: [Checklist assignment architecture](checklist-assignment.md)
 - Structural input: [PDF structural inspection](pdf-structural-inspection.md)
 - Quality input: [Advisory page-quality review](quality-review.md)
+- Portal constraints: [Portal constraints and safe output names](portal-constraints.md)
 
 ## Scope and claim boundary
 
@@ -20,9 +21,11 @@ consumes the enclosing `PreflightEvaluation` and exact expected authority rather
 detached report merely because its finding tuple is empty.
 
 PWS-0404 provides the rule contract, deterministic engine, canonical fact boundaries, and test
-harness. It deliberately does not choose the actual completeness, compatibility, privacy,
-legibility, filename, or portal-limit policies. PWS-0405 owns the first four policy families and
-PWS-0406 owns generic constraints and filename checks.
+harness. PWS-0405 supplies the registered completeness, compatibility, privacy-boundary, and
+legibility policies. PWS-0406 supplies generic constraint models, output observation checks, safe
+filename resolution, and the manual editor contract. PWS-0407 remains responsible for constructing
+the exact multi-artifact plan and binding its final filename/encryption observations to engine
+authority.
 
 Templates remain declarative data. A validated template may supply inert warning or confirmation
 text, identifiers, scopes, and constraints. It cannot supply a callable, expression, import,
@@ -50,12 +53,12 @@ The canonical production projections are:
 
 | Dependency | Path-free facts |
 |---|---|
-| Case | Template binding, ordered source ID/media/digest bindings, and active page order |
+| Case | Template binding, ordered source ID/media/digest bindings, active page order, and explicit current/unavailable page geometry plus bounded overlay-intent counts |
 | Template | Explicit current/not-selected/unavailable state plus exact binding and inert notices |
 | Checklist | Explicit current/unavailable state plus pure definition and saved projection |
 | Source inspections | Every ordered source with exact digest/media binding and either the full typed `PdfInspectionResult`, explicit unavailable state, or image not-applicable state |
 | Quality findings | Explicit current/unavailable state, exact page order/profile, and typed advisory findings |
-| Output plan | Explicit current/unavailable state and deterministic opaque output keys, page membership, and bounded numeric estimates |
+| Output plan | Explicit current/unavailable state, deterministic opaque output keys, page membership, bounded numeric estimates, and exact current/unavailable overlay-flattening page coverage |
 
 These projections exclude display names, original filenames, storage names, paths, proposed output
 filenames, OCR/document text, metadata values, thumbnails, signature images, and raw exceptions.
@@ -68,9 +71,39 @@ analysis is explicit and is never converted to a clean result.
 
 `PdfInspectionResult` is intentionally retained in the ephemeral source-inspection projection
 because the current manifest/import summary does not retain attachment, action, script, XFA,
-interactive-content, and structural states. PWS-0405 must acquire a current result through bounded
-worker reinspection or a separately approved retained-result design; it must not infer absence from
-the lossy manifest summary.
+interactive-content, and structural states. The PWS-0405 compatibility rule consumes the full
+result and reports unavailable inspection explicitly. Its application adapter must acquire a
+current result through bounded worker reinspection or a separately approved retained-result
+design; it must not infer absence from the lossy manifest summary.
+
+## Core policy registry
+
+`core_preflight_rules()` returns five deterministic policies:
+
+1. **Completeness** blocks missing confirmed minimums, confirmed maximum violations, unassigned
+   pages, empty logical documents, unavailable checklist/template/output-plan facts, and no selected
+   template. Suggested assignments and checklist states needing review remain explicit confirmation
+   requests.
+2. **Template notices** gives every non-informational declaration a bounded position-specific
+   finding identity. Multiple declarations of the same kind at the same scope therefore cannot
+   collapse into one result. Templates still provide inert data only.
+3. **Compatibility** blocks encrypted/malformed/structurally failed PDFs and detected unsupported
+   XFA, scripts, actions, or interactive content. Attachments, structural warnings, metadata limits,
+   signature markers, and unavailable/unknown inspection remain visible warnings. A signature
+   marker always states that a modified or exported copy is an unsigned derivative.
+4. **Quality** projects every PWS-0206 advisory signal—including OCR failure/low confidence, blur,
+   likely blank, clipping, orientation, duplicate, and low resolution—as a review warning. It never
+   strengthens a heuristic into a completeness decision.
+5. **Privacy boundary and geometry** warns above the conservative 14,400-point page-dimension
+   review boundary, blocks overlays explicitly projected as unapplied or absent from the exact
+   output flattening plan, and warns that ordinary shapes do not prove permanent removal. Missing
+   page-detail or output-flattening authority remains an explicit unverified result. Depending on
+   both canonical case and output-plan inputs makes any plan change invalidate this rule.
+
+The page-size boundary is a versioned conservative compatibility review threshold, not a portal
+limit or support guarantee. Metadata removal and final overlay flattening remain export-time checks;
+PWS-0405 reports them as unverified when no exact evidence exists. Permanent redaction is not
+implemented or claimed.
 
 ## Rule and finding contract
 

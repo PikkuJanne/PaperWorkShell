@@ -40,6 +40,13 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
+from paperworkshell.app.portal_constraints import (
+    ConstraintEditorErrorCode,
+    ConstraintEditorState,
+    PortalConstraintWorkflowService,
+    is_constraint_announcement_safe,
+    reject_constraint_editor,
+)
 from paperworkshell.app.quality_analysis import (
     QualityAnalysisCancellationProbe,
     QualityAnalysisError,
@@ -466,6 +473,7 @@ class OrganizerBackend:
     __slots__ = (
         "_active_checklist",
         "_active_core_overlay_tools",
+        "_active_portal_constraints",
         "_active_scan_review",
         "_active_signature_draft_id",
         "_close_resources",
@@ -473,6 +481,7 @@ class OrganizerBackend:
         "_lifecycle",
         "_ocr_languages",
         "_pending_committed_import",
+        "_portal_constraints",
         "_quality_analysis",
         "_quality_profile_id",
         "_quality_profile_sha256",
@@ -499,6 +508,7 @@ class OrganizerBackend:
         quality_analysis: _QualityAnalysisServicePort | None = None,
         signature_images: SignatureImageWorkflowPort | None = None,
         checklist: ChecklistWorkflowService | None = None,
+        portal_constraints: PortalConstraintWorkflowService | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -552,6 +562,14 @@ class OrganizerBackend:
             reject_signature_image(SignatureImageErrorCode.MODEL_INVALID, "signature.organizer")
         if checklist is not None and type(checklist) is not ChecklistWorkflowService:
             reject_checklist(ChecklistErrorCode.MODEL_INVALID, "checklist.organizer")
+        if (
+            portal_constraints is not None
+            and type(portal_constraints) is not PortalConstraintWorkflowService
+        ):
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.MODEL_INVALID,
+                "constraints.organizer",
+            )
         self._lifecycle = lifecycle
         self._repository = repository
         self._source_ingest = source_ingest
@@ -564,8 +582,10 @@ class OrganizerBackend:
         self._quality_profile_sha256 = quality_profile_sha256
         self._signature_images = signature_images
         self._checklist = checklist
+        self._portal_constraints = portal_constraints
         self._utc_now = checklist.utc_now if checklist is not None else lambda: datetime.now(UTC)
         self._active_checklist: ChecklistEditorState | None = None
+        self._active_portal_constraints: ConstraintEditorState | None = None
         self._active_core_overlay_tools: _CoreOverlayEditorAuthority | None = None
         self._active_scan_review: _ActiveScanReview | None = None
         self._active_signature_draft_id: UUID | None = None
@@ -959,6 +979,96 @@ class OrganizerBackend:
             reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.organizer_abort")
         workflow.abort(opening_state.editor_session_id)
         self._active_checklist = None
+
+    def begin_portal_constraints(self) -> ConstraintEditorState:
+        """Open one exclusive, revision-bound packaging-constraint draft."""
+
+        session = self._require_session()
+        workflow = self._require_portal_constraints()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.WORKFLOW_ACTIVE,
+                "constraints.scan_review",
+            )
+        self.flush_autosave()
+        editor_state = workflow.begin(session.snapshot)
+        if (
+            type(editor_state) is not ConstraintEditorState
+            or editor_state.case_id != session.snapshot.case_id
+            or editor_state.manifest_revision != session.snapshot.revision
+            or not is_constraint_announcement_safe(editor_state.announcement)
+        ):
+            if type(editor_state) is ConstraintEditorState:
+                try:
+                    workflow.abort(editor_state.editor_session_id)
+                except BaseException:
+                    pass
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.MODEL_INVALID,
+                "constraints.organizer_begin",
+            )
+        self._active_portal_constraints = editor_state
+        return editor_state
+
+    def apply_portal_constraints(
+        self,
+        editor_state: ConstraintEditorState,
+    ) -> OrganizerViewState:
+        """Queue and durably flush one authenticated complete constraint draft."""
+
+        session = self._require_session()
+        workflow = self._require_portal_constraints()
+        opening_state = self._active_portal_constraints
+        if type(editor_state) is not ConstraintEditorState or opening_state is None:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.SESSION_MISMATCH,
+                "constraints.organizer_apply",
+            )
+        candidate = workflow.to_candidate(opening_state, editor_state, session.snapshot)
+        if not editor_state.changed and not session.autosave.pending:
+            workflow.complete(opening_state, editor_state)
+            self._active_portal_constraints = None
+            return self.state
+        session.autosave.queue(candidate)
+        self._active_scan_review = None
+        state = self._flush_autosave_unchecked()
+        workflow.complete(opening_state, editor_state)
+        self._active_portal_constraints = None
+        return state
+
+    def cancel_portal_constraints(self, editor_state: ConstraintEditorState) -> None:
+        """Discard one matching constraint draft without saving anything."""
+
+        session = self._require_session()
+        workflow = self._require_portal_constraints()
+        opening_state = self._active_portal_constraints
+        if type(editor_state) is not ConstraintEditorState or opening_state is None:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.SESSION_MISMATCH,
+                "constraints.organizer_cancel",
+            )
+        if session.autosave.pending:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.SESSION_MISMATCH,
+                "constraints.organizer_cancel_pending",
+            )
+        workflow.cancel(opening_state, editor_state)
+        self._active_portal_constraints = None
+
+    def abort_portal_constraints(self) -> None:
+        """Release backend authority after an unusable constraint presentation response."""
+
+        session = self._require_session()
+        workflow = self._require_portal_constraints()
+        opening_state = self._active_portal_constraints
+        if opening_state is None or session.autosave.pending:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.SESSION_MISMATCH,
+                "constraints.organizer_abort",
+            )
+        workflow.abort(opening_state.editor_session_id)
+        self._active_portal_constraints = None
 
     def begin_signature_image(
         self,
@@ -1492,6 +1602,10 @@ class OrganizerBackend:
         if active_checklist is not None:
             self._require_checklist().abort(active_checklist.editor_session_id)
             self._active_checklist = None
+        active_constraints = self._active_portal_constraints
+        if active_constraints is not None:
+            self._require_portal_constraints().abort(active_constraints.editor_session_id)
+            self._active_portal_constraints = None
         self._active_core_overlay_tools = None
         workflow = self._signature_images
         self._active_signature_draft_id = None
@@ -1651,11 +1765,25 @@ class OrganizerBackend:
             reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.exclusive")
         if self._active_checklist is not None:
             reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.exclusive")
+        if self._active_portal_constraints is not None:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.WORKFLOW_ACTIVE,
+                "constraints.exclusive",
+            )
 
     def _require_checklist(self) -> ChecklistWorkflowService:
         workflow = self._checklist
         if workflow is None:
             reject_checklist(ChecklistErrorCode.MODEL_INVALID, "checklist.unavailable")
+        return workflow
+
+    def _require_portal_constraints(self) -> PortalConstraintWorkflowService:
+        workflow = self._portal_constraints
+        if workflow is None:
+            reject_constraint_editor(
+                ConstraintEditorErrorCode.MODEL_INVALID,
+                "constraints.unavailable",
+            )
         return workflow
 
     def _require_signature_images(self) -> SignatureImageWorkflowPort:

@@ -30,6 +30,7 @@ from paperworkshell.app.ocr_languages import (
 from paperworkshell.app.organizer import OrganizerBackend
 from paperworkshell.app.page_previews import PagePreviewService
 from paperworkshell.app.pdf_export import PdfExportService
+from paperworkshell.app.portal_constraints import PortalConstraintWorkflowService
 from paperworkshell.app.quality_analysis import QualityAnalysisService
 from paperworkshell.app.quality_ocr_review import (
     CancellationProbe as QualityOcrCancellationProbe,
@@ -645,6 +646,8 @@ def _build_backend(
             _LazyQualityOcrReviewProcessor(selected_resources, owned_resources),
             language_sets=selected_ocr_languages,
         )
+        template_loader = SafeTemplateLoader(built_in_template_repository())
+        template_as_of = datetime.now(UTC).date()
         return OrganizerBackend(
             lifecycle,
             repository,
@@ -663,9 +666,14 @@ def _build_backend(
                 composition.signature_image_rasterizer,
             ),
             checklist=ChecklistWorkflowService(
-                SafeTemplateLoader(built_in_template_repository()),
+                template_loader,
                 GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
-                as_of=datetime.now(UTC).date(),
+                as_of=template_as_of,
+            ),
+            portal_constraints=PortalConstraintWorkflowService(
+                template_loader,
+                GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+                as_of=template_as_of,
             ),
         )
     except BaseException:

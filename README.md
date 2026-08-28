@@ -32,9 +32,11 @@ and Milestone 3 visual-overlay gates, plus the Milestone 4 safe template loader 
 built-in generic application template and user-confirmed checklist/document-assignment workflow.
 The typed preflight rule engine now provides exact saved-case/template authority, canonical
 path-free fact projections, deterministic blocking/warning/confirmation findings, and bounded
-dependency-aware re-evaluation. The next Milestone 4 implementations add the concrete
-completeness/legibility/privacy/compatibility rules (PWS-0405) and generic portal
-constraint/filename rules (PWS-0406). The repository contains the
+dependency-aware re-evaluation. It now includes concrete completeness, legibility, privacy, and
+compatibility policies, plus generic portal constraints, deterministic Windows-safe filename
+resolution, and an accessible case-constraint editor with organizer-owned durable persistence.
+The next Milestone 4 critical-path implementation is the verified combined-PDF, multiple-PDF, and
+ZIP export planner (PWS-0407). The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact

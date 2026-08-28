@@ -30,6 +30,11 @@ from paperworkshell.app.page_previews import (
     PagePreviewErrorCode,
     PagePreviewProgress,
 )
+from paperworkshell.app.portal_constraints import (
+    ConstraintEditorError,
+    ConstraintEditorState,
+    is_constraint_announcement_safe,
+)
 from paperworkshell.app.quality_analysis import (
     QualityAnalysisError,
     QualityAnalysisErrorCode,
@@ -75,6 +80,7 @@ from paperworkshell.domain.source_ingest import (
 )
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
+from paperworkshell.preflight.models import PreflightError
 from paperworkshell.templates.models import TemplateLoadError
 
 
@@ -143,6 +149,7 @@ class OperationCancellation:
 _KNOWN_FAILURES: Final = (
     CaseLifecycleError,
     ChecklistError,
+    ConstraintEditorError,
     ImagePageError,
     ManifestRepositoryError,
     OcrError,
@@ -150,6 +157,7 @@ _KNOWN_FAILURES: Final = (
     PageOperationError,
     OverlayError,
     PdfThumbnailError,
+    PreflightError,
     RecoveryError,
     ScanReviewError,
     SignatureImageError,
@@ -263,6 +271,24 @@ def _checklist_apply_state_matches(
     )
 
 
+def _portal_constraints_apply_state_matches(
+    editor_state: ConstraintEditorState,
+    state: OrganizerViewState,
+) -> bool:
+    """Verify one constraint save without trusting filename presentation values."""
+
+    allowed_revisions = {
+        editor_state.manifest_revision,
+        editor_state.manifest_revision + 1,
+    }
+    return (
+        state.case_id == editor_state.case_id
+        and state.revision in allowed_revisions
+        and (not editor_state.changed or state.revision == editor_state.manifest_revision + 1)
+        and not state.autosave_pending
+    )
+
+
 class OrganizerBackendWorker(QObject):
     """Serialize backend and worker mutations on one long-lived Qt thread."""
 
@@ -296,6 +322,12 @@ class OrganizerBackendWorker(QObject):
     checklist_apply_failed = Signal(int, object)
     checklist_cancelled = Signal(int)
     checklist_cancel_failed = Signal(int, object)
+    portal_constraints_started = Signal(int, object)
+    portal_constraints_start_failed = Signal(int, object)
+    portal_constraints_applied = Signal(int, object)
+    portal_constraints_apply_failed = Signal(int, object)
+    portal_constraints_cancelled = Signal(int)
+    portal_constraints_cancel_failed = Signal(int, object)
     signature_image_prepared = Signal(int, object)
     signature_image_prepare_failed = Signal(int, object)
     signature_image_placed = Signal(int, object)
@@ -1124,6 +1156,189 @@ class OrganizerBackendWorker(QObject):
             return
         self.checklist_cancelled.emit(operation_id)
 
+    @Slot(int)
+    def begin_portal_constraints(self, operation_id: int) -> None:
+        """Open one exact path-free constraint draft on the backend thread."""
+
+        if type(operation_id) is not int or operation_id <= 0:
+            self.portal_constraints_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid constraint editor request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.portal_constraints_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            editor_state = backend.begin_portal_constraints()
+            organizer_state = backend.state
+            if (
+                type(editor_state) is not ConstraintEditorState
+                or type(organizer_state) is not OrganizerViewState
+                or editor_state.case_id != organizer_state.case_id
+                or editor_state.manifest_revision != organizer_state.revision
+                or not is_constraint_announcement_safe(editor_state.announcement)
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.portal_constraints_start_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.state_changed.emit(organizer_state)
+        self.portal_constraints_started.emit(operation_id, editor_state)
+
+    @Slot(int, object)
+    def apply_portal_constraints(self, operation_id: int, editor_state: object) -> None:
+        """Persist one authenticated complete constraint draft and publish state."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not ConstraintEditorState
+        ):
+            self.portal_constraints_apply_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected invalid constraint changes.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.portal_constraints_apply_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            state = backend.apply_portal_constraints(editor_state)
+            current = backend.state
+            if (
+                type(state) is not OrganizerViewState
+                or type(current) is not OrganizerViewState
+                or state != current
+                or not _portal_constraints_apply_state_matches(editor_state, state)
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.portal_constraints_apply_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.state_changed.emit(state)
+        self.portal_constraints_applied.emit(operation_id, state)
+
+    @Slot(int, object)
+    def cancel_portal_constraints(self, operation_id: int, editor_state: object) -> None:
+        """Release one matching constraint draft without changing the case."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not ConstraintEditorState
+        ):
+            self.portal_constraints_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid constraint cancellation.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.portal_constraints_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.cancel_portal_constraints(editor_state)
+        except BaseException as error:
+            self.portal_constraints_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.portal_constraints_cancelled.emit(operation_id)
+
+    @Slot(int)
+    def abort_portal_constraints(self, operation_id: int) -> None:
+        """Release a constraint draft whose presentation response was unusable."""
+
+        if type(operation_id) is not int or operation_id <= 0:
+            self.portal_constraints_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid constraint abort request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.portal_constraints_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.abort_portal_constraints()
+        except BaseException as error:
+            self.portal_constraints_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.portal_constraints_cancelled.emit(operation_id)
+
     @Slot(int, object, object, object)
     def prepare_signature_image(
         self,
@@ -1738,6 +1953,10 @@ class OrganizerBackendCommands(QObject):
     checklist_apply_requested = Signal(int, object)
     checklist_cancel_requested = Signal(int, object)
     checklist_abort_requested = Signal(int)
+    portal_constraints_begin_requested = Signal(int)
+    portal_constraints_apply_requested = Signal(int, object)
+    portal_constraints_cancel_requested = Signal(int, object)
+    portal_constraints_abort_requested = Signal(int)
     signature_image_prepare_requested = Signal(int, object, object, object)
     signature_image_place_requested = Signal(int, object, object)
     signature_image_cancel_requested = Signal(int, object)
@@ -1778,6 +1997,10 @@ class OrganizerBackendCommands(QObject):
         self.checklist_apply_requested.connect(worker.apply_checklist)
         self.checklist_cancel_requested.connect(worker.cancel_checklist)
         self.checklist_abort_requested.connect(worker.abort_checklist)
+        self.portal_constraints_begin_requested.connect(worker.begin_portal_constraints)
+        self.portal_constraints_apply_requested.connect(worker.apply_portal_constraints)
+        self.portal_constraints_cancel_requested.connect(worker.cancel_portal_constraints)
+        self.portal_constraints_abort_requested.connect(worker.abort_portal_constraints)
         self.signature_image_prepare_requested.connect(worker.prepare_signature_image)
         self.signature_image_place_requested.connect(worker.place_signature_image)
         self.signature_image_cancel_requested.connect(worker.cancel_signature_image)

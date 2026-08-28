@@ -3304,7 +3304,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: in_progress
   critical_path: false
   depends_on:
   - PWS-0404
@@ -3350,7 +3350,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: ready
+  status: in_progress
   critical_path: false
   depends_on:
   - PWS-0404
