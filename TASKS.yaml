@@ -3130,7 +3130,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0401
@@ -3162,17 +3162,63 @@ tasks:
   - accessibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-28'
+    revision: 52ee0a13292ea1b109e9a24b81b6535eb80d513d
+    commands:
+    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the final
+      task-evidence tree; 540 Python files were formatted, linted, and strictly typed, all 13 import layers across 189
+      source files were valid, and all 4267 unit tests passed serially
+    - python -m tools.dev test-integration - passed serially; 431 tests passed with 10 disclosed Windows
+      capability/environment skips in 2925.23 seconds, including the validating Windows manifest save/reopen and
+      wall-clock-rollback checklist scenario
+    - python -m tools.dev test-security; test-accessibility - passed serially; 514 security tests passed with 6
+      disclosed Windows link-capability skips and all 59 accessibility tests passed
+    - uv run --locked --no-sync pytest -q tests/unit/test_checklist.py tests/unit/test_checklist_app.py
+      tests/unit/test_organizer_backend.py tests/accessibility/test_checklist_accessibility.py
+      tests/accessibility/test_accessibility_baseline.py tests/security/test_checklist_privacy.py
+      tests/integration/test_checklist_persistence_windows.py - passed; all 122 focused domain, application, organizer,
+      keyboard UI, privacy, and real-storage tests passed
+    - uv run --locked --no-sync python tools/pws0207_quality_evaluation.py evaluate; validate
+      benchmarks/pws0207-quality-findings-v1.json --revision 52ee0a13292ea1b109e9a24b81b6535eb80d513d - passed;
+      the unchanged recipe-only corpus/profile metrics are bound to the exact PWS-0403 implementation revision
+    - python -m tools.dev validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test; scan-secrets - passed on the final clean revision snapshot;
+      the working directory's maintainer-owned untracked document remained untouched and outside task evidence
+    - python -m tools.dev validate-dependencies - passed; the dependency inventory remained valid and PWS-0403 added no
+      dependency, executable, language data, or packaging surface
+    notes:
+    - The pure checklist model binds the exact template ID/version/digest, groups ordered pages as logical documents,
+      projects Missing, Added, Needs review, and Ready without color-only meaning, and couples user-confirmed assignments
+      to exact assignment-reviewed confirmations. Move or membership replacement invalidates confirmation; page and
+      document ordering preserve it where meaning is unchanged; all session mutations support bounded exact undo/redo.
+    - Manual Add and UUID-only internal drag both create user-origin suggested assignments. Confirm is a separate action.
+      The bounded path-free suggestion provider can create automation-origin suggestions only; they remain Needs review
+      until the user explicitly Accepts or Rejects them and can never auto-complete a requirement.
+    - Unassigned active pages stay visible. Loaded inactive or overlapping assignment pages remain recoverable Needs
+      review state, never crash the dialog, and cannot be reordered as active pages. Unknown, inactive, duplicate, and
+      already-placed pages are rejected for new assignment through stable content-free errors.
+    - The accessible modal editor supplies named keyboard controls for add, confirm/accept, reject/remove, category move,
+      document/page ordering, undo/redo, Apply, and Cancel; drag-and-drop is optional. The automated keyboard-only
+      scenario completed the workflow without pointer actions, and focus, announcements, visible guidance, large-text
+      scrolling, non-color statuses, safe default Cancel, Apply retry, and undo-to-opening after save failure are covered.
+    - The organizer flushes pending intent before Begin, holds exclusive revision/digest/CAS authority, persists through
+      autosave before releasing it, and retains the exact draft/candidate after failure. A shared monotonic UTC sequencer
+      keeps assignments, confirmations, and manifest updated_at ordered across identical ticks, explicit test clocks, and
+      wall-clock rollback; the real Windows repository test saves, reopens, extends, and saves again.
+    - GUI projections, drag payloads, safe representations, announcements, and sanitized failures exclude source names,
+      original filenames, storage names, paths, document/OCR text, bytes, metadata, and raw exceptions. The exact template
+      digest stays only in private candidate authority and never enters rendered or routine-log output.
+    - Existing case-manifest v1/v2 assignment and confirmation shapes and template schema v1 were sufficient; no schema,
+      migration, worker RPC, resource-policy, storage-location, network, dependency, portfolio, sibling, or release-interface
+      change was introduced. PaperWorkShell remains standalone and solely owns its local checklist data.
 - id: PWS-0404
   milestone: M4
   title: Implement typed preflight rule engine
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0401
