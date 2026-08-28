@@ -3218,7 +3218,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0401
@@ -3251,17 +3251,60 @@ tasks:
   - product-safety
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-28'
+    revision: 64996458677612ab52f7c0444fdeb2c3b92cbced
+    commands:
+    - uv run --locked --no-sync pytest -q tests/unit/test_preflight_engine.py tests/unit/test_preflight_facts.py
+      tests/security/test_preflight_privacy.py - passed; all 67 focused model, authority, dependency-slot,
+      ordering/deduplication, incremental, released-capacity, unavailable-state, and prohibited-log-token tests passed
+    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck - passed on the final task-evidence tree;
+      all 548 Python files were formatted, linted, and strictly typed, and all 13 import layers across 193 source files
+      were valid
+    - python -m tools.dev test-unit - passed on the final task-evidence tree; all 4328 unit tests passed serially
+    - python -m tools.dev test-security; test-accessibility - passed; 520 security tests passed with 6 disclosed
+      Windows link-capability skips and all 59 accessibility tests passed
+    - python -m tools.dev validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test; scan-secrets - passed on the final clean revision snapshot;
+      the working directory's maintainer-owned untracked document and tmp directory remained untouched and outside
+      task evidence
+    - python -m tools.dev validate-dependencies - passed; PWS-0404 added no dependency, executable, schema, worker,
+      packaging, or language-data surface
+    notes:
+    - The pure registered-code engine binds every input to the exact saved case revision, manifest digest, template
+      binding, and canonical ordered scope inventory. Callers cannot assert cache fingerprints; bounded canonical
+      hashing includes every rule-observable frozen dataclass field, and canonical production DTOs are accepted only
+      in their exact dependency slot with the authoritative case projection present.
+    - Blocking errors, required confirmations, and warnings have closed typed severity, stable rule/finding identity,
+      catalogued case/requirement/source/logical-assignment/page/output scopes, optional related scope, closed
+      remediation action, bounded numeric evidence, static plain-language presentation, and deterministic canonical
+      order. Exact duplicates collapse; conflicts, stale scopes, unknown codes, malformed results, and limit excesses
+      fail closed without truncation.
+    - Incremental evaluation retains no engine-owned cache. It may reuse one explicit immutable prior evaluation only
+      under the exact same authority and unchanged rule descriptor/dependency identities; changed dependencies rerun
+      only declaring rules, changed saved authority forces a full run, and cross-case state is rejected.
+    - Canonical facts exclude names, paths, OCR/document text, filenames, metadata values, thumbnails, and raw
+      exceptions. Missing template/checklist/inspection/quality/output analysis remains explicit rather than clean.
+      Full ephemeral PdfInspectionResult state is preserved because the current manifest summary is intentionally
+      lossy. Source ID/media/digest, checklist/page order, notice requirement, and output membership correlations are
+      validated before registered rules run.
+    - Released maxima are covered by 16,513 canonical scopes, a unique 4,096-page output partition, up to 8 quality
+      findings per page, 65,536 findings per rule, and 131,072 overall. The engine adds no global cache, queue,
+      executor, process, filesystem, network, logging, or ResourcePolicy profile change.
+    - General template confirmations are revision-bound requests to record review only. PWS-0404 neither persists nor
+      auto-satisfies them; durable cross-session satisfaction needs an explicit future schema/version/invalidation
+      decision. Existing checklist assignment confirmation authority is unchanged.
+    - Existing manifest/template/worker schemas were sufficient. No migration, dependency, UI, storage, RPC,
+      release-interface, sibling, portfolio, or standalone-product boundary changed. Three independent adversarial
+      reviews found no remaining actionable contract, schema, privacy, accessibility-projection, capacity, or
+      integration issue after their regressions were added.
 - id: PWS-0405
   milestone: M4
   title: Add completeness, legibility, privacy, and compatibility preflight rules
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0404
@@ -3307,7 +3350,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0404
