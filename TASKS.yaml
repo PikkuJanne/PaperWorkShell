@@ -3304,7 +3304,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0404
@@ -3340,17 +3340,55 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-28'
+    revision: 870960c8e32811eb117a73d06826c59ff6521f80
+    commands:
+    - uv run --locked --no-sync pytest -q tests/unit/test_preflight_facts.py tests/unit/test_preflight_core_rules.py
+      tests/unit/test_portal_constraints.py tests/unit/test_portal_constraints_app.py
+      tests/unit/test_portal_constraints_backend_bridge.py tests/unit/test_portal_constraints_window.py
+      tests/unit/test_organizer_backend.py tests/security/test_portal_constraints_integration_privacy.py
+      tests/accessibility/test_constraint_editor_accessibility.py tests/accessibility/test_accessibility_baseline.py
+      tests/integration/test_organizer_ui_lifecycle.py - passed; all 225 focused policy, constraint, organizer, privacy,
+      keyboard, and lifecycle tests passed
+    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the final
+      evidence tree; 559 Python files were formatted, linted, and strictly typed, all 13 import layers across 197 source
+      files were valid, and all 4424 unit tests passed serially
+    - python -m tools.dev test-integration - passed serially; 431 tests passed with 10 disclosed Windows
+      capability/environment skips in 3129.43 seconds
+    - python -m tools.dev test-security; test-accessibility - passed serially; 522 security tests passed with 6
+      disclosed Windows link-capability skips and all 64 accessibility tests passed
+    - python -m tools.dev validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test; scan-secrets; validate-dependencies - passed on the final clean
+      revision snapshot; the working directory's maintainer-owned untracked document and tmp directory remained
+      untouched and outside task evidence
+    notes:
+    - The five-rule core registry deterministically evaluates checklist completeness and confirmation state, inert
+      template notices, PDF compatibility, advisory page quality, and privacy/geometry boundaries. Complete,
+      incomplete, malformed, encrypted, signed, attached, scripted, interactive, extreme-page, overlay, OCR, blur,
+      clipping, orientation, blank, and duplicate paths have explicit synthetic coverage and stable finding codes.
+    - Signed modified or exported sources are always described as unsigned derivatives. XFA, scripts, actions, and
+      unsupported interactive content block; attachments and unknown or unavailable inspections remain visible
+      warnings instead of being inferred absent. OCR, blur, blank, clipping, orientation, duplicate, and low-resolution
+      heuristics remain review warnings and never establish completeness.
+    - Ordinary shapes never satisfy permanent redaction. Overlay intent is correlated with the exact output-plan
+      flattening projection, so a plan change invalidates the rule and any missing or unapplied coverage blocks. The
+      conservative 14,400-point geometry threshold requests review rather than claiming a portal or support limit;
+      metadata removal and final flatten verification remain export-time responsibilities.
+    - Canonical facts are path-free and exclude names, filenames, OCR/document text, metadata values, thumbnails,
+      signature images, and raw exceptions. Missing page detail, inspection, quality, template, checklist, and output
+      authority stays explicit. Released cardinalities are bounded; no cache, queue, process, network, dependency,
+      ResourcePolicy, schema, migration, storage-location, sibling, portfolio, or release-interface change was added.
+    - Two independent adversarial reviews and a targeted application/UI integration review found no remaining
+      actionable policy, authority, privacy, deterministic-ordering, accessibility, ZIP-namespace, or boundary defect
+      after their regression cases were incorporated.
 - id: PWS-0406
   milestone: M4
   title: Implement portal constraints and safe filename rules
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0404
@@ -3382,17 +3420,59 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-28'
+    revision: 3d36b7368ac76ee2a25c29538a7e6dc19c660bfd
+    commands:
+    - uv run --locked --no-sync pytest -q tests/unit/test_preflight_facts.py tests/unit/test_preflight_core_rules.py
+      tests/unit/test_portal_constraints.py tests/unit/test_portal_constraints_app.py
+      tests/unit/test_portal_constraints_backend_bridge.py tests/unit/test_portal_constraints_window.py
+      tests/unit/test_organizer_backend.py tests/security/test_portal_constraints_integration_privacy.py
+      tests/accessibility/test_constraint_editor_accessibility.py tests/accessibility/test_accessibility_baseline.py
+      tests/integration/test_organizer_ui_lifecycle.py - passed; all 225 focused policy, constraint, organizer, privacy,
+      keyboard, and lifecycle tests passed
+    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the final
+      evidence tree; 559 Python files were formatted, linted, and strictly typed, all 13 import layers across 197 source
+      files were valid, and all 4424 unit tests passed serially
+    - python -m tools.dev test-integration - passed serially; 431 tests passed with 10 disclosed Windows
+      capability/environment skips in 3129.43 seconds
+    - python -m tools.dev test-security; test-accessibility - passed serially; 522 security tests passed with 6
+      disclosed Windows link-capability skips and all 64 accessibility tests passed
+    - uv run --locked --no-sync python tools/pws0207_quality_evaluation.py evaluate; validate
+      benchmarks/pws0207-quality-findings-v1.json --revision 3d36b7368ac76ee2a25c29538a7e6dc19c660bfd - passed;
+      the unchanged recipe-only corpus/profile metrics are bound to the exact PWS-0406 implementation revision
+    - python -m tools.dev validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test; scan-secrets; validate-dependencies - passed on the final clean
+      revision snapshot; the working directory's maintainer-owned untracked document and tmp directory remained
+      untouched and outside task evidence
+    notes:
+    - Pure typed models evaluate independently inclusive total-size, per-file-size, file-count, page-count, extension,
+      encryption, and required combined-PDF, multiple-PDF, or ZIP organization constraints. Generic defaults,
+      template-provided constraints, and explicit manual overrides retain distinct source labels; a manual override is
+      user-configured and is never presented as template-verified.
+    - Safe filename resolution normalizes Unicode to NFC, rejects separators, archive traversal, control characters,
+      forbidden Windows characters, dot-only names, reserved device names, and overlong UTF-16 components, and applies
+      deterministic readable numeric collision suffixes. ZIP member PDFs and the one outer ZIP archive use separate
+      namespaces; extension and encryption observations bind to member PDFs while the outer archive is evaluated once.
+    - The application workflow holds exact case session, manifest revision, SHA-256, and compare-and-swap authority;
+      edits remain detached until organizer-owned autosave succeeds, failed saves retain the exact retry candidate, and
+      Cancel, shutdown, stale results, or cross-editor transitions cannot partially activate constraints.
+    - The accessible modal supplies keyboard-reachable named Set controls for optional limits, organization and naming
+      fields, a logical tab chain, visible validation recovery, plain-language announcements, scrolling/large-text
+      support, safe default Cancel, live-form shutdown validation, and focus restoration. UI projections, failures,
+      safe representations, and routine logs exclude source names, original filenames, paths, OCR/document text,
+      metadata values, and raw exceptions.
+    - The final destination path length must be checked against the actual selected destination by PWS-0407/export;
+      this editor proves bounded safe components only. Existing manifest/template shapes were sufficient, and no new
+      schema, migration, worker RPC, dependency, network, ResourcePolicy, storage-location, sibling, portfolio, or
+      release-interface change was introduced; PaperWorkShell remains standalone and owns its local case constraints.
 - id: PWS-0407
   milestone: M4
   title: Implement export planner for combined PDF, multiple PDFs, and ZIP
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0403

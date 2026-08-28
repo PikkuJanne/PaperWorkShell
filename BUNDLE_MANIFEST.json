@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.20",
+  "bundle_version": "0.2.21",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 294117,
-      "sha256": "e92fd06c78bca7720daad5b86f27d39c10e86ba7d2b778e4bc68a5277e8eb8ac"
+      "bytes": 302410,
+      "sha256": "37b6f210f4ef40c7fd48b9ae5354b59dd2dbf955f03d5005a20aeaf23040ad17"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 30601,
-      "sha256": "fc3da116c81686091f30c7fcb88a8c6ef117446806be9456768c2b1fe7dfb77c"
+      "bytes": 30808,
+      "sha256": "6f46452350790d436147e113d2228f99e0707540dd6621d38d3688ba00be1288"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -97,13 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0405",
-      "PWS-0406"
+      "PWS-0407"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0404 is done on implementation revision 6499645: exact saved-case/template authority, canonical path-free fact projections, deterministic typed findings, bounded dependency-aware re-evaluation, explicit unavailable states, source/page/output correlation, privacy-safe failures, released-capacity boundaries, and independent adversarial reviews are verified. PWS-0405 and PWS-0406 are ready; the task-selection algorithm chooses PWS-0405 next. General template confirmations remain revision-bound review requests until a future explicit persistence decision.",
+    "PWS-0405 is done on implementation revision 870960c and PWS-0406 is done on implementation revision 3d36b73: deterministic completeness, compatibility, advisory-quality, privacy/overlay rules, typed generic/manual portal constraints, Windows-safe collision-resolved filenames, separate ZIP archive/member namespaces, exact case authority, organizer-owned durable persistence, accessible editing, and hostile-input/privacy regressions are verified. PWS-0407 is now ready and is the next critical-path task. It must bind actual combined, multiple-PDF, and ZIP output observations to these constraints, recheck actual destination path length, reopen and verify every PDF, and preserve atomic prior-package success on partial failure. General template confirmations remain revision-bound review requests until a future explicit persistence decision.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
