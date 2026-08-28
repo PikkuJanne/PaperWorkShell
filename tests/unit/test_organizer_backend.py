@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -11,6 +11,7 @@ from uuid import UUID
 import pytest
 
 import paperworkshell.app.organizer as organizer_module
+from paperworkshell.app.checklist import ChecklistEditorState, ChecklistWorkflowService
 from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.ocr_languages import (
     OcrLanguageDiscoveryResult,
@@ -67,6 +68,7 @@ from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseSummary
+from paperworkshell.domain.checklist import ChecklistError, ChecklistErrorCode
 from paperworkshell.domain.image_pages import (
     ImageAlphaNormalizationPolicy,
     ImageExifOrientation,
@@ -141,6 +143,11 @@ from paperworkshell.overlays.signature_commands import (
     delete_signature_image_candidate,
 )
 from paperworkshell.overlays.signature_rasters import SignatureImagePreview
+from paperworkshell.templates.catalog import (
+    GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+    built_in_template_repository,
+)
+from paperworkshell.templates.loader import SafeTemplateLoader
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000111")
 PDF_SOURCE_ID = UUID("20000000-0000-4000-8000-000000000111")
@@ -772,6 +779,24 @@ def _signature_backend(
     return backend, repository, workflow
 
 
+def _checklist_backend() -> tuple[OrganizerBackend, _Repository, ChecklistWorkflowService]:
+    repository = _Repository(_document())
+    workflow = ChecklistWorkflowService(
+        SafeTemplateLoader(built_in_template_repository()),
+        GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+        as_of=date(2026, 8, 28),
+        clock=lambda: datetime(2026, 8, 28, 12, tzinfo=UTC),
+    )
+    backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        checklist=workflow,
+    )
+    return backend, repository, workflow
+
+
 def test_signature_image_placement_refreshes_then_deletes_before_asset_cleanup() -> None:
     backend, repository, workflow = _signature_backend()
     opened = backend.open_case(CASE_ID)
@@ -1138,12 +1163,18 @@ def test_committed_import_session_replacement_failure_is_a_closed_outcome(
     def fail_once(
         selected_repository: object,
         loaded: ManifestLoadResult,
+        *,
+        utc_now: Callable[[], datetime],
     ) -> object:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
             raise RuntimeError("private replacement detail")
-        return original_session_from_load(cast(ManifestRepository, selected_repository), loaded)
+        return original_session_from_load(
+            cast(ManifestRepository, selected_repository),
+            loaded,
+            utc_now=utc_now,
+        )
 
     monkeypatch.setattr(organizer_module, "_session_from_load", fail_once)
 
@@ -2218,3 +2249,287 @@ def test_core_overlay_editor_abort_releases_private_authority_for_reopen() -> No
     assert repository.save_calls == 0
     assert repository.current.document["overlays"] == []
     backend.cancel_core_overlay_tools(reopened)
+
+
+def test_checklist_add_then_confirm_is_saved_as_one_explicit_review() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_checklist()
+    added = opening.add_pages(
+        "application-form",
+        (PAGE_IDS[0],),
+        clock=lambda: datetime(2026, 8, 6, 10, tzinfo=UTC),
+    )
+    assignment_id = added.assignment_rows[0].assignment_id
+    confirmed = added.confirm_assignment(
+        assignment_id,
+        clock=lambda: datetime(2026, 8, 6, 11, tzinfo=UTC),
+    )
+
+    saved = backend.apply_checklist(confirmed)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    assert repository.save_calls == 1
+    template_ref = cast(dict[str, object], repository.current.document["template_ref"])
+    assert template_ref["template_id"] == "generic-portal-application"
+    assignments = cast(list[dict[str, object]], repository.current.document["assignments"])
+    confirmations = cast(list[dict[str, object]], repository.current.document["confirmations"])
+    assert assignments == [
+        {
+            "assignment_id": str(assignment_id),
+            "requirement_id": "application-form",
+            "page_ids": [str(PAGE_IDS[0])],
+            "origin": "user",
+            "status": "user_confirmed",
+            "confirmation_id": assignments[0]["confirmation_id"],
+            "assigned_at": "2026-08-06T10:00:00Z",
+        }
+    ]
+    assert confirmations[0]["confirmation_code"] == "assignment-reviewed"
+    assert confirmations[0]["scope"] == {
+        "kind": "assignment",
+        "assignment_id": str(assignment_id),
+    }
+    assert confirmations[0]["confirmation_id"] == assignments[0]["confirmation_id"]
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_checklist_shared_clock_survives_rollback_and_reopens_exact_state() -> None:
+    observed_times = iter(
+        (
+            datetime(2026, 8, 28, 12, tzinfo=UTC),
+            datetime(2026, 8, 28, 11, tzinfo=UTC),
+            datetime(2026, 8, 28, 10, tzinfo=UTC),
+        )
+    )
+    repository = _Repository(_document())
+    workflow = ChecklistWorkflowService(
+        SafeTemplateLoader(built_in_template_repository()),
+        GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+        as_of=date(2026, 8, 28),
+        clock=lambda: next(observed_times),
+    )
+    backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        checklist=workflow,
+    )
+    backend.open_case(CASE_ID)
+    opening = backend.begin_checklist()
+    added = opening.add_pages("application-form", (PAGE_IDS[0],))
+    confirmed = added.confirm_assignment(added.assignment_rows[0].assignment_id)
+
+    saved = backend.apply_checklist(confirmed)
+
+    assignments = cast(list[dict[str, object]], repository.current.document["assignments"])
+    confirmations = cast(
+        list[dict[str, object]],
+        repository.current.document["confirmations"],
+    )
+    assert assignments[0]["assigned_at"] == "2026-08-28T12:00:00Z"
+    assert confirmations[0]["recorded_at"] == "2026-08-28T12:00:00.000001Z"
+    assert str(repository.current.document["updated_at"]) == "2026-08-28T12:00:00.000002Z"
+    assert saved.revision == 1
+
+    backend.close_case()
+    reopened_workflow = ChecklistWorkflowService(
+        SafeTemplateLoader(built_in_template_repository()),
+        GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+        as_of=date(2026, 8, 28),
+        clock=lambda: datetime(2026, 8, 28, 9, tzinfo=UTC),
+    )
+    reopened_backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        checklist=reopened_workflow,
+    )
+    reopened_backend.open_case(CASE_ID)
+    reopened = reopened_backend.begin_checklist()
+
+    assert len(reopened.assignment_rows) == 1
+    assert reopened.assignment_rows[0].review_state.value == "user_confirmed"
+    assert reopened.requirement_rows[0].status.value == "ready"
+    assert not reopened.changed
+    assert not reopened.can_undo
+    assert not reopened.can_redo
+    reopened_added = reopened.add_pages("identity-evidence", (PAGE_IDS[1],))
+    reopened_confirmed = reopened_added.confirm_assignment(
+        reopened_added.assignment_rows[1].assignment_id
+    )
+
+    reopened_saved = reopened_backend.apply_checklist(reopened_confirmed)
+
+    reopened_assignments = cast(
+        list[dict[str, object]],
+        repository.current.document["assignments"],
+    )
+    reopened_confirmations = cast(
+        list[dict[str, object]],
+        repository.current.document["confirmations"],
+    )
+    assert reopened_assignments[1]["assigned_at"] == "2026-08-28T12:00:00.000003Z"
+    assert reopened_confirmations[1]["recorded_at"] == "2026-08-28T12:00:00.000004Z"
+    assert str(repository.current.document["updated_at"]) == "2026-08-28T12:00:00.000005Z"
+    assert reopened_saved.revision == 2
+
+
+def test_checklist_begin_flushes_page_intent_and_cancel_mutates_nothing() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    backend.rotate_clockwise(PAGE_IDS[0])
+
+    opening = backend.begin_checklist()
+
+    assert opening.manifest_revision == 1
+    assert repository.save_calls == 1
+    assert not backend.state.autosave_pending
+    backend.cancel_checklist(opening)
+    assert repository.save_calls == 1
+    assert repository.current.document["template_ref"] is None
+    assert repository.current.document["assignments"] == []
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_checklist_save_failure_retains_exact_retry_and_exclusive_authority() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_checklist()
+    edited = opening.add_pages(
+        "identity-evidence",
+        (PAGE_IDS[0],),
+        clock=lambda: datetime(2026, 8, 6, 10, tzinfo=UTC),
+    )
+    repository.fail_saves = 1
+
+    with pytest.raises(ManifestRepositoryError):
+        backend.apply_checklist(edited)
+
+    assert backend.state.autosave_pending
+    with pytest.raises(ChecklistError) as cancel_pending:
+        backend.cancel_checklist(edited)
+    assert cancel_pending.value.code is ChecklistErrorCode.CONCURRENT_CHANGE
+    with pytest.raises(ChecklistError) as unrelated_mutation:
+        backend.rotate_clockwise(PAGE_IDS[0])
+    assert unrelated_mutation.value.code is ChecklistErrorCode.CONCURRENT_CHANGE
+    with pytest.raises(ChecklistError) as generic_retry:
+        backend.retry_autosave()
+    assert generic_retry.value.code is ChecklistErrorCode.CONCURRENT_CHANGE
+
+    saved = backend.apply_checklist(edited)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    assert repository.save_calls == 2
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_checklist_rejects_forged_and_prior_same_revision_editor_states() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    prior = backend.begin_checklist()
+    forged = replace(
+        prior,
+        editor_session_id=UUID("71000000-0000-4000-8000-000000000111"),
+    )
+
+    with pytest.raises(ChecklistError) as forged_failure:
+        backend.apply_checklist(forged)
+
+    assert forged_failure.value.code is ChecklistErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 0
+    backend.cancel_checklist(prior)
+    current = backend.begin_checklist()
+
+    with pytest.raises(ChecklistError) as stale_failure:
+        backend.apply_checklist(prior)
+
+    assert stale_failure.value.code is ChecklistErrorCode.CONCURRENT_CHANGE
+    assert repository.save_calls == 0
+    backend.cancel_checklist(current)
+
+
+def test_checklist_exclusive_phase_blocks_other_case_mutations_until_cancel() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_checklist()
+
+    blocked_actions: tuple[Callable[[], object], ...] = (
+        lambda: backend.rotate_clockwise(PAGE_IDS[0]),
+        lambda: backend.begin_core_overlay_tools(PAGE_IDS[0]),
+        backend.flush_autosave,
+        backend.reload_case,
+        backend.close_case,
+        lambda: backend.import_source(Path("synthetic.pdf"), "Synthetic packet"),
+    )
+    for action in blocked_actions:
+        with pytest.raises(ChecklistError) as blocked:
+            action()
+        assert blocked.value.code is ChecklistErrorCode.CONCURRENT_CHANGE
+
+    assert repository.save_calls == 0
+    backend.cancel_checklist(opening)
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_checklist_undo_to_opening_applies_as_noop_and_releases_authority() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_checklist()
+    reverted = opening.add_pages(
+        "address-evidence",
+        (PAGE_IDS[0],),
+        clock=lambda: datetime(2026, 8, 6, 10, tzinfo=UTC),
+    ).undo()
+    assert not reverted.changed
+
+    unchanged = backend.apply_checklist(reverted)
+
+    assert unchanged.revision == 0
+    assert not unchanged.autosave_pending
+    assert repository.save_calls == 0
+    assert repository.current.document["template_ref"] is None
+    assert repository.current.document["assignments"] == []
+    assert backend.rotate_clockwise(PAGE_IDS[0]).autosave_pending
+
+
+def test_checklist_retry_replaces_failed_candidate_after_undo_to_opening() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    opening = backend.begin_checklist()
+    edited = opening.add_pages(
+        "supporting-evidence",
+        (PAGE_IDS[0], PAGE_IDS[1]),
+        clock=lambda: datetime(2026, 8, 6, 10, tzinfo=UTC),
+    )
+    repository.fail_saves = 1
+    with pytest.raises(ManifestRepositoryError):
+        backend.apply_checklist(edited)
+
+    reverted = edited.undo()
+    assert not reverted.changed
+    saved = backend.apply_checklist(reverted)
+
+    assert saved.revision == 1
+    assert not saved.autosave_pending
+    assert repository.save_calls == 2
+    assert repository.current.document["template_ref"] is None
+    assert repository.current.document["assignments"] == []
+
+
+def test_checklist_abort_releases_private_authority_for_reopen() -> None:
+    backend, repository, _workflow = _checklist_backend()
+    backend.open_case(CASE_ID)
+    rejected_presentation = backend.begin_checklist()
+
+    backend.abort_checklist()
+    reopened = backend.begin_checklist()
+
+    assert type(reopened) is ChecklistEditorState
+    assert reopened.editor_session_id != rejected_presentation.editor_session_id
+    assert repository.save_calls == 0
+    backend.cancel_checklist(reopened)

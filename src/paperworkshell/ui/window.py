@@ -53,6 +53,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from paperworkshell.app.checklist import (
+    ChecklistEditorState,
+    is_checklist_announcement_safe,
+)
 from paperworkshell.app.core_overlay_tools import (
     CoreOverlayToolsState,
     is_core_overlay_announcement_safe,
@@ -112,6 +116,7 @@ from paperworkshell.ui.backend import (
     UiFailure,
     UiProgress,
 )
+from paperworkshell.ui.checklist import ChecklistEditorDialog
 from paperworkshell.ui.models import (
     OrganizerPageListModel,
     PreviewState,
@@ -316,6 +321,28 @@ def _core_overlay_apply_result_matches(
         and (not draft.changed or result.revision == draft.manifest_revision + 1)
         and not result.autosave_pending
         and any(page.page_id == draft.page_id for page in result.pages)
+    )
+
+
+def _checklist_apply_result_matches(
+    dialog: ChecklistEditorDialog,
+    result: OrganizerViewState,
+    current: OrganizerViewState | None,
+) -> bool:
+    """Correlate one checklist save to the exact detached editor draft."""
+
+    draft = dialog.state
+    allowed_revisions = {
+        draft.manifest_revision,
+        draft.manifest_revision + 1,
+    }
+    return (
+        type(current) is OrganizerViewState
+        and current == result
+        and result.case_id == draft.case_id
+        and result.revision in allowed_revisions
+        and (not draft.changed or result.revision == draft.manifest_revision + 1)
+        and not result.autosave_pending
     )
 
 
@@ -542,6 +569,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._core_overlay_tools_start_operation_id: int | None = None
         self._core_overlay_tools_apply_operation_id: int | None = None
         self._core_overlay_tools_cancel_operation_id: int | None = None
+        self._checklist_dialog: ChecklistEditorDialog | None = None
+        self._checklist_start_operation_id: int | None = None
+        self._checklist_apply_operation_id: int | None = None
+        self._checklist_cancel_operation_id: int | None = None
         self._signature_image_source_path: Path | None = None
         self._signature_image_page_id: UUID | None = None
         self._signature_image_prepare_operation_id: int | None = None
@@ -877,6 +908,14 @@ class PaperWorkShellWindow(QMainWindow):
             "its case copy or remove it only when unused. Ctrl+Shift+D.",
         )
         self._remove_signature_image_button.setAccessibleName("Remove signature image")
+        self._checklist_button = self._action_button(
+            "Review packet checklist…",
+            "packetChecklistButton",
+            "Open the keyboard-complete packet checklist. Adding or dragging pages creates an "
+            "unconfirmed document; only a separate Confirm or Accept action can make a category "
+            "Ready. Ctrl+Shift+C.",
+        )
+        self._checklist_button.setAccessibleName("Review packet checklist")
         self._undo_button = self._action_button(
             "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
         )
@@ -894,6 +933,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._remove_signature_image_button.clicked.connect(
             self._request_signature_image_placements
         )
+        self._checklist_button.clicked.connect(self._request_checklist)
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
         action_layout.addWidget(self._move_earlier_button, 0, 0)
@@ -907,6 +947,7 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._core_overlay_tools_button, 2, 2)
         action_layout.addWidget(self._place_signature_image_button, 3, 0)
         action_layout.addWidget(self._remove_signature_image_button, 3, 1)
+        action_layout.addWidget(self._checklist_button, 3, 2)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -987,6 +1028,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._core_overlay_tools_button,
             self._place_signature_image_button,
             self._remove_signature_image_button,
+            self._checklist_button,
             self._quality_summary,
             self._quality_check_button,
             self._quality_findings_view,
@@ -1024,6 +1066,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+Shift+L", self._open_ocr_languages),
             ("Ctrl+Shift+O", self._change_full_order),
             ("Ctrl+Shift+F", self._request_core_overlay_tools),
+            ("Ctrl+Shift+C", self._request_checklist),
             ("Ctrl+Shift+S", self._choose_signature_image),
             ("Ctrl+Shift+D", self._request_signature_image_placements),
             ("Ctrl+Shift+R", self._retry_failed_preview),
@@ -1063,6 +1106,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.core_overlay_tools_cancel_failed.connect(
             self._core_overlay_tools_cancel_failed
         )
+        self._worker.checklist_started.connect(self._checklist_started)
+        self._worker.checklist_start_failed.connect(self._checklist_start_failed)
+        self._worker.checklist_applied.connect(self._checklist_applied)
+        self._worker.checklist_apply_failed.connect(self._checklist_apply_failed)
+        self._worker.checklist_cancelled.connect(self._checklist_cancelled)
+        self._worker.checklist_cancel_failed.connect(self._checklist_cancel_failed)
         self._worker.signature_image_prepared.connect(self._signature_image_prepared)
         self._worker.signature_image_prepare_failed.connect(self._signature_image_prepare_failed)
         self._worker.signature_image_placed.connect(self._signature_image_placed)
@@ -2138,6 +2187,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._closing_requested = False
         self._closing_import_cleanup = False
         self._dismiss_core_overlay_tools_after_shutdown_refusal()
+        self._dismiss_checklist_after_shutdown_refusal()
         self._update_organizer_guidance()
         if refusal is ShutdownRefusalKind.CLEANUP_RETRY:
             self._hide_retry_save()
@@ -2187,6 +2237,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
+            or self._checklist_is_opening_or_active()
             or self._quality_is_pending_or_running()
             or self._signature_image_is_opening_or_active()
         ):
@@ -2247,6 +2298,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
+            or self._checklist_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2263,6 +2315,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
+            or self._checklist_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2586,6 +2639,7 @@ class PaperWorkShellWindow(QMainWindow):
         scan_review_busy = self._scan_review_is_opening_or_active()
         quality_busy = self._quality_is_pending_or_running()
         overlay_tools_busy = self._core_overlay_tools_is_opening_or_active()
+        checklist_busy = self._checklist_is_opening_or_active()
         signature_image_busy = self._signature_image_is_opening_or_active()
         self._close_case_button.setEnabled(
             self._controls_enabled
@@ -2594,6 +2648,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not scan_review_busy
             and not quality_busy
             and not overlay_tools_busy
+            and not checklist_busy
             and not signature_image_busy
         )
         editable = (
@@ -2603,6 +2658,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not scan_review_busy
             and not quality_busy
             and not overlay_tools_busy
+            and not checklist_busy
             and not signature_image_busy
         )
         has_selection = editable and 0 <= row < page_count
@@ -2628,6 +2684,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._core_overlay_tools_button.setEnabled(has_selection)
         self._place_signature_image_button.setEnabled(has_selection)
         self._remove_signature_image_button.setEnabled(has_selection)
+        self._checklist_button.setEnabled(
+            editable and state is not None and state.case_id is not None
+        )
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -2949,7 +3008,10 @@ class PaperWorkShellWindow(QMainWindow):
         page_id = self._selected_page_id()
         if page_id is None or not self._prepare_for_mutation():
             return
-        if self._core_overlay_tools_is_opening_or_active():
+        if (
+            self._core_overlay_tools_is_opening_or_active()
+            or self._checklist_is_opening_or_active()
+        ):
             return
         operation_id = self._allocate_operation_id()
         self._core_overlay_tools_start_operation_id = operation_id
@@ -3149,6 +3211,200 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setVisible(True)
         self._announce(
             f"Visual form-mark editor could not finish. {safe_message}",
+            assertive=True,
+        )
+        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._error_label)
+
+    def _request_checklist(self) -> None:
+        """Open the exclusive, keyboard-complete packet checklist editor."""
+
+        if not self._checklist_button.isEnabled() or not self._prepare_for_mutation():
+            return
+        if self._checklist_is_opening_or_active():
+            return
+        operation_id = self._allocate_operation_id()
+        self._checklist_start_operation_id = operation_id
+        self._autosave_timer.stop()
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        self._hide_error()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce(
+            "Opening packet checklist. Adding pages will still require separate confirmation."
+        )
+        self._commands.checklist_begin_requested.emit(operation_id)
+
+    @Slot(int, object)
+    def _checklist_started(self, operation_id: int, editor_state: object) -> None:
+        if operation_id != self._checklist_start_operation_id:
+            return
+        self._checklist_start_operation_id = None
+        current = self._state
+        valid_pages = (
+            type(editor_state) is ChecklistEditorState
+            and current is not None
+            and tuple((page.page_id, page.position) for page in editor_state.pages)
+            == tuple((page.page_id, page.position) for page in current.pages)
+        )
+        if (
+            self._closing_requested
+            or type(editor_state) is not ChecklistEditorState
+            or current is None
+            or editor_state.case_id != current.case_id
+            or editor_state.manifest_revision != current.revision
+            or not valid_pages
+            or not is_checklist_announcement_safe(editor_state.announcement)
+            or self._checklist_dialog is not None
+        ):
+            if not self._closing_requested and self._checklist_dialog is None:
+                cancel_operation_id = self._allocate_operation_id()
+                self._checklist_cancel_operation_id = cancel_operation_id
+                self._commands.checklist_abort_requested.emit(cancel_operation_id)
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            return
+        dialog = ChecklistEditorDialog(editor_state, self)
+        dialog.apply_requested.connect(self._apply_checklist)
+        dialog.finished.connect(self._checklist_finished)
+        self._checklist_dialog = dialog
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        dialog.open()
+
+    @Slot(int, object)
+    def _checklist_start_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._checklist_start_operation_id:
+            return
+        self._checklist_start_operation_id = None
+        if self._state is not None and self._state.autosave_pending and not self._closing_requested:
+            self._autosave_timer.start()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_checklist_failure(failure)
+
+    @Slot(object)
+    def _apply_checklist(self, editor_state: object) -> None:
+        dialog = self._checklist_dialog
+        if (
+            dialog is None
+            or type(editor_state) is not ChecklistEditorState
+            or editor_state is not dialog.state
+            or self._checklist_apply_operation_id is not None
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        self._checklist_apply_operation_id = operation_id
+        self._commands.checklist_apply_requested.emit(operation_id, editor_state)
+
+    @Slot(int, object)
+    def _checklist_applied(self, operation_id: int, state: object) -> None:
+        if operation_id != self._checklist_apply_operation_id:
+            return
+        self._checklist_apply_operation_id = None
+        dialog = self._checklist_dialog
+        if dialog is None:
+            return
+        if type(state) is not OrganizerViewState or not _checklist_apply_result_matches(
+            dialog,
+            state,
+            self._state,
+        ):
+            dialog.mark_apply_failed(
+                "PWS_UI_RESPONSE_INVALID",
+                "PaperWorkShell received an invalid checklist save confirmation.",
+            )
+            return
+        if dialog.mark_applied():
+            self._announce("Checklist assignments applied and saved.")
+
+    @Slot(int, object)
+    def _checklist_apply_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._checklist_apply_operation_id:
+            return
+        self._checklist_apply_operation_id = None
+        dialog = self._checklist_dialog
+        if dialog is None:
+            return
+        if type(failure) is UiFailure:
+            dialog.mark_apply_failed(failure.code, failure.message)
+            return
+        dialog.mark_apply_failed(
+            "PWS_UI_RESPONSE_INVALID",
+            "PaperWorkShell received an invalid checklist save failure.",
+        )
+
+    @Slot(int)
+    def _checklist_finished(self, result: int) -> None:
+        dialog = self._checklist_dialog
+        if dialog is None:
+            return
+        state = dialog.state
+        cancelled = (
+            result != int(QDialog.DialogCode.Accepted)
+            and not dialog.commit_started
+            and self._checklist_apply_operation_id is None
+        )
+        dialog.deleteLater()
+        self._checklist_dialog = None
+        self._checklist_apply_operation_id = None
+        if cancelled:
+            operation_id = self._allocate_operation_id()
+            self._checklist_cancel_operation_id = operation_id
+            self._commands.checklist_cancel_requested.emit(operation_id, state)
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        if not cancelled and not self._closing_requested and self._checklist_button.isEnabled():
+            QTimer.singleShot(0, self._focus_checklist_button_after_dialog)
+
+    @Slot(int)
+    def _checklist_cancelled(self, operation_id: int) -> None:
+        if operation_id != self._checklist_cancel_operation_id:
+            return
+        self._checklist_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce("Checklist changes cancelled. Nothing was applied.")
+        if not self._closing_requested and self._checklist_button.isEnabled():
+            QTimer.singleShot(0, self._focus_checklist_button_after_dialog)
+
+    def _focus_checklist_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._checklist_button.isEnabled():
+            return
+        self.activateWindow()
+        self._checklist_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._checklist_button)
+
+    @Slot(int, object)
+    def _checklist_cancel_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._checklist_cancel_operation_id:
+            return
+        self._checklist_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_checklist_failure(failure)
+
+    def _show_checklist_failure(self, failure: object) -> None:
+        safe_code = (
+            failure.code if type(failure) is UiFailure else "PWS_UI_CHECKLIST_RESPONSE_INVALID"
+        )
+        safe_message = (
+            failure.message
+            if type(failure) is UiFailure
+            else "PaperWorkShell could not finish the checklist action safely. Try again."
+        )
+        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._error_label.setVisible(True)
+        self._announce(
+            f"Checklist editor could not finish. {safe_message}",
             assertive=True,
         )
         self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -3743,6 +3999,14 @@ class PaperWorkShellWindow(QMainWindow):
             or self._core_overlay_tools_cancel_operation_id is not None
         )
 
+    def _checklist_is_opening_or_active(self) -> bool:
+        return (
+            self._checklist_start_operation_id is not None
+            or self._checklist_dialog is not None
+            or self._checklist_apply_operation_id is not None
+            or self._checklist_cancel_operation_id is not None
+        )
+
     def _signature_image_is_opening_or_active(self) -> bool:
         active = self._active_operation
         return (
@@ -3853,6 +4117,7 @@ class PaperWorkShellWindow(QMainWindow):
             and (active is None or active.kind is _LongOperationKind.PREVIEW)
             and not self._scan_review_is_opening_or_active()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._checklist_is_opening_or_active()
         )
         self._quality_check_button.setEnabled(check_enabled)
         findings_enabled = (
@@ -4011,6 +4276,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._closing_requested
             and not self._scan_review_is_opening_or_active()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._checklist_is_opening_or_active()
         )
         if self._retry_preview_button.hasFocus() and not enabled:
             self._focus_safe_control()
@@ -4083,6 +4349,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._checklist_is_opening_or_active()
             and not self._signature_image_is_opening_or_active()
         )
         self._update_ocr_language_availability()
@@ -4095,6 +4362,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._checklist_is_opening_or_active()
             and not self._signature_image_is_opening_or_active()
             and self._ocr_language_dialog is None
             and self._ocr_language_refresh_request_id is None
@@ -4118,6 +4386,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._core_overlay_tools_button,
             self._place_signature_image_button,
             self._remove_signature_image_button,
+            self._checklist_button,
             self._undo_button,
             self._redo_button,
         ):
@@ -4168,6 +4437,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._discard_ocr_language_dialog_for_shutdown()
         self._discard_scan_review_for_shutdown()
         self._discard_core_overlay_tools_for_shutdown()
+        self._discard_checklist_for_shutdown()
         self._discard_signature_images_for_shutdown()
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
@@ -4226,6 +4496,30 @@ class PaperWorkShellWindow(QMainWindow):
             self._core_overlay_tools_cancel_operation_id = operation_id
             self._commands.core_overlay_tools_cancel_requested.emit(operation_id, state)
 
+    def _discard_checklist_for_shutdown(self) -> None:
+        dialog = self._checklist_dialog
+        if dialog is None or dialog.apply_pending:
+            return
+        state = dialog.latest_state_for_shutdown()
+        if state is None:
+            return
+        try:
+            dialog.finished.disconnect(self._checklist_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._checklist_dialog = None
+        if dialog.commit_started:
+            # A failed Apply leaves an exact pending candidate/authority for
+            # retry. Queue the latest retained state before backend shutdown.
+            operation_id = self._allocate_operation_id()
+            self._commands.checklist_apply_requested.emit(operation_id, state)
+        else:
+            operation_id = self._allocate_operation_id()
+            self._checklist_cancel_operation_id = operation_id
+            self._commands.checklist_cancel_requested.emit(operation_id, state)
+
     def _discard_signature_images_for_shutdown(self) -> None:
         """Dismiss detached previews; backend shutdown owns retained-asset cleanup."""
 
@@ -4265,3 +4559,18 @@ class PaperWorkShellWindow(QMainWindow):
         dialog.deleteLater()
         self._core_overlay_tools_dialog = None
         self._core_overlay_tools_apply_operation_id = None
+
+    def _dismiss_checklist_after_shutdown_refusal(self) -> None:
+        """Expose the main retry surface after shutdown clears checklist authority."""
+
+        dialog = self._checklist_dialog
+        if dialog is None:
+            return
+        try:
+            dialog.finished.disconnect(self._checklist_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._checklist_dialog = None
+        self._checklist_apply_operation_id = None

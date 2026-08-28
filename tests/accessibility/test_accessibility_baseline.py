@@ -136,6 +136,7 @@ def test_core_controls_have_names_descriptions_and_no_drag_requirement() -> None
             "editFormMarksButton",
             "placeSignatureImageButton",
             "removeSignatureImageButton",
+            "packetChecklistButton",
             "undoButton",
             "redoButton",
             "cancelButton",
@@ -177,6 +178,7 @@ def test_keyboard_shortcuts_cover_core_page_actions() -> None:
         removals: list[UUID] = []
         undos: list[bool] = []
         overlay_tools: list[UUID] = []
+        checklists: list[bool] = []
         commands.move_requested.connect(lambda page_id, offset: moves.append((page_id, offset)))
         commands.rotate_requested.connect(lambda page_id: rotations.append(page_id))
         commands.remove_requested.connect(lambda page_id: removals.append(page_id))
@@ -184,6 +186,7 @@ def test_keyboard_shortcuts_cover_core_page_actions() -> None:
         commands.core_overlay_tools_begin_requested.connect(
             lambda _operation_id, page_id: overlay_tools.append(page_id)
         )
+        commands.checklist_begin_requested.connect(lambda _operation_id: checklists.append(True))
         worker.initialized.emit()
         worker.state_changed.emit(_state())
         _application().processEvents()
@@ -197,12 +200,18 @@ def test_keyboard_shortcuts_cover_core_page_actions() -> None:
             Qt.Key.Key_F,
             Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
         )
+        QTest.keyClick(
+            window,
+            Qt.Key.Key_C,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
 
         assert moves == [(PAGE_ONE, 1)]
         assert rotations == [PAGE_ONE]
         assert removals == [PAGE_ONE]
         assert undos == [True]
         assert overlay_tools == [PAGE_ONE]
+        assert checklists == [True]
 
 
 def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() -> None:
@@ -214,6 +223,7 @@ def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() ->
         redos: list[bool] = []
         creates: list[bool] = []
         overlay_tools: list[UUID] = []
+        checklists: list[bool] = []
         commands.move_requested.connect(lambda page_id, offset: moves.append((page_id, offset)))
         commands.rotate_requested.connect(lambda page_id: rotations.append(page_id))
         commands.remove_requested.connect(lambda page_id: removals.append(page_id))
@@ -223,6 +233,7 @@ def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() ->
         commands.core_overlay_tools_begin_requested.connect(
             lambda _operation_id, page_id: overlay_tools.append(page_id)
         )
+        commands.checklist_begin_requested.connect(lambda _operation_id: checklists.append(True))
         worker.initialized.emit()
         worker.state_changed.emit(replace(_state(), can_undo=False, can_redo=False))
         _application().processEvents()
@@ -236,6 +247,7 @@ def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() ->
         assert redos == []
         assert creates == []
         assert overlay_tools == []
+        assert checklists == []
 
         window._set_controls_enabled(False)
         QTest.keyClick(window, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier)
@@ -246,10 +258,16 @@ def test_window_shortcuts_respect_edge_history_disabled_and_shutdown_guards() ->
             Qt.Key.Key_F,
             Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
         )
+        QTest.keyClick(
+            window,
+            Qt.Key.Key_C,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        )
         assert moves == []
         assert rotations == []
         assert removals == []
         assert overlay_tools == []
+        assert checklists == []
 
 
 def test_progress_error_and_cancellation_are_textual_focusable_and_announced() -> None:
@@ -925,6 +943,7 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
                 window._core_overlay_tools_button,
                 window._place_signature_image_button,
                 window._remove_signature_image_button,
+                window._checklist_button,
                 window._quality_summary,
                 window._quality_check_button,
                 window._quality_findings_view,

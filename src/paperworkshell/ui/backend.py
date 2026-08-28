@@ -13,6 +13,10 @@ from uuid import UUID
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from paperworkshell.app.checklist import (
+    ChecklistEditorState,
+    is_checklist_announcement_safe,
+)
 from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
 from paperworkshell.app.organizer import (
@@ -44,6 +48,7 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementRequest,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
+from paperworkshell.domain.checklist import ChecklistError
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.image_transforms import ImageTransformIntent
 from paperworkshell.domain.manifest_repository import ManifestRepositoryError
@@ -70,6 +75,7 @@ from paperworkshell.domain.source_ingest import (
 )
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
+from paperworkshell.templates.models import TemplateLoadError
 
 
 class OrganizerBackendFactory(Protocol):
@@ -136,6 +142,7 @@ class OperationCancellation:
 
 _KNOWN_FAILURES: Final = (
     CaseLifecycleError,
+    ChecklistError,
     ImagePageError,
     ManifestRepositoryError,
     OcrError,
@@ -147,6 +154,7 @@ _KNOWN_FAILURES: Final = (
     ScanReviewError,
     SignatureImageError,
     SourceIngestError,
+    TemplateLoadError,
 )
 
 
@@ -237,6 +245,24 @@ def _core_overlay_apply_state_matches(
     )
 
 
+def _checklist_apply_state_matches(
+    editor_state: ChecklistEditorState,
+    state: OrganizerViewState,
+) -> bool:
+    """Verify one checklist save result without trusting presentation strings."""
+
+    allowed_revisions = {
+        editor_state.manifest_revision,
+        editor_state.manifest_revision + 1,
+    }
+    return (
+        state.case_id == editor_state.case_id
+        and state.revision in allowed_revisions
+        and (not editor_state.changed or state.revision == editor_state.manifest_revision + 1)
+        and not state.autosave_pending
+    )
+
+
 class OrganizerBackendWorker(QObject):
     """Serialize backend and worker mutations on one long-lived Qt thread."""
 
@@ -264,6 +290,12 @@ class OrganizerBackendWorker(QObject):
     core_overlay_tools_apply_failed = Signal(int, object)
     core_overlay_tools_cancelled = Signal(int)
     core_overlay_tools_cancel_failed = Signal(int, object)
+    checklist_started = Signal(int, object)
+    checklist_start_failed = Signal(int, object)
+    checklist_applied = Signal(int, object)
+    checklist_apply_failed = Signal(int, object)
+    checklist_cancelled = Signal(int)
+    checklist_cancel_failed = Signal(int, object)
     signature_image_prepared = Signal(int, object)
     signature_image_prepare_failed = Signal(int, object)
     signature_image_placed = Signal(int, object)
@@ -907,6 +939,191 @@ class OrganizerBackendWorker(QObject):
             return
         self.core_overlay_tools_cancelled.emit(operation_id)
 
+    @Slot(int)
+    def begin_checklist(self, operation_id: int) -> None:
+        """Open one exact, path-free checklist draft on the backend thread."""
+
+        if type(operation_id) is not int or operation_id <= 0:
+            self.checklist_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid checklist request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.checklist_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            editor_state = backend.begin_checklist()
+            organizer_state = backend.state
+            if (
+                type(editor_state) is not ChecklistEditorState
+                or type(organizer_state) is not OrganizerViewState
+                or editor_state.case_id != organizer_state.case_id
+                or editor_state.manifest_revision != organizer_state.revision
+                or not is_checklist_announcement_safe(editor_state.announcement)
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.checklist_start_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        # Opening can flush earlier page intent. Publish that durable revision
+        # before the revision-bound checklist reaches the GUI.
+        self.state_changed.emit(organizer_state)
+        self.checklist_started.emit(operation_id, editor_state)
+
+    @Slot(int, object)
+    def apply_checklist(self, operation_id: int, editor_state: object) -> None:
+        """Persist one authenticated checklist draft and publish its organizer state."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not ChecklistEditorState
+        ):
+            self.checklist_apply_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected invalid checklist changes.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.checklist_apply_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            state = backend.apply_checklist(editor_state)
+            current = backend.state
+            if (
+                type(state) is not OrganizerViewState
+                or type(current) is not OrganizerViewState
+                or state != current
+                or not _checklist_apply_state_matches(editor_state, state)
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.checklist_apply_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.state_changed.emit(state)
+        self.checklist_applied.emit(operation_id, state)
+
+    @Slot(int, object)
+    def cancel_checklist(self, operation_id: int, editor_state: object) -> None:
+        """Release one matching checklist draft without changing the case."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not ChecklistEditorState
+        ):
+            self.checklist_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid checklist cancellation.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.checklist_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.cancel_checklist(editor_state)
+        except BaseException as error:
+            self.checklist_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.checklist_cancelled.emit(operation_id)
+
+    @Slot(int)
+    def abort_checklist(self, operation_id: int) -> None:
+        """Release a checklist draft whose returned presentation state was unusable."""
+
+        if type(operation_id) is not int or operation_id <= 0:
+            self.checklist_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid checklist abort request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.checklist_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.abort_checklist()
+        except BaseException as error:
+            self.checklist_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.checklist_cancelled.emit(operation_id)
+
     @Slot(int, object, object, object)
     def prepare_signature_image(
         self,
@@ -1517,6 +1734,10 @@ class OrganizerBackendCommands(QObject):
     core_overlay_tools_apply_requested = Signal(int, object)
     core_overlay_tools_cancel_requested = Signal(int, object)
     core_overlay_tools_abort_requested = Signal(int)
+    checklist_begin_requested = Signal(int)
+    checklist_apply_requested = Signal(int, object)
+    checklist_cancel_requested = Signal(int, object)
+    checklist_abort_requested = Signal(int)
     signature_image_prepare_requested = Signal(int, object, object, object)
     signature_image_place_requested = Signal(int, object, object)
     signature_image_cancel_requested = Signal(int, object)
@@ -1553,6 +1774,10 @@ class OrganizerBackendCommands(QObject):
         self.core_overlay_tools_apply_requested.connect(worker.apply_core_overlay_tools)
         self.core_overlay_tools_cancel_requested.connect(worker.cancel_core_overlay_tools)
         self.core_overlay_tools_abort_requested.connect(worker.abort_core_overlay_tools)
+        self.checklist_begin_requested.connect(worker.begin_checklist)
+        self.checklist_apply_requested.connect(worker.apply_checklist)
+        self.checklist_cancel_requested.connect(worker.cancel_checklist)
+        self.checklist_abort_requested.connect(worker.abort_checklist)
         self.signature_image_prepare_requested.connect(worker.prepare_signature_image)
         self.signature_image_place_requested.connect(worker.place_signature_image)
         self.signature_image_cancel_requested.connect(worker.cancel_signature_image)

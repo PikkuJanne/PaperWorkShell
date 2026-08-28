@@ -11,11 +11,13 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Final, Protocol, cast
 from uuid import UUID
 
+from paperworkshell.app.checklist import ChecklistEditorState, ChecklistWorkflowService
 from paperworkshell.app.core_overlay_tools import (
     CoreOverlayToolsState,
     is_core_overlay_announcement_safe,
@@ -78,6 +80,10 @@ from paperworkshell.domain.case_lifecycle import (
     CaseLifecycleErrorCode,
     CaseSummary,
     reject_case_lifecycle,
+)
+from paperworkshell.domain.checklist import (
+    ChecklistErrorCode,
+    reject_checklist,
 )
 from paperworkshell.domain.image_pages import (
     MAX_IMAGE_DIMENSION_PIXELS,
@@ -458,10 +464,12 @@ class OrganizerBackend:
     """
 
     __slots__ = (
+        "_active_checklist",
         "_active_core_overlay_tools",
         "_active_scan_review",
         "_active_signature_draft_id",
         "_close_resources",
+        "_checklist",
         "_lifecycle",
         "_ocr_languages",
         "_pending_committed_import",
@@ -475,6 +483,7 @@ class OrganizerBackend:
         "_source_ingest",
         "_startup_recovery",
         "_thumbnails",
+        "_utc_now",
     )
 
     def __init__(
@@ -489,6 +498,7 @@ class OrganizerBackend:
         ocr_languages: OcrLanguageManager | None = None,
         quality_analysis: _QualityAnalysisServicePort | None = None,
         signature_images: SignatureImageWorkflowPort | None = None,
+        checklist: ChecklistWorkflowService | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -540,6 +550,8 @@ class OrganizerBackend:
             )
         ):
             reject_signature_image(SignatureImageErrorCode.MODEL_INVALID, "signature.organizer")
+        if checklist is not None and type(checklist) is not ChecklistWorkflowService:
+            reject_checklist(ChecklistErrorCode.MODEL_INVALID, "checklist.organizer")
         self._lifecycle = lifecycle
         self._repository = repository
         self._source_ingest = source_ingest
@@ -551,6 +563,9 @@ class OrganizerBackend:
         self._quality_profile_id = quality_profile_id
         self._quality_profile_sha256 = quality_profile_sha256
         self._signature_images = signature_images
+        self._checklist = checklist
+        self._utc_now = checklist.utc_now if checklist is not None else lambda: datetime.now(UTC)
+        self._active_checklist: ChecklistEditorState | None = None
         self._active_core_overlay_tools: _CoreOverlayEditorAuthority | None = None
         self._active_scan_review: _ActiveScanReview | None = None
         self._active_signature_draft_id: UUID | None = None
@@ -657,7 +672,7 @@ class OrganizerBackend:
             self._repository.load(session.snapshot.case_id),
             session.snapshot.case_id,
         )
-        replacement = _session_from_load(self._repository, loaded)
+        replacement = _session_from_load(self._repository, loaded, utc_now=self._utc_now)
         session.autosave.close()
         self._session = replacement
         return self.state
@@ -684,6 +699,7 @@ class OrganizerBackend:
             session.autosave = ManifestAutosaveService(
                 self._repository,
                 session.snapshot.case_id,
+                utc_now=self._utc_now,
             )
             raise
         self._session = None
@@ -860,6 +876,89 @@ class OrganizerBackend:
         if session.autosave.pending:
             reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_cancel_pending")
         self._active_core_overlay_tools = None
+
+    def begin_checklist(self) -> ChecklistEditorState:
+        """Open one exclusive checklist draft against an exact durable revision.
+
+        Pending page intent is flushed before template loading and checklist
+        projection so a later checklist candidate cannot replace a coalesced
+        organizer edit.  The returned state is detached and performs no case
+        mutation until :meth:`apply_checklist` succeeds.
+        """
+
+        session = self._require_session()
+        workflow = self._require_checklist()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.scan_review")
+        self.flush_autosave()
+        editor_state = workflow.begin(session.snapshot)
+        if (
+            type(editor_state) is not ChecklistEditorState
+            or editor_state.case_id != session.snapshot.case_id
+            or editor_state.manifest_revision != session.snapshot.revision
+        ):
+            if type(editor_state) is ChecklistEditorState:
+                try:
+                    workflow.abort(editor_state.editor_session_id)
+                except BaseException:
+                    pass
+            reject_checklist(ChecklistErrorCode.MODEL_INVALID, "checklist.organizer_begin")
+        self._active_checklist = editor_state
+        return editor_state
+
+    def apply_checklist(self, editor_state: ChecklistEditorState) -> OrganizerViewState:
+        """Queue and immediately save one authenticated checklist draft.
+
+        A failed save retains both the exact autosave candidate and backend
+        authority.  Repeating Apply with the same editor state retries safely;
+        cancellation and unrelated organizer mutations remain unavailable
+        until the durable save succeeds.
+        """
+
+        session = self._require_session()
+        workflow = self._require_checklist()
+        opening_state = self._active_checklist
+        if type(editor_state) is not ChecklistEditorState or opening_state is None:
+            reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.organizer_apply")
+        candidate = workflow.to_candidate(opening_state, editor_state, session.snapshot)
+        if not editor_state.changed and not session.autosave.pending:
+            workflow.complete(opening_state, editor_state)
+            self._active_checklist = None
+            return self.state
+        session.autosave.queue(candidate)
+        self._active_scan_review = None
+        state = self._flush_autosave_unchecked()
+        workflow.complete(opening_state, editor_state)
+        self._active_checklist = None
+        return state
+
+    def cancel_checklist(self, editor_state: ChecklistEditorState) -> None:
+        """Discard one matching local checklist draft without saving anything."""
+
+        session = self._require_session()
+        workflow = self._require_checklist()
+        opening_state = self._active_checklist
+        if type(editor_state) is not ChecklistEditorState or opening_state is None:
+            reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.organizer_cancel")
+        if session.autosave.pending:
+            reject_checklist(
+                ChecklistErrorCode.CONCURRENT_CHANGE,
+                "checklist.organizer_cancel_pending",
+            )
+        workflow.cancel(opening_state, editor_state)
+        self._active_checklist = None
+
+    def abort_checklist(self) -> None:
+        """Release backend-held checklist authority after unusable presentation state."""
+
+        session = self._require_session()
+        workflow = self._require_checklist()
+        opening_state = self._active_checklist
+        if opening_state is None or session.autosave.pending:
+            reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.organizer_abort")
+        workflow.abort(opening_state.editor_session_id)
+        self._active_checklist = None
 
     def begin_signature_image(
         self,
@@ -1389,6 +1488,10 @@ class OrganizerBackend:
 
         if self._shutdown:
             return
+        active_checklist = self._active_checklist
+        if active_checklist is not None:
+            self._require_checklist().abort(active_checklist.editor_session_id)
+            self._active_checklist = None
         self._active_core_overlay_tools = None
         workflow = self._signature_images
         self._active_signature_draft_id = None
@@ -1411,7 +1514,11 @@ class OrganizerBackend:
                 session.snapshot.case_id,
             )
             _require_committed_import(loaded.snapshot, result)
-            replacement = _session_from_load(self._repository, loaded)
+            replacement = _session_from_load(
+                self._repository,
+                loaded,
+                utc_now=self._utc_now,
+            )
             refreshed_state = _view_state(replacement)
         except BaseException:
             return OrganizerImportOutcome(
@@ -1449,7 +1556,11 @@ class OrganizerBackend:
                 session.snapshot.case_id,
             )
             _require_committed_signature_image(loaded.snapshot, result)
-            replacement = _session_from_load(self._repository, loaded)
+            replacement = _session_from_load(
+                self._repository,
+                loaded,
+                utc_now=self._utc_now,
+            )
             refreshed_state = _view_state(replacement)
         except BaseException:
             return OrganizerSignatureImagePlacementOutcome(
@@ -1508,7 +1619,7 @@ class OrganizerBackend:
 
     def _load_session(self, case_id: UUID) -> _OrganizerSession:
         loaded = _require_load_result(self._repository.load(case_id), case_id)
-        return _session_from_load(self._repository, loaded)
+        return _session_from_load(self._repository, loaded, utc_now=self._utc_now)
 
     def _require_session(self) -> _OrganizerSession:
         self._require_not_shutdown()
@@ -1538,6 +1649,14 @@ class OrganizerBackend:
             reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_exclusive")
         if self._active_signature_draft_id is not None:
             reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.exclusive")
+        if self._active_checklist is not None:
+            reject_checklist(ChecklistErrorCode.CONCURRENT_CHANGE, "checklist.exclusive")
+
+    def _require_checklist(self) -> ChecklistWorkflowService:
+        workflow = self._checklist
+        if workflow is None:
+            reject_checklist(ChecklistErrorCode.MODEL_INVALID, "checklist.unavailable")
+        return workflow
 
     def _require_signature_images(self) -> SignatureImageWorkflowPort:
         workflow = self._signature_images
@@ -1564,12 +1683,14 @@ class OrganizerBackend:
 def _session_from_load(
     repository: ManifestRepository,
     loaded: ManifestLoadResult,
+    *,
+    utc_now: Callable[[], datetime],
 ) -> _OrganizerSession:
     snapshot = loaded.snapshot
     return _OrganizerSession(
         snapshot=snapshot,
         history=PageCommandHistory.from_snapshot(snapshot),
-        autosave=ManifestAutosaveService(repository, snapshot.case_id),
+        autosave=ManifestAutosaveService(repository, snapshot.case_id, utc_now=utc_now),
         load_status=loaded.status,
     )
 

@@ -29,9 +29,10 @@ ThirdLife compatibility cut or packaged PaperWorkShell release already exists.
 
 The repository has completed its foundation, Milestone 1 vertical-slice, Milestone 2 image/OCR,
 and Milestone 3 visual-overlay gates, plus the Milestone 4 safe template loader and first complete
-built-in generic application template. The next Milestone 4 implementation is the user-confirmed
-checklist and document-assignment workflow. It contains the restricted worker, immutable
-PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only pikepdf, pypdfium2, Pillow,
+built-in generic application template and user-confirmed checklist/document-assignment workflow.
+The next Milestone 4 implementation is the typed preflight rule engine. The repository contains the
+restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
+pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
 repository does not yet contain an installer, cloud integration, or cryptographic-signing
@@ -294,6 +295,15 @@ provides jurisdiction-neutral category, ordering, filename, output-limit, and us
 Its generic planning defaults, synthetic complete/missing/excessive packet mappings, and explicit
 non-goals are documented in
 [`docs/templates/generic-portal-application-v1.md`](docs/templates/generic-portal-application-v1.md).
+
+The packet checklist now projects the template categories as explicit Missing, Added, Needs review,
+and Ready text, while keeping source names, paths, and document content outside the GUI state.
+Keyboard buttons cover add, confirm or accept, reject or remove, category moves, document/page
+ordering, and local undo/redo; UUID-only internal drag-and-drop is an optional shortcut. Adding or
+dragging never confirms a document, and automation can only create a Needs review suggestion. The
+exclusive editor, manifest confirmation coupling, save/retry authority, privacy boundary, and
+non-acceptance claims are documented in
+[`docs/architecture/checklist-assignment.md`](docs/architecture/checklist-assignment.md).
 
 The version-1 worker RPC envelope, lifecycle, capability negotiation, logical case-object
 references, bounded decoding rules, and sanitized error contract are documented in

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
+from paperworkshell.app.checklist import ChecklistWorkflowService
 from paperworkshell.app.export_history import (
     PdfExportHistoryService,
     PdfExportRetryRecoveryService,
@@ -88,6 +89,11 @@ from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
 from paperworkshell.storage.workspace import CaseWorkspaceManager
+from paperworkshell.templates.catalog import (
+    GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+    built_in_template_repository,
+)
+from paperworkshell.templates.loader import SafeTemplateLoader
 from paperworkshell.ui.application import run_desktop_application
 from paperworkshell.worker.client.models import WorkerTimeoutPolicy
 from paperworkshell.worker.client.process import WorkerResourcePolicy
@@ -655,6 +661,11 @@ def _build_backend(
             signature_images=SignatureImageWorkflowCoordinator(
                 signature_image_store,
                 composition.signature_image_rasterizer,
+            ),
+            checklist=ChecklistWorkflowService(
+                SafeTemplateLoader(built_in_template_repository()),
+                GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+                as_of=datetime.now(UTC).date(),
             ),
         )
     except BaseException:
