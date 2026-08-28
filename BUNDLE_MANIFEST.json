@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.17",
+  "bundle_version": "0.2.18",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 280873,
-      "sha256": "a711d1faf73dd3275bb57533c15891578038d7322ed6c4a874c9f79bf8a0ad36"
+      "bytes": 284773,
+      "sha256": "1e06e3651a6b84294a22d943a2d3517d2d1c95792195fe02cc61e254f1e8ba00"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 28932,
-      "sha256": "445cfe68e6438bfa7a5e41af4761133f4838cf011f4fba3c02679695201e7f5b"
+      "bytes": 29529,
+      "sha256": "011b9b4cc98774c1876be6f7d4ce7143157352b01d18eb6ca907ce45f7a32657"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -97,12 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0402"
+      "PWS-0403"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0401 is done: the local data-only template loader binds exact artifact bytes to external integrity evidence, validates schema and lifecycle state against the frozen v1 contract, rejects executable content and unsafe Windows paths, and exposes plain-language provenance and review facts without touching case storage. PWS-0402 is the sole ready task; PWS-0403 remains planned until PWS-0402 is done. The accepted PWS-0307 reader matrix will not be repeated, and future human tests must minimize setup, transcription, and repetition and use comfortably large, clearly aligned visual targets unless size or offset is the property under test.",
+    "PWS-0402 is done on implementation revision 8f23200: the exact built-in generic template, closed runtime catalog, count-only synthetic packet demonstrations, documentation, packaging, and isolated quality suites are verified. PWS-0403 is the sole ready task. The accepted PWS-0307 reader matrix will not be repeated, and future human tests must minimize setup, transcription, and repetition and use comfortably large, clearly aligned visual targets unless size or offset is the property under test.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

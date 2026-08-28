@@ -3053,7 +3053,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0401
@@ -3083,17 +3083,54 @@ tasks:
   - content-design
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-28'
+    revision: 8f23200e1e5d6f5fc05b40ff024dae01b1d8b659
+    commands:
+    - uv run --locked --no-sync python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed;
+      all 532 Python files were formatted/linted/strictly typed and 13 import layers across 186 source files were valid
+    - uv run --locked --no-sync python tools/dev.py test-unit - passed in isolation; all 4227 tests passed in 677.39
+      seconds
+    - uv run --locked --no-sync python tools/dev.py test-integration - passed in isolation; 430 tests passed in 4727.28
+      seconds with 10 disclosed optional OCR/private-artifact/link-capability skips
+    - uv run --locked --no-sync python tools/dev.py test-security; test-accessibility - passed in isolation; 512 security
+      tests passed in 359.10 seconds with 6 disclosed link-capability skips, and all 50 accessibility tests passed in
+      4.67 seconds
+    - uv run --locked --no-sync python -m tools.validate_generic_portal_template; python -m tools.validate_templates
+      --as-of 2026-08-28 templates/builtin/generic-portal-application-v1.1.0.json - passed; exact artifact identity,
+      template-v1 semantics, and all three count-only packet scenarios were valid
+    - Focused catalog, content, packet, schema-registry, security, and package-build inspection - passed; 33 tests and 4
+      mutation subtests passed, and wheel/source distribution contained the exact 7145-byte packaged template
+    - uv run --locked --no-sync python tools/dev.py validate-schemas; validate-dependencies; validate-task-graph;
+      validate-docs; validate-portfolio-boundary; validate-fixtures - passed; the full fixture privacy scan passed on a
+      clean single-branch implementation snapshot because unrelated untracked workspace documents remain out of scope
+    notes:
+    - The complete built-in generic-portal-application content is version 1.1.0, 7145 bytes, SHA-256
+      f06ca149a4ff049de49a8a671352e43527900287dd898c7a49e24871d1b6d9bd. The accepted 1.0.0 minimal fixture remains
+      byte-for-byte unchanged under its published identity.
+    - The template declares application-form, identity-evidence, address-evidence, and supporting-evidence counts and
+      order; combined-PDF, separate-PDF, and ZIP choices; unencrypted and flattened output; four-file, 10 MiB total,
+      5 MiB per-file, and 100-page limits; and closed safe static filename stems. Numeric values are documented as
+      generic planning defaults rather than portal facts.
+    - Identity guidance directs the user to current instructions for front/back sides without a jurisdictional rule.
+      Every confirmation records only the user's review, and explicit wording denies eligibility, legal-advice,
+      identity-verification, submission, and acceptance claims.
+    - The closed structural demonstration covers complete, missing address-evidence, and 11-item excessive
+      supporting-evidence packets. It reuses 14 approved public-synthetic fixture IDs and evaluates document counts only;
+      PWS-0403 owns assignments, PWS-0406 owns runtime constraints/filenames, and PWS-0407 owns output planning/export.
+    - The built-in catalog exposes only the exact opaque 1.1.0 key and packaged bytes. Tests prove lifecycle boundaries,
+      integrity/tamper rejection, unknown-key closure, sanitized resource failures, and exact wheel/source packaging.
+    - An initial parallel full-suite attempt caused a shared Windows ACL-recovery ledger collision and the expected stale
+      bundle-metadata failures. The exact orphaned standard-runtime ledger was authenticated and repaired through the
+      product recovery API; authoritative isolated reruns passed with no PWS-0402 failure.
+    - No dependency or UI changed. No user document content, case data, network use, sibling dependency, shared runtime,
+      adapter, or release-interface change was introduced; PaperWorkShell remains standalone and owns its local data.
 - id: PWS-0403
   milestone: M4
   title: Implement checklist categories and user-confirmed document assignment
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0401
