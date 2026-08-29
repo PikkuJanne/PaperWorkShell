@@ -476,6 +476,17 @@ def required_visible_signature_assets(
     return _required_visible_signature_assets(snapshot)
 
 
+def required_visible_signature_assets_for_pages(
+    snapshot: ManifestSnapshot,
+    ordered_page_ids: tuple[UUID, ...],
+) -> tuple[OverlayAssetRecord, ...]:
+    """Enumerate required visible signature assets for one exact active-page subset."""
+
+    _, projection, collection = _read_snapshot(snapshot)
+    _validate_ordered_page_ids(projection, ordered_page_ids)
+    return _required_assets(projection, collection, ordered_page_ids)
+
+
 def build_flattened_pdf_export_plan(
     snapshot: ManifestSnapshot,
     raster_assets: Mapping[UUID, OverlayRasterAsset],
@@ -484,7 +495,39 @@ def build_flattened_pdf_export_plan(
 ) -> FlattenedPdfExportPlan:
     """Build one executable plan from one immutable snapshot and exact rasters."""
 
-    return _build_plan(snapshot, raster_assets, profile)
+    _validate_profile(profile)
+    document, projection, collection = _read_snapshot(snapshot)
+    return _build_plan(
+        snapshot,
+        document,
+        projection,
+        collection,
+        projection.page_sequence,
+        raster_assets,
+        profile,
+    )
+
+
+def build_flattened_pdf_export_plan_for_pages(
+    snapshot: ManifestSnapshot,
+    ordered_page_ids: tuple[UUID, ...],
+    raster_assets: Mapping[UUID, OverlayRasterAsset],
+    *,
+    profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
+) -> FlattenedPdfExportPlan:
+    """Build a flattened plan for one exact nonempty ordered active-page subset."""
+
+    _validate_profile(profile)
+    document, projection, collection = _read_snapshot(snapshot)
+    return _build_plan(
+        snapshot,
+        document,
+        projection,
+        collection,
+        ordered_page_ids,
+        raster_assets,
+        profile,
+    )
 
 
 # Implementations are kept below the public contract so worker/adapters can
@@ -674,27 +717,22 @@ def _required_visible_signature_assets(
     snapshot: ManifestSnapshot,
 ) -> tuple[OverlayAssetRecord, ...]:
     _, projection, collection = _read_snapshot(snapshot)
-    return _required_assets(projection, collection)
+    return _required_assets(projection, collection, projection.page_sequence)
 
 
 def _build_plan(
     snapshot: ManifestSnapshot,
+    document: dict[str, object],
+    projection: OrganizerProjection,
+    collection: OverlayCollection,
+    ordered_page_ids: tuple[UUID, ...],
     raster_assets: Mapping[UUID, OverlayRasterAsset],
     profile: PdfExportProfile,
 ) -> FlattenedPdfExportPlan:
-    if type(profile) is not PdfExportProfile:
-        reject_flattened_pdf_export(
-            FlattenedPdfExportErrorCode.MODEL_INVALID,
-            "flattened.profile",
-        )
-    document, projection, collection = _read_snapshot(snapshot)
-    if not projection.page_sequence:
-        reject_flattened_pdf_export(
-            FlattenedPdfExportErrorCode.PLAN_EMPTY,
-            "flattened.plan_pages",
-        )
+    _validate_profile(profile)
+    _validate_ordered_page_ids(projection, ordered_page_ids)
     metadata = _copy_raster_metadata(raster_assets)
-    required_assets = _required_assets(projection, collection)
+    required_assets = _required_assets(projection, collection, ordered_page_ids)
     required_ids = tuple(asset.asset_id for asset in required_assets)
     missing = set(required_ids) - set(metadata)
     if missing:
@@ -718,13 +756,8 @@ def _build_plan(
     base_pages: list[PdfExportPage] = []
     pages: list[FlattenedPdfExportPage] = []
     try:
-        for output_page_index, page_id in enumerate(projection.page_sequence):
-            state = state_by_id.get(page_id)
-            if state is None or not state.active:
-                reject_flattened_pdf_export(
-                    FlattenedPdfExportErrorCode.SOURCE_INCONSISTENT,
-                    "flattened.page_state",
-                )
+        for output_page_index, page_id in enumerate(ordered_page_ids):
+            state = state_by_id[page_id]
             if (
                 state.deskew_angle_millidegrees_clockwise != 0
                 or state.contrast_factor_millionths != NEUTRAL_CONTRAST_FACTOR_MILLIONTHS
@@ -792,6 +825,14 @@ def _build_plan(
     )
 
 
+def _validate_profile(profile: PdfExportProfile) -> None:
+    if type(profile) is not PdfExportProfile:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.MODEL_INVALID,
+            "flattened.profile",
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _ManifestSource:
     source_id: UUID
@@ -840,12 +881,13 @@ def _read_snapshot(
 def _required_assets(
     projection: OrganizerProjection,
     collection: OverlayCollection,
+    ordered_page_ids: tuple[UUID, ...],
 ) -> tuple[OverlayAssetRecord, ...]:
     state_by_id = {state.page_id: state for state in projection.pages}
     asset_by_id = {asset.asset_id: asset for asset in collection.assets}
     selected: list[OverlayAssetRecord] = []
     seen: set[UUID] = set()
-    for page_id in projection.page_sequence:
+    for page_id in ordered_page_ids:
         state = state_by_id.get(page_id)
         if state is None or not state.active:
             reject_flattened_pdf_export(
@@ -865,6 +907,46 @@ def _required_assets(
                 seen.add(payload.asset_id)
                 selected.append(asset)
     return tuple(selected)
+
+
+def _validate_ordered_page_ids(
+    projection: OrganizerProjection,
+    ordered_page_ids: tuple[UUID, ...],
+) -> None:
+    if type(ordered_page_ids) is not tuple:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.MODEL_INVALID,
+            "flattened.page_ids",
+        )
+    if not ordered_page_ids:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.PLAN_EMPTY,
+            "flattened.plan_pages",
+        )
+    if len(ordered_page_ids) > MAX_PDF_EXPORT_PAGES:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
+            "flattened.page_ids",
+        )
+    if any(type(page_id) is not UUID or page_id.version != 4 for page_id in ordered_page_ids):
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.MODEL_INVALID,
+            "flattened.page_ids",
+        )
+    if len(set(ordered_page_ids)) != len(ordered_page_ids):
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.MODEL_INVALID,
+            "flattened.page_ids",
+        )
+    state_by_id = {state.page_id: state for state in projection.pages}
+    active_page_ids = frozenset(projection.page_sequence)
+    for page_id in ordered_page_ids:
+        state = state_by_id.get(page_id)
+        if state is None or not state.active or page_id not in active_page_ids:
+            reject_flattened_pdf_export(
+                FlattenedPdfExportErrorCode.SOURCE_INCONSISTENT,
+                "flattened.page_state",
+            )
 
 
 def _copy_raster_metadata(

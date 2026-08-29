@@ -9,8 +9,8 @@
   export; PWS-0113 startup recovery and sanitized diagnostics; PWS-0201 bounded JPEG/PNG intake;
   PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; PWS-0206
   verified searchable mixed-document output; PWS-0301 normalized page coordinates; PWS-0302
-  visual overlay intent; PWS-0303 deterministic overlay-page rendering; and PWS-0401 safe
-  declarative template loading
+  visual overlay intent; PWS-0303 deterministic overlay-page rendering; PWS-0401 safe
+  declarative template loading; and PWS-0407 verified combined, multi-PDF, and ZIP package export
 - Decisions: PWS-D002, PWS-D010, PWS-D011, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D018, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -33,7 +33,7 @@ worker host -> domain
 | Package | Responsibility |
 |---|---|
 | `domain` | Pure models and deterministic rules; no UI, worker, storage, or document-engine dependency |
-| `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries |
+| `app` | Toolkit-free use-case orchestration through domain types and service/client boundaries, including one-at-a-time package-PDF pipeline selection documented in [verified package export](package-export.md) |
 | `ui` | PySide6 Widgets presentation over application/domain contracts and validated display data; only QtCore, QtGui, and QtWidgets imports are admitted |
 | `worker` | GUI-safe client/protocol boundaries plus separately composed host lifecycle, exact object brokerage, document operations, progress, cancellation, and limits; consuming integrations are documented in the [bounded PDF-thumbnail contract](pdf-thumbnails.md), [bounded JPEG/PNG intake contract](image-intake.md), [bounded local OCR contract](ocr-worker.md), [deterministic verified PDF-export contract](pdf-export.md), [verified searchable mixed-output contract](searchable-mixed-output.md), and [verified flattened visual-overlay export contract](flattened-overlay-export.md) |
 | `pdf` | PDF interfaces and worker-side pikepdf/qpdf/PDFium/font-rendering implementations; implemented contracts are documented in the [PDF structural-inspection contract](pdf-structural-inspection.md), [PDF page-rendering contract](pdf-page-rendering.md), [deterministic overlay rendering contract](overlay-rendering.md), [deterministic verified PDF-export contract](pdf-export.md), [verified searchable mixed-output contract](searchable-mixed-output.md), and [verified flattened visual-overlay export contract](flattened-overlay-export.md) |
@@ -41,9 +41,9 @@ worker host -> domain
 | `ocr` | Worker-only OCRmyPDF/Tesseract orchestration and its exact private PDF-candidate reopen seam; third-party objects and recognized text never cross into domain, app, UI, storage, or GUI-safe worker modules; see the [bounded local OCR contract](ocr-worker.md) |
 | `overlays` | Pure normalized visual-overlay intent, released wire codecs, deterministic ordering/visibility, and third-party-free rendering contracts; concrete font, image, and PDF engines remain in the exact worker-only PDF adapter documented in the [visual overlay domain model](overlay-domain-model.md) and [overlay rendering contract](overlay-rendering.md) |
 | `preflight` | Typed, deterministic findings; never presentation dialogs |
-| `export` | Trusted desktop-side adapters that publish already verified derivative bytes; deterministic planning remains pure domain logic and native assembly/verification remains worker-side |
+| `export` | Trusted desktop-side adapters that stage and publish already verified derivative bytes and deterministically write/reopen safe ZIP containers; checklist planning remains pure and native PDF assembly/verification remains worker-side; see [verified package export](package-export.md) |
 | `templates` | Path-free, standard-library-only declarative template decoding, exact version/schema/semantic/lifecycle validation, immutable snapshots, and user-ready provenance/trust presentation; see the [safe declarative template-loading contract](template-loading.md) |
-| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source and local-template leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), [Deterministic verified PDF-export contract](pdf-export.md), and [Safe declarative template-loading contract](template-loading.md) |
+| `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source and local-template leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative/package staging and publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), [Deterministic verified PDF-export contract](pdf-export.md), [Verified package export](package-export.md), and [Safe declarative template-loading contract](template-loading.md) |
 | `diagnostics` | Closed, content-free records, canonical structured logging, and deterministic safe summary rendering; PWS-0805 owns later preview/confirmation/bundle writing |
 
 ## Enforced import rules

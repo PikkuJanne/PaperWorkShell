@@ -739,19 +739,21 @@ flowchart LR
    aliases, and previous verified outputs are never overwrite targets; filenames/ZIP entries are
    normalized and collisions are deterministic. Unsupported UNC/network-backed destinations fail
    before open until an owning task proves their semantics.
-5. Before destination publication, the trusted application stores one path-free export-history
-   receipt in a protected case journal as `PREPARED`; a matching `COMMITTED` marker becomes
-   replayable only after exact destination publication and reopen. A known non-commit removes the
-   preparation. An unknown post-rename state preserves it as commit-ambiguous.
+5. The single-PDF PWS-0112 path stores one path-free export-history-v1 receipt in a protected case
+   journal as `PREPARED`; a matching `COMMITTED` marker becomes replayable only after exact
+   destination publication and reopen. A known non-commit removes the preparation. An unknown
+   post-rename state preserves it as commit-ambiguous. PWS-0407 does not reinterpret that
+   single-PDF schema for a multi-artifact or ZIP package; its aggregate report is transient until a
+   future versioned package-history decision defines exact member and partial-set semantics.
 6. Destination denial, race, disk-full, partial multi-file write, or final recheck failure cannot
    produce a package success report. Commits are atomic per artifact, not assumed group-atomic;
    any partial set is inventoried for retry/cleanup and never replaces a prior package. The output
    report states concrete checks, not universal portal or legal validity.
-7. On restart, `COMMITTED` receipts may replay only the exact idempotent case-history append and
+7. On restart, single-PDF `COMMITTED` receipts may replay only the exact idempotent case-history append and
    manifest link. `PREPARED` receipts remain inert unless the exact downstream case record or
    manifest reference independently proves the same commit. Recovery never starts the worker,
    rebuilds an output, or accesses the destination. Invalid receipt state blocks replay and keeps
-   parseable IDs reserved.
+   parseable IDs reserved. No package-level restart recovery is claimed by PWS-0407.
 8. A modified marker-present or unknown-signature source produces an explicitly unsigned
    derivative. This is a conservative output label, not a signature-validity claim. Permanent-
    redaction output remains unavailable until PWS-0608.

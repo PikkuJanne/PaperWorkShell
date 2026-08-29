@@ -425,6 +425,27 @@ def test_zip_member_and_outer_archive_names_use_distinct_fixed_namespaces() -> N
         resolve_zip_archive_filename(PortalFilenameRequest("package", 2, "unsafe-position"))
 
 
+def test_zip_member_path_budget_is_independent_from_outer_destination_parent() -> None:
+    plan = _plan(mode="zip")
+    member_name = f"{'a' * 176}.pdf"
+    archive_name = "p.zip"
+    parent_units = (
+        MAX_WINDOWS_DESTINATION_PATH_UTF16_CODE_UNITS
+        - len(archive_name.encode("utf-16-le")) // 2
+        - 1
+    )
+
+    evaluation = PortalConstraintEvaluation(
+        _constraints(allowed_modes=(PortalOutputMode.ZIP,), default_mode=PortalOutputMode.ZIP),
+        plan,
+        _outputs(plan, names=(member_name,)),
+        PortalArchiveObservation(archive_name, 100),
+        destination_parent_utf16_units=parent_units,
+    )
+
+    assert evaluate_portal_constraints(evaluation) == ()
+
+
 def test_zip_constraints_distinguish_outer_archive_from_member_pdfs() -> None:
     plan = _plan(
         mode="zip",

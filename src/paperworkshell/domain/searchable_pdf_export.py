@@ -34,6 +34,7 @@ from paperworkshell.domain.page_operations import (
     MAX_PAGE_COUNT,
     NEUTRAL_CONTRAST_FACTOR_MILLIONTHS,
     NormalizedPageBox,
+    OrganizerProjection,
     PageCommandHistory,
     PageOperationError,
     PageOperationErrorCode,
@@ -939,6 +940,38 @@ def build_searchable_pdf_export_plan(
 ) -> SearchablePdfExportPlan:
     """Resolve exact manifest-v2 page order and transform intent for mixed output."""
 
+    document, projection = _read_searchable_pdf_export_snapshot(snapshot, profile)
+    return _build_searchable_pdf_export_plan_for_pages(
+        snapshot,
+        document,
+        projection,
+        projection.page_sequence,
+        profile,
+    )
+
+
+def build_searchable_pdf_export_plan_for_pages(
+    snapshot: ManifestSnapshot,
+    ordered_page_ids: tuple[UUID, ...],
+    *,
+    profile: SearchablePdfExportProfile = DEFAULT_SEARCHABLE_PDF_EXPORT_PROFILE,
+) -> SearchablePdfExportPlan:
+    """Resolve one exact nonempty ordered subset of active mixed-source pages."""
+
+    document, projection = _read_searchable_pdf_export_snapshot(snapshot, profile)
+    return _build_searchable_pdf_export_plan_for_pages(
+        snapshot,
+        document,
+        projection,
+        ordered_page_ids,
+        profile,
+    )
+
+
+def _read_searchable_pdf_export_snapshot(
+    snapshot: ManifestSnapshot,
+    profile: SearchablePdfExportProfile,
+) -> tuple[dict[str, object], OrganizerProjection]:
     if type(snapshot) is not ManifestSnapshot or type(profile) is not SearchablePdfExportProfile:
         reject_searchable_pdf_export(
             SearchablePdfExportErrorCode.MODEL_INVALID,
@@ -972,29 +1005,38 @@ def build_searchable_pdf_export_plan(
             SearchablePdfExportErrorCode.MANIFEST_INVALID,
             "searchable.manifest",
         )
-    if not projection.page_sequence:
-        reject_searchable_pdf_export(
-            SearchablePdfExportErrorCode.PLAN_EMPTY,
-            "searchable.plan_pages",
-        )
-    source_catalogue = _parse_manifest_sources(document.get("sources"))
-    source_by_id = {source.source_id: source for source in source_catalogue}
+    return document, projection
+
+
+def _build_searchable_pdf_export_plan_for_pages(
+    snapshot: ManifestSnapshot,
+    document: dict[str, object],
+    projection: OrganizerProjection,
+    ordered_page_ids: tuple[UUID, ...],
+    profile: SearchablePdfExportProfile,
+) -> SearchablePdfExportPlan:
+    _validate_ordered_page_ids(ordered_page_ids)
     state_by_id = {state.page_id: state for state in projection.pages}
-    _reject_active_overlays(
-        document.get("overlays"),
-        known_page_ids=frozenset(state_by_id),
-        active_page_ids=frozenset(projection.page_sequence),
-    )
-    selected_sources: list[SearchablePdfSource] = []
-    selected_source_ids: set[UUID] = set()
-    pages: list[SearchablePdfPage] = []
-    for output_page_index, page_id in enumerate(projection.page_sequence):
+    active_page_ids = frozenset(projection.page_sequence)
+    for page_id in ordered_page_ids:
         state = state_by_id.get(page_id)
-        if state is None or not state.active:
+        if state is None or not state.active or page_id not in active_page_ids:
             reject_searchable_pdf_export(
                 SearchablePdfExportErrorCode.SOURCE_INCONSISTENT,
                 "searchable.page_state",
             )
+    source_catalogue = _parse_manifest_sources(document.get("sources"))
+    source_by_id = {source.source_id: source for source in source_catalogue}
+    _reject_active_overlays(
+        document.get("overlays"),
+        known_page_ids=frozenset(state_by_id),
+        active_page_ids=frozenset(ordered_page_ids),
+    )
+    selected_sources: list[SearchablePdfSource] = []
+    selected_source_ids: set[UUID] = set()
+    pages: list[SearchablePdfPage] = []
+    for output_page_index, page_id in enumerate(ordered_page_ids):
+        state = state_by_id[page_id]
         source = source_by_id.get(state.reference.source_id)
         if source is None or state.reference.source_page_index >= source.page_count:
             reject_searchable_pdf_export(
@@ -1033,6 +1075,34 @@ def build_searchable_pdf_export_plan(
         pages=tuple(pages),
         profile=profile,
     )
+
+
+def _validate_ordered_page_ids(ordered_page_ids: tuple[UUID, ...]) -> None:
+    if type(ordered_page_ids) is not tuple:
+        reject_searchable_pdf_export(
+            SearchablePdfExportErrorCode.MODEL_INVALID,
+            "searchable.page_ids",
+        )
+    if not ordered_page_ids:
+        reject_searchable_pdf_export(
+            SearchablePdfExportErrorCode.PLAN_EMPTY,
+            "searchable.plan_pages",
+        )
+    if len(ordered_page_ids) > MAX_SEARCHABLE_PDF_PAGES:
+        reject_searchable_pdf_export(
+            SearchablePdfExportErrorCode.LIMIT_EXCEEDED,
+            "searchable.page_ids",
+        )
+    if any(not _is_uuid4(page_id) for page_id in ordered_page_ids):
+        reject_searchable_pdf_export(
+            SearchablePdfExportErrorCode.MODEL_INVALID,
+            "searchable.page_ids",
+        )
+    if len(set(ordered_page_ids)) != len(ordered_page_ids):
+        reject_searchable_pdf_export(
+            SearchablePdfExportErrorCode.MODEL_INVALID,
+            "searchable.page_ids",
+        )
 
 
 def _parse_manifest_sources(value: object) -> tuple[SearchablePdfSource, ...]:

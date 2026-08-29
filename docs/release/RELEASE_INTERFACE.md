@@ -146,8 +146,8 @@ computes SHA-256, and records non-destructive intent against that copy.
 | Output | Product boundary | Exact release status |
 |---|---|---|
 | One combined PDF | Supported product output; a verified single-PDF path is implemented | **TBD after packaged testing** |
-| Several named PDFs | Planned M4 product output | **TBD** |
-| ZIP package | Planned M4 product output | **TBD** |
+| Several named PDFs | Supported product output; source-level deterministic planning, verification, and per-artifact no-replace publication are implemented | **TBD after packaged testing** |
+| ZIP package | Supported product output; source-level safe ordered ZIP creation, reopen verification, and single-artifact no-replace publication are implemented | **TBD after packaged testing** |
 | Human-readable package summary | Planned M4 accessible output | **TBD** |
 | Separate printable checklist artifact | No independently frozen output contract | **TBD or not supported with reason** |
 | Optional technical manifest | Planned only when documented and safe | **TBD** |

@@ -24,6 +24,7 @@ from paperworkshell.domain.pdf_export import (
 )
 from paperworkshell.domain.searchable_pdf_export import (
     DEFAULT_SEARCHABLE_PDF_EXPORT_PROFILE,
+    MAX_SEARCHABLE_PDF_PAGES,
     SEARCHABLE_PDF_PROFILE_VERSION,
     SearchablePdfExportError,
     SearchablePdfExportErrorCode,
@@ -43,6 +44,7 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfSourceSignatureState,
     SearchablePdfVerificationReport,
     build_searchable_pdf_export_plan,
+    build_searchable_pdf_export_plan_for_pages,
     reject_searchable_pdf_export,
 )
 
@@ -55,6 +57,7 @@ IMAGE_SOURCE_ID = UUID("20000000-0000-4000-8000-000000000002")
 PDF_SOURCE_ID = UUID("20000000-0000-4000-8000-000000000001")
 IMAGE_PAGE_ID = UUID("30000000-0000-4000-8000-000000000003")
 PDF_PAGE_ID = UUID("30000000-0000-4000-8000-000000000001")
+REMOVED_PAGE_ID = UUID("30000000-0000-4000-8000-000000000002")
 EXPORT_ID = UUID("50000000-0000-4000-8000-000000000099")
 
 
@@ -238,6 +241,56 @@ def test_manifest_v2_plan_preserves_mixed_order_and_every_projected_transform() 
         "manifest-cas-token-v2",
     ):
         assert private not in representation
+
+
+def test_ordered_subset_reindexes_pages_and_selects_sources_in_first_use_order() -> None:
+    reordered = build_searchable_pdf_export_plan_for_pages(
+        _snapshot(),
+        (PDF_PAGE_ID, IMAGE_PAGE_ID),
+    )
+
+    assert tuple(page.output_page_index for page in reordered.pages) == (0, 1)
+    assert tuple(page.page_id for page in reordered.pages) == (PDF_PAGE_ID, IMAGE_PAGE_ID)
+    assert tuple(source.source_id for source in reordered.sources) == (
+        PDF_SOURCE_ID,
+        IMAGE_SOURCE_ID,
+    )
+
+    source_subset = build_searchable_pdf_export_plan_for_pages(_snapshot(), (PDF_PAGE_ID,))
+    assert tuple(page.page_id for page in source_subset.pages) == (PDF_PAGE_ID,)
+    assert tuple(source.source_id for source in source_subset.sources) == (PDF_SOURCE_ID,)
+
+
+@pytest.mark.parametrize(
+    ("ordered_page_ids", "code"),
+    (
+        ((), SearchablePdfExportErrorCode.PLAN_EMPTY),
+        ((PDF_PAGE_ID, PDF_PAGE_ID), SearchablePdfExportErrorCode.MODEL_INVALID),
+        (
+            (UUID("30000000-0000-4000-8000-000000000099"),),
+            SearchablePdfExportErrorCode.SOURCE_INCONSISTENT,
+        ),
+        ((REMOVED_PAGE_ID,), SearchablePdfExportErrorCode.SOURCE_INCONSISTENT),
+    ),
+)
+def test_ordered_subset_rejects_empty_duplicate_unknown_and_inactive_pages(
+    ordered_page_ids: tuple[UUID, ...],
+    code: SearchablePdfExportErrorCode,
+) -> None:
+    _assert_error(
+        code,
+        lambda: build_searchable_pdf_export_plan_for_pages(_snapshot(), ordered_page_ids),
+    )
+
+
+def test_ordered_subset_page_count_is_bounded_before_plan_construction() -> None:
+    _assert_error(
+        SearchablePdfExportErrorCode.LIMIT_EXCEEDED,
+        lambda: build_searchable_pdf_export_plan_for_pages(
+            _snapshot(),
+            (PDF_PAGE_ID,) * (MAX_SEARCHABLE_PDF_PAGES + 1),
+        ),
+    )
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,7 @@ from paperworkshell.domain.manifest_repository import (
 from paperworkshell.domain.page_operations import (
     MAX_PAGE_COUNT,
     NEUTRAL_CONTRAST_FACTOR_MILLIONTHS,
+    OrganizerProjection,
     PageCommandHistory,
     PageOperationError,
     PageOperationErrorCode,
@@ -762,6 +763,38 @@ def build_pdf_export_plan(
 ) -> PdfExportPlan:
     """Resolve exact active page order and rotations from one manifest snapshot."""
 
+    document, projection = _read_pdf_export_snapshot(snapshot, profile)
+    return _build_pdf_export_plan_for_pages(
+        snapshot,
+        document,
+        projection,
+        projection.page_sequence,
+        profile,
+    )
+
+
+def build_pdf_export_plan_for_pages(
+    snapshot: ManifestSnapshot,
+    ordered_page_ids: tuple[UUID, ...],
+    *,
+    profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
+) -> PdfExportPlan:
+    """Resolve one exact nonempty ordered subset of active manifest pages."""
+
+    document, projection = _read_pdf_export_snapshot(snapshot, profile)
+    return _build_pdf_export_plan_for_pages(
+        snapshot,
+        document,
+        projection,
+        ordered_page_ids,
+        profile,
+    )
+
+
+def _read_pdf_export_snapshot(
+    snapshot: ManifestSnapshot,
+    profile: PdfExportProfile,
+) -> tuple[dict[str, object], OrganizerProjection]:
     if type(snapshot) is not ManifestSnapshot or type(profile) is not PdfExportProfile:
         reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "plan.input")
     try:
@@ -776,23 +809,35 @@ def build_pdf_export_plan(
         reject_pdf_export(code, "plan.manifest")
     except Exception:
         reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "plan.manifest")
-    if not projection.page_sequence:
-        reject_pdf_export(PdfExportErrorCode.PLAN_EMPTY, "plan.pages")
+    return document, projection
+
+
+def _build_pdf_export_plan_for_pages(
+    snapshot: ManifestSnapshot,
+    document: dict[str, object],
+    projection: OrganizerProjection,
+    ordered_page_ids: tuple[UUID, ...],
+    profile: PdfExportProfile,
+) -> PdfExportPlan:
+    _validate_ordered_page_ids(ordered_page_ids)
+    state_by_id = {state.page_id: state for state in projection.pages}
+    active_page_ids = frozenset(projection.page_sequence)
+    for page_id in ordered_page_ids:
+        state = state_by_id.get(page_id)
+        if state is None or not state.active or page_id not in active_page_ids:
+            reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "plan.page_state")
     manifest_sources = _parse_manifest_sources(document.get("sources"))
     source_by_id = {source.source_id: source for source in manifest_sources}
-    state_by_id = {state.page_id: state for state in projection.pages}
     _reject_active_overlays(
         document.get("overlays"),
         known_page_ids=frozenset(state_by_id),
-        active_page_ids=frozenset(projection.page_sequence),
+        active_page_ids=frozenset(ordered_page_ids),
     )
     export_sources: list[PdfExportSource] = []
     export_source_by_id: dict[UUID, PdfExportSource] = {}
     export_pages: list[PdfExportPage] = []
-    for output_page_index, page_id in enumerate(projection.page_sequence):
-        state = state_by_id.get(page_id)
-        if state is None or not state.active:
-            reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "plan.page_state")
+    for output_page_index, page_id in enumerate(ordered_page_ids):
+        state = state_by_id[page_id]
         if (
             state.crop is not None
             or state.deskew_angle_millidegrees_clockwise != 0
@@ -828,6 +873,19 @@ def build_pdf_export_plan(
         pages=tuple(export_pages),
         profile=profile,
     )
+
+
+def _validate_ordered_page_ids(ordered_page_ids: tuple[UUID, ...]) -> None:
+    if type(ordered_page_ids) is not tuple:
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "plan.page_ids")
+    if not ordered_page_ids:
+        reject_pdf_export(PdfExportErrorCode.PLAN_EMPTY, "plan.pages")
+    if len(ordered_page_ids) > MAX_PDF_EXPORT_PAGES:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "plan.page_ids")
+    if any(not _is_uuid4(page_id) for page_id in ordered_page_ids):
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "plan.page_ids")
+    if len(set(ordered_page_ids)) != len(ordered_page_ids):
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "plan.page_ids")
 
 
 def _parse_manifest_sources(value: object) -> tuple[_ManifestSource, ...]:

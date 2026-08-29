@@ -14,6 +14,7 @@ import pytest
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.pdf_export import (
+    MAX_PDF_EXPORT_PAGES,
     PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportOutcomeStatus,
@@ -28,7 +29,9 @@ from paperworkshell.overlays.exporting import (
     FlattenedPdfExportPlan,
     FlattenedPdfExportVerificationReport,
     build_flattened_pdf_export_plan,
+    build_flattened_pdf_export_plan_for_pages,
     required_visible_signature_assets,
+    required_visible_signature_assets_for_pages,
 )
 from paperworkshell.overlays.models import (
     SIGNATURE_IMAGE_TERMINOLOGY,
@@ -38,6 +41,7 @@ from paperworkshell.overlays.rendering import OverlayRasterAsset
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000701")
 SOURCE_ID = UUID("20000000-0000-4000-8000-000000000701")
+SECOND_SOURCE_ID = UUID("20000000-0000-4000-8000-000000000702")
 ACTIVE_PAGE = UUID("30000000-0000-4000-8000-000000000701")
 INACTIVE_PAGE = UUID("30000000-0000-4000-8000-000000000702")
 VISIBLE_ASSET = UUID("40000000-0000-4000-8000-000000000701")
@@ -291,10 +295,143 @@ def test_plan_wraps_base_rotation_crop_visible_stack_and_exact_raster_binding() 
     assert not plan.contains_signature_markers
 
 
+def test_ordered_subset_reindexes_pages_sources_and_visible_assets_by_first_use() -> None:
+    document = copy.deepcopy(_document())
+    operations = cast(list[dict[str, object]], document["page_operations"])
+    operations.pop()
+    document["page_sequence"] = [str(ACTIVE_PAGE), str(INACTIVE_PAGE)]
+    sources = cast(list[dict[str, object]], document["sources"])
+    sources[0]["page_count"] = 1
+    second_source = copy.deepcopy(sources[0])
+    second_source.update(
+        {
+            "source_id": str(SECOND_SOURCE_ID),
+            "storage_name": f"{SECOND_SOURCE_ID}.bin",
+            "byte_size": 702,
+            "page_count": 1,
+            "sha256": "9" * 64,
+        }
+    )
+    sources.append(second_source)
+    pages = cast(list[dict[str, object]], document["pages"])
+    pages[1]["source_id"] = str(SECOND_SOURCE_ID)
+    pages[1]["source_page_index"] = 0
+
+    plan = build_flattened_pdf_export_plan_for_pages(
+        _snapshot(document),
+        (INACTIVE_PAGE, ACTIVE_PAGE),
+        {
+            INACTIVE_ASSET: _raster(INACTIVE_ASSET),
+            VISIBLE_ASSET: _raster(),
+        },
+    )
+
+    assert tuple(page.base_page.output_page_index for page in plan.pages) == (0, 1)
+    assert tuple(page.base_page.page_id for page in plan.pages) == (INACTIVE_PAGE, ACTIVE_PAGE)
+    assert tuple(source.source_id for source in plan.base_plan.sources) == (
+        SECOND_SOURCE_ID,
+        SOURCE_ID,
+    )
+    assert tuple(asset.asset_id for asset in plan.assets) == (INACTIVE_ASSET, VISIBLE_ASSET)
+
+    selected_only = build_flattened_pdf_export_plan_for_pages(
+        _snapshot(document),
+        (INACTIVE_PAGE,),
+        {INACTIVE_ASSET: _raster(INACTIVE_ASSET)},
+    )
+    assert tuple(source.source_id for source in selected_only.base_plan.sources) == (
+        SECOND_SOURCE_ID,
+    )
+    assert tuple(asset.asset_id for asset in selected_only.assets) == (INACTIVE_ASSET,)
+
+
+def test_ordered_subset_rejects_empty_duplicate_unknown_and_inactive_pages() -> None:
+    _assert_error(
+        FlattenedPdfExportErrorCode.PLAN_EMPTY,
+        lambda: build_flattened_pdf_export_plan_for_pages(_snapshot(), (), {}),
+    )
+    _assert_error(
+        FlattenedPdfExportErrorCode.MODEL_INVALID,
+        lambda: build_flattened_pdf_export_plan_for_pages(
+            _snapshot(),
+            (ACTIVE_PAGE, ACTIVE_PAGE),
+            {VISIBLE_ASSET: _raster()},
+        ),
+    )
+    _assert_error(
+        FlattenedPdfExportErrorCode.SOURCE_INCONSISTENT,
+        lambda: build_flattened_pdf_export_plan_for_pages(
+            _snapshot(),
+            (UUID("30000000-0000-4000-8000-000000000799"),),
+            {},
+        ),
+    )
+    _assert_error(
+        FlattenedPdfExportErrorCode.SOURCE_INCONSISTENT,
+        lambda: build_flattened_pdf_export_plan_for_pages(
+            _snapshot(),
+            (INACTIVE_PAGE,),
+            {INACTIVE_ASSET: _raster(INACTIVE_ASSET)},
+        ),
+    )
+
+
+def test_ordered_subset_page_count_is_bounded_before_raster_validation() -> None:
+    _assert_error(
+        FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
+        lambda: build_flattened_pdf_export_plan_for_pages(
+            _snapshot(),
+            (ACTIVE_PAGE,) * (MAX_PDF_EXPORT_PAGES + 1),
+            {},
+        ),
+    )
+
+
 def test_required_assets_omit_inactive_and_outside_crop_signature_images() -> None:
     required = required_visible_signature_assets(_snapshot())
 
     assert tuple(asset.asset_id for asset in required) == (VISIBLE_ASSET,)
+
+
+def test_required_assets_for_pages_filter_and_follow_selected_page_order() -> None:
+    document = copy.deepcopy(_document())
+    operations = cast(list[dict[str, object]], document["page_operations"])
+    operations.pop()
+    document["page_sequence"] = [str(ACTIVE_PAGE), str(INACTIVE_PAGE)]
+
+    reordered = required_visible_signature_assets_for_pages(
+        _snapshot(document),
+        (INACTIVE_PAGE, ACTIVE_PAGE),
+    )
+    assert tuple(asset.asset_id for asset in reordered) == (INACTIVE_ASSET, VISIBLE_ASSET)
+
+    selected_only = required_visible_signature_assets_for_pages(
+        _snapshot(document),
+        (INACTIVE_PAGE,),
+    )
+    assert tuple(asset.asset_id for asset in selected_only) == (INACTIVE_ASSET,)
+
+
+@pytest.mark.parametrize(
+    ("ordered_page_ids", "code"),
+    (
+        ((), FlattenedPdfExportErrorCode.PLAN_EMPTY),
+        ((ACTIVE_PAGE, ACTIVE_PAGE), FlattenedPdfExportErrorCode.MODEL_INVALID),
+        (
+            (UUID("30000000-0000-4000-8000-000000000799"),),
+            FlattenedPdfExportErrorCode.SOURCE_INCONSISTENT,
+        ),
+        ((INACTIVE_PAGE,), FlattenedPdfExportErrorCode.SOURCE_INCONSISTENT),
+    ),
+)
+def test_required_assets_for_pages_rejects_invalid_page_selection(
+    ordered_page_ids: tuple[UUID, ...],
+    code: FlattenedPdfExportErrorCode,
+) -> None:
+    _assert_error(
+        code,
+        lambda: required_visible_signature_assets_for_pages(_snapshot(), ordered_page_ids),
+    )
 
 
 @pytest.mark.parametrize("mutation", ("crop", "rotation", "text", "encoded", "raster"))

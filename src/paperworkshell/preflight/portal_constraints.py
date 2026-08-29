@@ -529,12 +529,15 @@ class PortalConstraintEvaluation:
             observed = tuple((item.output_key, item.position) for item in self.outputs)
             if observed != expected:
                 reject_preflight(PreflightErrorCode.MODEL_INVALID, "portal.output_binding")
+            selected_mode = _known_output_mode(self.plan.output_mode)
+            member_parent_units = (
+                0 if selected_mode is PortalOutputMode.ZIP else self.destination_parent_utf16_units
+            )
             for output in self.outputs:
                 normalize_output_filename(
                     output.filename,
-                    destination_parent_utf16_units=self.destination_parent_utf16_units,
+                    destination_parent_utf16_units=member_parent_units,
                 )
-            selected_mode = _known_output_mode(self.plan.output_mode)
             if selected_mode is not PortalOutputMode.ZIP and self.archive is not None:
                 reject_preflight(PreflightErrorCode.MODEL_INVALID, "portal.archive_binding")
             if self.archive is not None:

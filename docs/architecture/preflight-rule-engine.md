@@ -1,12 +1,13 @@
 # Typed preflight rule engine
 
-- Status: PWS-0404 engine plus PWS-0405/PWS-0406 policy contracts
-- Tasks: PWS-0404, PWS-0405, PWS-0406
+- Status: PWS-0404 engine plus PWS-0405/PWS-0406 policies and PWS-0407 package consumption
+- Tasks: PWS-0404, PWS-0405, PWS-0406, PWS-0407
 - Decisions: PWS-D025, PWS-D026, PWS-D037
 - Checklist input: [Checklist assignment architecture](checklist-assignment.md)
 - Structural input: [PDF structural inspection](pdf-structural-inspection.md)
 - Quality input: [Advisory page-quality review](quality-review.md)
 - Portal constraints: [Portal constraints and safe output names](portal-constraints.md)
+- Package consumption: [Verified combined, multi-PDF, and ZIP export](package-export.md)
 
 ## Scope and claim boundary
 
@@ -23,9 +24,9 @@ detached report merely because its finding tuple is empty.
 PWS-0404 provides the rule contract, deterministic engine, canonical fact boundaries, and test
 harness. PWS-0405 supplies the registered completeness, compatibility, privacy-boundary, and
 legibility policies. PWS-0406 supplies generic constraint models, output observation checks, safe
-filename resolution, and the manual editor contract. PWS-0407 remains responsible for constructing
-the exact multi-artifact plan and binding its final filename/encryption observations to engine
-authority.
+filename resolution, and the manual editor contract. PWS-0407 constructs the exact multi-artifact
+plan, binds final filename/encryption/actual-size observations to that authority, and retains every
+constraint finding in its aggregate package report before publication.
 
 Templates remain declarative data. A validated template may supply inert warning or confirmation
 text, identifiers, scopes, and constraints. It cannot supply a callable, expression, import,

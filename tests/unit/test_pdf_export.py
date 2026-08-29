@@ -13,6 +13,7 @@ import pytest
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
+    MAX_PDF_EXPORT_PAGES,
     MAX_PDF_EXPORT_SOURCES,
     PDF_EXPORT_PLAN_VERSION,
     PDF_EXPORT_SEMANTIC_FINGERPRINT_VERSION,
@@ -32,6 +33,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportSourceSignatureState,
     PdfExportVerificationReport,
     build_pdf_export_plan,
+    build_pdf_export_plan_for_pages,
 )
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000111")
@@ -256,6 +258,72 @@ def test_plan_resolves_first_use_sources_exact_order_indices_and_accumulated_rot
     )
     assert plan.page_count == 3
     assert plan.contains_signature_markers
+
+
+def test_ordered_subset_reindexes_pages_and_selects_sources_in_first_use_order() -> None:
+    plan = build_pdf_export_plan_for_pages(_snapshot(), (PAGE_A0, PAGE_B0))
+
+    assert tuple(page.output_page_index for page in plan.pages) == (0, 1)
+    assert tuple(page.page_id for page in plan.pages) == (PAGE_A0, PAGE_B0)
+    assert tuple(source.source_id for source in plan.sources) == (SOURCE_A, SOURCE_B)
+    assert plan.pages[0].source_page_index == 0
+    assert plan.pages[1].source_page_index == 0
+
+    source_subset = build_pdf_export_plan_for_pages(_snapshot(), (PAGE_A1, PAGE_A0))
+    assert tuple(page.page_id for page in source_subset.pages) == (PAGE_A1, PAGE_A0)
+    assert tuple(source.source_id for source in source_subset.sources) == (SOURCE_A,)
+
+
+@pytest.mark.parametrize(
+    ("ordered_page_ids", "code"),
+    (
+        ((), PdfExportErrorCode.PLAN_EMPTY),
+        ((PAGE_A0, PAGE_A0), PdfExportErrorCode.MODEL_INVALID),
+        (
+            (UUID("30000000-0000-4000-8000-000000000199"),),
+            PdfExportErrorCode.SOURCE_INCONSISTENT,
+        ),
+    ),
+)
+def test_ordered_subset_rejects_empty_duplicate_and_unknown_pages(
+    ordered_page_ids: tuple[UUID, ...],
+    code: PdfExportErrorCode,
+) -> None:
+    _assert_error(
+        code,
+        lambda: build_pdf_export_plan_for_pages(_snapshot(), ordered_page_ids),
+    )
+
+
+def test_ordered_subset_rejects_an_inactive_known_page() -> None:
+    document = _document()
+    cast(list[dict[str, object]], document["page_operations"]).append(
+        _operation(
+            4,
+            {
+                "kind": "change_sequence",
+                "reason": "remove",
+                "before_page_ids": [str(PAGE_B0), str(PAGE_A1), str(PAGE_A0)],
+                "after_page_ids": [str(PAGE_B0), str(PAGE_A1)],
+            },
+        )
+    )
+    document["page_sequence"] = [str(PAGE_B0), str(PAGE_A1)]
+
+    _assert_error(
+        PdfExportErrorCode.SOURCE_INCONSISTENT,
+        lambda: build_pdf_export_plan_for_pages(_snapshot(document), (PAGE_A0,)),
+    )
+
+
+def test_ordered_subset_page_count_is_bounded_before_plan_construction() -> None:
+    _assert_error(
+        PdfExportErrorCode.LIMIT_EXCEEDED,
+        lambda: build_pdf_export_plan_for_pages(
+            _snapshot(),
+            (PAGE_A0,) * (MAX_PDF_EXPORT_PAGES + 1),
+        ),
+    )
 
 
 def test_fingerprint_is_the_canonical_path_free_semantic_payload() -> None:

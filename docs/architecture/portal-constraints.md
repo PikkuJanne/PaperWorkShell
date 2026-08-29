@@ -1,7 +1,7 @@
 # Portal constraints and safe output names
 
-- Status: PWS-0406 implementation contract
-- Task: PWS-0406
+- Status: PWS-0406 implementation contract, exercised by PWS-0407 package export
+- Tasks: PWS-0406, PWS-0407
 - Decisions: PWS-D008, PWS-D025, PWS-D029, PWS-D037
 - Preflight authority: [Typed preflight rule engine](preflight-rule-engine.md)
 
@@ -22,9 +22,9 @@ representations and never become finding text or exception arguments.
 The PWS-0404 `OUTPUT_PLAN` dependency remains authoritative for the case revision, opaque output
 keys, order, page membership, and estimated bytes. PWS-0406 does not replace that canonical fact
 with a custom value. Exact filename and encryption observations are correlated to every output key
-and position before evaluation. PWS-0407 will own the final authority-bound adapter when it creates
-an exact output plan; until then, the evaluator is intentionally not registered as a freestanding
-engine rule that could bypass the canonical binding.
+and position before evaluation. PWS-0407 now supplies the final authority-bound plan and rebuilds
+that same canonical fact with verified actual byte sizes. The evaluator remains intentionally
+outside the freestanding engine registry so no caller can bypass that exact binding.
 
 ## Constraint model
 
@@ -51,7 +51,8 @@ The case editor persists only manifest-v2's existing constraint subset: allowed 
 policy, optional numeric limits, and requested output names. Template-only default-mode and
 filename-policy declarations remain private reset authority. Editing a generic default creates a
 clearly labelled case-specific override; it never changes the template or gains template-verified
-status. Selecting the actual output organization remains PWS-0407 work.
+status. The PWS-0407 planner receives one selected output organization and rejects it unless the
+saved case constraints allow it; PWS-0408 owns presentation in the final package workflow.
 
 The application workflow opens a detached state bound to the exact case revision, manifest digest,
 CAS token, and private editor session. The organizer flushes earlier intent before opening, validates
@@ -84,14 +85,17 @@ members. The distinct `resolve_zip_archive_filename` accepts exactly one positio
 derives the outer `.zip` component through the same safety checks. The resolved preview exposes the
 counter index so the change is understandable.
 
-The editor can prove component safety without knowing a destination. PWS-0407 must repeat the
-length check against the actual selected destination. The constraint evaluator already separates a
+The editor can prove component safety without knowing a destination. PWS-0407 repeats the length
+check against the actual selected destination before generation and again in the final constraint
+evaluation. ZIP member components use their archive namespace rather than inheriting the external
+parent-path length; the outer archive alone uses the complete destination budget. The evaluator separates a
 `PortalArchiveObservation` for the outer ZIP from the ordered PDF-member observations bound to the
 canonical plan. Top-level count and total bytes use the archive; per-file size checks cover both the
 archive and members; page/encryption checks apply to members; and `.zip`/`.pdf` extensions are
 checked in their correct namespaces. A ZIP-oriented case-name draft permits at most one requested
-archive name. PWS-0407 must populate and authority-bind the separate archive and member observations
-from the exact final plan rather than changing their meaning or duplicating filename logic.
+archive name. PWS-0407 populates and authority-binds the separate archive and member observations
+from the exact verified plan without changing their meaning or duplicating filename logic. See
+[verified package export](package-export.md).
 
 ## Findings
 
@@ -109,8 +113,8 @@ required-unencrypted policy do not become a clean result. Evaluation checks inde
 
 An empty finding set means only that these configured checks found no violation in the supplied
 exact observations. It is not an acceptance, legal-sufficiency, legibility, privacy, or successful
-export claim. Export remains responsible for atomic publication, reopening, parsing, page-count,
-encryption, structure, and rendering verification under PWS-D029.
+export claim. PWS-0407 combines it with per-PDF reopen, parsing, page-count, encryption, structure,
+and rendering reports plus destination publication evidence before package success under PWS-D029.
 
 ## Standalone and release-interface effects
 

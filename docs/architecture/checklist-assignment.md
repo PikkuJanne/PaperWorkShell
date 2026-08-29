@@ -191,18 +191,20 @@ after simulated persistence failure, and content-free failures/representations. 
 accessibility evidence covers named keyboard alternatives, logical focus order, non-color text,
 plain guidance, drag equivalence, live announcements, Cancel, Apply retry, and scaling.
 
-## Upcoming decisions and implications
+## Downstream boundaries and future decisions
 
-- **PWS-0404 preflight consumption:** preflight may turn these projections into typed findings, but
-  a finding or heuristic must not confirm an assignment. The implication is that checklist
+- **PWS-0404/PWS-0406 preflight consumption:** preflight turns these projections into typed findings
+  and applies saved constraints, but a finding or heuristic cannot confirm an assignment. Checklist
   authority stays here while preflight remains a read-only consumer.
-- **PWS-0406 constraint and filename evaluation:** it will decide how confirmed assignment groups
-  map to configured file/count/size/name checks. The implication is new findings and remediation,
-  not new assignment states or template execution.
-- **PWS-0407 output planning:** it must define how confirmed ordered logical documents feed combined
-  and separate outputs and what blocks export when checklist review remains. The implication is a
-  deterministic downstream plan; it must preserve assignment/page order and cannot silently accept
-  pending suggestions.
+- **PWS-0407 output planning:** confirmed logical documents now feed combined, separate, and ZIP
+  plans in exact requirement/assignment/page order. Pending suggestions, unconfirmed assignments,
+  missing pages, and duplicate pages block the plan instead of being accepted implicitly.
+- **PWS-0408 package summary:** the final screen must explain this confirmed grouping and every
+  output/check without promoting it to portal-acceptance or legal-sufficiency evidence. The
+  implication is presentation over the existing immutable report, not another assignment state.
+- **Durable package history:** export-history v1 describes one PDF and is not repurposed for a
+  multi-file or ZIP package. Adding restart-visible package history would require a new schema and
+  explicit partial/unknown-commit semantics.
 - **Any richer category grammar:** conditional or inferred requirements would materially change the
   trust and versioning model. The implication is a frozen-decision and schema-transition review,
   not an incremental PWS-0403 extension.
