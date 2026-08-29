@@ -3472,7 +3472,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0403
@@ -3508,17 +3508,62 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-08-29'
+    revision: ecc2179c0fd8d6db077f18ea372528c828bb6a53
+    commands:
+    - uv run --locked --no-sync pytest -q tests/integration/test_export_package_destination_windows.py
+      tests/integration/test_package_export.py - passed; all 29 focused Windows destination-transaction and package
+      orchestration tests passed, including partial publication, cleanup faults, cancellation, timeout, disk-full,
+      permission, collision, constraint, and verification failures
+    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the final
+      evidence tree; 570 Python files were formatted, linted, and strictly typed, all 13 import layers across 202 source
+      files were valid, and all 4508 unit tests passed serially
+    - python -m tools.dev test-integration - passed serially; 460 tests passed with 10 disclosed Windows
+      capability/environment skips in 3149.66 seconds
+    - python -m tools.dev test-security; test-accessibility - passed serially; 553 security tests passed with 6
+      disclosed Windows link-capability skips in 230.26 seconds and all 64 accessibility tests passed
+    - python -m tools.dev validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
+      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test; scan-secrets; validate-dependencies - passed on the final clean
+      revision snapshot; the working directory's maintainer-owned untracked document and tmp directory remained
+      untouched and outside task evidence
+    notes:
+    - The pure package planner binds exact saved manifest, template, assignment, and constraint authority to a
+      deterministic semantic fingerprint. It orders pages by template requirement, manifest assignment, then assigned
+      page order, partitions every active page exactly once, and produces deterministic combined-PDF, separate-PDF, or
+      ZIP member names.
+    - Each planned PDF is produced through the existing flattened or searchable verified export path, limited to its
+      exact ordered page subset, then reopened for structure, page count, encryption, rendering, size, and SHA-256
+      checks. Packages that combine an image/scan transform with overlay intent are explicitly blocked rather than
+      silently losing either transformation; a future two-stage pipeline needs its own bounded-storage and visual-
+      equivalence proof.
+    - The safe ZIP writer uses only normalized collision-free PDF leaf names, a fixed deterministic member order and
+      metadata profile, stored entries without ZIP64, directories, comments, extras, or encryption, and bounded
+      cancellation-aware I/O. It reopens the archive and verifies entry order, CRC, size, and SHA-256 for every member.
+    - Final constraint evaluation uses actual produced sizes and the selected destination path. Scoped findings retain
+      every affected output while aggregate check codes are deterministically deduplicated, so repeated failures block
+      truthfully without invalidating the report model.
+    - Destination-local retained-handle staging prevents replacement and path swapping. Combined PDF and ZIP publish as
+      one atomic top-level artifact; separate PDFs publish atomically per file and return an exact partial public
+      inventory when a later rename fails. Pre-publication failures and partial cleanup faults remove private stages,
+      with cancellation and deadlines polled during retained-stage verification.
+    - Export-history-v1 remains the frozen single-PDF history contract. PWS-0407 returns a transient complete package
+      report and makes no restart-recovery claim; durable multi-artifact history would require a separately versioned
+      schema, migrations, and exact partial/uncertain recovery semantics.
+    - PaperWorkShell remains standalone and owns all document data locally. No schema, migration, worker RPC,
+      dependency, network, ResourcePolicy, storage-location, or sibling-runtime coupling was added. The human-readable
+      release interface now records source-level several-PDF and ZIP capability while packaged-build evidence remains
+      explicitly TBD.
+    - Independent adversarial review found duplicate aggregate constraint codes, pre-ownership stage cleanup gaps,
+      suppressed partial-cleanup faults, and missing retained-hash cancellation polling. All findings were fixed with
+      regression coverage; no actionable review finding remains.
 - id: PWS-0408
   milestone: M4
   title: Generate package summary and complete the generic end-to-end pilot
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0402

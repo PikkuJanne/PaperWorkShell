@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.21",
+  "bundle_version": "0.2.22",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 302410,
-      "sha256": "37b6f210f4ef40c7fd48b9ae5354b59dd2dbf955f03d5005a20aeaf23040ad17"
+      "bytes": 306906,
+      "sha256": "21b3dfac74986a2e0e3fe152740eb3287a3d15b418f5be5bd79e7778529efac8"
     },
     {
       "path": "TASKS.schema.json",
@@ -70,8 +70,8 @@
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 17119,
-      "sha256": "f07a4092b2d149b82dff4999e8baaf48539ed5d87182651077c3fe11cff498ce"
+      "bytes": 17392,
+      "sha256": "86269cfa939c953658d1290fbbeb24cd77e8b355039025eae5048aae207f0b8a"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -97,12 +97,12 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [
-      "PWS-0407"
+      "PWS-0408"
     ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0405 is done on implementation revision 870960c and PWS-0406 is done on implementation revision 3d36b73: deterministic completeness, compatibility, advisory-quality, privacy/overlay rules, typed generic/manual portal constraints, Windows-safe collision-resolved filenames, separate ZIP archive/member namespaces, exact case authority, organizer-owned durable persistence, accessible editing, and hostile-input/privacy regressions are verified. PWS-0407 is now ready and is the next critical-path task. It must bind actual combined, multiple-PDF, and ZIP output observations to these constraints, recheck actual destination path length, reopen and verify every PDF, and preserve atomic prior-package success on partial failure. General template confirmations remain revision-bound review requests until a future explicit persistence decision.",
+    "PWS-0407 is done on implementation revision ecc2179c: deterministic combined-PDF, separate-PDF, and ZIP planning; exact ordered page subsets; verified PDF production; safe ordered ZIP creation; actual-output constraint checks; and destination-local no-replace publication with truthful partial inventories are implemented and tested. PWS-0408 is now ready and is the next critical-path task. It owns the accessible human-readable package summary, privacy-bounded optional technical manifest, final-screen messaging, and end-to-end pilot. Durable multi-artifact history remains a future versioned schema and migration decision; mixed image/scan transformation plus overlay intent remains explicitly blocked pending a bounded two-stage pipeline and visual-equivalence proof. Source-level several-PDF and ZIP capability is documented, while packaged-build evidence remains TBD.",
     "This manifest intentionally omits a hash of itself."
   ]
 }
