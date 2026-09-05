@@ -3508,26 +3508,48 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: '2026-08-29'
-    revision: ecc2179c0fd8d6db077f18ea372528c828bb6a53
+    completed_at: '2026-09-05'
+    revision: fa4674de487219e3cf79d619024333588bde2b59
     commands:
     - uv run --locked --no-sync pytest -q tests/integration/test_export_package_destination_windows.py
       tests/integration/test_package_export.py - passed; all 29 focused Windows destination-transaction and package
       orchestration tests passed, including partial publication, cleanup faults, cancellation, timeout, disk-full,
       permission, collision, constraint, and verification failures
-    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the final
-      evidence tree; 570 Python files were formatted, linted, and strictly typed, all 13 import layers across 202 source
-      files were valid, and all 4508 unit tests passed serially
-    - python -m tools.dev test-integration - passed serially; 460 tests passed with 10 disclosed Windows
+    - python -m tools.dev format-check; lint; check-import-boundaries; typecheck; test-unit - passed on the
+      2026-08-29 product implementation and evidence tree before the tooling-only correction; 570 Python files were
+      formatted, linted, and strictly typed, all 13 import layers across 202 source files were valid, and all 4508 unit
+      tests passed serially in 511.13 seconds
+    - python -m tools.dev test-integration - passed serially on 2026-08-29; 460 tests passed with 10 disclosed Windows
       capability/environment skips in 3149.66 seconds
-    - python -m tools.dev test-security; test-accessibility - passed serially; 553 security tests passed with 6
-      disclosed Windows link-capability skips in 230.26 seconds and all 64 accessibility tests passed
-    - python -m tools.dev validate-fixtures; validate-schemas; validate-task-graph; validate-docs;
-      validate-portfolio-boundary; validate-m1-benchmark-report; validate-pws0208-resource-workload;
-      validate-pdf-renderer-benchmark; quality-self-test; scan-secrets; validate-dependencies - passed on the final clean
-      revision snapshot; the working directory's maintainer-owned untracked document and tmp directory remained
-      untouched and outside task evidence
+    - python -m tools.dev test-security; test-accessibility - passed serially on 2026-08-29; 553 security tests passed
+      with 6 disclosed Windows link-capability skips in 230.26 seconds and all 64 accessibility tests passed
+    - .venv\Scripts\python.exe -m pytest -q tests/security/test_secret_scanning.py tests/unit/test_dev_commands.py -
+      passed on 2026-09-05 after the tooling correction; 51 tests and 39 subtests passed in 248.84 seconds
+    - python -m tools.dev format-check; lint; typecheck; check-import-boundaries; validate-docs - passed on 2026-09-05
+      with the final tooling correction; 570 Python files and all 13 import layers across 202 source files were valid
+    - python -m tools.dev validate-fixtures; scan-secrets - passed on 2026-09-05 in a clean, full-history local clone
+      of fa4674de487219e3cf79d619024333588bde2b59; fixtures covered 46 synthetic documents, 15 renderer, 6 transform,
+      and 3 overlay references; secret scanning covered 2479 historical blobs, 271 commit/tag objects, 2514 path/blob
+      pairs, 815 index blobs, and 845 tracked files; maintainer-owned untracked files stayed outside this evidence scope
+    - python -m tools.dev validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary;
+      validate-dependencies - passed on 2026-09-05 in the clean committed source snapshot; task graph and bundle
+      consistency were rechecked after recording completion evidence
+    - python -m tools.dev validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark - passed on 2026-09-05 at da0c781b347e5534fb749991a7e836940113fc1f;
+      these validate existing benchmark evidence and workload definitions, not fresh performance measurements
+    - python -m tools.dev quality-self-test - passed on 2026-09-05 both before and after the tooling correction;
+      all 5 deliberate format, type, schema, task-graph, and staged-binary-secret violations were detected
     notes:
+    - Product implementation was committed as ecc2179c0fd8d6db077f18ea372528c828bb6a53 on 2026-08-29. Completion
+      evidence was finalized on 2026-09-05 after the controlled stop; this record corrects the premature supplemental-
+      validation pass claim in da0c781b347e5534fb749991a7e836940113fc1f. The final source revision adds only a narrow
+      developer-scanner forecast correction, its regressions, and quality-gate documentation to that product behavior.
+    - The resumed secret scan initially rejected affordable history because its forecast counted historical mirror
+      operations twice, overstating anticipated work by 183657802 bytes. The correction forecasts one Git-object read
+      and each actual mirror write. All runtime charges, the 512 MiB work limit, ten-minute deadline, coverage,
+      mutation checks, and cleanup remain unchanged; regressions prove affordable scans, preserved secret detection,
+      genuine capacity rejection, empty framing, and repeated path associations. Independent review found no remaining
+      actionable issue in the correction.
     - The pure package planner binds exact saved manifest, template, assignment, and constraint authority to a
       deterministic semantic fingerprint. It orders pages by template requirement, manifest assignment, then assigned
       page order, partitions every active page exactly once, and produces deterministic combined-PDF, separate-PDF, or
