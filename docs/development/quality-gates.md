@@ -219,8 +219,11 @@ allowance while both dimensions remain fail-closed and bounded.
 One 512 MiB logical-work budget also covers source/configuration reads, Git-object reads, bounded
 scanner batches, mirror writes, and repeated path associations; anticipated historical/index work
 plus known ref/path inputs and framing overhead are combined with completed preflight work and
-rejected before Gitleaks starts. One ten-minute scan-wide deadline covers enumeration, filesystem
-work, tool probes, and scanning, with each subprocess receiving only the remaining time and a
+rejected before Gitleaks starts. The historical/index path forecast accounts for one Git-object
+read and one mirror write, with one additional mirror write for a filename-rule alias. It does
+not charge those same operations twice; runtime byte charges and scan coverage are unchanged.
+One ten-minute scan-wide deadline covers enumeration, filesystem work, tool probes, and scanning,
+with each subprocess receiving only the remaining time and a
 terminal deadline check. The larger deadline accommodates the complete reviewed history without
 changing any byte, item, metadata, logical-work, child-process, or cleanup limit.
 Deterministic per-item mirror namespaces avoid quadratic path-conflict batching.

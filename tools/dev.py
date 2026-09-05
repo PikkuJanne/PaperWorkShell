@@ -2479,8 +2479,11 @@ def _scan_repository_checked(
     anticipated_git_work = (
         anticipated_source_byte_work
         + sum(
-            (entry.object_size + len(RAW_SCAN_SENTINEL))
-            * (6 if _path_rule_alias(entry.relative_path) is not None else 4)
+            # One Git-object read and one framed mirror write, plus an alias write
+            # when needed. The raw-object scan is accounted for separately below.
+            entry.object_size
+            + (entry.object_size + len(RAW_SCAN_SENTINEL))
+            * (2 if _path_rule_alias(entry.relative_path) is not None else 1)
             for entry in (*historical_path_entries, *uncovered_index_entries)
         )
         + 2

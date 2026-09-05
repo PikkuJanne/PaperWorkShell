@@ -542,6 +542,112 @@ class SecretScanningSecurityTests(unittest.TestCase):
         self.assertNotIn("second.bin", output)
         gitleaks_executable.assert_not_called()
 
+    def test_historical_scan_fits_actual_work_budget_without_losing_findings(self) -> None:
+        canary = "_".join(("PWS", "QUALITY", "CANARY")) + "_" + "B" * 32
+        assignment = "".join(("pass", "word = ", '"', "Ab1cD2e3", '"'))
+        cases = (
+            (Path("historical.bin"), 184 * 1024, canary),
+            (Path("node_modules/gitleaks.toml.tf"), 192 * 1024, assignment),
+        )
+        for relative_path, work_limit, secret_text in cases:
+            for contains_secret in (False, True):
+                with (
+                    self.subTest(path=relative_path, contains_secret=contains_secret),
+                    tempfile.TemporaryDirectory() as temporary,
+                ):
+                    root = Path(temporary)
+                    git = _initialize_repository(root)
+                    source = root / relative_path
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    prefix = secret_text.encode("ascii") if contains_secret else b"synthetic clean"
+                    source.write_bytes(prefix + b"\n" + b"x" * (32 * 1024 - len(prefix) - 1))
+                    _commit_all(git, root, "add bounded synthetic historical input")
+                    source.unlink()
+                    _commit_all(git, root, "remove bounded synthetic historical input")
+                    captured_stdout = io.StringIO()
+                    captured_stderr = io.StringIO()
+
+                    with (
+                        patch("tools.dev.MAX_SECRET_SCAN_WORK_BYTES", work_limit),
+                        redirect_stdout(captured_stdout),
+                        redirect_stderr(captured_stderr),
+                    ):
+                        result = scan_repository(root)
+
+                output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
+                self.assertEqual(42 if contains_secret else 0, result, output)
+                if contains_secret:
+                    self.assertIn("SECRET_SCAN_FINDING", output)
+                self.assertNotIn("SECRET_SCAN_INPUT_TOO_LARGE", output)
+                self.assertNotIn(secret_text, output)
+                self.assertNotIn(relative_path.name, output)
+
+    def test_actual_historical_work_over_budget_still_fails_before_scanning(self) -> None:
+        for relative_path in (Path("historical.bin"), Path("node_modules/gitleaks.toml.tf")):
+            with self.subTest(path=relative_path), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                git = _initialize_repository(root)
+                source = root / relative_path
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(b"x" * (32 * 1024))
+                _commit_all(git, root, "add excessive synthetic historical input")
+                source.unlink()
+                _commit_all(git, root, "remove excessive synthetic historical input")
+                captured_stdout = io.StringIO()
+                captured_stderr = io.StringIO()
+
+                with (
+                    patch("tools.dev.MAX_SECRET_SCAN_WORK_BYTES", 96 * 1024),
+                    patch("tools.dev._gitleaks_executable") as gitleaks_executable,
+                    redirect_stdout(captured_stdout),
+                    redirect_stderr(captured_stderr),
+                ):
+                    result = scan_repository(root)
+
+            output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
+            self.assertEqual(1, result, output)
+            self.assertIn("SECRET_SCAN_INPUT_TOO_LARGE", output)
+            self.assertNotIn(relative_path.name, output)
+            gitleaks_executable.assert_not_called()
+
+    def test_path_aware_scan_charges_empty_framing_and_repeated_associations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = _initialize_repository(root)
+            payload = b"synthetic shared bytes\n"
+            cases = (
+                (Path("empty.bin"), b""),
+                (Path("empty.tf"), b""),
+                (Path("shared.bin"), payload),
+                (Path("shared.tf"), payload),
+            )
+            for relative_path, content in cases:
+                (root / relative_path).write_bytes(content)
+            _commit_all(git, root, "add synthetic repeated associations and empty objects")
+            entries = dev_tools._index_entries(git, root, _SecretScanEnumerationBudget())
+            selected_paths = {relative_path for relative_path, _ in cases}
+            selected_entries = [entry for entry in entries if entry.relative_path in selected_paths]
+            self.assertEqual(4, len(selected_entries))
+            self.assertEqual(2, len({entry.object_id for entry in selected_entries}))
+            trusted_ignore = root / "trusted-empty-ignore"
+            trusted_ignore.touch()
+            shutil.copy2(PROJECT_ROOT / ".gitleaks.toml", _trusted_gitleaks_config(trusted_ignore))
+            budget = _SecretScanEnumerationBudget()
+
+            dev_tools._scan_path_aware_blobs(
+                _gitleaks_executable(),
+                git,
+                root,
+                trusted_ignore,
+                selected_entries,
+                category="synthetic associations",
+                budget=budget,
+            )
+
+        # Both empty associations retain framing; the shared blob is read for each
+        # association, and both filename-rule aliases receive their own mirror.
+        self.assertEqual(5 * len(payload) + 6 * len(dev_tools.RAW_SCAN_SENTINEL), budget.work_bytes)
+
     def test_combined_preflight_and_git_work_fails_before_gitleaks_starts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
