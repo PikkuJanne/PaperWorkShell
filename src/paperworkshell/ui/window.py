@@ -22,6 +22,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAccessible,
     QAccessibleAnnouncementEvent,
+    QAction,
     QCloseEvent,
     QImage,
     QKeySequence,
@@ -69,6 +70,7 @@ from paperworkshell.app.organizer import (
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
 )
+from paperworkshell.app.package_workflow import PackageReviewState
 from paperworkshell.app.portal_constraints import (
     ConstraintEditorState,
     is_constraint_announcement_safe,
@@ -94,6 +96,7 @@ from paperworkshell.domain.image_transforms import (
     ImagePageTransformResult,
     ImagePageTransformSnapshot,
 )
+from paperworkshell.domain.package_summary import PackageSummary
 from paperworkshell.domain.page_coordinates import (
     ClockwiseRotation,
     NormalizedPageBox,
@@ -112,6 +115,7 @@ from paperworkshell.domain.resource_policy import (
     select_resource_policy,
 )
 from paperworkshell.domain.signature_images import SignatureImageErrorCode
+from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.backend import (
     OperationCancellation,
     OrganizerBackendCommands,
@@ -119,6 +123,7 @@ from paperworkshell.ui.backend import (
     ShutdownRefusalKind,
     UiFailure,
     UiProgress,
+    is_package_review_state_valid,
 )
 from paperworkshell.ui.checklist import ChecklistEditorDialog
 from paperworkshell.ui.constraints import ConstraintEditorDialog
@@ -132,6 +137,7 @@ from paperworkshell.ui.overlay_tools import (
     CoreOverlayToolsDialog,
     safe_core_overlay_failure,
 )
+from paperworkshell.ui.package_export import PackageExportDialog
 from paperworkshell.ui.scan_review import ScanReviewDialog
 from paperworkshell.ui.signature_images import (
     SignatureImageDeleteDialog,
@@ -604,6 +610,14 @@ class PaperWorkShellWindow(QMainWindow):
         self._portal_constraints_start_operation_id: int | None = None
         self._portal_constraints_apply_operation_id: int | None = None
         self._portal_constraints_cancel_operation_id: int | None = None
+        self._package_export_dialog: PackageExportDialog | None = None
+        self._package_review_state: PackageReviewState | None = None
+        self._package_review_operation_id: int | None = None
+        self._package_export_operation_id: int | None = None
+        self._package_cancel_operation_id: int | None = None
+        self._package_summary_save_operation_id: int | None = None
+        self._package_cancellation: OperationCancellation | None = None
+        self._package_release_failed = False
         self._signature_image_source_path: Path | None = None
         self._signature_image_page_id: UUID | None = None
         self._signature_image_prepare_operation_id: int | None = None
@@ -645,6 +659,13 @@ class PaperWorkShellWindow(QMainWindow):
         self._application_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._application_scroll.setWidget(central)
         self.setCentralWidget(self._application_scroll)
+        file_menu = self.menuBar().addMenu("&File")
+        self._package_export_action = QAction("Review and &export package", self)
+        self._package_export_action.setObjectName("packageExportMenuAction")
+        self._package_export_action.setShortcut(QKeySequence("Ctrl+E"))
+        self._package_export_action.setStatusTip("Review and export the current package. Ctrl+E.")
+        self._package_export_action.triggered.connect(self._request_package_export)
+        file_menu.addAction(self._package_export_action)
         self._build_shortcuts()
         self._connect_backend()
 
@@ -954,6 +975,13 @@ class PaperWorkShellWindow(QMainWindow):
             "requested names. These local checks do not guarantee portal acceptance.",
         )
         self._portal_constraints_button.setAccessibleName("Review package constraints")
+        self._package_export_button = self._action_button(
+            "Review and export package",
+            "packageExportButton",
+            "Review planned files, concrete checks, warnings, and human confirmations, then "
+            "export the package to a selected destination. Ctrl+E.",
+        )
+        self._package_export_button.clicked.connect(self._request_package_export)
         self._undo_button = self._action_button(
             "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
         )
@@ -988,6 +1016,7 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._remove_signature_image_button, 3, 1)
         action_layout.addWidget(self._checklist_button, 3, 2)
         action_layout.addWidget(self._portal_constraints_button, 4, 0, 1, 3)
+        action_layout.addWidget(self._package_export_button, 5, 0, 1, 3)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -1070,6 +1099,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._remove_signature_image_button,
             self._checklist_button,
             self._portal_constraints_button,
+            self._package_export_button,
             self._quality_summary,
             self._quality_check_button,
             self._quality_findings_view,
@@ -1161,6 +1191,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.portal_constraints_cancel_failed.connect(
             self._portal_constraints_cancel_failed
         )
+        self._worker.package_review_ready.connect(self._package_review_ready)
+        self._worker.package_export_ready.connect(self._package_export_ready)
+        self._worker.package_failed.connect(self._package_failed)
+        self._worker.package_progress.connect(self._package_progress)
+        self._worker.package_review_cancelled.connect(self._package_review_cancelled)
+        self._worker.package_summary_saved.connect(self._package_summary_saved)
         self._worker.signature_image_prepared.connect(self._signature_image_prepared)
         self._worker.signature_image_prepare_failed.connect(self._signature_image_prepare_failed)
         self._worker.signature_image_placed.connect(self._signature_image_placed)
@@ -2289,6 +2325,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
             or self._portal_constraints_is_opening_or_active()
+            or self._package_export_is_opening_or_active()
             or self._quality_is_pending_or_running()
             or self._signature_image_is_opening_or_active()
         ):
@@ -2351,6 +2388,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
             or self._portal_constraints_is_opening_or_active()
+            or self._package_export_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2369,6 +2407,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._core_overlay_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
             or self._portal_constraints_is_opening_or_active()
+            or self._package_export_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
             return
@@ -2694,6 +2733,7 @@ class PaperWorkShellWindow(QMainWindow):
         overlay_tools_busy = self._core_overlay_tools_is_opening_or_active()
         checklist_busy = self._checklist_is_opening_or_active()
         portal_constraints_busy = self._portal_constraints_is_opening_or_active()
+        package_export_busy = self._package_export_is_opening_or_active()
         signature_image_busy = self._signature_image_is_opening_or_active()
         self._close_case_button.setEnabled(
             self._controls_enabled
@@ -2704,6 +2744,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not overlay_tools_busy
             and not checklist_busy
             and not portal_constraints_busy
+            and not package_export_busy
             and not signature_image_busy
         )
         editable = (
@@ -2715,6 +2756,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not overlay_tools_busy
             and not checklist_busy
             and not portal_constraints_busy
+            and not package_export_busy
             and not signature_image_busy
         )
         has_selection = editable and 0 <= row < page_count
@@ -2746,6 +2788,25 @@ class PaperWorkShellWindow(QMainWindow):
         self._portal_constraints_button.setEnabled(
             editable and state is not None and state.case_id is not None
         )
+        package_enabled = (
+            editable
+            and state is not None
+            and state.case_id is not None
+            and not state.autosave_pending
+        ) or (
+            self._controls_enabled
+            and self._package_release_failed
+            and self._package_cancel_operation_id is None
+            and not self._closing_requested
+        )
+        self._package_export_button.setEnabled(package_enabled)
+        self._package_export_button.setText(
+            "Retry closing package review"
+            if self._package_release_failed
+            else "Review and export package"
+        )
+        self._package_export_button.setAccessibleName(self._package_export_button.text())
+        self._package_export_action.setEnabled(package_enabled)
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -3470,6 +3531,279 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._error_label)
 
+    def _request_package_export(self) -> None:
+        """Open the saved-case package review through an ordinary keyboard action."""
+
+        if self._package_release_failed and self._package_export_button.isEnabled():
+            self._release_package_review()
+            return
+        if not self._package_export_button.isEnabled() or not self._prepare_for_mutation():
+            return
+        self._package_review_operation_id = self._allocate_operation_id()
+        self._autosave_timer.stop()
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        self._hide_error()
+        self._update_package_availability()
+        self._announce(
+            "Preparing package review. No package files have been saved by this request."
+        )
+        self._commands.package_review_begin_requested.emit(self._package_review_operation_id, None)
+
+    @Slot(int, object)
+    def _package_review_ready(self, operation_id: int, review: object) -> None:
+        if operation_id != self._package_review_operation_id:
+            return
+        self._package_review_operation_id = None
+        if self._closing_requested or not is_package_review_state_valid(review):
+            self._package_review_state = None
+            if self._package_export_dialog is not None:
+                self._package_export_dialog.show_failure()
+            self._release_package_review()
+            return
+        if type(review) is not PackageReviewState:
+            return
+        dialog = self._package_export_dialog
+        if dialog is None:
+            dialog = PackageExportDialog(
+                review.allowed_modes, self, initial_mode=review.selected_mode
+            )
+            dialog.mode_requested.connect(self._refresh_package_mode)
+            dialog.refresh_requested.connect(self._refresh_package_review)
+            dialog.export_requested.connect(self._choose_package_destination)
+            dialog.cancel_requested.connect(self._cancel_package_operation)
+            dialog.summary_save_requested.connect(self._choose_package_summary_destination)
+            dialog.finished.connect(self._package_dialog_finished)
+            self._package_export_dialog = dialog
+        elif dialog.selected_mode is not review.selected_mode:
+            dialog.show_failure()
+            self._package_review_state = None
+            return
+        self._package_review_state = review
+        dialog.show_review(
+            review.summary,
+            export_allowed=review.export_allowed,
+            signed_source_confirmation_required=review.signed_source_confirmation_required,
+            human_review_required=review.human_review_required,
+        )
+        self._update_package_availability()
+        if not dialog.isVisible():
+            dialog.open()
+
+    @Slot(object)
+    def _refresh_package_mode(self, mode: object) -> None:
+        dialog = self._package_export_dialog
+        if (
+            dialog is None
+            or type(mode) is not PortalOutputMode
+            or mode is not dialog.selected_mode
+            or self._package_review_operation_id is not None
+            or self._package_export_operation_id is not None
+            or self._closing_requested
+        ):
+            return
+        self._package_review_state = None
+        self._package_review_operation_id = self._allocate_operation_id()
+        dialog.set_busy("preparing", cancelable=False)
+        self._commands.package_review_refresh_requested.emit(
+            self._package_review_operation_id, mode
+        )
+
+    @Slot()
+    def _refresh_package_review(self) -> None:
+        dialog = self._package_export_dialog
+        if dialog is not None:
+            self._refresh_package_mode(dialog.selected_mode)
+
+    @Slot(bool, bool)
+    def _choose_package_destination(self, signed: bool, human: bool) -> None:
+        dialog = self._package_export_dialog
+        review = self._package_review_state
+        if (
+            dialog is None
+            or review is None
+            or not review.export_allowed
+            or review.selected_mode is not dialog.selected_mode
+            or self._package_export_operation_id is not None
+            or self._package_review_operation_id is not None
+            or self._closing_requested
+            or type(signed) is not bool
+            or type(human) is not bool
+            or (review.signed_source_confirmation_required and not signed)
+            or (review.human_review_required and not human)
+        ):
+            if dialog is not None:
+                dialog.show_failure()
+            return
+        selected = QFileDialog.getExistingDirectory(dialog, "Choose a folder for the package")
+        if not selected:
+            dialog.show_review(
+                review.summary,
+                export_allowed=review.export_allowed,
+                signed_source_confirmation_required=review.signed_source_confirmation_required,
+                human_review_required=review.human_review_required,
+            )
+            return
+        self._package_export_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        dialog.set_busy("generating_pdfs")
+        self._commands.package_export_requested.emit(
+            self._package_export_operation_id,
+            review.review_id,
+            Path(selected),
+            signed,
+            human,
+            self._package_cancellation,
+        )
+
+    @Slot(int, object)
+    def _package_export_ready(self, operation_id: int, summary: object) -> None:
+        if operation_id != self._package_export_operation_id:
+            return
+        self._package_export_operation_id = None
+        self._package_cancellation = None
+        self._package_review_state = None
+        dialog = self._package_export_dialog
+        if dialog is None:
+            return
+        try:
+            if type(summary) is not PackageSummary:
+                raise TypeError
+            dialog.show_result(summary, save_available=True)
+        except BaseException:
+            dialog.show_failure(phase="export")
+
+    @Slot(int, int, int)
+    def _package_progress(self, operation_id: int, completed: int, total: int) -> None:
+        if (
+            operation_id == self._package_export_operation_id
+            and self._package_export_dialog is not None
+        ):
+            self._package_export_dialog.set_progress("generating_pdfs", completed, total)
+
+    @Slot()
+    def _cancel_package_operation(self) -> None:
+        cancellation = self._package_cancellation
+        if cancellation is not None:
+            cancellation.cancel()
+
+    @Slot()
+    def _choose_package_summary_destination(self) -> None:
+        dialog = self._package_export_dialog
+        if dialog is None or self._package_summary_save_operation_id is not None:
+            return
+        selected, _filter = QFileDialog.getSaveFileName(
+            dialog, "Save displayed package summary", "package-summary.txt", "Plain text (*.txt)"
+        )
+        if not selected:
+            dialog.complete_summary_save(succeeded=False)
+            return
+        self._package_summary_save_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        self._commands.package_summary_save_requested.emit(
+            self._package_summary_save_operation_id, Path(selected), self._package_cancellation
+        )
+
+    @Slot(int)
+    def _package_summary_saved(self, operation_id: int) -> None:
+        if operation_id != self._package_summary_save_operation_id:
+            return
+        self._package_summary_save_operation_id = None
+        self._package_cancellation = None
+        if self._package_export_dialog is not None:
+            self._package_export_dialog.complete_summary_save(succeeded=True)
+
+    @Slot(int, str, object)
+    def _package_failed(self, operation_id: int, phase: str, failure: object) -> None:
+        dialog = self._package_export_dialog
+        if phase == "save" and operation_id == self._package_summary_save_operation_id:
+            self._package_summary_save_operation_id = None
+            self._package_cancellation = None
+            if dialog is not None:
+                dialog.complete_summary_save(succeeded=False)
+            return
+        if phase == "cancel" and operation_id == self._package_cancel_operation_id:
+            self._package_cancel_operation_id = None
+            self._package_release_failed = True
+            self._update_package_availability()
+            self._announce(
+                "Package review could not be released safely. Choose Retry closing package "
+                "review before continuing.",
+                assertive=True,
+            )
+            self._focus_package_export_button()
+            return
+        if phase == "review" and operation_id == self._package_review_operation_id:
+            self._package_review_operation_id = None
+            self._package_review_state = None
+        elif phase == "export" and operation_id == self._package_export_operation_id:
+            self._package_export_operation_id = None
+            self._package_cancellation = None
+            self._package_review_state = None
+        else:
+            return
+        if dialog is not None:
+            dialog.show_failure(
+                phase=phase, code=failure.code if type(failure) is UiFailure else None
+            )
+        else:
+            self._announce(
+                "Package review could not be prepared. Check the checklist assignments and saved "
+                "constraints, then try again.",
+                assertive=True,
+            )
+            self._release_package_review()
+        self._update_package_availability()
+
+    @Slot(int)
+    def _package_dialog_finished(self, _result: int) -> None:
+        dialog = self._package_export_dialog
+        if dialog is None:
+            return
+        dialog.deleteLater()
+        self._package_export_dialog = None
+        self._package_review_state = None
+        self._release_package_review()
+
+    def _release_package_review(self) -> None:
+        if self._package_cancel_operation_id is not None:
+            return
+        self._package_cancel_operation_id = self._allocate_operation_id()
+        self._update_package_availability()
+        self._commands.package_review_cancel_requested.emit(self._package_cancel_operation_id)
+
+    @Slot(int)
+    def _package_review_cancelled(self, operation_id: int) -> None:
+        if operation_id != self._package_cancel_operation_id:
+            return
+        self._package_cancel_operation_id = None
+        self._package_release_failed = False
+        self._update_package_availability()
+        if not self._closing_requested and self._package_export_button.isEnabled():
+            QTimer.singleShot(0, self._focus_package_export_button)
+
+    def _focus_package_export_button(self) -> None:
+        if not self._closing_requested and self._package_export_button.isEnabled():
+            self.activateWindow()
+            self._package_export_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._package_export_button)
+
+    def _update_package_availability(self) -> None:
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._update_preview_retry_action()
+
+    def _package_export_is_opening_or_active(self) -> bool:
+        return (
+            self._package_export_dialog is not None
+            or self._package_review_operation_id is not None
+            or self._package_export_operation_id is not None
+            or self._package_cancel_operation_id is not None
+            or self._package_summary_save_operation_id is not None
+            or self._package_release_failed
+        )
+
     def _request_portal_constraints(self) -> None:
         """Open the exclusive, keyboard-complete packaging-constraint editor."""
 
@@ -4093,6 +4427,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._closing_requested
             or self._case_reopen_required
             or self._signature_image_is_opening_or_active()
+            or self._package_export_is_opening_or_active()
             or self._state is None
             or self._state.case_id is None
         ):
@@ -4378,6 +4713,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
+            and not self._package_export_is_opening_or_active()
         )
         self._quality_check_button.setEnabled(check_enabled)
         findings_enabled = (
@@ -4538,6 +4874,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
+            and not self._package_export_is_opening_or_active()
         )
         if self._retry_preview_button.hasFocus() and not enabled:
             self._focus_safe_control()
@@ -4612,6 +4949,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
+            and not self._package_export_is_opening_or_active()
             and not self._signature_image_is_opening_or_active()
         )
         self._update_ocr_language_availability()
@@ -4626,6 +4964,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._core_overlay_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
+            and not self._package_export_is_opening_or_active()
             and not self._signature_image_is_opening_or_active()
             and self._ocr_language_dialog is None
             and self._ocr_language_refresh_request_id is None
@@ -4674,6 +5013,21 @@ class PaperWorkShellWindow(QMainWindow):
 
         if self._closing_requested:
             return
+        package_dialog = self._package_export_dialog
+        if (
+            self._package_review_operation_id is not None
+            or self._package_export_operation_id is not None
+            or self._package_summary_save_operation_id is not None
+        ):
+            self._cancel_package_operation()
+            self._announce(
+                "Wait for the package operation to finish and review its final result before "
+                "closing PaperWorkShell.",
+                assertive=True,
+            )
+            return
+        if package_dialog is not None:
+            package_dialog.reject()
         overlay_dialog = self._core_overlay_tools_dialog
         if (
             overlay_dialog is not None

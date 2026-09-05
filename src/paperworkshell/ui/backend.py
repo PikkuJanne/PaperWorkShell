@@ -25,6 +25,7 @@ from paperworkshell.app.organizer import (
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
 )
+from paperworkshell.app.package_workflow import PackageReviewState, PackageWorkflowError
 from paperworkshell.app.page_previews import (
     PagePreviewError,
     PagePreviewErrorCode,
@@ -62,6 +63,7 @@ from paperworkshell.domain.ocr_languages import (
     resolve_ocr_language_set,
     select_ocr_language_set,
 )
+from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
 from paperworkshell.domain.page_operations import PageOperationError
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
@@ -81,6 +83,7 @@ from paperworkshell.domain.source_ingest import (
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
 from paperworkshell.preflight.models import PreflightError
+from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.templates.models import TemplateLoadError
 
 
@@ -156,6 +159,7 @@ _KNOWN_FAILURES: Final = (
     PagePreviewError,
     PageOperationError,
     OverlayError,
+    PackageWorkflowError,
     PdfThumbnailError,
     PreflightError,
     RecoveryError,
@@ -173,6 +177,14 @@ def sanitize_ui_failure(
 ) -> UiFailure:
     """Map only known typed failures; never stringify an unknown exception."""
 
+    if type(error) is PackageWorkflowError:
+        rebuilt_package = PackageWorkflowError(error.code)
+        return UiFailure(
+            code=rebuilt_package.code.value,
+            message=rebuilt_package.safe_message,
+            retryable=True,
+            operation_id=operation_id,
+        )
     if type(error) is OverlayError:
         try:
             rebuilt_overlay = OverlayError(error.code, error.context)
@@ -328,6 +340,12 @@ class OrganizerBackendWorker(QObject):
     portal_constraints_apply_failed = Signal(int, object)
     portal_constraints_cancelled = Signal(int)
     portal_constraints_cancel_failed = Signal(int, object)
+    package_review_ready = Signal(int, object)
+    package_export_ready = Signal(int, object)
+    package_review_cancelled = Signal(int)
+    package_summary_saved = Signal(int)
+    package_failed = Signal(int, str, object)
+    package_progress = Signal(int, int, int)
     signature_image_prepared = Signal(int, object)
     signature_image_prepare_failed = Signal(int, object)
     signature_image_placed = Signal(int, object)
@@ -1156,6 +1174,126 @@ class OrganizerBackendWorker(QObject):
             return
         self.checklist_cancelled.emit(operation_id)
 
+    @Slot(int, object)
+    def begin_package_review(self, operation_id: int, mode: object) -> None:
+        """Prepare a presentation snapshot while retaining export authority in the backend."""
+
+        self._prepare_package_review(operation_id, mode, refresh=False)
+
+    @Slot(int, object)
+    def refresh_package_review(self, operation_id: int, mode: object) -> None:
+        self._prepare_package_review(operation_id, mode, refresh=True)
+
+    def _prepare_package_review(self, operation_id: int, mode: object, *, refresh: bool) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if mode is not None and type(mode) is not PortalOutputMode:
+                raise TypeError
+            if refresh:
+                if type(mode) is not PortalOutputMode:
+                    raise TypeError
+                review = backend.refresh_package_review(mode)
+            else:
+                review = backend.begin_package_review(mode)
+            if not is_package_review_state_valid(review):
+                raise TypeError
+            state = backend.state
+            if type(state) is not OrganizerViewState or state.autosave_pending:
+                raise TypeError
+            self.state_changed.emit(state)
+            self.package_review_ready.emit(operation_id, review)
+
+        self._run_package_action(operation_id, "review", action)
+
+    @Slot(int, object, object, bool, bool, object)
+    def export_package(
+        self,
+        operation_id: int,
+        review_id: object,
+        destination_parent: object,
+        signed_source_confirmed: bool,
+        human_review_confirmed: bool,
+        cancellation: object,
+    ) -> None:
+        """Run the exact reviewed export on the serialized backend thread."""
+
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(review_id) is not UUID
+                or review_id.version != 4
+                or not isinstance(destination_parent, Path)
+                or type(signed_source_confirmed) is not bool
+                or type(human_review_confirmed) is not bool
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            summary = backend.export_package(
+                destination_parent,
+                review_id=review_id,
+                signed_source_confirmed=signed_source_confirmed,
+                human_review_confirmed=human_review_confirmed,
+                cancellation=cancellation.cancelled,
+                progress=lambda completed, total: self._package_progress(
+                    operation_id, completed, total
+                ),
+            )
+            if type(summary) is not PackageSummary or summary.status in {
+                PackageSummaryStatus.PLANNED,
+                PackageSummaryStatus.NEEDS_REVIEW,
+            }:
+                raise TypeError
+            summary.to_plain_text()
+            self.package_export_ready.emit(operation_id, summary)
+
+        self._run_package_action(operation_id, "export", action)
+
+    @Slot(int)
+    def cancel_package_review(self, operation_id: int) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            backend.cancel_package_review()
+            self.package_review_cancelled.emit(operation_id)
+
+        self._run_package_action(operation_id, "cancel", action)
+
+    @Slot(int, object, object)
+    def save_package_summary(
+        self, operation_id: int, destination: object, cancellation: object
+    ) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if not isinstance(destination, Path) or type(cancellation) is not OperationCancellation:
+                raise TypeError
+            backend.save_package_summary(destination, cancellation=cancellation.cancelled)
+            self.package_summary_saved.emit(operation_id)
+
+        self._run_package_action(operation_id, "save", action)
+
+    def _package_progress(self, operation_id: int, completed: int, total: int) -> None:
+        if (
+            type(completed) is not int
+            or type(total) is not int
+            or not 1 <= total <= 1_000_000
+            or not 0 <= completed <= total
+        ):
+            raise TypeError
+        self.package_progress.emit(operation_id, completed, total)
+
+    def _run_package_action(
+        self,
+        operation_id: int,
+        phase: str,
+        action: Callable[[OrganizerBackend], None],
+    ) -> None:
+        try:
+            if type(operation_id) is not int or operation_id <= 0:
+                raise TypeError
+            backend = self._backend
+            if backend is None:
+                raise TypeError
+            action(backend)
+        except BaseException as error:
+            self.package_failed.emit(
+                operation_id, phase, sanitize_ui_failure(error, operation_id=operation_id)
+            )
+
     @Slot(int)
     def begin_portal_constraints(self, operation_id: int) -> None:
         """Open one exact path-free constraint draft on the backend thread."""
@@ -1928,6 +2066,35 @@ def _scan_review_apply_transition_is_valid(
     return True
 
 
+def is_package_review_state_valid(value: object) -> bool:
+    """Reject malformed display state without touching document content or authority."""
+
+    if type(value) is not PackageReviewState:
+        return False
+    try:
+        if (
+            type(value.review_id) is not UUID
+            or value.review_id.version != 4
+            or type(value.summary) is not PackageSummary
+            or value.summary.status
+            not in {PackageSummaryStatus.PLANNED, PackageSummaryStatus.NEEDS_REVIEW}
+            or type(value.allowed_modes) is not tuple
+            or not value.allowed_modes
+            or any(type(mode) is not PortalOutputMode for mode in value.allowed_modes)
+            or len(set(value.allowed_modes)) != len(value.allowed_modes)
+            or type(value.selected_mode) is not PortalOutputMode
+            or value.selected_mode not in value.allowed_modes
+            or type(value.export_allowed) is not bool
+            or type(value.signed_source_confirmation_required) is not bool
+            or type(value.human_review_required) is not bool
+        ):
+            return False
+        value.summary.to_plain_text()
+    except BaseException:
+        return False
+    return True
+
+
 class OrganizerBackendCommands(QObject):
     """Queued command surface owned by the GUI thread."""
 
@@ -1957,6 +2124,11 @@ class OrganizerBackendCommands(QObject):
     portal_constraints_apply_requested = Signal(int, object)
     portal_constraints_cancel_requested = Signal(int, object)
     portal_constraints_abort_requested = Signal(int)
+    package_review_begin_requested = Signal(int, object)
+    package_review_refresh_requested = Signal(int, object)
+    package_export_requested = Signal(int, object, object, bool, bool, object)
+    package_review_cancel_requested = Signal(int)
+    package_summary_save_requested = Signal(int, object, object)
     signature_image_prepare_requested = Signal(int, object, object, object)
     signature_image_place_requested = Signal(int, object, object)
     signature_image_cancel_requested = Signal(int, object)
@@ -2001,6 +2173,11 @@ class OrganizerBackendCommands(QObject):
         self.portal_constraints_apply_requested.connect(worker.apply_portal_constraints)
         self.portal_constraints_cancel_requested.connect(worker.cancel_portal_constraints)
         self.portal_constraints_abort_requested.connect(worker.abort_portal_constraints)
+        self.package_review_begin_requested.connect(worker.begin_package_review)
+        self.package_review_refresh_requested.connect(worker.refresh_package_review)
+        self.package_export_requested.connect(worker.export_package)
+        self.package_review_cancel_requested.connect(worker.cancel_package_review)
+        self.package_summary_save_requested.connect(worker.save_package_summary)
         self.signature_image_prepare_requested.connect(worker.prepare_signature_image)
         self.signature_image_place_requested.connect(worker.place_signature_image)
         self.signature_image_cancel_requested.connect(worker.cancel_signature_image)

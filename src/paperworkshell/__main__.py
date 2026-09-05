@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
 from paperworkshell.app.checklist import ChecklistWorkflowService
@@ -16,8 +18,10 @@ from paperworkshell.app.export_history import (
     PdfExportRetryRecoveryService,
 )
 from paperworkshell.app.flattened_pdf_export import (
+    FlattenedPdfExportProgressSink,
     FlattenedPdfExportService,
     FlattenedPdfRasterizer,
+    VerifiedFlattenedPdfCandidate,
 )
 from paperworkshell.app.ocr import CommittedSourcePageStore, OcrService
 from paperworkshell.app.ocr_languages import (
@@ -28,6 +32,13 @@ from paperworkshell.app.ocr_languages import (
     unavailable_ocr_language_manager,
 )
 from paperworkshell.app.organizer import OrganizerBackend
+from paperworkshell.app.package_pdf_export import (
+    PackagePdfCandidateErrorCode,
+    PackagePdfCandidateProducer,
+    PackagePdfSourceStore,
+    reject_package_pdf_candidate,
+)
+from paperworkshell.app.package_workflow import PackageWorkflowService
 from paperworkshell.app.page_previews import PagePreviewService
 from paperworkshell.app.pdf_export import PdfExportService
 from paperworkshell.app.portal_constraints import PortalConstraintWorkflowService
@@ -41,11 +52,19 @@ from paperworkshell.app.recovery import (
     StartupRecoveryDiagnosticSink,
     StartupRecoveryService,
 )
-from paperworkshell.app.searchable_pdf_export import SearchablePdfExportService
+from paperworkshell.app.searchable_pdf_export import (
+    SearchablePdfExportProgressSink,
+    SearchablePdfExportService,
+    VerifiedSearchablePdfCandidate,
+)
 from paperworkshell.app.signature_images import SignatureImageWorkflowCoordinator
 from paperworkshell.app.source_ingest import (
+    CancellationProbe,
+    CommittedPdfSourceBatchLease,
     CommittedPdfSourceBatchStore,
+    CommittedSearchablePdfSourceBatchLease,
     CommittedSearchablePdfSourceBatchStore,
+    DeadlineProbe,
     SourceIngestService,
 )
 from paperworkshell.app.source_inspection import SourceInspectorRouter
@@ -70,13 +89,18 @@ from paperworkshell.domain.recovery import RecoveryErrorCode, reject_recovery
 from paperworkshell.domain.resource_policy import ResourcePolicy, select_resource_policy
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportErrorCode,
+    SearchablePdfExportPlan,
     reject_searchable_pdf_export,
 )
+from paperworkshell.export.package_service import WindowsPackageExportService
+from paperworkshell.export.package_summary import build_package_summary
 from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportErrorCode,
+    FlattenedPdfExportPlan,
     reject_flattened_pdf_export,
 )
+from paperworkshell.overlays.signature_rasters import SignatureImageOverlayRasterSource
 from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_destination import WindowsExportDestination
@@ -134,7 +158,10 @@ from paperworkshell.worker.desktop_composition import (
     create_searchable_pdf_export_worker_composition,
     create_searchable_pdf_export_worker_composition_config,
 )
-from paperworkshell.worker.protocol.models import ResourceLimits
+from paperworkshell.worker.protocol.models import (
+    MAX_FLATTENED_PDF_EXPORT_INPUT_REFERENCES,
+    ResourceLimits,
+)
 
 _PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
 _FLATTENED_PDF_OUTPUT_BYTES = 512 * 1024 * 1024
@@ -412,6 +439,182 @@ def build_windows_searchable_pdf_export_service(
     )
 
 
+class _LazyPackageFlattenedBroker:
+    """Admit a PDF-only worker only when this package uses that pipeline."""
+
+    def __init__(
+        self,
+        resources: DesktopApplicationResourceContext,
+        stack: ExitStack,
+    ) -> None:
+        self._resources = resources
+        self._stack = stack
+        self._composition: FlattenedPdfExportWorkerComposition | None = None
+
+    @property
+    def maximum_output_bytes(self) -> int:
+        return build_windows_flattened_pdf_export_limits(
+            self._resources.resource_policy
+        ).output_bytes
+
+    @property
+    def maximum_input_references(self) -> int:
+        return MAX_FLATTENED_PDF_EXPORT_INPUT_REFERENCES
+
+    def export(
+        self,
+        plan: FlattenedPdfExportPlan,
+        sources: CommittedPdfSourceBatchLease,
+        rasters: Mapping[UUID, SignatureImageOverlayRasterSource],
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: FlattenedPdfExportProgressSink,
+    ) -> VerifiedFlattenedPdfCandidate:
+        _require_package_runtime_active(deadline, cancellation)
+        if self._composition is None:
+            composition = build_windows_flattened_pdf_export_worker_composition(self._resources)
+            self._stack.callback(composition.close)
+            if (
+                composition.closed
+                or composition.heavy_operations is not self._resources.heavy_operations
+            ):
+                reject_package_pdf_candidate(
+                    PackagePdfCandidateErrorCode.MODEL_INVALID, "package.runtime_composition"
+                )
+            self._composition = composition
+        _require_package_runtime_active(deadline, cancellation)
+        return self._composition.exporter.export(
+            plan,
+            sources,
+            rasters,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
+
+
+class _LazyPackageSearchableBroker:
+    """Keep optional OCR admission out of startup and PDF-only exports."""
+
+    def __init__(
+        self,
+        resources: DesktopApplicationResourceContext,
+        stack: ExitStack,
+    ) -> None:
+        self._resources = resources
+        self._stack = stack
+        self._composition: SearchablePdfExportWorkerComposition | None = None
+
+    @property
+    def maximum_output_bytes(self) -> int:
+        return build_windows_searchable_pdf_export_limits(
+            self._resources.resource_policy
+        ).output_bytes
+
+    def export(
+        self,
+        plan: SearchablePdfExportPlan,
+        sources: CommittedSearchablePdfSourceBatchLease,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: SearchablePdfExportProgressSink,
+    ) -> VerifiedSearchablePdfCandidate:
+        _require_package_runtime_active(deadline, cancellation)
+        if self._composition is None:
+            composition = build_windows_searchable_pdf_export_worker_composition(self._resources)
+            self._stack.callback(composition.close)
+            if (
+                composition.closed
+                or composition.heavy_operations is not self._resources.heavy_operations
+                or composition.ocr_runtime_authority_id != self._resources._ocr_runtime_authority_id
+            ):
+                reject_package_pdf_candidate(
+                    PackagePdfCandidateErrorCode.MODEL_INVALID, "package.runtime_composition"
+                )
+            self._composition = composition
+        _require_package_runtime_active(deadline, cancellation)
+        return self._composition.exporter.export(
+            plan,
+            sources,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
+
+
+@contextmanager
+def _package_pdf_producer_context(
+    sources: PackagePdfSourceStore,
+    rasterizer: FlattenedPdfRasterizer,
+    resources: DesktopApplicationResourceContext,
+) -> Iterator[PackagePdfCandidateProducer]:
+    """Retain at most one composition per pipeline for one package attempt."""
+
+    selected_resources = _require_application_resource_context(resources, required=True)
+    with ExitStack() as stack:
+        yield PackagePdfCandidateProducer(
+            sources,
+            rasterizer,
+            _LazyPackageFlattenedBroker(selected_resources, stack),
+            _LazyPackageSearchableBroker(selected_resources, stack),
+            selected_resources.resource_policy,
+            ocr_languages=selected_resources.ocr_languages,
+        )
+
+
+def _require_package_runtime_active(
+    deadline: DeadlineProbe,
+    cancellation: CancellationProbe,
+) -> None:
+    try:
+        cancelled = cancellation()
+        expired = deadline()
+    except BaseException:
+        reject_package_pdf_candidate(
+            PackagePdfCandidateErrorCode.INTERNAL_ERROR, "package.runtime_control"
+        )
+    if type(cancelled) is not bool or type(expired) is not bool:
+        reject_package_pdf_candidate(
+            PackagePdfCandidateErrorCode.INTERNAL_ERROR, "package.runtime_control"
+        )
+    if cancelled:
+        reject_package_pdf_candidate(
+            PackagePdfCandidateErrorCode.CANCELLED, "package.runtime_cancelled"
+        )
+    if expired:
+        reject_package_pdf_candidate(
+            PackagePdfCandidateErrorCode.TIMED_OUT, "package.runtime_deadline"
+        )
+
+
+def build_windows_package_export_service(
+    sources: PackagePdfSourceStore,
+    rasterizer: FlattenedPdfRasterizer,
+    *,
+    resources: DesktopApplicationResourceContext,
+) -> WindowsPackageExportService:
+    """Bind package export and its companion summary to the same resource policy."""
+
+    selected_resources = _require_application_resource_context(resources, required=True)
+    if not isinstance(sources, PackagePdfSourceStore) or not isinstance(
+        rasterizer, FlattenedPdfRasterizer
+    ):
+        reject_package_pdf_candidate(
+            PackagePdfCandidateErrorCode.MODEL_INVALID, "package.runtime_service"
+        )
+    return WindowsPackageExportService(
+        lambda: _package_pdf_producer_context(sources, rasterizer, selected_resources),
+        WindowsExportDestination(
+            minimum_free_space_reserve_bytes=(
+                selected_resources.resource_policy.minimum_export_free_space_reserve_bytes
+            )
+        ),
+        selected_resources.resource_policy,
+    )
+
+
 def build_backend(
     resources: DesktopApplicationResourceContext | None = None,
 ) -> OrganizerBackend:
@@ -674,6 +877,18 @@ def _build_backend(
                 template_loader,
                 GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
                 as_of=template_as_of,
+            ),
+            package_workflow=PackageWorkflowService(
+                repository,
+                template_loader,
+                GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
+                as_of=template_as_of,
+                exporter=build_windows_package_export_service(
+                    source_store,
+                    composition.signature_image_rasterizer,
+                    resources=selected_resources,
+                ),
+                summary_builder=build_package_summary,
             ),
         )
     except BaseException:

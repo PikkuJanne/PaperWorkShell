@@ -148,9 +148,9 @@ computes SHA-256, and records non-destructive intent against that copy.
 | One combined PDF | Supported product output; a verified single-PDF path is implemented | **TBD after packaged testing** |
 | Several named PDFs | Supported product output; source-level deterministic planning, verification, and per-artifact no-replace publication are implemented | **TBD after packaged testing** |
 | ZIP package | Supported product output; source-level safe ordered ZIP creation, reopen verification, and single-artifact no-replace publication are implemented | **TBD after packaged testing** |
-| Human-readable package summary | Planned M4 accessible output | **TBD** |
+| Human-readable package summary | Source-tree plain-text review/result and explicit `.txt` companion are implemented; human pilot acceptance remains pending | **TBD after packaged testing** |
 | Separate printable checklist artifact | No independently frozen output contract | **TBD or not supported with reason** |
-| Optional technical manifest | Planned only when documented and safe | **TBD** |
+| Optional technical manifest | Not implemented in PWS-0408; no machine-readable output contract is frozen | **TBD or not supported with reason** |
 | Portable project/migration export | No independently frozen format | **Not currently supported** |
 | Direct portal submission | Outside product boundary | **Not supported** |
 

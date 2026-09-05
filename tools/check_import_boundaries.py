@@ -35,6 +35,12 @@ KNOWN_LAYERS: Final = frozenset(REQUIRED_PACKAGES)
 DESKTOP_ENTRYPOINT: Final = f"{PROJECT_PACKAGE}.__main__"
 DESKTOP_WORKER_COMPOSITION_MODULE: Final = f"{PROJECT_PACKAGE}.worker.desktop_composition"
 DESKTOP_EXPORT_DESTINATION_MODULE: Final = f"{PROJECT_PACKAGE}.export.pdf_destination"
+DESKTOP_PACKAGE_EXPORT_MODULES: Final = frozenset(
+    {
+        f"{PROJECT_PACKAGE}.export.package_service",
+        f"{PROJECT_PACKAGE}.export.package_summary",
+    }
+)
 ROOT_IMPORT_LAYERS: Final = frozenset((*KNOWN_LAYERS, "__main__"))
 UI_FACING_LAYERS: Final = frozenset(("app", "ui", "desktop"))
 DOCUMENT_ADAPTER_LAYERS: Final = frozenset(("pdf", "imaging", "ocr"))
@@ -271,8 +277,8 @@ def _target_violation(
             _is_within(importer, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES
         )
         is_desktop_worker_composition = importer == DESKTOP_WORKER_COMPOSITION_MODULE
-        is_desktop_export_destination = (
-            importer == DESKTOP_ENTRYPOINT and target == DESKTOP_EXPORT_DESTINATION_MODULE
+        is_desktop_export_destination = importer == DESKTOP_ENTRYPOINT and (
+            target == DESKTOP_EXPORT_DESTINATION_MODULE or target in DESKTOP_PACKAGE_EXPORT_MODULES
         )
 
         if is_desktop_worker_composition and target_layer in DOCUMENT_ADAPTER_LAYERS:

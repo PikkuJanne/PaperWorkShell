@@ -378,6 +378,67 @@ def test_cancel_is_review_bound_and_never_saves_confirmation() -> None:
     assert repository.snapshot.document["confirmations"] == []
 
 
+def test_consent_returns_exact_save_snapshot_without_reloading_later_edits() -> None:
+    class _ConcurrentRepository(_Repository):
+        def save(
+            self,
+            case_id: UUID,
+            candidate: Mapping[str, object],
+            *,
+            expected_revision: int,
+            expected_sha256: str,
+            expected_cas_token: str,
+        ) -> ManifestSaveResult:
+            committed = super().save(
+                case_id,
+                candidate,
+                expected_revision=expected_revision,
+                expected_sha256=expected_sha256,
+                expected_cas_token=expected_cas_token,
+            )
+            newer = committed.snapshot.document
+            newer["revision"] = committed.snapshot.revision + 1
+            newer["unrelated_edit"] = "SYNTHETIC_CHANGE_AFTER_CONSENT"
+            self.snapshot = ManifestSnapshot(
+                CASE_ID, 2, 9, newer, "c" * 64, "signed-source-cas-0003"
+            )
+            return committed
+
+    repository = _ConcurrentRepository(_snapshot([]))
+    service = _service(repository)
+    review = service.review(CASE_ID, _risky_sources()[:1])
+    outcome, saved = service.decide_with_snapshot(
+        review, SignedSourceConfirmationChoice.CREATE_UNSIGNED_DERIVATIVE
+    )
+    assert outcome.status is SignedSourceConfirmationOutcomeStatus.CONFIRMED
+    assert outcome.manifest_revision == saved.revision == 8
+    assert saved.sha256 == "b" * 64
+    assert "unrelated_edit" not in saved.document
+    assert repository.snapshot.revision == 9
+    assert repository.load_calls == 2  # Initial review and pre-save authority only.
+
+
+@pytest.mark.parametrize("cancel", (False, True))
+def test_no_save_consent_paths_return_the_exact_current_snapshot(cancel: bool) -> None:
+    original = _snapshot([] if cancel else [_confirmation(MARKER_SOURCE_ID)])
+    repository = _Repository(original)
+    service = _service(repository)
+    review = service.review(CASE_ID, _risky_sources()[:1])
+    outcome, returned = service.decide_with_snapshot(
+        review,
+        SignedSourceConfirmationChoice.CANCEL
+        if cancel
+        else SignedSourceConfirmationChoice.CREATE_UNSIGNED_DERIVATIVE,
+    )
+    assert returned is original
+    assert repository.save_calls == 0
+    assert outcome.status is (
+        SignedSourceConfirmationOutcomeStatus.CANCELLED
+        if cancel
+        else SignedSourceConfirmationOutcomeStatus.ALREADY_CONFIRMED
+    )
+
+
 @pytest.mark.parametrize("choice", tuple(SignedSourceConfirmationChoice))
 def test_changed_manifest_rejects_stale_confirm_or_cancel_before_save(
     choice: SignedSourceConfirmationChoice,

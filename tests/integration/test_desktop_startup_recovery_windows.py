@@ -148,6 +148,9 @@ class _UnusedWorkerPort:
     def preview_prepared(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not rasterize a signature image")
 
+    def rasterize_committed(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not read a committed signature image")
+
 
 class _Composition:
     source_inspector = _UnusedWorkerPort()

@@ -594,6 +594,7 @@ class BrokeredPdfExporter:
                             operation_id,
                             generation,
                             page_count=plan.page_count,
+                            worker_page_capacity=limits.page_count,
                             deadline=deadline,
                             cancellation=cancellation,
                             progress=progress,
@@ -670,6 +671,7 @@ class BrokeredPdfExporter:
         generation: int,
         *,
         page_count: int,
+        worker_page_capacity: int,
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: PdfExportProgressSink,
@@ -694,8 +696,8 @@ class BrokeredPdfExporter:
                     if (
                         current.stage is not ProgressStage.PROCESSING
                         or current.unit is not ProgressUnit.PAGES
-                        or current.total_units != page_count
-                        or current.completed_units > page_count
+                        or current.total_units != worker_page_capacity
+                        or current.completed_units > worker_page_capacity
                     ):
                         reject_pdf_export(
                             PdfExportErrorCode.REPORT_INVALID,
@@ -703,7 +705,9 @@ class BrokeredPdfExporter:
                         )
                     domain_progress = PdfExportProgress(
                         PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING,
-                        current.completed_units,
+                        # Worker capacity also bounds complete source parsing;
+                        # UI progress stays tied to the exact output-page plan.
+                        current.completed_units * page_count // worker_page_capacity,
                         page_count,
                     )
                     if domain_progress != last_progress:
@@ -780,8 +784,9 @@ def _require_source_binding(
 
 def _operation_limits(policy: ResourceLimits, plan: PdfExportPlan) -> ResourceLimits:
     source_bytes = sum(source.byte_size for source in plan.sources)
+    required_page_capacity = max(plan.page_count, *(source.page_count for source in plan.sources))
     if (
-        plan.page_count > policy.page_count
+        required_page_capacity > policy.page_count
         or source_bytes > policy.temporary_storage_bytes
         or policy.output_bytes > policy.temporary_storage_bytes - source_bytes
     ):
@@ -792,7 +797,9 @@ def _operation_limits(policy: ResourceLimits, plan: PdfExportPlan) -> ResourceLi
         memory_bytes=policy.memory_bytes,
         temporary_storage_bytes=policy.temporary_storage_bytes,
         output_bytes=policy.output_bytes,
-        page_count=plan.page_count,
+        # A page subset still parses complete retained sources; output count is
+        # independently constrained and verified against the immutable plan.
+        page_count=required_page_capacity,
         pixel_count=PDF_EXPORT_VERIFICATION_PIXELS,
     )
 

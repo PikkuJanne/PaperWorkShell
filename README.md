@@ -35,8 +35,10 @@ path-free fact projections, deterministic blocking/warning/confirmation findings
 dependency-aware re-evaluation. It now includes concrete completeness, legibility, privacy, and
 compatibility policies, plus generic portal constraints, deterministic Windows-safe filename
 resolution, and an accessible case-constraint editor with organizer-owned durable persistence.
-The next Milestone 4 critical-path implementation is the verified combined-PDF, multiple-PDF, and
-ZIP export planner (PWS-0407). The repository contains the
+Verified combined-PDF, multiple-PDF, and ZIP planning and publication are implemented (PWS-0407).
+PWS-0408 connects them to the desktop review and [plain-text package summary](docs/architecture/package-summary.md);
+the [first-time-user and keyboard pilot](docs/development/pws0408-pilot.md) still requires human
+acceptance before the PWS-0409 v0.1 gate can start. The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact

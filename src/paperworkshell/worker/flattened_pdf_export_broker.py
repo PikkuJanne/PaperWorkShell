@@ -614,6 +614,7 @@ class BrokeredFlattenedPdfExporter:
                             operation_id,
                             generation,
                             page_count=plan.page_count,
+                            worker_page_capacity=limits.page_count,
                             deadline=deadline,
                             cancellation=cancellation,
                             progress=progress,
@@ -759,6 +760,7 @@ class BrokeredFlattenedPdfExporter:
         generation: int,
         *,
         page_count: int,
+        worker_page_capacity: int,
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink,
@@ -797,8 +799,8 @@ class BrokeredFlattenedPdfExporter:
                     if (
                         current.stage is not ProgressStage.PROCESSING
                         or current.unit is not ProgressUnit.PAGES
-                        or current.total_units != page_count
-                        or current.completed_units > page_count
+                        or current.total_units != worker_page_capacity
+                        or current.completed_units > worker_page_capacity
                     ):
                         reject_flattened_pdf_export(
                             FlattenedPdfExportErrorCode.REPORT_INVALID,
@@ -806,7 +808,10 @@ class BrokeredFlattenedPdfExporter:
                         )
                     domain_progress = PdfExportProgress(
                         PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING,
-                        current.completed_units,
+                        # The closed worker reports its bounded parse capacity,
+                        # including complete sources for an output-page subset.
+                        # Present only the corresponding exact output-page work.
+                        current.completed_units * page_count // worker_page_capacity,
                         page_count,
                     )
                     if domain_progress != last_progress:
@@ -1055,6 +1060,7 @@ def _preflight_operation_limits(
     raster_bytes = sum(binding.source.metadata.byte_count for binding in rasters)
     if (
         plan.page_count > policy.page_count
+        or any(source.page_count > policy.page_count for source in plan.base_plan.sources)
         or raster_bytes > policy.memory_bytes
         or raster_bytes // 4 > policy.pixel_count
         or source_bytes > policy.temporary_storage_bytes
@@ -1088,9 +1094,13 @@ def _operation_limits(
     source_bytes = sum(source.byte_size for source in plan.base_plan.sources)
     raster_bytes = sum(binding.source.metadata.byte_count for binding in rasters)
     input_bytes = source_bytes + raster_bytes + plan_byte_size
+    required_page_capacity = max(
+        plan.page_count, *(source.page_count for source in plan.base_plan.sources)
+    )
     if (
         type(plan_byte_size) is not int
         or plan_byte_size < 1
+        or required_page_capacity > policy.page_count
         or input_bytes > policy.temporary_storage_bytes
         or policy.output_bytes > policy.temporary_storage_bytes - input_bytes
     ):
@@ -1104,7 +1114,9 @@ def _operation_limits(
         memory_bytes=policy.memory_bytes,
         temporary_storage_bytes=policy.temporary_storage_bytes,
         output_bytes=policy.output_bytes,
-        page_count=plan.page_count,
+        # Source inspection must admit the complete immutable source even when
+        # this PDF uses only a subset. Output count is still verified from plan.
+        page_count=required_page_capacity,
         pixel_count=policy.pixel_count,
     )
 

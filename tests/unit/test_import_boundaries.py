@@ -412,6 +412,8 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
             "FlattenedPdfExportWorkerComposition\n"
             "from paperworkshell.export.pdf_destination import "
             "WindowsVerifiedPdfDestination\n"
+            "from paperworkshell.export.package_service import WindowsPackageExportService\n"
+            "from paperworkshell.export.package_summary import build_package_summary\n"
             "import paperworkshell.export\n",
             module="paperworkshell.__main__",
             package="paperworkshell",
@@ -440,6 +442,21 @@ def test_application_layer_cannot_import_concrete_storage_adapters() -> None:
     )
 
     assert {violation.code for violation in violations} == {"ARCH_APP_ADAPTER"}
+
+
+@pytest.mark.parametrize("surface", ("package_service", "package_summary"))
+@pytest.mark.parametrize("owner", ("app", "ui", "__main__"))
+def test_package_export_composition_exceptions_are_exact(surface: str, owner: str) -> None:
+    suffix = ".internal" if owner == "__main__" else ""
+    violations = inspect_source(
+        f"import paperworkshell.export.{surface}{suffix}\n",
+        module=f"paperworkshell.{owner}"
+        if owner == "__main__"
+        else f"paperworkshell.{owner}.example",
+        package="paperworkshell" if owner == "__main__" else f"paperworkshell.{owner}",
+        path="package_composition_violation.py",
+    )
+    assert {violation.code for violation in violations} == {"ARCH_GUI_EXPORT_IMPLEMENTATION"}
 
 
 @pytest.mark.parametrize(

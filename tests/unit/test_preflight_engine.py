@@ -766,3 +766,35 @@ def test_engine_never_calls_an_extra_callable_template_fact() -> None:
 
     assert evaluation.report.findings == ()
     assert "callable" not in repr(evaluation)
+
+
+def test_evaluation_exposes_only_consumed_dependency_identity() -> None:
+    selected = load_synthetic_rule_cases(FIXTURE)[0]
+    supplied = synthetic_input(selected.facts)
+    evaluation = synthetic_engine().evaluate((supplied,))
+    assert evaluation.dependency_revision(supplied.dependency) == supplied.revision_sha256
+    assert evaluation.dependency_revision(PreflightDependency.OUTPUT_PLAN) is None
+    with pytest.raises(PreflightError) as invalid:
+        evaluation.dependency_revision(cast(PreflightDependency, "PRIVATE_DEPENDENCY"))
+    assert invalid.value.code is PreflightErrorCode.MODEL_INVALID
+    assert "PRIVATE_DEPENDENCY" not in str(invalid.value)
+
+
+def test_evaluation_dependency_identity_rejects_conflicting_rule_facts() -> None:
+    supplied = _input(PreflightDependency.OUTPUT_PLAN)
+    rules = tuple(
+        _rule(
+            rule_id=f"synthetic.rule{number}",
+            code=f"SYNTHETIC_RESULT_{number}",
+            dependency=PreflightDependency.OUTPUT_PLAN,
+            scope=PreflightScope(PreflightScopeKind.CASE, CASE_ID),
+        )
+        for number in (1, 2)
+    )
+    evaluation = PreflightEngine(rules).evaluate((supplied,))
+    first, *rest = evaluation._cache_entries
+    changed = replace(first, dependency_revisions=((supplied.dependency, "e" * 64),))
+    inconsistent = replace(evaluation, _cache_entries=(changed, *rest))
+    with pytest.raises(PreflightError) as invalid:
+        inconsistent.dependency_revision(supplied.dependency)
+    assert invalid.value.code is PreflightErrorCode.RESULT_INVALID

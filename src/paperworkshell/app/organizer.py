@@ -28,6 +28,12 @@ from paperworkshell.app.ocr_languages import (
     OcrLanguageSnapshot,
     unavailable_ocr_language_manager,
 )
+from paperworkshell.app.package_workflow import (
+    PackageReviewState,
+    PackageWorkflowErrorCode,
+    PackageWorkflowService,
+    reject_package_workflow,
+)
 from paperworkshell.app.page_previews import (
     DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
     MAX_PAGE_PREVIEW_TIMEOUT_SECONDS,
@@ -115,6 +121,7 @@ from paperworkshell.domain.manifest_repository import (
     ManifestSnapshot,
     reject_manifest_repository,
 )
+from paperworkshell.domain.package_summary import PackageSummary
 from paperworkshell.domain.page_operations import (
     MAX_PAGE_COUNT,
     BackgroundCleanupPageCommand,
@@ -160,6 +167,7 @@ from paperworkshell.overlays.signature_commands import (
     SignatureAssetDeletePolicy,
     SignatureImageManifestChange,
 )
+from paperworkshell.preflight.portal_constraints import PortalOutputMode
 
 _DEFAULT_ORGANIZER_PREVIEW_PAGE_TIMEOUT_SECONDS: Final = DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
 MAX_ORGANIZER_PREVIEW_BATCH_PAGES: Final = 8
@@ -482,6 +490,7 @@ class OrganizerBackend:
         "_ocr_languages",
         "_pending_committed_import",
         "_portal_constraints",
+        "_package_workflow",
         "_quality_analysis",
         "_quality_profile_id",
         "_quality_profile_sha256",
@@ -509,6 +518,7 @@ class OrganizerBackend:
         signature_images: SignatureImageWorkflowPort | None = None,
         checklist: ChecklistWorkflowService | None = None,
         portal_constraints: PortalConstraintWorkflowService | None = None,
+        package_workflow: PackageWorkflowService | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -583,6 +593,7 @@ class OrganizerBackend:
         self._signature_images = signature_images
         self._checklist = checklist
         self._portal_constraints = portal_constraints
+        self._package_workflow = package_workflow
         self._utc_now = checklist.utc_now if checklist is not None else lambda: datetime.now(UTC)
         self._active_checklist: ChecklistEditorState | None = None
         self._active_portal_constraints: ConstraintEditorState | None = None
@@ -896,6 +907,72 @@ class OrganizerBackend:
         if session.autosave.pending:
             reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_cancel_pending")
         self._active_core_overlay_tools = None
+
+    def begin_package_review(
+        self,
+        mode: PortalOutputMode | None = None,
+    ) -> PackageReviewState:
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_package_workflow(PackageWorkflowErrorCode.ACTIVE)
+        self.flush_autosave()
+        return self._require_package_workflow().begin(session.snapshot, mode)
+
+    def refresh_package_review(self, mode: PortalOutputMode) -> PackageReviewState:
+        self._require_session()
+        return self._require_package_workflow().refresh(mode)
+
+    def cancel_package_review(self) -> None:
+        self._require_package_workflow().cancel()
+
+    def export_package(
+        self,
+        destination_parent: Path,
+        *,
+        review_id: UUID,
+        signed_source_confirmed: bool,
+        human_review_confirmed: bool,
+        cancellation: SourceCancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> PackageSummary:
+        session = self._require_session()
+
+        def consent_saved(snapshot: ManifestSnapshot) -> None:
+            # Rebuild autosave as well as history: the old coordinator may hold
+            # the previous saved revision. This occurs before any output writes,
+            # so a refresh failure cannot hide a committed package outcome.
+            replacement = _session_from_load(
+                self._repository,
+                ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot),
+                utc_now=self._utc_now,
+            )
+            session.autosave.close()
+            self._session = replacement
+
+        return self._require_package_workflow().export(
+            destination_parent,
+            review_id=review_id,
+            signed_source_confirmed=signed_source_confirmed,
+            human_review_confirmed=human_review_confirmed,
+            cancellation=cancellation,
+            progress=progress,
+            snapshot_changed=consent_saved,
+        )
+
+    def save_package_summary(
+        self,
+        destination: Path,
+        *,
+        cancellation: SourceCancellationProbe | None = None,
+    ) -> None:
+        self._require_package_workflow().save_summary(destination, cancellation=cancellation)
+
+    def _require_package_workflow(self) -> PackageWorkflowService:
+        workflow = self._package_workflow
+        if workflow is None:
+            reject_package_workflow(PackageWorkflowErrorCode.UNAVAILABLE)
+        return workflow
 
     def begin_checklist(self) -> ChecklistEditorState:
         """Open one exclusive checklist draft against an exact durable revision.
@@ -1598,6 +1675,8 @@ class OrganizerBackend:
 
         if self._shutdown:
             return
+        if self._package_workflow is not None:
+            self._package_workflow.cancel()
         active_checklist = self._active_checklist
         if active_checklist is not None:
             self._require_checklist().abort(active_checklist.editor_session_id)
@@ -1759,6 +1838,8 @@ class OrganizerBackend:
             )
 
     def _require_core_overlay_tools_inactive(self) -> None:
+        if self._package_workflow is not None and self._package_workflow.active:
+            reject_package_workflow(PackageWorkflowErrorCode.ACTIVE)
         if self._active_core_overlay_tools is not None:
             reject_overlay(OverlayErrorCode.CONCURRENT_CHANGE, "overlay.editor_exclusive")
         if self._active_signature_draft_id is not None:

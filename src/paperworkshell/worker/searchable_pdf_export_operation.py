@@ -261,7 +261,7 @@ class WindowsSearchablePdfExportOperationAdapter:
                 expected_sha256=plan_reference.expected_sha256 or "",
             )
             worker_plan = decode_searchable_pdf_worker_plan(plan_payload)
-            context.report_progress(_processing_progress(0, worker_plan.plan.page_count))
+            context.report_progress(_processing_progress(0, context.limits.page_count))
             source_handles = tuple(source.worker_handle for source in worker_plan.sources)
             if set(source_handles) & {
                 request.plan_handle,
@@ -315,7 +315,19 @@ class WindowsSearchablePdfExportOperationAdapter:
                         )
                     if completed > reported_pages:
                         context.report_progress(
-                            _processing_progress(completed, worker_plan.plan.page_count)
+                            # RPC binds progress to the exact requested capacity,
+                            # which may also cover a larger immutable PDF source.
+                            # Round up so the broker's inverse floor mapping
+                            # preserves each actually completed output page.
+                            _processing_progress(
+                                (
+                                    completed * context.limits.page_count
+                                    + worker_plan.plan.page_count
+                                    - 1
+                                )
+                                // worker_plan.plan.page_count,
+                                context.limits.page_count,
+                            )
                         )
                         reported_pages = completed
 
@@ -334,8 +346,8 @@ class WindowsSearchablePdfExportOperationAdapter:
                 if reported_pages < worker_plan.plan.page_count:
                     context.report_progress(
                         _processing_progress(
-                            worker_plan.plan.page_count,
-                            worker_plan.plan.page_count,
+                            context.limits.page_count,
+                            context.limits.page_count,
                         )
                     )
                 _require_active(context, absolute_deadline=absolute_deadline)

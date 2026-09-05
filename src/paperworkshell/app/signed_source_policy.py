@@ -118,6 +118,21 @@ class SignedSourceConfirmationService:
     ) -> SignedSourceConfirmationOutcome:
         """Confirm by CAS or cancel without mutation after freshness validation."""
 
+        outcome, _snapshot = self.decide_with_snapshot(review, choice)
+        return outcome
+
+    def decide_with_snapshot(
+        self,
+        review: SignedSourceModificationReview,
+        choice: SignedSourceConfirmationChoice,
+    ) -> tuple[SignedSourceConfirmationOutcome, ManifestSnapshot]:
+        """Return the exact reviewed or committed snapshot without a second load.
+
+        A workflow can rebind to its own consent-only commit, then check that
+        authority is still current before any document processing. A later
+        unrelated edit must never become silently authorized by the old review.
+        """
+
         if (
             type(review) is not SignedSourceModificationReview
             or type(choice) is not SignedSourceConfirmationChoice
@@ -130,9 +145,11 @@ class SignedSourceConfirmationService:
         _require_review_binding(review, current)
         refreshed = build_signed_source_modification_review(current, review.sources)
         if choice is SignedSourceConfirmationChoice.CANCEL:
-            return SignedSourceConfirmationOutcome(
-                SignedSourceConfirmationOutcomeStatus.CANCELLED,
-                current.revision,
+            return (
+                SignedSourceConfirmationOutcome(
+                    SignedSourceConfirmationOutcomeStatus.CANCELLED, current.revision
+                ),
+                current,
             )
         if refreshed.status is SignedSourceReviewStatus.NOT_REQUIRED:
             reject_signed_source_policy(
@@ -140,9 +157,11 @@ class SignedSourceConfirmationService:
                 "signed_source.decision_not_required",
             )
         if refreshed.status is SignedSourceReviewStatus.CONFIRMED:
-            return SignedSourceConfirmationOutcome(
-                SignedSourceConfirmationOutcomeStatus.ALREADY_CONFIRMED,
-                current.revision,
+            return (
+                SignedSourceConfirmationOutcome(
+                    SignedSourceConfirmationOutcomeStatus.ALREADY_CONFIRMED, current.revision
+                ),
+                current,
             )
         if current.revision >= MAX_SAFE_MANIFEST_INTEGER:
             reject_signed_source_policy(
@@ -198,9 +217,11 @@ class SignedSourceConfirmationService:
                 SignedSourcePolicyErrorCode.SAVE_FAILED,
                 "signed_source.save_result",
             )
-        return SignedSourceConfirmationOutcome(
-            SignedSourceConfirmationOutcomeStatus.CONFIRMED,
-            saved.revision,
+        return (
+            SignedSourceConfirmationOutcome(
+                SignedSourceConfirmationOutcomeStatus.CONFIRMED, saved.revision
+            ),
+            saved,
         )
 
     def _load(self, case_id: UUID) -> ManifestSnapshot:

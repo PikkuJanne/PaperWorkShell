@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.23",
+  "bundle_version": "0.2.24",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 309396,
-      "sha256": "e224707646bae684f74cac258b305acd0dfd155043089e4ae5b614091212ae01"
+      "bytes": 309402,
+      "sha256": "00502e8a09e8cbae37afcc1cb843154666fde2d4478eb4dbe7c39c9df84cc64c"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 30808,
-      "sha256": "6f46452350790d436147e113d2228f99e0707540dd6621d38d3688ba00be1288"
+      "bytes": 31043,
+      "sha256": "71120d20650aca20c00e2d1951bb91f095ebfa08f6f544221bc4ed29eb722257"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -70,8 +70,8 @@
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 17392,
-      "sha256": "86269cfa939c953658d1290fbbeb24cd77e8b355039025eae5048aae207f0b8a"
+      "bytes": 17575,
+      "sha256": "3430c70cb0f84ad8683015fc641e597f063586fe70d143e1ae98c448d70ae508"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -96,13 +96,11 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0408"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0407 is done, with product implementation ecc2179c and final verified source fa4674d. Completion evidence was finalized on 2026-09-05 after the controlled stop. Deterministic combined-PDF, separate-PDF, and ZIP planning, exact ordered page subsets, verified PDF production, safe ordered ZIP creation, actual-output constraint checks, and no-replace publication with truthful partial inventories are implemented and tested. The final source corrects duplicate developer-secret-scan work forecasting without changing runtime limits or coverage; complete fixture and secret scans passed. PWS-0408 is ready and is the next critical-path task, owning the accessible package summary and end-to-end pilot. Durable package history needs a versioned schema and migration decision; mixed image/scan transformation with overlays remains blocked pending a bounded two-stage pipeline and visual-equivalence proof. Packaged-build evidence remains TBD.",
+    "PWS-0407 remains done. PWS-0408 is in progress on the desktop package review, accessible plain-text summary, explicit companion save, and generic end-to-end pilot. Automated verification is ongoing; first-time-user and keyboard-only human acceptance is not recorded. PWS-0409 remains planned. Durable package history still needs a versioned schema and migration decision; mixed image/scan transformation with overlays in one output remains unsupported. No optional technical manifest or sibling interface is introduced. Packaged-build evidence remains TBD.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

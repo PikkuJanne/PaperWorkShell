@@ -146,6 +146,25 @@ class PreflightEvaluation:
     def reused_rule_count(self) -> int:
         return len(self.reused_rule_ids)
 
+    def dependency_revision(self, dependency: PreflightDependency) -> str | None:
+        """Return the exact fact identity consumed by the evaluated rules, if used.
+
+        Consumers can bind a report to a current output plan without depending
+        on the private incremental-cache layout. Conflicting identities fail
+        closed rather than selecting an arbitrary rule's facts.
+        """
+        if type(dependency) is not PreflightDependency:
+            reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.dependency_revision")
+        revisions = {
+            revision
+            for entry in self._cache_entries
+            for kind, revision in entry.dependency_revisions
+            if kind is dependency
+        }
+        if len(revisions) > 1:
+            reject_preflight(PreflightErrorCode.RESULT_INVALID, "preflight.dependency_revision")
+        return next(iter(revisions), None)
+
     def __repr__(self) -> str:
         return (
             "PreflightEvaluation("

@@ -578,6 +578,7 @@ class BrokeredSearchablePdfExporter:
                             operation_id,
                             generation,
                             page_count=plan.page_count,
+                            worker_page_capacity=limits.page_count,
                             deadline=deadline,
                             cancellation=cancellation,
                             progress=progress,
@@ -710,6 +711,7 @@ class BrokeredSearchablePdfExporter:
         generation: int,
         *,
         page_count: int,
+        worker_page_capacity: int,
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink,
@@ -736,8 +738,8 @@ class BrokeredSearchablePdfExporter:
                     if (
                         current.stage is not ProgressStage.PROCESSING
                         or current.unit is not ProgressUnit.PAGES
-                        or current.total_units != page_count
-                        or current.completed_units > page_count
+                        or current.total_units != worker_page_capacity
+                        or current.completed_units > worker_page_capacity
                     ):
                         reject_pdf_export(
                             PdfExportErrorCode.REPORT_INVALID,
@@ -745,7 +747,7 @@ class BrokeredSearchablePdfExporter:
                         )
                     domain_progress = PdfExportProgress(
                         PdfExportProgressPhase.ASSEMBLING_AND_VERIFYING,
-                        current.completed_units,
+                        current.completed_units * page_count // worker_page_capacity,
                         page_count,
                     )
                     if domain_progress != last_progress:
@@ -826,8 +828,9 @@ def _operation_limits(
 ) -> ResourceLimits:
     source_bytes = sum(source.byte_size for source in plan.sources)
     limits = policy.limits
+    required_page_capacity = max(plan.page_count, *(source.page_count for source in plan.sources))
     if (
-        plan.page_count > limits.page_count
+        required_page_capacity > limits.page_count
         or source_bytes > limits.temporary_storage_bytes
         or limits.output_bytes > limits.temporary_storage_bytes - source_bytes
         or policy.status_capacity_bytes
@@ -845,7 +848,9 @@ def _operation_limits(
         memory_bytes=limits.memory_bytes,
         temporary_storage_bytes=limits.temporary_storage_bytes,
         output_bytes=limits.output_bytes,
-        page_count=plan.page_count,
+        # Parsing a retained source needs its full page capacity even when only
+        # selected pages are exported. Exact output count stays bound to plan.
+        page_count=required_page_capacity,
         pixel_count=limits.pixel_count,
     )
 

@@ -458,8 +458,8 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
     assert worker_report.status_byte_size == status_reference.expected_byte_size
     assert worker_report.status_sha256 == status_reference.expected_sha256
     assert worker_report.base_report.report.output_sha256 == output_reference.expected_sha256
-    assert progress[-1].completed_units == plan.page_count
-    assert {fact.total_units for fact in progress} == {plan.page_count}
+    assert progress[-1].completed_units == context.limits.page_count
+    assert {fact.total_units for fact in progress} == {context.limits.page_count}
     assert tuple(private_root.iterdir()) == ()
     assert observed["languages"] == ("eng", "deu")
 
@@ -732,7 +732,7 @@ def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request
     )
 
 
-def test_handler_progress_uses_exact_plan_total_not_resource_ceiling(tmp_path: Path) -> None:
+def test_handler_preserves_adapter_progress_bound_to_requested_capacity(tmp_path: Path) -> None:
     source_path = tmp_path / "source.pdf"
     source_path.write_bytes(PDF_FIXTURE.read_bytes())
     plan = _plan(source_path)
@@ -751,10 +751,9 @@ def test_handler_progress_uses_exact_plan_total_not_resource_ceiling(tmp_path: P
             selected_context: OperationContext,
             request: SearchablePdfExportOperationRequest,
         ) -> tuple[CaseObjectReference, CaseObjectReference]:
-            selected_context.report_progress(operation._processing_progress(0, plan.page_count))
-            selected_context.report_progress(
-                operation._processing_progress(plan.page_count, plan.page_count)
-            )
+            capacity = selected_context.limits.page_count
+            selected_context.report_progress(operation._processing_progress(0, capacity))
+            selected_context.report_progress(operation._processing_progress(capacity, capacity))
             return (
                 CaseObjectReference(
                     ReferenceArea.OPERATION_STAGING,
@@ -779,7 +778,8 @@ def test_handler_progress_uses_exact_plan_total_not_resource_ceiling(tmp_path: P
     )
 
     assert result.outcome is OperationOutcome.SUCCEEDED
-    assert {fact.total_units for fact in progress} == {plan.page_count}
+    assert {fact.total_units for fact in progress} == {context.limits.page_count}
+    assert [fact.completed_units for fact in progress] == [0, context.limits.page_count]
 
 
 def test_nested_ocr_error_mapping_is_exhaustive_stable_and_sanitized() -> None:
