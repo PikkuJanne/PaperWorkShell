@@ -3585,7 +3585,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: review
   critical_path: true
   depends_on:
   - PWS-0402
@@ -3623,9 +3623,80 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    revision: 0b2694cf5a45018c7cd0d0314cc3f3d56641304d
+    commands:
+    - uv run python -m tools.dev format-check; lint; check-import-boundaries; typecheck - passed; 589 Python files
+      formatted and strictly typed, with all 13 import layers across 207 source files valid
+    - uv run python -m tools.dev test-unit - passed on the corrected checkpoint; all 4633 tests passed in 705.46
+      seconds. The initial run reported one obsolete quality-baseline revision failure and four synthetic
+      release-fixture subtest failures; both corrections and the complete retry are recorded in
+      docs/development/pws0408-result.md
+    - uv run python -m tools.dev test-integration - passed; 481 tests collected and the full pytest process exited
+      with code 0, independently confirmed through retained process handles. Final per-status stdout totals were
+      not retained, so no exact pass/skip breakdown is asserted. Final UI cancellation changes were also covered
+      by focused workflow/bridge/window/dialog tests and the full accessibility suite
+    - uv run python -m tools.dev test-security - passed; 572 tests passed and 6 unavailable Windows symlink/reparse
+      fixture-capability tests skipped in 250.06 seconds. Required junction coverage ran; no gate or expectation
+      was relaxed
+    - uv run python -m tools.dev test-accessibility - passed; all 67 tests passed in the final 5.12-second run,
+      including package-review keyboard access, labels, focus, announcements, and enlarged text
+    - uv run pytest tests/integration/test_package_pilot.py -q - passed; the constrained live Windows desktop/backend
+      pilot completed in 276.87 seconds with actual combined PDF, four separate PDFs, one four-member ZIP,
+      reopen/render checks, explicit review refusal, cancellation, missing-to-complete assignments, exact text
+      companions, occupied-destination refusal, original/history preservation, and cleanup
+    - uv run --locked --no-sync pytest tests/unit/test_pws0408_pilot.py -q - passed; 13 tests after the instruction
+      clarifications. uv run python -m tools.pws0408_pilot --prepare-only prepared a fresh isolated synthetic
+      attempt without launching the GUI or recording a human pass
+    - uv run --locked --no-sync python tools/pws0207_quality_evaluation.py evaluate; record; validate - passed;
+      the existing no-replace recorder produced a separate candidate for a73fc04d9a06df5e6704e11d4cddb7ffe60266a8,
+      then the canonical baseline was validated against that revision. Complete payload comparison proved that
+      only the implementation revision changed; all eight metric rows and corpus/profile hashes remain identical
+    - uv run python -m tools.dev validate-fixtures; scan-secrets - passed in a clean full-history local clone of
+      0b2694cf5a45018c7cd0d0314cc3f3d56641304d; 46 synthetic fixtures, 15 renderer, 6 transform, and 3 overlay
+      references validated. Secret scanning covered 2532 historical blobs, 275 commit/tag objects, 2567 path/blob
+      pairs, 837 index blobs, and 867 tracked working files; maintainer-owned untracked files stayed untouched and
+      outside this source-evidence scope
+    - uv run python -m tools.dev validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary;
+      validate-dependencies - passed; 82 tasks, 243 dependencies, 9 milestones, 42 decisions, and 14 bundled
+      canonical files valid. Task and bundle integrity are rechecked after recording this review evidence
+    - uv run python -m tools.dev validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test - passed; existing workload/evidence definitions remain
+      valid and all five deliberate quality violations were detected. These are not new hardware certifications
+    - git diff --check - passed
+    notes:
+    - Review status is deliberate. Automated complete, missing, warning-heavy, failure, privacy, and accessibility
+      evidence is complete, but a genuine first-time-user and keyboard-only walkthrough has not been recorded.
+      Use uv run python -m tools.dev pws0408-pilot and docs/development/pws0408-pilot.md. Accepting the eight-step
+      human result closes PWS-0408 and makes PWS-0409 ready; defects instead require focused correction/retest.
+      Neither outcome approves a v0.1 release, and PWS-0409 remains planned until acceptance
+    - Revision-bound exclusive desktop review presents bounded plain-text planned and final inventories, concrete
+      checks, every warning, and explicit required human review. Fresh manifest/template/plan authority and explicit
+      signed-source consent are required before publication; consent reconciles both organizer history and autosave.
+      Acknowledgement never changes unknown facts into passes or asserts portal, legal, OCR, signature, or redaction
+      guarantees
+    - The optional user-selected UTF-8 text companion saves exactly the visible summary with bounded bytes,
+      cancellation, digest verification, free-space reserve, and no replacement. It is not a ZIP member or upload
+      artifact. Partial/uncertain publication and late cleanup/presentation failures preserve known saved inventory;
+      cancellation cannot erase already published files
+    - The real subset-export pilot exposed an admission defect when an output used fewer pages than its immutable
+      source. Structural, flattened, and searchable brokers now admit the larger of output count and largest
+      authenticated source count under the unchanged central cap, while still verifying exact output counts and
+      translating progress truthfully. No ResourcePolicy, RPC, dependency, schema, or migration was changed
+    - The quality baseline correctly rejected changed composition/organizer/UI provenance. Independent review found
+      exactly four changed bound integration surfaces and 23 byte-identical scoring/corpus/policy/OCR/isolation
+      surfaces. The revision-only evidence update preserves the historical baseline in Git. A separate test-only
+      fixture correction resolves pending/TBD words case-insensitively; four new lower/mixed-case assertions retain
+      strict production rejection. No scoring expectation, golden rendering, or release gate was weakened
+    - The four large-labelled synthetic pilot pages and normal/enlarged dialog screenshots were inspected. These
+      developer checks are not first-time-user, NVDA, PDF/UA, or named-hardware certification. Source inspection,
+      page geometry, and advisory quality are not rerun by package review; unavailable facts remain explicit
+    - Final package results remain transient; save the text companion before closing when needed. Durable package
+      history needs a separately versioned schema/migration/recovery decision. Mixed scan/image processing with
+      overlays in one PDF retains the PWS-0407 rejection; the explicitly optional technical manifest is unimplemented
+    - PaperWorkShell remains standalone and owns its case data and explicit local derivatives. No sibling dependency,
+      shared interface, ThirdLife adapter, service, or synchronized release is added. Release documentation describes
+      source-tree capability only, with packaged facts left TBD. The pilot launcher is developer tooling, not an
+      application CLI contract. Full changed-file and verification details are in docs/development/pws0408-result.md
 - id: PWS-0409
   milestone: M4
   title: Run Milestone 4 v0.1 pilot gate

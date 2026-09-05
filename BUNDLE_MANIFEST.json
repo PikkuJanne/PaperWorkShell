@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 309402,
-      "sha256": "00502e8a09e8cbae37afcc1cb843154666fde2d4478eb4dbe7c39c9df84cc64c"
+      "bytes": 316798,
+      "sha256": "85237e4ed839bd0a139b7f69146ba508dbea15f32ae7fb517dcc2ec2ba92af71"
     },
     {
       "path": "TASKS.schema.json",
@@ -100,7 +100,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0407 remains done. PWS-0408 is in progress on the desktop package review, accessible plain-text summary, explicit companion save, and generic end-to-end pilot. Automated verification is ongoing; first-time-user and keyboard-only human acceptance is not recorded. PWS-0409 remains planned. Durable package history still needs a versioned schema and migration decision; mixed image/scan transformation with overlays in one output remains unsupported. No optional technical manifest or sibling interface is introduced. Packaged-build evidence remains TBD.",
+    "PWS-0407 remains done. PWS-0408 is in review: desktop package review, accessible plain-text summaries, explicit companion saving, and the automated generic end-to-end pilot are implemented and verified. Full integration completed successfully, all 4633 unit tests and 67 accessibility tests passed, and security finished with 572 passed and 6 unavailable Windows link-fixture skips. The unchanged quality metrics were rebound to the evaluated implementation revision, and a synthetic release-test fixture was corrected without weakening the production gate. Genuine first-time-user and keyboard-only human acceptance remains unrecorded, so PWS-0409 stays planned. Human acceptance permits that gate to start; it does not approve a release. Durable package history still requires a versioned schema/migration decision, mixed image/scan transformation with overlays in one output remains unsupported, and no optional technical manifest or sibling interface is introduced. Packaged-build evidence remains TBD.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

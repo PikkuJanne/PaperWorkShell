@@ -1,11 +1,14 @@
 # PWS-0408 implementation and pilot evidence
 
-This report is being finalized with the verification run. Human acceptance remains
-pending; nothing in the automated or visual developer evidence approves a v0.1 release.
+Status: **review**. Implementation and automated verification are complete; genuine
+first-time-user and keyboard-only acceptance remains pending. Nothing in the automated
+or visual developer evidence approves a v0.1 release.
 
 Product implementation checkpoint: `85bb84c`. The subsequent `a73fc04` changes only
 the developer pilot card, its wording assertions, and the human protocol: exact button
 label, Space for checkbox selection, and waiting for summary-save confirmation.
+Verification checkpoint `0b2694c` adds only the quality-evidence provenance correction,
+the synthetic release-fixture correction, and their documentation described below.
 
 ## Implemented
 
@@ -64,8 +67,7 @@ label, Space for checkbox selection, and waiting for summary-save confirmation.
 
 ## Verification
 
-Full unit and security results will be inserted after completion. Remaining
-checks listed here have actually passed; they are not placeholders for future execution.
+The checks listed here have actually passed; they are not placeholders for future execution.
 The separate first-time-user and keyboard-only human result is **not recorded**.
 
 Commands below use `uv run python -m tools.dev <command>` unless shown explicitly.
@@ -73,12 +75,18 @@ The observed test environment is Windows x64, version `10.0.26200`, build `26200
 
 - `format-check`, `lint`, `typecheck`: pass; 589 Python files formatted and strictly typed.
 - `check-import-boundaries`: pass; 13 layers and 207 source files.
+- `test-unit`: the full retry passed all 4,633 tests in 705.46 seconds; no failures
+  or skips reported. The initial failed run and its evidence/test-fixture corrections
+  are recorded below rather than omitted.
 - `test-integration`: the full suite completed with pytest exit code 0; 481 tests were
   collected. Completion was independently confirmed through retained process handles.
   The final per-status stdout totals were not retained, so no exact pass/skip breakdown
   is asserted for this run. Final UI cancellation changes were separately covered by the
   focused workflow/bridge/window/dialog tests and the full accessibility suite.
 - `test-accessibility`: 67 passed, including the final cancellation and enlarged-text UI.
+- `test-security`: 572 passed and six skipped in 250.06 seconds. Skips concern unavailable
+  Windows symlink/reparse fixture privileges in case-workspace, export-history, qpdf
+  configuration, startup-recovery, and two synthetic-fixture cases; junction coverage ran.
 - `validate-schemas`: all nine registered validation groups passed.
 - `validate-task-graph`: 82 tasks, 243 dependencies, nine milestones, 42 decisions.
 - `validate-docs`, `validate-portfolio-boundary`: pass; 14 canonical bundle files valid.
@@ -88,11 +96,11 @@ The observed test environment is Windows x64, version `10.0.26200`, build `26200
   definitions, not new performance measurements or hardware certification.
 - `quality-self-test`: all five deliberate format, type, schema, graph, and staged-binary
   secret violations detected; synthetic negative-test data cleaned up.
-- `validate-fixtures`: pass in a clean full-history local clone at `a73fc04`; 46 synthetic
+- `validate-fixtures`: pass in a clean full-history local clone at `0b2694c`; 46 synthetic
   fixtures, 15 renderer, six transform, and three overlay references (237,165 corpus bytes),
-  2,528 historical blobs, 837 index blobs, and 867 working files.
-- `scan-secrets`: pass in that same clean source snapshot; 2,528 historical blobs,
-  274 commit/tag objects, 2,563 path/blob pairs, 837 index blobs, 867 tracked working files,
+  2,532 historical blobs, 837 index blobs, and 867 working files.
+- `scan-secrets`: pass in that same clean source snapshot; 2,532 historical blobs,
+  275 commit/tag objects, 2,567 path/blob pairs, 837 index blobs, 867 tracked working files,
   and no nonignored untracked files. Maintainer-owned untracked files in the main working
   directory stayed untouched and outside this source-verification scope.
 - `uv run pytest tests/integration/test_package_pilot.py -q`: one live production-worker
@@ -101,6 +109,9 @@ The observed test environment is Windows x64, version `10.0.26200`, build `26200
 - `uv run --locked --no-sync pytest tests/unit/test_pws0408_pilot.py -q`: 13 passed after
   the instruction clarification. `uv run python -m tools.pws0408_pilot --prepare-only`
   produced a fresh isolated attempt without launching the GUI or recording a human pass.
+- `uv run --locked --no-sync python tools/pws0207_quality_evaluation.py evaluate` and
+  `uv run --locked --no-sync python tools/pws0207_quality_evaluation.py validate benchmarks/pws0207-quality-findings-v1.json --revision a73fc04d9a06df5e6704e11d4cddb7ffe60266a8`:
+  pass; the exact unchanged corpus/profile metrics bind to the committed implementation.
 - `git diff --check`: pass.
 
 ### Quality-evidence provenance correction
@@ -122,7 +133,7 @@ metric rows and corpus/profile hashes remain exact. This is a reviewed provenanc
 for changed integration surfaces, not a changed regression oracle or relaxed validator.
 The historical baseline remains available in Git. The canonical baseline was updated
 through an exact revision-only patch, validated successfully, and its previously failing
-unit test passed in 2.64 seconds. The complete unit retry is still pending.
+unit test passed in 2.64 seconds. The complete unit retry then passed all 4,633 tests.
 
 The four remaining failures came from the synthetic final-release fixture: it replaced
 uppercase `TBD` and title-case `Pending` but left the new lowercase human-acceptance
@@ -188,3 +199,11 @@ packaged facts remain TBD. The pilot launcher is not an application CLI contract
   The optional technical manifest remains unimplemented; no machine-readable contract is
   being frozen through this task.
 - Acceptance of PWS-0408 makes PWS-0409 eligible; it does **not** approve a v0.1 release.
+
+## Task graph and next step
+
+PWS-0401 through PWS-0407 remain done. PWS-0408 is **review**, with `completed_at` unset
+because the human evidence is missing. No new implementation task is dependency-ready;
+PWS-0409 remains planned until PWS-0408 is accepted. Run the [human pilot](pws0408-pilot.md),
+record steps 1–8 and the first-time/keyboard-only conditions, then accept the result or
+address any specific defect. The separate PWS-0409 integrated gate follows afterward.
