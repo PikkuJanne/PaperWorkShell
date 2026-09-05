@@ -27,7 +27,7 @@ All four pages are synthetic and clearly labelled with their intended categories
 
 1. Create a case and import the prepared PDF using the ordinary UI. Confirm that four
    pages are present. Review their large headings in PaperWorkShell.
-2. Open **Review package constraints…** with Tab/Space. Restore the generic defaults,
+2. Open **Review package constraints…** with Tab/Space. Activate **Restore generic template defaults**,
    inspect the example limits and filename, and apply them. These are example test
    limits, not real portal rules.
 3. Press Ctrl+Shift+C for **Review checklist assignments**. For each of the first three
@@ -39,12 +39,14 @@ All four pages are synthetic and clearly labelled with their intended categories
 5. Press Ctrl+E again. Read the proposed combined filename, page/category counts,
    unknown sizes, and all warnings and required statements. Explain which checks were
    not performed. Acknowledging review must not turn unverified facts into passes.
-6. Select **I reviewed the listed warnings and human checks** only after completing the synthetic review.
+6. Focus **I reviewed the listed warnings and human checks** and press Space to select
+   the checkbox only after completing the synthetic review.
    Activate **Export package**, choose the prepared destination, and wait for the final
    result. Check the actual file count, exact name, byte size, four pages, category
    inventory, performed checks, and remaining human review.
 7. Use **Save summary** to save a `.txt` companion. Check that this action does not add a
-   PDF or ZIP member or alter the displayed upload count. Close review and reopen it,
+   PDF or ZIP member or alter the displayed upload count. Wait for **The displayed summary
+   was saved. Review it before sharing.** before closing review and reopening it,
    then retry exporting to the same destination: the existing file must not be replaced.
    The final result must not report that retry as a successful new export.
 8. Close and reopen the case. Confirm that the four source pages and assignments remain.

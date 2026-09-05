@@ -50,7 +50,9 @@ def test_preparation_creates_four_large_synthetic_pages_and_scoped_paths(tmp_pat
     assert "Ctrl+Shift+C" in card and "Ctrl+E" in card
     assert "Supporting evidence should be missing" in card
     assert "Create new case" in card and "Import document" in card
-    assert "Restore generic defaults" in card
+    assert "Restore generic template defaults" in card
+    assert "press Space to select the checkbox" in card
+    assert "Wait for: The displayed summary was saved. Review it before sharing." in card
     assert "Optional other formats" in card
     assert "first review and change the mode-specific requested filenames" in card
     assert "separate PWS-0409 gate" in card
