@@ -3,6 +3,10 @@
 This report is being finalized with the verification run. Human acceptance remains
 pending; nothing in the automated or visual developer evidence approves a v0.1 release.
 
+Product implementation checkpoint: `85bb84c`. The subsequent `a73fc04` changes only
+the developer pilot card, its wording assertions, and the human protocol: exact button
+label, Space for checkbox selection, and waiting for summary-save confirmation.
+
 ## Implemented
 
 - Revision-bound desktop package review, explicit human acknowledgement, and safe
@@ -33,24 +37,122 @@ pending; nothing in the automated or visual developer evidence approves a v0.1 r
   `searchable_pdf_export_broker.py`, `searchable_pdf_export_operation.py`: bounded source
   capacity and truthful output progress for subsets of larger originals.
 - `tools/pws0408_pilot.py`, `tools/dev.py`: developer-only isolated human pilot entry point.
+- `benchmarks/pws0207-quality-findings-v1.json`: analytical evidence re-bound to the
+  changed composition/organizer/UI revision, with every metric and profile/corpus hash
+  preserved; no golden rendering or scoring expectation changes.
 - `tools/check_import_boundaries.py` and `tests/unit/test_import_boundaries.py`: exact
   composition-root exceptions with application/UI/descendant rejection tests.
-- New tests: `tests/helpers/package_pilot.py`; package workflow, summary, composition,
-  backend bridge, window, dialog, pilot helper, and source-page-budget unit tests;
+- `tests/unit/test_validate_portfolio_boundary.py`: case-insensitive placeholder
+  completion in the synthetic final-release fixture, retaining the strict real gate.
+- New tests: `tests/helpers/package_pilot.py`; `tests/unit/test_package_workflow.py`,
+  `test_package_summary.py`, `test_package_export_composition.py`,
+  `test_package_export_backend_bridge.py`, `test_package_export_window.py`,
+  `test_package_export_dialog.py`, `test_pws0408_pilot.py`, and
+  `tests/unit/worker/test_package_source_page_budgets.py`;
   `tests/integration/test_package_pilot.py`, `test_package_summary_destination_windows.py`;
   `tests/security/test_package_summary_privacy.py`;
   `tests/accessibility/test_package_export_accessibility.py`.
-- Existing preflight-engine, signed-source, worker-broker/operation, and desktop startup
-  recovery tests: regression coverage and updated composition test doubles.
+- `tests/unit/test_preflight_engine.py`, `test_signed_source_policy.py`,
+  `tests/unit/worker/test_searchable_pdf_export_operation.py`, and
+  `tests/integration/test_desktop_startup_recovery_windows.py`: regression coverage and
+  updated composition test doubles.
 - `README.md`, `docs/architecture/package-summary.md`, `dependency-boundaries.md`,
+  `docs/architecture/quality-review.md`,
   `docs/development/pws0408-pilot.md`, this report, `docs/release/RELEASE_INTERFACE.md`,
   `TASKS.yaml`, and `BUNDLE_MANIFEST.json`: contracts, human protocol, truthful release
   context, task evidence, and planning-bundle integrity.
 
 ## Verification
 
-Full-suite results and final source revision will be inserted after successful completion.
+Full unit and security results will be inserted after completion. Remaining
+checks listed here have actually passed; they are not placeholders for future execution.
 The separate first-time-user and keyboard-only human result is **not recorded**.
+
+Commands below use `uv run python -m tools.dev <command>` unless shown explicitly.
+The observed test environment is Windows x64, version `10.0.26200`, build `26200`.
+
+- `format-check`, `lint`, `typecheck`: pass; 589 Python files formatted and strictly typed.
+- `check-import-boundaries`: pass; 13 layers and 207 source files.
+- `test-integration`: the full suite completed with pytest exit code 0; 481 tests were
+  collected. Completion was independently confirmed through retained process handles.
+  The final per-status stdout totals were not retained, so no exact pass/skip breakdown
+  is asserted for this run. Final UI cancellation changes were separately covered by the
+  focused workflow/bridge/window/dialog tests and the full accessibility suite.
+- `test-accessibility`: 67 passed, including the final cancellation and enlarged-text UI.
+- `validate-schemas`: all nine registered validation groups passed.
+- `validate-task-graph`: 82 tasks, 243 dependencies, nine milestones, 42 decisions.
+- `validate-docs`, `validate-portfolio-boundary`: pass; 14 canonical bundle files valid.
+- `validate-dependencies`: one complete and four rejected examples validated.
+- `validate-m1-benchmark-report`, `validate-pws0208-resource-workload`,
+  `validate-pdf-renderer-benchmark`: pass. These validate existing evidence/workload
+  definitions, not new performance measurements or hardware certification.
+- `quality-self-test`: all five deliberate format, type, schema, graph, and staged-binary
+  secret violations detected; synthetic negative-test data cleaned up.
+- `validate-fixtures`: pass in a clean full-history local clone at `a73fc04`; 46 synthetic
+  fixtures, 15 renderer, six transform, and three overlay references (237,165 corpus bytes),
+  2,528 historical blobs, 837 index blobs, and 867 working files.
+- `scan-secrets`: pass in that same clean source snapshot; 2,528 historical blobs,
+  274 commit/tag objects, 2,563 path/blob pairs, 837 index blobs, 867 tracked working files,
+  and no nonignored untracked files. Maintainer-owned untracked files in the main working
+  directory stayed untouched and outside this source-verification scope.
+- `uv run pytest tests/integration/test_package_pilot.py -q`: one live production-worker
+  pilot passed in 276.87 seconds. Combined and separate first-page renders were inspected
+  and pixel-identical for the synthetic source.
+- `uv run --locked --no-sync pytest tests/unit/test_pws0408_pilot.py -q`: 13 passed after
+  the instruction clarification. `uv run python -m tools.pws0408_pilot --prepare-only`
+  produced a fresh isolated attempt without launching the GUI or recording a human pass.
+- `git diff --check`: pass.
+
+### Quality-evidence provenance correction
+
+The first full unit run finished with `5 failed, 4632 passed in 544.21s`: one failed
+baseline test and four failed subtests (4,633 test items were collected). It identified
+the existing PWS-0207 baseline's obsolete
+implementation binding. Its recorded PWS-0406 revision no longer matches four of the
+27 deliberately bound files: desktop composition, organizer, backend bridge, and window.
+PWS-0408 adds exclusive package review, queued package actions, lazy worker composition,
+and consent/autosave reconciliation there. Independent inspection confirmed the other
+23 bound files are byte-identical, including the quality algorithms, corpus/evaluator,
+profile/resource policy, OCR-review machinery, protocol, and isolation.
+
+The documented evaluator was rerun, then its no-replace recorder generated a separate
+candidate for `a73fc04`. Validation passed. Comparing the complete old and generated
+payloads proved the implementation revision is the **only** changed field; all eight
+metric rows and corpus/profile hashes remain exact. This is a reviewed provenance update
+for changed integration surfaces, not a changed regression oracle or relaxed validator.
+The historical baseline remains available in Git. The canonical baseline was updated
+through an exact revision-only patch, validated successfully, and its previously failing
+unit test passed in 2.64 seconds. The complete unit retry is still pending.
+
+The four remaining failures came from the synthetic final-release fixture: it replaced
+uppercase `TBD` and title-case `Pending` but left the new lowercase human-acceptance
+`pending` table value unresolved. The production gate correctly rejects that value.
+Only fixture completion was made case-insensitive, with explicit assertions that
+the real gate continues rejecting lower/mixed-case structured placeholders. The release
+sheet remains truthful and draft; no production gate or pending human check is bypassed.
+The focused portfolio file passed 31 tests and 52 subtests, including the four new
+lower/mixed-case rejection observations. Formatting, lint, strict typing, and documentation
+validation passed again after these evidence/test-only corrections.
+
+### Acceptance evidence boundaries
+
+- Concrete summary inventory and truthful review: summary/workflow unit tests cover
+  planned versus saved names/counts/bytes/pages, category assignments, incomplete
+  checklists, unavailable checks, warning-heavy cases, and required human statements.
+- Production export path: `tests/integration/test_package_pilot.py` uses the ordinary
+  Windows backend and restricted workers under `CONSTRAINED_RESOURCE_POLICY_V1`.
+  It exercises missing-to-complete assignments, explicit review refusal, cancellation,
+  all three export modes, actual reopen/render verification, exact UTF-8 companions,
+  occupied-destination refusal, source/history preservation, and cleanup.
+- Content safety: `tests/security/test_package_summary_privacy.py` checks prohibited
+  positive guarantees and hidden diagnostic/fixture tokens, including failure paths.
+- Widget accessibility: `tests/accessibility/test_package_export_accessibility.py`
+  checks names, focus, keyboard operation, wrapping/enlargement, and announcements.
+  Developer screenshots were also inspected; neither establishes human comprehension.
+- **Still required:** a genuinely first-time operator completes the documented eight
+  steps using the keyboard and PaperWorkShell alone, and explains planned/saved files,
+  unknown checks, remaining review, and the absence of submission/signature/redaction
+  guarantees. Preparation or silence from an operator is not a pass.
 
 ## Security, privacy, and accessibility
 

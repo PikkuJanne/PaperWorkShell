@@ -173,9 +173,9 @@ The check is a cancelable global long operation with visible numeric progress an
 queued, active, completed, cancelled, failed, and stale states. If an ordinary thumbnail request
 is active, the UI cancels it and retains exactly one pending quality request for the same saved
 revision; the quality request starts only after the preview drains. Escape or the visible Cancel
-control can cancel the pending or active request. Import, scan review, mutation, autosave, case
-switch, reopen-required state, shutdown, and another quality operation cannot overlap it. Ordinary
-preview scheduling resumes after the quality operation finishes.
+control can cancel the pending or active request. Import, scan review, package review/export,
+mutation, autosave, case switch, reopen-required state, shutdown, and another quality operation
+cannot overlap it. Ordinary preview scheduling resumes after the quality operation finishes.
 
 The desktop disables **Check page quality** when the saved case has no active pages, so an empty
 case cannot launch this UI workflow or be displayed as a completed clean review. The application

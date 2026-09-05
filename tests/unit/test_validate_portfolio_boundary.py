@@ -6,6 +6,7 @@ import copy
 import hashlib
 import io
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -612,10 +613,17 @@ dependencies = ["safe@../suite-runtime"]
                 _issue_codes(_document_issues(root, data)),
             )
             for release_document in (interface, evidence):
+                finalized_text = re.sub(
+                    r"\bTBD\b",
+                    "verified-value",
+                    release_document.read_text(encoding="utf-8"),
+                    flags=re.IGNORECASE,
+                )
+                finalized_text = re.sub(
+                    r"\bPending\b", "Passed", finalized_text, flags=re.IGNORECASE
+                )
                 release_document.write_text(
-                    release_document.read_text(encoding="utf-8")
-                    .replace("TBD", "verified-value")
-                    .replace("Pending", "Passed"),
+                    finalized_text,
                     encoding="utf-8",
                 )
             checklist = root / "docs/release/STANDALONE_RELEASE_CHECKLIST.md"
@@ -635,6 +643,19 @@ dependencies = ["safe@../suite-runtime"]
                 with self.subTest(status=status):
                     _task(data, "PWS-0808")["status"] = status
                     self.assertEqual([], _document_issues(root, data))
+
+            finalized_interface = interface.read_text(encoding="utf-8")
+            for placeholder in ("pending", "pEnDiNg", "tbd", "tBd"):
+                with self.subTest(placeholder=placeholder):
+                    interface.write_text(
+                        finalized_interface
+                        + f"\n| Synthetic source context | Human acceptance {placeholder} |\n",
+                        encoding="utf-8",
+                    )
+                    self.assertIn(
+                        "PORTFOLIO_DOCUMENT_STAGE_INVALID",
+                        _issue_codes(_document_issues(root, data)),
+                    )
 
     def test_negated_or_incomplete_release_status_is_not_final(self) -> None:
         for status in (
