@@ -65,6 +65,12 @@ from paperworkshell.domain.ocr_languages import (
 )
 from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
 from paperworkshell.domain.page_operations import PageOperationError
+from paperworkshell.domain.pdf_export import (
+    PdfExportError,
+    PdfExportErrorCode,
+    PdfExportProgress,
+    PdfExportProgressPhase,
+)
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
     PdfThumbnailErrorCode,
@@ -160,6 +166,7 @@ _KNOWN_FAILURES: Final = (
     PageOperationError,
     OverlayError,
     PackageWorkflowError,
+    PdfExportError,
     PdfThumbnailError,
     PreflightError,
     RecoveryError,
@@ -235,6 +242,7 @@ def sanitize_ui_failure(
                 ImagePageError,
                 ManifestRepositoryError,
                 PagePreviewError,
+                PdfExportError,
                 PdfThumbnailError,
                 SignatureImageError,
             },
@@ -495,6 +503,47 @@ class OrganizerBackendWorker(QObject):
                 )
 
         self._run_long(operation_id, "Import", action)
+
+    @Slot(int, object, object)
+    def export_pages_pdf(
+        self,
+        operation_id: int,
+        destination: object,
+        cancellation: object,
+    ) -> None:
+        """Save a verified ordinary PDF on the serialized backend thread."""
+
+        def action(backend: OrganizerBackend) -> None:
+            if not isinstance(destination, Path) or type(cancellation) is not OperationCancellation:
+                raise TypeError
+            outcome = backend.export_pages_pdf(
+                destination,
+                cancellation=cancellation.cancelled,
+                progress=lambda value: self._pdf_export_progress(operation_id, value),
+            )
+            self.state_changed.emit(outcome.state)
+            if outcome.refresh_required:
+                self.case_reopen_required.emit(operation_id, outcome.safe_message)
+            else:
+                self.operation_status_changed.emit(operation_id, outcome.safe_message)
+
+        self._run_long(operation_id, "PDF export", action)
+
+    def _pdf_export_progress(self, operation_id: int, progress: PdfExportProgress) -> None:
+        self.progress_changed.emit(
+            UiProgress(
+                operation="PDF export",
+                phase=progress.phase.value.replace("_", " "),
+                completed=progress.completed_pages,
+                total=progress.total_pages,
+                cancelable=progress.phase
+                not in {
+                    PdfExportProgressPhase.RECORDING,
+                    PdfExportProgressPhase.COMPLETE,
+                },
+                operation_id=operation_id,
+            )
+        )
 
     @Slot(int, int, object, int, int, object)
     def get_thumbnails(
@@ -1954,6 +2003,13 @@ class OrganizerBackendWorker(QObject):
     ) -> None:
         try:
             callback()
+        except PdfExportError as error:
+            if error.code is PdfExportErrorCode.CANCELLED and operation_id is not None:
+                self.operation_cancelled.emit(
+                    operation_id, "PDF export cancelled before completion."
+                )
+                return
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
         except SourceIngestError as error:
             if error.code is SourceIngestErrorCode.CANCELLED:
                 if operation_id is not None:
@@ -2127,6 +2183,7 @@ class OrganizerBackendCommands(QObject):
     package_review_begin_requested = Signal(int, object)
     package_review_refresh_requested = Signal(int, object)
     package_export_requested = Signal(int, object, object, bool, bool, object)
+    pages_pdf_export_requested = Signal(int, object, object)
     package_review_cancel_requested = Signal(int)
     package_summary_save_requested = Signal(int, object, object)
     signature_image_prepare_requested = Signal(int, object, object, object)
@@ -2155,6 +2212,7 @@ class OrganizerBackendCommands(QObject):
         self.open_case_requested.connect(worker.open_case)
         self.close_case_requested.connect(worker.close_case)
         self.import_requested.connect(worker.import_source)
+        self.pages_pdf_export_requested.connect(worker.export_pages_pdf)
         self.thumbnails_requested.connect(worker.get_thumbnails)
         self.quality_review_requested.connect(worker.analyze_quality)
         self.scan_review_begin_requested.connect(worker.begin_scan_review)

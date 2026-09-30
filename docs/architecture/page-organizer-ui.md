@@ -83,6 +83,36 @@ the renderer observes cancellation instead of waiting for the render timeout. Pr
 resumes only after the backend publishes a non-pending state. A failed save retains the candidate
 and exposes a keyboard-focusable Retry saving changes action.
 
+## Ordinary PDF export
+
+**Export pages as PDF** is available as an organizer button and File menu action with
+**Ctrl+Shift+E**. It exports the current saved PDF/JPEG/PNG sequence to a user-selected new PDF
+filename without a template or OCR language requirement. The closed image-page export profile
+supports ordering, intrinsic EXIF orientation, and user quarter-turn rotation. Unsupported active
+edits receive the existing plain-language export error; details are in
+[Deterministic verified PDF export](pdf-export.md).
+
+The action becomes available when the saved case has pages and the shared long-operation lane is
+idle. It uses the same operation identifiers, progress announcements, direct Cancel token, and
+serialized backend thread as import. Page mutations and import are disabled while export runs.
+Native destination selection can be cancelled; the destination adapter refuses existing filenames.
+Cancellation or failure restores focus to the export button so another destination or attempt is
+keyboard reachable. Normal controls remain scroll reachable with doubled text.
+
+The composition root admits the `pdf.export` version-2 worker on the backend thread on first use.
+It shares the application resource policy and heavy-operation coordinator and registers its
+composition for retryable shutdown cleanup. The worker receives source/output handles, never the
+selected destination path. No additional worker pool, cache, or background service is created.
+
+Export flushes queued intent before planning and returns a committed result after verification and
+destination reopen. The organizer then reloads the case to include export history. A reload failure
+preserves the successful export outcome, blocks stale mutations, and moves focus to **Close case**;
+closing and reopening reconstructs the session. A successful history-only refresh retains existing
+previews and leaves the export completion announcement visible. A late Cancel request cannot
+replace an already committed save with a cancellation claim.
+
+## Durable case refresh
+
 Case switch, import, window close, and process shutdown flush queued state first. Import then
 commits through immutable ingest, reloads the new manifest revision, and establishes the import as
 a new non-undoable durable baseline. Restart reconstruction therefore reads only the manifest and

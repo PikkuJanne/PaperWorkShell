@@ -225,6 +225,16 @@ evidence.
 
 ## PWS-0201 JPEG/PNG intake evidence
 
+The current-review regression set additionally rejects ICC and unsupported PNG color metadata
+before native decode, and rejects 16-bit PNG rather than clipping a synthetic midtone to white.
+The versioned ordinary image PDF export must preserve all-eight-orientation interpretation,
+white alpha compositing, ordered mixed pages, source hashes, one-heavy-operation limits,
+cancel/deadline/low-space cleanup, and reopened structural/render verification without OCR.
+Desktop checks cover import/cancel/retry, close/reopen, the keyboard export action and 200%
+scaling. See the [synthetic coverage index](../development/image-intake-coverage.md) and
+[current review evidence](../evidence/pws0201-current-review.md); launcher preparation alone
+does not record a test pass.
+
 PWS-0201 implements its portions of ST-001, ST-002, ST-004, ST-005, ST-008, ST-010, and ST-011
 through a worker-only Pillow adapter and a fixed image-normalization RPC/artifact contract.
 

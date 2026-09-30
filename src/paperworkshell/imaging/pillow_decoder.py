@@ -42,11 +42,14 @@ _JPEG_SIGNATURE: Final = b"\xff\xd8"
 _PNG_CRITICAL_CHUNKS: Final = {b"IHDR", b"PLTE", b"IDAT", b"IEND"}
 _PNG_METADATA_CHUNKS: Final = {
     b"cHRM",
+    b"cICP",
+    b"cLLI",
     b"eXIf",
     b"gAMA",
     b"hIST",
     b"iCCP",
     b"iTXt",
+    b"mDCV",
     b"pHYs",
     b"PLTE",
     b"sBIT",
@@ -381,20 +384,25 @@ def _require_supported_color_profile(
     scan: _MetadataScan,
     request: ImageNormalizationRequest,
 ) -> None:
-    """Keep the straight-alpha signature profile deterministic without parsing ICC data.
+    """Reject color declarations that the fixed RGBA8 route cannot honor.
 
-    The released opaque page-normalization profile retains its existing behavior.  Signature
-    rasters instead become unprofiled DeviceRGB values, so an embedded ICC profile or PNG
-    chromaticity/gamma declaration must fail before Pillow parses the image.  A well-formed PNG
-    ``sRGB`` rendering-intent chunk is compatible with that fixed interpretation.
+    Neither normalization profile applies a color-management transform. Embedded ICC and PNG
+    chromaticity/gamma and PNG 3 color/HDR declarations therefore fail before Pillow parses the
+    image, rather than silently discarding source color meaning. A well-formed PNG ``sRGB`` chunk
+    is compatible with the fixed interpretation. Retain the existing signature diagnostics.
     """
 
-    if request.alpha_policy is not ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA:
-        return
+    signature = request.alpha_policy is ImageAlphaNormalizationPolicy.PRESERVE_STRAIGHT_ALPHA
     if scan.has_embedded_color_profile:
-        reject_image_page(ImagePageErrorCode.UNSUPPORTED, "image.signature_icc_profile")
+        reject_image_page(
+            ImagePageErrorCode.UNSUPPORTED,
+            "image.signature_icc_profile" if signature else "image.icc_profile",
+        )
     if scan.has_non_srgb_color_profile:
-        reject_image_page(ImagePageErrorCode.UNSUPPORTED, "image.signature_color_profile")
+        reject_image_page(
+            ImagePageErrorCode.UNSUPPORTED,
+            "image.signature_color_profile" if signature else "image.color_profile",
+        )
 
 
 def _scan_png(
@@ -504,7 +512,10 @@ def _scan_png(
             has_icc = has_icc or chunk_type == b"iCCP"
             has_non_srgb_color_profile = has_non_srgb_color_profile or chunk_type in {
                 b"cHRM",
+                b"cICP",
+                b"cLLI",
                 b"gAMA",
+                b"mDCV",
             }
             if chunk_type == b"eXIf":
                 if has_exif:
@@ -544,6 +555,10 @@ def _scan_png(
                 reject_image_page(ImagePageErrorCode.MALFORMED, "image.png_ihdr")
             png_bit_depth = ihdr_payload[8]
             png_color_type = ihdr_payload[9]
+            # Pillow clips I;16 values when converting to RGBA and discards low bits for
+            # other 16-bit PNG modes during load. This profile admits only <=8-bit samples.
+            if png_bit_depth == 16:
+                reject_image_page(ImagePageErrorCode.UNSUPPORTED, "image.png_bit_depth")
         elif chunk_type == b"sRGB" and (srgb_payload is None or srgb_payload[0] not in range(4)):
             reject_image_page(ImagePageErrorCode.METADATA_INVALID, "image.png_srgb")
         saw_ihdr = saw_ihdr or chunk_type == b"IHDR"
@@ -808,9 +823,6 @@ def _classify_image(
         ),
         "RGBA": (ImageSourceColorModel.RGBA, 4, 8, True),
         "CMYK": (ImageSourceColorModel.CMYK, 4, 8, False),
-        "I;16": (ImageSourceColorModel.GRAYSCALE, 1, 16, False),
-        "I;16B": (ImageSourceColorModel.GRAYSCALE, 1, 16, False),
-        "I;16L": (ImageSourceColorModel.GRAYSCALE, 1, 16, False),
     }
     result = classifications.get(mode)
     if result is None:

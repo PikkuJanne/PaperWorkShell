@@ -169,6 +169,10 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "tools/validate_tasks.py"),
         "Validate task references, gates, and the dependency DAG.",
     ),
+    "validate-pillow-runtime": CommandSpec(
+        ("python", "-m", "tools.validate_pillow_runtime"),
+        "Authenticate the admitted Pillow native runtime and provenance inventory.",
+    ),
     "validate-docs": CommandSpec(
         ("python", "-m", "tools.validate_docs"),
         "Validate local documentation links and security references offline.",
@@ -227,6 +231,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
     "pws0408-pilot": CommandSpec(
         ("python", "-m", "tools.pws0408_pilot"),
         "Open the synthetic PWS-0408 human pilot in an isolated constrained workspace.",
+        include_in_check=False,
+    ),
+    "pws0201-image-smoke": CommandSpec(
+        ("python", "-m", "tools.pws0201_image_smoke"),
+        "Open the synthetic JPEG/PNG desktop journey in an isolated constrained workspace.",
         include_in_check=False,
     ),
 }

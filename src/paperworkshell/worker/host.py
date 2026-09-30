@@ -131,6 +131,7 @@ def _build_operation_registry(
         )
 
         handlers.append(build_pdf_export_operation_handler())
+        handlers.append(build_pdf_export_operation_handler(operation_version=2))
     except Exception:
         pass
     try:

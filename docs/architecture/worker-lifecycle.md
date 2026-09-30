@@ -20,7 +20,7 @@ contracts. An unavailable optional adapter is omitted rather than discovered thr
 plugins or advertised as a capability.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` version 1,
+version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` versions 1 and 2,
 `ocr.process` version 1, and the additive `pdf.export.searchable` and `pdf.export.flattened`
 version-1 capabilities when each operation's exact resources pass admission. The no-op still
 proves process/protocol lifecycle without
@@ -550,6 +550,15 @@ candidate, copies only the exact verified byte count into the output section, an
 correlated report. After confirmed whole-tree termination, the broker revalidates every retained
 source before it reads either report or output. Only then can the trusted desktop destination
 adapter stream the candidate into an authenticated, no-replace external commit.
+
+The PWS-0201 image profile negotiates `pdf.export` version 2 with `pdf-export-plan-v2` and exact
+PDF/JPEG/PNG source media references. Version 1 remains PDF-only. The new version uses the same
+handle grant, private-temp lifecycle, bounded candidate/report, source revalidation, and no-replace
+publication. JPEG/PNG decoding stays inside that worker through the pinned normalization adapter;
+one opaque raster and one fixed-300-DPI PDF page are processed and removed at a time. Intrinsic
+orientation and user quarter turns are supported; active crop/cleanup/overlay intent is rejected.
+Source copies, candidate capacity, and image scratch must jointly fit the operation temp limit.
+The qpdf-only launcher admits no OCR executable or language pack for this operation.
 
 The standalone qpdf executable is a fixed launcher resource, never a PATH-discovered command. An
 explicit packaged/test executable adds only its exact absolute path to the constructed worker

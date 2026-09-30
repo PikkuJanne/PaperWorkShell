@@ -38,6 +38,7 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER,
     IMAGE_NORMALIZE_OUTPUT_OBJECT_ID_PARAMETER,
     IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER,
+    IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_BACKGROUND_CLEANUP_PARAMETER,
     IMAGE_TRANSFORM_CAPABILITY,
     IMAGE_TRANSFORM_CONTRAST_PARAMETER,
@@ -905,10 +906,15 @@ class PdfExportOperationHandler:
     """Coordinate the closed ``pdf.export`` operation around one adapter."""
 
     adapter: PdfExportAdapter
+    operation_version: int = 1
+
+    def __post_init__(self) -> None:
+        if type(self.operation_version) is not int or self.operation_version not in {1, 2}:
+            raise ValueError("Unsupported PDF export operation version")
 
     @property
     def descriptor(self) -> CapabilityDescriptor:
-        return PDF_EXPORT_CAPABILITY
+        return PDF_EXPORT_CAPABILITY if self.operation_version == 1 else IMAGE_PDF_EXPORT_CAPABILITY
 
     def execute(self, context: OperationContext) -> OperationResultPayload:
         request = _pdf_export_operation_request(context)

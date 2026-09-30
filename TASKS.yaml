@@ -1558,6 +1558,7 @@ tasks:
     - The organizer routes mixed PDF/image inspection and previews through one shared heavy-operation coordinator, preserves ordered keyboard-accessible UI state and content-free progress/error announcements, and keeps decoded pixels in the central byte-budgeted preview cache without exposing paths, names, metadata values, or image bytes to logs.
     - Pillow is now an exact direct worker/runtime dependency with reviewed license, hashes, native-boundary inventory, lockfile, offline staging audit, and PWS-0801 shipment closure retained; a generated synthetic orientation/alpha preview was visually inspected and showed the expected transform and opaque-white normalization.
     - Cooperative cancellation is checked at bounded Python phases and row writes; an unresponsive native Pillow call remains subject to the existing worker wall-time, Windows Job, and process-tree termination controls rather than an in-process interruption claim.
+    - "Current-implementation review supplement (2026-09-30): docs/evidence/pws0201-current-review.md records the maintainer-authorized comparison, decoder ADR/native closure, unsupported color/depth regressions, ordinary no-OCR image-to-PDF desktop path, focused failure/resource checks, and desktop observations. The final exact-head quality result is a separate CI record for the commit containing that report. Historical completion evidence and already-done PWS-0202 remain unchanged."
 - id: PWS-0202
   milestone: M2
   title: Implement non-destructive crop, rotate, deskew, and cleanup pipeline

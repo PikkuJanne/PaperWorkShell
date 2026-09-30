@@ -245,6 +245,7 @@ NOOP_CAPABILITY: Final = CapabilityDescriptor("protocol.noop", 1)
 PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
+IMAGE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 2)
 FLATTENED_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.flattened", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
 SIGNATURE_IMAGE_RASTER_CAPABILITY: Final = CapabilityDescriptor("image.signature_raster", 1)
@@ -340,6 +341,7 @@ PDF_EXPORT_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"
 PDF_EXPORT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
 PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
 PDF_EXPORT_PLAN_CONTENT_KIND: Final = "pdf-export-plan-v1"
+IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND: Final = "pdf-export-plan-v2"
 PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "pdf-export-pdf"
 MAX_PDF_EXPORT_PLAN_BYTES: Final = 2 * 1024 * 1024
 MAX_PDF_EXPORT_PAGES: Final = 4_096
@@ -1795,20 +1797,28 @@ def validate_pdf_thumbnail_result(
 
 
 def validate_pdf_export_start(payload: OperationStartPayload) -> None:
-    """Validate the exact, path-free ``pdf.export`` version-1 input contract."""
+    """Validate v1 PDF copying or additive v2 image-page assembly authority."""
+
+    if payload.operation_version not in {1, 2}:
+        reject("RPC_INVALID_OPERATION", "payload.operation_version", "unsupported export version")
+    image_profile = payload.operation_version == IMAGE_PDF_EXPORT_CAPABILITY.capability_version
+    plan_kind = (
+        IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND if image_profile else PDF_EXPORT_PLAN_CONTENT_KIND
+    )
+    source_kinds = {"pdf", "jpeg", "png"} if image_profile else {"pdf"}
 
     if not 2 <= len(payload.inputs) <= MAX_PDF_EXPORT_SOURCES + 1:
         reject(
             "RPC_INVALID_OPERATION",
             "payload.inputs",
-            "pdf.export version 1 requires one plan and at least one PDF source",
+            "pdf.export requires one plan and at least one supported source",
         )
     plan = payload.inputs[0]
     sources = payload.inputs[1:]
     if (
         plan.area is not ReferenceArea.OPERATION_TEMP
         or plan.operation_id is None
-        or plan.content_kind != PDF_EXPORT_PLAN_CONTENT_KIND
+        or plan.content_kind != plan_kind
         or plan.expected_byte_size is None
         or not 1 <= plan.expected_byte_size <= MAX_PDF_EXPORT_PLAN_BYTES
         or plan.expected_sha256 is None
@@ -1816,12 +1826,12 @@ def validate_pdf_export_start(payload: OperationStartPayload) -> None:
         reject(
             "RPC_INVALID_OPERATION",
             "payload.inputs",
-            "pdf.export version 1 requires one bounded operation-scoped plan",
+            "pdf.export requires one bounded operation-scoped plan of its exact version",
         )
     if any(
         source.area is not ReferenceArea.SOURCE_READ
         or source.operation_id is not None
-        or source.content_kind != "pdf"
+        or source.content_kind not in source_kinds
         or source.expected_byte_size is None
         or source.expected_byte_size < 1
         or source.expected_sha256 is None
@@ -1830,7 +1840,7 @@ def validate_pdf_export_start(payload: OperationStartPayload) -> None:
         reject(
             "RPC_INVALID_OPERATION",
             "payload.inputs",
-            "pdf.export version 1 requires authenticated PDF source references",
+            "pdf.export requires authenticated source references for its exact version",
         )
     input_object_ids = tuple(reference.object_id for reference in payload.inputs)
     if len(set(input_object_ids)) != len(input_object_ids):

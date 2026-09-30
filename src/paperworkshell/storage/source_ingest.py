@@ -1998,8 +1998,8 @@ def _require_committed_pdf_export_plan(value: object) -> PdfExportPlan:
                 or type(source.sha256) is not str
                 or _SHA256_RE.fullmatch(source.sha256) is None
                 or type(source.signature_state) is not PdfExportSourceSignatureState
-                or source.media_type is not PdfExportSourceMediaType.PDF
-                or source.encryption_state is not PdfExportSourceEncryptionState.UNENCRYPTED
+                or type(source.media_type) is not PdfExportSourceMediaType
+                or type(source.encryption_state) is not PdfExportSourceEncryptionState
             ):
                 reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.batch_source")
         if any(type(page) is not PdfExportPage for page in plan.pages):
@@ -2027,12 +2027,12 @@ def _require_matching_pdf_export_source(
             SourceIngestErrorCode.SOURCE_UNAVAILABLE,
             "source.batch_not_ready",
         )
-    if record.media_type is not DetectedMediaType.PDF:
+    if record.media_type.value != source.media_type.value:
         reject_source_ingest(
             SourceIngestErrorCode.SOURCE_UNAVAILABLE,
             "source.batch_media",
         )
-    if record.encryption_state is not SourceEncryptionState.UNENCRYPTED:
+    if record.encryption_state.value != source.encryption_state.value:
         reject_source_ingest(
             SourceIngestErrorCode.SOURCE_UNAVAILABLE,
             "source.batch_encryption",

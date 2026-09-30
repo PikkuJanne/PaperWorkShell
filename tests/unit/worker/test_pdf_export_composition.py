@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -32,6 +33,7 @@ from paperworkshell.worker.desktop_composition import (
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.pdf_export_broker import PdfExportBrokerPolicy
 from paperworkshell.worker.protocol.models import (
+    IMAGE_PDF_EXPORT_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     CapabilityDescriptor,
     ResourceLimits,
@@ -183,6 +185,29 @@ def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(
         )
 
     assert caught.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
+
+
+def test_image_export_composition_negotiates_only_explicit_v2_without_ocr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
+    composition = create_pdf_export_worker_composition(
+        replace(_config(tmp_path), operation_version=2),
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
+    worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
+    assert worker.required_capabilities == (IMAGE_PDF_EXPORT_CAPABILITY,)
+    launch = cast(Any, worker.launcher)._config
+    assert launch.tesseract_executable is None
+    assert launch.tessdata_root is None
+    composition.close()
+
+
+@pytest.mark.parametrize("version", [0, 3, True])
+def test_export_composition_rejects_unsupported_version(tmp_path: Path, version: int) -> None:
+    with pytest.raises(WorkerClientError):
+        replace(_config(tmp_path), operation_version=version)
 
 
 def test_close_is_idempotent_and_rejects_a_non_owner_thread(

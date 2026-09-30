@@ -22,12 +22,14 @@ from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryErrorCode,
 )
 from paperworkshell.domain.pdf_export import (
+    DEFAULT_PDF_EXPORT_PROFILE,
     PdfExportError,
     PdfExportErrorCode,
     PdfExportHistoryRetryReceipt,
     PdfExportOutcome,
     PdfExportOutcomeStatus,
     PdfExportPlan,
+    PdfExportProfile,
     PdfExportProgress,
     PdfExportProgressPhase,
     PdfExportVerificationReport,
@@ -153,6 +155,7 @@ class PdfExportService:
         "_history",
         "_id_factory",
         "_manifests",
+        "_profile",
         "_retries",
         "_sources",
     )
@@ -168,6 +171,7 @@ class PdfExportService:
         *,
         clock: Callable[[], datetime] = _utc_now,
         id_factory: Callable[[], UUID] = uuid4,
+        profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
     ) -> None:
         if (
             not isinstance(manifests, ManifestRepository)
@@ -178,6 +182,7 @@ class PdfExportService:
             or not isinstance(retries, PdfExportRetryRepository)
             or not callable(clock)
             or not callable(id_factory)
+            or type(profile) is not PdfExportProfile
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.service")
         self._manifests = manifests
@@ -188,6 +193,7 @@ class PdfExportService:
         self._retries = retries
         self._clock = clock
         self._id_factory = id_factory
+        self._profile = profile
 
     def export_pdf(
         self,
@@ -474,7 +480,7 @@ class PdfExportService:
             loaded = self._manifests.load(case_id)
             if type(loaded) is not ManifestLoadResult or loaded.snapshot.case_id != case_id:
                 reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_load")
-            plan = build_pdf_export_plan(loaded.snapshot)
+            plan = build_pdf_export_plan(loaded.snapshot, profile=self._profile)
             require_signed_source_modification_confirmation(
                 loaded.snapshot,
                 tuple(

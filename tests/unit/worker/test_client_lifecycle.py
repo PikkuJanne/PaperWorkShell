@@ -32,6 +32,7 @@ from paperworkshell.worker.client.process import (
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_MESSAGE_BYTES,
     NOOP_CAPABILITY,
@@ -334,6 +335,7 @@ def _ready_client(
                 PDF_INSPECT_CAPABILITY,
                 PDF_THUMBNAIL_CAPABILITY,
                 PDF_EXPORT_CAPABILITY,
+                IMAGE_PDF_EXPORT_CAPABILITY,
                 FLATTENED_PDF_EXPORT_CAPABILITY,
                 IMAGE_NORMALIZE_CAPABILITY,
                 SIGNATURE_IMAGE_RASTER_CAPABILITY,
@@ -403,6 +405,7 @@ def test_start_negotiates_and_query_is_local_and_secret_free() -> None:
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         PDF_EXPORT_CAPABILITY,
+        IMAGE_PDF_EXPORT_CAPABILITY,
         FLATTENED_PDF_EXPORT_CAPABILITY,
         IMAGE_NORMALIZE_CAPABILITY,
         SIGNATURE_IMAGE_RASTER_CAPABILITY,

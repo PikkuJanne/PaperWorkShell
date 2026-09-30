@@ -11,6 +11,8 @@ from uuid import UUID
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
+    IMAGE_PDF_EXPORT_PROFILE,
+    IMAGE_PDF_EXPORT_VERSION,
     MAX_PDF_EXPORT_PAGES,
     MAX_PDF_EXPORT_SOURCES,
     PDF_EXPORT_PLAN_VERSION,
@@ -18,8 +20,11 @@ from paperworkshell.domain.pdf_export import (
     PdfExportErrorCode,
     PdfExportPage,
     PdfExportPlan,
+    PdfExportProfile,
     PdfExportRotation,
     PdfExportSource,
+    PdfExportSourceEncryptionState,
+    PdfExportSourceMediaType,
     PdfExportSourceSignatureState,
     reject_pdf_export,
 )
@@ -216,9 +221,9 @@ def decode_pdf_export_worker_plan(payload: bytes) -> PdfExportWorkerPlan:
     if _require_integer(root["worker_plan_version"], "export.worker_plan_version") != 1:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.worker_plan_version")
     plan_version = _require_integer(root["plan_version"], "export.plan_version")
-    if plan_version != PDF_EXPORT_PLAN_VERSION:
+    if plan_version not in {PDF_EXPORT_PLAN_VERSION, IMAGE_PDF_EXPORT_VERSION}:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.plan_version")
-    _decode_profile(root["profile"])
+    profile = _decode_profile(root["profile"], plan_version)
 
     raw_sources = _require_array(
         root["sources"],
@@ -236,6 +241,12 @@ def decode_pdf_export_worker_plan(payload: bytes) -> PdfExportWorkerPlan:
                 byte_size=_require_integer(record["byte_size"], "export.source_size"),
                 page_count=_require_integer(record["page_count"], "export.source_pages"),
                 sha256=_require_string(record["sha256"], "export.source_digest"),
+                media_type=PdfExportSourceMediaType(
+                    _require_string(record["media_type"], "export.source_media")
+                ),
+                encryption_state=PdfExportSourceEncryptionState(
+                    _require_string(record["encryption_state"], "export.source_encryption")
+                ),
                 signature_state=PdfExportSourceSignatureState(
                     _require_string(record["signature_state"], "export.source_signature")
                 ),
@@ -299,7 +310,7 @@ def decode_pdf_export_worker_plan(payload: bytes) -> PdfExportWorkerPlan:
             manifest_cas_token=_require_string(root["manifest_cas_token"], "export.manifest_cas"),
             sources=tuple(sources),
             pages=tuple(pages),
-            profile=DEFAULT_PDF_EXPORT_PROFILE,
+            profile=profile,
             plan_version=plan_version,
         )
     except PdfExportError:
@@ -412,9 +423,13 @@ def _require_uuid(value: object, context: str) -> UUID:
     return parsed
 
 
-def _decode_profile(value: object) -> None:
+def _decode_profile(value: object, plan_version: int) -> PdfExportProfile:
     profile = _require_object(value, _PROFILE_MEMBERS, "export.worker_profile")
-    expected = DEFAULT_PDF_EXPORT_PROFILE
+    expected = (
+        DEFAULT_PDF_EXPORT_PROFILE
+        if plan_version == PDF_EXPORT_PLAN_VERSION
+        else IMAGE_PDF_EXPORT_PROFILE
+    )
     if profile != {
         "profile_version": expected.profile_version,
         "assembly": expected.assembly.value,
@@ -423,3 +438,4 @@ def _decode_profile(value: object) -> None:
         "encryption_policy": expected.encryption_policy.value,
     }:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.worker_profile")
+    return expected

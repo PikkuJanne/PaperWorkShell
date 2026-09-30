@@ -17,10 +17,22 @@ from pathlib import Path
 from typing import Any, BinaryIO, Final, Protocol, cast
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.image_pages import (
+    MAX_IMAGE_DECOMPRESSED_BYTES,
+    MAX_IMAGE_DIMENSION_PIXELS,
+    MAX_IMAGE_MEMORY_BYTES,
+    MAX_IMAGE_METADATA_BYTES,
+    MAX_IMAGE_METADATA_RECORDS,
+    MAX_IMAGE_SOURCE_BYTES,
+    MAX_IMAGE_SOURCE_PIXELS,
+    MAX_IMAGE_WALL_TIME_MS,
+    ImageNormalizationLimits,
+)
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
     PdfExportPlan,
+    PdfExportSourceMediaType,
     PdfExportVerificationReport,
     reject_pdf_export,
 )
@@ -69,6 +81,7 @@ from paperworkshell.worker.private_temp import (
     WorkerPrivateTempStorageError,
 )
 from paperworkshell.worker.protocol.models import (
+    IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
     PDF_EXPORT_PLAN_CONTENT_KIND,
     CaseObjectReference,
@@ -169,8 +182,11 @@ class WindowsPdfExportOperationAdapter:
         default_factory=OsWorkerPrivateTempStorage,
         repr=False,
     )
+    operation_version: int = 1
 
     def __post_init__(self) -> None:
+        if type(self.operation_version) is not int or self.operation_version not in {1, 2}:
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.worker_version")
         if not callable(getattr(self.candidate_adapter, "assemble_and_verify", None)) or any(
             not callable(getattr(self.private_temp_storage, member, None))
             for member in ("require_capacity", "open_named")
@@ -212,6 +228,8 @@ class WindowsPdfExportOperationAdapter:
                 expected_sha256=plan_reference.expected_sha256 or "",
             )
             worker_plan = decode_pdf_export_worker_plan(payload)
+            if worker_plan.plan.plan_version != self.operation_version:
+                reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.worker_plan_version")
             source_handles = tuple(source.worker_handle for source in worker_plan.sources)
             authorities.add_discovered(
                 source_handles,
@@ -311,7 +329,8 @@ def _validate_outer_request(
     if (
         plan_reference.area is not ReferenceArea.OPERATION_TEMP
         or plan_reference.operation_id != context.operation_id
-        or plan_reference.content_kind != PDF_EXPORT_PLAN_CONTENT_KIND
+        or plan_reference.content_kind
+        not in {PDF_EXPORT_PLAN_CONTENT_KIND, IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND}
         or plan_reference.expected_byte_size is None
         or plan_reference.expected_sha256 is None
     ):
@@ -325,6 +344,13 @@ def _bind_worker_plan(
     plan = worker_plan.plan
     if plan.case_id != context.case_id:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.plan_case")
+    expected_plan_kind = (
+        IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND
+        if plan.plan_version == 2
+        else PDF_EXPORT_PLAN_CONTENT_KIND
+    )
+    if context.inputs[0].content_kind != expected_plan_kind:
+        reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.plan_reference")
     if plan.page_count > context.limits.page_count:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.plan_pages")
     references: dict[UUID, CaseObjectReference] = {}
@@ -332,7 +358,7 @@ def _bind_worker_plan(
         if (
             reference.area is not ReferenceArea.SOURCE_READ
             or reference.operation_id is not None
-            or reference.content_kind != "pdf"
+            or reference.content_kind not in {"pdf", "jpeg", "png"}
             or reference.expected_byte_size is None
             or reference.expected_sha256 is None
             or reference.object_id in references
@@ -348,6 +374,12 @@ def _bind_worker_plan(
         if (
             reference.expected_byte_size != source.byte_size
             or reference.expected_sha256 != source.sha256
+            or reference.content_kind
+            != {
+                PdfExportSourceMediaType.PDF: "pdf",
+                PdfExportSourceMediaType.JPEG: "jpeg",
+                PdfExportSourceMediaType.PNG: "png",
+            }[source.media_type]
         ):
             reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "export.source_facts")
     return references
@@ -384,6 +416,33 @@ def _adapter_limits(
         MAX_PDF_INSPECTION_OBJECTS,
         max(_MINIMUM_OBJECT_LIMIT, maximum_pages * _OBJECTS_PER_PAGE_LIMIT),
     )
+    image_normalization: ImageNormalizationLimits | None = None
+    image_scratch = 0
+    if any(source.media_type is not PdfExportSourceMediaType.PDF for source in plan.sources):
+        # The existing operation quota simultaneously covers immutable source
+        # staging, the bounded final candidate, and one disposable image page.
+        image_scratch = limits.temporary_storage_bytes - source_total - candidate_capacity
+        image_bytes = min(image_scratch // 3, limits.memory_bytes, MAX_IMAGE_DECOMPRESSED_BYTES)
+        image_pixels = min(limits.pixel_count, MAX_IMAGE_SOURCE_PIXELS, image_bytes // 4)
+        if image_pixels < 1 or any(
+            source.byte_size > MAX_IMAGE_SOURCE_BYTES for source in plan.sources
+        ):
+            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.image_capacity")
+        image_normalization = ImageNormalizationLimits(
+            maximum_source_bytes=min(limits.temporary_storage_bytes, MAX_IMAGE_SOURCE_BYTES),
+            maximum_encoded_width_pixels=MAX_IMAGE_DIMENSION_PIXELS,
+            maximum_encoded_height_pixels=MAX_IMAGE_DIMENSION_PIXELS,
+            maximum_source_pixels=image_pixels,
+            maximum_decompressed_bytes=min(limits.memory_bytes, MAX_IMAGE_DECOMPRESSED_BYTES),
+            maximum_metadata_records=MAX_IMAGE_METADATA_RECORDS,
+            maximum_metadata_bytes=min(MAX_IMAGE_METADATA_BYTES, limits.memory_bytes),
+            maximum_output_width_pixels=MAX_IMAGE_DIMENSION_PIXELS,
+            maximum_output_height_pixels=MAX_IMAGE_DIMENSION_PIXELS,
+            maximum_output_pixels=image_pixels,
+            maximum_output_bytes=image_bytes,
+            maximum_memory_bytes=min(limits.memory_bytes, MAX_IMAGE_MEMORY_BYTES),
+            wall_time_ms=min(limits.wall_time_ms, MAX_IMAGE_WALL_TIME_MS),
+        )
     return PdfExportAdapterLimits(
         inspection=PdfInspectionLimits(
             maximum_pages=maximum_pages,
@@ -409,6 +468,8 @@ def _adapter_limits(
         maximum_total_source_bytes=limits.temporary_storage_bytes,
         verification_width_pixels=_VERIFICATION_DIMENSION_PIXELS,
         verification_height_pixels=_VERIFICATION_DIMENSION_PIXELS,
+        image_normalization=image_normalization,
+        maximum_image_scratch_bytes=image_scratch,
     )
 
 
@@ -1057,15 +1118,20 @@ def _remove_untrusted_operation_temp_no_raise(candidate: Path) -> None:
             pass
 
 
-def build_pdf_export_operation_handler() -> PdfExportOperationHandler:
+def build_pdf_export_operation_handler(*, operation_version: int = 1) -> PdfExportOperationHandler:
     """Compose the production pikepdf/PDFium/qpdf adapter behind the handler."""
 
     configured_qpdf = os.environ.get(_QPDF_EXECUTABLE_ENVIRONMENT)
     if configured_qpdf is None:
-        return PdfExportOperationHandler(WindowsPdfExportOperationAdapter())
+        return PdfExportOperationHandler(
+            WindowsPdfExportOperationAdapter(operation_version=operation_version), operation_version
+        )
     candidate_adapter = PdfCandidateAdapter(
         qpdf_checker=QpdfCommandChecker(executable=Path(configured_qpdf)),
     )
     return PdfExportOperationHandler(
-        WindowsPdfExportOperationAdapter(candidate_adapter=candidate_adapter)
+        WindowsPdfExportOperationAdapter(
+            candidate_adapter=candidate_adapter, operation_version=operation_version
+        ),
+        operation_version,
     )

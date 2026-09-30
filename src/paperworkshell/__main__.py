@@ -40,7 +40,7 @@ from paperworkshell.app.package_pdf_export import (
 )
 from paperworkshell.app.package_workflow import PackageWorkflowService
 from paperworkshell.app.page_previews import PagePreviewService
-from paperworkshell.app.pdf_export import PdfExportService
+from paperworkshell.app.pdf_export import PdfExportProgressSink, PdfExportService
 from paperworkshell.app.portal_constraints import PortalConstraintWorkflowService
 from paperworkshell.app.quality_analysis import QualityAnalysisService
 from paperworkshell.app.quality_ocr_review import (
@@ -73,7 +73,11 @@ from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEAD
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode, reject_ocr
 from paperworkshell.domain.pdf_export import (
+    DEFAULT_PDF_EXPORT_PROFILE,
+    IMAGE_PDF_EXPORT_PROFILE,
     PdfExportErrorCode,
+    PdfExportOutcome,
+    PdfExportProfile,
     reject_pdf_export,
 )
 from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_FRAME_BYTES
@@ -314,6 +318,7 @@ def build_windows_pdf_export_service(
     composition: PdfExportWorkerComposition,
     *,
     resources: DesktopApplicationResourceContext,
+    profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
 ) -> PdfExportService:
     """Wire concrete Windows persistence around one export-only composition."""
 
@@ -344,6 +349,7 @@ def build_windows_pdf_export_service(
             manifests,
         ),
         WindowsPdfExportRetryRepository(manager),
+        profile=profile,
     )
 
 
@@ -632,7 +638,7 @@ def build_backend(
 class _BackendWorkerResources:
     """Idempotently close every worker composition owned by one backend."""
 
-    __slots__ = ("_closed", "_desktop", "_quality_ocr")
+    __slots__ = ("_closed", "_desktop", "_quality_ocr", "_pdf_export")
 
     def __init__(
         self,
@@ -643,6 +649,7 @@ class _BackendWorkerResources:
             raise ValueError("backend worker resource closer is invalid")
         self._desktop = desktop
         self._quality_ocr = quality_ocr
+        self._pdf_export: Callable[[], None] | None = None
         self._closed = False
 
     @property
@@ -658,12 +665,18 @@ class _BackendWorkerResources:
         if self._closed:
             return
         pending: BaseException | None = None
+        if self._pdf_export is not None:
+            try:
+                self._pdf_export()
+            except BaseException as error:
+                pending = error
         quality_ocr = self._quality_ocr
         if quality_ocr is not None:
             try:
                 quality_ocr()
             except BaseException as error:
-                pending = error
+                if pending is None:
+                    pending = error
         try:
             self._desktop()
         except BaseException as error:
@@ -672,6 +685,68 @@ class _BackendWorkerResources:
         if pending is not None:
             raise pending
         self._closed = True
+
+    def add_pdf_export(self, closer: Callable[[], None]) -> None:
+        if self._closed or self._pdf_export is not None or not callable(closer):
+            raise ValueError("backend PDF export resource closer is invalid")
+        self._pdf_export = closer
+
+
+class _LazyPagesPdfExportService:
+    """Admit the ordinary PDF export worker on the backend thread when first used."""
+
+    def __init__(
+        self,
+        manager: CaseWorkspaceManager,
+        sources: CommittedPdfSourceBatchStore,
+        resources: DesktopApplicationResourceContext,
+        worker_resources: _BackendWorkerResources,
+    ) -> None:
+        self._manager = manager
+        self._sources = sources
+        self._resources = resources
+        self._worker_resources = worker_resources
+        self._service: PdfExportService | None = None
+
+    def export_pdf(
+        self,
+        case_id: UUID,
+        destination: Path,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: PdfExportProgressSink,
+    ) -> PdfExportOutcome:
+        if self._worker_resources.closed:
+            reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.runtime_closed")
+        if cancellation():
+            reject_pdf_export(PdfExportErrorCode.CANCELLED, "export.runtime_cancelled")
+        if deadline():
+            reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "export.runtime_deadline")
+        if self._service is None:
+            composition = build_windows_pdf_export_worker_composition(
+                self._resources, profile=IMAGE_PDF_EXPORT_PROFILE
+            )
+            try:
+                service = build_windows_pdf_export_service(
+                    self._manager,
+                    self._sources,
+                    composition,
+                    resources=self._resources,
+                    profile=IMAGE_PDF_EXPORT_PROFILE,
+                )
+                self._worker_resources.add_pdf_export(composition.close)
+            except BaseException:
+                composition.close()
+                raise
+            self._service = service
+        return self._service.export_pdf(
+            case_id,
+            destination,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
 
 
 class _LazyQualityOcrReviewProcessor:
@@ -864,6 +939,9 @@ def _build_backend(
             ),
             close_resources=owned_resources.close,
             startup_recovery=startup_recovery,
+            pages_pdf_export=_LazyPagesPdfExportService(
+                manager, source_store, selected_resources, owned_resources
+            ),
             signature_images=SignatureImageWorkflowCoordinator(
                 signature_image_store,
                 composition.signature_image_rasterizer,
@@ -1014,6 +1092,8 @@ def _import_io_chunk_bytes(resource_policy: ResourcePolicy | None = None) -> int
 
 def build_windows_pdf_export_limits(
     resource_policy: ResourcePolicy | None = None,
+    *,
+    profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
 ) -> ResourceLimits:
     """Return the fixed bounded production policy for one verified PDF export."""
 
@@ -1029,7 +1109,11 @@ def build_windows_pdf_export_limits(
         temporary_storage_bytes=selected_policy.maximum_temporary_storage_bytes,
         output_bytes=output_bytes,
         page_count=selected_policy.maximum_page_count,
-        pixel_count=1_048_576,
+        pixel_count=(
+            min(268_435_456, selected_policy.worker_process_memory_bytes // 4)
+            if profile == IMAGE_PDF_EXPORT_PROFILE
+            else 1_048_576
+        ),
     )
 
 
@@ -1037,6 +1121,7 @@ def build_windows_pdf_export_worker_config(
     qpdf_executable: Path | None = None,
     *,
     resource_policy: ResourcePolicy | None = None,
+    profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
 ) -> PdfExportWorkerCompositionConfig:
     """Select the trusted qpdf path and compose the export-only worker policy."""
 
@@ -1070,13 +1155,16 @@ def build_windows_pdf_export_worker_config(
             shutdown_grace_seconds=10.0,
         ),
         maximum_heavy_operation_concurrency=(selected_policy.maximum_heavy_operation_concurrency),
-        export_limits=build_windows_pdf_export_limits(selected_policy),
+        export_limits=build_windows_pdf_export_limits(selected_policy, profile=profile),
+        operation_version=profile.profile_version,
     )
 
 
 def build_windows_pdf_export_worker_composition(
     resources: DesktopApplicationResourceContext,
     qpdf_executable: Path | None = None,
+    *,
+    profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
 ) -> PdfExportWorkerComposition:
     """Compose export with the exact app-scoped policy and heavy-work gate."""
 
@@ -1085,6 +1173,7 @@ def build_windows_pdf_export_worker_composition(
         build_windows_pdf_export_worker_config(
             qpdf_executable,
             resource_policy=selected_resources.resource_policy,
+            profile=profile,
         ),
         heavy_operations=selected_resources.heavy_operations,
     )

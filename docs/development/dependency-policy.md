@@ -278,6 +278,13 @@ compliant. A commercial route would require separately approved maintainer-contr
 
 ### Pillow image decoder
 
+[ADR 0010](../adr/0010-image-decoder-selection.md) records the retrospective Pillow/Qt comparison
+and the supported color/frame profile. The exact native members and embedded-component evidence
+are recorded in [the Pillow runtime companion](../../packaging/pillow-runtime-closure-v1.json).
+`tools/dev.py validate-pillow-runtime` checks that reviewed record, the lock and main inventory,
+and the installed Windows wheel's RECORD and actual native/licence bytes without loading optional
+codec extensions. Changes to that record require explicit evidence review and its validator pin.
+
 PWS-0201 promotes the already locked Pillow 12.3.0 Windows x64 wheel from a pikepdf transitive
 dependency to the direct worker-only JPEG/PNG decoder. The standard library is sufficient for the
 bounded preliminary framing checks but not for complete entropy/deflate decode, EXIF orientation,
@@ -286,7 +293,11 @@ before source access and remains behind `paperworkshell.imaging.pillow_decoder`;
 modules receive only closed domain models and validated opaque RGBA8 bytes.
 
 The inventory retains the exact wheel/source hashes, MIT-CMU route, native-code and untrusted-input
-classification, disabled optional libimagequant proof, and PWS-0801 codec/DLL/notice/SBOM work. It
+classification, disabled optional libimagequant proof, and PWS-0801 codec/DLL/notice/SBOM work.
+The companion binds all eight native extensions and the wheel licence file. It distinguishes
+wheel-notice provenance from upstream recipe-only optional AVIF subdependency versions, and keeps
+external CPython/Windows/CRT and optional font-runtime obligations explicit. It is development
+admission evidence; complete shipped-file/source/notice reconciliation is still required. It
 adds no runtime network need. Moving Pillow into another process, enabling another codec component,
 or changing the selected artifact requires a fresh dependency and parser-boundary review.
 

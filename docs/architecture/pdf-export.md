@@ -2,6 +2,7 @@
 
 - Status: Binding implementation contract
 - Task: PWS-0112
+- Extension: PWS-0201 ordinary JPEG/PNG page export through `pdf.export` version 2
 - Extension: PWS-0206 [verified searchable mixed-document output](searchable-mixed-output.md)
 - Extension: PWS-0307 [verified flattened visual-overlay export](flattened-overlay-export.md)
 - Decisions: PWS-D009, PWS-D011, PWS-D015, PWS-D029, PWS-D037, PWS-D038
@@ -19,6 +20,14 @@ page, matching rendered order and rotation, and final-name destination reopen. W
 digital-signature markers, the result says **unsigned derivative**. It does not claim signature
 validity, PDF/A, PDF/UA, portal acceptance, legal validity, permanent redaction, or universal viewer
 compatibility.
+
+PWS-0201 adds `pdf.export` version 2 for ordinary desktop **Export pages as PDF**. Its explicit
+`pikepdf_image_pages_v2` assembly profile accepts PDF, JPEG, and PNG sources without OCR or a
+language-pack dependency. Version 1 keeps its PDF-only `pikepdf_page_copy_v1` profile and semantic
+fingerprint meaning. Both versions support selection, order, and quarter-turn rotation. The image
+profile applies intrinsic EXIF orientation before that user rotation and composites alpha over
+white. Active crop, deskew, contrast, background cleanup, and visible overlays fail closed on this
+ordinary export path; their later explicit export workflows retain their existing contracts.
 
 PWS-0206 composes these base checks through the additive `pdf.export.searchable` version 1
 capability. It preserves `pdf.export` version 1 exactly: searchable execution has its own plan,
@@ -66,12 +75,24 @@ profile permits 1 GiB temporary storage and 512 MiB output; the constrained prof
 512 MiB temporary storage and 256 MiB output. Both retain bounded wall time, page count, and
 verification pixels. Exceeding any bound fails closed before destination commit.
 
+The image profile additionally derives its source-pixel admission ceiling from the selected
+`ResourcePolicy` memory budget. It shares the existing single-heavy-operation coordinator,
+qpdf-only launcher, retained-source batch, output section, report, and publication path. OCR tools
+and language packs are neither configured nor consulted by ordinary image-page export.
+
 ## Deterministic plan
 
 `build_pdf_export_plan` accepts one validated manifest snapshot and produces versioned, immutable
 intent. Source entries contain internal IDs, exact size/digest/page-count facts, and closed
 signature/encryption states. Page entries contain output index, source ID, source-page index, and
 the accumulated rotation. Source order is canonical first-use order.
+
+Plan version and profile version must match exactly: version 1 permits PDF sources, while version
+2 permits PDF/JPEG/PNG. Image sources have exactly one page and `not_applicable` signature and
+encryption states. The v2 semantic projection additionally binds each source media type. The
+worker-plan envelope stays version 1, with the nested plan version and exact profile selecting
+the explicit semantics. Unknown future versions and mismatched version/profile pairs fail before
+native parsing or destination publication.
 
 The semantic fingerprint hashes only the versioned semantic source/page/profile projection. Case
 IDs, revisions, timestamps, CAS tokens, and source catalogue ordering do not change the fingerprint.
@@ -86,7 +107,8 @@ The trusted broker performs the following sequence:
 1. Validate the plan and retained source batch against the same case, manifest revision, manifest
    digest, CAS token, source IDs, media types, sizes, page counts, digests, and policy states.
 2. Allocate a read-only plan section, one fixed-capacity output section, and one bounded report
-   pipe. Generate distinct operation/object IDs and bind all of them into `pdf.export` RPC v1.
+   pipe. Generate distinct operation/object IDs and bind all of them into the exact negotiated
+   `pdf.export` operation version under the unchanged RPC v1 envelope.
 3. Start the zero-capability AppContainer worker and duplicate only reduced source-read,
    plan-section-read, output-section-write, and report-pipe-write handles.
 4. Pump validated progress until a terminal result, then terminate the complete one-shot job tree.
@@ -105,6 +127,18 @@ directory; a fresh operation can recover without worker-profile cleanup. Tempora
 candidate paths never cross RPC. The fixed qpdf executable, when explicitly configured by the
 launcher, is the only additional environment value admitted to the worker; no PATH search or shell
 is used.
+
+For image assembly, temporary admission reserves all source copies plus the maximum candidate,
+then divides the remainder into bounded scratch for one image page. The RGBA raster and its
+one-page PDF are removed after each page. Limits cover decoded dimensions, pixels, metadata,
+decompressed bytes, output extent, memory, and time; exceeding the bound rejects the operation
+instead of reducing source resolution. Assembly and source-side verification each normalize
+one image at a time inside the same private operation directory.
+Pikepdf retains compressed output page objects until the final save. Before each generated image
+page is appended, its complete private PDF size is added to a running total that must fit the
+existing candidate-byte capacity. This is a conservative admission bound, since temporary page
+wrappers add overhead. The worker Job remains the hard memory limit for native output objects;
+the sequential raster/scratch policy does not imply that the assembled PDF has no retained state.
 
 ## Assembly and verification
 
@@ -128,6 +162,14 @@ Before a report exists, the adapter must complete all of these checks:
 
 Raw native warnings, exceptions, paths, PDF values, document text, filenames, and tool output are
 not returned. Failures are stable `PdfExportErrorCode` plus closed context.
+
+The v2 image branch reuses the pinned Pillow normalization adapter and `RasterPdfPageAdapter`.
+It embeds lossless opaque DeviceRGB samples in a single PDF image at the existing fixed 300 DPI
+geometry (`pixels × 72 / 300` points); embedded source DPI is not a physical-size authority.
+The raster wrapper strictly reopens and checks its geometry and complete decoded RGB digest.
+Final candidate verification freshly rebuilds each authenticated source image page and compares
+its PDFium rendering with the corresponding output page after the requested quarter turn. No
+text layer is created, and no searchability check is claimed.
 
 ## Destination publication
 
@@ -225,3 +267,13 @@ termination failure, source change, destination collision/denial/disk-full/short
 corruption, final-name reopen, history retry, and source-hash preservation. The live integration
 uses the restricted worker with real pikepdf/libqpdf, qpdf, and PDFium and requires no skip for an
 installed release dependency.
+
+`test_image_pdf_export.py` covers both formats, all eight intrinsic EXIF orientations, exact
+embedded RGB samples and white alpha composition, an additional quarter turn, original hashes,
+scratch cleanup, capacity rejection, and old/current/future/invalid version behavior.
+Cancellation after scratch allocation and a rendered-digest mismatch both remove the candidate
+and scratch, preserve the source hash, and permit a fresh successful export.
+`test_image_pdf_export_worker_windows.py` imports JPEG and PNG with real worker inspection, closes
+and reopens the case, then exports and records the verified derivative using a launcher with no
+OCR resources. It checks candidate reopen, seven performed verification checks, immutable external
+and committed source hashes, termination, and cleanup.

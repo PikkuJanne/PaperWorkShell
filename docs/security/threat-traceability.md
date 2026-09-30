@@ -13,6 +13,12 @@ user warning.
 Every listed control is **planned** until its owning implementation task records passing evidence.
 A milestone gate reviews accumulated evidence; the gate itself is never a mitigation.
 
+The PWS-0201 current review extends TM-001/TM-002 parser and resource evidence with explicit
+unsupported color/precision rejection, TM-005/TM-014/TM-023 with ordinary image PDF export and
+immutable-source verification, and TM-020 with exact Pillow native-member admission checks.
+Its [coverage index](../development/image-intake-coverage.md) and
+[review report](../evidence/pws0201-current-review.md) distinguish planned checks from results.
+
 | Threat | Frozen decisions | Implementation tasks and gates | Planned evidence focus |
 |---|---|---|---|
 | TM-001 | PWS-D012, PWS-D013 | PWS-0103, PWS-0105, PWS-0106, PWS-0107, PWS-0114, PWS-0201, PWS-0202, PWS-0204, PWS-0206, PWS-0207 | Hostile parser/transform/OCR/searchable-output and bounded OCR-review TSV/report corpus, exact prepared-source or volatile-sample authority, one-shot worker crash/termination, containment |

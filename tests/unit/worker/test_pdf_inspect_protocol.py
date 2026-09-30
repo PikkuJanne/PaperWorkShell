@@ -12,6 +12,7 @@ from paperworkshell.worker.protocol.errors import ProtocolError
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_MESSAGE_BYTES,
     NOOP_CAPABILITY,
@@ -127,6 +128,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         PDF_EXPORT_CAPABILITY,
+        IMAGE_PDF_EXPORT_CAPABILITY,
         FLATTENED_PDF_EXPORT_CAPABILITY,
         SEARCHABLE_PDF_EXPORT_CAPABILITY,
     )

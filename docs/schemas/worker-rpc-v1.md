@@ -16,6 +16,8 @@ extensions adds paths or shell command text to messages. PWS-0202 adds a separat
 separate `ocr.process` operation for one bounded volatile OCR PDF candidate. PWS-0206 adds the
 separate `pdf.export.searchable` operation for one verified mixed PDF plus a bounded content-free
 page-status document; it changes neither `pdf.export` version 1 nor `ocr.process` version 1.
+The PWS-0201 review adds `pdf.export` version 2 for ordinary JPEG/PNG/PDF assembly without OCR,
+preserving the version 1 PDF-only operation and unchanged generic envelope.
 PWS-0207 adds the separate handle-only `ocr.review` operation for one bounded current-page raster
 and an out-of-band content-free result; it changes neither `ocr.process` nor the generic envelope.
 See the [worker lifecycle contract](../architecture/worker-lifecycle.md),
@@ -110,6 +112,17 @@ result contains one `image-transformed-rgba-v1` staging artifact whose header bi
 intent, engine profile, cache key, operation/output identities, layout, and pixel digest. The
 worker receives no manifest, path, external-source writer, or persistent cache authority.
 
+`pdf.export` version 2 uses the same reduced source/plan/output/report handles, bounded output,
+closed report, and result scope as version 1. Its first authenticated input has content kind
+`pdf-export-plan-v2`, followed by authenticated `pdf`, `jpeg`, or `png` source references in
+canonical first-use order. The nested plan and assembly profile both have version 2, with the
+exact assembly token `pikepdf_image_pages_v2`; every source reference must match its plan media
+type, size, and digest. Version 1 still requires `pdf-export-plan-v1`, PDF-only references, and
+`pikepdf_page_copy_v1`. A crossed plan kind, nested version, profile, operation version, or unknown
+future version fails closed. No OCR options, source paths, output paths, or additional handles
+are introduced. Success retains the existing single `pdf-export-pdf` staging output and
+the existing verified report; the v2 semantic fingerprint includes source media type.
+
 PWS-0204 adds `ocr.process` version 1. Its start has exactly one authenticated PDF, JPEG, or PNG
 `source_read` input; distinct positive worker-local source, output-section, and result-pipe handle
 parameters; a distinct output UUID; a bounded page count; and opaque trusted language-set and OCR
@@ -189,7 +202,7 @@ Validation is intentionally split:
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
-version 1, `pdf.export` version 1, `image.normalize` version 1, `image.transform` version 1,
+version 1, `pdf.export` versions 1 and 2, `image.normalize` version 1, `image.transform` version 1,
 `ocr.process` version 1, `ocr.review` version 1, and `pdf.export.searchable` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or

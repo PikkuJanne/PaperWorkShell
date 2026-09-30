@@ -51,6 +51,8 @@ from paperworkshell.worker.pdf_export_report import (
     decode_pdf_export_worker_report,
 )
 from paperworkshell.worker.protocol.models import (
+    IMAGE_PDF_EXPORT_CAPABILITY,
+    IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
     PDF_EXPORT_CAPABILITY,
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
     PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
@@ -519,7 +521,12 @@ class BrokeredPdfExporter:
                         deadline=deadline,
                         cancellation=cancellation,
                     )
-                    if PDF_EXPORT_CAPABILITY not in ready.capabilities:
+                    capability = (
+                        IMAGE_PDF_EXPORT_CAPABILITY
+                        if plan.plan_version == 2
+                        else PDF_EXPORT_CAPABILITY
+                    )
+                    if capability not in ready.capabilities:
                         reject_pdf_export(
                             PdfExportErrorCode.WORKER_FAILED,
                             "export.capability",
@@ -800,7 +807,9 @@ def _operation_limits(policy: ResourceLimits, plan: PdfExportPlan) -> ResourceLi
         # A page subset still parses complete retained sources; output count is
         # independently constrained and verified against the immutable plan.
         page_count=required_page_capacity,
-        pixel_count=PDF_EXPORT_VERIFICATION_PIXELS,
+        pixel_count=policy.pixel_count
+        if plan.plan_version == 2
+        else PDF_EXPORT_VERIFICATION_PIXELS,
     )
 
 
@@ -819,13 +828,17 @@ def _operation_payload(
 ) -> OperationStartPayload:
     return OperationStartPayload(
         operation_kind=PDF_EXPORT_CAPABILITY.capability_id,
-        operation_version=PDF_EXPORT_CAPABILITY.capability_version,
+        operation_version=plan.plan_version,
         inputs=(
             CaseObjectReference(
                 area=ReferenceArea.OPERATION_TEMP,
                 object_id=plan_object_id,
                 operation_id=operation_id,
-                content_kind=PDF_EXPORT_PLAN_CONTENT_KIND,
+                content_kind=(
+                    IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND
+                    if plan.plan_version == 2
+                    else PDF_EXPORT_PLAN_CONTENT_KIND
+                ),
                 expected_byte_size=plan_byte_size,
                 expected_sha256=plan_sha256,
             ),
@@ -834,7 +847,11 @@ def _operation_payload(
                     area=ReferenceArea.SOURCE_READ,
                     object_id=source.source_id,
                     operation_id=None,
-                    content_kind="pdf",
+                    content_kind={
+                        PdfExportSourceMediaType.PDF: "pdf",
+                        PdfExportSourceMediaType.JPEG: "jpeg",
+                        PdfExportSourceMediaType.PNG: "png",
+                    }[source.media_type],
                     expected_byte_size=source.byte_size,
                     expected_sha256=source.sha256,
                 )

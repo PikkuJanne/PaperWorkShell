@@ -23,7 +23,11 @@ from paperworkshell.__main__ import (
 from paperworkshell.app.organizer import OrganizerBackend
 from paperworkshell.app.pdf_export import PdfExportService
 from paperworkshell.app.source_ingest import CommittedPdfSourceBatchStore
-from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
+from paperworkshell.domain.pdf_export import (
+    IMAGE_PDF_EXPORT_PROFILE,
+    PdfExportError,
+    PdfExportErrorCode,
+)
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
 from paperworkshell.pdf.qpdf_checker import DEFAULT_QPDF_EXECUTABLE
@@ -338,3 +342,55 @@ def test_service_factory_rejects_a_different_app_scoped_gate(
         assert caught.value.code is PdfExportErrorCode.MODEL_INVALID
     finally:
         composition.close()
+
+
+def test_image_export_limits_use_source_budget_and_preserve_default_profile() -> None:
+    ordinary = build_windows_pdf_export_limits(CONSTRAINED_RESOURCE_POLICY_V1)
+    images = build_windows_pdf_export_limits(
+        CONSTRAINED_RESOURCE_POLICY_V1, profile=IMAGE_PDF_EXPORT_PROFILE
+    )
+    assert ordinary.pixel_count == 1_048_576
+    assert images.pixel_count == CONSTRAINED_RESOURCE_POLICY_V1.worker_process_memory_bytes // 4
+    assert images.memory_bytes == ordinary.memory_bytes
+    assert images.temporary_storage_bytes == ordinary.temporary_storage_bytes
+    assert images.wall_time_ms == ordinary.wall_time_ms
+
+
+def test_lazy_image_export_cancel_before_admission_and_cleanup_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    owned = desktop._BackendWorkerResources(lambda: calls.append("desktop.close"))
+    resources = create_desktop_application_resource_context(CONSTRAINED_RESOURCE_POLICY_V1)
+    service = desktop._LazyPagesPdfExportService(
+        _manager(tmp_path), cast(CommittedPdfSourceBatchStore, _Sources()), resources, owned
+    )
+    monkeypatch.setattr(
+        desktop,
+        "build_windows_pdf_export_worker_composition",
+        lambda *_args, **_kwargs: pytest.fail("cancelled export must not admit a worker"),
+    )
+    with pytest.raises(PdfExportError) as caught:
+        service.export_pdf(
+            UUID("f0000000-0000-4000-8000-000000000001"),
+            tmp_path / "synthetic.pdf",
+            deadline=lambda: False,
+            cancellation=lambda: True,
+            progress=lambda value: None,
+        )
+    assert caught.value.code is PdfExportErrorCode.CANCELLED
+
+    def close_export() -> None:
+        calls.append("export.close")
+        if calls.count("export.close") == 1:
+            raise RuntimeError("synthetic cleanup refusal")
+
+    owned.add_pdf_export(close_export)
+    with pytest.raises(RuntimeError):
+        owned.close()
+    assert calls == ["export.close", "desktop.close"]
+    assert not owned.closed
+    owned.close()
+    assert calls == ["export.close", "desktop.close", "export.close", "desktop.close"]
+    assert owned.closed

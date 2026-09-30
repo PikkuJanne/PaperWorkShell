@@ -32,6 +32,7 @@ from paperworkshell.domain.page_operations import (
 
 PDF_EXPORT_PLAN_VERSION: Final = 1
 PDF_EXPORT_PROFILE_VERSION: Final = 1
+IMAGE_PDF_EXPORT_VERSION: Final = 2
 PDF_EXPORT_REPORT_VERSION: Final = 1
 PDF_EXPORT_SEMANTIC_FINGERPRINT_VERSION: Final = 1
 # One export source consumes one out-of-band worker handle.  Keeping the batch
@@ -228,6 +229,8 @@ class PdfExportSourceMediaType(StrEnum):
     """Media type accepted by the first combined-PDF export profile."""
 
     PDF = "application/pdf"
+    JPEG = "image/jpeg"
+    PNG = "image/png"
 
 
 class PdfExportSourceSignatureState(StrEnum):
@@ -236,12 +239,14 @@ class PdfExportSourceSignatureState(StrEnum):
     NONE_DETECTED = "none_detected"
     MARKERS_DETECTED = "markers_detected"
     UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
 
 
 class PdfExportSourceEncryptionState(StrEnum):
     """Encryption state permitted in an executable export plan."""
 
     UNENCRYPTED = "unencrypted"
+    NOT_APPLICABLE = "not_applicable"
 
 
 class PdfExportEncryptionPolicy(StrEnum):
@@ -254,6 +259,7 @@ class PdfExportAssemblyProfile(StrEnum):
     """Deterministic page-copy semantics expected from the assembly adapter."""
 
     PIKEPDF_PAGE_COPY_V1 = "pikepdf_page_copy_v1"
+    PIKEPDF_IMAGE_PAGES_V2 = "pikepdf_image_pages_v2"
 
 
 class PdfExportRenderProfile(StrEnum):
@@ -330,18 +336,26 @@ class PdfExportProfile:
 
     def __post_init__(self) -> None:
         if (
-            self.assembly is not PdfExportAssemblyProfile.PIKEPDF_PAGE_COPY_V1
+            type(self.assembly) is not PdfExportAssemblyProfile
+            or type(self.profile_version) is not int
+            or (self.assembly, self.profile_version)
+            not in {
+                (PdfExportAssemblyProfile.PIKEPDF_PAGE_COPY_V1, PDF_EXPORT_PROFILE_VERSION),
+                (PdfExportAssemblyProfile.PIKEPDF_IMAGE_PAGES_V2, IMAGE_PDF_EXPORT_VERSION),
+            }
             or self.render
             is not PdfExportRenderProfile.PDFIUM_RGBA8_CROP_WHITE_STORED_APPEARANCES_V1
             or self.qpdf is not PdfExportQpdfProfile.CHECK_NO_RECOVERY_NO_WARNINGS_V1
             or self.encryption_policy is not PdfExportEncryptionPolicy.MUST_BE_UNENCRYPTED
-            or type(self.profile_version) is not int
-            or self.profile_version != PDF_EXPORT_PROFILE_VERSION
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "profile.model")
 
 
 DEFAULT_PDF_EXPORT_PROFILE: Final = PdfExportProfile()
+IMAGE_PDF_EXPORT_PROFILE: Final = PdfExportProfile(
+    assembly=PdfExportAssemblyProfile.PIKEPDF_IMAGE_PAGES_V2,
+    profile_version=IMAGE_PDF_EXPORT_VERSION,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,10 +380,22 @@ class PdfExportSource:
             or type(self.signature_state) is not PdfExportSourceSignatureState
             or type(self.sha256) is not str
             or _SHA256.fullmatch(self.sha256) is None
-            or self.media_type is not PdfExportSourceMediaType.PDF
-            or self.encryption_state is not PdfExportSourceEncryptionState.UNENCRYPTED
+            or type(self.media_type) is not PdfExportSourceMediaType
+            or type(self.encryption_state) is not PdfExportSourceEncryptionState
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "source.model")
+        if self.media_type is PdfExportSourceMediaType.PDF:
+            if (
+                self.encryption_state is not PdfExportSourceEncryptionState.UNENCRYPTED
+                or self.signature_state is PdfExportSourceSignatureState.NOT_APPLICABLE
+            ):
+                reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "source.pdf_state")
+        elif (
+            self.page_count != 1
+            or self.signature_state is not PdfExportSourceSignatureState.NOT_APPLICABLE
+            or self.encryption_state is not PdfExportSourceEncryptionState.NOT_APPLICABLE
+        ):
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "source.image_state")
 
     @property
     def contains_signature_markers(self) -> bool:
@@ -438,7 +464,7 @@ class PdfExportPlan:
             or type(pages) is not tuple
             or type(profile) is not PdfExportProfile
             or type(plan_version) is not int
-            or plan_version != PDF_EXPORT_PLAN_VERSION
+            or plan_version != profile.profile_version
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "plan.model")
         if not pages:
@@ -457,6 +483,10 @@ class PdfExportPlan:
                 PdfExportErrorCode.SOURCE_SIGNATURE_UNKNOWN,
                 "plan.source_signature",
             )
+        if plan_version == PDF_EXPORT_PLAN_VERSION and any(
+            source.media_type is not PdfExportSourceMediaType.PDF for source in sources
+        ):
+            reject_pdf_export(PdfExportErrorCode.SOURCE_UNSUPPORTED, "plan.source_media")
         source_ids = tuple(source.source_id for source in sources)
         page_ids = tuple(page.page_id for page in pages)
         source_positions = tuple((page.source_id, page.source_page_index) for page in pages)
@@ -852,7 +882,7 @@ def _build_pdf_export_plan_for_pages(
         if export_source is None:
             if len(export_sources) >= MAX_PDF_EXPORT_SOURCES:
                 reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "plan.sources")
-            export_source = _select_export_source(source)
+            export_source = _select_export_source(source, profile)
             export_source_by_id[source.source_id] = export_source
             export_sources.append(export_source)
         export_pages.append(
@@ -872,6 +902,7 @@ def _build_pdf_export_plan_for_pages(
         sources=tuple(export_sources),
         pages=tuple(export_pages),
         profile=profile,
+        plan_version=profile.profile_version,
     )
 
 
@@ -965,9 +996,22 @@ def _reject_active_overlays(
             reject_pdf_export(PdfExportErrorCode.TRANSFORM_UNSUPPORTED, "plan.overlay")
 
 
-def _select_export_source(source: _ManifestSource) -> PdfExportSource:
+def _select_export_source(source: _ManifestSource, profile: PdfExportProfile) -> PdfExportSource:
     if source.media_type != PdfExportSourceMediaType.PDF.value:
-        reject_pdf_export(PdfExportErrorCode.SOURCE_UNSUPPORTED, "plan.source_media")
+        if profile != IMAGE_PDF_EXPORT_PROFILE:
+            reject_pdf_export(PdfExportErrorCode.SOURCE_UNSUPPORTED, "plan.source_media")
+        try:
+            return PdfExportSource(
+                source_id=source.source_id,
+                byte_size=source.byte_size,
+                page_count=source.page_count,
+                sha256=source.sha256,
+                media_type=PdfExportSourceMediaType(source.media_type),
+                signature_state=PdfExportSourceSignatureState(source.signature_state),
+                encryption_state=PdfExportSourceEncryptionState(source.encryption_state),
+            )
+        except ValueError:
+            reject_pdf_export(PdfExportErrorCode.SOURCE_INCONSISTENT, "plan.image_state")
     if source.page_count > MAX_PDF_EXPORT_PAGES:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "plan.source_pages")
     if source.encryption_state == "encrypted":
@@ -1016,6 +1060,11 @@ def _calculate_semantic_fingerprint(
         },
         "pages": [
             {
+                **(
+                    {"source_media_type": source_by_id[page.source_id].media_type.value}
+                    if plan_version == IMAGE_PDF_EXPORT_VERSION
+                    else {}
+                ),
                 "source_sha256": source_by_id[page.source_id].sha256,
                 "source_byte_size": source_by_id[page.source_id].byte_size,
                 "source_page_count": source_by_id[page.source_id].page_count,

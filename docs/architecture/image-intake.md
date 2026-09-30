@@ -81,14 +81,20 @@ silently add fields to the released schema.
 
 The admitted source formats and outputs are closed:
 
-- baseline/progressive JPEG and single-frame PNG are accepted when complete and within limits;
+- baseline/progressive JPEG and single-frame PNG up to eight bits per channel are accepted
+  when complete and within limits; 16-bit PNG is rejected before native decode because the
+  current RGBA8 conversion cannot preserve its sample semantics;
 - APNG and every multi-frame result are rejected rather than selecting a frame silently;
 - bilevel, grayscale, grayscale-plus-transparency, palette, palette-plus-alpha, RGB,
   RGB-plus-transparency, RGBA, and JPEG CMYK are classified explicitly;
 - alpha and PNG `tRNS` are composited onto opaque white;
 - output is packed top-down RGBA8 with `alpha == 255` for every pixel; and
-- embedded profile and EXIF presence are reported only as booleans/counts, not copied metadata
-  values or a colorimetric-conformance claim.
+- embedded ICC and unsupported PNG gamma/chromaticity or PNG 3 color/HDR declarations
+  (`gAMA`, `cHRM`, `cICP`, `mDCV`, `cLLI`) fail before native decode;
+  a validated PNG sRGB intent is accepted. Unprofiled CMYK JPEG uses the pinned decoder's
+  deterministic uncalibrated conversion. No colorimetric-conformance claim is made; and
+- EXIF presence is reported only as booleans/counts and a closed orientation value, never copied
+  arbitrary metadata.
 
 The Pillow version is checked against the admitted exact release before source access. The decoder
 disables truncated-image loading, rejects decompression warnings/errors, bounds PNG text memory,
@@ -152,6 +158,21 @@ identity and current request generation. Eviction is disposable and regeneration
 and decodes the immutable source. This is the task's image-to-page-cache handoff without granting a
 worker persistent storage authority.
 
+## Ordinary desktop PDF derivative
+
+**Export pages as PDF** (`Ctrl+Shift+E`) uses the versioned image-capable PDF export profile.
+The ordinary desktop path imports, previews, closes/reopens and exports JPEG/PNG pages without
+an OCR language pack or template assignment. The original PDF-only export contract remains
+available unchanged. Sources are read through authenticated immutable handles; only the broker
+can publish the reopened, structurally checked and rendered derivative at a new destination.
+
+Image pages apply intrinsic EXIF once, then the recorded quarter-turn, and composite alpha over
+white. Export processes one image page at a time within the same heavy-operation, memory,
+temporary-space and deadline limits. It rejects unsupported crop/cleanup/overlay intent instead
+of omitting it. This action creates no text layer and makes no template/portal acceptance claim.
+The [coverage index](../development/image-intake-coverage.md) provides the repeatable desktop
+recipe and the [review report](../evidence/pws0201-current-review.md) records actual results.
+
 ## Mixed preview orchestration and accessibility
 
 `PagePreviewService` accepts one ordered tuple of typed PDF/image requests for a single case and
@@ -165,6 +186,13 @@ included in the next bounded request and never changes the original. Errors use 
 recovery text and contain no filename, path, metadata value, raster, or decoder message.
 
 ## Dependency and release boundary
+
+[ADR 0010](../adr/0010-image-decoder-selection.md) records the retrospective decoder comparison,
+the exact supported profile, security/licence review and replacement requirements. The
+[Pillow runtime companion](../../packaging/pillow-runtime-closure-v1.json) and offline
+`validate-pillow-runtime` command bind the selected wheel, its eight native members, licence and
+reviewed component evidence to the lock, main inventory and installed bytes. Optional upstream
+recipe evidence is labelled honestly and does not establish a final packaged native closure.
 
 Pillow 12.3.0 was already locked as part of the pikepdf closure; PWS-0201 promotes that exact
 reviewed wheel to a direct worker-only dependency. The inventory records the MIT-CMU route, native

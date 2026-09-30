@@ -167,6 +167,7 @@ class _LongOperationKind(StrEnum):
     PREVIEW = "Preview"
     QUALITY = "Page quality check"
     SIGNATURE_IMAGE = "Signature image"
+    PDF_EXPORT = "PDF export"
 
 
 class _ImportPresentationState(StrEnum):
@@ -666,6 +667,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._package_export_action.setStatusTip("Review and export the current package. Ctrl+E.")
         self._package_export_action.triggered.connect(self._request_package_export)
         file_menu.addAction(self._package_export_action)
+        self._pages_pdf_export_action = QAction("Export pages as &PDF", self)
+        self._pages_pdf_export_action.setObjectName("pagesPdfExportMenuAction")
+        self._pages_pdf_export_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        self._pages_pdf_export_action.setStatusTip("Export the saved pages as PDF. Ctrl+Shift+E.")
+        self._pages_pdf_export_action.triggered.connect(self._choose_pages_pdf_export)
+        file_menu.addAction(self._pages_pdf_export_action)
         self._build_shortcuts()
         self._connect_backend()
 
@@ -982,6 +989,13 @@ class PaperWorkShellWindow(QMainWindow):
             "export the package to a selected destination. Ctrl+E.",
         )
         self._package_export_button.clicked.connect(self._request_package_export)
+        self._pages_pdf_export_button = self._action_button(
+            "Export pages as PDF",
+            "pagesPdfExportButton",
+            "Save the current PDF, JPEG, and PNG pages in order as one verified PDF. "
+            "Choose a new filename. Ctrl+Shift+E.",
+        )
+        self._pages_pdf_export_button.clicked.connect(self._choose_pages_pdf_export)
         self._undo_button = self._action_button(
             "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
         )
@@ -1017,6 +1031,7 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._checklist_button, 3, 2)
         action_layout.addWidget(self._portal_constraints_button, 4, 0, 1, 3)
         action_layout.addWidget(self._package_export_button, 5, 0, 1, 3)
+        action_layout.addWidget(self._pages_pdf_export_button, 6, 0, 1, 3)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -1100,6 +1115,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._checklist_button,
             self._portal_constraints_button,
             self._package_export_button,
+            self._pages_pdf_export_button,
             self._quality_summary,
             self._quality_check_button,
             self._quality_findings_view,
@@ -1421,7 +1437,14 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_page_actions()
         self._update_preview_retry_action()
         self._update_quality_actions()
-        if not state.autosave_pending:
+        export_only_refresh = (
+            self._active_operation is not None
+            and self._active_operation.kind is _LongOperationKind.PDF_EXPORT
+            and prior_state is not None
+            and prior_state.case_id == state.case_id
+            and prior_state.pages == state.pages
+        )
+        if not state.autosave_pending and not export_only_refresh:
             self._schedule_preview_refresh()
         if preserve_focus:
             if focused_widget is not None and self._focus_widget_is_available(focused_widget):
@@ -2015,7 +2038,13 @@ class PaperWorkShellWindow(QMainWindow):
     @Slot(int, str)
     def _operation_status_changed(self, operation_id: int, message: str) -> None:
         active = self._active_operation
-        if active is None or active.operation_id != operation_id or active.cancellation.cancelled():
+        if (
+            active is None
+            or active.operation_id != operation_id
+            or (
+                active.cancellation.cancelled() and active.kind is not _LongOperationKind.PDF_EXPORT
+            )
+        ):
             return
         if active.kind is _LongOperationKind.PREVIEW and self._pending_failure_focus == "preview":
             return
@@ -2044,7 +2073,12 @@ class PaperWorkShellWindow(QMainWindow):
         if (
             active is None
             or active.operation_id != operation_id
-            or active.kind not in {_LongOperationKind.IMPORT, _LongOperationKind.SIGNATURE_IMAGE}
+            or active.kind
+            not in {
+                _LongOperationKind.IMPORT,
+                _LongOperationKind.SIGNATURE_IMAGE,
+                _LongOperationKind.PDF_EXPORT,
+            }
         ):
             return
         self._case_reopen_required = True
@@ -2110,6 +2144,7 @@ class PaperWorkShellWindow(QMainWindow):
         if active is None or active.operation_id != operation_id:
             return
         finished_preview = active.kind is _LongOperationKind.PREVIEW
+        finished_export = active.kind is _LongOperationKind.PDF_EXPORT
         finished_quality = active.kind is _LongOperationKind.QUALITY
         quality_result_focus_requested = finished_quality and self._quality_result_focus_requested
         preview_batch_complete = self._preview_batch_complete
@@ -2122,6 +2157,9 @@ class PaperWorkShellWindow(QMainWindow):
         if self._closing_requested:
             self._pending_failure_focus = None
             return
+        if finished_export:
+            self._set_controls_enabled(True)
+            self._pending_failure_focus = "pdf_export"
         pending_scan_review = self._pending_scan_review_page_id
         pending_quality = self._pending_quality_request
         pending_signature_image = (
@@ -2377,6 +2415,11 @@ class PaperWorkShellWindow(QMainWindow):
         )
 
     def _schedule_preview_refresh(self, _value: int | None = None) -> None:
+        if (
+            self._active_operation is not None
+            and self._active_operation.kind is _LongOperationKind.PDF_EXPORT
+        ):
+            return
         state = self._state
         if (
             state is None
@@ -2581,6 +2624,33 @@ class PaperWorkShellWindow(QMainWindow):
             return
         source_path = Path(selected)
         self._queue_import(source_path, source_path.name)
+
+    def _choose_pages_pdf_export(self) -> None:
+        if not self._pages_pdf_export_button.isEnabled() or self._active_operation is not None:
+            return
+        selected, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Export pages as PDF",
+            "",
+            "PDF document (*.pdf)",
+            options=QFileDialog.Option.DontConfirmOverwrite,
+        )
+        if not selected:
+            self._announce("PDF export selection cancelled.")
+            return
+        self._preview_refresh_timer.stop()
+        self._autosave_timer.stop()
+        self._hide_error()
+        operation = self._begin_long_operation(_LongOperationKind.PDF_EXPORT)
+        self._set_controls_enabled(False)
+        self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._cancel_button)
+        self._announce("PDF export started. You can cancel this operation.")
+        self._commands.pages_pdf_export_requested.emit(
+            operation.operation_id,
+            Path(selected),
+            operation.cancellation,
+        )
 
     def _queue_import(self, source_path: Path, display_name: str) -> None:
         if (
@@ -2807,6 +2877,16 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._package_export_button.setAccessibleName(self._package_export_button.text())
         self._package_export_action.setEnabled(package_enabled)
+        pages_pdf_enabled = (
+            editable
+            and state is not None
+            and state.case_id is not None
+            and bool(state.pages)
+            and not state.autosave_pending
+            and self._active_operation is None
+        )
+        self._pages_pdf_export_button.setEnabled(pages_pdf_enabled)
+        self._pages_pdf_export_action.setEnabled(pages_pdf_enabled)
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -4749,8 +4829,8 @@ class PaperWorkShellWindow(QMainWindow):
             )
         elif self._case_reopen_required:
             message = (
-                "The import was saved, but this organizer must be reopened before the new pages "
-                "can be used. Choose Close case, then reopen this case."
+                "The saved case must be reopened before continuing. "
+                "Choose Close case, then reopen this case."
             )
         elif self._import_presentation is _ImportPresentationState.FAILED:
             recovery = (
@@ -4914,6 +4994,10 @@ class PaperWorkShellWindow(QMainWindow):
                 self._quality_check_button.setFocus(Qt.FocusReason.OtherFocusReason)
                 self._ensure_widget_visible(self._quality_check_button)
                 return
+        elif target == "pdf_export" and self._pages_pdf_export_button.isEnabled():
+            self._pages_pdf_export_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._pages_pdf_export_button)
+            return
         elif target == "signature_image":
             self._update_page_actions()
             if (

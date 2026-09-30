@@ -11,6 +11,7 @@ from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_SAFE_INTEGER,
     NOOP_CAPABILITY,
@@ -448,7 +449,7 @@ class ConversationState:
                     "pdf.thumbnail operation and object identifiers must be distinct",
                 )
             thumbnail_cache_object_id = thumbnail_bound_object_ids[2]
-        if descriptor == PDF_EXPORT_CAPABILITY:
+        if descriptor in {PDF_EXPORT_CAPABILITY, IMAGE_PDF_EXPORT_CAPABILITY}:
             validate_pdf_export_start(payload)
             export_bound_object_ids = pdf_export_bound_object_ids(payload)
             if payload.inputs[0].operation_id != message.operation_id:

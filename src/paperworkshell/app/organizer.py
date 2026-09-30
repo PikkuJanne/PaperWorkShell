@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from time import monotonic
 from typing import Final, Protocol, cast
 from uuid import UUID
 
@@ -46,6 +47,7 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
+from paperworkshell.app.pdf_export import PdfExportProgressSink
 from paperworkshell.app.portal_constraints import (
     ConstraintEditorErrorCode,
     ConstraintEditorState,
@@ -139,6 +141,11 @@ from paperworkshell.domain.page_operations import (
     SequenceChangeReason,
     reject_page_operation,
 )
+from paperworkshell.domain.pdf_export import (
+    PdfExportErrorCode,
+    PdfExportOutcome,
+    reject_pdf_export,
+)
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
 from paperworkshell.domain.recovery import (
@@ -198,6 +205,18 @@ class _SourceIngestPort(Protocol):
         cancellation: SourceCancellationProbe | None = None,
         progress: SourceProgressSink | None = None,
     ) -> SourceImportResult: ...
+
+
+class _PagesPdfExportPort(Protocol):
+    def export_pdf(
+        self,
+        case_id: UUID,
+        destination: Path,
+        *,
+        deadline: Callable[[], bool],
+        cancellation: Callable[[], bool],
+        progress: PdfExportProgressSink,
+    ) -> PdfExportOutcome: ...
 
 
 class _PagePreviewServicePort(Protocol):
@@ -377,6 +396,32 @@ class OrganizerSignatureImageRefreshStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class OrganizerPagesPdfExportOutcome:
+    """Preserve durable export success even if the organizer cannot reload history."""
+
+    committed_export: PdfExportOutcome
+    state: OrganizerViewState
+    refresh_required: bool
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.committed_export) is not PdfExportOutcome
+            or type(self.state) is not OrganizerViewState
+            or type(self.refresh_required) is not bool
+            or self.state.case_id != self.committed_export.history_retry.case_id
+            or self.state.autosave_pending
+        ):
+            reject_pdf_export(PdfExportErrorCode.OUTCOME_INVALID, "export.organizer_outcome")
+
+    @property
+    def safe_message(self) -> str:
+        message = self.committed_export.safe_message
+        if self.refresh_required:
+            message += " Close and reopen the case before continuing so the organizer can refresh."
+        return message
+
+
+@dataclass(frozen=True, slots=True)
 class OrganizerSignatureImagePlacementOutcome:
     """Durable placement result plus an honest organizer refresh outcome."""
 
@@ -491,6 +536,8 @@ class OrganizerBackend:
         "_pending_committed_import",
         "_portal_constraints",
         "_package_workflow",
+        "_pages_pdf_export",
+        "_export_reopen_required",
         "_quality_analysis",
         "_quality_profile_id",
         "_quality_profile_sha256",
@@ -519,6 +566,7 @@ class OrganizerBackend:
         checklist: ChecklistWorkflowService | None = None,
         portal_constraints: PortalConstraintWorkflowService | None = None,
         package_workflow: PackageWorkflowService | None = None,
+        pages_pdf_export: _PagesPdfExportPort | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -594,6 +642,8 @@ class OrganizerBackend:
         self._checklist = checklist
         self._portal_constraints = portal_constraints
         self._package_workflow = package_workflow
+        self._pages_pdf_export = pages_pdf_export
+        self._export_reopen_required = False
         self._utc_now = checklist.utc_now if checklist is not None else lambda: datetime.now(UTC)
         self._active_checklist: ChecklistEditorState | None = None
         self._active_portal_constraints: ConstraintEditorState | None = None
@@ -735,6 +785,7 @@ class OrganizerBackend:
             raise
         self._session = None
         self._pending_committed_import = None
+        self._export_reopen_required = False
         return OrganizerViewState.empty()
 
     def import_source(
@@ -781,6 +832,52 @@ class OrganizerBackend:
         # later exception can make the caller retry the ingest itself.
         self._pending_committed_import = result
         return self._reconcile_committed_import(session, result)
+
+    def export_pages_pdf(
+        self,
+        destination: Path,
+        *,
+        cancellation: Callable[[], bool],
+        progress: PdfExportProgressSink,
+    ) -> OrganizerPagesPdfExportOutcome:
+        """Export the ordinary page sequence without a template or OCR dependency."""
+
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        exporter = self._pages_pdf_export
+        if exporter is None:
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.organizer_unavailable")
+        self._active_scan_review = None
+        self.flush_autosave()
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        outcome = exporter.export_pdf(
+            session.snapshot.case_id,
+            destination,
+            deadline=lambda: monotonic() >= expires,
+            cancellation=cancellation,
+            progress=progress,
+        )
+        # The destination is committed. A later view refresh must never turn this into
+        # an apparent retryable export failure or permit edits based on stale history.
+        self._export_reopen_required = True
+        try:
+            loaded = _require_load_result(
+                self._repository.load(session.snapshot.case_id),
+                session.snapshot.case_id,
+            )
+            if loaded.snapshot.revision < session.snapshot.revision:
+                reject_pdf_export(PdfExportErrorCode.OUTCOME_INVALID, "export.organizer_revision")
+            replacement = _session_from_load(self._repository, loaded, utc_now=self._utc_now)
+            state = _view_state(replacement)
+        except BaseException:
+            return OrganizerPagesPdfExportOutcome(outcome, _view_state(session), True)
+        try:
+            session.autosave.close()
+        except BaseException:
+            pass
+        self._session = replacement
+        self._export_reopen_required = False
+        return OrganizerPagesPdfExportOutcome(outcome, state, False)
 
     def rotate_clockwise(self, page_id: UUID) -> OrganizerViewState:
         """Record one additive clockwise quarter turn for an active page."""
@@ -1815,6 +1912,10 @@ class OrganizerBackend:
         return _session_from_load(self._repository, loaded, utc_now=self._utc_now)
 
     def _require_session(self) -> _OrganizerSession:
+        if self._export_reopen_required:
+            reject_pdf_export(
+                PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED, "export.organizer_refresh"
+            )
         self._require_not_shutdown()
         session = self._session
         if session is None:

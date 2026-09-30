@@ -13,6 +13,7 @@ from paperworkshell.worker.protocol.errors import reject
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     MAX_JSON_COLLECTION_ITEMS,
     MAX_JSON_DEPTH,
@@ -589,6 +590,7 @@ class OperationRegistry:
             PDF_INSPECT_CAPABILITY,
             PDF_THUMBNAIL_CAPABILITY,
             PDF_EXPORT_CAPABILITY,
+            IMAGE_PDF_EXPORT_CAPABILITY,
             FLATTENED_PDF_EXPORT_CAPABILITY,
             SEARCHABLE_PDF_EXPORT_CAPABILITY,
         )

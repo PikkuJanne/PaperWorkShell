@@ -879,7 +879,7 @@
       "binary": {"contains_native_code": true, "installs_executable": false, "processes_untrusted_documents": true},
       "maintenance": {"status": "active", "checked_on": "2026-08-13", "evidence_url": "https://github.com/python-pillow/Pillow/releases", "note": "Release 12.3.0 is active and the selected CPython 3.14 Windows x64 wheel is locked. PWS-0201 promotes Pillow from a pikepdf transitive to the direct worker-only JPEG/PNG decoder while retaining the same reviewed artifact."},
       "security": {"boundary": "worker-process", "network_needed_at_runtime": false, "adapter_required": true, "contract_tests_required": true},
-      "packaging": {"ship_state": "planned", "windows_impact": "The native imaging wheel stays worker-only. PWS-0801 must inventory its compiled codec closure and notices before moving this component to bundled or shipped.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom", "third-party-notices"]},
+      "packaging": {"ship_state": "planned", "windows_impact": "The native imaging wheel stays worker-only. packaging/pillow-runtime-closure-v1.json binds all eight native members, the wheel licence, and embedded-component evidence to the exact artifact. PWS-0801 must reconcile optional recipe-only AVIF/font dependencies and complete shipped-file, source, notice, runtime-DLL and SBOM closure before bundled or shipped admission.", "redistribution_assets": ["hashes", "license-text", "notice", "sbom", "third-party-notices"]},
       "sbom": {"component_type": "library", "purl": "pkg:pypi/pillow@12.3.0", "supplier": "Pillow contributors", "transitive_components_from": "upstream-release-inventory"}
     },
     {

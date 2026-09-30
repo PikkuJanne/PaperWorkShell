@@ -90,6 +90,7 @@ from paperworkshell.worker.pdf_thumbnail_broker import (
 )
 from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_CAPABILITY,
+    IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
@@ -140,7 +141,6 @@ _REQUIRED_DESKTOP_CAPABILITIES = (
     PDF_THUMBNAIL_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
 )
-_REQUIRED_PDF_EXPORT_CAPABILITIES = (PDF_EXPORT_CAPABILITY,)
 
 # The desktop composition root may import this GUI-safe client module, but it
 # must not import the worker-host coordinator module directly.  Keep creation
@@ -238,6 +238,7 @@ class PdfExportWorkerCompositionConfig:
     maximum_heavy_operation_concurrency: int
     export_policy: PdfExportBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
+    operation_version: int = 1
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -251,6 +252,8 @@ class PdfExportWorkerCompositionConfig:
             <= self.maximum_heavy_operation_concurrency
             <= self.resource_policy.maximum_processes
             or type(self.export_policy) is not PdfExportBrokerPolicy
+            or type(self.operation_version) is not int
+            or self.operation_version not in {1, 2}
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
@@ -662,7 +665,9 @@ def create_pdf_export_worker_composition(
         launcher,
         config.resource_policy,
         config.timeout_policy,
-        required_capabilities=_REQUIRED_PDF_EXPORT_CAPABILITIES,
+        required_capabilities=(
+            PDF_EXPORT_CAPABILITY if config.operation_version == 1 else IMAGE_PDF_EXPORT_CAPABILITY,
+        ),
     )
     return PdfExportWorkerComposition(
         worker,
@@ -689,6 +694,7 @@ def create_pdf_export_worker_composition_config(
     export_limits: ResourceLimits,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
+    operation_version: int = 1,
 ) -> PdfExportWorkerCompositionConfig:
     """Build the export broker policy behind its least-privilege composition."""
 
@@ -707,6 +713,7 @@ def create_pdf_export_worker_composition_config(
             pump_interval_seconds=pump_interval_seconds,
         ),
         venv_launcher=venv_launcher,
+        operation_version=operation_version,
     )
 
 

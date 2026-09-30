@@ -7,20 +7,30 @@ import math
 import os
 import stat
 import time
-from collections.abc import Buffer, Callable, Mapping
+from collections.abc import Buffer, Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Final, Protocol, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pikepdf
 
+from paperworkshell.domain.image_pages import (
+    ImageNormalizationLimits,
+    ImageNormalizationRequest,
+    ImagePageError,
+    ImagePageErrorCode,
+    ImageRgba8Layout,
+    ImageSourceFormat,
+)
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
     PdfExportPlan,
     PdfExportRotation,
     PdfExportSource,
+    PdfExportSourceMediaType,
     PdfExportVerificationReport,
     reject_pdf_export,
 )
@@ -39,8 +49,10 @@ from paperworkshell.domain.pdf_rendering import (
     PdfRenderErrorCode,
     PdfRenderRotation,
 )
+from paperworkshell.imaging.pillow_decoder import PillowImageDecoder
 from paperworkshell.pdf.pdfium_renderer import PdfiumPageRenderer
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
+from paperworkshell.pdf.raster_pdf_page import RasterPdfPageAdapter, RasterPdfPageLimits
 from paperworkshell.pdf.renderer import PdfPageRenderer, PdfRasterDestination
 
 _HASH_CHUNK_BYTES: Final = 1_048_576
@@ -92,6 +104,8 @@ class PdfExportAdapterLimits:
     maximum_total_source_bytes: int
     verification_width_pixels: int = 1_024
     verification_height_pixels: int = 1_024
+    image_normalization: ImageNormalizationLimits | None = None
+    maximum_image_scratch_bytes: int = 0
 
     def __post_init__(self) -> None:
         if (
@@ -104,6 +118,16 @@ class PdfExportAdapterLimits:
             or type(self.verification_height_pixels) is not int
             or not 1 <= self.verification_height_pixels <= self.rendering.maximum_height_pixels
             or self.inspection.maximum_pages > self.rendering.maximum_pages
+            or type(self.maximum_image_scratch_bytes) is not int
+            or self.maximum_image_scratch_bytes < 0
+            or (
+                self.image_normalization is not None
+                and (
+                    type(self.image_normalization) is not ImageNormalizationLimits
+                    or self.maximum_image_scratch_bytes
+                    < self.image_normalization.maximum_output_bytes * 2
+                )
+            )
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.adapter_limits")
 
@@ -344,6 +368,8 @@ class PdfExportAdapter:
                     plan,
                     bindings,
                     bounded_output,
+                    temporary_directory=output_path.parent,
+                    limits=limits,
                     control=control,
                 )
                 _flush_candidate(bounded_output)
@@ -514,6 +540,10 @@ def _strict_validate_source(
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
 ) -> None:
+    if binding.source.media_type is not PdfExportSourceMediaType.PDF:
+        if limits.image_normalization is None:
+            reject_pdf_export(PdfExportErrorCode.SOURCE_UNSUPPORTED, "export.image_profile")
+        return
     try:
         with binding.path.open("rb") as stream:
             with _strict_open(stream) as document:
@@ -554,16 +584,33 @@ def _assemble_candidate(
     bindings: tuple[_SourceBinding, ...],
     output_stream: _BoundedCandidateStream,
     *,
+    temporary_directory: Path,
+    limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
 ) -> tuple[int, ...]:
     binding_by_id = {binding.source.source_id: binding for binding in bindings}
     rotations: list[int] = []
+    generated_image_bytes = 0
     try:
         with pikepdf.Pdf.new() as output:
             for planned_page in plan.pages:
                 _checkpoint(control)
                 binding = binding_by_id[planned_page.source_id]
-                with binding.path.open("rb") as source_stream:
+                with (
+                    _page_pdf_path(binding, temporary_directory, limits, control) as page_path,
+                    page_path.open("rb") as source_stream,
+                ):
+                    if binding.source.media_type is not PdfExportSourceMediaType.PDF:
+                        # Copying a foreign page retains compressed output objects
+                        # until save. Bound their generated PDF representation before
+                        # another image is appended, in addition to the one-page
+                        # raster/scratch and final candidate stream limits.
+                        generated_image_bytes += os.fstat(source_stream.fileno()).st_size
+                        if generated_image_bytes > _candidate_maximum_bytes(limits):
+                            reject_pdf_export(
+                                PdfExportErrorCode.LIMIT_EXCEEDED,
+                                "export.image_output_bytes",
+                            )
                     with _strict_open(source_stream) as source:
                         if source.is_encrypted:
                             reject_pdf_export(
@@ -871,14 +918,15 @@ def _verify_rendered_pages(
     for planned_page in plan.pages:
         _checkpoint(control)
         binding = binding_by_id[planned_page.source_id]
-        source_result = _render_one(
-            renderer,
-            binding.path,
-            page_index=planned_page.source_page_index,
-            rotation=_render_rotation(planned_page.additional_rotation),
-            limits=limits,
-            control=control,
-        )
+        with _page_pdf_path(binding, output_path.parent, limits, control) as page_path:
+            source_result = _render_one(
+                renderer,
+                page_path,
+                page_index=planned_page.source_page_index,
+                rotation=_render_rotation(planned_page.additional_rotation),
+                limits=limits,
+                control=control,
+            )
         output_result = _render_one(
             renderer,
             output_path,
@@ -892,6 +940,101 @@ def _verify_rendered_pages(
                 PdfExportErrorCode.VERIFICATION_SEMANTIC_MISMATCH,
                 "export.render_mismatch",
             )
+
+
+@contextmanager
+def _page_pdf_path(
+    binding: _SourceBinding,
+    temporary_directory: Path,
+    limits: PdfExportAdapterLimits,
+    control: PdfExportAdapterControl,
+) -> Iterator[Path]:
+    """Build and discard one worker-private image page, never invoking OCR.
+
+    A fresh second normalization supplies the independent source-side render for
+    final verification. No full-resolution packet or image cache is retained.
+    """
+
+    if binding.source.media_type is PdfExportSourceMediaType.PDF:
+        yield binding.path
+        return
+    image_limits = limits.image_normalization
+    if image_limits is None:
+        reject_pdf_export(PdfExportErrorCode.SOURCE_UNSUPPORTED, "export.image_profile")
+    raw_path = temporary_directory / f"{uuid4().hex}.rgba"
+    page_path = temporary_directory / f"{uuid4().hex}.pdf"
+    raw_owned = False
+    page_owned = False
+    source_format = (
+        ImageSourceFormat.JPEG
+        if binding.source.media_type is PdfExportSourceMediaType.JPEG
+        else ImageSourceFormat.PNG
+    )
+    request = ImageNormalizationRequest(
+        expected_source_format=source_format,
+        expected_source_bytes=binding.source.byte_size,
+        expected_source_sha256=binding.source.sha256,
+        maximum_width_pixels=image_limits.maximum_output_width_pixels,
+        maximum_height_pixels=image_limits.maximum_output_height_pixels,
+    )
+    try:
+        _checkpoint(control)
+        with binding.path.open("rb") as source, raw_path.open("x+b") as destination:
+            raw_owned = True
+            result = PillowImageDecoder().normalize(
+                source,
+                destination,
+                expected_format=source_format,
+                request=request,
+                limits=image_limits,
+                control=control,
+            )
+            destination.flush()
+        layout = ImageRgba8Layout(
+            result.width_pixels,
+            result.height_pixels,
+            result.row_stride_bytes,
+            result.width_pixels * result.height_pixels,
+            result.bytes_written,
+        )
+        # Capacity was reserved against raw bytes plus the maximum page-PDF bytes
+        # before either is produced. RasterPdfPageAdapter independently reopens
+        # the one-page derivative and verifies its exact RGB sample digest.
+        RasterPdfPageAdapter().build(
+            raw_path,
+            page_path,
+            layout,
+            RasterPdfPageLimits(
+                maximum_width_pixels=image_limits.maximum_output_width_pixels,
+                maximum_height_pixels=image_limits.maximum_output_height_pixels,
+                maximum_pixels=image_limits.maximum_output_pixels,
+                maximum_input_bytes=image_limits.maximum_output_bytes,
+                maximum_output_bytes=limits.maximum_image_scratch_bytes
+                - image_limits.maximum_output_bytes,
+                maximum_memory_bytes=image_limits.maximum_memory_bytes,
+                maximum_pdf_objects=limits.inspection.maximum_objects,
+            ),
+            control,
+        )
+        page_owned = True
+        raw_path.unlink()
+        raw_owned = False
+        _checkpoint(control)
+        yield page_path
+    except ImagePageError as error:
+        mapped = {
+            ImagePageErrorCode.CANCELLED: PdfExportErrorCode.CANCELLED,
+            ImagePageErrorCode.TIMED_OUT: PdfExportErrorCode.TIMED_OUT,
+            ImagePageErrorCode.LIMIT_EXCEEDED: PdfExportErrorCode.LIMIT_EXCEEDED,
+        }.get(error.code, PdfExportErrorCode.SOURCE_UNSUPPORTED)
+        reject_pdf_export(mapped, "export.image_decode")
+    except OSError:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.image_scratch")
+    finally:
+        if raw_owned:
+            raw_path.unlink(missing_ok=True)
+        if page_owned:
+            page_path.unlink(missing_ok=True)
 
 
 def _render_one(

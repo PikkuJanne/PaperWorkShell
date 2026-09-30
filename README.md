@@ -46,6 +46,12 @@ PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF o
 repository does not yet contain an installer, cloud integration, or cryptographic-signing
 creation.
 
+JPEG/PNG pages also have an ordinary **Export pages as PDF** action (`Ctrl+Shift+E`) for a
+verified derivative without OCR or a template checklist. Image originals stay unchanged;
+EXIF orientation is reapplied on reopen and transparent areas become white. Unsupported color
+profiles and 16-bit PNG fail explicitly. See [current limitations](KNOWN_LIMITATIONS.md),
+[enforced resource limits](LOW_SPEC.md), and the [image desktop smoke](docs/development/image-intake-coverage.md).
+
 Prerequisites:
 
 - Git 2.45 or newer
@@ -138,6 +144,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py validate-fixtures` | Validate fixture bytes, provenance, coverage, and repository document policy |
 | `py -3.14 tools/dev.py validate-schemas` | Validate every registered schema and checked-in instance |
 | `py -3.14 tools/dev.py validate-dependencies` | Validate the dependency, license, provenance, and redistribution baseline |
+| `py -3.14 tools/dev.py validate-pillow-runtime` | Authenticate the pinned Pillow native members and closure evidence offline |
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
 | `py -3.14 tools/dev.py validate-portfolio-boundary` | Validate standalone ThirdLife boundaries, M8 ownership, and roadmap-bundle integrity |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |

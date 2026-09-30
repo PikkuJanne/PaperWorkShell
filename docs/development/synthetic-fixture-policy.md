@@ -13,6 +13,10 @@ corpus.
 
 ## Public corpus contract
 
+PWS-0201's current image-only matrix and resumable ordinary-desktop recipe are indexed in
+[image intake coverage](image-intake-coverage.md). Its generated JPEG/PNG smoke targets remain
+in ignored local output; no existing binary fixture or golden is refreshed by that review.
+
 The version-1 corpus is indexed by
 [`tests/fixtures/synthetic/v1/index.json`](../../tests/fixtures/synthetic/v1/index.json). Its closed metadata contract is
 [`synthetic-fixture-index-v1.schema.json`](../../schemas/synthetic-fixture-index-v1.schema.json).
