@@ -1008,17 +1008,30 @@ class OrganizerBackend:
     def begin_package_review(
         self,
         mode: PortalOutputMode | None = None,
+        *,
+        cancellation: SourceCancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
     ) -> PackageReviewState:
         session = self._require_session()
         self._require_core_overlay_tools_inactive()
         if self._active_scan_review is not None:
             reject_package_workflow(PackageWorkflowErrorCode.ACTIVE)
         self.flush_autosave()
-        return self._require_package_workflow().begin(session.snapshot, mode)
+        return self._require_package_workflow().begin(
+            session.snapshot, mode, cancellation=cancellation, progress=progress
+        )
 
-    def refresh_package_review(self, mode: PortalOutputMode) -> PackageReviewState:
+    def refresh_package_review(
+        self,
+        mode: PortalOutputMode,
+        *,
+        cancellation: SourceCancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> PackageReviewState:
         self._require_session()
-        return self._require_package_workflow().refresh(mode)
+        return self._require_package_workflow().refresh(
+            mode, cancellation=cancellation, progress=progress
+        )
 
     def cancel_package_review(self) -> None:
         self._require_package_workflow().cancel()

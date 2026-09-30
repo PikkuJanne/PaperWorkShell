@@ -51,18 +51,36 @@ class _Backend:
         self.review: object = _review()
         self.error: BaseException | None = None
         self.save_cancelled = False
+        self.review_cancelled = False
 
     def list_cases(self) -> CaseIndex:
         return CaseIndex()
 
-    def begin_package_review(self, mode: PortalOutputMode | None = None) -> PackageReviewState:
+    def begin_package_review(
+        self,
+        mode: PortalOutputMode | None = None,
+        *,
+        cancellation: Callable[[], bool],
+        progress: Callable[[int, int], None],
+    ) -> PackageReviewState:
         self.calls.append(("begin", mode))
+        self.review_cancelled = cancellation()
+        progress(0, 1)
         if self.error is not None:
             raise self.error
+        progress(1, 1)
         return cast(PackageReviewState, self.review)
 
-    def refresh_package_review(self, mode: PortalOutputMode) -> PackageReviewState:
+    def refresh_package_review(
+        self,
+        mode: PortalOutputMode,
+        *,
+        cancellation: Callable[[], bool],
+        progress: Callable[[int, int], None],
+    ) -> PackageReviewState:
         self.calls.append(("refresh", mode))
+        self.review_cancelled = cancellation()
+        progress(1, 1)
         return _review(mode)
 
     def export_package(
@@ -119,8 +137,10 @@ def test_review_refresh_export_progress_save_and_release_keep_operation_correlat
     )
     worker.package_summary_saved.connect(saved.append)
     worker.package_review_cancelled.connect(cancelled.append)
-    commands.package_review_begin_requested.emit(10, None)
-    commands.package_review_refresh_requested.emit(11, PortalOutputMode.ZIP)
+    commands.package_review_begin_requested.emit(10, None, OperationCancellation())
+    commands.package_review_refresh_requested.emit(
+        11, PortalOutputMode.ZIP, OperationCancellation()
+    )
     commands.package_export_requested.emit(
         12, REVIEW_ID, Path("destination"), False, True, OperationCancellation()
     )
@@ -131,7 +151,7 @@ def test_review_refresh_export_progress_save_and_release_keep_operation_correlat
     assert [(operation, result.status) for operation, result in results] == [
         (12, PackageSummaryStatus.NOT_COMMITTED)
     ]
-    assert progress == [(12, 1, 2)]
+    assert progress == [(10, 0, 1), (10, 1, 1), (11, 1, 1), (12, 1, 2)]
     assert saved == [13]
     assert cancelled == [14]
     assert backend.calls == [
@@ -152,7 +172,7 @@ def test_invalid_review_and_export_request_fail_without_emitting_private_values(
     )
     worker.package_review_ready.connect(lambda _operation, value: reviews.append(value))
     backend.review = "private-path-and-source.pdf"
-    worker.begin_package_review(20, None)
+    worker.begin_package_review(20, None, OperationCancellation())
     worker.export_package(
         21, "private-review-token", Path("out"), False, True, OperationCancellation()
     )

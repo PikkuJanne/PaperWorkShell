@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 from uuid import UUID
 
 import pytest
@@ -30,6 +30,7 @@ from paperworkshell.domain.quality_analysis import (
     QualityFinding,
     QualityFindingCode,
 )
+from paperworkshell.domain.signed_source_policy import SignedSourceSignatureState
 from paperworkshell.preflight.facts import (
     CasePageDetailsAvailability,
     CasePagePreflightFact,
@@ -772,6 +773,52 @@ def test_pdf_and_image_inspections_require_explicit_applicability_state(
         )
 
     assert captured.value.code is PreflightErrorCode.MODEL_INVALID
+
+
+@pytest.mark.parametrize(
+    ("media_type", "saved_state"),
+    (
+        (DetectedMediaType.PDF, SignedSourceSignatureState.NOT_APPLICABLE),
+        (DetectedMediaType.PNG, SignedSourceSignatureState.UNKNOWN),
+        (DetectedMediaType.JPEG, SignedSourceSignatureState.MARKERS_DETECTED),
+    ),
+)
+def test_saved_signature_state_must_match_source_media_type(
+    media_type: DetectedMediaType,
+    saved_state: SignedSourceSignatureState,
+) -> None:
+    with pytest.raises(PreflightError) as case_error:
+        CaseSourcePreflightFact(PDF_SOURCE_ID, 1, media_type, SOURCE_SHA256, saved_state)
+    with pytest.raises(PreflightError) as inspection_error:
+        SourceInspectionFact(
+            PDF_SOURCE_ID,
+            1,
+            media_type,
+            SourceInspectionAvailability.UNAVAILABLE
+            if media_type is DetectedMediaType.PDF
+            else SourceInspectionAvailability.NOT_APPLICABLE,
+            SOURCE_SHA256,
+            saved_signature_state=saved_state,
+        )
+    assert case_error.value.context == "preflight.saved_signature_state"
+    assert inspection_error.value.context == "preflight.saved_signature_state"
+
+
+def test_canonical_binding_rejects_inspection_with_different_saved_signature_state() -> None:
+    case, template, checklist, inspections, quality, output = _canonical_facts()
+    changed = replace(
+        inspections,
+        inspections=(
+            replace(
+                inspections.inspections[0],
+                saved_signature_state=SignedSourceSignatureState.MARKERS_DETECTED,
+            ),
+            *inspections.inspections[1:],
+        ),
+    )
+    _assert_canonical_binding_error(
+        (case, template, checklist, changed, quality, output), "preflight.binding_sources"
+    )
 
 
 def test_template_notice_accepts_maximum_inert_text_without_callable_logic() -> None:

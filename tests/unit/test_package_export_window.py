@@ -29,7 +29,7 @@ from paperworkshell.ui.backend import (
     UiFailure,
 )
 from paperworkshell.ui.package_export import PackageExportDialog
-from paperworkshell.ui.window import PaperWorkShellWindow
+from paperworkshell.ui.window import PaperWorkShellWindow, _LongOperationKind
 
 CASE_ID = UUID("a4000000-0000-4000-8000-000000000011")
 REVIEW_ID = UUID("a4000000-0000-4000-8000-000000000012")
@@ -127,6 +127,83 @@ def _acknowledge(dialog: PackageExportDialog) -> QPushButton:
     button = dialog.findChild(QPushButton, "packageExportStartButton")
     assert button is not None and button.isEnabled()
     return button
+
+
+def test_cancelled_initial_inspection_discards_a_late_ready_signal_and_releases_review() -> None:
+    with _window() as (window, commands, worker):
+        requests: list[tuple[int, object, OperationCancellation]] = []
+        releases: list[int] = []
+        commands.package_review_begin_requested.connect(lambda *args: requests.append(args))
+        commands.package_review_cancel_requested.connect(releases.append)
+        _press(window._package_export_button)
+        operation, _mode, cancellation = requests[0]
+        assert window._cancel_button.hasFocus()
+        _press(window._cancel_button)
+        assert cancellation.cancelled()
+        worker.package_review_ready.emit(operation, _review())
+        _application().processEvents()
+        assert window._package_export_dialog is None
+        assert window._package_review_state is None
+        assert window._active_operation is None
+        assert len(releases) == 1
+        worker.package_review_cancelled.emit(releases[0])
+        _application().processEvents()
+        assert window._package_export_button.isEnabled()
+        assert window._package_export_button.hasFocus()
+
+
+def test_cancelled_refresh_clears_summary_and_retry_uses_a_new_cancellation_token() -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open(window, commands, worker)
+        requests: list[tuple[int, object, OperationCancellation]] = []
+        commands.package_review_refresh_requested.connect(lambda *args: requests.append(args))
+        refresh = dialog.findChild(QPushButton, "packageExportRefreshButton")
+        cancel = dialog.findChild(QPushButton, "packageExportCancelButton")
+        assert refresh is not None and cancel is not None
+        _press(refresh)
+        first_operation, _mode, first_token = requests[0]
+        assert cancel.hasFocus() and not bool(dialog.summary)
+        _press(cancel)
+        assert first_token.cancelled()
+        worker.package_failed.emit(
+            first_operation, "review", UiFailure("PACKAGE_REVIEW_CANCELLED", "PRIVATE", True)
+        )
+        _application().processEvents()
+        assert refresh.isEnabled() and refresh.hasFocus() and not dialog.busy
+        assert window._package_review_state is None
+        _press(refresh)
+        second_operation, _mode, second_token = requests[1]
+        assert second_operation != first_operation and second_token is not first_token
+        assert not second_token.cancelled()
+        worker.package_review_ready.emit(second_operation, _review())
+        _application().processEvents()
+        assert dialog.summary is not None and not dialog.busy
+
+
+@pytest.mark.parametrize("cancel_queued", [False, True])
+def test_package_inspection_waits_for_preview_termination_and_queued_cancel_is_effective(
+    cancel_queued: bool,
+) -> None:
+    with _window() as (window, commands, worker):
+        requests: list[tuple[int, object, OperationCancellation]] = []
+        commands.package_review_begin_requested.connect(lambda *args: requests.append(args))
+        preview = window._begin_long_operation(_LongOperationKind.PREVIEW)
+        _press(window._package_export_button)
+        assert bool(window._pending_package_review) and preview.cancellation.cancelled()
+        assert requests == []
+        if cancel_queued:
+            _press(window._cancel_button)
+            assert not bool(window._pending_package_review)
+        worker.operation_finished.emit(preview.operation_id)
+        _application().processEvents()
+        if cancel_queued:
+            assert requests == []
+            assert window._package_export_button.isEnabled()
+            assert window._package_export_button.hasFocus()
+        else:
+            assert len(requests) == 1
+            assert window._active_operation is not None
+            assert window._active_operation.kind is _LongOperationKind.PACKAGE_REVIEW
 
 
 def test_menu_keyboard_shortcut_and_close_hold_mutations_until_backend_release() -> None:

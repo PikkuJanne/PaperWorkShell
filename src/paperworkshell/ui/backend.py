@@ -1223,26 +1223,38 @@ class OrganizerBackendWorker(QObject):
             return
         self.checklist_cancelled.emit(operation_id)
 
-    @Slot(int, object)
-    def begin_package_review(self, operation_id: int, mode: object) -> None:
+    @Slot(int, object, object)
+    def begin_package_review(self, operation_id: int, mode: object, cancellation: object) -> None:
         """Prepare a presentation snapshot while retaining export authority in the backend."""
 
-        self._prepare_package_review(operation_id, mode, refresh=False)
+        self._prepare_package_review(operation_id, mode, cancellation, refresh=False)
 
-    @Slot(int, object)
-    def refresh_package_review(self, operation_id: int, mode: object) -> None:
-        self._prepare_package_review(operation_id, mode, refresh=True)
+    @Slot(int, object, object)
+    def refresh_package_review(self, operation_id: int, mode: object, cancellation: object) -> None:
+        self._prepare_package_review(operation_id, mode, cancellation, refresh=True)
 
-    def _prepare_package_review(self, operation_id: int, mode: object, *, refresh: bool) -> None:
+    def _prepare_package_review(
+        self, operation_id: int, mode: object, cancellation: object, *, refresh: bool
+    ) -> None:
         def action(backend: OrganizerBackend) -> None:
-            if mode is not None and type(mode) is not PortalOutputMode:
+            if (mode is not None and type(mode) is not PortalOutputMode) or type(
+                cancellation
+            ) is not OperationCancellation:
                 raise TypeError
+
+            def progress(completed: int, total: int) -> None:
+                self._package_progress(operation_id, completed, total)
+
             if refresh:
                 if type(mode) is not PortalOutputMode:
                     raise TypeError
-                review = backend.refresh_package_review(mode)
+                review = backend.refresh_package_review(
+                    mode, cancellation=cancellation.cancelled, progress=progress
+                )
             else:
-                review = backend.begin_package_review(mode)
+                review = backend.begin_package_review(
+                    mode, cancellation=cancellation.cancelled, progress=progress
+                )
             if not is_package_review_state_valid(review):
                 raise TypeError
             state = backend.state
@@ -2180,8 +2192,8 @@ class OrganizerBackendCommands(QObject):
     portal_constraints_apply_requested = Signal(int, object)
     portal_constraints_cancel_requested = Signal(int, object)
     portal_constraints_abort_requested = Signal(int)
-    package_review_begin_requested = Signal(int, object)
-    package_review_refresh_requested = Signal(int, object)
+    package_review_begin_requested = Signal(int, object, object)
+    package_review_refresh_requested = Signal(int, object, object)
     package_export_requested = Signal(int, object, object, bool, bool, object)
     pages_pdf_export_requested = Signal(int, object, object)
     package_review_cancel_requested = Signal(int)

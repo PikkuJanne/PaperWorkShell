@@ -14,14 +14,18 @@ from uuid import UUID, uuid4
 import pikepdf
 import pytest
 
+from paperworkshell.app.source_ingest import SourceIngestService
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.pdf_inspection import (
     PdfEncryptionState,
     PdfFeatureState,
     PdfOpenState,
+    encode_pdf_inspection_report,
 )
+from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.storage._windows import open_handle
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.manifest_repository import WindowsManifestRepository
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
@@ -293,3 +297,102 @@ def test_real_pdf_inspection_uses_only_brokered_handles_inside_app_container(
     assert result.features.actions is PdfFeatureState.NOT_DETECTED
     assert result.features.scripts is PdfFeatureState.NOT_DETECTED
     assert list(temp_root.iterdir()) == []
+
+
+def test_live_saved_feature_inventory_is_constrained_private_and_immutable(
+    tmp_path: Path,
+    worker_test_resources: WorkerTestResources,
+    capfd: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Exercise import, committed reinspection, and all feature families in a real worker."""
+    _stage_pdf_engine(worker_test_resources)
+    private = "PRIVATE-PWS0501-DOCUMENT-VALUE"
+    source = tmp_path / "synthetic-features.pdf"
+    with pikepdf.Pdf.new() as document:
+        page = document.add_blank_page(page_size=(200, 300))
+        document.docinfo["/Title"] = private
+        document.Root.Metadata = document.make_stream(private.encode("ascii"))
+        document.Root.Metadata.Type = pikepdf.Name.Metadata
+        page.Annots = pikepdf.Array(
+            [
+                pikepdf.Dictionary(
+                    Type=pikepdf.Name.Annot,
+                    Subtype=pikepdf.Name.Text,
+                    Rect=pikepdf.Array([0, 0, 20, 20]),
+                    Contents=private,
+                )
+            ]
+        )
+        document.Root.AcroForm = pikepdf.Dictionary(
+            Fields=pikepdf.Array(
+                [
+                    pikepdf.Dictionary(FT=pikepdf.Name.Tx, T=private),
+                    pikepdf.Dictionary(FT=pikepdf.Name.Sig, T=private),
+                ]
+            )
+        )
+        document.Root.OpenAction = pikepdf.Dictionary(S=pikepdf.Name.JavaScript, JS=private)
+        document.Root.AF = pikepdf.Array(
+            [
+                pikepdf.Dictionary(
+                    Type=pikepdf.Name.Filespec,
+                    F=private,
+                    EF=pikepdf.Dictionary(F=document.make_stream(private.encode("ascii"))),
+                )
+            ]
+        )
+        document.save(source, static_id=True)
+    before = source.read_bytes()
+    store, temp_root = _source_store(tmp_path)
+    policy = CONSTRAINED_RESOURCE_POLICY_V1
+    worker = WorkerClient(
+        WindowsProcessLauncher(_launch_config(worker_test_resources)),
+        WorkerResourcePolicy(
+            process_memory_bytes=policy.worker_process_memory_bytes,
+            job_memory_bytes=policy.worker_job_memory_bytes,
+            cpu_time_ms=policy.worker_cpu_time_ms,
+            maximum_processes=policy.worker_maximum_processes,
+        ),
+        WorkerTimeoutPolicy(20.0, 5.0, 10.0),
+        required_capabilities=(PDF_INSPECT_CAPABILITY,),
+    )
+    inspector = BrokeredPdfSourceInspector(
+        worker,
+        store,
+        _inspection_policy(),
+        committed_sources=store,
+        heavy_operations=HeavyOperationCoordinator(policy.maximum_heavy_operation_concurrency),
+    )
+    try:
+        imported = SourceIngestService(store, inspector).import_source(
+            _CASE_ID, source.resolve(), "Synthetic features.pdf"
+        )
+        snapshot = WindowsManifestRepository(store._manager).load(_CASE_ID).snapshot
+        result = inspector.inspect_committed(
+            snapshot, imported.source_id, deadline=lambda: False, cancellation=lambda: False
+        )
+        after = WindowsManifestRepository(store._manager).load(_CASE_ID).snapshot
+        assert after == snapshot
+    finally:
+        worker.terminate()
+    assert result.report_version == 2 and result.open_state is PdfOpenState.OPENED
+    for state in (
+        result.features.metadata,
+        result.features.annotations,
+        result.features.form_fields,
+        result.features.signature_markers,
+        result.features.attachments,
+        result.features.actions,
+        result.features.scripts,
+        result.features.interactive_content,
+    ):
+        assert state is PdfFeatureState.DETECTED
+    assert result.features.xfa is PdfFeatureState.NOT_DETECTED
+    assert source.read_bytes() == before
+    assert next(store._manager.layout(_CASE_ID).originals.iterdir()).read_bytes() == before
+    assert list(temp_root.iterdir()) == []
+    assert worker.query().phase is WorkerLifecyclePhase.STOPPED
+    output = capfd.readouterr()
+    assert private not in output.out + output.err + caplog.text + repr(result)
+    assert private.encode("ascii") not in encode_pdf_inspection_report(result)

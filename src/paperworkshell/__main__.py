@@ -901,6 +901,7 @@ def _build_backend(
     composition = create_desktop_worker_composition(
         _desktop_worker_config(selected_policy),
         prepared_sources=source_store,
+        committed_inspection_sources=source_store,
         committed_pages=source_store,
         committed_signature_images=signature_image_store,
         thumbnail_cache=thumbnail_cache,
@@ -967,6 +968,7 @@ def _build_backend(
                     resources=selected_resources,
                 ),
                 summary_builder=build_package_summary,
+                source_inspector=composition.source_inspector,
             ),
         )
     except BaseException:

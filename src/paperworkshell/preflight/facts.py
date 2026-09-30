@@ -25,6 +25,7 @@ from paperworkshell.domain.quality_analysis import (
     QualityFinding,
     quality_finding_sort_key,
 )
+from paperworkshell.domain.signed_source_policy import SignedSourceSignatureState
 from paperworkshell.preflight.models import (
     MAX_PREFLIGHT_FACT_STRING_CODEPOINTS,
     MAX_PREFLIGHT_MESSAGE_CODEPOINTS,
@@ -58,6 +59,7 @@ class CaseSourcePreflightFact:
     position: int
     media_type: DetectedMediaType
     source_sha256: str = field(repr=False)
+    saved_signature_state: SignedSourceSignatureState | None = None
 
     def __post_init__(self) -> None:
         _require_uuid4(self.source_id, "preflight.case_source")
@@ -68,6 +70,7 @@ class CaseSourcePreflightFact:
             or type(self.media_type) is not DetectedMediaType
         ):
             reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.case_source")
+        _require_saved_signature_state(self.media_type, self.saved_signature_state)
 
     def __repr__(self) -> str:
         return (
@@ -346,6 +349,7 @@ class SourceInspectionFact:
     availability: SourceInspectionAvailability
     source_sha256: str = field(repr=False)
     pdf_result: PdfInspectionResult | None = field(default=None, repr=False)
+    saved_signature_state: SignedSourceSignatureState | None = None
 
     def __post_init__(self) -> None:
         _require_uuid4(self.source_id, "preflight.inspection_source")
@@ -357,6 +361,7 @@ class SourceInspectionFact:
             or type(self.availability) is not SourceInspectionAvailability
         ):
             reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.inspection")
+        _require_saved_signature_state(self.media_type, self.saved_signature_state)
         if self.media_type is DetectedMediaType.PDF:
             if self.availability is SourceInspectionAvailability.CURRENT:
                 if type(self.pdf_result) is not PdfInspectionResult:
@@ -757,11 +762,23 @@ def validate_canonical_preflight_bindings(
         )
     if case_facts is not None and inspection_facts is not None:
         case_sources = tuple(
-            (item.source_id, item.position, item.media_type, item.source_sha256)
+            (
+                item.source_id,
+                item.position,
+                item.media_type,
+                item.source_sha256,
+                item.saved_signature_state,
+            )
             for item in case_facts.sources
         )
         inspections = tuple(
-            (item.source_id, item.position, item.media_type, item.source_sha256)
+            (
+                item.source_id,
+                item.position,
+                item.media_type,
+                item.source_sha256,
+                item.saved_signature_state,
+            )
             for item in inspection_facts.inspections
         )
         if case_sources != inspections:
@@ -792,6 +809,26 @@ def validate_canonical_preflight_bindings(
             for notice in template_facts.notices
         ):
             reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.binding_notices")
+
+
+def _require_saved_signature_state(
+    media_type: DetectedMediaType,
+    state: SignedSourceSignatureState | None,
+) -> None:
+    if state is None:
+        return
+    if (
+        type(state) is not SignedSourceSignatureState
+        or (
+            media_type is DetectedMediaType.PDF
+            and state is SignedSourceSignatureState.NOT_APPLICABLE
+        )
+        or (
+            media_type is not DetectedMediaType.PDF
+            and state is not SignedSourceSignatureState.NOT_APPLICABLE
+        )
+    ):
+        reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.saved_signature_state")
 
 
 def _require_catalog_scopes(

@@ -1,4 +1,4 @@
-"""Pure non-portal-specific preflight rules for PWS-0405.
+"""Pure non-portal-specific preflight rules for PWS-0405 and PWS-0501.
 
 The rules consume only the canonical PWS-0404 fact projections.  Where those
 facts cannot prove absence (notably page dimensions, metadata, overlay
@@ -25,6 +25,7 @@ from paperworkshell.domain.pdf_inspection import (
     PdfStructuralState,
 )
 from paperworkshell.domain.quality_analysis import QualityFindingCode
+from paperworkshell.domain.signed_source_policy import SignedSourceSignatureState
 from paperworkshell.preflight.facts import (
     MAX_PREFLIGHT_TEMPLATE_NOTICES,
     CasePageDetailsAvailability,
@@ -414,7 +415,7 @@ def _template_notice_findings(
 
 _COMPATIBILITY_DESCRIPTOR = PreflightRuleDescriptor(
     rule_id="core.compatibility",
-    rule_version=1,
+    rule_version=2,
     dependencies=(PreflightDependency.SOURCE_INSPECTIONS,),
     finding_definitions=(
         _finding_definition(
@@ -423,6 +424,20 @@ _COMPATIBILITY_DESCRIPTOR = PreflightRuleDescriptor(
             PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
             "A PDF contains document actions that are unsupported for editing.",
             "Use the unchanged original externally or replace it with a non-interactive PDF.",
+        ),
+        _finding_definition(
+            "PDF_ANNOTATIONS_DETECTED",
+            PreflightSeverity.WARNING,
+            PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
+            "A PDF contains annotations or comment markers that need privacy review.",
+            "Review the unchanged original and any derivative before sharing; inspection does not remove annotations or comments.",
+        ),
+        _finding_definition(
+            "PDF_ANNOTATIONS_UNVERIFIED",
+            PreflightSeverity.WARNING,
+            PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
+            "PDF annotation and comment markers could not be fully inspected.",
+            "Inspect or replace the source; do not treat this unknown state as proof that annotations or comments are absent.",
         ),
         _finding_definition(
             "PDF_ATTACHMENTS_DETECTED",
@@ -446,6 +461,20 @@ _COMPATIBILITY_DESCRIPTOR = PreflightRuleDescriptor(
             "Inspect or replace the source before relying on the absence of interactive features.",
         ),
         _finding_definition(
+            "PDF_FORM_FIELDS_UNSUPPORTED",
+            PreflightSeverity.BLOCKING_ERROR,
+            PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
+            "A PDF contains form-field markers that are unsupported for editing.",
+            "Use the unchanged original externally or provide a static PDF; inspection does not flatten or remove source form fields.",
+        ),
+        _finding_definition(
+            "PDF_FORM_FIELDS_UNVERIFIED",
+            PreflightSeverity.WARNING,
+            PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
+            "PDF form-field markers could not be fully inspected.",
+            "Inspect or replace the source; do not treat this unknown state as proof that form fields are absent.",
+        ),
+        _finding_definition(
             "PDF_INTERACTIVE_CONTENT_UNSUPPORTED",
             PreflightSeverity.BLOCKING_ERROR,
             PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
@@ -453,11 +482,18 @@ _COMPATIBILITY_DESCRIPTOR = PreflightRuleDescriptor(
             "Use the unchanged original externally or replace it with a non-interactive PDF.",
         ),
         _finding_definition(
+            "PDF_METADATA_DETECTED",
+            PreflightSeverity.WARNING,
+            PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
+            "A PDF contains metadata markers that need privacy review.",
+            "Review the unchanged original and any derivative before sharing; metadata values were not reported and inspection does not remove them.",
+        ),
+        _finding_definition(
             "PDF_METADATA_UNVERIFIED",
             PreflightSeverity.WARNING,
             PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
-            "PDF metadata privacy was not verified by the current inspection facts.",
-            "Review metadata during export before sharing the derivative.",
+            "PDF metadata markers could not be fully inspected.",
+            "Inspect or replace the source; do not treat this unknown state as proof that metadata is absent.",
         ),
         _finding_definition(
             "PDF_SCRIPTS_UNSUPPORTED",
@@ -472,6 +508,13 @@ _COMPATIBILITY_DESCRIPTOR = PreflightRuleDescriptor(
             PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
             "A PDF contains cryptographic signature markers.",
             "Any modified or exported copy is an unsigned derivative; retain the unchanged original when signature status matters.",
+        ),
+        _finding_definition(
+            "PDF_SIGNATURE_STATE_REVIEW_REQUIRED",
+            PreflightSeverity.BLOCKING_ERROR,
+            PreflightRemediationAction.INSPECT_OR_REPLACE_SOURCE,
+            "Current inspection found a signature risk that the saved source record does not cover.",
+            "Export is blocked. Use the unchanged original externally or import it into a new case for current inspection and signed-source review; acknowledging warnings does not resolve this mismatch.",
         ),
         _finding_definition(
             "PDF_STRUCTURE_FAILED",
@@ -539,6 +582,16 @@ class CoreCompatibilityRule:
             if type(result) is not PdfInspectionResult:
                 reject_preflight(PreflightErrorCode.MODEL_INVALID, "preflight.core_inspection")
             findings.extend(_pdf_result_findings(result, scope))
+            if result.features.signature_markers in {
+                PdfFeatureState.DETECTED,
+                PdfFeatureState.UNKNOWN,
+            } and inspection.saved_signature_state not in {
+                SignedSourceSignatureState.MARKERS_DETECTED,
+                SignedSourceSignatureState.UNKNOWN,
+            }:
+                findings.append(
+                    PreflightFindingTarget("PDF_SIGNATURE_STATE_REVIEW_REQUIRED", scope)
+                )
         return tuple(findings)
 
 
@@ -546,9 +599,7 @@ def _pdf_result_findings(
     result: PdfInspectionResult,
     scope: PreflightScope,
 ) -> tuple[PreflightFindingTarget, ...]:
-    findings = [
-        PreflightFindingTarget("PDF_METADATA_UNVERIFIED", scope),
-    ]
+    findings: list[PreflightFindingTarget] = []
     if result.open_state is PdfOpenState.ENCRYPTED:
         findings.append(PreflightFindingTarget("PDF_ENCRYPTED", scope))
     elif result.open_state is PdfOpenState.MALFORMED:
@@ -561,6 +612,15 @@ def _pdf_result_findings(
     features = result.features
     if PdfFeatureState.UNKNOWN in features.values:
         findings.append(PreflightFindingTarget("PDF_FEATURES_UNVERIFIED", scope))
+    for state, detected_code, unknown_code in (
+        (features.metadata, "PDF_METADATA_DETECTED", "PDF_METADATA_UNVERIFIED"),
+        (features.annotations, "PDF_ANNOTATIONS_DETECTED", "PDF_ANNOTATIONS_UNVERIFIED"),
+        (features.form_fields, "PDF_FORM_FIELDS_UNSUPPORTED", "PDF_FORM_FIELDS_UNVERIFIED"),
+    ):
+        if state is PdfFeatureState.DETECTED:
+            findings.append(PreflightFindingTarget(detected_code, scope))
+        elif state is PdfFeatureState.UNKNOWN:
+            findings.append(PreflightFindingTarget(unknown_code, scope))
     if features.signature_markers is PdfFeatureState.DETECTED:
         findings.append(PreflightFindingTarget("PDF_SIGNATURE_MARKERS_UNSIGNED_DERIVATIVE", scope))
     if features.attachments is PdfFeatureState.DETECTED:

@@ -1,7 +1,7 @@
 """Revision-bound package review; concrete writers remain injected adapters.
 
-Review deliberately does not promote manifest import flags to full inspection or
-quality evidence. The core rules report those unavailable checks explicitly.
+Fresh PDF inspection stays behind an injected worker port. Manifest import flags
+are never promoted to full inspection or quality evidence.
 """
 
 from __future__ import annotations
@@ -29,12 +29,18 @@ from paperworkshell.domain.checklist import ChecklistCommandHistory, ChecklistDe
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import ManifestRepository, ManifestSnapshot
 from paperworkshell.domain.package_summary import PackageSummary
+from paperworkshell.domain.pdf_inspection import (
+    PdfInspectionError,
+    PdfInspectionErrorCode,
+    PdfInspectionResult,
+)
 from paperworkshell.domain.signed_source_policy import (
     SignedSourceModificationReview,
     SignedSourceModificationSource,
     SignedSourceSignatureState,
     build_signed_source_modification_review,
 )
+from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 from paperworkshell.preflight.core_rules import core_preflight_rules
 from paperworkshell.preflight.engine import PreflightEngine, PreflightEvaluation
 from paperworkshell.preflight.facts import (
@@ -86,6 +92,8 @@ class PackageWorkflowErrorCode(StrEnum):
     DESTINATION_CHANGED = "PACKAGE_WORKFLOW_DESTINATION_CHANGED"
     SAVE_FAILED = "PACKAGE_WORKFLOW_SAVE_FAILED"
     CANCELLED = "PACKAGE_WORKFLOW_CANCELLED"
+    REVIEW_CANCELLED = "PACKAGE_REVIEW_CANCELLED"
+    REVIEW_TIMED_OUT = "PACKAGE_REVIEW_TIMED_OUT"
     INVALID = "PACKAGE_WORKFLOW_INVALID"
     FILENAME_MODE_MISMATCH = "PACKAGE_WORKFLOW_FILENAME_MODE_MISMATCH"
 
@@ -107,6 +115,12 @@ _MESSAGES = {
         "The summary was not confirmed saved. Check the destination and choose a new filename."
     ),
     PackageWorkflowErrorCode.CANCELLED: "Package export was cancelled before writing files.",
+    PackageWorkflowErrorCode.REVIEW_CANCELLED: (
+        "Package inspection was cancelled. No new review results were applied."
+    ),
+    PackageWorkflowErrorCode.REVIEW_TIMED_OUT: (
+        "Package inspection exceeded its time limit. No new review results were applied."
+    ),
     PackageWorkflowErrorCode.INVALID: "PaperWorkShell received invalid package review data.",
     PackageWorkflowErrorCode.FILENAME_MODE_MISMATCH: (
         "The saved filenames do not match this output organization. Close package review, "
@@ -175,6 +189,19 @@ class PackageReviewState:
         return f"PackageReviewState(export_allowed={self.export_allowed!r})"
 
 
+class PackageSourceInspectionPort(Protocol):
+    """Inspect one authenticated committed PDF in an isolated, bounded worker."""
+
+    def inspect_committed(
+        self,
+        snapshot: ManifestSnapshot,
+        source_id: UUID,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> PdfInspectionResult: ...
+
+
 class PackageSummaryBuilder(Protocol):
     def __call__(
         self,
@@ -222,6 +249,7 @@ class _Review:
     plan: PackageExportPlan | None
     signature: SignedSourceModificationReview
     state: PackageReviewState
+    inspections: SourceInspectionsPreflightFacts
 
 
 class PackageWorkflowService:
@@ -236,6 +264,7 @@ class PackageWorkflowService:
         as_of: date,
         exporter: PackageExportPort,
         summary_builder: PackageSummaryBuilder,
+        source_inspector: PackageSourceInspectionPort | None = None,
     ) -> None:
         self._repository = repository
         self._loader = loader
@@ -243,38 +272,59 @@ class PackageWorkflowService:
         self._as_of = as_of
         self._exporter = exporter
         self._builder = summary_builder
+        self._source_inspector = source_inspector
         self._active: _Review | None = None
+        self._refresh_snapshot: ManifestSnapshot | None = None
         self._summary: PackageSummary | None = None
 
     @property
     def active(self) -> bool:
-        return self._active is not None
+        return self._active is not None or self._refresh_snapshot is not None
 
     @property
     def current_snapshot(self) -> ManifestSnapshot | None:
         """Backend-only authority, including any durable signed-source consent."""
-        return None if self._active is None else self._active.snapshot
+        return self._refresh_snapshot if self._active is None else self._active.snapshot
 
     def begin(
         self,
         snapshot: ManifestSnapshot,
         mode: PortalOutputMode | None = None,
+        *,
+        cancellation: CancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
     ) -> PackageReviewState:
         if self.active:
             reject_package_workflow(PackageWorkflowErrorCode.ACTIVE)
         self._summary = None
-        self._active = self._review(snapshot, mode)
+        self._active = self._review(snapshot, mode, cancellation=cancellation, progress=progress)
         return self._active.state
 
-    def refresh(self, mode: PortalOutputMode) -> PackageReviewState:
-        review = self._require_current()
-        replacement = self._review(review.snapshot, mode)
+    def refresh(
+        self,
+        mode: PortalOutputMode,
+        *,
+        cancellation: CancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> PackageReviewState:
+        snapshot = self.current_snapshot
+        if snapshot is None:
+            reject_package_workflow(PackageWorkflowErrorCode.REVIEW_REQUIRED)
+        self._require_snapshot_current(snapshot)
+        # Retain only saved authority for retry. A failed refresh discards the old
+        # results and export permission instead of retaining a stale review.
+        self._active = None
+        self._refresh_snapshot = snapshot
+        self._summary = None
+        replacement = self._review(snapshot, mode, cancellation=cancellation, progress=progress)
         self._active = replacement
+        self._refresh_snapshot = None
         self._summary = None
         return replacement.state
 
     def cancel(self) -> None:
         self._active = None
+        self._refresh_snapshot = None
         self._summary = None
 
     def export(
@@ -319,7 +369,14 @@ class PackageWorkflowService:
             review.snapshot = saved
             if snapshot_changed is not None:
                 snapshot_changed(saved)
-            review = self._review(saved, review.state.selected_mode)
+            review = self._review(
+                saved,
+                review.state.selected_mode,
+                cancellation=probe,
+                inspections=SourceInspectionsPreflightFacts(
+                    saved.case_id, saved.revision, review.inspections.inspections
+                ),
+            )
             self._active = review
             actual_plan = self._plan(review, destination_parent)
         self._require_current()
@@ -374,20 +431,35 @@ class PackageWorkflowService:
         review = self._active
         if review is None:
             reject_package_workflow(PackageWorkflowErrorCode.REVIEW_REQUIRED)
-        current = self._repository.load(review.snapshot.case_id).snapshot
+        self._require_snapshot_current(review.snapshot)
+        return review
+
+    def _require_snapshot_current(self, snapshot: ManifestSnapshot) -> None:
+        current = self._repository.load(snapshot.case_id).snapshot
         if (current.revision, current.sha256, current.cas_token) != (
-            review.snapshot.revision,
-            review.snapshot.sha256,
-            review.snapshot.cas_token,
+            snapshot.revision,
+            snapshot.sha256,
+            snapshot.cas_token,
         ):
             reject_package_workflow(PackageWorkflowErrorCode.STALE)
-        return review
 
     def _review(
         self,
         snapshot: ManifestSnapshot,
         mode: PortalOutputMode | None,
+        *,
+        cancellation: CancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+        inspections: SourceInspectionsPreflightFacts | None = None,
     ) -> _Review:
+        probe = cancellation if cancellation is not None else lambda: False
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+
+        def deadline() -> bool:
+            return monotonic() >= expires
+
+        _review_checkpoint(deadline, probe)
+        self._require_snapshot_current(snapshot)
         template = self._loader.load(self._key, as_of=self._as_of)
         definition = checklist_definition_from_template(template)
         profile = portal_constraint_profile_from_template(template)
@@ -426,7 +498,11 @@ class PackageWorkflowService:
             }:
                 raise
             plan = None
-        evaluation = evaluate_package_review(snapshot, template, definition, selected, plan)
+        if inspections is None:
+            inspections = self._inspect_sources(snapshot, deadline, probe, progress)
+        evaluation = evaluate_package_review(
+            snapshot, template, definition, selected, plan, inspections=inspections
+        )
         signature = build_signed_source_modification_review(snapshot, _signature_sources(snapshot))
         state = PackageReviewState(
             uuid4(),
@@ -436,7 +512,108 @@ class PackageWorkflowService:
             plan is not None and not evaluation.report.has_blocking_errors,
             bool(signature.pending_source_ids),
         )
-        return _Review(snapshot, template, definition, evaluation, plan, signature, state)
+        _review_checkpoint(deadline, probe)
+        self._require_snapshot_current(snapshot)
+        return _Review(
+            snapshot, template, definition, evaluation, plan, signature, state, inspections
+        )
+
+    def _inspect_sources(
+        self,
+        snapshot: ManifestSnapshot,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: Callable[[int, int], None] | None,
+    ) -> SourceInspectionsPreflightFacts:
+        sources = _source_facts(snapshot)
+        total = sum(item.media_type is DetectedMediaType.PDF for item in sources)
+        completed = 0
+        inspections: list[SourceInspectionFact] = []
+        if progress is not None and total:
+            progress(0, total)
+        for source in sources:
+            _review_checkpoint(deadline, cancellation)
+            result = None
+            if source.media_type is DetectedMediaType.PDF:
+                if self._source_inspector is not None:
+                    try:
+                        result = self._source_inspector.inspect_committed(
+                            snapshot, source.source_id, deadline=deadline, cancellation=cancellation
+                        )
+                    except (PdfInspectionError, SourceIngestError) as error:
+                        _require_recoverable_inspection_failure(error)
+                    else:
+                        if type(result) is not PdfInspectionResult:
+                            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+                availability = (
+                    SourceInspectionAvailability.CURRENT
+                    if result is not None
+                    else SourceInspectionAvailability.UNAVAILABLE
+                )
+                completed += 1
+                if progress is not None:
+                    progress(completed, total)
+            else:
+                availability = SourceInspectionAvailability.NOT_APPLICABLE
+            inspections.append(
+                SourceInspectionFact(
+                    source.source_id,
+                    source.position,
+                    source.media_type,
+                    availability,
+                    source.source_sha256,
+                    result,
+                    source.saved_signature_state,
+                )
+            )
+        _review_checkpoint(deadline, cancellation)
+        return SourceInspectionsPreflightFacts(
+            snapshot.case_id, snapshot.revision, tuple(inspections)
+        )
+
+
+def _review_checkpoint(deadline: DeadlineProbe, cancellation: CancellationProbe) -> None:
+    cancelled, expired = cancellation(), deadline()
+    if type(cancelled) is not bool or type(expired) is not bool:
+        reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+    if cancelled:
+        reject_package_workflow(PackageWorkflowErrorCode.REVIEW_CANCELLED)
+    if expired:
+        reject_package_workflow(PackageWorkflowErrorCode.REVIEW_TIMED_OUT)
+
+
+def _require_recoverable_inspection_failure(error: PdfInspectionError | SourceIngestError) -> None:
+    if error.code in {PdfInspectionErrorCode.CANCELLED, SourceIngestErrorCode.CANCELLED}:
+        reject_package_workflow(PackageWorkflowErrorCode.REVIEW_CANCELLED)
+    if error.code in {PdfInspectionErrorCode.TIMED_OUT, SourceIngestErrorCode.TIMED_OUT}:
+        reject_package_workflow(PackageWorkflowErrorCode.REVIEW_TIMED_OUT)
+    if error.code in {
+        PdfInspectionErrorCode.SOURCE_CHANGED,
+        SourceIngestErrorCode.SOURCE_CHANGED,
+        SourceIngestErrorCode.MANIFEST_CONFLICT,
+        SourceIngestErrorCode.MANIFEST_INVALID,
+        SourceIngestErrorCode.MANIFEST_VERSION_UNSUPPORTED,
+    }:
+        reject_package_workflow(PackageWorkflowErrorCode.STALE)
+
+
+def _source_facts(snapshot: ManifestSnapshot) -> tuple[CaseSourcePreflightFact, ...]:
+    return tuple(
+        CaseSourcePreflightFact(
+            UUID(cast(str, item["source_id"])),
+            position,
+            DetectedMediaType(cast(str, item["detected_media_type"])),
+            cast(str, item["sha256"]),
+            SignedSourceSignatureState(
+                "unknown"
+                if item["signature_state"] == "not_checked"
+                else cast(str, item["signature_state"])
+            ),
+        )
+        for position, item in enumerate(
+            cast(list[dict[str, object]], snapshot.document["sources"]), start=1
+        )
+    )
 
 
 def _signature_sources(snapshot: ManifestSnapshot) -> tuple[SignedSourceModificationSource, ...]:
@@ -465,22 +642,39 @@ def evaluate_package_review(
     definition: ChecklistDefinition,
     mode: PortalOutputMode,
     plan: PackageExportPlan | None,
+    *,
+    inspections: SourceInspectionsPreflightFacts | None = None,
 ) -> PreflightEvaluation:
     """Assemble bounded saved facts, explicitly marking unperformed checks unknown."""
     case_id, revision = snapshot.case_id, snapshot.revision
     history = ChecklistCommandHistory.from_snapshot(snapshot, definition)
     projection = history.projection
-    sources = tuple(
-        CaseSourcePreflightFact(
-            UUID(cast(str, item["source_id"])),
-            position,
-            DetectedMediaType(cast(str, item["detected_media_type"])),
-            cast(str, item["sha256"]),
+    sources = _source_facts(snapshot)
+    if inspections is not None and (
+        type(inspections) is not SourceInspectionsPreflightFacts
+        or (inspections.case_id, inspections.manifest_revision) != (case_id, revision)
+        or tuple(
+            (
+                item.source_id,
+                item.position,
+                item.media_type,
+                item.source_sha256,
+                item.saved_signature_state,
+            )
+            for item in inspections.inspections
         )
-        for position, item in enumerate(
-            cast(list[dict[str, object]], snapshot.document["sources"]), start=1
+        != tuple(
+            (
+                item.source_id,
+                item.position,
+                item.media_type,
+                item.source_sha256,
+                item.saved_signature_state,
+            )
+            for item in sources
         )
-    )
+    ):
+        reject_package_workflow(PackageWorkflowErrorCode.STALE)
     output = (
         plan.output_facts
         if plan is not None
@@ -560,7 +754,9 @@ def evaluate_package_review(
         ),
         (
             PreflightDependency.SOURCE_INSPECTIONS,
-            SourceInspectionsPreflightFacts(
+            inspections
+            if inspections is not None
+            else SourceInspectionsPreflightFacts(
                 case_id,
                 revision,
                 tuple(
@@ -572,6 +768,7 @@ def evaluate_package_review(
                         if item.media_type is DetectedMediaType.PDF
                         else SourceInspectionAvailability.NOT_APPLICABLE,
                         item.source_sha256,
+                        saved_signature_state=item.saved_signature_state,
                     )
                     for item in sources
                 ),

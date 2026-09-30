@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -52,6 +53,65 @@ def test_current_report_round_trips_canonically() -> None:
     assert encoded == encode_pdf_inspection_report(decode_pdf_inspection_report(encoded))
     assert len(encoded) <= MAX_PDF_INSPECTION_REPORT_BYTES
     assert b"path" not in encoded
+    assert result.report_version == 2
+    assert set(json.loads(encoded)["features"]) == {
+        "signature_markers",
+        "attachments",
+        "interactive_content",
+        "actions",
+        "scripts",
+        "xfa",
+        "metadata",
+        "annotations",
+        "form_fields",
+    }
+
+
+def test_v1_wire_report_stays_exact_and_does_not_invent_new_inspection_facts() -> None:
+    result = replace(_ordinary_result(), report_version=1)
+    encoded = encode_pdf_inspection_report(result)
+
+    assert encoded == (
+        b'{"encryption_state":"unencrypted","features":{"actions":"not_detected",'
+        b'"attachments":"not_detected","interactive_content":"not_detected",'
+        b'"scripts":"not_detected","signature_markers":"not_detected","xfa":"not_detected"},'
+        b'"object_count":6,"open_state":"opened","page_count":1,"report_version":1,'
+        b'"structural_state":"clean"}'
+    )
+    decoded = decode_pdf_inspection_report(encoded)
+    assert decoded == result
+    assert decoded.features.values[6:] == (PdfFeatureState.UNKNOWN,) * 3
+
+
+@pytest.mark.parametrize("feature", ["metadata", "annotations", "form_fields"])
+def test_v1_cannot_claim_new_feature_inspection(feature: str) -> None:
+    with pytest.raises(PdfInspectionError):
+        replace(
+            _ordinary_result(),
+            report_version=1,
+            features=replace(_ordinary_result().features, **{feature: PdfFeatureState.DETECTED}),
+        )
+
+
+def test_v1_opened_still_requires_six_known_fields_while_v2_preserves_unknown() -> None:
+    result = replace(_ordinary_result(), features=PdfFeatureSummary.unknown())
+    assert decode_pdf_inspection_report(encode_pdf_inspection_report(result)) == result
+    with pytest.raises(PdfInspectionError):
+        replace(result, report_version=1)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_report_versions_have_exact_feature_field_sets(version: int) -> None:
+    document = json.loads(
+        encode_pdf_inspection_report(replace(_ordinary_result(), report_version=version))
+    )
+    if version == 1:
+        document["features"]["metadata"] = "unknown"
+    else:
+        del document["features"]["metadata"]
+    with pytest.raises(PdfInspectionError) as caught:
+        decode_pdf_inspection_report(json.dumps(document).encode("ascii"))
+    assert caught.value.code is PdfInspectionErrorCode.REPORT_INVALID
 
 
 def test_worker_result_frame_binds_operation_source_and_report() -> None:
@@ -122,11 +182,14 @@ def test_unopened_outcomes_round_trip_without_false_feature_claims(
 @pytest.mark.parametrize(
     "mutation",
     [
-        lambda data: data.update(report_version=2),
+        lambda data: data.update(report_version=3),
+        lambda data: data.update(report_version=True),
         lambda data: data.update(extra=True),
         lambda data: data.update(page_count=True),
         lambda data: data["features"].update(signature_markers="certain"),
         lambda data: data["features"].pop("scripts"),
+        lambda data: data["features"].update(metadata="certain"),
+        lambda data: data["features"].update(form_fields=True),
     ],
 )
 def test_report_decoder_rejects_future_unknown_and_invalid_values(mutation: object) -> None:
@@ -148,6 +211,19 @@ def test_report_decoder_rejects_duplicate_members_and_oversize() -> None:
 
     assert duplicate.value.code is PdfInspectionErrorCode.REPORT_INVALID
     assert oversize.value.code is PdfInspectionErrorCode.REPORT_INVALID
+
+
+@pytest.mark.parametrize("payload", [b'"PRIVATE-PDF-PARSE-VALUE', b'"PRIVATE-PDF-PARSE-VALUE\xff"'])
+def test_report_parse_failure_does_not_retain_document_values_in_exception_context(
+    payload: bytes,
+) -> None:
+    with pytest.raises(PdfInspectionError) as caught:
+        decode_pdf_inspection_report(payload)
+
+    assert caught.value.code is PdfInspectionErrorCode.REPORT_INVALID
+    assert caught.value.__context__ is None
+    assert caught.value.__cause__ is None
+    assert "PRIVATE-PDF-" not in f"{caught.value!r} {caught.value!s}"
 
 
 def test_opened_result_requires_complete_known_features_and_counts() -> None:

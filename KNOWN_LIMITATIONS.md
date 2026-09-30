@@ -26,9 +26,24 @@ This describes the current development checkout, not a packaged release.
 
 ## Guided package review and export
 
-- The current package review does not rerun full source inspection, page geometry
-  analysis, or advisory quality analysis. Unavailable checks remain visible as unverified
-  and require human review; acknowledging them does not make them passes.
+- Opening or refreshing package review inspects saved PDFs in the restricted worker.
+  The bounded marker inventory distinguishes detected, not-detected, and unknown states;
+  it does not prove the absence of all hidden data or remove metadata, comments, form
+  values, attachments, scripts, or actions. Unavailable or unknown checks remain
+  unverified. Page geometry and advisory quality analysis are not rerun by this review.
+- PDF inspection shows progress and supports **Cancel**. After initial cancellation,
+  choose **Export package** to retry. After a cancelled or timed-out refresh, choose
+  **Refresh review**; old results cannot authorize export. The development startup
+  delay described above can still delay cancellation before the worker starts.
+- Fresh reports can block packages previously reviewed with unavailable inspection.
+  Annotations and form fields, including signature fields, retain the unsupported
+  interactive-content blocker. Acknowledgement does not remove these blockers.
+- If fresh inspection detects signature markers or cannot establish their state while
+  the saved source says none were detected, package export is blocked. The application
+  does not silently change saved labels or bypass unsigned-derivative consent. Use the
+  unchanged original externally or import it into a new case for current inspection
+  and review. Saved marker/unknown states keep their existing consent requirement even
+  if fresh inspection finds no markers.
 - Combining scan/image processing and active visual overlays in the same PDF group is
   unsupported. The workflow rejects the combination rather than discarding intent.
 - Package results and unsaved summaries are transient. Save the optional plain-text

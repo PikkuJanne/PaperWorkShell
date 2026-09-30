@@ -27,7 +27,7 @@ _REPORT_KEYS: Final = frozenset(
         "features",
     }
 )
-_FEATURE_KEYS: Final = frozenset(
+_V1_FEATURE_KEYS: Final = frozenset(
     {
         "signature_markers",
         "attachments",
@@ -37,6 +37,7 @@ _FEATURE_KEYS: Final = frozenset(
         "xfa",
     }
 )
+_V2_FEATURE_KEYS: Final = _V1_FEATURE_KEYS | {"metadata", "annotations", "form_fields"}
 
 
 class PdfOpenState(StrEnum):
@@ -182,6 +183,9 @@ class PdfFeatureSummary:
     actions: PdfFeatureState
     scripts: PdfFeatureState
     xfa: PdfFeatureState
+    metadata: PdfFeatureState = PdfFeatureState.UNKNOWN
+    annotations: PdfFeatureState = PdfFeatureState.UNKNOWN
+    form_fields: PdfFeatureState = PdfFeatureState.UNKNOWN
 
     def __post_init__(self) -> None:
         if any(type(value) is not PdfFeatureState for value in self.values):
@@ -196,13 +200,16 @@ class PdfFeatureSummary:
             self.actions,
             self.scripts,
             self.xfa,
+            self.metadata,
+            self.annotations,
+            self.form_fields,
         )
 
     @classmethod
     def unknown(cls) -> PdfFeatureSummary:
         """Return a complete unknown summary for an unopened document."""
 
-        return cls(*(PdfFeatureState.UNKNOWN for _ in range(6)))
+        return cls(*(PdfFeatureState.UNKNOWN for _ in range(9)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +222,7 @@ class PdfInspectionResult:
     encryption_state: PdfEncryptionState
     structural_state: PdfStructuralState
     features: PdfFeatureSummary
-    report_version: int = 1
+    report_version: int = 2
 
     def __post_init__(self) -> None:
         if (
@@ -224,9 +231,13 @@ class PdfInspectionResult:
             or type(self.structural_state) is not PdfStructuralState
             or type(self.features) is not PdfFeatureSummary
             or type(self.report_version) is not int
-            or self.report_version != 1
+            or self.report_version not in (1, 2)
         ):
             reject_pdf_inspection(PdfInspectionErrorCode.MODEL_INVALID, "pdf.result")
+        if self.report_version == 1 and any(
+            value is not PdfFeatureState.UNKNOWN for value in self.features.values[6:]
+        ):
+            reject_pdf_inspection(PdfInspectionErrorCode.MODEL_INVALID, "pdf.v1_features")
         if self.open_state is PdfOpenState.OPENED:
             if (
                 type(self.page_count) is not int
@@ -234,7 +245,9 @@ class PdfInspectionResult:
                 or type(self.object_count) is not int
                 or not 1 <= self.object_count <= MAX_PDF_INSPECTION_OBJECTS
                 or self.encryption_state is not PdfEncryptionState.UNENCRYPTED
-                or PdfFeatureState.UNKNOWN in self.features.values
+                or (
+                    self.report_version == 1 and PdfFeatureState.UNKNOWN in self.features.values[:6]
+                )
             ):
                 reject_pdf_inspection(PdfInspectionErrorCode.MODEL_INVALID, "pdf.opened")
             return
@@ -280,6 +293,20 @@ def encode_pdf_inspection_report(result: PdfInspectionResult) -> bytes:
 
     if type(result) is not PdfInspectionResult:
         reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.result")
+    features = {
+        "signature_markers": result.features.signature_markers.value,
+        "attachments": result.features.attachments.value,
+        "interactive_content": result.features.interactive_content.value,
+        "actions": result.features.actions.value,
+        "scripts": result.features.scripts.value,
+        "xfa": result.features.xfa.value,
+    }
+    if result.report_version == 2:
+        features.update(
+            metadata=result.features.metadata.value,
+            annotations=result.features.annotations.value,
+            form_fields=result.features.form_fields.value,
+        )
     document = {
         "report_version": result.report_version,
         "open_state": result.open_state.value,
@@ -287,14 +314,7 @@ def encode_pdf_inspection_report(result: PdfInspectionResult) -> bytes:
         "object_count": result.object_count,
         "encryption_state": result.encryption_state.value,
         "structural_state": result.structural_state.value,
-        "features": {
-            "signature_markers": result.features.signature_markers.value,
-            "attachments": result.features.attachments.value,
-            "interactive_content": result.features.interactive_content.value,
-            "actions": result.features.actions.value,
-            "scripts": result.features.scripts.value,
-            "xfa": result.features.xfa.value,
-        },
+        "features": features,
     }
     try:
         encoded = json.dumps(
@@ -312,7 +332,7 @@ def encode_pdf_inspection_report(result: PdfInspectionResult) -> bytes:
 
 
 def decode_pdf_inspection_report(payload: bytes) -> PdfInspectionResult:
-    """Decode a current, closed report before application code trusts worker output."""
+    """Decode a closed v1 or v2 report without inventing unperformed inspection facts."""
 
     if type(payload) is not bytes or not 1 <= len(payload) <= MAX_PDF_INSPECTION_REPORT_BYTES:
         reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.size")
@@ -325,21 +345,26 @@ def decode_pdf_inspection_report(payload: bytes) -> PdfInspectionResult:
             result[key] = value
         return result
 
+    decoded: object = None
     try:
         decoded = json.loads(payload.decode("ascii"), object_pairs_hook=pairs_hook)
     except PdfInspectionError:
         raise
     except UnicodeDecodeError, json.JSONDecodeError, RecursionError:
+        pass
+    if decoded is None:
         reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.decode")
     if type(decoded) is not dict or frozenset(decoded) != _REPORT_KEYS:
         reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.fields")
     document = cast(dict[str, object], decoded)
+    version = document["report_version"]
+    if type(version) is not int or version not in (1, 2):
+        reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.version")
     features_value = document["features"]
-    if type(features_value) is not dict or frozenset(features_value) != _FEATURE_KEYS:
+    feature_keys = _V1_FEATURE_KEYS if version == 1 else _V2_FEATURE_KEYS
+    if type(features_value) is not dict or frozenset(features_value) != feature_keys:
         reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.features")
     features = cast(dict[str, object], features_value)
-    if document["report_version"] != 1 or type(document["report_version"]) is not int:
-        reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.version")
     try:
         return PdfInspectionResult(
             open_state=PdfOpenState(_require_string(document["open_state"])),
@@ -356,12 +381,25 @@ def decode_pdf_inspection_report(payload: bytes) -> PdfInspectionResult:
                 actions=PdfFeatureState(_require_string(features["actions"])),
                 scripts=PdfFeatureState(_require_string(features["scripts"])),
                 xfa=PdfFeatureState(_require_string(features["xfa"])),
+                metadata=PdfFeatureState(_require_string(features["metadata"]))
+                if version == 2
+                else PdfFeatureState.UNKNOWN,
+                annotations=PdfFeatureState(_require_string(features["annotations"]))
+                if version == 2
+                else PdfFeatureState.UNKNOWN,
+                form_fields=PdfFeatureState(_require_string(features["form_fields"]))
+                if version == 2
+                else PdfFeatureState.UNKNOWN,
             ),
+            report_version=version,
         )
     except PdfInspectionError:
         raise
     except TypeError, ValueError:
-        reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.values")
+        pass
+    # Raise after the parser exception scope so its document value is not retained
+    # as an exception context that diagnostics could accidentally serialize.
+    reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "report.values")
 
 
 def encode_pdf_inspection_frame(envelope: PdfInspectionEnvelope) -> bytes:

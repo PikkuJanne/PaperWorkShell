@@ -168,6 +168,7 @@ class _LongOperationKind(StrEnum):
     QUALITY = "Page quality check"
     SIGNATURE_IMAGE = "Signature image"
     PDF_EXPORT = "PDF export"
+    PACKAGE_REVIEW = "Package inspection"
 
 
 class _ImportPresentationState(StrEnum):
@@ -614,6 +615,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._package_export_dialog: PackageExportDialog | None = None
         self._package_review_state: PackageReviewState | None = None
         self._package_review_operation_id: int | None = None
+        self._pending_package_review = False
         self._package_export_operation_id: int | None = None
         self._package_cancel_operation_id: int | None = None
         self._package_summary_save_operation_id: int | None = None
@@ -2157,6 +2159,10 @@ class PaperWorkShellWindow(QMainWindow):
         if self._closing_requested:
             self._pending_failure_focus = None
             return
+        if self._pending_package_review:
+            self._pending_failure_focus = None
+            self._start_package_review()
+            return
         if finished_export:
             self._set_controls_enabled(True)
             self._pending_failure_focus = "pdf_export"
@@ -3619,22 +3625,58 @@ class PaperWorkShellWindow(QMainWindow):
             return
         if not self._package_export_button.isEnabled() or not self._prepare_for_mutation():
             return
-        self._package_review_operation_id = self._allocate_operation_id()
+        self._pending_package_review = True
         self._autosave_timer.stop()
         self._preview_refresh_timer.stop()
         self._deferred_preview_state = None
         self._hide_error()
         self._update_package_availability()
+        if self._active_operation is not None:
+            self._cancel_button.setEnabled(True)
+            self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._announce(
+                "Package inspection queued. Stopping the current preview first. You can cancel."
+            )
+            return
+        self._start_package_review()
+
+    def _start_package_review(self) -> None:
+        self._pending_package_review = False
+        operation = self._begin_long_operation(_LongOperationKind.PACKAGE_REVIEW)
+        self._package_review_operation_id = operation.operation_id
+        self._package_cancellation = operation.cancellation
+        self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._cancel_button)
         self._announce(
-            "Preparing package review. No package files have been saved by this request."
+            "Inspecting PDFs for package review. You can cancel. No package files are being saved."
         )
-        self._commands.package_review_begin_requested.emit(self._package_review_operation_id, None)
+        self._commands.package_review_begin_requested.emit(
+            operation.operation_id, None, operation.cancellation
+        )
 
     @Slot(int, object)
     def _package_review_ready(self, operation_id: int, review: object) -> None:
         if operation_id != self._package_review_operation_id:
             return
+        if self._package_cancellation is not None and self._package_cancellation.cancelled():
+            self._package_failed(
+                operation_id,
+                "review",
+                UiFailure(
+                    code="PACKAGE_REVIEW_CANCELLED",
+                    message="Package inspection was cancelled.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
         self._package_review_operation_id = None
+        self._package_cancellation = None
+        if (
+            self._active_operation is not None
+            and self._active_operation.operation_id == operation_id
+        ):
+            self._finish_active_operation()
         if self._closing_requested or not is_package_review_state_valid(review):
             self._package_review_state = None
             if self._package_export_dialog is not None:
@@ -3684,9 +3726,10 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._package_review_state = None
         self._package_review_operation_id = self._allocate_operation_id()
-        dialog.set_busy("preparing", cancelable=False)
+        self._package_cancellation = OperationCancellation()
+        dialog.set_busy("inspecting_pdfs", cancelable=True)
         self._commands.package_review_refresh_requested.emit(
-            self._package_review_operation_id, mode
+            self._package_review_operation_id, mode, self._package_cancellation
         )
 
     @Slot()
@@ -3756,6 +3799,23 @@ class PaperWorkShellWindow(QMainWindow):
     @Slot(int, int, int)
     def _package_progress(self, operation_id: int, completed: int, total: int) -> None:
         if (
+            type(completed) is not int
+            or type(total) is not int
+            or not 1 <= total <= 1_000_000
+            or not 0 <= completed <= total
+        ):
+            return
+        if operation_id == self._package_review_operation_id:
+            if self._package_export_dialog is not None:
+                self._package_export_dialog.set_progress("inspecting_pdfs", completed, total)
+            else:
+                self._progress_changed(
+                    UiProgress(
+                        "Package inspection", "PDFs processed", completed, total, True, operation_id
+                    )
+                )
+            return
+        if (
             operation_id == self._package_export_operation_id
             and self._package_export_dialog is not None
         ):
@@ -3816,6 +3876,12 @@ class PaperWorkShellWindow(QMainWindow):
         if phase == "review" and operation_id == self._package_review_operation_id:
             self._package_review_operation_id = None
             self._package_review_state = None
+            self._package_cancellation = None
+            if (
+                self._active_operation is not None
+                and self._active_operation.operation_id == operation_id
+            ):
+                self._finish_active_operation()
         elif phase == "export" and operation_id == self._package_export_operation_id:
             self._package_export_operation_id = None
             self._package_cancellation = None
@@ -3827,9 +3893,19 @@ class PaperWorkShellWindow(QMainWindow):
                 phase=phase, code=failure.code if type(failure) is UiFailure else None
             )
         else:
-            self._announce(
+            message = (
                 "Package review could not be prepared. Check the checklist assignments and saved "
-                "constraints, then try again.",
+                "constraints, then try again."
+            )
+            if type(failure) is UiFailure:
+                if failure.code == "PACKAGE_REVIEW_CANCELLED":
+                    message = (
+                        "Package inspection was cancelled. Choose Export package to try again."
+                    )
+                elif failure.code == "PACKAGE_REVIEW_TIMED_OUT":
+                    message = "Package inspection exceeded its time limit. Choose Export package to try again."
+            self._announce(
+                message,
                 assertive=True,
             )
             self._release_package_review()
@@ -3876,7 +3952,8 @@ class PaperWorkShellWindow(QMainWindow):
 
     def _package_export_is_opening_or_active(self) -> bool:
         return (
-            self._package_export_dialog is not None
+            self._pending_package_review
+            or self._package_export_dialog is not None
             or self._package_review_operation_id is not None
             or self._package_export_operation_id is not None
             or self._package_cancel_operation_id is not None
@@ -4531,6 +4608,16 @@ class PaperWorkShellWindow(QMainWindow):
             or not self._cancel_button.isEnabled()
         ):
             return
+        if self._pending_package_review:
+            self._pending_package_review = False
+            self._pending_failure_focus = "package_review"
+            self._cancel_button.setEnabled(False)
+            self._update_package_availability()
+            self._announce(
+                "Queued package inspection cancelled. No review results were applied.",
+                assertive=True,
+            )
+            return
         if active.kind is _LongOperationKind.QUALITY and self._quality_presentation in {
             _QualityPresentationState.READY,
             _QualityPresentationState.FAILED,
@@ -4998,6 +5085,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._pages_pdf_export_button.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._pages_pdf_export_button)
             return
+        elif target == "package_review" and self._package_export_button.isEnabled():
+            self._focus_package_export_button()
+            return
         elif target == "signature_image":
             self._update_page_actions()
             if (
@@ -5097,6 +5187,7 @@ class PaperWorkShellWindow(QMainWindow):
 
         if self._closing_requested:
             return
+        self._pending_package_review = False
         package_dialog = self._package_export_dialog
         if (
             self._package_review_operation_id is not None

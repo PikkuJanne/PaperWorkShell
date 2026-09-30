@@ -1,7 +1,7 @@
 # Typed preflight rule engine
 
-- Status: PWS-0404 engine plus PWS-0405/PWS-0406 policies and PWS-0407 package consumption
-- Tasks: PWS-0404, PWS-0405, PWS-0406, PWS-0407
+- Status: PWS-0404 engine, PWS-0405/PWS-0406 policies, PWS-0407 package consumption, and PWS-0501 inspection findings
+- Tasks: PWS-0404, PWS-0405, PWS-0406, PWS-0407, PWS-0501
 - Decisions: PWS-D025, PWS-D026, PWS-D037
 - Checklist input: [Checklist assignment architecture](checklist-assignment.md)
 - Structural input: [PDF structural inspection](pdf-structural-inspection.md)
@@ -54,28 +54,29 @@ The canonical production projections are:
 
 | Dependency | Path-free facts |
 |---|---|
-| Case | Template binding, ordered source ID/media/digest bindings, active page order, and explicit current/unavailable page geometry plus bounded overlay-intent counts |
+| Case | Template binding, ordered source ID/media/digest/saved-signature-state bindings, active page order, and explicit current/unavailable page geometry plus bounded overlay-intent counts |
 | Template | Explicit current/not-selected/unavailable state plus exact binding and inert notices |
 | Checklist | Explicit current/unavailable state plus pure definition and saved projection |
-| Source inspections | Every ordered source with exact digest/media binding and either the full typed `PdfInspectionResult`, explicit unavailable state, or image not-applicable state |
+| Source inspections | Every ordered source with exact digest/media/saved-signature-state binding and either the full typed `PdfInspectionResult`, explicit unavailable state, or image not-applicable state |
 | Quality findings | Explicit current/unavailable state, exact page order/profile, and typed advisory findings |
 | Output plan | Explicit current/unavailable state, deterministic opaque output keys, page membership, bounded numeric estimates, and exact current/unavailable overlay-flattening page coverage |
 
 These projections exclude display names, original filenames, storage names, paths, proposed output
 filenames, OCR/document text, metadata values, thumbnails, signature images, and raw exceptions.
 Engine prevalidation correlates any canonical facts present: template bindings must agree; source
-IDs, media types, and digests must match; checklist and quality page orders must match the case;
+IDs, media types, digests, and saved signature states must match; checklist and quality page orders must match the case;
 requirement/assignment/output scopes must match the catalog; and every planned output page must be
 active. Each canonical DTO is accepted only in its exact dependency slot, and any canonical
 non-case fact requires the authoritative canonical case projection. Missing or unavailable
 analysis is explicit and is never converted to a clean result.
 
 `PdfInspectionResult` is intentionally retained in the ephemeral source-inspection projection
-because the current manifest/import summary does not retain attachment, action, script, XFA,
-interactive-content, and structural states. The PWS-0405 compatibility rule consumes the full
-result and reports unavailable inspection explicitly. Its application adapter must acquire a
-current result through bounded worker reinspection or a separately approved retained-result
-design; it must not infer absence from the lossy manifest summary.
+because the current manifest/import summary does not retain metadata, annotations, form fields,
+attachment, action, script, XFA, interactive-content, and structural states. The compatibility rule
+consumes the full result and reports unavailable inspection explicitly. The package application
+acquires current results through bounded worker reinspection of authenticated saved PDFs. It must
+not infer absence from the lossy manifest summary. Reports are bound to the exact review snapshot
+and source digest and remain transient; they add no case-schema fields or persistent cache.
 
 ## Core policy registry
 
@@ -88,9 +89,10 @@ design; it must not infer absence from the lossy manifest summary.
 2. **Template notices** gives every non-informational declaration a bounded position-specific
    finding identity. Multiple declarations of the same kind at the same scope therefore cannot
    collapse into one result. Templates still provide inert data only.
-3. **Compatibility** blocks encrypted/malformed/structurally failed PDFs and detected unsupported
-   XFA, scripts, actions, or interactive content. Attachments, structural warnings, metadata limits,
-   signature markers, and unavailable/unknown inspection remain visible warnings. A signature
+3. **Compatibility** (rule version 2) blocks encrypted/malformed/structurally failed PDFs and
+   detected unsupported XFA, scripts, actions, form fields, or interactive content. Attachments,
+   annotations/comments, metadata markers, structural warnings, signature markers, and
+   unavailable/unknown inspection remain visible warnings. A signature
    marker always states that a modified or exported copy is an unsigned derivative.
 4. **Quality** projects every PWS-0206 advisory signal—including OCR failure/low confidence, blur,
    likely blank, clipping, orientation, duplicate, and low resolution—as a review warning. It never
@@ -102,9 +104,57 @@ design; it must not infer absence from the lossy manifest summary.
    both canonical case and output-plan inputs makes any plan change invalidate this rule.
 
 The page-size boundary is a versioned conservative compatibility review threshold, not a portal
-limit or support guarantee. Metadata removal and final overlay flattening remain export-time checks;
-PWS-0405 reports them as unverified when no exact evidence exists. Permanent redaction is not
-implemented or claimed.
+limit or support guarantee. Source metadata detection does not verify metadata privacy or removal
+from an exported file. Final overlay flattening still requires exact export evidence. Permanent
+redaction is not implemented or claimed.
+
+### PWS-0501 feature findings
+
+| Feature state | Stable finding | Severity |
+|---|---|---|
+| Metadata detected | `PDF_METADATA_DETECTED` | Warning |
+| Metadata unknown, including a legacy v1 report | `PDF_METADATA_UNVERIFIED` | Warning |
+| Annotation/comment markers detected | `PDF_ANNOTATIONS_DETECTED` | Warning |
+| Annotation/comment markers unknown | `PDF_ANNOTATIONS_UNVERIFIED` | Warning |
+| Form-field markers detected | `PDF_FORM_FIELDS_UNSUPPORTED` | Blocking error |
+| Form-field markers unknown | `PDF_FORM_FIELDS_UNVERIFIED` | Warning |
+| Current signature markers detected/unknown without saved marker/unknown state | `PDF_SIGNATURE_STATE_REVIEW_REQUIRED` | Blocking error |
+| Any feature unknown | `PDF_FEATURES_UNVERIFIED` | Warning |
+| No current PDF inspection | `SOURCE_INSPECTION_UNAVAILABLE` | Warning |
+
+Findings are scoped to the exact source position and identity. A positive observation is never
+hidden by an unrelated unknown feature, the general unknown-feature warning, or a different
+source's state. For each added feature, `not_detected` produces neither its detected finding nor
+its unknown finding. It means the bounded marker scan found no supported marker; it does not
+promise absence of arbitrary hidden data. Encrypted and malformed reports retain unknown feature
+states alongside their blocking open/structure findings. Images remain not applicable to the PDF
+inspection rule.
+
+Acquiring a current inspection can block a package that previously carried only an unavailable
+inspection warning. The existing interactive-content policy includes annotation structures and
+form fields, including signature fields. An annotation-only PDF therefore keeps its interactive
+content blocker alongside the annotation privacy warning. A PDF with signature markers and
+unsupported interactive structures keeps both the blocker and the separate unsigned-derivative
+warning. Acknowledging warnings or unsigned-derivative consent never removes these blockers;
+signature-marker detection does not validate a cryptographic signature. A later supported output
+profile must prove handling before this policy can change.
+
+Fresh inspection also cannot bypass saved signed-source consent or output labels. If the fresh
+signature-marker state is `detected` or `unknown` while the saved source says `none_detected`,
+`PDF_SIGNATURE_STATE_REVIEW_REQUIRED` blocks export. Missing saved-state facts also block that
+combination. The typed saved state is bound to the case's canonical source facts; it is not inferred
+from the new report. Saved `markers_detected` and `unknown` keep the existing unsigned-derivative
+consent flow even if fresh inspection reports `not_detected`. The legacy saved `not_checked` state
+is projected as `unknown` for review, without changing the manifest. Warning acknowledgement
+cannot resolve a mismatch. The recovery is to keep using the unchanged original externally or
+import it into a new case for current inspection and review. This task neither migrates a saved
+signature state nor silently changes an output label.
+
+All finding messages and remediation come from the static product registry. No source metadata,
+comment author/text, form name/value, attachment filename, script text, or target URL is included.
+Package summaries consume these registered findings without copying worker report values into
+messages or routine logs. The [inert profile policy table](pdf-structural-inspection.md#conservative-profile-policy-placeholders)
+describes later removal work; no current finding authorizes removal or claims a sanitized output.
 
 ## Rule and finding contract
 

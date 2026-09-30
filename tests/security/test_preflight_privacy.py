@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import traceback
 from dataclasses import dataclass, field
@@ -22,6 +23,17 @@ from paperworkshell.domain.checklist import (
     TemplateBinding,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType
+from paperworkshell.domain.pdf_inspection import (
+    PdfEncryptionState,
+    PdfFeatureState,
+    PdfFeatureSummary,
+    PdfInspectionError,
+    PdfInspectionResult,
+    PdfOpenState,
+    PdfStructuralState,
+    decode_pdf_inspection_report,
+    encode_pdf_inspection_report,
+)
 from paperworkshell.preflight.engine import PreflightEngine
 from paperworkshell.preflight.facts import (
     CasePreflightFacts,
@@ -72,6 +84,18 @@ _PRIVATE_FINDING_MESSAGE = r"PRIVATE FINDING MESSAGE C:\records\applicant.pdf"
 _PRIVATE_REMEDIATION = "PRIVATE FORM VALUE REMEDIATION CANARY"
 _PRIVATE_TEMPLATE_MESSAGE = "PRIVATE TEMPLATE NOTICE CANARY"
 _FINDING_CODE = "SYNTHETIC_PRIVACY_REVIEW"
+
+_PRIVATE_INSPECTION_VALUES = (
+    ("metadata", "SYNTHETIC_METADATA_TITLE_AND_XMP_CREATOR_0501"),
+    ("annotations", "SYNTHETIC_COMMENT_CONTENTS_AND_AUTHOR_0501"),
+    ("form_fields", "SYNTHETIC_FORM_NAME_AND_VALUE_0501"),
+    ("attachments", r"C:\private\SYNTHETIC_EMBEDDED_FILENAME_0501.pdf"),
+    ("actions", "https://private.invalid/SYNTHETIC_ACTION_TARGET_0501"),
+    ("scripts", "SYNTHETIC_JAVASCRIPT_BODY_0501()"),
+    ("signature_markers", "SYNTHETIC_CERTIFICATE_SUBJECT_0501"),
+    ("interactive_content", "SYNTHETIC_INTERACTIVE_VALUE_0501"),
+    ("xfa", "<xfa>SYNTHETIC_XFA_FIELD_VALUE_0501</xfa>"),
+)
 
 type _RuleMode = Literal["finding", "raw", "corrupted_exact", "subclass"]
 
@@ -234,6 +258,46 @@ def test_successful_and_failed_engine_evaluation_emit_no_logs_or_console_output(
     assert caplog.text == ""
     assert terminal.out == ""
     assert terminal.err == ""
+
+
+@pytest.mark.parametrize(("feature", "private_value"), _PRIVATE_INSPECTION_VALUES)
+def test_document_values_cannot_enter_preflight_through_an_inspection_report(
+    feature: str,
+    private_value: str,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = PdfInspectionResult(
+        PdfOpenState.OPENED,
+        1,
+        4,
+        PdfEncryptionState.UNENCRYPTED,
+        PdfStructuralState.CLEAN,
+        PdfFeatureSummary(*(PdfFeatureState.UNKNOWN for _ in range(9))),
+    )
+    document = json.loads(encode_pdf_inspection_report(result))
+    document["features"][feature] = private_value
+    caplog.set_level(logging.DEBUG)
+
+    with pytest.raises(PdfInspectionError) as caught:
+        decode_pdf_inspection_report(json.dumps(document).encode("ascii"))
+
+    terminal = capsys.readouterr()
+    rendered = "\n".join(
+        (
+            str(caught.value),
+            repr(caught.value),
+            repr(caught.value.args),
+            "".join(traceback.format_exception(caught.value)),
+            caplog.text,
+            terminal.out,
+            terminal.err,
+        )
+    )
+    assert private_value not in rendered
+    assert caught.value.__context__ is None
+    assert caught.value.__cause__ is None
+    assert caplog.records == []
 
 
 def test_public_preflight_reprs_hide_messages_digests_and_private_fact_values() -> None:

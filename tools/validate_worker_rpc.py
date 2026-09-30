@@ -98,7 +98,7 @@ _SESSION_CAPABILITY: Final = re.compile(r"^[0-9a-f]{64}$")
 _ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
     {
         ("protocol.noop", 1),
-        ("pdf.inspect", 1),
+        ("pdf.inspect", 2),
         ("pdf.thumbnail", 1),
         ("pdf.export", 1),
         ("pdf.export", 2),

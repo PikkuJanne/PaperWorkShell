@@ -242,7 +242,7 @@ class CapabilityDescriptor:
 
 
 NOOP_CAPABILITY: Final = CapabilityDescriptor("protocol.noop", 1)
-PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 1)
+PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 2)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 2)
@@ -982,13 +982,13 @@ def validate_quality_ocr_review_result(payload: OperationResultPayload) -> None:
 
 
 def validate_pdf_inspect_start(payload: OperationStartPayload) -> None:
-    """Validate the exact, path-free ``pdf.inspect`` version-1 input contract."""
+    """Validate the exact, path-free ``pdf.inspect`` version-2 input contract."""
 
     if len(payload.inputs) != 1:
         reject(
             "RPC_INVALID_OPERATION",
             "payload.inputs",
-            "pdf.inspect version 1 requires exactly one source reference",
+            "pdf.inspect version 2 requires exactly one source reference",
         )
     source = payload.inputs[0]
     if (
@@ -1000,7 +1000,7 @@ def validate_pdf_inspect_start(payload: OperationStartPayload) -> None:
         reject(
             "RPC_INVALID_OPERATION",
             "payload.inputs",
-            "pdf.inspect version 1 requires one authenticated PDF source reference",
+            "pdf.inspect version 2 requires one authenticated PDF source reference",
         )
 
     expected_names = {
@@ -1014,7 +1014,7 @@ def validate_pdf_inspect_start(payload: OperationStartPayload) -> None:
         reject(
             "RPC_INVALID_OPERATION",
             "payload.parameters",
-            "pdf.inspect version 1 requires its two brokered handles",
+            "pdf.inspect version 2 requires its two brokered handles",
         )
     handle_values = tuple(parameter.value for parameter in payload.parameters)
     if (

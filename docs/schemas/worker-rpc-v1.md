@@ -78,7 +78,9 @@ The initial foundation registry contained `protocol.noop` version 1. Its canonic
 `inputs` and `parameters`; its only progress stage is `processing`. It proves version negotiation,
 typed round trips, state, and cancellation without parsing a document.
 
-PWS-0105 adds `pdf.inspect` version 1. Negotiation still requires the client to request that exact
+PWS-0105 introduced `pdf.inspect` version 1; PWS-0501 replaces its advertised capability
+with version 2 and an expanded version-2 feature report. The start fields remain unchanged.
+Legacy and unknown future operation versions fail before parsing. Negotiation still requires the client to request that exact
 descriptor and the worker to advertise it from its local registry. Its start has exactly one
 `source_read` input with content kind `pdf`, a non-null expected byte size and SHA-256, plus exactly
 two distinct positive integer parameters named `source_handle` and `result_handle`. Those integers
@@ -201,7 +203,7 @@ Validation is intentionally split:
    its input, parameter, output, limit, and state rules before dispatch.
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
-registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
+registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 2, `pdf.thumbnail`
 version 1, `pdf.export` versions 1 and 2, `image.normalize` version 1, `image.transform` version 1,
 `ocr.process` version 1, `ocr.review` version 1, and `pdf.export.searchable` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and
@@ -244,7 +246,8 @@ The ordinary `operation.result` is still the sole protocol terminal message. For
 out-of-band result frame before returning. The broker terminates the one-shot worker tree, then
 reads that frame through EOF and independently validates its length, report version, closed typed
 fields, operation UUID, and source-object UUID. RPC success with a missing, malformed, oversized,
-surplus, future, or misbound frame is failure.
+surplus, future, or misbound frame is failure. The current worker must return report version 2;
+a version-1 report remains decodable as historical data but cannot satisfy a version-2 operation.
 
 The bounded frame contains no path or native object. Its two UUID correlations plus canonical
 structural report are carried over the exact anonymous result-pipe handle created for this

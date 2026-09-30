@@ -79,6 +79,7 @@ from paperworkshell.worker.pdf_export_broker import (
 )
 from paperworkshell.worker.pdf_source_inspector import (
     BrokeredPdfSourceInspector,
+    CommittedPdfInspectionBroker,
     PdfInspectionBrokerPolicy,
     PreparedSourceHandleBroker,
 )
@@ -536,6 +537,7 @@ def create_desktop_worker_composition(
     prepared_sources: PreparedSourceHandleBroker,
     committed_pages: CommittedPdfPageStore,
     committed_signature_images: CommittedSignatureImageAssetStore,
+    committed_inspection_sources: CommittedPdfInspectionBroker | None = None,
     committed_image_pages: CommittedImagePageStore | None = None,
     thumbnail_cache: ThumbnailCacheStore,
     heavy_operations: HeavyOperationCoordinator,
@@ -549,6 +551,8 @@ def create_desktop_worker_composition(
         )
     _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
     _require_port(prepared_sources, ("borrow_prepared_source",))
+    if committed_inspection_sources is not None:
+        _require_port(committed_inspection_sources, ("borrow_pdf_inspection_source",))
     _require_port(committed_pages, ("borrow_committed_pdf_page",))
     selected_image_pages = (
         cast(CommittedImagePageStore, committed_pages)
@@ -571,6 +575,7 @@ def create_desktop_worker_composition(
         prepared_sources,
         config.inspection_policy,
         heavy_operations=heavy_operations,
+        committed_sources=committed_inspection_sources,
     )
     generator = BrokeredPdfThumbnailGenerator(
         worker,

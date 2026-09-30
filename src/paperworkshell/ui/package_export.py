@@ -34,6 +34,7 @@ _MODE_TEXT: Final[dict[PortalOutputMode, str]] = {
 }
 _PROGRESS_TEXT: Final[dict[str, str]] = {
     "preparing": "Preparing package review",
+    "inspecting_pdfs": "Inspecting PDFs for package review",
     "generating_pdfs": "Creating and verifying PDFs",
     "packaging_zip": "Creating and verifying the ZIP package",
     "checking_constraints": "Checking actual output constraints",
@@ -448,7 +449,12 @@ class PackageExportDialog(QDialog):
             else:
                 message = f"{known.safe_message} {message}"
         self._set_status(message, assertive=True)
-        self._focus(self._status)
+        self._focus(
+            self._refresh
+            if phase == "review"
+            and code in {"PACKAGE_REVIEW_CANCELLED", "PACKAGE_REVIEW_TIMED_OUT"}
+            else self._status
+        )
 
     def complete_summary_save(self, *, succeeded: bool) -> None:
         """Keep the final inventory available whether optional summary saving succeeds or fails."""

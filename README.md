@@ -40,6 +40,12 @@ PWS-0408 connects them to the desktop review and [plain-text package summary](do
 the maintainer accepted the [first-time-user and keyboard pilot](docs/development/pws0408-result.md#maintainer-acceptance)
 on 2026-09-30. The [PWS-0409 source-tree v0.1 pilot gate](docs/gates/m4-pilot-gate.md)
 passed on the same date; packaged-release work remains pending.
+PWS-0501 adds a typed PDF feature inventory and cancelable inspection of saved PDFs during
+package review and refresh. Metadata, annotations, forms, attachments, actions, scripts,
+encryption, and signature markers appear as findings or explicit unknown states; unsupported
+interactive content and newly discovered signature uncertainty can block export. See the
+[inspection contract](docs/architecture/pdf-structural-inspection.md) and
+[verification report](docs/development/pws0501-result.md).
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,

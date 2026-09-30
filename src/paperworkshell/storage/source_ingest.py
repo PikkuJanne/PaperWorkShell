@@ -7,8 +7,8 @@ import hashlib
 import hmac
 import os
 import re
-from collections.abc import Callable
-from contextlib import AbstractContextManager, ExitStack
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +29,7 @@ from paperworkshell.domain.import_precheck import (
 from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryError,
     ManifestRepositoryErrorCode,
+    ManifestSnapshot,
 )
 from paperworkshell.domain.pdf_export import (
     MAX_PDF_EXPORT_SOURCES,
@@ -527,6 +528,118 @@ class CommittedSourcePageReadLease(AbstractContextManager["CommittedSourcePageRe
 CommittedPdfPageReadLease = CommittedSourcePageReadLease
 
 
+@contextmanager
+def _pdf_inspection_storage_errors(
+    default_code: SourceIngestErrorCode, context: str
+) -> Iterator[None]:
+    """Detach raw storage exceptions at the transient inspection API boundary."""
+
+    try:
+        yield
+    except SourceIngestError as error:
+        failure = SourceIngestError(error.code, error.context)
+    except CaseLifecycleError as error:
+        failure = SourceIngestError(
+            SourceIngestErrorCode.MANIFEST_VERSION_UNSUPPORTED
+            if error.code is CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED
+            else SourceIngestErrorCode.MANIFEST_INVALID,
+            "source.manifest_version"
+            if error.code is CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED
+            else "source.manifest",
+        )
+    except Exception:
+        failure = SourceIngestError(default_code, context)
+    else:
+        return
+    try:
+        raise failure from None
+    finally:
+        failure.__context__ = None
+        failure.__cause__ = None
+
+
+class CommittedPdfInspectionReadLease(AbstractContextManager["CommittedPdfInspectionReadLease"]):
+    """Retain one exact manifest and read-only PDF for transient feature inspection."""
+
+    def __init__(
+        self,
+        stack: ExitStack,
+        snapshot: ManifestSnapshot,
+        record: _StoredSource,
+        handle: WindowsHandle,
+    ) -> None:
+        self._stack = stack
+        self._snapshot = snapshot
+        self._record = record
+        self._handle = handle
+        self._identity = handle.info.identity
+        self._closed = False
+
+    def __repr__(self) -> str:
+        return "CommittedPdfInspectionReadLease(<redacted>)"
+
+    def __enter__(self) -> Self:
+        self._require_open()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    @property
+    def snapshot(self) -> ManifestSnapshot:
+        return self._snapshot
+
+    @property
+    def source_id(self) -> UUID:
+        return self._record.source_id
+
+    @property
+    def byte_size(self) -> int:
+        return self._record.byte_size
+
+    @property
+    def sha256(self) -> str:
+        return self._record.sha256
+
+    @property
+    def handle_value(self) -> int:
+        with _pdf_inspection_storage_errors(
+            SourceIngestErrorCode.SOURCE_CHANGED, "source.inspection_handle"
+        ):
+            self._require_open()
+            _require_retained_pdf_source_metadata(
+                self._handle, expected_identity=self._identity, expected_size=self.byte_size
+            )
+            return self._handle.value
+
+    def revalidate(self, *, deadline: DeadlineProbe, cancellation: CancellationProbe) -> None:
+        with _pdf_inspection_storage_errors(
+            SourceIngestErrorCode.SOURCE_CHANGED, "source.inspection_revalidate"
+        ):
+            self._require_open()
+            _hash_retained_pdf_source(
+                self._handle,
+                self._record,
+                expected_identity=self._identity,
+                deadline=deadline,
+                cancellation=cancellation,
+            )
+
+    def _require_open(self) -> None:
+        if self._closed:
+            reject_source_ingest(
+                SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.inspection_lease"
+            )
+
+    def close(self) -> None:
+        with _pdf_inspection_storage_errors(
+            SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.inspection_close"
+        ):
+            if not self._closed:
+                self._closed = True
+                self._stack.close()
+
+
 class CommittedPdfSourceReadLease:
     """One member of a manifest-bound batch, exposed without a path or raw object."""
 
@@ -975,6 +1088,95 @@ class WindowsSourceIngestStore:
         """Borrow the exact sealed pending source through its complete path-free summary."""
 
         return self._prepared_registry.borrow(summary)
+
+    def borrow_pdf_inspection_source(
+        self,
+        snapshot: ManifestSnapshot,
+        source_id: UUID,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> CommittedPdfInspectionReadLease:
+        """Authenticate one saved PDF against the exact reviewed manifest authority."""
+
+        with _pdf_inspection_storage_errors(
+            SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.inspection_storage"
+        ):
+            return self._borrow_pdf_inspection_source(
+                snapshot, source_id, deadline=deadline, cancellation=cancellation
+            )
+
+    def _borrow_pdf_inspection_source(
+        self,
+        snapshot: ManifestSnapshot,
+        source_id: UUID,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> CommittedPdfInspectionReadLease:
+
+        if type(snapshot) is not ManifestSnapshot:
+            reject_source_ingest(SourceIngestErrorCode.MODEL_INVALID, "source.inspection_snapshot")
+        selected_source = require_internal_id(source_id, context="source.inspection_source")
+
+        def checkpoint() -> None:
+            _require_active(
+                cancellation,
+                deadline,
+                cancel_context="source.inspection_cancel",
+                timeout_context="source.inspection_timeout",
+            )
+
+        checkpoint()
+        stack = ExitStack()
+        borrowed = False
+        try:
+            authority = stack.enter_context(
+                self._manager.authenticate_case(
+                    snapshot.case_id, retain_lease=True, coordination_checkpoint=checkpoint
+                )
+            )
+            current, manifest_handle = _read_retained_manifest_snapshot(authority)
+            stack.enter_context(manifest_handle)
+            if (current.revision, current.sha256, current.cas_token) != (
+                snapshot.revision,
+                snapshot.sha256,
+                snapshot.cas_token,
+            ):
+                reject_source_ingest(
+                    SourceIngestErrorCode.MANIFEST_CONFLICT, "source.inspection_manifest"
+                )
+            record = next(
+                (item for item in current.sources if item.source_id == selected_source), None
+            )
+            if (
+                record is None
+                or record.media_type is not DetectedMediaType.PDF
+                or record.import_state != "complete"
+            ):
+                reject_source_ingest(
+                    SourceIngestErrorCode.SOURCE_UNAVAILABLE, "source.inspection_source"
+                )
+            originals = stack.enter_context(open_handle(authority.layout.originals))
+            require_expected_handle(originals, authority.layout.originals, directory=True)
+            verify_private_acl(originals)
+            require_no_alternate_streams(authority.layout.originals)
+            path = authority.layout.originals / record.storage_name
+            handle = stack.enter_context(open_handle(path, read=True))
+            require_expected_handle(handle, path, directory=False)
+            _hash_retained_pdf_source(
+                handle,
+                record,
+                expected_identity=handle.info.identity,
+                deadline=deadline,
+                cancellation=cancellation,
+            )
+            result = CommittedPdfInspectionReadLease(stack, snapshot, record, handle)
+            borrowed = True
+            return result
+        finally:
+            if not borrowed:
+                stack.close()
 
     def borrow_committed_pdf_page(
         self,
@@ -2197,7 +2399,7 @@ def _require_retained_pdf_source_metadata(
 
 def _hash_retained_pdf_source(
     handle: WindowsHandle,
-    source: PdfExportSource,
+    source: PdfExportSource | _StoredSource,
     *,
     expected_identity: FileIdentity,
     cancellation: CancellationProbe,

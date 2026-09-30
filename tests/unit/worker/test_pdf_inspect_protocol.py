@@ -176,3 +176,10 @@ def test_pdf_inspect_rejects_every_contract_deviation(payload: OperationStartPay
         DEFAULT_OPERATION_REGISTRY.validate_start(payload)
 
     assert raised.value.code == "RPC_INVALID_OPERATION"
+
+
+@pytest.mark.parametrize("version", [1, 3])
+def test_old_and_future_pdf_inspection_operations_fail_before_parsing(version: int) -> None:
+    with pytest.raises(ProtocolError) as error:
+        DEFAULT_OPERATION_REGISTRY.validate_descriptor("pdf.inspect", version)
+    assert error.value.code == "RPC_UNSUPPORTED_OPERATION"

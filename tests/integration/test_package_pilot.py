@@ -177,8 +177,9 @@ def test_generic_pilot_import_review_export_all_modes_and_visible_companion(
             destination.mkdir()
             review = backend.begin_package_review(mode)
             assert review.export_allowed and review.human_review_required
-            # Inspection and quality facts are honestly unavailable here; all
-            # required reviews survive both the acknowledgement and final screen.
+            # Production package review now acquires current source inspection.
+            # Remaining advisory checks still require explicit human review.
+            assert "inspection is unavailable" not in review.summary.to_plain_text()
             assert len(review.summary.review_items) >= 3
             with pytest.raises(PackageWorkflowError) as unconfirmed:
                 backend.export_package(

@@ -1,8 +1,8 @@
 # Package review, export, and accessible summary
 
 PWS-0408 joins the saved checklist and [verified package exporter](package-export.md)
-to the ordinary desktop workflow. This is source-tree pilot functionality, not a
-packaged release guarantee.
+to the ordinary desktop workflow. PWS-0501 adds current source-feature inspection to
+package review. This is source-tree functionality, not a packaged release guarantee.
 
 ## Authority and interaction
 
@@ -26,11 +26,35 @@ and adopting a concurrent edit. Organizer history **and autosave** are rebuilt b
 output writing. Any later authority change blocks export. This records permission
 to create an unsigned derivative, not validation or preservation of a digital signature.
 
+Fresh inspection cannot silently widen that saved consent or relabel an output. A fresh
+`detected` or `unknown` signature-marker state paired with saved `none_detected` (or missing
+saved-state facts) blocks export with `PDF_SIGNATURE_STATE_REVIEW_REQUIRED`. Saved
+`markers_detected` and `unknown` retain the existing consent requirement even if the fresh
+report finds no markers. No source state is migrated. Warning acknowledgement does not
+override this mismatch; use the unchanged original externally or import it into a new case
+for current inspection and review.
+
 ## Checks and limits
 
-This review does not rerun full source inspection, page geometry analysis, or the
-advisory quality service. Those facts are explicitly unavailable and their warnings
-remain visible. Stored import flags are not inflated into full inspection evidence.
+Opening or refreshing package review inspects each saved PDF sequentially in the restricted
+worker. The [structural-inspection contract](pdf-structural-inspection.md) binds each report
+to the exact current manifest and immutable source digest. Reports remain transient and
+do not add case-schema fields. Images are explicitly not applicable to PDF inspection.
+Unavailable inspection remains unverified, and partial reports preserve unknown fields
+alongside detected features. Stored import flags do not substitute for current reports.
+
+Progress and **Cancel** are available during inspection. Cancelling initial inspection
+returns to **Export package** for retry. A cancelled or timed-out refresh discards old
+results and export permission; **Refresh review** retries from the retained saved authority.
+No review results are applied after cancellation, and inspection itself publishes no
+package files. The completed human review screen has no timeout.
+
+Detected forms, annotations/interactive structures, actions, scripts, or XFA retain their
+existing blocking policy; a newly available report can therefore block a formerly
+unverified package. Metadata, annotations, attachments, and signature markers also have
+distinct privacy or unsigned-derivative findings. Warning acknowledgement does not remove
+a blocker or certify removal of a source feature. Page geometry and advisory quality
+analysis remain unavailable in this review and retain their explicit warnings.
 Generated PDFs still undergo the existing worker reopen, structure, page inventory,
 encryption, order/rotation, and rendering verification before publication; actual
 package file counts, bytes, names, and limits are checked by the exporter.
@@ -39,7 +63,9 @@ Workers are admitted lazily, run sequentially under the same app-scoped Resource
 and heavy-operation coordinator, and retain existing narrow handle grants and network
 denial. PDF-only export does not require OCR installation. Mixed scan/image processing
 and visual overlays in the same PDF group retain the PWS-0407 explicit rejection.
-No resource budgets, engines, dependencies, schemas, or history meaning are changed.
+No resource budgets, engines, dependencies, case schemas, or history meaning are changed.
+Inspection uses report v2 and the `pdf.inspect` v2 capability over the existing RPC v1
+transport; older six-feature reports remain explicitly incomplete for the added inventory.
 
 The end-to-end pilot exposed a subset-export admission defect: a one-page output
 from a multi-page immutable source requested only one page of parser capacity.

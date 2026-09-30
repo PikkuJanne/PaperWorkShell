@@ -33,6 +33,7 @@ MAXIMUM_GRAPH_NODES: Final = 4_000_000
 
 _NAME_A: Final = pikepdf.Name("/A")
 _NAME_AA: Final = pikepdf.Name("/AA")
+_NAME_ACTION: Final = pikepdf.Name("/Action")
 _NAME_ACROFORM: Final = pikepdf.Name("/AcroForm")
 _NAME_AF: Final = pikepdf.Name("/AF")
 _NAME_ANNOTS: Final = pikepdf.Name("/Annots")
@@ -47,8 +48,11 @@ _NAME_FIELDMDP: Final = pikepdf.Name("/FieldMDP")
 _NAME_FIELDS: Final = pikepdf.Name("/Fields")
 _NAME_FILESPEC: Final = pikepdf.Name("/Filespec")
 _NAME_FT: Final = pikepdf.Name("/FT")
+_NAME_INFO: Final = pikepdf.Name("/Info")
 _NAME_JAVASCRIPT: Final = pikepdf.Name("/JavaScript")
 _NAME_JS: Final = pikepdf.Name("/JS")
+_NAME_METADATA: Final = pikepdf.Name("/Metadata")
+_NAME_NEXT: Final = pikepdf.Name("/Next")
 _NAME_OPENACTION: Final = pikepdf.Name("/OpenAction")
 _NAME_S: Final = pikepdf.Name("/S")
 _NAME_SIG: Final = pikepdf.Name("/Sig")
@@ -82,6 +86,40 @@ _ACTION_TYPES: Final = frozenset(
         "/RichMediaExecute",
     )
 )
+_ANNOTATION_SUBTYPES: Final = frozenset(
+    pikepdf.Name(value)
+    for value in (
+        "/Text",
+        "/Link",
+        "/FreeText",
+        "/Line",
+        "/Square",
+        "/Circle",
+        "/Polygon",
+        "/PolyLine",
+        "/Highlight",
+        "/Underline",
+        "/Squiggly",
+        "/StrikeOut",
+        "/Stamp",
+        "/Caret",
+        "/Ink",
+        "/Popup",
+        "/FileAttachment",
+        "/Sound",
+        "/Movie",
+        "/Widget",
+        "/Screen",
+        "/PrinterMark",
+        "/TrapNet",
+        "/Watermark",
+        "/3D",
+        "/Redact",
+        "/Projection",
+        "/RichMedia",
+    )
+)
+_FIELD_TYPES: Final = frozenset(pikepdf.Name(value) for value in ("/Btn", "/Tx", "/Ch", "/Sig"))
 
 
 def _never_cancel() -> bool:
@@ -121,11 +159,17 @@ class _FeatureAccumulator:
     actions: bool = False
     scripts: bool = False
     xfa: bool = False
+    metadata: bool = False
+    annotations: bool = False
+    form_fields: bool = False
+    incomplete: bool = False
 
-    def freeze(self) -> PdfFeatureSummary:
+    def freeze(self, *, syntax_warnings: bool = False) -> PdfFeatureSummary:
         def state(detected: bool) -> PdfFeatureState:
             if detected:
                 return PdfFeatureState.DETECTED
+            if self.incomplete or syntax_warnings:
+                return PdfFeatureState.UNKNOWN
             return PdfFeatureState.NOT_DETECTED
 
         return PdfFeatureSummary(
@@ -135,6 +179,9 @@ class _FeatureAccumulator:
             actions=state(self.actions),
             scripts=state(self.scripts),
             xfa=state(self.xfa),
+            metadata=state(self.metadata),
+            annotations=state(self.annotations),
+            form_fields=state(self.form_fields),
         )
 
 
@@ -252,7 +299,7 @@ class PikePdfAdapter:
                     object_count=object_count,
                     encryption_state=PdfEncryptionState.UNENCRYPTED,
                     structural_state=structural_state,
-                    features=features,
+                    features=features.freeze(syntax_warnings=bool(syntax_warnings)),
                 )
         except PdfInspectionError:
             raise
@@ -280,15 +327,18 @@ class PikePdfAdapter:
         *,
         operation: _InspectionOperation,
         node_budget: int,
-    ) -> PdfFeatureSummary:
+    ) -> _FeatureAccumulator:
         accumulator = _FeatureAccumulator()
-        stack: list[tuple[object, int]] = [(current, 0) for current in document.objects]
+        stack: list[tuple[object, int, bool]] = [
+            (current, 0, False) for current in document.objects
+        ]
+        stack.append((document.trailer, 0, True))
         seen_indirect: set[tuple[int, int]] = set()
         visited_nodes = 0
 
         while stack:
             operation.checkpoint()
-            current, depth = stack.pop()
+            current, depth, is_trailer = stack.pop()
             if depth > self.maximum_graph_depth:
                 reject_pdf_inspection(PdfInspectionErrorCode.LIMIT_EXCEEDED, "pdf.graph_depth")
 
@@ -310,30 +360,44 @@ class PikePdfAdapter:
                         PdfInspectionErrorCode.LIMIT_EXCEEDED,
                         "pdf.collection_items",
                     )
-                _observe_dictionary(dictionary, accumulator)
-                stack.extend((value, depth + 1) for _, value in dictionary.items())
+                _observe_dictionary(
+                    dictionary,
+                    accumulator,
+                    maximum_collection_items=self.maximum_collection_items,
+                    is_stream=True,
+                )
+                stack.extend((value, depth + 1, False) for _, value in dictionary.items())
             elif isinstance(current, pikepdf.Dictionary):
                 if len(current) > self.maximum_collection_items:
                     reject_pdf_inspection(
                         PdfInspectionErrorCode.LIMIT_EXCEEDED,
                         "pdf.collection_items",
                     )
-                _observe_dictionary(current, accumulator)
-                stack.extend((value, depth + 1) for _, value in current.items())
+                _observe_dictionary(
+                    current,
+                    accumulator,
+                    maximum_collection_items=self.maximum_collection_items,
+                    is_trailer=is_trailer,
+                )
+                stack.extend((value, depth + 1, False) for _, value in current.items())
             elif isinstance(current, pikepdf.Array):
                 if len(current) > self.maximum_collection_items:
                     reject_pdf_inspection(
                         PdfInspectionErrorCode.LIMIT_EXCEEDED,
                         "pdf.collection_items",
                     )
-                stack.extend((value, depth + 1) for value in current)
+                stack.extend((value, depth + 1, False) for value in current)
 
-        return accumulator.freeze()
+        return accumulator
 
 
 def _observe_dictionary(
     current: pikepdf.Dictionary,
     accumulator: _FeatureAccumulator,
+    *,
+    maximum_collection_items: int,
+    is_trailer: bool = False,
+    is_stream: bool = False,
 ) -> None:
     object_type = current.get(_NAME_TYPE)
     field_type = current.get(_NAME_FT)
@@ -354,11 +418,13 @@ def _observe_dictionary(
         or _NAME_EF in current
         or _is_name(object_type, _NAME_EMBEDDEDFILE)
         or (_is_name(object_type, _NAME_FILESPEC) and _NAME_EF in current)
+        or _is_name(subtype, pikepdf.Name("/FileAttachment"))
     )
     action_marker = (
         _NAME_A in current
         or _NAME_AA in current
         or _NAME_OPENACTION in current
+        or _is_name(object_type, _NAME_ACTION)
         or (isinstance(action_type, pikepdf.Name) and action_type in _ACTION_TYPES)
     )
     script_marker = (
@@ -367,13 +433,26 @@ def _observe_dictionary(
         or _is_name(action_type, _NAME_JAVASCRIPT)
     )
     xfa_marker = _NAME_XFA in current
-    interactive_marker = (
+    metadata_marker = (
+        (is_trailer and _NAME_INFO in current)
+        or _NAME_METADATA in current
+        or _is_name(object_type, _NAME_METADATA)
+    )
+    annotation_marker = (
+        _NAME_ANNOTS in current
+        or _is_name(object_type, _NAME_ANNOT)
+        or (isinstance(subtype, pikepdf.Name) and subtype in _ANNOTATION_SUBTYPES)
+    )
+    form_marker = (
         _NAME_ACROFORM in current
         or _NAME_FIELDS in current
         or _NAME_FT in current
-        or _NAME_ANNOTS in current
-        or _is_name(object_type, _NAME_ANNOT)
         or _is_name(subtype, _NAME_WIDGET)
+        or xfa_marker
+    )
+    interactive_marker = (
+        form_marker
+        or annotation_marker
         or signature_marker
         or action_marker
         or script_marker
@@ -386,6 +465,116 @@ def _observe_dictionary(
     accumulator.actions |= action_marker
     accumulator.scripts |= script_marker
     accumulator.xfa |= xfa_marker
+    accumulator.metadata |= metadata_marker
+    accumulator.annotations |= annotation_marker
+    accumulator.form_fields |= form_marker
+
+    # Retain observed markers, but never treat unsupported or malformed feature
+    # structures as proof that the other feature categories are absent.
+    expected_types = (
+        (_NAME_ACROFORM, (pikepdf.Dictionary,)),
+        (_NAME_FIELDS, (pikepdf.Array,)),
+        (_NAME_ANNOTS, (pikepdf.Array,)),
+        (_NAME_METADATA, (pikepdf.Stream,)),
+        (_NAME_A, (pikepdf.Dictionary,)),
+        (_NAME_AA, (pikepdf.Dictionary,)),
+        (_NAME_OPENACTION, (pikepdf.Dictionary, pikepdf.Array)),
+        (_NAME_JS, (pikepdf.String, pikepdf.Stream)),
+        (_NAME_XFA, (pikepdf.Array, pikepdf.Stream)),
+        (_NAME_EMBEDDEDFILES, (pikepdf.Dictionary,)),
+        (_NAME_AF, (pikepdf.Array,)),
+        (_NAME_EF, (pikepdf.Dictionary,)),
+    )
+    accumulator.incomplete |= any(
+        key in current and not isinstance(current.get(key), allowed)
+        for key, allowed in expected_types
+    )
+    accumulator.incomplete |= any(
+        key in current
+        and not _supported_dictionary_array(current.get(key), maximum_collection_items)
+        for key in (_NAME_FIELDS, _NAME_ANNOTS, _NAME_AF)
+    )
+    accumulator.incomplete |= (
+        (
+            is_trailer
+            and _NAME_INFO in current
+            and not isinstance(current.get(_NAME_INFO), pikepdf.Dictionary)
+        )
+        or (_is_name(object_type, _NAME_METADATA) and not is_stream)
+        or (_NAME_FT in current and not _known_name(field_type, _FIELD_TYPES))
+        or (_is_name(object_type, _NAME_ANNOT) and not _known_name(subtype, _ANNOTATION_SUBTYPES))
+        or (_is_name(object_type, _NAME_ACTION) and not _known_name(action_type, _ACTION_TYPES))
+        or (
+            _NAME_XFA in current
+            and not _supported_xfa_packets(current.get(_NAME_XFA), maximum_collection_items)
+        )
+        or (
+            _NAME_EF in current
+            and not _supported_embedded_streams(current.get(_NAME_EF), maximum_collection_items)
+        )
+        or (_NAME_A in current and not _supported_action(current.get(_NAME_A)))
+        or (
+            _NAME_AA in current
+            and not _supported_action_collection(current.get(_NAME_AA), maximum_collection_items)
+        )
+        or (
+            _known_name(action_type, _ACTION_TYPES)
+            and _NAME_NEXT in current
+            and not _supported_next_action(current.get(_NAME_NEXT), maximum_collection_items)
+        )
+        or (
+            isinstance(current.get(_NAME_OPENACTION), pikepdf.Dictionary)
+            and not _supported_action(current.get(_NAME_OPENACTION))
+        )
+    )
+
+
+def _known_name(value: object, known: frozenset[pikepdf.Object]) -> bool:
+    return isinstance(value, pikepdf.Name) and value in known
+
+
+def _supported_dictionary_array(value: object, maximum_items: int) -> bool:
+    # Check only immediate shapes; the existing bounded object walk owns traversal.
+    return (
+        isinstance(value, pikepdf.Array)
+        and len(value) <= maximum_items
+        and all(isinstance(item, pikepdf.Dictionary) for item in value)
+    )
+
+
+def _supported_xfa_packets(value: object, maximum_items: int) -> bool:
+    if isinstance(value, pikepdf.Stream):
+        return True
+    if not isinstance(value, pikepdf.Array) or len(value) > maximum_items or len(value) % 2 != 0:
+        return False
+    return all(
+        isinstance(value[index], pikepdf.String) and isinstance(value[index + 1], pikepdf.Stream)
+        for index in range(0, len(value), 2)
+    )
+
+
+def _supported_embedded_streams(value: object, maximum_items: int) -> bool:
+    return (
+        isinstance(value, pikepdf.Dictionary)
+        and len(value) <= maximum_items
+        and all(isinstance(stream, pikepdf.Stream) for _, stream in value.items())
+    )
+
+
+def _supported_action(value: object) -> bool:
+    return isinstance(value, pikepdf.Dictionary) and _known_name(value.get(_NAME_S), _ACTION_TYPES)
+
+
+def _supported_action_collection(value: object, maximum_items: int) -> bool:
+    if not isinstance(value, pikepdf.Dictionary) or len(value) > maximum_items:
+        return False
+    return all(_supported_action(action) for _, action in value.items())
+
+
+def _supported_next_action(value: object, maximum_items: int) -> bool:
+    if isinstance(value, pikepdf.Array):
+        return len(value) <= maximum_items and all(_supported_action(action) for action in value)
+    return _supported_action(value)
 
 
 def _is_name(value: object, expected: pikepdf.Object) -> bool:

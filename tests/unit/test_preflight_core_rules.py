@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -34,6 +35,7 @@ from paperworkshell.domain.quality_analysis import (
     QualityFindingCode,
     quality_finding_sort_key,
 )
+from paperworkshell.domain.signed_source_policy import SignedSourceSignatureState
 from paperworkshell.overlays.models import (
     ORDINARY_SHAPE_INTENT,
     OverlayKind,
@@ -273,6 +275,9 @@ def _feature_summary(
     actions: PdfFeatureState = PdfFeatureState.NOT_DETECTED,
     scripts: PdfFeatureState = PdfFeatureState.NOT_DETECTED,
     xfa: PdfFeatureState = PdfFeatureState.NOT_DETECTED,
+    metadata: PdfFeatureState = PdfFeatureState.UNKNOWN,
+    annotations: PdfFeatureState = PdfFeatureState.UNKNOWN,
+    form_fields: PdfFeatureState = PdfFeatureState.UNKNOWN,
 ) -> PdfFeatureSummary:
     return PdfFeatureSummary(
         signature_markers,
@@ -281,6 +286,9 @@ def _feature_summary(
         actions,
         scripts,
         xfa,
+        metadata=metadata,
+        annotations=annotations,
+        form_fields=form_fields,
     )
 
 
@@ -303,6 +311,7 @@ def _pdf_inspection(
     result: PdfInspectionResult | None,
     *,
     availability: SourceInspectionAvailability = SourceInspectionAvailability.CURRENT,
+    saved_signature_state: SignedSourceSignatureState | None = SignedSourceSignatureState.UNKNOWN,
 ) -> SourceInspectionFact:
     return SourceInspectionFact(
         source_id=SOURCE_ID,
@@ -311,6 +320,7 @@ def _pdf_inspection(
         availability=availability,
         source_sha256="b" * 64,
         pdf_result=result,
+        saved_signature_state=saved_signature_state,
     )
 
 
@@ -432,6 +442,7 @@ def _evaluate(
                 item.position,
                 item.media_type,
                 item.source_sha256,
+                item.saved_signature_state,
             )
             for item in inspections
         ),
@@ -786,6 +797,184 @@ def test_page_details_and_metadata_remain_unverified_when_authority_is_unavailab
     assert "overlay application" in by_code["CASE_PAGE_DETAILS_UNVERIFIED"].message.casefold()
     assert "PDF_METADATA_UNVERIFIED" in by_code
     assert all(by_code[code].severity is PreflightSeverity.WARNING for code in by_code)
+
+
+@pytest.mark.parametrize(
+    ("feature", "detected_code", "unknown_code", "severity"),
+    (
+        (
+            "metadata",
+            "PDF_METADATA_DETECTED",
+            "PDF_METADATA_UNVERIFIED",
+            PreflightSeverity.WARNING,
+        ),
+        (
+            "annotations",
+            "PDF_ANNOTATIONS_DETECTED",
+            "PDF_ANNOTATIONS_UNVERIFIED",
+            PreflightSeverity.WARNING,
+        ),
+        (
+            "form_fields",
+            "PDF_FORM_FIELDS_UNSUPPORTED",
+            "PDF_FORM_FIELDS_UNVERIFIED",
+            PreflightSeverity.BLOCKING_ERROR,
+        ),
+    ),
+)
+@pytest.mark.parametrize("state", tuple(PdfFeatureState))
+def test_expanded_features_have_distinct_detected_unknown_and_not_detected_findings(
+    feature: str,
+    detected_code: str,
+    unknown_code: str,
+    severity: PreflightSeverity,
+    state: PdfFeatureState,
+) -> None:
+    features = replace(
+        _feature_summary(
+            metadata=PdfFeatureState.NOT_DETECTED,
+            annotations=PdfFeatureState.NOT_DETECTED,
+            form_fields=PdfFeatureState.NOT_DETECTED,
+        ),
+        **{feature: state},
+    )
+    report = _evaluate(inspections=(_pdf_inspection(_opened_pdf(features=features)),))
+    findings = {finding.code: finding for finding in report.findings}
+
+    if state is PdfFeatureState.DETECTED:
+        assert detected_code in findings
+        assert findings[detected_code].severity is severity
+        assert findings[detected_code].scope == PreflightScope(
+            PreflightScopeKind.SOURCE, SOURCE_ID, 1
+        )
+        assert unknown_code not in findings
+    elif state is PdfFeatureState.UNKNOWN:
+        assert unknown_code in findings
+        assert findings[unknown_code].severity is PreflightSeverity.WARNING
+        assert "unknown state" in findings[unknown_code].remediation
+        assert detected_code not in findings
+    else:
+        assert detected_code not in findings
+        assert unknown_code not in findings
+    assert ("PDF_FEATURES_UNVERIFIED" in findings) is (state is PdfFeatureState.UNKNOWN)
+
+
+def test_partial_unknown_inventory_keeps_positive_findings_and_source_scope() -> None:
+    first = _pdf_inspection(
+        _opened_pdf(
+            features=_feature_summary(
+                metadata=PdfFeatureState.DETECTED,
+                annotations=PdfFeatureState.DETECTED,
+                form_fields=PdfFeatureState.UNKNOWN,
+                scripts=PdfFeatureState.DETECTED,
+            )
+        )
+    )
+    second_id = UUID("10000000-0000-4000-8000-00000000000c")
+    second = replace(
+        _pdf_inspection(_opened_pdf()), source_id=second_id, position=2, source_sha256="c" * 64
+    )
+    report = _evaluate(inspections=(first, second))
+    first_codes = {item.code for item in report.findings if item.scope.item_id == SOURCE_ID}
+    second_codes = {item.code for item in report.findings if item.scope.item_id == second_id}
+
+    assert {
+        "PDF_FEATURES_UNVERIFIED",
+        "PDF_FORM_FIELDS_UNVERIFIED",
+        "PDF_METADATA_DETECTED",
+        "PDF_ANNOTATIONS_DETECTED",
+        "PDF_SCRIPTS_UNSUPPORTED",
+    } <= first_codes
+    assert "PDF_METADATA_UNVERIFIED" not in first_codes
+    assert "PDF_ANNOTATIONS_UNVERIFIED" not in first_codes
+    assert "PDF_METADATA_UNVERIFIED" in second_codes
+    assert "PDF_METADATA_DETECTED" not in second_codes
+    assert "PDF_SCRIPTS_UNSUPPORTED" not in second_codes
+
+
+def test_legacy_inspection_never_implies_new_feature_absence() -> None:
+    legacy = replace(_opened_pdf(), report_version=1)
+    report = _evaluate(inspections=(_pdf_inspection(legacy),))
+
+    assert {
+        "PDF_FEATURES_UNVERIFIED",
+        "PDF_METADATA_UNVERIFIED",
+        "PDF_ANNOTATIONS_UNVERIFIED",
+        "PDF_FORM_FIELDS_UNVERIFIED",
+    } <= _codes(report)
+    compatibility = next(
+        rule for rule in core_preflight_rules() if rule.descriptor.rule_id == "core.compatibility"
+    )
+    assert compatibility.descriptor.rule_version == 2
+
+
+@pytest.mark.parametrize("has_signature_field", (False, True))
+def test_annotation_review_and_signature_warning_do_not_replace_interactive_blocker(
+    has_signature_field: bool,
+) -> None:
+    features = _feature_summary(
+        annotations=PdfFeatureState.DETECTED,
+        interactive_content=PdfFeatureState.DETECTED,
+        form_fields=(
+            PdfFeatureState.DETECTED if has_signature_field else PdfFeatureState.NOT_DETECTED
+        ),
+        signature_markers=(
+            PdfFeatureState.DETECTED if has_signature_field else PdfFeatureState.NOT_DETECTED
+        ),
+    )
+    report = _evaluate(inspections=(_pdf_inspection(_opened_pdf(features=features)),))
+    findings = {finding.code: finding for finding in report.findings}
+
+    assert findings["PDF_ANNOTATIONS_DETECTED"].severity is PreflightSeverity.WARNING
+    assert (
+        findings["PDF_INTERACTIVE_CONTENT_UNSUPPORTED"].severity is PreflightSeverity.BLOCKING_ERROR
+    )
+    if has_signature_field:
+        assert findings["PDF_FORM_FIELDS_UNSUPPORTED"].severity is PreflightSeverity.BLOCKING_ERROR
+        signature = findings["PDF_SIGNATURE_MARKERS_UNSIGNED_DERIVATIVE"]
+        assert signature.severity is PreflightSeverity.WARNING
+        assert "unsigned derivative" in signature.remediation.casefold()
+    assert all(finding.confirmation is None for finding in findings.values())
+
+
+@pytest.mark.parametrize(
+    "saved_state",
+    (
+        None,
+        SignedSourceSignatureState.NONE_DETECTED,
+        SignedSourceSignatureState.MARKERS_DETECTED,
+        SignedSourceSignatureState.UNKNOWN,
+    ),
+)
+@pytest.mark.parametrize("fresh_state", tuple(PdfFeatureState))
+def test_fresh_signature_risk_requires_saved_consent_scope(
+    saved_state: SignedSourceSignatureState | None,
+    fresh_state: PdfFeatureState,
+) -> None:
+    report = _evaluate(
+        inspections=(
+            _pdf_inspection(
+                _opened_pdf(features=_feature_summary(signature_markers=fresh_state)),
+                saved_signature_state=saved_state,
+            ),
+        )
+    )
+    findings = {finding.code: finding for finding in report.findings}
+    must_block = fresh_state in {
+        PdfFeatureState.DETECTED,
+        PdfFeatureState.UNKNOWN,
+    } and saved_state in {None, SignedSourceSignatureState.NONE_DETECTED}
+
+    assert ("PDF_SIGNATURE_STATE_REVIEW_REQUIRED" in findings) is must_block
+    if must_block:
+        finding = findings["PDF_SIGNATURE_STATE_REVIEW_REQUIRED"]
+        assert finding.severity is PreflightSeverity.BLOCKING_ERROR
+        assert finding.confirmation is None
+        assert finding.scope == PreflightScope(PreflightScopeKind.SOURCE, SOURCE_ID, 1)
+        assert "acknowledging warnings does not resolve" in finding.remediation
+    assert ("PDF_SIGNATURE_MARKERS_UNSIGNED_DERIVATIVE" in findings) is (
+        fresh_state is PdfFeatureState.DETECTED
+    )
 
 
 def test_extreme_page_dimension_uses_strict_14_400_point_boundary() -> None:

@@ -7,10 +7,11 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Protocol, Self
+from typing import Protocol, Self, cast
 from uuid import UUID, uuid4
 
 from paperworkshell.domain.import_precheck import DetectedMediaType
+from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.pdf_inspection import (
     MAX_PDF_INSPECTION_FRAME_BYTES,
     MAX_PDF_INSPECTION_PAGES,
@@ -103,6 +104,57 @@ class PreparedSourceHandleBroker(Protocol):
     ) -> PreparedSourceHandleLease: ...
 
 
+class CommittedPdfInspectionLease(Protocol):
+    """One authenticated saved PDF retained through worker termination."""
+
+    @property
+    def snapshot(self) -> ManifestSnapshot: ...
+
+    @property
+    def source_id(self) -> UUID: ...
+
+    @property
+    def byte_size(self) -> int: ...
+
+    @property
+    def sha256(self) -> str: ...
+
+    @property
+    def handle_value(self) -> int: ...
+
+    def revalidate(self, *, deadline: DeadlineProbe, cancellation: CancellationProbe) -> None: ...
+
+    def __enter__(self) -> Self: ...
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+
+
+class CommittedPdfInspectionBroker(Protocol):
+    """Bind a saved source read authority to the exact current manifest."""
+
+    def borrow_pdf_inspection_source(
+        self,
+        snapshot: ManifestSnapshot,
+        source_id: UUID,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> CommittedPdfInspectionLease: ...
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _InspectionInput:
+    case_id: UUID
+    object_id: UUID
+    byte_size: int
+    sha256: str
+
+
 class ResultPipe(Protocol):
     """Bounded out-of-band result channel whose reader remains broker-owned."""
 
@@ -181,6 +233,7 @@ class BrokeredPdfSourceInspector:
 
     __slots__ = (
         "_broker",
+        "_committed_sources",
         "_heavy_operations",
         "_id_factory",
         "_pipe_factory",
@@ -195,6 +248,7 @@ class BrokeredPdfSourceInspector:
         policy: PdfInspectionBrokerPolicy,
         *,
         heavy_operations: HeavyOperationCoordinator,
+        committed_sources: CommittedPdfInspectionBroker | None = None,
         pipe_factory: ResultPipeFactory = WindowsResultPipe.create,
         id_factory: Callable[[], UUID] = uuid4,
     ) -> None:
@@ -207,6 +261,7 @@ class BrokeredPdfSourceInspector:
             reject_pdf_inspection(PdfInspectionErrorCode.MODEL_INVALID, "broker.configuration")
         self._worker = worker
         self._broker = broker
+        self._committed_sources = committed_sources
         self._policy = policy
         self._heavy_operations = heavy_operations
         self._pipe_factory = pipe_factory
@@ -251,11 +306,11 @@ class BrokeredPdfSourceInspector:
             )
         if result.page_count is None:
             reject_source_ingest(SourceIngestErrorCode.INSPECTION_INVALID, "inspection.pdf_result")
-        signature_state = (
-            SourceSignatureState.MARKERS_DETECTED
-            if result.features.signature_markers is PdfFeatureState.DETECTED
-            else SourceSignatureState.NONE_DETECTED
-        )
+        signature_state = {
+            PdfFeatureState.DETECTED: SourceSignatureState.MARKERS_DETECTED,
+            PdfFeatureState.NOT_DETECTED: SourceSignatureState.NONE_DETECTED,
+            PdfFeatureState.UNKNOWN: SourceSignatureState.UNKNOWN,
+        }[result.features.signature_markers]
         completed = CompletedSourceInspection(
             pending_id=source.pending_id,
             media_type=source.media_type,
@@ -317,19 +372,116 @@ class BrokeredPdfSourceInspector:
             reject_pdf_inspection(PdfInspectionErrorCode.SOURCE_INVALID, "broker.source")
         if source.byte_size > self._policy.limits.temporary_storage_bytes:
             reject_pdf_inspection(PdfInspectionErrorCode.LIMIT_EXCEEDED, "broker.source_size")
-        operation_id = self._new_id()
-        if operation_id == source.pending_id:
-            reject_pdf_inspection(PdfInspectionErrorCode.INTERNAL_ERROR, "broker.identifier")
-        operation_result: WorkerOperationResultSnapshot | None = None
-        start_attempted = False
-
-        with ExitStack() as authorities:
-            pipe = authorities.enter_context(self._pipe_factory())
-            borrowed = authorities.enter_context(self._broker.borrow_prepared_source(source))
+        with self._broker.borrow_prepared_source(source) as borrowed:
             if borrowed.summary != source:
                 reject_pdf_inspection(
                     PdfInspectionErrorCode.SOURCE_CHANGED, "broker.source_binding"
                 )
+            return self._inspect_borrowed(
+                _InspectionInput(
+                    source.case_id, source.pending_id, source.byte_size, source.sha256
+                ),
+                borrowed.handle_value,
+                deadline=deadline,
+                cancellation=cancellation,
+            )
+
+    def inspect_committed(
+        self,
+        snapshot: ManifestSnapshot,
+        source_id: UUID,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> PdfInspectionResult:
+        """Inspect one immutable saved source under current manifest and hash authority."""
+
+        if type(snapshot) is not ManifestSnapshot or type(source_id) is not UUID:
+            reject_pdf_inspection(PdfInspectionErrorCode.SOURCE_INVALID, "broker.committed_source")
+        if self._committed_sources is None:
+            reject_pdf_inspection(
+                PdfInspectionErrorCode.DEPENDENCY_UNAVAILABLE, "broker.committed_store"
+            )
+        try:
+            records = cast(list[dict[str, object]], snapshot.document["sources"])
+            matches = [record for record in records if record["source_id"] == str(source_id)]
+            if (
+                len(matches) != 1
+                or matches[0]["detected_media_type"] != DetectedMediaType.PDF.value
+            ):
+                reject_pdf_inspection(
+                    PdfInspectionErrorCode.SOURCE_INVALID, "broker.committed_source"
+                )
+            record = matches[0]
+            source = _InspectionInput(
+                snapshot.case_id,
+                source_id,
+                cast(int, record["byte_size"]),
+                cast(str, record["sha256"]),
+            )
+            if source.byte_size > self._policy.limits.temporary_storage_bytes:
+                reject_pdf_inspection(PdfInspectionErrorCode.LIMIT_EXCEEDED, "broker.source_size")
+            with self._acquire_heavy_operation(deadline, cancellation):
+                _require_active(deadline, cancellation)
+                with self._committed_sources.borrow_pdf_inspection_source(
+                    snapshot, source_id, deadline=deadline, cancellation=cancellation
+                ) as borrowed:
+                    if (
+                        borrowed.snapshot != snapshot
+                        or borrowed.source_id != source_id
+                        or borrowed.byte_size != source.byte_size
+                        or borrowed.sha256 != source.sha256
+                    ):
+                        reject_pdf_inspection(
+                            PdfInspectionErrorCode.SOURCE_CHANGED, "broker.committed_binding"
+                        )
+                    result = self._inspect_borrowed(
+                        source, borrowed.handle_value, deadline=deadline, cancellation=cancellation
+                    )
+                    borrowed.revalidate(deadline=deadline, cancellation=cancellation)
+                    return result
+        except PdfInspectionError as error:
+            failure: PdfInspectionError | SourceIngestError = PdfInspectionError(
+                error.code, "broker.committed"
+            )
+        except SourceIngestError as error:
+            failure = SourceIngestError(error.code, "broker.committed_source")
+        except WorkerClientError as error:
+            code = (
+                PdfInspectionErrorCode.TIMED_OUT
+                if error.code
+                in {
+                    WorkerClientErrorCode.HANDSHAKE_TIMED_OUT,
+                    WorkerClientErrorCode.OPERATION_TIMED_OUT,
+                }
+                else PdfInspectionErrorCode.WORKER_FAILED
+            )
+            failure = PdfInspectionError(code, "broker.committed_worker")
+        except Exception:
+            failure = PdfInspectionError(PdfInspectionErrorCode.INTERNAL_ERROR, "broker.committed")
+        # Raise outside the handler: neither raw OS/parser errors nor a nested
+        # adapter exception chain may cross this saved-source boundary.
+        try:
+            raise failure from None
+        finally:
+            failure.__context__ = None
+            failure.__cause__ = None
+
+    def _inspect_borrowed(
+        self,
+        source: _InspectionInput,
+        handle_value: int,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> PdfInspectionResult:
+        operation_id = self._new_id()
+        if operation_id in {source.object_id, source.case_id}:
+            reject_pdf_inspection(PdfInspectionErrorCode.INTERNAL_ERROR, "broker.identifier")
+        operation_result: WorkerOperationResultSnapshot | None = None
+        start_attempted = False
+        with ExitStack() as authorities:
+            pipe = authorities.enter_context(self._pipe_factory())
             try:
                 _require_active(deadline, cancellation)
                 start_attempted = True
@@ -342,7 +494,7 @@ class BrokeredPdfSourceInspector:
                     )
 
                 source_handle = self._worker.duplicate_handle(
-                    borrowed.handle_value,
+                    handle_value,
                     BrokeredHandlePurpose.READ_SOURCE,
                 )
                 result_handle = self._worker.duplicate_handle(
@@ -388,9 +540,13 @@ class BrokeredPdfSourceInspector:
             envelope = decode_pdf_inspection_frame(pipe.read_complete_frame())
             if (
                 envelope.operation_id != operation_id
-                or envelope.source_object_id != source.pending_id
+                or envelope.source_object_id != source.object_id
             ):
                 reject_pdf_inspection(PdfInspectionErrorCode.REPORT_INVALID, "broker.correlation")
+            if envelope.result.report_version != 2:
+                reject_pdf_inspection(
+                    PdfInspectionErrorCode.REPORT_INVALID, "broker.report_version"
+                )
             return envelope.result
 
     def _wait_ready(
@@ -449,7 +605,7 @@ class BrokeredPdfSourceInspector:
 
 
 def _operation_payload(
-    source: PreparedSourceSummary,
+    source: _InspectionInput,
     *,
     source_handle: int,
     result_handle: int,
@@ -461,7 +617,7 @@ def _operation_payload(
         inputs=(
             CaseObjectReference(
                 area=ReferenceArea.SOURCE_READ,
-                object_id=source.pending_id,
+                object_id=source.object_id,
                 operation_id=None,
                 content_kind="pdf",
                 expected_byte_size=source.byte_size,
