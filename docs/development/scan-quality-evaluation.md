@@ -188,7 +188,7 @@ corpus change must explain the changed false-positive/false-negative counts and 
 reviewed baseline rather than refreshing the file merely to pass tests.
 
 The frozen recipe/profile evaluation recorded against implementation revision
-`a55c5b7a3866fac5c54640e5de06eaee9fe86339` is:
+`3b195294e05d212c1570d7a8e608cb8b564ffff2` is:
 
 - corpus SHA-256:
   `36fad4f6a94e06971ea9e8e3226df18f92050e8f6f14ba1a1dd5b5b4056bfd8e`;
@@ -204,6 +204,16 @@ resource policy, and OCR-review machinery, remained byte-identical. The separate
 validated candidate differs from the previous canonical baseline only in `revision`; all eight
 metric rows, corpus/profile digests, and resource-policy fields are unchanged. The original
 baseline remains in Git history, and the exact-revision validation rules remain unchanged.
+
+PWS-0501 replayed the same frozen evaluator and exact-revision recorder for the current
+revision above. Compared with the PWS-0201 binding at
+`a55c5b7a3866fac5c54640e5de06eaee9fe86339`, six of the 27 bound surfaces changed:
+the desktop entry point, organizer, backend bridge, window, worker composition, and protocol
+models. The quality algorithms, evaluator/corpus, profile, resource policy, and remaining 21
+bound surfaces are unchanged. A separately recorded and validated candidate differs only in
+`revision`; all eight metric rows and all corpus/profile/resource fields remain identical.
+The validator, binding inventory, and visual golden files were not changed. The evaluator's
+40 focused tests pass; [PWS-0501 evidence](pws0501-result.md) records the wider verification.
 
 | Metric kind | Applicable | TP | FP | TN | FN | Precision ppm | Recall ppm | FPR ppm | FNR ppm |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
