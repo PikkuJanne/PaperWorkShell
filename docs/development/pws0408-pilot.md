@@ -1,8 +1,10 @@
 # PWS-0408 human pilot
 
-Status: **human walkthrough pending**. Automated tests exercise complete, missing,
-warning-heavy, and failure cases, but do not establish first-time-user comprehension.
-PWS-0408 must remain in review until the following human evidence is accepted.
+Status: **accepted by the maintainer on 2026-09-30**. The existing walkthrough was
+accepted with “PWS-0408 reviewed, and accepted. Please continue.” See the
+[acceptance record](pws0408-result.md#maintainer-acceptance). This protocol remains
+available for later focused retests; the accepted walkthrough need not be repeated.
+The separate PWS-0409 v0.1 gate is in progress and has not passed.
 
 ## Stable entry point
 
@@ -71,7 +73,6 @@ part of PWS-0409's gate; earlier accepted evidence is not repeated just for ergo
 
 ## Acceptance consequence
 
-Accepting the completed first-time and keyboard walkthrough closes this task's remaining
-human evidence and permits PWS-0409 to become ready. A usability defect instead remains
-in PWS-0408 for correction and a focused retest of the affected step. Neither choice
-approves a v0.1 release; PWS-0409 is the separate integrated pilot gate.
+The recorded maintainer acceptance closes PWS-0408's remaining walkthrough acceptance
+and permits work on PWS-0409. A later usability defect needs correction and a focused
+retest of the affected step. PWS-0409 remains the separate integrated v0.1 pilot gate.

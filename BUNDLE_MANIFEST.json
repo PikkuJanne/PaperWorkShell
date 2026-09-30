@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 317288,
-      "sha256": "defbb33e609c2a9365b78b1a98ae4763a7d186f5e0d72a8230a4b8dad15fa60e"
+      "bytes": 319234,
+      "sha256": "aa2bf93c4c38256159740a6e6746abdbb08cc2f7fcc3383b9792c5d7b34aa733"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 31652,
-      "sha256": "e3f9d298732ce2437c6bea9182b093d2c20c4ad478b1df06e9a9bb1dca911509"
+      "bytes": 31691,
+      "sha256": "b13bedb6504190e7877b42ad2764489b9421fcc9dc1f3f75ed753b344878cc66"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -70,8 +70,8 @@
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 17575,
-      "sha256": "3430c70cb0f84ad8683015fc641e597f063586fe70d143e1ae98c448d70ae508"
+      "bytes": 17651,
+      "sha256": "a73961cc8b4e02c1a5fe87427f4a7b0c4ebd82596a33909dbf83f321a1817950"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 2439,
-      "sha256": "bcb91ca65fc037a023525c8037acfe8eb598414261ffbeefee8a122ad9f5142d"
+      "bytes": 4567,
+      "sha256": "6af397f6a2b04dd2e78b1790ec7a43b5dae273807d00bc673230b885287670fb"
     },
     {
       "path": "LOW_SPEC.md",
@@ -117,6 +117,16 @@
       "path": "packaging/pillow-runtime-closure-v1.json",
       "bytes": 16959,
       "sha256": "46e57b7f8b08f146257406d267ec75a8c553d15d0b8f521967fbdaba85fa0d8d"
+    },
+    {
+      "path": "docs/gates/m4-pilot-gate.md",
+      "bytes": 19405,
+      "sha256": "4eeb66117a0c247c1dea607d861ba19df09424f216882e3b5d9fbc08786a1e4e"
+    },
+    {
+      "path": "docs/accessibility/pws-0409-pilot-nvda-smoke.md",
+      "bytes": 8425,
+      "sha256": "c1791784c8fa26be82975c826e0d2205bbdba64cf263deed3af9f013d1a7804c"
     }
   ],
   "validation": {
@@ -130,8 +140,8 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0407 remains done. PWS-0408 is in review: desktop package review, accessible plain-text summaries, explicit companion saving, and the automated generic end-to-end pilot are implemented and verified. Full integration completed successfully, all 4633 unit tests and 67 accessibility tests passed, and security finished with 572 passed and 6 unavailable Windows link-fixture skips. The unchanged quality metrics were rebound to the evaluated implementation revision, and a synthetic release-test fixture was corrected without weakening the production gate. Genuine first-time-user and keyboard-only human acceptance remains unrecorded, so PWS-0409 stays planned. Human acceptance permits that gate to start; it does not approve a release. Durable package history still requires a versioned schema/migration decision, mixed image/scan transformation with overlays in one output remains unsupported, and no optional technical manifest or sibling interface is introduced. Packaged-build evidence remains TBD.",
-    "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. Existing PWS-0408/PWS-0409 state and release-interface TBD facts remain unchanged.",
+    "PWS-0408 was accepted by the maintainer on 2026-09-30. PWS-0409 is in review: current full product CI, focused constrained storage/recovery tests, and supplemental agent-operated desktop/NVDA evidence pass. Final gate evidence validation remains pending. See docs/gates/m4-pilot-gate.md. Packaged-release facts remain TBD.",
+    "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]
 }

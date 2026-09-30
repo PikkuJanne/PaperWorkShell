@@ -49,6 +49,7 @@ from paperworkshell.preflight.portal_constraints import (
 )
 from paperworkshell.storage._windows import WindowsHandle
 from paperworkshell.storage.export_destination import (
+    ExportDestinationDependencies,
     WindowsExportDestination,
     _rename_stage_no_replace,
 )
@@ -345,6 +346,55 @@ def test_zip_round_trip_preserves_planner_member_order_and_exact_pdf_bytes(
         assert archive.read("alpha.pdf") == payloads["beta"]
     assert not (tmp_path / "zeta.pdf").exists()
     assert not (tmp_path / "alpha.pdf").exists()
+
+
+@pytest.mark.parametrize("mode", tuple(PortalOutputMode))
+def test_constrained_free_space_reserve_refuses_package_and_clean_retry_succeeds(
+    tmp_path: Path,
+    mode: PortalOutputMode,
+) -> None:
+    policy = CONSTRAINED_RESOURCE_POLICY_V1
+    plan = _plan(mode)
+    payloads = _payloads(plan)
+    first_payload = payloads[plan.pdfs[0].output_key]
+    available = policy.minimum_export_free_space_reserve_bytes + len(first_payload) - 1
+    destination = WindowsExportDestination(
+        ExportDestinationDependencies(available_space=lambda _: available),
+        minimum_free_space_reserve_bytes=policy.minimum_export_free_space_reserve_bytes,
+    )
+
+    def export() -> PackageExportOutcome:
+        return export_package_plan(
+            _snapshot(),
+            plan,
+            tmp_path,
+            _Producer(payloads),
+            destination,
+            policy,
+            deadline=lambda: False,
+            cancellation=lambda: False,
+        )
+
+    with pytest.raises(PackageExportError) as captured:
+        export()
+
+    assert captured.value.code is PackageExportErrorCode.DESTINATION_FAILED
+    assert tuple(tmp_path.iterdir()) == ()
+
+    available = (
+        policy.minimum_export_free_space_reserve_bytes + policy.maximum_temporary_storage_bytes
+    )
+    outcome = export()
+
+    assert outcome.status is PackageExportStatus.COMMITTED
+    assert outcome.destination is not None
+    assert all(artifact.destination_reopened for artifact in outcome.destination.artifacts)
+    expected_names = (
+        (plan.archive.filename,)
+        if plan.archive is not None
+        else tuple(pdf.filename for pdf in plan.pdfs)
+    )
+    assert {path.name for path in tmp_path.iterdir()} == set(expected_names)
 
 
 @pytest.mark.parametrize("delta", (0, -1))

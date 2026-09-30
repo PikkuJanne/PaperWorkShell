@@ -3586,7 +3586,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0402
@@ -3623,7 +3623,7 @@ tasks:
   - product-scope
   blocker: null
   evidence:
-    completed_at: null
+    completed_at: "2026-09-30"
     revision: 0b2694cf5a45018c7cd0d0314cc3f3d56641304d
     commands:
     - uv run python -m tools.dev format-check; lint; check-import-boundaries; typecheck - passed; 589 Python files
@@ -3665,11 +3665,10 @@ tasks:
       valid and all five deliberate quality violations were detected. These are not new hardware certifications
     - git diff --check - passed
     notes:
-    - Review status is deliberate. Automated complete, missing, warning-heavy, failure, privacy, and accessibility
-      evidence is complete, but a genuine first-time-user and keyboard-only walkthrough has not been recorded.
-      Use uv run python -m tools.dev pws0408-pilot and docs/development/pws0408-pilot.md. Accepting the eight-step
-      human result closes PWS-0408 and makes PWS-0409 ready; defects instead require focused correction/retest.
-      Neither outcome approves a v0.1 release, and PWS-0409 remains planned until acceptance
+    - Maintainer accepted PWS-0408 on 2026-09-30 with "PWS-0408 reviewed, and accepted. Please continue."
+      This closes the existing first-time-user and keyboard walkthrough review; no new environment, revision,
+      individual step results, or NVDA observations are inferred. See docs/development/pws0408-result.md.
+      PWS-0409 separately evaluates the v0.1 gate; this acceptance does not approve a packaged release
     - Revision-bound exclusive desktop review presents bounded plain-text planned and final inventories, concrete
       checks, every warning, and explicit required human review. Fresh manifest/template/plan authority and explicit
       signed-source consent are required before publication; consent reconciles both organizer history and autosave.
@@ -3704,7 +3703,7 @@ tasks:
   kind: gate
   priority: P0
   effort: XL
-  status: planned
+  status: review
   critical_path: true
   depends_on:
   - PWS-0401
@@ -3749,9 +3748,30 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    revision: 248c26ed56679b5bd4ba3faadc13c2410347960f
+    commands:
+    - python tools/dev.py check --ci-group core and integration - passed on exact product revision
+      248c26ed56679b5bd4ba3faadc13c2410347960f in CI run 36736040250; 5854 tests passed and
+      7 optional OCR/private-stage integration tests skipped. See docs/gates/m4-pilot-gate.md
+    - Focused constrained storage/recovery composite - 55 passed, zero skipped in 7.97 seconds;
+      combined/separate/ZIP reserve refusal and retry, disk-full, active staging/ZIP cancellation,
+      deadline cleanup, slow I/O and fresh-process recovery; exact selectors are in the gate report
+    - python tools/dev.py format-check; lint; check-import-boundaries; typecheck; validate-schemas;
+      validate-dependencies; test-accessibility - passed; 597 formatted/typed files, 13 import layers,
+      207 source files and 69 accessibility tests. Schema-only retry passed after quoting the acceptance date
+    - Agent-operated production desktop and NVDA - signed-marker consent/refusal, malformed-input
+      rejection, verified four-page unsigned derivative, text summary, active cancellation, restart
+      and fresh-review recovery passed; originals retained their import hashes
+    notes:
+    - See docs/gates/m4-pilot-gate.md and docs/accessibility/pws-0409-pilot-nvda-smoke.md. The maintainer
+      accepted PWS-0408 on 2026-09-30; supplemental agent-operated observations do not claim human NVDA
+      certification, hardware certification, PDF/UA, or packaged-release approval
+    - Product source, dependencies, schemas, resource limits, worker controls and golden outputs are
+      unchanged. Three constrained-reserve tests and gate/acceptance/limitations evidence were added.
+      Initial incomplete test-runtime staging was corrected using the existing package integration
+      dependency closure before counting the successful export and final cancellation run
+    - Final clean-history fixture/secret and gate-document/task/bundle validation is pending at this
+      review checkpoint. PWS-0501 remains dependent until the gate is closed
 - id: PWS-0501
   milestone: M5
   title: Implement metadata, attachment, annotation, action, script, and encryption inspection

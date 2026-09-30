@@ -2,7 +2,7 @@
 
 This bundle turns the initial PaperWorkShell product concept into a repository-ready execution contract for Codex and human maintainers.
 
-PaperWorkShell is a local-first desktop application that converts mixed PDFs and images into a complete, organized, legible, privacy-safe, portal-ready document package. The first release is deliberately narrower than a general PDF editor.
+PaperWorkShell is a local-first desktop application for organizing PDFs and images, reviewing configured packaging rules, and exporting document packages. Users review the content and submit the resulting files themselves.
 
 ## ThirdLife portfolio position
 
@@ -37,8 +37,9 @@ compatibility policies, plus generic portal constraints, deterministic Windows-s
 resolution, and an accessible case-constraint editor with organizer-owned durable persistence.
 Verified combined-PDF, multiple-PDF, and ZIP planning and publication are implemented (PWS-0407).
 PWS-0408 connects them to the desktop review and [plain-text package summary](docs/architecture/package-summary.md);
-the [first-time-user and keyboard pilot](docs/development/pws0408-pilot.md) still requires human
-acceptance before the PWS-0409 v0.1 gate can start. The repository contains the
+the maintainer accepted the [first-time-user and keyboard pilot](docs/development/pws0408-result.md#maintainer-acceptance)
+on 2026-09-30. The separate PWS-0409 v0.1 gate is in progress; it has not passed.
+The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact

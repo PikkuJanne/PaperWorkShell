@@ -1,8 +1,21 @@
 # PWS-0408 implementation and pilot evidence
 
-Status: **review**. Implementation and automated verification are complete; genuine
-first-time-user and keyboard-only acceptance remains pending. Nothing in the automated
-or visual developer evidence approves a v0.1 release.
+Status: **done — maintainer accepted on 2026-09-30**. Implementation, automated
+verification, and acceptance of the existing walkthrough are complete. The separate
+PWS-0409 v0.1 gate is in progress and has not passed.
+
+## Maintainer acceptance
+
+On 2026-09-30 the maintainer explicitly instructed: “PWS-0408 reviewed, and accepted.
+Please continue.” This records acceptance of the existing first-time-user and
+keyboard walkthrough and closes PWS-0408's remaining acceptance item.
+
+The acceptance message supplies no additional tested revision, environment, or
+individual step results. The implementation and automated observations below retain
+their original evidence boundaries. No new walkthrough, NVDA result, or packaged
+release approval is inferred from this acceptance.
+
+## Implementation checkpoints
 
 Product implementation checkpoint: `85bb84c`. The subsequent `a73fc04` changes only
 the developer pilot card, its wording assertions, and the human protocol: exact button
@@ -68,7 +81,7 @@ the synthetic release-fixture correction, and their documentation described belo
 ## Verification
 
 The checks listed here have actually passed; they are not placeholders for future execution.
-The separate first-time-user and keyboard-only human result is **not recorded**.
+The later maintainer acceptance of the existing walkthrough is recorded above.
 
 Commands below use `uv run python -m tools.dev <command>` unless shown explicitly.
 The observed test environment is Windows x64, version `10.0.26200`, build `26200`.
@@ -160,10 +173,9 @@ validation passed again after these evidence/test-only corrections.
 - Widget accessibility: `tests/accessibility/test_package_export_accessibility.py`
   checks names, focus, keyboard operation, wrapping/enlargement, and announcements.
   Developer screenshots were also inspected; neither establishes human comprehension.
-- **Still required:** a genuinely first-time operator completes the documented eight
-  steps using the keyboard and PaperWorkShell alone, and explains planned/saved files,
-  unknown checks, remaining review, and the absence of submission/signature/redaction
-  guarantees. Preparation or silence from an operator is not a pass.
+- Walkthrough acceptance: the maintainer accepted the existing eight-step first-time-user
+  and keyboard protocol on 2026-09-30. The acceptance record above preserves the exact
+  instruction without inventing individual step observations.
 
 ## Security, privacy, and accessibility
 
@@ -189,8 +201,8 @@ packaged facts remain TBD. The pilot launcher is not an application CLI contract
 
 ## Residual risks and decisions
 
-- First-time-user and keyboard-only walkthrough acceptance is pending. A passing human
-  result closes this remaining evidence; a defect requires correction and focused retest.
+- The accepted first-time-user and keyboard walkthrough closes this task's acceptance
+  item. Any later defect requires correction and a focused retest.
 - Source/quality analysis is not rerun by this review; unknowns stay visible. The broader
   PWS-0409 gate must assess these clearly disclosed limits with the complete pilot matrix.
 - Final results are transient; save the text summary before closing when it is needed.
@@ -202,8 +214,7 @@ packaged facts remain TBD. The pilot launcher is not an application CLI contract
 
 ## Task graph and next step
 
-PWS-0401 through PWS-0407 remain done. PWS-0408 is **review**, with `completed_at` unset
-because the human evidence is missing. No new implementation task is dependency-ready;
-PWS-0409 remains planned until PWS-0408 is accepted. Run the [human pilot](pws0408-pilot.md),
-record steps 1–8 and the first-time/keyboard-only conditions, then accept the result or
-address any specific defect. The separate PWS-0409 integrated gate follows afterward.
+PWS-0401 through PWS-0408 are done. PWS-0409 is the next task and is **in progress**.
+Its separate integrated gate must assess the complete v0.1 matrix before any pilot
+approval is recorded. The accepted PWS-0408 walkthrough is retained as prerequisite
+evidence and is not repeated solely to improve test ergonomics.
