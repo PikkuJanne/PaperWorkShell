@@ -68,5 +68,6 @@ remain subject to PWS-0801 and the release gates. The
 [release interface](docs/release/RELEASE_INTERFACE.md) retains its existing `TBD` facts.
 The maintainer accepted the existing PWS-0408 walkthrough on 2026-09-30; see the
 [acceptance record](docs/development/pws0408-result.md#maintainer-acceptance).
-The separate PWS-0409 v0.1 gate is in progress and has not passed. ThirdLife and sibling
-applications are not required and no compatibility cut is claimed.
+The [PWS-0409 source-tree v0.1 pilot gate](docs/gates/m4-pilot-gate.md) passed on
+2026-09-30 within its recorded scope. Packaged-release work remains pending.
+ThirdLife and sibling applications are not required and no compatibility cut is claimed.

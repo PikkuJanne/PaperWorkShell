@@ -4,7 +4,8 @@ Status: **accepted by the maintainer on 2026-09-30**. The existing walkthrough w
 accepted with “PWS-0408 reviewed, and accepted. Please continue.” See the
 [acceptance record](pws0408-result.md#maintainer-acceptance). This protocol remains
 available for later focused retests; the accepted walkthrough need not be repeated.
-The separate PWS-0409 v0.1 gate is in progress and has not passed.
+The separate [PWS-0409 source-tree v0.1 pilot gate](../gates/m4-pilot-gate.md)
+passed on 2026-09-30 within its recorded scope.
 
 ## Stable entry point
 

@@ -38,7 +38,8 @@ resolution, and an accessible case-constraint editor with organizer-owned durabl
 Verified combined-PDF, multiple-PDF, and ZIP planning and publication are implemented (PWS-0407).
 PWS-0408 connects them to the desktop review and [plain-text package summary](docs/architecture/package-summary.md);
 the maintainer accepted the [first-time-user and keyboard pilot](docs/development/pws0408-result.md#maintainer-acceptance)
-on 2026-09-30. The separate PWS-0409 v0.1 gate is in progress; it has not passed.
+on 2026-09-30. The [PWS-0409 source-tree v0.1 pilot gate](docs/gates/m4-pilot-gate.md)
+passed on the same date; packaged-release work remains pending.
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,

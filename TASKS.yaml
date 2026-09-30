@@ -3703,7 +3703,7 @@ tasks:
   kind: gate
   priority: P0
   effort: XL
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0401
@@ -3747,8 +3747,8 @@ tasks:
   - product
   blocker: null
   evidence:
-    completed_at: null
-    revision: 248c26ed56679b5bd4ba3faadc13c2410347960f
+    completed_at: "2026-09-30"
+    revision: c806780fd83f00666896ac5a8df09f58131596bf
     commands:
     - python tools/dev.py check --ci-group core and integration - passed on exact product revision
       248c26ed56679b5bd4ba3faadc13c2410347960f in CI run 36736040250; 5854 tests passed and
@@ -3762,6 +3762,12 @@ tasks:
     - Agent-operated production desktop and NVDA - signed-marker consent/refusal, malformed-input
       rejection, verified four-page unsigned derivative, text summary, active cancellation, restart
       and fresh-review recovery passed; originals retained their import hashes
+    - python tools/dev.py validate-fixtures; scan-secrets - passed in a clean full-history branch
+      clone at c806780fd83f00666896ac5a8df09f58131596bf; 2615 historical blobs, 853 index blobs,
+      883 tracked files. The initial concurrent secret scan timed out; the serial retry passed
+      with unchanged coverage and limits. Full counts and evidence boundaries are in the gate report
+    - python tools/dev.py validate-schemas; validate-docs; validate-task-graph;
+      validate-portfolio-boundary; git diff --check - passed for final closure metadata
     notes:
     - See docs/gates/m4-pilot-gate.md and docs/accessibility/pws-0409-pilot-nvda-smoke.md. The maintainer
       accepted PWS-0408 on 2026-09-30; supplemental agent-operated observations do not claim human NVDA
@@ -3770,15 +3776,17 @@ tasks:
       unchanged. Three constrained-reserve tests and gate/acceptance/limitations evidence were added.
       Initial incomplete test-runtime staging was corrected using the existing package integration
       dependency closure before counting the successful export and final cancellation run
-    - Final clean-history fixture/secret and gate-document/task/bundle validation is pending at this
-      review checkpoint. PWS-0501 remains dependent until the gate is closed
+    - PASS for the source-tree v0.1 pilot within the composite evidence scope. A separate agent
+      reviewed the checkpoint with no blocking issue. Final closure changes only wording, task
+      metadata and bundle hashes; full CI remains bound to 248c26e and clean-history scans to
+      c806780. PWS-0501 is the next dependency-ready task and is marked ready
 - id: PWS-0501
   milestone: M5
   title: Implement metadata, attachment, annotation, action, script, and encryption inspection
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0409

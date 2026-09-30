@@ -1,10 +1,10 @@
 # Milestone 4 v0.1 pilot gate — PWS-0409
 
-- Review status: In progress
-- Gate conclusion: **IN PROGRESS — no v0.1 approval yet**
+- Review status: Complete
+- Gate conclusion: **PASS — source-tree v0.1 pilot**
 - Review date: 2026-09-30
 - Full automated-suite revision: `248c26ed56679b5bd4ba3faadc13c2410347960f`
-- Gate closure revision: Pending
+- Gate evidence checkpoint: `c806780fd83f00666896ac5a8df09f58131596bf`
 - Review branch: `codex/pws-0409-pilot-gate`
 - Frozen decisions: PWS-D003, PWS-D006, PWS-D022, PWS-D023, PWS-D030,
   PWS-D033, PWS-D040, PWS-D041
@@ -20,8 +20,9 @@ The evidence is composite: the maintainer's accepted PWS-0408 walkthrough, earli
 milestone records, the current full automated suite, focused constrained storage
 and recovery tests, and a separate desktop/NVDA/manual record. These are
 not presented as one fresh human session or one newly measured whole-packet run.
-The gate remains open until the required desktop scenarios and final changed-file
-validation are recorded and reviewed.
+The required desktop scenarios and changed-file validation are recorded and
+reviewed. Final closure updates record the conclusion, task readiness, and bundle
+hashes; they do not change the tested product or tests.
 
 Authority is [ROADMAP.md](../../ROADMAP.md), [TASKS.yaml](../../TASKS.yaml), and
 [DECISIONS.md](../../DECISIONS.md). The [package export contract](../architecture/package-export.md),
@@ -75,7 +76,7 @@ to improve test ergonomics.
 | Core actions have keyboard alternatives; routine logs exclude prohibited content | Pass | 69 accessibility and 579 security tests passed; accepted PWS-0408 keyboard prerequisite; fresh agent-operated NVDA/manual record below |
 | Full suite and constrained-resource/failure scenarios | Automated evidence passes with disclosed scope | Exact-revision full CI and focused 55-test composite below; seven optional OCR/private-stage integration skips are disclosed |
 | Manual signed-input, malformed-input, active cancellation, and recovery scenarios | Pass | Current production desktop, NVDA speech observations, independent output/source checks, and fresh review after cancellation |
-| Final gate documentation and changed-file validation | In progress | Gate report, acceptance records, limitations, task graph, and bundle consistency require final review |
+| Final gate documentation and changed-file validation | Pass | Separate evidence review, clean full-history fixture/secret scans, and registered schema/document/task/portfolio validators |
 
 ## Current full automated evidence
 
@@ -138,7 +139,7 @@ worker-Job or whole-packet memory measurement.
 
 The only test change is three parameterized cases in
 `tests/integration/test_package_export.py` for combined PDF, separate PDFs, and ZIP.
-Each sets available space to one byte below the first artifact plus the policy's
+Each sets available space to one byte below the first PDF staging payload plus the policy's
 256 MiB reserve, verifies refusal with no published or temporary artifact, restores
 available space, and verifies successful retry with reopened destination receipts.
 The production policy and its limits are unchanged.
@@ -236,31 +237,72 @@ or output verification behavior changed during this gate review. Current changes
 record PWS-0408 acceptance, clarify limitations and release wording, add the three
 reserve/retry cases, and assemble gate evidence. The test change passed the focused
 composite and canonical typing; the acceptance-document update passed the registered
-documentation validator. Final gate-report, task-graph, bundle, and clean-tree
-validation remain to be recorded.
+documentation validator. Gate-report, task-graph, bundle, and clean-history
+validation passed as recorded below.
 
 The full CI result belongs to `248c26e`, before these test/documentation changes.
 It is not labeled as a full-suite run on the eventual gate closure commit.
+
+Fresh registered local checks also passed:
+
+| Command (`python tools/dev.py ...`) | Result |
+|---|---|
+| `format-check` | 597 files already formatted |
+| `lint` | Pass |
+| `check-import-boundaries` | 13 layers, 207 source files |
+| `typecheck` | 597 files, no issues |
+| `validate-dependencies` | One complete and four rejected dependency examples pass |
+| `test-accessibility` | 69 passed, zero skipped, 5.78 seconds |
+| `validate-schemas` | Nine validation groups pass; an initially unquoted YAML acceptance date was corrected to a string before the successful retry |
+
+A separate agent reviewed evidence checkpoint
+`c806780fd83f00666896ac5a8df09f58131596bf` and found no blocking issue.
+The review's two wording corrections are incorporated: desktop observations are
+complete, and the reserve test fails at the first PDF staging payload, including
+in ZIP mode. It does not exercise the final ZIP reserve boundary.
+
+The evidence checkpoint was validated in a clean, full-history, single-branch
+clone with its own locked environment. This isolates the selected branch from
+unrelated local Codex capture refs without deleting or rewriting them. Logs are
+outside the clone; its tracked tree remained clean.
+
+| Command (`python tools/dev.py ...`) | Checkpoint result |
+|---|---|
+| `validate-schemas` | Pass |
+| `validate-docs` | Pass |
+| `validate-task-graph` | 82 tasks, 243 edges, nine milestones, 42 decisions |
+| `validate-portfolio-boundary` | 22 canonical bundle files |
+| `validate-fixtures` | 46 synthetic fixtures, 24 visual references; 2,615 historical blobs, 853 index blobs, 883 working files |
+| `scan-secrets` | Pass: 2,615 historical blobs, 280 commit/tag objects, 2,650 historical path/blob pairs, 853 index blobs, 883 tracked working files, zero nonignored untracked files |
+
+The first secret scan reached its subprocess time limit while fixture validation
+was running concurrently. The same registered scan passed when retried alone,
+with unchanged coverage and limits. The timeout was not a secret finding and is
+retained alongside the successful retry log.
+
+After the checkpoint, only review wording, completion/readiness metadata, and
+bundle hashes changed. The schema, documentation, task-graph, and portfolio
+validators and `git diff --check` were rerun for those closure changes. Historical
+fixture and secret scan results remain explicitly bound to the checkpoint above.
 
 ## Portfolio boundary and release interface
 
 PaperWorkShell remains standalone. Cases, originals, intent, signatures, and explicit
 local derivatives remain owned by PaperWorkShell and the user. No sibling repository,
 shared runtime, database, adapter, server, or synchronized release is required.
-The release sheet records only the accepted source-tree summary workflow; exact
+The release sheet records the accepted source-tree summary workflow and pilot gate; exact
 packaged facts remain `TBD`. Developer pilot commands are not a public application
 CLI contract. No new ThirdLife interface or compatibility cut is introduced.
 
 ## Gate conclusion and next step
 
-**IN PROGRESS.** Prerequisites are done; current full automated evidence and the
-focused constrained composite pass within their disclosed scopes. Required current
-desktop observations and final evidence validation remain open. PWS-0409 must not
-be marked done or presented as v0.1 approval until those items are reviewed.
+**PASS.** PWS-0409 is done. Earlier gates and all M4 prerequisites are done;
+the full automated suite, focused constrained composite, accepted walkthrough,
+supplemental desktop observations, and final evidence validation satisfy the
+source-tree v0.1 pilot gate within the scopes recorded here.
 
-After a passing PWS-0409 closure, PWS-0501 is the next dependency-ready task under
-the repository selection order. It remains dependent on this gate while the gate
-is in progress.
+PWS-0501 is the next dependency-ready task and is marked `ready`. Implementation
+of that task has not begun. M5–M8 work and packaged-release evidence remain pending.
 
 ## Focused composite selectors
 
@@ -284,3 +326,19 @@ tests/unit/worker/test_pdf_export_worker_adapter.py::test_mid_export_private_dis
 tests/integration/test_desktop_startup_recovery_windows.py::test_cold_desktop_restart_recovers_before_worker_composition
 tests/integration/test_desktop_startup_recovery_windows.py::test_forced_ui_exit_during_autosave_recovers_in_fresh_desktop_process
 ```
+
+## Changed files
+
+| File | Reason |
+|---|---|
+| `TASKS.yaml` | Record PWS-0408 acceptance, PWS-0409 evidence/status, and next-task readiness |
+| `BUNDLE_MANIFEST.json` | Bind current governance/evidence files and task readiness |
+| `tests/integration/test_package_export.py` | Three constrained-reserve refusal/retry cases |
+| `docs/gates/m4-pilot-gate.md` | Criterion matrix, commands/results, scope, and gate conclusion |
+| `docs/gates/README.md` | Index the M4 gate |
+| `docs/accessibility/pws-0409-pilot-nvda-smoke.md` | Actual supplemental desktop, NVDA, failure, and output observations |
+| `docs/development/pws0408-pilot.md` | Retain the accepted walkthrough for focused retests |
+| `docs/development/pws0408-result.md` | Record the exact maintainer acceptance without invented test details |
+| `KNOWN_LIMITATIONS.md` | Collect implemented boundaries and deferred v0.1 features |
+| `README.md` | Current source-tree workflow and gate status |
+| `docs/release/RELEASE_INTERFACE.md` | Accepted source-tree summary context while preserving packaged TBD facts |

@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 319234,
-      "sha256": "aa2bf93c4c38256159740a6e6746abdbb08cc2f7fcc3383b9792c5d7b34aa733"
+      "bytes": 319982,
+      "sha256": "dbdcd5d3a72d218ef817ab4679e250ce69f72a95057fa5d5efeb55fed76cb0c0"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 31691,
-      "sha256": "b13bedb6504190e7877b42ad2764489b9421fcc9dc1f3f75ed753b344878cc66"
+      "bytes": 31760,
+      "sha256": "318a3e4ea5619ba81e30405d4ad08b020d4d5be577be5cd5ab769b019be2fb21"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -70,8 +70,8 @@
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 17651,
-      "sha256": "a73961cc8b4e02c1a5fe87427f4a7b0c4ebd82596a33909dbf83f321a1817950"
+      "bytes": 17648,
+      "sha256": "27b69dda12da15e13eff2079db2c79a99e6e64929cf25832ad55f697281ede82"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 4567,
-      "sha256": "6af397f6a2b04dd2e78b1790ec7a43b5dae273807d00bc673230b885287670fb"
+      "bytes": 4659,
+      "sha256": "2b2be68e4b3a6c19bb2097edafc1bc27f029facee526537cc5faa9bb9230bb95"
     },
     {
       "path": "LOW_SPEC.md",
@@ -120,8 +120,8 @@
     },
     {
       "path": "docs/gates/m4-pilot-gate.md",
-      "bytes": 19405,
-      "sha256": "4eeb66117a0c247c1dea607d861ba19df09424f216882e3b5d9fbc08786a1e4e"
+      "bytes": 22986,
+      "sha256": "b6d5a54c80dd71815b19927016a43c1a2b76681f67a843cd08d22ea515962321"
     },
     {
       "path": "docs/accessibility/pws-0409-pilot-nvda-smoke.md",
@@ -136,11 +136,13 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0501"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0408 was accepted by the maintainer on 2026-09-30. PWS-0409 is in review: current full product CI, focused constrained storage/recovery tests, and supplemental agent-operated desktop/NVDA evidence pass. Final gate evidence validation remains pending. See docs/gates/m4-pilot-gate.md. Packaged-release facts remain TBD.",
+    "PWS-0408 was accepted by the maintainer on 2026-09-30. PWS-0409 passes the source-tree v0.1 pilot gate: full product CI, focused constrained storage/recovery tests, supplemental agent-operated desktop/NVDA observations, and final evidence validation pass within their recorded scopes. PWS-0501 is the next ready task. See docs/gates/m4-pilot-gate.md. Packaged-release facts remain TBD.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

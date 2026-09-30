@@ -2,7 +2,8 @@
 
 Status: **done — maintainer accepted on 2026-09-30**. Implementation, automated
 verification, and acceptance of the existing walkthrough are complete. The separate
-PWS-0409 v0.1 gate is in progress and has not passed.
+[PWS-0409 source-tree v0.1 pilot gate](../gates/m4-pilot-gate.md) passed on the same date
+within its recorded scope.
 
 ## Maintainer acceptance
 
@@ -204,7 +205,7 @@ packaged facts remain TBD. The pilot launcher is not an application CLI contract
 - The accepted first-time-user and keyboard walkthrough closes this task's acceptance
   item. Any later defect requires correction and a focused retest.
 - Source/quality analysis is not rerun by this review; unknowns stay visible. The broader
-  PWS-0409 gate must assess these clearly disclosed limits with the complete pilot matrix.
+  PWS-0409 gate records its assessment of these disclosed limits with the pilot matrix.
 - Final results are transient; save the text summary before closing when it is needed.
   Durable package history would require an explicit versioned schema/migration decision.
 - Mixed scan/image processing and overlays in one output retain the PWS-0407 rejection.
@@ -214,7 +215,6 @@ packaged facts remain TBD. The pilot launcher is not an application CLI contract
 
 ## Task graph and next step
 
-PWS-0401 through PWS-0408 are done. PWS-0409 is the next task and is **in progress**.
-Its separate integrated gate must assess the complete v0.1 matrix before any pilot
-approval is recorded. The accepted PWS-0408 walkthrough is retained as prerequisite
-evidence and is not repeated solely to improve test ergonomics.
+PWS-0401 through PWS-0409 are done. The separate integrated source-tree pilot gate
+passed; PWS-0501 is the next ready task. The accepted PWS-0408 walkthrough is
+retained as prerequisite evidence and is not repeated solely to improve test ergonomics.
