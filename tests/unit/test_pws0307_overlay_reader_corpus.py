@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any, cast
 
@@ -13,8 +15,13 @@ import pytest
 
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.pdf_export import PdfExportRotation
+from paperworkshell.domain.pdf_inspection import PdfStructuralState
 from paperworkshell.overlays.models import OverlayKind, SignatureImageOverlayPayload
-from paperworkshell.pdf.qpdf_checker import DEFAULT_QPDF_EXECUTABLE, QPDF_VERSION
+from paperworkshell.pdf.qpdf_checker import (
+    DEFAULT_QPDF_EXECUTABLE,
+    QPDF_VERSION,
+    QpdfCommandChecker,
+)
 from tools.pws0307_overlay_reader_corpus import (
     ReaderCorpusError,
     build_reader_corpus_plan,
@@ -77,7 +84,7 @@ def test_corpus_plan_has_global_id_namespace_and_exact_semantic_coverage() -> No
 def test_generator_is_byte_deterministic_and_records_actual_production_checks(
     tmp_path: Path,
 ) -> None:
-    assert DEFAULT_QPDF_EXECUTABLE.is_file()
+    assert Path(os.environ.get("PWS_QPDF_EXECUTABLE") or DEFAULT_QPDF_EXECUTABLE).is_file()
     first_pdf = tmp_path / "reader-corpus-first.pdf"
     first_json = tmp_path / "reader-corpus-first.json"
     second_pdf = tmp_path / "reader-corpus-second.pdf"
@@ -190,3 +197,51 @@ def test_generator_never_replaces_an_existing_destination(tmp_path: Path) -> Non
     assert output.read_bytes() == b"existing synthetic sentinel"
     assert not evidence.exists()
     assert str(output) not in str(raised.value)
+
+
+def test_generator_uses_configured_qpdf_without_changing_approved_corpus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installed = Path(os.environ.get("PWS_QPDF_EXECUTABLE") or DEFAULT_QPDF_EXECUTABLE)
+    relocated_bin = tmp_path / "configured qpdf bin"
+    shutil.copytree(installed.parent, relocated_bin)
+    configured = relocated_bin / installed.name
+    monkeypatch.setenv("PWS_QPDF_EXECUTABLE", os.fspath(configured))
+    executions: list[Path] = []
+    original_check = QpdfCommandChecker.check
+
+    def record_check(
+        checker: QpdfCommandChecker, source_path: Path, **kwargs: Any
+    ) -> PdfStructuralState:
+        executions.append(checker.executable)
+        return original_check(checker, source_path, **kwargs)
+
+    monkeypatch.setattr(QpdfCommandChecker, "check", record_check)
+    output = tmp_path / "configured-corpus.pdf"
+    evidence = tmp_path / "configured-corpus.json"
+
+    generate_reader_corpus(output, evidence)
+
+    assert executions == [configured]
+    assert hashlib.sha256(output.read_bytes()).hexdigest() == APPROVED_READER_ARTIFACT.pdf_sha256
+    assert (
+        hashlib.sha256(evidence.read_bytes()).hexdigest()
+        == APPROVED_READER_ARTIFACT.evidence_sha256
+    )
+
+
+def test_generator_rejects_unavailable_configured_qpdf_without_default_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = tmp_path / "unavailable-private-checker.exe"
+    monkeypatch.setenv("PWS_QPDF_EXECUTABLE", os.fspath(configured))
+    output = tmp_path / "unavailable-corpus.pdf"
+    evidence = tmp_path / "unavailable-corpus.json"
+
+    with pytest.raises(ReaderCorpusError) as raised:
+        generate_reader_corpus(output, evidence)
+
+    assert raised.value.code == "PWS0307_CORPUS_QPDF_UNAVAILABLE"
+    assert str(configured) not in str(raised.value)
+    assert not output.exists()
+    assert not evidence.exists()

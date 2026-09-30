@@ -81,6 +81,31 @@ were left untouched. Branch validation uses a separate, full-history, single-bra
 clone with the exact task changes and the unchanged scanners. This is separate
 from the final exact-head GitHub quality run; neither scanner has an exemption.
 
+### Final-gate corrections
+
+The first full CI attempt, [run 36721148531](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36721148531),
+tested `a55c5b7a3866fac5c54640e5de06eaee9fe86339`. Its unit lane passed 4,720
+tests and failed three checks. It is not a successful final-gate record.
+
+- The scan-quality baseline binds 27 implementation files, including nine desktop,
+  worker and protocol files changed here. The production evaluator and no-replace
+  exact-revision recorder were rerun against that commit. The validated candidate
+  differs only in its revision: all eight metric rows, corpus/profile digests and
+  resource-policy fields are unchanged. The evaluator and validation rules are
+  unchanged. The baseline, domain and service regression batch passed 106 tests.
+- Two overlay-reader corpus checks assumed the developer machine's default qpdf
+  location, while CI deliberately installs the pinned checker elsewhere. The
+  developer helper now honors `PWS_QPDF_EXECUTABLE`, verifies its pinned version
+  and uses the existing bounded checker. Regressions first reproduced ignored
+  configuration and silent fallback; they now require the configured executable
+  and fail without output when it is unavailable. Approved artifact hashes and
+  product overlay behavior remain unchanged. The corpus and reader-helper batch
+  passed all 32 tests, including actual execution from a copied nondefault path.
+
+These corrections affect test tooling and evidence, with no further product runtime
+changes after the desktop journey. A complete CI run is still required for the
+follow-up commit containing them.
+
 ## Desktop observations
 
 The original development-runtime attempt exercised keyboard import and Escape
@@ -156,6 +181,7 @@ no work on that task was started.
 - `LOW_SPEC.md`
 - `README.md`
 - `TASKS.yaml`
+- `benchmarks/pws0207-quality-findings-v1.json`
 - `docs/adr/0010-image-decoder-selection.md`
 - `docs/architecture/image-intake.md`
 - `docs/architecture/page-organizer-ui.md`
@@ -163,6 +189,7 @@ no work on that task was started.
 - `docs/architecture/worker-lifecycle.md`
 - `docs/development/dependency-policy.md`
 - `docs/development/image-intake-coverage.md`
+- `docs/development/scan-quality-evaluation.md`
 - `docs/development/synthetic-fixture-policy.md`
 - `docs/evidence/pws0201-current-review.md`
 - `docs/schemas/worker-rpc-v1.md`
@@ -195,6 +222,7 @@ no work on that task was started.
 - `tests/unit/test_pdf_export_entrypoint.py`
 - `tests/unit/test_pillow_image_decoder.py`
 - `tests/unit/test_pws0201_image_smoke.py`
+- `tests/unit/test_pws0307_overlay_reader_corpus.py`
 - `tests/unit/test_validate_pillow_runtime.py`
 - `tests/unit/test_validate_worker_rpc.py`
 - `tests/unit/worker/test_client_lifecycle.py`
@@ -203,5 +231,6 @@ no work on that task was started.
 - `tests/unit/worker/test_pdf_thumbnail_protocol.py`
 - `tools/dev.py`
 - `tools/pws0201_image_smoke.py`
+- `tools/pws0307_overlay_reader_corpus.py`
 - `tools/validate_pillow_runtime.py`
 - `tools/validate_worker_rpc.py`

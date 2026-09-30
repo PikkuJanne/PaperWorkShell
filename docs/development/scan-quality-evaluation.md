@@ -188,13 +188,22 @@ corpus change must explain the changed false-positive/false-negative counts and 
 reviewed baseline rather than refreshing the file merely to pass tests.
 
 The frozen recipe/profile evaluation recorded against implementation revision
-`6931e0d071336df09950af9ed86841e816e7b41f` is:
+`a55c5b7a3866fac5c54640e5de06eaee9fe86339` is:
 
 - corpus SHA-256:
   `36fad4f6a94e06971ea9e8e3226df18f92050e8f6f14ba1a1dd5b5b4056bfd8e`;
 - profile `scan-quality-v1`, version 1, SHA-256:
   `ac8a174ad72892f7a519090d0497d6382c4e67d34fb1f5b6638fb82f420901b8`;
 - constrained ResourcePolicy version 1.
+
+The PWS-0201 review reran the production evaluator and its exact-revision recorder before
+updating this baseline. Nine of the 27 bound surfaces changed: desktop entry point, organizer,
+backend bridge, window, worker composition, host registration, and protocol codec, models, and
+state. The other 18 surfaces, including the quality algorithms, corpus/evaluator, profile,
+resource policy, and OCR-review machinery, remained byte-identical. The separately recorded and
+validated candidate differs from the previous canonical baseline only in `revision`; all eight
+metric rows, corpus/profile digests, and resource-policy fields are unchanged. The original
+baseline remains in Git history, and the exact-revision validation rules remain unchanged.
 
 | Metric kind | Applicable | TP | FP | TN | FN | Precision ppm | Recall ppm | FPR ppm | FNR ppm |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|

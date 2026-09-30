@@ -32,6 +32,7 @@ from paperworkshell.domain.pdf_export import (
 from paperworkshell.domain.pdf_inspection import (
     MAX_PDF_INSPECTION_OBJECTS,
     MAX_PDF_INSPECTION_PAGES,
+    PdfInspectionError,
     PdfInspectionLimits,
 )
 from paperworkshell.domain.pdf_rendering import (
@@ -86,6 +87,7 @@ from paperworkshell.pdf.pdfium_renderer import (
     EXPECTED_PDFIUM_VERSION,
     EXPECTED_PYPDFIUM2_VERSION,
 )
+from paperworkshell.pdf.qpdf_checker import DEFAULT_QPDF_EXECUTABLE, QpdfCommandChecker
 
 GENERATOR_VERSION: Final = 1
 EVIDENCE_VERSION: Final = 1
@@ -649,6 +651,22 @@ def _open_evidence_reservation(path: Path) -> TextIO:
         ) from None
 
 
+def _configured_qpdf_checker(deadline: float) -> QpdfCommandChecker:
+    """Use the desktop/CI qpdf override and verify the pinned executable version."""
+
+    configured = os.environ.get("PWS_QPDF_EXECUTABLE")
+    try:
+        executable = Path(configured) if configured else DEFAULT_QPDF_EXECUTABLE
+        checker = QpdfCommandChecker(executable=executable)
+        checker.require_trusted_version(deadline=deadline)
+        return checker
+    except OSError, TypeError, ValueError, PdfInspectionError:
+        raise ReaderCorpusError(
+            "PWS0307_CORPUS_QPDF_UNAVAILABLE",
+            "The pinned qpdf checker is unavailable or its configuration is invalid.",
+        ) from None
+
+
 def generate_reader_corpus(
     output_pdf: Path,
     evidence_json: Path,
@@ -659,6 +677,8 @@ def generate_reader_corpus(
 
     pdf, evidence = _resolve_destinations(output_pdf, evidence_json)
     plan = build_reader_corpus_plan(policy)
+    deadline = time.monotonic() + _DEADLINE_SECONDS
+    qpdf_checker = _configured_qpdf_checker(deadline)
     _, raster_source = _signature_asset()
     evidence_stream = _open_evidence_reservation(evidence)
     generated_pdf = False
@@ -670,14 +690,14 @@ def generate_reader_corpus(
                 ),
                 _GEOMETRY_SOURCE_ID: stack.enter_context(_GEOMETRY_SOURCE.open("rb", buffering=0)),
             }
-            report = FlattenedPdfExportAdapter().assemble_and_verify(
+            report = FlattenedPdfExportAdapter(qpdf_checker=qpdf_checker).assemble_and_verify(
                 plan,
                 source_streams,
                 {_SIGNATURE_ASSET_ID: raster_source},
                 pdf,
                 _adapter_limits(policy, plan.page_count),
                 OverlayRenderLimits.from_resource_policy(policy),
-                PdfExportAdapterControl(deadline=time.monotonic() + _DEADLINE_SECONDS),
+                PdfExportAdapterControl(deadline=deadline),
             )
         generated_pdf = True
         summary = _evidence_summary(plan, report)
