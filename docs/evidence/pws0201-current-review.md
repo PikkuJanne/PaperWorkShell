@@ -102,6 +102,40 @@ tests and failed three checks. It is not a successful final-gate record.
   product overlay behavior remain unchanged. The corpus and reader-helper batch
   passed all 32 tests, including actual execution from a copied nondefault path.
 
+The second full CI attempt, [run 36723713290](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36723713290),
+tested `f9bf3f462042f222981afe601557be5396e08a67`. All test lanes passed:
+
+| Lane | Result | Duration |
+|---|---|---|
+| Unit | 4,725 passed | 887.50 seconds |
+| Integration | 475 passed, 7 skipped | 4,106.75 seconds |
+| Security | 578 passed | 263.44 seconds |
+| Accessibility | 69 passed | 4.00 seconds |
+
+The seven integration skips concern existing optional OCR runtimes or private
+resource-workload staging. No PWS-0201 test was skipped. The workflow reached its
+90-minute limit during fixture validation after these passes; remaining validators
+did not finish, so this is not a successful final-gate record.
+
+Log completion gaps identify existing M1, organizer UI, containment, package-pilot,
+qpdf-configuration and thumbnail modules as the largest integration contributors.
+These include fixture setup, teardown and output buffering, so they are not precise
+per-test timings. The sole new integration module took about 119 seconds, or 2.9%
+of that lane. The log does not establish a broad product performance regression.
+
+CI now partitions the unchanged canonical check registry into two fixed groups:
+integration and all remaining gates. Separate Windows runners execute them with
+at most two jobs, failure propagation and the same 90-minute timeout per job.
+The default local `check` still runs the whole registry in order. Tests require
+the groups to be disjoint and complete; strict workflow admission rejects missing
+groups, expanded concurrency or bypassed checks. No product resource limit,
+sandbox, test assertion or test coverage is relaxed.
+
+The dispatcher/workflow batch passed 21 tests plus 16 subtests. The dependency
+validator/security batch passed 62 tests, including 23 new workflow-tampering
+cases. Canonical dependency validation, formatting, lint, strict typing and
+import-boundary checks passed after this change.
+
 These corrections affect test tooling and evidence, with no further product runtime
 changes after the desktop journey. A complete CI run is still required for the
 follow-up commit containing them.
@@ -156,8 +190,8 @@ Use `python -m tools.dev` with `format-check`, `lint`,
 refs contain unapproved binaries; the final GitHub checkout has the branch history.
 The synthetic coverage index lists the focused pytest modules and desktop recipe.
 
-The final gate is the existing **Local-equivalent quality gates / Windows quality
-suite** workflow on the exact commit containing this report. Its immutable run URL,
+The final gate is the **Local-equivalent quality gates** workflow, with both Windows
+quality groups passing on the exact commit containing this report. Its immutable run URL,
 commit SHA and result belong in the completion report. No future CI outcome is
 asserted by this source document.
 
@@ -176,6 +210,7 @@ no work on that task was started.
 
 ## Changed files
 
+- `.github/workflows/quality.yml`
 - `BUNDLE_MANIFEST.json`
 - `KNOWN_LIMITATIONS.md`
 - `LOW_SPEC.md`
@@ -189,6 +224,7 @@ no work on that task was started.
 - `docs/architecture/worker-lifecycle.md`
 - `docs/development/dependency-policy.md`
 - `docs/development/image-intake-coverage.md`
+- `docs/development/quality-gates.md`
 - `docs/development/scan-quality-evaluation.md`
 - `docs/development/synthetic-fixture-policy.md`
 - `docs/evidence/pws0201-current-review.md`
@@ -217,6 +253,9 @@ no work on that task was started.
 - `src/paperworkshell/worker/protocol/state.py`
 - `tests/accessibility/test_pages_pdf_export_accessibility.py`
 - `tests/integration/test_image_pdf_export_worker_windows.py`
+- `tests/security/test_dependency_inventory_security.py`
+- `tests/unit/test_ci_workflow.py`
+- `tests/unit/test_dev_commands.py`
 - `tests/unit/test_image_pdf_export.py`
 - `tests/unit/test_pages_pdf_export_desktop.py`
 - `tests/unit/test_pdf_export_entrypoint.py`
@@ -232,5 +271,6 @@ no work on that task was started.
 - `tools/dev.py`
 - `tools/pws0201_image_smoke.py`
 - `tools/pws0307_overlay_reader_corpus.py`
+- `tools/validate_dependencies.py`
 - `tools/validate_pillow_runtime.py`
 - `tools/validate_worker_rpc.py`

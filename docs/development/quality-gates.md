@@ -38,6 +38,27 @@ links/anchors/security references, and deliberate negative self-tests. Use
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
 
+CI runs the same registry in two independent Windows jobs:
+
+```powershell
+py -3.14 tools/dev.py check --ci-group integration
+py -3.14 tools/dev.py check --ci-group core
+```
+
+The `integration` group runs `test-integration`; `core` runs every other `CHECK_COMMANDS` entry
+in registry order. The groups are disjoint and together cover every canonical check exactly once.
+New registry checks automatically enter `core`. Both jobs must pass, and either command stops at
+its first failing gate. The default local `check` continues to run the complete sequential suite;
+`--ci-group` is rejected with other commands.
+
+The hosted run at `f9bf3f4` passed all four test lanes but reached its 90-minute job deadline
+during fixture validation: integration took 4,106.75 seconds and unit tests took 887.50 seconds.
+Separating integration from the remaining gates gives the later validators their own job time.
+Each job retains the 90-minute limit, and the workflow permits at most two concurrent jobs with
+`fail-fast: false` so one failure does not cancel the other group's evidence. Each runner performs
+the same pinned setup and full-history checkout; product resource limits and scanner deadlines
+remain unchanged.
+
 PWS-0111 replaces the no-UI accessibility sentinel with widget-level keyboard, focus, label,
 scaling, and announcement coverage for the first PySide6 organizer surface.
 

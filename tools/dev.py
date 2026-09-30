@@ -243,6 +243,7 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
 CHECK_COMMANDS: Final = tuple(
     name for name, command in COMMANDS.items() if command.include_in_check
 )
+CI_CHECK_GROUPS: Final = ("integration", "core")
 
 GITLEAKS_STDIN_ARGUMENTS: Final = (
     "stdin",
@@ -2760,18 +2761,33 @@ def _list_commands() -> int:
         print(f"  {name:<28} {command.description}{quality_marker}")
     print("  bootstrap                    Synchronize the locked development environment.")
     print("  check                        Run every command marked [check], in order.")
+    print("    --ci-group integration|core Run one CI partition; both are required.")
     return 0
 
 
-def run_named(command: str) -> int:
+def _check_commands(ci_group: str | None) -> tuple[str, ...]:
+    """Partition the complete registry without maintaining a second gate inventory."""
+
+    if ci_group is None:
+        return CHECK_COMMANDS
+    if ci_group not in CI_CHECK_GROUPS:
+        raise ValueError("unknown CI quality group")
+    if ci_group == "integration":
+        return tuple(name for name in CHECK_COMMANDS if name == "test-integration")
+    return tuple(name for name in CHECK_COMMANDS if name != "test-integration")
+
+
+def run_named(command: str, *, ci_group: str | None = None) -> int:
     """Run one named command and return its process exit code."""
 
+    if ci_group is not None and command != "check":
+        raise ValueError("CI quality groups require the check command")
     if command == "bootstrap":
         return _run((_required_executable("uv"), "sync", "--locked"))
     if command == "list":
         return _list_commands()
     if command == "check":
-        for name in CHECK_COMMANDS:
+        for name in _check_commands(ci_group):
             result = run_named(name)
             if result != 0:
                 return result
@@ -2800,9 +2816,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=sorted((*COMMANDS, "bootstrap", "check", "list")),
         help="developer command to run",
     )
+    parser.add_argument(
+        "--ci-group",
+        choices=CI_CHECK_GROUPS,
+        help="run one bounded CI partition; both partitions are required for complete checks",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.ci_group is not None and arguments.command != "check":
+        parser.error("--ci-group requires the check command")
     try:
-        return run_named(arguments.command)
+        return run_named(arguments.command, ci_group=arguments.ci_group)
     except ToolRequirementError as error:
         missing_or_mismatched = str(error)
         if missing_or_mismatched == "uv":

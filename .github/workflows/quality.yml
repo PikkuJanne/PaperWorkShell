@@ -14,9 +14,14 @@ concurrency:
 
 jobs:
   windows-quality:
-    name: Windows quality suite
+    name: Windows quality suite (${{ matrix.ci-group }})
     runs-on: windows-2025
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        ci-group: [integration, core]
     steps:
       - name: Check out full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -172,4 +177,4 @@ jobs:
         run: uv sync --locked --group renderer-evaluation
 
       - name: Run local-equivalent quality suite
-        run: python tools/dev.py check
+        run: python tools/dev.py check --ci-group ${{ matrix.ci-group }}

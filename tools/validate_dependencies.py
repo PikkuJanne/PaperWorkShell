@@ -4171,6 +4171,15 @@ def _workflow_reconciliation_issues(
         and all(isinstance(step, Mapping) for step in quality_steps_value)
         else []
     )
+    quality_strategy = quality_job.get("strategy")
+    quality_strategy_valid = (
+        isinstance(quality_strategy, Mapping)
+        and set(quality_strategy) == {"fail-fast", "max-parallel", "matrix"}
+        and quality_strategy.get("fail-fast") is False
+        and type(quality_strategy.get("max-parallel")) is int
+        and quality_strategy.get("max-parallel") == 2
+        and quality_strategy.get("matrix") == {"ci-group": ["integration", "core"]}
+    )
     workflow_shape_valid = (
         top_level_key_names == {"name", "on", "permissions", "concurrency", "jobs"}
         and set(workflow_data) == {"name", True, "permissions", "concurrency", "jobs"}
@@ -4185,9 +4194,12 @@ def _workflow_reconciliation_issues(
         }
         and isinstance(jobs, Mapping)
         and set(jobs) == {"windows-quality"}
-        and set(quality_job) == {"name", "runs-on", "timeout-minutes", "steps"}
+        and set(quality_job) == {"name", "runs-on", "timeout-minutes", "strategy", "steps"}
+        and quality_job.get("name") == "Windows quality suite (${{ matrix.ci-group }})"
         and quality_job.get("runs-on") == "windows-2025"
+        and type(quality_job.get("timeout-minutes")) is int
         and quality_job.get("timeout-minutes") == 90
+        and quality_strategy_valid
         and len(quality_steps) == 9
     )
     expected_command_steps = {
@@ -4195,7 +4207,9 @@ def _workflow_reconciliation_issues(
         "Install renderer comparison dependencies": (
             "uv sync --locked --group renderer-evaluation"
         ),
-        "Run local-equivalent quality suite": "python tools/dev.py check",
+        "Run local-equivalent quality suite": (
+            "python tools/dev.py check --ci-group ${{ matrix.ci-group }}"
+        ),
     }
     for step_name, command in expected_command_steps.items():
         matches = [step for step in quality_steps if step.get("name") == step_name]
@@ -4259,7 +4273,7 @@ def _workflow_reconciliation_issues(
                 "DEPENDENCY_CONFIG_PIN_MISMATCH",
                 document,
                 "$.components",
-                "quality workflow permissions, platform, timeout, and required steps must remain reviewed",
+                "quality workflow permissions, platform, timeout, bounded CI groups, and required steps must remain reviewed",
             ),
         )
     action_components = {

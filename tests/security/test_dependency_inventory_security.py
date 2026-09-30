@@ -1282,6 +1282,78 @@ class DependencyInventorySecurityTests(unittest.TestCase):
                 self.assertIn(expected_code, _codes(issues))
                 self.assertIsNone(validated)
 
+    def test_repository_rejects_ci_matrix_gate_omissions_and_unbounded_controls(self) -> None:
+        groups = "        ci-group: [integration, core]"
+        command = "        run: python tools/dev.py check --ci-group ${{ matrix.ci-group }}"
+        cases = (
+            ("integration omitted", groups, "        ci-group: [core]"),
+            ("core omitted", groups, "        ci-group: [integration]"),
+            ("extra group", groups, "        ci-group: [integration, core, extra]"),
+            ("duplicate group", groups, "        ci-group: [integration, core, core]"),
+            (
+                "included group",
+                groups,
+                groups + "\n        include:\n          - ci-group: extra",
+            ),
+            (
+                "excluded integration",
+                groups,
+                groups + "\n        exclude:\n          - ci-group: integration",
+            ),
+            ("parallelism raised", "      max-parallel: 2", "      max-parallel: 3"),
+            ("parallelism removed", "      max-parallel: 2\n", ""),
+            ("parallelism zero", "      max-parallel: 2", "      max-parallel: 0"),
+            ("parallelism float", "      max-parallel: 2", "      max-parallel: 2.0"),
+            ("fail fast enabled", "      fail-fast: false", "      fail-fast: true"),
+            ("fail fast omitted", "      fail-fast: false\n", ""),
+            ("fail fast numeric", "      fail-fast: false", "      fail-fast: 0"),
+            ("timeout raised", "    timeout-minutes: 90", "    timeout-minutes: 91"),
+            ("timeout float", "    timeout-minutes: 90", "    timeout-minutes: 90.0"),
+            ("timeout removed", "    timeout-minutes: 90\n", ""),
+            (
+                "integration gate omitted",
+                command,
+                "        run: python tools/dev.py check --ci-group core",
+            ),
+            (
+                "core gates omitted",
+                command,
+                "        run: python tools/dev.py check --ci-group integration",
+            ),
+            ("all other gates omitted", command, "        run: python tools/dev.py test-unit"),
+            ("partition bypassed", command, "        run: python tools/dev.py check"),
+            (
+                "job condition",
+                "    timeout-minutes: 90",
+                "    timeout-minutes: 90\n    if: false",
+            ),
+            (
+                "job failure ignored",
+                "    timeout-minutes: 90",
+                "    timeout-minutes: 90\n    continue-on-error: true",
+            ),
+            ("step failure ignored", command, "        continue-on-error: true\n" + command),
+        )
+        for name, original, replacement in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _copy_repository_policy_inputs(root)
+                path = root / ".github" / "workflows" / "quality.yml"
+                workflow = path.read_text(encoding="utf-8")
+                self.assertIn(original, workflow)
+                path.write_text(workflow.replace(original, replacement), encoding="utf-8")
+
+                validated, issues = validate_dependency_data(
+                    self.baseline,
+                    self.schema,
+                    document="synthetic-dependency-inventory.json",
+                    root=root,
+                    repository_checks=True,
+                )
+
+                self.assertIn("DEPENDENCY_CONFIG_PIN_MISMATCH", _codes(issues))
+                self.assertIsNone(validated)
+
     def test_repository_validation_is_offline_and_starts_no_processes(self) -> None:
         forbidden = AssertionError("dependency validation attempted external execution")
         with (

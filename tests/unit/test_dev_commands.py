@@ -4,17 +4,19 @@ import io
 import os
 import subprocess
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from tools.dev import (
     CHECK_COMMANDS,
+    CI_CHECK_GROUPS,
     COMMANDS,
     GITLEAKS_STDIN_ARGUMENTS,
     PINNED_PATH_RULE_SUFFIXES,
     SCANNER_GIT_ENVIRONMENT_BLOCKLIST,
     ToolRequirementError,
+    _check_commands,
     _git_executable,
     _path_rule_alias,
     _run,
@@ -22,6 +24,7 @@ from tools.dev import (
     _trusted_gitleaks_config,
     _with_trusted_controls,
     main,
+    run_named,
 )
 
 
@@ -88,6 +91,73 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             ("python", "-m", "tools.pws0307_reader_test"),
             COMMANDS["pws0307-reader-test"].arguments,
         )
+
+    def test_ci_groups_cover_every_check_exactly_once_in_registry_order(self) -> None:
+        integration = _check_commands("integration")
+        core = _check_commands("core")
+
+        self.assertEqual(("integration", "core"), CI_CHECK_GROUPS)
+        self.assertEqual(("test-integration",), integration)
+        self.assertFalse(set(integration) & set(core))
+        self.assertCountEqual(CHECK_COMMANDS, (*integration, *core))
+        self.assertEqual(tuple(name for name in CHECK_COMMANDS if name not in integration), core)
+        self.assertEqual(CHECK_COMMANDS, _check_commands(None))
+
+    def test_new_registered_check_automatically_belongs_to_core(self) -> None:
+        expanded = (*CHECK_COMMANDS, "synthetic-new-gate")
+        with patch("tools.dev.CHECK_COMMANDS", expanded):
+            self.assertEqual("synthetic-new-gate", _check_commands("core")[-1])
+            self.assertCountEqual(
+                expanded, (*_check_commands("integration"), *_check_commands("core"))
+            )
+
+    def test_check_dispatches_exact_selected_group_and_propagates_failures(self) -> None:
+        for group in (None, *CI_CHECK_GROUPS):
+            expected = _check_commands(group)
+            with self.subTest(group=group):
+                with patch("tools.dev.run_named", return_value=0) as dispatch:
+                    self.assertEqual(0, run_named("check", ci_group=group))
+                self.assertEqual([call(name) for name in expected], dispatch.call_args_list)
+
+                failure_index = min(1, len(expected) - 1)
+                returns = [0] * failure_index + [37]
+                with patch("tools.dev.run_named", side_effect=returns) as dispatch:
+                    self.assertEqual(37, run_named("check", ci_group=group))
+                self.assertEqual(
+                    [call(name) for name in expected[: failure_index + 1]],
+                    dispatch.call_args_list,
+                )
+
+    def test_cli_dispatches_each_closed_group_and_preserves_default(self) -> None:
+        for group in (None, *CI_CHECK_GROUPS):
+            arguments = ["check"] if group is None else ["check", "--ci-group", group]
+            with (
+                self.subTest(group=group),
+                patch("tools.dev.run_named", return_value=29) as dispatch,
+            ):
+                self.assertEqual(29, main(arguments))
+                dispatch.assert_called_once_with("check", ci_group=group)
+
+    def test_ci_group_misuse_fails_before_any_command(self) -> None:
+        for arguments in (
+            ["check", "--ci-group", "unknown"],
+            ["lint", "--ci-group", "core"],
+            ["bootstrap", "--ci-group", "integration"],
+        ):
+            with (
+                self.subTest(arguments=arguments),
+                patch("tools.dev.run_named") as dispatch,
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                main(arguments)
+            self.assertEqual(2, caught.exception.code)
+            dispatch.assert_not_called()
+        with self.assertRaises(ValueError):
+            _check_commands("unknown")
+        with self.assertRaises(ValueError), patch("tools.dev._run") as execute:
+            run_named("lint", ci_group="core")
+        execute.assert_not_called()
 
     def test_secret_scan_arguments_are_local_redacted_and_bounded(self) -> None:
         rendered = " ".join(GITLEAKS_STDIN_ARGUMENTS)

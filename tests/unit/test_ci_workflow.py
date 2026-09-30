@@ -4,6 +4,10 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
+from tools.dev import CI_CHECK_GROUPS
+
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/quality.yml"
 
@@ -43,7 +47,34 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
             "run: uv sync --locked --group renderer-evaluation",
             self.text,
         )
-        self.assertIn("run: python tools/dev.py check", self.text)
+        self.assertIn(
+            "run: python tools/dev.py check --ci-group ${{ matrix.ci-group }}",
+            self.text,
+        )
+
+    def test_ci_runs_both_complete_partitions_with_bounded_parallelism(self) -> None:
+        workflow = yaml.safe_load(self.text)
+        self.assertEqual({"windows-quality"}, set(workflow["jobs"]))
+        job = workflow["jobs"]["windows-quality"]
+        self.assertEqual(
+            {
+                "fail-fast": False,
+                "max-parallel": 2,
+                "matrix": {"ci-group": list(CI_CHECK_GROUPS)},
+            },
+            job["strategy"],
+        )
+        self.assertEqual("Windows quality suite (${{ matrix.ci-group }})", job["name"])
+        self.assertNotIn("continue-on-error", job)
+        self.assertNotIn("if", job)
+        command = job["steps"][-1]
+        self.assertEqual(
+            {
+                "name": "Run local-equivalent quality suite",
+                "run": "python tools/dev.py check --ci-group ${{ matrix.ci-group }}",
+            },
+            command,
+        )
 
     def test_ci_stages_copy_owned_worker_python_before_bootstrap(self) -> None:
         stage = self.text.index("- name: Stage copy-owned worker CPython")
@@ -69,7 +100,7 @@ class ContinuousIntegrationWorkflowTests(unittest.TestCase):
         self.assertIn('"UV_PYTHON=$python"', self.text)
         self.assertNotIn("Remove-Item -LiteralPath $source", self.text)
 
-    def test_quality_job_timeout_covers_the_full_hosted_suite(self) -> None:
+    def test_each_quality_partition_keeps_the_existing_timeout(self) -> None:
         timeout = re.search(
             r"^\s*timeout-minutes:\s*(\d+)\s*$",
             self.text,
