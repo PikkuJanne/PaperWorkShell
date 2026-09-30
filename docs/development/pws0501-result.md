@@ -1,7 +1,7 @@
 # PWS-0501 — PDF feature inspection
 
-Status: `in_progress`. Implementation is present; broader verification and task closure remain
-pending. The observations below are provisional evidence for their stated scopes.
+Status: `done`. Implementation, automated review, and the verification recorded below are
+complete. Results retain their stated scopes; the composite evidence is not a new full CI run.
 
 ## Implemented
 
@@ -75,8 +75,8 @@ profiles belong to PWS-0506; permanent removal remains behind the M6 security ga
 | Inspection values stay out of routine logs | Private synthetic canaries checked against encoded reports, representations, stdout/stderr, logs, preflight summaries, and sanitized exception chains |
 | Raw PDF objects remain in the adapter | Pure result models cross application/worker boundaries; committed source handles and bounded reports cross the broker; no GUI PDF parsing was added |
 
-These checks support the implementation within the observed test scopes. Final acceptance also
-requires the broader registered verification and task evidence recorded at closure.
+These checks and the registered verification below satisfy the task's implementation acceptance
+criteria. The remaining limits are recorded explicitly rather than treated as checked features.
 
 ## Inspection corpus
 
@@ -120,9 +120,11 @@ image-only, mixed, geometry, duplicate, and Unicode-filename cases.
 | Preflight | `src/paperworkshell/preflight/facts.py`, `src/paperworkshell/preflight/core_rules.py`: source-bound inventory, feature findings and signature-state mismatch blocker |
 | Application/composition | `src/paperworkshell/app/package_workflow.py`, `src/paperworkshell/app/organizer.py`, `src/paperworkshell/__main__.py`: fresh review acquisition, retry state and production injection |
 | Desktop UI | `src/paperworkshell/ui/backend.py`, `src/paperworkshell/ui/window.py`, `src/paperworkshell/ui/package_export.py`: threaded begin/refresh, progress/cancel, stale-result handling and recovery focus |
-| Unit/security tests | Domain/adapter/preflight/fact/protocol tests, committed-inspection broker tests, package-review workflow/bridge/window tests, and `tests/security/test_preflight_privacy.py` |
+| Domain/adapter/preflight tests | `tests/unit/test_pdf_inspection_domain.py`, `tests/unit/test_pikepdf_adapter.py`, `tests/unit/test_preflight_core_rules.py`, `tests/unit/test_preflight_facts.py`, `tests/security/test_preflight_privacy.py`: feature matrix, malformed/unknown states, wire compatibility, binding, blocker policy and prohibited-value canaries |
+| Broker/application/UI tests | `tests/unit/worker/test_committed_pdf_inspection.py`, `tests/unit/worker/test_pdf_inspect_protocol.py`, `tests/unit/test_package_review_inspection.py`, `tests/unit/test_package_export_backend_bridge.py`, `tests/unit/test_package_export_window.py`: committed authority, current protocol, sanitized errors, fresh review, cancellation and recovery |
 | Windows integration/accessibility tests | `tests/integration/test_pdf_feature_inspection_storage_windows.py`, `tests/integration/test_pdf_inspection_worker_windows.py`, `tests/integration/test_package_pilot.py`, `tests/accessibility/test_package_review_inspection_accessibility.py` |
-| Documentation/evidence | Inspection, preflight, package-summary and RPC contracts; `README.md`, `KNOWN_LIMITATIONS.md`, this report, `TASKS.yaml`, and `BUNDLE_MANIFEST.json` |
+| Documentation/evidence | `docs/architecture/pdf-structural-inspection.md`, `docs/architecture/preflight-rule-engine.md`, `docs/architecture/package-summary.md`, `docs/schemas/worker-rpc-v1.md`, `README.md`, `KNOWN_LIMITATIONS.md`, `docs/development/pws0501-result.md`, `TASKS.yaml`, `BUNDLE_MANIFEST.json`: current contracts, limitations, acceptance evidence and task graph |
+| Existing quality evidence | `benchmarks/pws0207-quality-findings-v1.json`, `docs/development/scan-quality-evaluation.md`: rebind unchanged metric rows to the changed shared implementation and record provenance |
 
 ## Security, privacy, resources, and accessibility
 
@@ -132,6 +134,12 @@ case-schema migration, or license change is introduced. The current resource pol
 worker memory/CPU/processes, input size, graph work, temporary storage, and result frames.
 Sequential source inspection adds no unbounded queue or concurrent worker pool. Current
 manifest authority and complete source hashes are rechecked before results become current facts.
+
+The existing [development-runtime startup limitation](../../KNOWN_LIMITATIONS.md) still applies:
+Windows inventories and grants runtime access before worker creation. Those ACL passes have
+finite object/depth bounds but no elapsed-time guarantee, and can delay cancellation while a
+large development environment is prepared. Operation-deadline and active-worker cancellation
+evidence must not be read as a bound on that setup phase. This task does not change the launcher.
 
 Reports and UI findings contain states, IDs, stable codes, and numeric progress/counts. Metadata,
 comment/field/attachment contents, filenames, paths, script bodies, certificate data, raw parser
@@ -164,32 +172,85 @@ release guarantee. Unproved public release-interface facts remain `TBD` in their
 
 ## Verification results
 
-Broader registered checks and final task status are pending. The following focused results were
-observed during implementation; they overlap and must not be added into a unique-test total.
-Later final-state runs may supersede these provisional entries.
+Implementation checkpoint: `3b195294e05d212c1570d7a8e608cb8b564ffff2`.
+The later `988ec715021b846cee045344ede42d1c422228f0` changes only the existing quality baseline's
+revision binding and its provenance documentation. The baseline recorder and exact-revision
+validator confirmed that all eight metric rows, corpus/profile identities, and resource fields
+are unchanged. Six of its 27 bound shared implementation files changed for PWS-0501; the other
+21 retain their earlier bytes. The baseline's 40 tests passed in 61.27 seconds. No golden,
+algorithm, validator rule, or budget was relaxed.
+
+The following results overlap and must not be added into a unique-test total. The broad runs
+began before the last eight adapter cases were added; the final 241-test focus covers that
+change. All broad-run failures were resolved and their affected cases passed serially.
 
 | Scope | Command or exact test selection | Observed result |
 |---|---|---|
 | Application, UI, and focused accessibility | `uv run pytest tests/unit/test_package_workflow.py tests/unit/test_package_review_inspection.py tests/unit/test_package_export_backend_bridge.py tests/unit/test_package_export_window.py tests/accessibility/test_package_export_accessibility.py tests/accessibility/test_package_review_inspection_accessibility.py` | 55 passed in 2.69 s, after saved-signature-state wiring and cancellation/retry regressions |
 | Final combined domain/adapter/preflight/privacy/worker/storage focus | `python -m pytest -q tests/unit/test_pdf_inspection_domain.py tests/unit/test_pikepdf_adapter.py tests/unit/test_preflight_core_rules.py tests/unit/test_preflight_facts.py tests/security/test_preflight_privacy.py tests/unit/worker/test_committed_pdf_inspection.py tests/unit/worker/test_pdf_source_inspector.py tests/unit/worker/test_pdf_inspect_protocol.py tests/unit/worker/test_desktop_composition.py tests/integration/test_pdf_feature_inspection_storage_windows.py` | 241 passed in 10.63 s; supersedes the earlier 175 adapter/core/privacy, 17 storage, and 16 committed-broker focused runs |
-| Real Windows inspection worker | `.venv/Scripts/python.exe -m pytest -q tests/integration/test_pdf_inspection_worker_windows.py --durations=5` | 3 passed in 88.74 s; real AppContainer, reduced handles, and constrained committed feature inventory |
+| Earlier real Windows inspection worker | `.venv/Scripts/python.exe -m pytest -q tests/integration/test_pdf_inspection_worker_windows.py --durations=5` | 3 passed in 88.74 s before the final malformed-member change; superseded for final-source live evidence by the serial integration retry |
 | Registered accessibility suite | `.venv/Scripts/python.exe tools/dev.py test-accessibility` | 71 passed in 5.28 s |
+| Broad unit run | `python tools/dev.py test-unit` | 4,834 passed and 2 failed in 2,041.32 s; failures were the old baseline binding and a corpus-generation deadline during concurrent load |
+| Serial unit repair verification | `PYTEST_ADDOPTS='-k "test_checked_in_baseline_is_canonical_and_matches_current_corpus or test_generator_is_byte_deterministic_and_records_actual_production_checks" --tb=short --durations=5'`, then `python tools/dev.py test-unit` | Both selected tests passed in 189.40 s; 4,842 deselected. Both corpus generations completed with identical bytes and the original deadlines/goldens |
+| Broad integration run | `python tools/dev.py test-integration` | 476 passed, 17 failed, 10 skipped in 2,563.95 s; worker launch/preparation failures during overlapping suites; all 17 failures subsequently passed |
+| Serial integration repair verification | `PYTEST_ADDOPTS='--last-failed --last-failed-no-failures=none --tb=short --durations=10'`, then `python tools/dev.py test-integration` | All 17 selected cases passed in 5,616.83 s; exactly the 17 failed integration nodes were selected, with 41 other test files excluded by pytest's cache selection |
+| Earlier broad security attempt | `python tools/dev.py test-security` | 579 passed, 3 failed, 6 skipped in 443.09 s; the three live isolation cases met the conflicting-runtime ACL recovery refusal; superseded by the full serial run |
+| Final full security suite | `PYTEST_ADDOPTS='--tb=short --durations=8'`, then `python tools/dev.py test-security` | 582 passed, 6 capability skips, zero failures in 377.16 s; includes all three previously failing live isolation cases |
 
-Canonical format checking, lint, and strict typing passed; format/type checks covered 601 Python
-files. The final combined focus includes seven malformed-member regressions demonstrated failing
-before the fix, signature mismatch/binding cases, nine privacy canaries, source authority,
-termination ordering, sanitized errors, and storage recovery.
+Registered static commands passed: `format-check`, `lint`, `check-import-boundaries`, and
+`typecheck` through `python tools/dev.py`. Formatting and strict typing covered 601 Python files;
+the import check covered 13 layers and 207 source files. The final combined focus includes seven
+malformed-member regressions demonstrated failing before the fix, signature mismatch/binding
+cases, nine privacy canaries, source authority, termination ordering, sanitized errors, and
+storage recovery.
 
-The earlier broader unit/security/integration runs preceded the final malformed-member changes.
-They are not final-state evidence by themselves. The broader security attempt reported 579
-passed, 6 symlink-related skips, and 3 failures while a concurrent integration run held a
-conflicting staged-runtime ACL journal. A concurrent final four-test live-worker/package-pilot
-attempt met the same runtime-preparation refusal. These attempts do not count as passing final
-evidence. Serial security and refreshed staged-runtime live-worker/package-pilot reruns remain
-pending; the earlier isolated three-test live-worker pass retains only its stated scope.
+Registered validation also passed: `validate-schemas`, `validate-docs`, `validate-task-graph`,
+`validate-portfolio-boundary`, `validate-dependencies`, `validate-pillow-runtime`,
+`validate-m1-benchmark-report`, `validate-pws0208-resource-workload`,
+`validate-pdf-renderer-benchmark`, and `quality-self-test`. The graph has 82 tasks, 243 dependency
+edges, nine milestones, and 42 frozen decisions; the bundle contains 23 canonical files. All
+five deliberate quality violations were detected. `git diff --check` passed.
 
-Final registered results, fixture/schema/documentation/task/portfolio checks, and repository scans
-remain for the closing record. No unobserved result is counted as a pass.
+`python tools/dev.py validate-fixtures` and `python tools/dev.py scan-secrets` passed serially in
+a clean, full-history, single-branch clone at `3b19529`. Fixture validation covered 46 synthetic
+fixtures, 15 analytical, six image, and three overlay references, with 237,165 corpus bytes.
+Repository scans covered 2,662 historical blobs, 858 index blobs, and 888 tracked working files;
+the secret scan additionally checked 282 commit/tag objects and 2,697 historical path/blob
+pairs, with no non-ignored untracked file. Unrelated worktree snapshot refs were excluded by
+the branch clone, without changing the shared repository or scanner policy. Later changes
+only rebind the unchanged quality baseline and update documentation/task/bundle evidence.
+
+All live-worker suites on this host must run serially: even the unit renderer benchmark starts
+real workers. Overlapping suites with different staged runtime roots trigger the authenticated
+ACL recovery allowlist guard. An additional four-test inspection/pilot attempt met the same
+refusal and is not passing evidence. No journal, ACL check, resource budget, timeout, or golden
+was weakened to recover. Serial retries use the CI copy-owned CPython setup and locked
+environment; the M1 and organizer cases retain their full production runtime configuration.
+The final retry covered two M1 cases, two organizer cases, the package pilot, one export-adapter
+case, two export-worker cases, all three inspection-worker cases, four thumbnail-worker cases,
+and two qpdf-permission cases. The package pilot exercised fresh inspection and every package
+export mode. The final constrained inspection case verified feature states, privacy canaries,
+source/manifest hashes, worker termination, and temporary cleanup against the final source.
+
+The live cases were slow on this host: the cold-restart M1 round-trip took 2,057.24
+seconds, the two organizer cases 670.14 and 673.99 seconds, and the package pilot 837.02 seconds.
+The constrained inspection case took 105.32 seconds. These are observed test durations, not
+hardware-support or startup-latency guarantees. Runtime inventory/ACL preparation remained
+unchanged; the existing startup limitation described above is retained.
+
+The initial integration skips were three unavailable Windows link-creation cases, five absent
+admitted OCR runtime/environment cases, and two tests requiring a private PWS-0208 live-runner
+artifact stage. The final security skips were six unavailable file/directory link cases.
+These environment-specific omissions do not count as exercised scenarios or new OCR evidence.
+
+Automated agents reviewed the implementation during development and closure evidence at
+`988ec715`. The final 40-file list and evidence wording received an additional read-only check.
+No unresolved finding remained. This is automated agent review, not new human or manual NVDA
+acceptance.
+
+Closure changes only documentation, task evidence/status, and bundle hashes. The closing checks
+are `python tools/dev.py validate-schemas`, `validate-docs`, `validate-task-graph`,
+`validate-portfolio-boundary`, and `git diff --check`; their results are recorded in task evidence.
 
 ## Residual limits and task graph
 
@@ -198,6 +259,6 @@ content is absent. Unknown/unavailable facts stay visible. The task neither remo
 features nor verifies a derivative's privacy, validates signatures, repairs PDFs, or guarantees
 portal acceptance. Existing export verification remains separately required.
 
-PWS-0501 remains `in_progress` until final verification and task evidence are complete.
-PWS-0502 is the next task this implementation can unblock; it becomes dependency-ready only
-after PWS-0501 is accepted. No later task or milestone gate is marked complete by this report.
+PWS-0501 is `done`. PWS-0502 — Implement safe object/stream optimization baseline — is the next
+dependency-ready task and is marked `ready`. No PWS-0502 implementation or later milestone gate
+work is included in this change.

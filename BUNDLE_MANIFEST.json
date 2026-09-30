@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 319988,
-      "sha256": "be535f22beee26a990402432249e75ffe78c15789431a70236a8b913547df9d5"
+      "bytes": 324451,
+      "sha256": "f9358249c0cdd1f745deca92e35bb06a6d1ec032f3053cc2eae56ba2c6da6a0e"
     },
     {
       "path": "TASKS.schema.json",
@@ -130,8 +130,8 @@
     },
     {
       "path": "docs/development/pws0501-result.md",
-      "bytes": 16646,
-      "sha256": "c72106f13a8ca1f5f5b15a6096b14983ed7432860e3b98628e617dc068152fb4"
+      "bytes": 23338,
+      "sha256": "b56a3eb715799b6b0567d2121175925f95430be5abf31d8baba4868a696276d2"
     }
   ],
   "validation": {
@@ -141,11 +141,13 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0502"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0408 was accepted by the maintainer on 2026-09-30 and PWS-0409 passed its source-tree v0.1 pilot gate within the recorded evidence scope. PWS-0501 feature inspection is in progress; see docs/development/pws0501-result.md. Packaged-release facts remain TBD.",
+    "PWS-0408 was accepted by the maintainer on 2026-09-30 and PWS-0409 passed its source-tree v0.1 pilot gate within the recorded evidence scope. PWS-0501 feature inspection is done after automated review and composite verification; see docs/development/pws0501-result.md. PWS-0502 is the next ready task. Packaged-release facts remain TBD.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

@@ -3786,7 +3786,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0409
@@ -3819,17 +3819,65 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: "2026-09-30"
+    revision: 3b195294e05d212c1570d7a8e608cb8b564ffff2
+    commands:
+    - Final focused domain, adapter, preflight, privacy, broker, protocol and Windows storage
+      selection - 241 passed in 10.63 seconds. Exact selectors are in docs/development/pws0501-result.md
+    - python tools/dev.py test-unit - 4834 passed and 2 failed in the broad run. Both failures
+      passed in the serial selected retry (189.40 seconds); the final focus covers the eight
+      adapter cases added after broad collection. The revision-only quality baseline also passed
+      its 40 tests; no metric, golden output or deadline changed
+    - python tools/dev.py test-integration - 476 passed, 17 failed and 10 environment-specific
+      skips in the broad run. The serial --last-failed retry selected exactly those 17 failures
+      and passed all 17 in 5616.83 seconds, including final-source constrained inspection and
+      the full package pilot. The M1 and organizer tests retained their full production runtime
+    - python tools/dev.py test-security - final full serial run passed 582 tests with 6 unavailable
+      link-capability skips in 377.16 seconds. All three earlier live isolation failures passed
+    - python tools/dev.py test-accessibility - 71 passed; focused application, UI and accessibility
+      selection also passed 55 tests, including cancellation, retry, focus and doubled font size
+    - python tools/dev.py format-check; lint; check-import-boundaries; typecheck - passed;
+      601 formatted/typed Python files, 13 import layers and 207 source files
+    - python tools/dev.py validate-schemas; validate-docs; validate-task-graph;
+      validate-portfolio-boundary; validate-dependencies; validate-pillow-runtime;
+      validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test - passed
+    - python tools/dev.py validate-fixtures; scan-secrets - passed serially in a clean full-history
+      branch clone at 3b19529; 46 synthetic fixtures, 24 analytical/image/overlay references,
+      2662 historical blobs, 858 index blobs and 888 tracked working files. Detailed counts and
+      the later documentation/baseline-only evidence boundary are in the result report
+    - python tools/dev.py validate-schemas; validate-docs; validate-task-graph;
+      validate-portfolio-boundary; git diff --check - passed for final closure metadata
+    notes:
+    - See docs/development/pws0501-result.md for all 40 changed files, feature matrix, commands,
+      review findings and exact evidence scopes. This is composite local verification, not a
+      new full CI run. All broad-run failures were resolved and their affected cases passed
+    - Current pdf.inspect capability/report v2 adds metadata, annotation and form states; the
+      strict six-feature v1 report remains readable. Unknown and malformed structures retain
+      uncertainty. Raw PDF objects and values stay inside the restricted worker adapter
+    - Package review sequentially reinspects saved PDFs through authenticated immutable-source
+      leases and binds transient reports to current manifest/source authority. Cancellation and
+      failed refresh discard old export authority. Fresh signature-state mismatches block export
+      without relabeling saved sources or bypassing unsigned-derivative consent
+    - Malformed-member and private-exception-chain regressions, source integrity and recovery,
+      current protocol binding and constrained real-worker checks passed. No dependency, case
+      schema, resource budget, golden output, removal behavior or frozen decision was changed
+    - Source implementation is 3b19529; 988ec715 only rebinds unchanged quality metrics and records
+      provenance. Separate automated agents reviewed the implementation/evidence; this does not
+      claim new manual NVDA, hardware certification, privacy removal or packaged-release approval
+    - All live-worker suites must run serially on this host, including the unit renderer benchmark.
+      Overlapping staged runtimes triggered the authenticated ACL recovery guard. Serial retries
+      used the existing copy-owned CI setup without weakening controls. Development runtime
+      inventory/ACL setup can still delay startup and cancellation as documented in KNOWN_LIMITATIONS.md
+    - Standalone operation and PaperWorkShell data ownership are preserved; no sibling dependency,
+      portfolio adapter or public release-interface claim was added. PWS-0502 is the next ready task
 - id: PWS-0502
   milestone: M5
   title: Implement safe object/stream optimization baseline
   kind: implementation
   priority: P1
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0501
