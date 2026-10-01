@@ -275,6 +275,22 @@ python tools/pws0207_quality_evaluation.py record --revision <40-lowercase-hex> 
 
 ## Known limitations
 
+### PWS-0504 evidence replay
+
+The PWS-0504 package reservation change adds an optional argument to the two lazy
+broker wrappers in `src/paperworkshell/__main__.py`, which is an existing evaluated
+surface. The unchanged evaluator was replayed at
+`1c987f09ea2e49d1de5af19dc2829aee27ff1ec7`. The exact-revision recorder produced an
+artifact with only `revision` changed; all eight metrics, corpus, profile and policy
+fields matched the prior artifact. No heuristic, threshold, approved visual reference,
+or validation rule changed.
+
+Commands: `python tools/pws0207_quality_evaluation.py evaluate` and
+`python tools/pws0207_quality_evaluation.py record --revision
+1c987f09ea2e49d1de5af19dc2829aee27ff1ec7 --output output/pws0504-quality-rebind.json`.
+
+### Interpretation limits
+
 - Blur, clipping, blank, orientation, and duplicate evidence is calculated from the bounded
   at-most-256-pixel presentation, not from a full-resolution source or final export raster.
   Downsampling, interpolation, cleanup, contrast changes, and extreme aspect-ratio fitting can
