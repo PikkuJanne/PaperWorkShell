@@ -1,6 +1,6 @@
 # ADR 0013: Review exact compression candidates before publication
 
-- Status: Implemented; verification in progress for PWS-0505
+- Status: Accepted; implemented and verified for PWS-0505
 - Date: 2026-10-01
 - Decisions preserved: PWS-D024, PWS-D026, PWS-D030, PWS-D037, PWS-D041, PWS-D042
 - Builds on: [ADR 0011](0011-staged-pdf-image-reencoding.md) and

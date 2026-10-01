@@ -1,6 +1,14 @@
 # Task result — PWS-0505: compression preview, grayscale option, and legibility floor
 
-**Status:** review; Windows CI core passed; integration retry is required after a fixture correction and timeout.
+**Status:** done.
+
+Verified at `009380f57b51818b3f15907fcaa4e540fb5d21c8` by
+[Windows CI run 36904211692](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36904211692):
+5,475 unit, 706 security, 74 accessibility and 549 integration tests passed. Seven
+existing integration tests require unstaged OCR runtimes or private workload artifacts;
+no PWS-0505 test skipped. Full local verification and the keyboard/scaling visual review
+also passed. The final closure changes task state, this report, ADR status and bundle
+hashes only; runtime code and tests remain exactly those verified by CI.
 
 ## Scope and plan
 
@@ -45,7 +53,8 @@ unproved packaged-release facts remain `TBD`.
 
 ## Task graph
 
-PWS-0505 is in review. PWS-0506 remains planned until all required verification passes.
+PWS-0505 is done. PWS-0506 is dependency-ready and marked ready: define the conservative
+portal profile and compatibility matrix.
 
 ## Implementation and focused verification
 
@@ -69,7 +78,7 @@ checks; 75 dialog/window/backend/accessibility checks; 39 workflow/consent check
 an aggregate test count. The new regression cases were observed failing before their
 corrections. Registered lint, strict typecheck (657 files), format-check, import
 boundaries, schemas, task graph, documentation, dependency and portfolio checks passed
-at their implementation checkpoints. Full suites remain required for final acceptance.
+at their implementation checkpoints. Full-suite acceptance is recorded below.
 
 ### Native and visual evidence
 
@@ -89,8 +98,8 @@ explicit human review; it is not general readability certification. No golden wa
 
 Two native test setup expectations were corrected before acceptance: assignment dates
 must fit the manifest update time, and assembly does not promise to retain source title
-metadata. Neither required a production workaround. A final native run after the
-combined-cache admission correction is part of the full suite.
+metadata. Neither required a production workaround. The full local and corrected CI
+runs also passed the final combined-cache admission correction.
 
 The computer-use skill exercised the production dialog with captured worker pixels at
 `QT_SCALE_FACTOR=2`, 520 by 360 logical pixels. Keyboard selection/loading, Escape
@@ -126,7 +135,14 @@ updated while the suite was still running, making its recorded hash stale. Refre
 the canonical hash resolved that metadata error. The full local rerun passed 5,475
 tests and 1,208 subtests in 685.08 seconds using
 `python -m pytest -q tests/unit --tb=short`. The CI checkout was unaffected by this
-local documentation edit. Windows CI integration remains required for final acceptance.
+local documentation edit.
+
+The full local integration command
+`python -m pytest -q tests/integration --tb=short` passed 546 tests with ten existing
+environment-dependent skips in 4,647.42 seconds and exited successfully after cleanup.
+Its three extra skips relative to CI concern local symbolic-link privileges in import
+prechecks, template lookup and containment. The other seven prerequisites match CI.
+
 The unchanged scan-quality recorder and validator passed at the implementation
 revision; only the recorded revision changed, with all eight metrics identical.
 See [provenance](scan-quality-evaluation.md). The local pytest console launcher remains
@@ -136,7 +152,7 @@ working invocation. No host security setting was changed.
 ### Clean Windows CI
 
 [Run 36892591130](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36892591130)
-tests revision `b78447469ca02d1439b0703194df76e5980ffca6`. The core job passed in
+tested revision `b78447469ca02d1439b0703194df76e5980ffca6`. The core job passed in
 23 minutes 48 seconds using `python tools/dev.py check --ci-group core`: 5,475 unit,
 706 security and 74 accessibility tests passed with no skips. All six symbolic-link
 tests skipped locally ran successfully on the clean runner.
@@ -165,8 +181,39 @@ three compression-composition tests passed in 4.53 seconds afterward, using
 tests/unit/test_compression_review_composition.py --tb=short`.
 
 Comparison with the prior successful integration run found broadly slower native
-test groups (roughly 18–22%), consistent with a slower runner; a fresh complete run
-is still required. No timeout or resource limit was increased.
+test groups (17.2% across comparable heavy groups), consistent with a slower runner.
+This timing comparison alone does not establish its cause. No timeout or resource
+limit was increased, and the CI workflow was not changed.
+
+The corrected revision `009380f57b51818b3f15907fcaa4e540fb5d21c8` passed
+[run 36904211692](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36904211692):
+
+| Command | Result |
+|---|---|
+| `python tools/dev.py check --ci-group core` | Pass: 5,475 unit, 706 security and 74 accessibility tests; all registered core gates and five quality self-tests passed. Job duration 29 minutes 48 seconds. |
+| `python tools/dev.py check --ci-group integration` | Pass: 549 tests, seven existing prerequisite skips, 3,756.82 seconds. Job duration 64 minutes 27 seconds. |
+
+The new native compression-review test, extended image-stage test, repaired three-case
+startup-recovery file, prepared package tests and existing target-size native test all
+passed. The seven integration skips cover unavailable admitted OCR runtimes and the
+existing PWS-0208 private artifact prerequisites. No new test was skipped.
+
+Registered `format-check`, `lint`, `typecheck`, `check-import-boundaries`,
+`validate-schemas`, `validate-dependencies`, `validate-task-graph`, `validate-docs`,
+`validate-portfolio-boundary`, `validate-pillow-runtime`, `validate-m1-benchmark-report`,
+`validate-pws0208-resource-workload` and `validate-pdf-renderer-benchmark` also passed
+locally through `python tools/dev.py`. CI additionally passed the complete fixture,
+secret-scan and quality-self-test commands. Final metadata closure is revalidated with
+formatting, lint, schema, task-graph, documentation and portfolio checks.
+
+## Residual scope
+
+Lossy changes remain limited to eligible images in the supported ordinary-PDF subset.
+Other pipelines preserve their established output path and report unsupported reduction
+when appropriate. Previews are bounded, and at least one successful pair plus explicit
+acknowledgement is required for changed images. The floor does not certify readability;
+the user must inspect content. Full NVDA milestone acceptance and hardware certification
+are not claimed. See [ADR 0013](../adr/0013-compression-review-and-floor.md).
 
 ## Changed files
 

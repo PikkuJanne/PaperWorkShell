@@ -4113,7 +4113,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: review
+  status: done
   critical_path: false
   depends_on:
   - PWS-0503
@@ -4146,17 +4146,63 @@ tasks:
   - accessibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-01'
+    revision: 009380f57b51818b3f15907fcaa4e540fb5d21c8
+    commands:
+    - python tools/dev.py check --ci-group core
+    - python tools/dev.py check --ci-group integration
+    - python tools/dev.py format-check
+    - python tools/dev.py lint
+    - python tools/dev.py typecheck
+    - python tools/dev.py check-import-boundaries
+    - python tools/dev.py validate-schemas
+    - python tools/dev.py validate-dependencies
+    - python tools/dev.py validate-task-graph
+    - python tools/dev.py validate-docs
+    - python tools/dev.py validate-portfolio-boundary
+    - python tools/dev.py validate-pillow-runtime
+    - python tools/dev.py validate-m1-benchmark-report
+    - python tools/dev.py validate-pws0208-resource-workload
+    - python tools/dev.py validate-pdf-renderer-benchmark
+    - python -m pytest -q tests/unit --tb=short
+    - python -m pytest -q tests/security --tb=short
+    - python -m pytest -q tests/accessibility --tb=short
+    - python -m pytest -q tests/integration --tb=short
+    - python -m pytest -q tests/integration/test_desktop_startup_recovery_windows.py tests/unit/test_compression_review_composition.py --tb=short
+    notes:
+    - Implemented and verified on codex/pws-0505-compression-preview. See docs/development/pws0505-result.md,
+      docs/architecture/compression-review.md and docs/adr/0013-compression-review-and-floor.md.
+    - Private preparation shows measured current, required and proposed sizes, all affected pages and actual
+      image properties. Restricted workers render the original and exact retained candidate; publication uses
+      those same verified bytes after a successful changed-page preview and explicit acknowledgement.
+    - Color-preserving policy version 1 keeps its meaning. Explicit Allow grayscale selects version 2 with
+      at most four attempts and the fixed 200 dpi/JPEG80 floor. There is no below-floor override or readability
+      guarantee. Unsafe targets remain blocked with actionable alternatives.
+    - Review has no timeout or retained worker. Processing uses fresh bounded deadlines, central ResourcePolicy
+      limits, a shared heavy-operation gate, retained-stage reservations and combined evidence accounting.
+      Signed-source consent, stale case/mode/destination/color changes, cancellation and cleanup are covered.
+    - Full Windows CI https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36904211692 passed at revision
+      009380f57b51818b3f15907fcaa4e540fb5d21c8 with 5475 unit, 706 security, 74 accessibility and 549 integration
+      passes. Seven existing OCR/private-artifact prerequisites skipped; no PWS-0505 test skipped. All core
+      validators, fixture checks, secret scans and five quality self-tests passed.
+    - Full local suites passed 5475 unit, 700 security, 74 accessibility and 546 integration tests, plus 1718
+      subtests. Existing local symbolic-link limitations explain the additional skips. The initial CI timeout
+      and stale startup fixture were diagnosed; the corrected fixture preserves recovery order and strict
+      production validation. No CI timeout, resource budget, host policy or assertion was weakened.
+    - Real constrained worker evidence verified a 192427-byte baseline and 25757-byte grayscale candidate
+      against a 96311-byte limit, exact hashes, qpdf/reopen checks and unchanged originals. Visual review found
+      softer small print and lost image color cues. Keyboard loading, cancellation/retry, focus scrolling,
+      acknowledgement and export intent passed at 200 percent scaling. No golden or real applicant fixture changed.
+    - Standalone operation and product-owned case data are preserved, with no sibling dependency, new
+      dependency, migration or release-interface claim. Unproved release facts remain TBD. Closure changes
+      task/evidence documentation and bundle hashes only; runtime and tests match the successful CI revision.
 - id: PWS-0506
   milestone: M5
   title: Define conservative portal profile and compatibility matrix
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0501
