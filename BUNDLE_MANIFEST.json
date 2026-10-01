@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 332121,
-      "sha256": "30344205871be3de17a02eecd7a01b5f056489db11d7efd2b4a7fb48944e4d44"
+      "bytes": 335761,
+      "sha256": "a4a2719c8e88fa6cf9b67d18c2febf3b556ed3f23c3a9b596f2add30d00bc69d"
     },
     {
       "path": "TASKS.schema.json",
@@ -155,8 +155,8 @@
     },
     {
       "path": "docs/adr/0012-target-size-search.md",
-      "bytes": 5104,
-      "sha256": "dd1785e7194e3bcd1202f9509e72bfd7826488ace9eb5f84afef404dd66f06ee"
+      "bytes": 5088,
+      "sha256": "cd8aaa52960ebe08ce8c34ea56660684c02d0963ed5c6894a2959d0bce75beb5"
     },
     {
       "path": "docs/architecture/target-size-export.md",
@@ -165,8 +165,8 @@
     },
     {
       "path": "docs/development/pws0504-result.md",
-      "bytes": 15062,
-      "sha256": "820a5bb69e7a1c1e4406b053afe3aa3521fd23d790349c7b86d165747fb9ca26"
+      "bytes": 16682,
+      "sha256": "addec4c004ab0066548ba479e17bbf005d53518ceffdfd9e854438821b8a7b65"
     }
   ],
   "validation": {
@@ -176,11 +176,13 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0505"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0504 target-size policy and package integration are implemented with verification in progress. PWS-0503 remains done. See docs/development/pws0504-result.md. Packaged-release facts remain TBD.",
+    "PWS-0504 target-size policy and package integration are done after full Windows CI and synthetic visual verification. PWS-0505 compression preview, grayscale option and legibility floor is ready. See docs/development/pws0504-result.md. Standalone operation and case-data ownership are preserved; packaged-release facts remain TBD.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

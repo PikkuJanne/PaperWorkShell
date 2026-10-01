@@ -1,6 +1,6 @@
 # Task result — PWS-0504: target-size search and constraint-aware export policy
 
-**Status:** review; final regression verification in progress.
+**Status:** done.
 
 ## Scope and plan
 
@@ -40,7 +40,20 @@ signed-source consent, and immutable originals. PWS-0505 owns user-facing previe
 - Full repository formatting, lint, boundaries, typing, unit/integration/security/
   accessibility suites and schema/task/docs/portfolio/resource/privacy gates.
 
-## Current evidence
+## Final acceptance
+
+Full Windows CI passed at revision `3c3a2a407568d22fecf8491d7144ffd54bd74ed1`:
+[run 36877251869](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36877251869).
+The registered `python tools/dev.py check --ci-group core` and
+`python tools/dev.py check --ci-group integration` commands passed: 5,322 unit,
+686 security, 71 accessibility and 533 integration tests. Seven existing integration
+tests require unstaged OCR runtimes or private workload artifacts; no new test skipped.
+Formatting, lint, typing, import boundaries, all registered core validators, fixture
+and secret scans, and all five quality self-tests passed. The final metadata closure
+changes task state, this report, the ADR status and bundle hashes only; runtime code
+and tests remain exactly those verified by CI.
+
+## Verification evidence and resolved regressions
 
 Implementation checkpoint: `1c987f09ea2e49d1de5af19dc2829aee27ff1ec7`.
 
@@ -101,7 +114,7 @@ tests/integration/test_target_size_worker_windows.py
 tests/integration/test_pdf_image_stage_worker_windows.py
 tests/unit/worker/test_pdf_image_stage_operation.py --tb=short`. This includes the
 unchanged pilot that failed before the correction, all three target-size output modes,
-existing image-stage behavior and native operation checks. Full CI remains pending.
+existing image-stage behavior and native operation checks. Final CI is recorded below.
 
 The second full CI run is recorded at
 [run 36865827012](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36865827012),
@@ -127,7 +140,19 @@ Registered formatting, lint, import boundaries and typing passed afterward.
 The unchanged live regression
 `test_live_output_bound_failure_is_correlated_terminated_clean_and_private` passed
 in 29.77 seconds, proving correlated failure, worker termination, cleanup and privacy
-with the one-byte limit. Full corrected-revision CI remains the final gate.
+with the one-byte limit.
+
+Corrected-revision CI is recorded at
+[run 36877251869](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36877251869),
+revision `3c3a2a407568d22fecf8491d7144ffd54bd74ed1`. Its core job passed in 23 minutes
+16 seconds: 5,322 unit, 686 security and 71 accessibility tests, with no skips. All
+registered core gates passed, including fixture/reference validation, reachable-history
+and working-tree secret scanning, and all five quality self-tests. Integration passed
+533 tests with seven existing prerequisite skips in 4,550.44 seconds. The integration
+job completed in 1 hour 17 minutes 30 seconds, within its unchanged 90-minute limit.
+The unchanged package pilot, one-byte failure scenario and real target-size worker
+test all passed. The optional PWS-0208 live workload was not run; its frozen version 1
+contract and evidence were preserved.
 
 ### Synthetic visual inspection
 
@@ -203,5 +228,5 @@ result when the target cannot be reached. Preview and user review remain PWS-050
 
 ## Task graph
 
-PWS-0504 remains open until verification is complete. Next dependency-ready task upon
-completion: PWS-0505.
+PWS-0504 is done. PWS-0505 is now dependency-ready and marked ready: compression
+preview, grayscale option, and legibility floor.

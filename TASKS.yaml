@@ -4035,7 +4035,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0407
@@ -4066,17 +4066,54 @@ tasks:
   - portal-rules
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-01'
+    revision: 3c3a2a407568d22fecf8491d7144ffd54bd74ed1
+    commands:
+    - python tools/dev.py check --ci-group core
+    - python tools/dev.py check --ci-group integration
+    - uv run --locked --no-sync python tools/dev.py format-check
+    - uv run --locked --no-sync python tools/dev.py lint
+    - uv run --locked --no-sync python tools/dev.py typecheck
+    - uv run --locked --no-sync python tools/dev.py check-import-boundaries
+    - uv run --locked --no-sync python tools/dev.py validate-schemas
+    - uv run --locked --no-sync python tools/dev.py validate-dependencies
+    - uv run --locked --no-sync python tools/dev.py validate-task-graph
+    - uv run --locked --no-sync python tools/dev.py validate-docs
+    - uv run --locked --no-sync python tools/dev.py validate-portfolio-boundary
+    - python -m pytest -q tests/integration/test_package_pilot.py tests/integration/test_target_size_worker_windows.py tests/integration/test_pdf_image_stage_worker_windows.py tests/unit/worker/test_pdf_image_stage_operation.py --tb=short
+    - python -m pytest -q tests/integration/test_flattened_pdf_export_worker_windows.py::test_live_output_bound_failure_is_correlated_terminated_clean_and_private --tb=short
+    notes:
+    - Implemented and verified on codex/pws-0504-target-size-search. See docs/development/pws0504-result.md,
+      docs/architecture/target-size-export.md and docs/adr/0012-target-size-search.md.
+    - The versioned policy starts with safe optimization and then tries Preserve 300, 240 and 200 in order.
+      Combined PDFs, separate PDFs and ZIP archives use actual verified sizes, one shared bounded deadline,
+      and exact prepublication evidence. Unsupported pipelines retain their original intent.
+    - Resource admission accounts for retained stages, source inputs, live plan/status sections and output overlap.
+      Dynamic output capacity fits existing ResourcePolicy budgets; no budget or CI limit was raised.
+      Tiny positive caps retain correlated worker failures and deterministic cleanup.
+    - Full Windows CI https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36877251869 passed
+      at revision 3c3a2a407568d22fecf8491d7144ffd54bd74ed1 with 5322 unit, 686 security, 71 accessibility
+      and 533 integration passes. Seven existing integration skips require unstaged OCR/private-artifact prerequisites;
+      the package pilot, one-byte worker regression and new constrained target-size test passed without skips.
+    - All registered core gates passed, including fixture/reference validation, published-history and working-tree
+      secret scans, and five quality self-tests. Focused final broker/reservation/security regressions passed 114 tests;
+      the unchanged live one-byte failure test passed in 29.77 seconds.
+    - Real-worker capacity regression verification passed 14 tests in 698.90 seconds. Synthetic visual inspection
+      verified a 483046-byte safe baseline and 79088-byte Preserve 300 result, with intact text/geometry and identical
+      vector-page pixels. No approved golden, frozen workload or source document was changed.
+    - Standalone operation and case-data ownership are preserved. No sibling dependency, new dependency,
+      migration, UI workflow or release-interface claim is introduced; unproved release facts remain TBD.
+      PWS-0505 owns preview/user review and is now marked ready.
+    - Closure changes task state, evidence documentation, ADR status and bundle hashes only; runtime and tests
+      remain those verified by successful CI. Local Application Control and symbolic-link limitations are documented;
+      no host policy, validator, ref or test assertion was weakened to bypass them.
 - id: PWS-0505
   milestone: M5
   title: Add compression preview, grayscale option, and legibility floor
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
   - PWS-0503

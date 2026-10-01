@@ -1,6 +1,6 @@
 # ADR 0012: Bounded search through verified export policies
 
-- Status: Implemented; verification in progress for PWS-0504
+- Status: Accepted and verified for PWS-0504
 - Date: 2026-10-01
 - Decisions preserved: PWS-D009, PWS-D012, PWS-D013, PWS-D024, PWS-D029,
   PWS-D030, PWS-D036, PWS-D037, PWS-D041, PWS-D042
