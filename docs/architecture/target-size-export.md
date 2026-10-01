@@ -54,8 +54,10 @@ errors and remove private stages; the same snapshot can be retried.
 
 Workers run sequentially with one shared search deadline and existing ResourcePolicy
 limits. Previously staged output bytes are subtracted before admitting another worker;
-output sections and staged copies overlap within the remaining allowance. Baseline
-analysis and current report memory are bounded, and candidates are read in bounded
+output sections and staged copies overlap within the remaining allowance. Output
+capacity is lowered to fit the space remaining after inputs, plan and evidence are
+accounted for. The configured output maximum is a ceiling. Baseline analysis and
+current report memory are bounded, and candidates are read in bounded
 chunks. Nothing loads a complete packet as full-resolution rasters.
 
 Originals, manifest intent, signed-source consent, no-network processing, and no-replace

@@ -139,6 +139,13 @@ handle, and rechecks exact size and digest. ZIP bytes are generated directly int
 destination-local stage, avoiding an unaccounted archive-sized intermediate copy. The sum of
 retained member and archive stages is bounded by `ResourcePolicy.maximum_temporary_storage_bytes`.
 
+PWS-0504 adds a reservation port: retained destination-stage bytes reduce the next PDF worker's
+actual temporary-storage allowance. Source, raster, status/evidence and output-copy overlap
+remain subject to admission before processing. A caller may also supply a review callback that
+validates additional policy evidence while all outputs remain private, before any public rename.
+The explicit [target-size search](target-size-export.md) uses these ports for its fixed sequence
+of measured package attempts; ordinary desktop export keeps its existing lossless image policy.
+
 Before publication, every proposed top-level name is checked for an existing destination. If any
 exists, no new artifact is committed and the existing file is not replaced. Publication uses
 no-replace renames and final-name identity/digest reopen checks.

@@ -145,8 +145,8 @@
     },
     {
       "path": "docs/architecture/pdf-image-stages.md",
-      "bytes": 8906,
-      "sha256": "87aeb2acd06dc762b1d1b748b35db60946c300f203c811f625f715ef52d8f972"
+      "bytes": 9277,
+      "sha256": "4e86770a8a066fa8099d14dd28e6df2be2948a61ff8658fa0e80cf1c004630cf"
     },
     {
       "path": "docs/development/pws0503-result.md",
@@ -160,13 +160,13 @@
     },
     {
       "path": "docs/architecture/target-size-export.md",
-      "bytes": 3816,
-      "sha256": "207d7c5b6b56e0b808d62c5ef9b0946f0a7cc077715c400ac0aeb0734a06daa3"
+      "bytes": 3965,
+      "sha256": "9117767cb7ea39860f3a16759ef373da6499868acf06dfa124cb1041dc24ee29"
     },
     {
       "path": "docs/development/pws0504-result.md",
-      "bytes": 4441,
-      "sha256": "8ab83278c25aae51e260057682038ad6ae40d1f13daae741407aa5a10f730046"
+      "bytes": 12407,
+      "sha256": "b18a3b17057a87cbb5e3623f51a9f7655d4233c9f4f529bca5c13522072577b9"
     }
   ],
   "validation": {

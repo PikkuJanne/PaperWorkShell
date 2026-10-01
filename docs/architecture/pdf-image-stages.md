@@ -23,7 +23,8 @@ the baseline. Attempts do not successively recompress the preceding lossy output
 The result is a transient `VerifiedPdfImageStageCandidate` with bounded reads, analysis and stage
 evidence, plus a separately identified baseline verification report. The caller must close it.
 This operation does not commit a destination, change case/history state, or add a UI action.
-PWS-0504 owns target-size search; PWS-0505 owns affected-page preview and the user-facing
+[PWS-0504 target-size search](target-size-export.md) consumes this operation;
+PWS-0505 owns affected-page preview and the user-facing
 legibility/floor/override workflow. Existing export paths keep their lossless image policy.
 
 ## Analysis and eligibility
@@ -121,6 +122,11 @@ free-space checks precede expensive work. Cancellation, deadline expiry, low dis
 parser/decoder failures and invalid evidence discard private outputs and preserve immutable
 sources. Cleanup and fresh retry are part of verification; existing development runtime-startup
 delays still apply.
+
+The broker also accepts a bounded reservation for destination stages retained by a package
+search. It subtracts those bytes from the next worker's actual temporary-storage authority
+before allocating output sections. This preserves one shared ResourcePolicy allowance across
+sequential PDF generation and destination staging.
 
 ## Compatibility and standalone boundary
 
