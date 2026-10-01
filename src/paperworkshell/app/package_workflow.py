@@ -7,7 +7,7 @@ are never promoted to full inspection or quality evidence.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -26,6 +26,7 @@ from paperworkshell.app.source_ingest import (
     DeadlineProbe,
 )
 from paperworkshell.domain.checklist import ChecklistCommandHistory, ChecklistDefinition
+from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import ManifestRepository, ManifestSnapshot
 from paperworkshell.domain.package_summary import PackageSummary
@@ -41,6 +42,7 @@ from paperworkshell.domain.signed_source_policy import (
     build_signed_source_modification_review,
 )
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
+from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.preflight.core_rules import core_preflight_rules
 from paperworkshell.preflight.engine import PreflightEngine, PreflightEvaluation
 from paperworkshell.preflight.facts import (
@@ -68,6 +70,7 @@ from paperworkshell.preflight.models import (
     PreflightScope,
     PreflightScopeCatalog,
     PreflightScopeKind,
+    PreflightSeverity,
 )
 from paperworkshell.preflight.package_planner import (
     PackageExportPlan,
@@ -162,6 +165,7 @@ class PackageReviewState:
     export_allowed: bool
     signed_source_confirmation_required: bool
     human_review_required: bool = True
+    compression_allowed: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -180,6 +184,7 @@ class PackageReviewState:
                     self.export_allowed,
                     self.signed_source_confirmation_required,
                     self.human_review_required,
+                    self.compression_allowed,
                 )
             )
         ):
@@ -240,6 +245,48 @@ class PackageExportPort(Protocol):
     ) -> str: ...
 
 
+class CompressionReviewPort(Protocol):
+    """Keep verified private bytes across an untimed, explicit user review."""
+
+    def prepare(
+        self,
+        snapshot: ManifestSnapshot,
+        template: TemplateSnapshot,
+        definition: ChecklistDefinition,
+        preflight: PreflightEvaluation,
+        plan: PackageExportPlan,
+        destination_parent: Path,
+        *,
+        color_choice: TargetSizeColorChoice,
+        human_review_confirmed: bool,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: Callable[[int, int], None],
+    ) -> CompressionReviewState: ...
+
+    def preview_page(
+        self,
+        review_id: UUID,
+        output_key: str,
+        page_index: int,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> CompressionPagePreview: ...
+
+    def commit(
+        self,
+        review_id: UUID,
+        snapshot: ManifestSnapshot,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: Callable[[int, int], None],
+    ) -> PackageSummary: ...
+
+    def discard(self) -> None: ...
+
+
 @dataclass(slots=True, repr=False)
 class _Review:
     snapshot: ManifestSnapshot
@@ -265,6 +312,7 @@ class PackageWorkflowService:
         exporter: PackageExportPort,
         summary_builder: PackageSummaryBuilder,
         source_inspector: PackageSourceInspectionPort | None = None,
+        compression: CompressionReviewPort | None = None,
     ) -> None:
         self._repository = repository
         self._loader = loader
@@ -273,6 +321,9 @@ class PackageWorkflowService:
         self._exporter = exporter
         self._builder = summary_builder
         self._source_inspector = source_inspector
+        self._compression = compression
+        self._compression_state: CompressionReviewState | None = None
+        self._compression_previewed = False
         self._active: _Review | None = None
         self._refresh_snapshot: ManifestSnapshot | None = None
         self._summary: PackageSummary | None = None
@@ -285,6 +336,10 @@ class PackageWorkflowService:
     def current_snapshot(self) -> ManifestSnapshot | None:
         """Backend-only authority, including any durable signed-source consent."""
         return self._refresh_snapshot if self._active is None else self._active.snapshot
+
+    @property
+    def current_review(self) -> PackageReviewState:
+        return self._require_current().state
 
     def begin(
         self,
@@ -311,6 +366,7 @@ class PackageWorkflowService:
         if snapshot is None:
             reject_package_workflow(PackageWorkflowErrorCode.REVIEW_REQUIRED)
         self._require_snapshot_current(snapshot)
+        self.discard_compression()
         # Retain only saved authority for retry. A failed refresh discards the old
         # results and export permission instead of retaining a stale review.
         self._active = None
@@ -323,9 +379,222 @@ class PackageWorkflowService:
         return replacement.state
 
     def cancel(self) -> None:
+        self.discard_compression()
         self._active = None
         self._refresh_snapshot = None
         self._summary = None
+
+    def prepare_compression(
+        self,
+        destination_parent: Path,
+        *,
+        review_id: UUID,
+        color_choice: TargetSizeColorChoice,
+        signed_source_confirmed: bool,
+        human_review_confirmed: bool,
+        cancellation: CancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+        snapshot_changed: Callable[[ManifestSnapshot], None] | None = None,
+    ) -> CompressionReviewState:
+        service = self._require_compression_service()
+        self.discard_compression()
+        review = self._require_current()
+        if type(review_id) is not UUID or review_id != review.state.review_id:
+            reject_package_workflow(PackageWorkflowErrorCode.STALE)
+        if type(color_choice) is not TargetSizeColorChoice:
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        if self._summary is not None or not review.state.compression_allowed or review.plan is None:
+            reject_package_workflow(PackageWorkflowErrorCode.BLOCKED)
+        if human_review_confirmed is not True or (
+            review.state.signed_source_confirmation_required and signed_source_confirmed is not True
+        ):
+            reject_package_workflow(PackageWorkflowErrorCode.REVIEW_REQUIRED)
+        probe = _checked_compression_cancellation(cancellation)
+        if probe():
+            reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
+        if not isinstance(destination_parent, Path) or not destination_parent.is_absolute():
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        actual_plan = self._plan(review, destination_parent)
+        if actual_plan != review.plan:
+            reject_package_workflow(PackageWorkflowErrorCode.DESTINATION_CHANGED)
+        if review.state.signed_source_confirmation_required:
+            _outcome, saved = SignedSourceConfirmationService(
+                self._repository
+            ).decide_with_snapshot(
+                review.signature,
+                SignedSourceConfirmationChoice.CREATE_UNSIGNED_DERIVATIVE,
+            )
+            # Consent is durable even if presentation or reevaluation then fails.
+            # Retain the saved snapshot for refresh, never the old plan's authority.
+            self._active = None
+            self._refresh_snapshot = saved
+            if snapshot_changed is not None:
+                snapshot_changed(saved)
+            replacement = self._review(
+                saved,
+                review.state.selected_mode,
+                cancellation=probe,
+                inspections=SourceInspectionsPreflightFacts(
+                    saved.case_id,
+                    saved.revision,
+                    review.inspections.inspections,
+                ),
+            )
+            # This is the same logical review after its own consent write. Every
+            # candidate still binds the new saved revision/digest/CAS authority.
+            replacement.state = replace(replacement.state, review_id=review_id)
+            review = replacement
+            self._active = review
+            self._refresh_snapshot = None
+            actual_plan = self._plan(review, destination_parent)
+        self._require_current()
+        if not review.state.compression_allowed:
+            reject_package_workflow(PackageWorkflowErrorCode.BLOCKED)
+        try:
+            state = service.prepare(
+                review.snapshot,
+                review.template,
+                review.definition,
+                review.evaluation,
+                actual_plan,
+                destination_parent,
+                color_choice=color_choice,
+                human_review_confirmed=True,
+                # The service enforces the search policy's ResourcePolicy-derived
+                # duration. Its clock is never retained as a human review deadline.
+                deadline=lambda: False,
+                cancellation=probe,
+                progress=progress if progress is not None else lambda _a, _b: None,
+            )
+            self._require_current()
+            if probe():
+                reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
+            if (
+                type(state) is not CompressionReviewState
+                or (state.case_id, state.manifest_revision)
+                != (review.snapshot.case_id, review.snapshot.revision)
+                or state.color_choice is not color_choice
+            ):
+                reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+            self._compression_state = state
+            return state
+        except BaseException:
+            self.discard_compression()
+            raise
+
+    def preview_compression_page(
+        self,
+        review_id: UUID,
+        output_key: str,
+        page_index: int,
+        *,
+        cancellation: CancellationProbe | None = None,
+    ) -> CompressionPagePreview:
+        state = self._require_compression_review(review_id)
+        if type(output_key) is not str or type(page_index) is not int:
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        page = next(
+            (
+                page
+                for page in state.affected_pages
+                if page.output_key == output_key and page.page_index == page_index
+            ),
+            None,
+        )
+        if page is None:
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        probe = _checked_compression_cancellation(cancellation)
+        if probe():
+            reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        result = self._require_compression_service().preview_page(
+            review_id,
+            output_key,
+            page_index,
+            deadline=lambda: monotonic() >= expires,
+            cancellation=probe,
+        )
+        self._require_compression_review(review_id)
+        if probe():
+            reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
+        if (
+            type(result) is not CompressionPagePreview
+            or (result.review_id, result.output_key, result.page_index)
+            != (review_id, output_key, page_index)
+            or (result.before.case_id, result.before.page_id) != (state.case_id, page.page_id)
+        ):
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        self._compression_previewed = True
+        return result
+
+    def commit_compression(
+        self,
+        review_id: UUID,
+        *,
+        human_review_confirmed: bool,
+        cancellation: CancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> PackageSummary:
+        state = self._require_compression_review(review_id)
+        if human_review_confirmed is not True or (
+            state.affected_pages and not self._compression_previewed
+        ):
+            reject_package_workflow(PackageWorkflowErrorCode.REVIEW_REQUIRED)
+        if not state.export_allowed:
+            reject_package_workflow(PackageWorkflowErrorCode.BLOCKED)
+        review = self._require_current()
+        probe = _checked_compression_cancellation(cancellation)
+        if probe():
+            reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        try:
+            summary = self._require_compression_service().commit(
+                review_id,
+                review.snapshot,
+                deadline=lambda: monotonic() >= expires,
+                cancellation=probe,
+                progress=progress if progress is not None else lambda _a, _b: None,
+            )
+        finally:
+            # Publication consumes this authority even when cleanup or writing fails.
+            # The service retains any cleanup handle until explicit discard/retry.
+            self._compression_state = None
+            self._compression_previewed = False
+        if type(summary) is not PackageSummary:
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        self._summary = summary
+        self._compression_state = None
+        self._compression_previewed = False
+        return summary
+
+    def discard_compression(self) -> None:
+        if self._compression is not None:
+            self._compression.discard()
+        self._compression_state = None
+        self._compression_previewed = False
+
+    def _require_compression_service(self) -> CompressionReviewPort:
+        if self._compression is None:
+            reject_package_workflow(PackageWorkflowErrorCode.UNAVAILABLE)
+        return self._compression
+
+    def _require_compression_review(self, review_id: UUID) -> CompressionReviewState:
+        try:
+            review = self._require_current()
+        except BaseException:
+            self.discard_compression()
+            raise
+        state = self._compression_state
+        if (
+            type(review_id) is not UUID
+            or state is None
+            or state.review_id != review_id
+            or state.manifest_revision != review.snapshot.revision
+            or state.case_id != review.snapshot.case_id
+            or self._summary is not None
+        ):
+            reject_package_workflow(PackageWorkflowErrorCode.STALE)
+        return state
 
     def export(
         self,
@@ -338,6 +607,7 @@ class PackageWorkflowService:
         progress: Callable[[int, int], None] | None = None,
         snapshot_changed: Callable[[ManifestSnapshot], None] | None = None,
     ) -> PackageSummary:
+        self.discard_compression()
         review = self._require_current()
         if type(review_id) is not UUID or review_id != review.state.review_id:
             reject_package_workflow(PackageWorkflowErrorCode.STALE)
@@ -511,6 +781,16 @@ class PackageWorkflowService:
             selected,
             plan is not None and not evaluation.report.has_blocking_errors,
             bool(signature.pending_source_ids),
+            compression_allowed=(
+                self._compression is not None
+                and plan is not None
+                and not any(
+                    finding.severity is PreflightSeverity.BLOCKING_ERROR
+                    and finding.code
+                    not in {"PORTAL_TOTAL_SIZE_EXCEEDED", "PORTAL_FILE_SIZE_EXCEEDED"}
+                    for finding in evaluation.report.findings
+                )
+            ),
         )
         _review_checkpoint(deadline, probe)
         self._require_snapshot_current(snapshot)
@@ -570,6 +850,22 @@ class PackageWorkflowService:
         return SourceInspectionsPreflightFacts(
             snapshot.case_id, snapshot.revision, tuple(inspections)
         )
+
+
+def _checked_compression_cancellation(cancellation: CancellationProbe | None) -> CancellationProbe:
+    if cancellation is not None and not callable(cancellation):
+        reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+
+    def checked() -> bool:
+        try:
+            value = False if cancellation is None else cancellation()
+        except BaseException:
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        if type(value) is not bool:
+            reject_package_workflow(PackageWorkflowErrorCode.INVALID)
+        return value
+
+    return checked
 
 
 def _review_checkpoint(deadline: DeadlineProbe, cancellation: CancellationProbe) -> None:

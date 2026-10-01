@@ -21,8 +21,10 @@ This describes the current development checkout, not a packaged release.
   instructions and submit it themselves.
 - Form entry uses visual overlays. Arbitrary AcroForm editing, dynamic XFA, JavaScript,
   calculation-heavy forms, and cryptographic signature fields are outside v0.1 editing.
-- Target-size compression and broader compatibility/sanitization work remain in
-  Milestone 5. A size limit can block export; it does not guarantee a smaller output.
+- Target-size compression supports the ordinary PDF pipeline. Groups requiring image
+  intake, crop, overlays, scan cleanup or OCR retain their existing verified output
+  and may remain too large. Broader compatibility/sanitization work remains in
+  Milestone 5. A size limit does not guarantee a smaller output.
 - Safe object/stream optimization may keep the same size when the verified baseline is
   already compact or the temporary-storage budget cannot hold another candidate. It does
   not change image resolution/quality or remove reachable metadata, annotations, or
@@ -32,12 +34,16 @@ This describes the current development checkout, not a packaged release.
 - The conservative optimization profile requires opaque stream encodings to remain
   exact. The pinned writer rewrites ASCIIHex streams as Flate streams; this case fails
   export during comparison and preserves the originals and existing exports.
-- Image re-encoding is an explicit internal worker operation. It currently supports opaque
+- Image re-encoding supports opaque
   eight-bit RGB/gray images with known direct-page placement and page-local resources. Shared
   images, inherited resource aliases, masks, forms, unsupported color/filter semantics, and
   uncertain placement remain unchanged.
-  Its 200 dpi floor does not prove legibility; size estimates are rough pixel-area estimates.
-  Target search, preview controls, and the user review/override workflow remain pending.
+  The size-reduction review shows measured candidate sizes and actual page renders.
+  Its fixed 200 dpi/JPEG80 floor does not prove legibility, and there is no override
+  below the floor. Grayscale requires an explicit choice and affects only eligible
+  images. Bounded previews may hide details visible at full resolution; the review
+  acknowledgement does not claim every affected page was inspected.
+  See the [review workflow](docs/architecture/compression-review.md).
   See the [image stage contract](docs/architecture/pdf-image-stages.md).
 
 ## Guided package review and export

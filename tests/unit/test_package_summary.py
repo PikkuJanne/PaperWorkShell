@@ -68,13 +68,16 @@ from paperworkshell.preflight.facts import (
 from paperworkshell.preflight.models import (
     PreflightAuthority,
     PreflightDependency,
+    PreflightFinding,
     PreflightInput,
     PreflightScope,
     PreflightScopeCatalog,
     PreflightScopeKind,
+    preflight_finding_sort_key,
 )
 from paperworkshell.preflight.package_planner import PackageExportPlan, build_package_export_plan
 from paperworkshell.preflight.portal_constraints import (
+    PORTAL_CONSTRAINT_FINDING_DEFINITIONS,
     PortalOutputMode,
     evaluate_portal_constraints,
     portal_constraint_profile_from_template,
@@ -450,6 +453,43 @@ def test_preview_does_not_claim_pdf_or_byte_verification_before_export() -> None
         "Final file sizes, PDF verification, and destination save checks have not been completed."
         in text
     )
+
+
+@pytest.mark.parametrize("code", ["PORTAL_FILE_SIZE_EXCEEDED", "PORTAL_TOTAL_SIZE_EXCEEDED"])
+def test_measured_success_resolves_only_prior_size_findings(code: str) -> None:
+    inputs = summary_inputs(warning_heavy=True)
+    definition = next(item for item in PORTAL_CONSTRAINT_FINDING_DEFINITIONS if item.code == code)
+    first, *remaining = inputs.preflight._cache_entries
+    assert inputs.plan is not None
+    scope = (
+        PreflightScope(PreflightScopeKind.OUTPUT, inputs.plan.pdfs[0].output_key, 1)
+        if code == "PORTAL_FILE_SIZE_EXCEEDED"
+        else PreflightScope(PreflightScopeKind.CASE, inputs.snapshot.case_id)
+    )
+    finding = PreflightFinding(first.rule_id, definition, scope)
+    entries = (
+        replace(
+            first,
+            findings=tuple(sorted((*first.findings, finding), key=preflight_finding_sort_key)),
+        ),
+        *remaining,
+    )
+    findings = tuple(
+        sorted((*inputs.preflight.report.findings, finding), key=preflight_finding_sort_key)
+    )
+    augmented = replace(
+        inputs,
+        preflight=replace(
+            inputs.preflight,
+            _cache_entries=entries,
+            report=replace(inputs.preflight.report, findings=findings),
+        ),
+    )
+    preview = augmented.build()
+    assert definition.message in preview.to_plain_text()
+    final = augmented.build(summary_outcome(augmented))
+    assert definition.message not in final.to_plain_text()
+    assert final.review_items == inputs.build(summary_outcome(inputs)).review_items
 
 
 @pytest.mark.parametrize("mode", tuple(PortalOutputMode))

@@ -88,6 +88,7 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementRequest,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex
+from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.image_pages import (
     ImagePagePreviewResult,
     ImagePagePreviewSnapshot,
@@ -115,6 +116,7 @@ from paperworkshell.domain.resource_policy import (
     select_resource_policy,
 )
 from paperworkshell.domain.signature_images import SignatureImageErrorCode
+from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.backend import (
     OperationCancellation,
@@ -126,6 +128,7 @@ from paperworkshell.ui.backend import (
     is_package_review_state_valid,
 )
 from paperworkshell.ui.checklist import ChecklistEditorDialog
+from paperworkshell.ui.compression_review import CompressionReviewDialog
 from paperworkshell.ui.constraints import ConstraintEditorDialog
 from paperworkshell.ui.models import (
     OrganizerPageListModel,
@@ -621,6 +624,15 @@ class PaperWorkShellWindow(QMainWindow):
         self._package_summary_save_operation_id: int | None = None
         self._package_cancellation: OperationCancellation | None = None
         self._package_release_failed = False
+        self._compression_dialog: CompressionReviewDialog | None = None
+        self._compression_destination: Path | None = None
+        self._compression_case_id: UUID | None = None
+        self._compression_signed = False
+        self._compression_human = False
+        self._compression_phase: str | None = None
+        self._compression_review_state: CompressionReviewState | None = None
+        self._compression_preview_request: tuple[UUID, str, int] | None = None
+        self._compression_pair_review_id: UUID | None = None
         self._signature_image_source_path: Path | None = None
         self._signature_image_page_id: UUID | None = None
         self._signature_image_prepare_operation_id: int | None = None
@@ -1215,6 +1227,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.package_progress.connect(self._package_progress)
         self._worker.package_review_cancelled.connect(self._package_review_cancelled)
         self._worker.package_summary_saved.connect(self._package_summary_saved)
+        self._worker.compression_ready.connect(self._compression_ready)
+        self._worker.compression_preview_ready.connect(self._compression_preview_ready)
         self._worker.signature_image_prepared.connect(self._signature_image_prepared)
         self._worker.signature_image_prepare_failed.connect(self._signature_image_prepare_failed)
         self._worker.signature_image_placed.connect(self._signature_image_placed)
@@ -1384,6 +1398,17 @@ class PaperWorkShellWindow(QMainWindow):
     def _state_changed(self, state: object) -> None:
         if type(state) is not OrganizerViewState:
             return
+        compression = self._compression_review_state
+        if compression is not None and (
+            state.case_id != compression.case_id
+            or state.revision != compression.manifest_revision
+            or state.autosave_pending
+        ):
+            self._compression_review_state = None
+            self._compression_pair_review_id = None
+            self._cancel_package_operation()
+            if self._compression_dialog is not None and self._package_export_operation_id is None:
+                self._compression_dialog.show_failure()
         dialog = self._scan_review_dialog
         if dialog is not None and (
             state.case_id != dialog.draft.case_id
@@ -3199,6 +3224,9 @@ class PaperWorkShellWindow(QMainWindow):
         )
 
     def _rebalance_preview_cache(self) -> None:
+        if self._compression_dialog is not None:
+            self._model.evict_previews(maximum_bytes=0)
+            return
         review_bytes = self._scan_review_original_bytes + self._scan_review_adjusted_bytes
         remaining = max(
             0,
@@ -3693,6 +3721,7 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.mode_requested.connect(self._refresh_package_mode)
             dialog.refresh_requested.connect(self._refresh_package_review)
             dialog.export_requested.connect(self._choose_package_destination)
+            dialog.compression_requested.connect(self._choose_compression_destination)
             dialog.cancel_requested.connect(self._cancel_package_operation)
             dialog.summary_save_requested.connect(self._choose_package_summary_destination)
             dialog.finished.connect(self._package_dialog_finished)
@@ -3707,6 +3736,7 @@ class PaperWorkShellWindow(QMainWindow):
             export_allowed=review.export_allowed,
             signed_source_confirmation_required=review.signed_source_confirmation_required,
             human_review_required=review.human_review_required,
+            compression_allowed=review.compression_allowed,
         )
         self._update_package_availability()
         if not dialog.isVisible():
@@ -3765,6 +3795,7 @@ class PaperWorkShellWindow(QMainWindow):
                 export_allowed=review.export_allowed,
                 signed_source_confirmation_required=review.signed_source_confirmation_required,
                 human_review_required=review.human_review_required,
+                compression_allowed=review.compression_allowed,
             )
             return
         self._package_export_operation_id = self._allocate_operation_id()
@@ -3783,9 +3814,12 @@ class PaperWorkShellWindow(QMainWindow):
     def _package_export_ready(self, operation_id: int, summary: object) -> None:
         if operation_id != self._package_export_operation_id:
             return
+        if self._compression_phase is not None and self._compression_phase != "export":
+            return
         self._package_export_operation_id = None
         self._package_cancellation = None
         self._package_review_state = None
+        self._dispose_compression_dialog()
         dialog = self._package_export_dialog
         if dialog is None:
             return
@@ -3795,6 +3829,300 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.show_result(summary, save_available=True)
         except BaseException:
             dialog.show_failure(phase="export")
+
+    @Slot(bool, bool)
+    def _choose_compression_destination(self, signed: bool, human: bool) -> None:
+        parent = self._package_export_dialog
+        review = self._package_review_state
+        state = self._state
+        if (
+            parent is None
+            or review is None
+            or state is None
+            or state.case_id is None
+            or not review.compression_allowed
+            or review.selected_mode is not parent.selected_mode
+            or self._compression_dialog is not None
+            or self._package_export_operation_id is not None
+            or self._package_review_operation_id is not None
+            or self._closing_requested
+            or type(signed) is not bool
+            or type(human) is not bool
+            or (review.signed_source_confirmation_required and not signed)
+            or (review.human_review_required and not human)
+        ):
+            if parent is not None:
+                parent.show_failure()
+            return
+        selected = QFileDialog.getExistingDirectory(
+            parent, "Choose a folder for the reviewed package"
+        )
+        if not selected:
+            parent.show_review(
+                review.summary,
+                export_allowed=review.export_allowed,
+                signed_source_confirmation_required=review.signed_source_confirmation_required,
+                human_review_required=review.human_review_required,
+                compression_allowed=review.compression_allowed,
+            )
+            return
+        self._compression_destination = Path(selected)
+        self._compression_case_id = state.case_id
+        self._compression_signed = signed
+        self._compression_human = human
+        dialog = CompressionReviewDialog(self._resource_policy, parent)
+        dialog.reprepare_requested.connect(self._prepare_compression)
+        dialog.preview_requested.connect(self._preview_compression_page)
+        dialog.export_requested.connect(self._export_compression)
+        dialog.cancel_requested.connect(self._cancel_package_operation)
+        dialog.finished.connect(self._compression_dialog_finished)
+        self._compression_dialog = dialog
+        self._rebalance_preview_cache()
+        dialog.open()
+        self._prepare_compression(TargetSizeColorChoice.PRESERVE)
+
+    @Slot(object)
+    def _prepare_compression(self, color_choice: object) -> None:
+        dialog = self._compression_dialog
+        parent = self._package_export_dialog
+        review = self._package_review_state
+        destination = self._compression_destination
+        if (
+            dialog is None
+            or parent is None
+            or review is None
+            or destination is None
+            or type(color_choice) is not TargetSizeColorChoice
+            or color_choice is not dialog.color_choice
+            or self._closing_requested
+            or self._package_export_operation_id is not None
+            or self._package_review_operation_id is not None
+        ):
+            return
+        self._compression_review_state = None
+        self._compression_preview_request = None
+        self._compression_pair_review_id = None
+        self._compression_phase = "preparing"
+        self._package_export_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        parent.set_busy("generating_pdfs")
+        dialog.set_busy("preparing")
+        self._commands.compression_prepare_requested.emit(
+            self._package_export_operation_id,
+            review.review_id,
+            destination,
+            color_choice,
+            self._compression_signed,
+            self._compression_human,
+            self._package_cancellation,
+        )
+
+    @Slot(int, object)
+    def _compression_ready(self, operation_id: int, review: object) -> None:
+        if (
+            operation_id != self._package_export_operation_id
+            or self._compression_phase != "preparing"
+        ):
+            return
+        dialog = self._compression_dialog
+        state = self._state
+        if self._package_cancellation is not None and self._package_cancellation.cancelled():
+            self._package_export_operation_id = None
+            self._package_cancellation = None
+            self._dispose_compression_dialog()
+            self._discard_compression_review()
+            return
+        if (
+            dialog is None
+            or state is None
+            or type(review) is not CompressionReviewState
+            or self._closing_requested
+            or state.autosave_pending
+            or review.case_id != state.case_id
+            or review.case_id != self._compression_case_id
+            or review.manifest_revision != state.revision
+            or review.color_choice is not dialog.color_choice
+            or any(
+                page.page_id not in {value.page_id for value in state.pages}
+                for page in review.affected_pages
+            )
+        ):
+            self._package_failed(operation_id, "compression_prepare", None)
+            return
+        self._package_export_operation_id = None
+        self._package_cancellation = None
+        self._compression_phase = None
+        self._compression_review_state = review
+        dialog.show_review(review)
+
+    @Slot(object, str, int)
+    def _preview_compression_page(
+        self, review_id: object, output_key: str, page_index: int
+    ) -> None:
+        dialog = self._compression_dialog
+        review = self._compression_review_state
+        if (
+            dialog is None
+            or review is None
+            or dialog.review is not review
+            or type(review_id) is not UUID
+            or review_id != review.review_id
+            or type(output_key) is not str
+            or type(page_index) is not int
+            or not any(
+                page.output_key == output_key and page.page_index == page_index
+                for page in review.affected_pages
+            )
+            or self._package_export_operation_id is not None
+            or self._closing_requested
+        ):
+            return
+        self._compression_preview_request = (review_id, output_key, page_index)
+        self._compression_phase = "preview"
+        self._package_export_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        self._rebalance_preview_cache()
+        dialog.set_busy("preview")
+        self._commands.compression_preview_requested.emit(
+            self._package_export_operation_id,
+            review_id,
+            output_key,
+            page_index,
+            self._package_cancellation,
+        )
+
+    @Slot(int, object)
+    def _compression_preview_ready(self, operation_id: int, result: object) -> None:
+        if (
+            operation_id != self._package_export_operation_id
+            or self._compression_phase != "preview"
+        ):
+            return
+        dialog = self._compression_dialog
+        review = self._compression_review_state
+        expected = self._compression_preview_request
+        valid = (
+            dialog is not None
+            and review is not None
+            and dialog.review is review
+            and type(result) is CompressionPagePreview
+            and expected is not None
+            and (result.review_id, result.output_key, result.page_index) == expected
+            and self._package_cancellation is not None
+            and not self._package_cancellation.cancelled()
+            and not self._closing_requested
+        )
+        if (
+            not valid
+            or type(result) is not CompressionPagePreview
+            or dialog is None
+            or review is None
+        ):
+            self._package_failed(operation_id, "compression_preview", None)
+            return
+        page = next(
+            (
+                page
+                for page in review.affected_pages
+                if (page.output_key, page.page_index) == (result.output_key, result.page_index)
+            ),
+            None,
+        )
+        snapshots = (result.before, result.proposed)
+        if (
+            page is None
+            or any(
+                snapshot.case_id != review.case_id
+                or snapshot.page_id != page.page_id
+                or snapshot.width_pixels * snapshot.height_pixels
+                > self._resource_policy.maximum_preview_pixels_per_page
+                for snapshot in snapshots
+            )
+            or 2 * sum(len(snapshot.pixels) for snapshot in snapshots)
+            > self._resource_policy.thumbnail_preview_cache_bytes
+        ):
+            self._package_failed(operation_id, "compression_preview", None)
+            return
+        self._rebalance_preview_cache()
+        # These views borrow the validated snapshot bytes. The dialog makes the
+        # only detached pair; incoming bytes plus copies fit the central budget.
+        images = tuple(
+            QImage(
+                snapshot.pixels,
+                snapshot.width_pixels,
+                snapshot.height_pixels,
+                snapshot.row_stride_bytes,
+                QImage.Format.Format_RGBA8888,
+            )
+            for snapshot in snapshots
+        )
+        if not dialog.set_preview(result.review_id, result.output_key, result.page_index, *images):
+            self._package_failed(operation_id, "compression_preview", None)
+            return
+        self._compression_pair_review_id = review.review_id
+        self._compression_preview_request = None
+        self._compression_phase = None
+        self._package_export_operation_id = None
+        self._package_cancellation = None
+
+    @Slot(object)
+    def _export_compression(self, review_id: object) -> None:
+        dialog = self._compression_dialog
+        review = self._compression_review_state
+        if (
+            dialog is None
+            or review is None
+            or dialog.review is not review
+            or not dialog.review_confirmed
+            or type(review_id) is not UUID
+            or review_id != review.review_id
+            or not review.export_allowed
+            or (review.affected_pages and self._compression_pair_review_id != review.review_id)
+            or self._package_export_operation_id is not None
+            or self._closing_requested
+        ):
+            return
+        self._compression_phase = "export"
+        self._package_export_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        dialog.set_busy("export")
+        self._commands.compression_export_requested.emit(
+            self._package_export_operation_id,
+            review_id,
+            True,
+            self._package_cancellation,
+        )
+
+    @Slot(int)
+    def _compression_dialog_finished(self, _result: int) -> None:
+        self._dispose_compression_dialog()
+        self._discard_compression_review()
+
+    def _discard_compression_review(self) -> None:
+        if self._package_review_operation_id is not None or self._package_export_dialog is None:
+            return
+        self._package_review_operation_id = self._allocate_operation_id()
+        self._package_cancellation = None
+        self._package_export_dialog.set_busy("preparing", cancelable=False)
+        self._commands.compression_discard_requested.emit(self._package_review_operation_id)
+
+    def _dispose_compression_dialog(self) -> None:
+        dialog = self._compression_dialog
+        self._compression_dialog = None
+        if dialog is not None:
+            dialog.finished.disconnect(self._compression_dialog_finished)
+            dialog.finish_operation()
+            dialog.done(QDialog.DialogCode.Rejected)
+            dialog.deleteLater()
+        self._compression_destination = None
+        self._compression_case_id = None
+        self._compression_signed = False
+        self._compression_human = False
+        self._compression_phase = None
+        self._compression_review_state = None
+        self._compression_preview_request = None
+        self._compression_pair_review_id = None
+        self._rebalance_preview_cache()
 
     @Slot(int, int, int)
     def _package_progress(self, operation_id: int, completed: int, total: int) -> None:
@@ -3819,6 +4147,11 @@ class PaperWorkShellWindow(QMainWindow):
             operation_id == self._package_export_operation_id
             and self._package_export_dialog is not None
         ):
+            if self._compression_dialog is not None:
+                self._compression_dialog.set_progress(
+                    self._compression_phase or "preparing", completed, total
+                )
+                return
             self._package_export_dialog.set_progress("generating_pdfs", completed, total)
 
     @Slot()
@@ -3856,6 +4189,33 @@ class PaperWorkShellWindow(QMainWindow):
     @Slot(int, str, object)
     def _package_failed(self, operation_id: int, phase: str, failure: object) -> None:
         dialog = self._package_export_dialog
+        compression_phases = {
+            "compression_prepare": "preparing",
+            "compression_preview": "preview",
+            "compression_export": "export",
+        }
+        if phase in compression_phases:
+            expected_phase = compression_phases[phase]
+            if (
+                operation_id != self._package_export_operation_id
+                or self._compression_phase != expected_phase
+            ):
+                return
+            self._package_export_operation_id = None
+            self._package_cancellation = None
+            self._compression_phase = None
+            self._compression_preview_request = None
+            if expected_phase != "preview":
+                self._compression_review_state = None
+                self._compression_pair_review_id = None
+            if self._compression_dialog is not None:
+                self._compression_dialog.show_failure(
+                    failure.code if type(failure) is UiFailure else "",
+                    phase=expected_phase
+                    if expected_phase != "preview" or self._compression_review_state is not None
+                    else "preparing",
+                )
+            return
         if phase == "save" and operation_id == self._package_summary_save_operation_id:
             self._package_summary_save_operation_id = None
             self._package_cancellation = None
@@ -3916,6 +4276,7 @@ class PaperWorkShellWindow(QMainWindow):
         dialog = self._package_export_dialog
         if dialog is None:
             return
+        self._dispose_compression_dialog()
         dialog.deleteLater()
         self._package_export_dialog = None
         self._package_review_state = None
@@ -5202,6 +5563,9 @@ class PaperWorkShellWindow(QMainWindow):
             )
             return
         if package_dialog is not None:
+            if self._compression_dialog is not None:
+                self._dispose_compression_dialog()
+                package_dialog.show_failure()
             package_dialog.reject()
         overlay_dialog = self._core_overlay_tools_dialog
         if (

@@ -8,10 +8,12 @@ checklist state, template expressions, or caller paths as archive members.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from threading import Lock
 from types import TracebackType
 from typing import BinaryIO, Final, Never, Protocol, Self, runtime_checkable
 from uuid import UUID
@@ -514,6 +516,174 @@ def _ignore_progress(_value: PackageExportProgress) -> None:
     return
 
 
+class _OperationProbes:
+    """Switch bounded operation probes without imposing a human review timeout."""
+
+    def __init__(self, deadline: Callable[[], bool], cancellation: Callable[[], bool]) -> None:
+        self.deadline = deadline
+        self.cancellation = cancellation
+
+    def expired(self) -> bool:
+        return self.deadline()
+
+    def cancelled(self) -> bool:
+        return self.cancellation()
+
+
+class PreparedPackageExport:
+    """One privately staged package, owned until explicit commit or close.
+
+    No worker or source lease survives preparation. Preview readers borrow the
+    exact retained stages; one operation at a time owns their file positions.
+    """
+
+    def __init__(
+        self,
+        snapshot: ManifestSnapshot,
+        report: PackageAggregateVerificationReport,
+        transaction: WindowsExportPackageTransaction,
+        probes: _OperationProbes,
+    ) -> None:
+        self._snapshot = snapshot
+        self._report = report
+        self._transaction = transaction
+        self._probes = probes
+        self._lock = Lock()
+        self._closed = False
+
+    @property
+    def report(self) -> PackageAggregateVerificationReport:
+        return self._report
+
+    @property
+    def staged_byte_size(self) -> int:
+        return self._transaction.staged_byte_size
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            reject_package_export(PackageExportErrorCode.MODEL_INVALID, "package_export.closed")
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    @contextmanager
+    def _operation(
+        self, deadline: Callable[[], bool], cancellation: Callable[[], bool]
+    ) -> Iterator[None]:
+        if not callable(deadline) or not callable(cancellation) or not self._lock.acquire(False):
+            reject_package_export(PackageExportErrorCode.MODEL_INVALID, "package_export.active")
+        try:
+            if self._closed:
+                reject_package_export(PackageExportErrorCode.MODEL_INVALID, "package_export.closed")
+            self._probes.deadline = deadline
+            self._probes.cancellation = cancellation
+            _require_active(deadline, cancellation)
+            yield
+        except PackageExportError:
+            raise
+        except ExportPackageDestinationError as error:
+            _raise_destination_error(error)
+        except BaseException as error:
+            _raise_foreign_operation_error(error, "package_export.prepared")
+        finally:
+            self._lock.release()
+
+    @contextmanager
+    def open_pdf(
+        self,
+        output_key: str,
+        *,
+        deadline: Callable[[], bool],
+        cancellation: Callable[[], bool],
+    ) -> Iterator[BinaryIO]:
+        """Borrow an exact selected PDF for a bounded worker preview."""
+
+        with self._operation(deadline, cancellation):
+            if output_key not in tuple(pdf.output_key for pdf in self._report.pdfs):
+                reject_package_export(
+                    PackageExportErrorCode.MODEL_INVALID, "package_export.pdf_key"
+                )
+            with self._transaction.open_staged_readers((output_key,)) as readers:
+                yield readers[0]
+
+    def commit(
+        self,
+        snapshot: ManifestSnapshot,
+        *,
+        deadline: Callable[[], bool],
+        cancellation: Callable[[], bool],
+        progress: PackageExportProgressSink = _ignore_progress,
+    ) -> PackageExportOutcome:
+        """Publish the reviewed bytes after fresh saved-authority validation."""
+
+        with self._operation(deadline, cancellation):
+            if type(snapshot) is not ManifestSnapshot or (
+                snapshot.case_id,
+                snapshot.revision,
+                snapshot.sha256,
+                snapshot.cas_token,
+            ) != (
+                self._snapshot.case_id,
+                self._snapshot.revision,
+                self._snapshot.sha256,
+                self._snapshot.cas_token,
+            ):
+                reject_package_export(PackageExportErrorCode.PLAN_STALE, "package_export.review")
+            _require_plan_authority(snapshot, self._report.plan)
+            if not callable(progress):
+                reject_package_export(
+                    PackageExportErrorCode.MODEL_INVALID, "package_export.progress"
+                )
+            if not self._report.constraints_satisfied:
+                return PackageExportOutcome(PackageExportStatus.CONSTRAINTS_BLOCKED, self._report)
+            count = len(self._report.pdfs)
+            pages = sum(len(pdf.page_ids) for pdf in self._report.pdfs)
+            _emit_progress(
+                progress,
+                PackageExportProgress(
+                    PackageExportProgressPhase.COMMITTING, count, count, pages, pages
+                ),
+            )
+            self._transaction.discard_internal()
+            result = self._transaction.commit()
+            _require_destination_result(self._report.plan, result)
+            status = (
+                PackageExportStatus.COMMITTED
+                if result.committed
+                else PackageExportStatus.UNCERTAIN
+                if result.uncertain
+                else PackageExportStatus.PARTIAL
+                if result.partial
+                else PackageExportStatus.NOT_COMMITTED
+            )
+            outcome = PackageExportOutcome(status, self._report, result)
+            _emit_progress_after_commit(
+                progress,
+                PackageExportProgress(
+                    PackageExportProgressPhase.COMPLETE, count, count, pages, pages
+                ),
+            )
+            return outcome
+
+    def close(self) -> None:
+        """Deterministically discard every uncommitted private stage."""
+
+        if not self._lock.acquire(False):
+            reject_package_export(PackageExportErrorCode.MODEL_INVALID, "package_export.active")
+        try:
+            if not self._closed:
+                self._transaction.close()
+                self._closed = True
+        except ExportPackageDestinationError as error:
+            _raise_destination_error(error)
+        finally:
+            self._lock.release()
+
+    def __repr__(self) -> str:
+        return f"PreparedPackageExport(pdf_count={len(self._report.pdfs)}, closed={self._closed!r})"
+
+
 def export_package_plan(
     snapshot: ManifestSnapshot,
     plan: PackageExportPlan,
@@ -530,8 +700,45 @@ def export_package_plan(
 ) -> PackageExportOutcome:
     """Generate, verify, constraint-check, then publish one exact package plan."""
 
+    with prepare_package_plan(
+        snapshot,
+        plan,
+        destination_parent,
+        producer,
+        artifact_destination,
+        policy,
+        deadline=deadline,
+        cancellation=cancellation,
+        progress=progress,
+        destination_dependencies=destination_dependencies,
+        review=review,
+    ) as prepared:
+        return prepared.commit(
+            snapshot,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
+
+
+def prepare_package_plan(
+    snapshot: ManifestSnapshot,
+    plan: PackageExportPlan,
+    destination_parent: Path,
+    producer: PackagePdfProducerPort,
+    artifact_destination: WindowsExportDestination,
+    policy: ResourcePolicy,
+    *,
+    deadline: Callable[[], bool],
+    cancellation: Callable[[], bool],
+    progress: PackageExportProgressSink = _ignore_progress,
+    destination_dependencies: ExportPackageDestinationDependencies | None = None,
+    review: Callable[[PackageAggregateVerificationReport], None] | None = None,
+) -> PreparedPackageExport:
+    """Generate and measure private stages without publishing any output."""
+
     try:
-        return _export_package_plan(
+        return _prepare_package_plan(
             snapshot,
             plan,
             destination_parent,
@@ -558,7 +765,7 @@ def export_package_plan(
         _raise_foreign_operation_error(error, "package_export.operation")
 
 
-def _export_package_plan(
+def _prepare_package_plan(
     snapshot: ManifestSnapshot,
     plan: PackageExportPlan,
     destination_parent: Path,
@@ -571,7 +778,7 @@ def _export_package_plan(
     progress: PackageExportProgressSink,
     destination_dependencies: ExportPackageDestinationDependencies | None,
     review: Callable[[PackageAggregateVerificationReport], None] | None,
-) -> PackageExportOutcome:
+) -> PreparedPackageExport:
     if (
         type(snapshot) is not ManifestSnapshot
         or type(plan) is not PackageExportPlan
@@ -610,14 +817,16 @@ def _export_package_plan(
     verified_pdfs: list[VerifiedPackagePdf] = []
     archive_report: SafeZipReport | None = None
 
-    with WindowsExportPackageTransaction(
+    probes = _OperationProbes(deadline, cancellation)
+    transaction = WindowsExportPackageTransaction(
         destination_parent,
         artifact_destination,
         maximum_staged_bytes=policy.maximum_temporary_storage_bytes,
-        cancellation=cancellation,
-        deadline=deadline,
+        cancellation=probes.cancelled,
+        deadline=probes.expired,
         dependencies=destination_dependencies,
-    ) as transaction:
+    )
+    try:
         for planned_pdf in plan.pdfs:
             _require_active(deadline, cancellation)
             _emit_progress(
@@ -758,7 +967,6 @@ def _export_package_plan(
                     PackageExportErrorCode.ZIP_FAILED,
                     "package_export.archive_report",
                 )
-            transaction.discard_internal()
 
         _emit_progress(
             progress,
@@ -789,43 +997,11 @@ def _export_package_plan(
             # Validate all additional policy evidence while every output remains
             # private. A reviewer failure must never erase committed inventory.
             review(aggregate)
-        if findings:
-            return PackageExportOutcome(PackageExportStatus.CONSTRAINTS_BLOCKED, aggregate)
-
         _require_active(deadline, cancellation)
-        _emit_progress(
-            progress,
-            PackageExportProgress(
-                PackageExportProgressPhase.COMMITTING,
-                output_count,
-                output_count,
-                total_pages,
-                total_pages,
-            ),
-        )
-        destination_result = transaction.commit()
-
-    _require_destination_result(plan, destination_result)
-    if destination_result.committed:
-        status = PackageExportStatus.COMMITTED
-    elif destination_result.uncertain:
-        status = PackageExportStatus.UNCERTAIN
-    elif destination_result.partial:
-        status = PackageExportStatus.PARTIAL
-    else:
-        status = PackageExportStatus.NOT_COMMITTED
-    outcome = PackageExportOutcome(status, aggregate, destination_result)
-    _emit_progress_after_commit(
-        progress,
-        PackageExportProgress(
-            PackageExportProgressPhase.COMPLETE,
-            output_count,
-            output_count,
-            total_pages,
-            total_pages,
-        ),
-    )
-    return outcome
+        return PreparedPackageExport(snapshot, aggregate, transaction, probes)
+    except BaseException:
+        transaction.close()
+        raise
 
 
 def _require_candidate(

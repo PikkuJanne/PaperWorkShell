@@ -159,9 +159,12 @@ def test_explicit_empty_selection_is_valid_noop() -> None:
         (PdfImageStageProfile.PRESERVE_300_DPI_Q90, 300, 90),
         (PdfImageStageProfile.PRESERVE_240_DPI_Q85, 240, 85),
         (PdfImageStageProfile.PRESERVE_200_DPI_Q80, 200, 80),
+        (PdfImageStageProfile.GRAYSCALE_300_DPI_Q90, 300, 90),
+        (PdfImageStageProfile.GRAYSCALE_240_DPI_Q85, 240, 85),
+        (PdfImageStageProfile.GRAYSCALE_200_DPI_Q80, 200, 80),
     ),
 )
-def test_profiles_are_fixed_color_preserving_policies(
+def test_profiles_have_fixed_parameters_and_preserve_the_floor(
     profile: PdfImageStageProfile, dpi: int, quality: int
 ) -> None:
     assert (profile.target_dpi, profile.jpeg_quality) == (dpi, quality)
@@ -171,6 +174,57 @@ def test_profiles_are_fixed_color_preserving_policies(
     assert geometry.width_pixels == 2 * dpi
     assert geometry.height_pixels == 3 * dpi
     assert geometry.effective_dpi_x_milli == geometry.effective_dpi_y_milli == dpi * 1_000
+
+
+@pytest.mark.parametrize("profile", tuple(PdfImageStageProfile))
+def test_only_explicit_grayscale_profiles_allow_removing_color(
+    profile: PdfImageStageProfile,
+) -> None:
+    expected = (
+        PdfImageColorMode.GRAYSCALE
+        if profile.value.startswith("grayscale_")
+        else PdfImageColorMode.RGB
+    )
+    assert profile.output_color_mode(PdfImageColorMode.RGB) is expected
+    assert profile.output_color_mode(PdfImageColorMode.GRAYSCALE) is PdfImageColorMode.GRAYSCALE
+    for invalid in (PdfImageColorMode.UNSUPPORTED, "rgb", True):
+        with pytest.raises(PdfExportError):
+            profile.output_color_mode(invalid)  # type: ignore[arg-type]
+
+
+def test_report_allows_explicit_grayscale_and_rejects_forged_selected_or_retained_color() -> None:
+    profile = PdfImageStageProfile.GRAYSCALE_300_DPI_Q90
+    request = replace(_request(), profile=profile)
+    report = replace(
+        _report(),
+        profile=profile,
+        assets=(replace(_impact(), color_mode=PdfImageColorMode.GRAYSCALE),),
+    )
+    validate_pdf_image_stage_report(request, _analysis(), report)
+    with pytest.raises(PdfExportError):
+        validate_pdf_image_stage_report(request, _analysis(), replace(report, assets=(_impact(),)))
+    retained = replace(
+        report,
+        outcome=PdfImageStageOutcome.NO_REDUCTION,
+        candidate_byte_size=None,
+        output_sha256=_BASELINE,
+        output_byte_size=90_000,
+        assets=(_retained_impact(),),
+        pages=(
+            PdfImagePageImpact(0, (0,), 80_000, 20_000, 80_000),
+            PdfImagePageImpact(1, (), 0, 0, 0),
+        ),
+    )
+    validate_pdf_image_stage_report(request, _analysis(), retained)
+    with pytest.raises(PdfExportError):
+        validate_pdf_image_stage_report(
+            request,
+            _analysis(),
+            replace(
+                retained,
+                assets=(replace(_retained_impact(), color_mode=PdfImageColorMode.GRAYSCALE),),
+            ),
+        )
 
 
 def test_geometry_ceil_rounding_preserves_floor_and_anisotropic_minimum() -> None:
@@ -342,7 +396,10 @@ def test_asset_rejects_contradictory_support_or_geometry(changes: dict[str, obje
         replace(_asset(), **changes)  # type: ignore[arg-type]
 
 
-def test_unknown_geometry_and_below_floor_are_reportable_but_not_changeable() -> None:
+@pytest.mark.parametrize("profile", tuple(PdfImageStageProfile))
+def test_unknown_geometry_and_below_floor_are_reportable_but_not_changeable(
+    profile: PdfImageStageProfile,
+) -> None:
     unsupported = (
         replace(
             _asset(),
@@ -361,7 +418,7 @@ def test_unknown_geometry_and_below_floor_are_reportable_but_not_changeable() ->
     )
     for asset in unsupported:
         with pytest.raises(PdfExportError):
-            stage_image_geometry(asset, _PROFILE)
+            stage_image_geometry(asset, profile)
 
 
 @pytest.mark.parametrize(

@@ -55,6 +55,7 @@ from paperworkshell.app.signature_images import (
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
 from paperworkshell.domain.checklist import ChecklistError
+from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.image_transforms import ImageTransformIntent
 from paperworkshell.domain.manifest_repository import ManifestRepositoryError
@@ -86,6 +87,7 @@ from paperworkshell.domain.source_ingest import (
     SourceIngestError,
     SourceIngestErrorCode,
 )
+from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
 from paperworkshell.preflight.models import PreflightError
@@ -354,6 +356,8 @@ class OrganizerBackendWorker(QObject):
     package_summary_saved = Signal(int)
     package_failed = Signal(int, str, object)
     package_progress = Signal(int, int, int)
+    compression_ready = Signal(int, object)
+    compression_preview_ready = Signal(int, object)
     signature_image_prepared = Signal(int, object)
     signature_image_prepare_failed = Signal(int, object)
     signature_image_placed = Signal(int, object)
@@ -1315,6 +1319,115 @@ class OrganizerBackendWorker(QObject):
 
         self._run_package_action(operation_id, "cancel", action)
 
+    @Slot(int, object, object, object, bool, bool, object)
+    def prepare_compression(
+        self,
+        operation_id: int,
+        review_id: object,
+        destination_parent: object,
+        color_choice: object,
+        signed: bool,
+        human: bool,
+        cancellation: object,
+    ) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(review_id) is not UUID
+                or review_id.version != 4
+                or not isinstance(destination_parent, Path)
+                or type(color_choice) is not TargetSizeColorChoice
+                or type(signed) is not bool
+                or type(human) is not bool
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            state = backend.prepare_compression(
+                destination_parent,
+                review_id=review_id,
+                color_choice=color_choice,
+                signed_source_confirmed=signed,
+                human_review_confirmed=human,
+                cancellation=cancellation.cancelled,
+                progress=lambda done, total: self._package_progress(operation_id, done, total),
+            )
+            if type(state) is not CompressionReviewState:
+                raise TypeError
+            self.state_changed.emit(backend.state)
+            self.compression_ready.emit(operation_id, state)
+
+        self._run_package_action(operation_id, "compression_prepare", action)
+
+    @Slot(int, object, str, int, object)
+    def preview_compression_page(
+        self,
+        operation_id: int,
+        review_id: object,
+        output_key: str,
+        page_index: int,
+        cancellation: object,
+    ) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(review_id) is not UUID
+                or review_id.version != 4
+                or type(output_key) is not str
+                or not 1 <= len(output_key) <= 80
+                or type(page_index) is not int
+                or not 0 <= page_index < 1_000
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            result = backend.preview_compression_page(
+                review_id,
+                output_key,
+                page_index,
+                cancellation=cancellation.cancelled,
+            )
+            if type(result) is not CompressionPagePreview:
+                raise TypeError
+            self.compression_preview_ready.emit(operation_id, result)
+
+        self._run_package_action(operation_id, "compression_preview", action)
+
+    @Slot(int, object, bool, object)
+    def commit_compression(
+        self,
+        operation_id: int,
+        review_id: object,
+        human: bool,
+        cancellation: object,
+    ) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(review_id) is not UUID
+                or review_id.version != 4
+                or type(human) is not bool
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            summary = backend.commit_compression(
+                review_id,
+                human_review_confirmed=human,
+                cancellation=cancellation.cancelled,
+                progress=lambda done, total: self._package_progress(operation_id, done, total),
+            )
+            if type(summary) is not PackageSummary:
+                raise TypeError
+            summary.to_plain_text()
+            self.package_export_ready.emit(operation_id, summary)
+
+        self._run_package_action(operation_id, "compression_export", action)
+
+    @Slot(int)
+    def discard_compression(self, operation_id: int) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            review = backend.discard_compression()
+            if not is_package_review_state_valid(review):
+                raise TypeError
+            self.package_review_ready.emit(operation_id, review)
+
+        self._run_package_action(operation_id, "review", action)
+
     @Slot(int, object, object)
     def save_package_summary(
         self, operation_id: int, destination: object, cancellation: object
@@ -2155,6 +2268,7 @@ def is_package_review_state_valid(value: object) -> bool:
             or type(value.export_allowed) is not bool
             or type(value.signed_source_confirmation_required) is not bool
             or type(value.human_review_required) is not bool
+            or type(value.compression_allowed) is not bool
         ):
             return False
         value.summary.to_plain_text()
@@ -2195,6 +2309,10 @@ class OrganizerBackendCommands(QObject):
     package_review_begin_requested = Signal(int, object, object)
     package_review_refresh_requested = Signal(int, object, object)
     package_export_requested = Signal(int, object, object, bool, bool, object)
+    compression_prepare_requested = Signal(int, object, object, object, bool, bool, object)
+    compression_preview_requested = Signal(int, object, str, int, object)
+    compression_export_requested = Signal(int, object, bool, object)
+    compression_discard_requested = Signal(int)
     pages_pdf_export_requested = Signal(int, object, object)
     package_review_cancel_requested = Signal(int)
     package_summary_save_requested = Signal(int, object, object)
@@ -2246,6 +2364,10 @@ class OrganizerBackendCommands(QObject):
         self.package_review_begin_requested.connect(worker.begin_package_review)
         self.package_review_refresh_requested.connect(worker.refresh_package_review)
         self.package_export_requested.connect(worker.export_package)
+        self.compression_prepare_requested.connect(worker.prepare_compression)
+        self.compression_preview_requested.connect(worker.preview_compression_page)
+        self.compression_export_requested.connect(worker.commit_compression)
+        self.compression_discard_requested.connect(worker.discard_compression)
         self.package_review_cancel_requested.connect(worker.cancel_package_review)
         self.package_summary_save_requested.connect(worker.save_package_summary)
         self.signature_image_prepare_requested.connect(worker.prepare_signature_image)

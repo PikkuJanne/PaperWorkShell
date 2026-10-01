@@ -239,6 +239,14 @@ class TargetSizePdfCandidateProducer:
         return tuple(self._reports)
 
     @property
+    def baseline_analyses(self) -> tuple[tuple[int, PdfImageAnalysis], ...]:
+        """Expose already bounded original facts for the explicit compression review."""
+
+        return tuple(
+            (position, value.analysis) for position, value in sorted(self._baselines.items())
+        )
+
+    @property
     def unsupported_output_positions(self) -> tuple[int, ...]:
         return tuple(self._unsupported)
 

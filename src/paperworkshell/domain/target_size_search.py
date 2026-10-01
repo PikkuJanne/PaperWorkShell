@@ -17,10 +17,14 @@ from typing import Final, Never
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.page_operations import MAX_PAGE_COUNT
 from paperworkshell.domain.pdf_export import PdfExportErrorCode, reject_pdf_export
-from paperworkshell.domain.pdf_image_stages import PdfImageStageProfile
+from paperworkshell.domain.pdf_image_stages import (
+    PDF_IMAGE_STAGE_FLOOR_DPI,
+    PdfImageStageProfile,
+)
 from paperworkshell.domain.resource_policy import ResourcePolicy
 
 TARGET_SIZE_SEARCH_POLICY_VERSION: Final = 1
+TARGET_SIZE_COLOR_POLICY_VERSION: Final = 2
 TARGET_SIZE_DECISION_REPORT_VERSION: Final = 1
 TARGET_SIZE_PROFILE_LADDER: Final[tuple[PdfImageStageProfile | None, ...]] = (
     None,
@@ -40,6 +44,53 @@ def _integer(value: object, *, maximum: int = MAX_SAFE_MANIFEST_INTEGER, minimum
     return type(value) is int and minimum <= value <= maximum
 
 
+class TargetSizeColorChoice(StrEnum):
+    """Explicit permission for eligible images; never a whole-document color claim."""
+
+    PRESERVE = "preserve"
+    ALLOW_GRAYSCALE = "allow_grayscale"
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSizeLegibilityFloor:
+    """Fixed engineering limits; human review still determines readability.
+
+    Version 1 permits no override below 200 dpi or JPEG quality 80. An image
+    already below the resolution floor remains unchanged. The thresholds do
+    not prove that small text, stamps, handwriting, or color meaning survive.
+    """
+
+    minimum_dpi: int = PDF_IMAGE_STAGE_FLOOR_DPI
+    minimum_jpeg_quality: int = 80
+    floor_version: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.minimum_dpi) is not int
+            or self.minimum_dpi != PDF_IMAGE_STAGE_FLOOR_DPI
+            or type(self.minimum_jpeg_quality) is not int
+            or self.minimum_jpeg_quality != 80
+            or type(self.floor_version) is not int
+            or self.floor_version != 1
+        ):
+            _invalid("legibility_floor")
+
+    def permits(self, profile: PdfImageStageProfile | None) -> bool:
+        """Check a supported profile without treating safe optimization as lossy."""
+
+        if profile is None:
+            return True
+        if type(profile) is not PdfImageStageProfile:
+            _invalid("floor_profile")
+        return (
+            profile.target_dpi >= self.minimum_dpi
+            and profile.jpeg_quality >= self.minimum_jpeg_quality
+        )
+
+
+TARGET_SIZE_LEGIBILITY_FLOOR_V1: Final = TargetSizeLegibilityFloor()
+
+
 @dataclass(frozen=True, slots=True)
 class TargetSizeSearchPolicy:
     """A fixed policy prefix with a deadline bounded by the resource policy.
@@ -48,12 +99,16 @@ class TargetSizeSearchPolicy:
     image policy must use that immutable baseline, not an earlier lossy output.
     The total wall-clock allowance is at most four worker CPU-time budgets;
     individual workers still enforce their own CPU and resource limits.
+    Version 1 keeps its original preserve-color schedule. Version 2 adds an
+    explicit grayscale permission without additional attempts or a lower floor.
     """
 
     resource_policy: ResourcePolicy
     max_attempts: int
     max_duration_ms: int
     policy_version: int = TARGET_SIZE_SEARCH_POLICY_VERSION
+    color_choice: TargetSizeColorChoice = TargetSizeColorChoice.PRESERVE
+    legibility_floor: TargetSizeLegibilityFloor = TARGET_SIZE_LEGIBILITY_FLOOR_V1
 
     def __post_init__(self) -> None:
         if (
@@ -61,13 +116,22 @@ class TargetSizeSearchPolicy:
             or not _integer(self.max_attempts, minimum=1, maximum=len(TARGET_SIZE_PROFILE_LADDER))
             or not _integer(self.max_duration_ms, minimum=1)
             or type(self.policy_version) is not int
-            or self.policy_version != TARGET_SIZE_SEARCH_POLICY_VERSION
+            or self.policy_version
+            not in (TARGET_SIZE_SEARCH_POLICY_VERSION, TARGET_SIZE_COLOR_POLICY_VERSION)
+            or type(self.color_choice) is not TargetSizeColorChoice
+            or type(self.legibility_floor) is not TargetSizeLegibilityFloor
+            or (
+                self.policy_version == TARGET_SIZE_SEARCH_POLICY_VERSION
+                and self.color_choice is not TargetSizeColorChoice.PRESERVE
+            )
         ):
             _invalid("policy")
         if self.max_duration_ms > self.resource_policy.worker_cpu_time_ms * len(
             TARGET_SIZE_PROFILE_LADDER
         ):
             _invalid("duration")
+        if any(not self.legibility_floor.permits(profile) for profile in self.profiles):
+            _invalid("profile_floor")
 
     @classmethod
     def for_resource_policy(
@@ -76,6 +140,8 @@ class TargetSizeSearchPolicy:
         *,
         max_attempts: int = len(TARGET_SIZE_PROFILE_LADDER),
         max_duration_ms: int | None = None,
+        color_choice: TargetSizeColorChoice = TargetSizeColorChoice.PRESERVE,
+        legibility_floor: TargetSizeLegibilityFloor = TARGET_SIZE_LEGIBILITY_FLOOR_V1,
     ) -> TargetSizeSearchPolicy:
         """Derive the default deadline from the real enforced resource policy."""
 
@@ -86,11 +152,27 @@ class TargetSizeSearchPolicy:
             if max_duration_ms is None
             else max_duration_ms
         )
-        return cls(resource_policy, max_attempts, duration)
+        version = (
+            TARGET_SIZE_SEARCH_POLICY_VERSION
+            if color_choice is TargetSizeColorChoice.PRESERVE
+            else TARGET_SIZE_COLOR_POLICY_VERSION
+        )
+        return cls(resource_policy, max_attempts, duration, version, color_choice, legibility_floor)
 
     @property
     def profiles(self) -> tuple[PdfImageStageProfile | None, ...]:
-        return TARGET_SIZE_PROFILE_LADDER[: self.max_attempts]
+        """Use one color family; permission never adds attempts or removes color silently."""
+
+        if self.color_choice is TargetSizeColorChoice.PRESERVE:
+            ladder = TARGET_SIZE_PROFILE_LADDER
+        else:
+            ladder = (
+                None,
+                PdfImageStageProfile.GRAYSCALE_300_DPI_Q90,
+                PdfImageStageProfile.GRAYSCALE_240_DPI_Q85,
+                PdfImageStageProfile.GRAYSCALE_200_DPI_Q80,
+            )
+        return ladder[: self.max_attempts]
 
     @property
     def resource_policy_fingerprint(self) -> str:

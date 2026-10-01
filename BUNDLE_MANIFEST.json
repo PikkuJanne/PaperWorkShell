@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.29",
+  "bundle_version": "0.2.30",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 335761,
-      "sha256": "a4a2719c8e88fa6cf9b67d18c2febf3b556ed3f23c3a9b596f2add30d00bc69d"
+      "bytes": 335762,
+      "sha256": "ff077863a008a020e8aa3d13a60dce6735311d12b04f8a76f56ee55217d9d96b"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 32932,
-      "sha256": "f6a8ad166c0a3736f179c197adddeeddec801909a0f44815d86bab5f5303b6b5"
+      "bytes": 33267,
+      "sha256": "5637710e227658bdd72ee51e5d618e2e2ccc5a96ff8c2e86db5c5e0ecb2ef00d"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 7229,
-      "sha256": "9ed5ea6f0ea83c0fa7cc0eb5c71fad93db78cd2aa0bcb45d4cb46c92b816c4bb"
+      "bytes": 7611,
+      "sha256": "6019eb09c5870d321171b96f759e70471d7aa26ca1f80da636b8cedcc0ef3c91"
     },
     {
       "path": "LOW_SPEC.md",
@@ -145,8 +145,8 @@
     },
     {
       "path": "docs/architecture/pdf-image-stages.md",
-      "bytes": 9277,
-      "sha256": "4e86770a8a066fa8099d14dd28e6df2be2948a61ff8658fa0e80cf1c004630cf"
+      "bytes": 9963,
+      "sha256": "7f62e2e7ab840105a94ed887758f147cb0f3316326114f0269e7b2be400afd5e"
     },
     {
       "path": "docs/development/pws0503-result.md",
@@ -160,13 +160,28 @@
     },
     {
       "path": "docs/architecture/target-size-export.md",
-      "bytes": 3965,
-      "sha256": "9117767cb7ea39860f3a16759ef373da6499868acf06dfa124cb1041dc24ee29"
+      "bytes": 4551,
+      "sha256": "2a71e1467100915f50cb21d812f172038ffe61c5bd9a9bd5b668130218aea192"
     },
     {
       "path": "docs/development/pws0504-result.md",
       "bytes": 16682,
       "sha256": "addec4c004ab0066548ba479e17bbf005d53518ceffdfd9e854438821b8a7b65"
+    },
+    {
+      "path": "docs/adr/0013-compression-review-and-floor.md",
+      "bytes": 4214,
+      "sha256": "fef2b20631406fa57f0dc5e438a3866936104f50cc2d97c72a74dfcf3d9e3b9e"
+    },
+    {
+      "path": "docs/architecture/compression-review.md",
+      "bytes": 3095,
+      "sha256": "379ca65ffecd73eaaee6732e6a5c95a189fb5733beaad2c70763cab6d32365e9"
+    },
+    {
+      "path": "docs/development/pws0505-result.md",
+      "bytes": 6945,
+      "sha256": "58abf3babcef8b6c86a533c5e831d2bf0e21e32f2682ea8baa744830e4358ef0"
     }
   ],
   "validation": {
@@ -176,13 +191,11 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0505"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0504 target-size policy and package integration are done after full Windows CI and synthetic visual verification. PWS-0505 compression preview, grayscale option and legibility floor is ready. See docs/development/pws0504-result.md. Standalone operation and case-data ownership are preserved; packaged-release facts remain TBD.",
+    "PWS-0505 compression preview, explicit grayscale and the fixed legibility floor are in review. Native preparation/render/publication and the keyboard/scaling smoke passed; full repository verification remains pending. Standalone operation, case-data ownership and release-interface TBD facts are preserved.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

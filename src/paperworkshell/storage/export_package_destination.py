@@ -664,6 +664,14 @@ class WindowsExportPackageTransaction:
         try:
             for key in output_keys:
                 item = by_key[key]
+                _verify_retained_stage(
+                    item.handle,
+                    item.stage_path,
+                    self._parent,
+                    expected_byte_size=item.byte_size,
+                    expected_sha256=item.sha256,
+                    require_active=self._require_active,
+                )
                 item.handle.rewind()
                 opened_reader = _duplicate_binary_reader(item.handle)
                 readers.append(opened_reader)
@@ -1299,7 +1307,9 @@ def _duplicate_binary_reader(handle: WindowsHandle) -> BinaryIO:
 
     import msvcrt
 
-    duplicate_same_access = 0x0000_0002
+    # FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE. Preview consumers
+    # receive no write/delete authority, including through the native handle.
+    read_access = 0x0010_0081
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     current_process = kernel32.GetCurrentProcess
     current_process.argtypes = ()
@@ -1322,9 +1332,9 @@ def _duplicate_binary_reader(handle: WindowsHandle) -> BinaryIO:
         ctypes.c_void_p(handle.value),
         process,
         ctypes.byref(duplicated),
+        read_access,
         0,
         0,
-        duplicate_same_access,
     ):
         raise ctypes.WinError(ctypes.get_last_error())
     raw = int(duplicated.value or 0)

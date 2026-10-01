@@ -224,6 +224,16 @@ def _build_package_summary(
                 known = candidate
         if known != finding.definition:
             known = None
+        if (
+            outcome is not None
+            and outcome.report.constraints_satisfied
+            and known is not None
+            and known == _PORTAL_DEFINITIONS.get(finding.code)
+            and finding.code in {"PORTAL_TOTAL_SIZE_EXCEEDED", "PORTAL_FILE_SIZE_EXCEEDED"}
+        ):
+            # The exact retained/committed bytes supersede this earlier size
+            # estimate. Every unrelated finding still needs its usual review.
+            continue
         scope_text = _scope_text(finding.scope, labels, plan)
         if finding.related_scope is not None:
             scope_text += "; related " + _scope_text(finding.related_scope, labels, plan)

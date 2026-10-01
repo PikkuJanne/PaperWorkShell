@@ -29,11 +29,14 @@ _PPM: Final = 1_000_000
 
 
 class PdfImageStageProfile(StrEnum):
-    """Versioned color-preserving JPEG policies; none is a default export policy."""
+    """Explicit versioned JPEG policies; none is a default export policy."""
 
     PRESERVE_300_DPI_Q90 = "preserve_300_dpi_q90_v1"
     PRESERVE_240_DPI_Q85 = "preserve_240_dpi_q85_v1"
     PRESERVE_200_DPI_Q80 = "preserve_200_dpi_q80_v1"
+    GRAYSCALE_300_DPI_Q90 = "grayscale_300_dpi_q90_v1"
+    GRAYSCALE_240_DPI_Q85 = "grayscale_240_dpi_q85_v1"
+    GRAYSCALE_200_DPI_Q80 = "grayscale_200_dpi_q80_v1"
 
     @property
     def target_dpi(self) -> int:
@@ -41,6 +44,9 @@ class PdfImageStageProfile(StrEnum):
             self.PRESERVE_300_DPI_Q90: 300,
             self.PRESERVE_240_DPI_Q85: 240,
             self.PRESERVE_200_DPI_Q80: 200,
+            self.GRAYSCALE_300_DPI_Q90: 300,
+            self.GRAYSCALE_240_DPI_Q85: 240,
+            self.GRAYSCALE_200_DPI_Q80: 200,
         }[self]
 
     @property
@@ -49,6 +55,9 @@ class PdfImageStageProfile(StrEnum):
             self.PRESERVE_300_DPI_Q90: 90,
             self.PRESERVE_240_DPI_Q85: 85,
             self.PRESERVE_200_DPI_Q80: 80,
+            self.GRAYSCALE_300_DPI_Q90: 90,
+            self.GRAYSCALE_240_DPI_Q85: 85,
+            self.GRAYSCALE_200_DPI_Q80: 80,
         }[self]
 
     @property
@@ -60,6 +69,21 @@ class PdfImageStageProfile(StrEnum):
         """Pillow's explicit 4:4:4 setting; grayscale stays grayscale."""
 
         return 0
+
+    @property
+    def allows_grayscale(self) -> bool:
+        return self in (
+            self.GRAYSCALE_300_DPI_Q90,
+            self.GRAYSCALE_240_DPI_Q85,
+            self.GRAYSCALE_200_DPI_Q80,
+        )
+
+    def output_color_mode(self, original: PdfImageColorMode) -> PdfImageColorMode:
+        """Return the permitted selected color; retained assets keep their original."""
+
+        if type(original) is not PdfImageColorMode or original is PdfImageColorMode.UNSUPPORTED:
+            _invalid("profile_color")
+        return PdfImageColorMode.GRAYSCALE if self.allows_grayscale else original
 
 
 class PdfImageColorMode(StrEnum):
@@ -601,11 +625,17 @@ def validate_pdf_image_stage_report(
             or impact.original_height_pixels != original.height_pixels
             or impact.original_effective_dpi_x_milli != original.effective_dpi_x_milli
             or impact.original_effective_dpi_y_milli != original.effective_dpi_y_milli
-            or impact.color_mode != original.color_mode
             or impact.original_encoded_byte_size != original.encoded_byte_size
         ):
             _invalid("report_asset_binding")
         assert request.profile is not None
+        expected_color = (
+            request.profile.output_color_mode(original.color_mode)
+            if impact.outcome is PdfImageStageOutcome.REENCODED
+            else original.color_mode
+        )
+        if impact.color_mode is not expected_color:
+            _invalid("report_color_binding")
         geometry = stage_image_geometry(original, request.profile)
         if impact.estimated_encoded_byte_size != geometry.estimated_encoded_byte_size:
             _invalid("report_estimate_binding")

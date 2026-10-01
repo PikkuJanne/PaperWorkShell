@@ -39,7 +39,9 @@ from tests.unit.test_pdf_optimization_adapter import CleanChecker, baseline_repo
         "font",
         "other_image",
         "other_encoding",
+        "other_color",
         "selected_bytes",
+        "selected_color",
         "mask",
         "metadata",
         "alias",
@@ -47,8 +49,12 @@ from tests.unit.test_pdf_optimization_adapter import CleanChecker, baseline_repo
         "page_count",
     ],
 )
+@pytest.mark.parametrize(
+    "profile",
+    (PdfImageStageProfile.PRESERVE_300_DPI_Q90, PdfImageStageProfile.GRAYSCALE_300_DPI_Q90),
+)
 def test_projected_image_verification_rejects_every_nonselected_change(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str, profile: PdfImageStageProfile
 ) -> None:
     def fixture(document: pikepdf.Pdf, image: pikepdf.Stream, page: pikepdf.Page) -> None:
         other = document.make_stream(b"abc" * 16)
@@ -84,9 +90,15 @@ def test_projected_image_verification_rejects_every_nonselected_change(
         elif mutation == "other_encoding":
             image = page.obj.Resources.XObject.Zother
             image.write(zlib.compress(image.read_bytes()), filter=pikepdf.Name.FlateDecode)
+        elif mutation == "other_color":
+            page.obj.Resources.XObject.Zother.ColorSpace = pikepdf.Name.DeviceGray
         elif mutation == "selected_bytes":
             image = page.obj.Resources.XObject.Pixels
             image.write(b"invalid encoded image", filter=pikepdf.Name.DCTDecode)
+        elif mutation == "selected_color":
+            page.obj.Resources.XObject.Pixels.ColorSpace = (
+                pikepdf.Name.DeviceRGB if profile.allows_grayscale else pikepdf.Name.DeviceGray
+            )
         elif mutation == "mask":
             page.obj.Resources.XObject.Pixels.Mask = pikepdf.Array([0, 0, 0, 0, 0, 0])
         elif mutation == "metadata":
@@ -101,20 +113,24 @@ def test_projected_image_verification_rejects_every_nonselected_change(
 
     monkeypatch.setattr(adapter_module, "_write_candidate", corrupt)
     with pytest.raises(PdfExportError):
-        run_image_stage(baseline, candidate, profile=PdfImageStageProfile.PRESERVE_300_DPI_Q90)
+        run_image_stage(baseline, candidate, profile=profile)
     assert baseline.read_bytes() == original and not candidate.exists()
 
 
 @pytest.mark.parametrize("failure", ["cancel", "deadline", "disk_full", "invalid", "callback"])
+@pytest.mark.parametrize(
+    "profile",
+    (PdfImageStageProfile.PRESERVE_300_DPI_Q90, PdfImageStageProfile.GRAYSCALE_300_DPI_Q90),
+)
 def test_active_failure_cleanup_is_sanitized_and_next_attempt_recovers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str, profile: PdfImageStageProfile
 ) -> None:
     baseline, candidate = tmp_path / "baseline.pdf", tmp_path / "candidate.pdf"
     make_image_baseline(baseline)
     original = baseline.read_bytes()
     report = baseline_report(baseline)
     request = PdfImageStageRequest(
-        PdfImageStageProfile.PRESERVE_300_DPI_Q90,
+        profile,
         (0,),
         report.output_sha256,
         report.semantic_fingerprint,
@@ -165,9 +181,7 @@ def test_active_failure_cleanup_is_sanitized_and_next_attempt_recovers(
     assert baseline.read_bytes() == original and not candidate.exists()
     monkeypatch.setattr(adapter_module, "_write_candidate", real_write)
     assert (
-        run_image_stage(
-            baseline, candidate, profile=PdfImageStageProfile.PRESERVE_300_DPI_Q90
-        ).report.outcome
+        run_image_stage(baseline, candidate, profile=profile).report.outcome
         is PdfImageStageOutcome.REENCODED
     )
 

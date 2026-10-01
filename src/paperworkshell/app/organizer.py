@@ -100,6 +100,7 @@ from paperworkshell.domain.checklist import (
     ChecklistErrorCode,
     reject_checklist,
 )
+from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.image_pages import (
     MAX_IMAGE_DIMENSION_PIXELS,
     ImagePagePreviewRequest,
@@ -163,6 +164,7 @@ from paperworkshell.domain.signature_images import (
     reject_signature_image,
 )
 from paperworkshell.domain.source_ingest import SourceImportResult
+from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.overlays.commands import OverlayCommandHistory
 from paperworkshell.overlays.models import (
     OverlayCollection,
@@ -1077,6 +1079,77 @@ class OrganizerBackend:
         cancellation: SourceCancellationProbe | None = None,
     ) -> None:
         self._require_package_workflow().save_summary(destination, cancellation=cancellation)
+
+    def prepare_compression(
+        self,
+        destination_parent: Path,
+        *,
+        review_id: UUID,
+        color_choice: TargetSizeColorChoice,
+        signed_source_confirmed: bool,
+        human_review_confirmed: bool,
+        cancellation: SourceCancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> CompressionReviewState:
+        session = self._require_session()
+
+        def consent_saved(snapshot: ManifestSnapshot) -> None:
+            replacement = _session_from_load(
+                self._repository,
+                ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot),
+                utc_now=self._utc_now,
+            )
+            session.autosave.close()
+            self._session = replacement
+
+        return self._require_package_workflow().prepare_compression(
+            destination_parent,
+            review_id=review_id,
+            color_choice=color_choice,
+            signed_source_confirmed=signed_source_confirmed,
+            human_review_confirmed=human_review_confirmed,
+            cancellation=cancellation,
+            progress=progress,
+            snapshot_changed=consent_saved,
+        )
+
+    def preview_compression_page(
+        self,
+        review_id: UUID,
+        output_key: str,
+        page_index: int,
+        *,
+        cancellation: SourceCancellationProbe | None = None,
+    ) -> CompressionPagePreview:
+        self._require_session()
+        return self._require_package_workflow().preview_compression_page(
+            review_id,
+            output_key,
+            page_index,
+            cancellation=cancellation,
+        )
+
+    def commit_compression(
+        self,
+        review_id: UUID,
+        *,
+        human_review_confirmed: bool,
+        cancellation: SourceCancellationProbe | None = None,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> PackageSummary:
+        self._require_session()
+        return self._require_package_workflow().commit_compression(
+            review_id,
+            human_review_confirmed=human_review_confirmed,
+            cancellation=cancellation,
+            progress=progress,
+        )
+
+    def discard_compression(self) -> PackageReviewState:
+        self._require_session()
+        workflow = self._require_package_workflow()
+        workflow.discard_compression()
+        return workflow.current_review
 
     def _require_package_workflow(self) -> PackageWorkflowService:
         workflow = self._package_workflow

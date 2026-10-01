@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.pdf_image_stages import (
@@ -36,7 +36,8 @@ from paperworkshell.export.package_export import (
     PackagePdfPipeline,
     PackagePdfProducerPort,
     PackagePdfReservedCapacityPort,
-    export_package_plan,
+    PreparedPackageExport,
+    prepare_package_plan,
     reject_package_export,
 )
 from paperworkshell.preflight.package_planner import PackageExportPlan
@@ -106,6 +107,48 @@ def _ignore_progress(_value: object) -> None:
     pass
 
 
+class PreparedTargetSizePackage:
+    """Exact selected stages and measured search facts retained for human review."""
+
+    def __init__(
+        self,
+        package: PreparedPackageExport,
+        decision: TargetSizeDecisionReport,
+        image_stage_reports: tuple[PdfImageStageReport, ...],
+        preparation_deadline: Callable[[], bool],
+    ) -> None:
+        self.package = package
+        self.decision = decision
+        self.image_stage_reports = image_stage_reports
+        self._preparation_deadline = preparation_deadline
+
+    def __enter__(self) -> Self:
+        self.package.__enter__()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self.package.close()
+
+    def commit(
+        self,
+        snapshot: ManifestSnapshot,
+        *,
+        deadline: Callable[[], bool],
+        cancellation: Callable[[], bool],
+        progress: PackageExportProgressSink = _ignore_progress,
+    ) -> TargetSizePackageExportOutcome:
+        result = self.package.commit(
+            snapshot, deadline=deadline, cancellation=cancellation, progress=progress
+        )
+        return TargetSizePackageExportOutcome(result, self.decision, self.image_stage_reports)
+
+    def __repr__(self) -> str:
+        return f"PreparedTargetSizePackage(attempts={len(self.decision.attempts)})"
+
+
 def export_target_size_package(
     snapshot: ManifestSnapshot,
     plan: PackageExportPlan,
@@ -122,6 +165,50 @@ def export_target_size_package(
     monotonic: Callable[[], float] = time.monotonic,
 ) -> TargetSizePackageExportOutcome:
     """Measure the fixed policy prefix; publish only its first verified success.
+
+    Minimal change means the first satisfying policy in this versioned global
+    schedule. It does not claim an optimum over arbitrary per-asset combinations.
+    The caller supplies the explicit target-capable producer; PWS-0505 owns review UI.
+    """
+
+    with prepare_target_size_package(
+        snapshot,
+        plan,
+        destination_parent,
+        producer,
+        artifact_destination,
+        resource_policy,
+        search_policy=search_policy,
+        deadline=deadline,
+        cancellation=cancellation,
+        progress=progress,
+        destination_dependencies=destination_dependencies,
+        monotonic=monotonic,
+    ) as prepared:
+        return prepared.commit(
+            snapshot,
+            deadline=prepared._preparation_deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
+
+
+def prepare_target_size_package(
+    snapshot: ManifestSnapshot,
+    plan: PackageExportPlan,
+    destination_parent: Path,
+    producer: TargetSizePackageProducerPort,
+    artifact_destination: WindowsExportDestination,
+    resource_policy: ResourcePolicy,
+    *,
+    search_policy: TargetSizeSearchPolicy | None = None,
+    deadline: Callable[[], bool],
+    cancellation: Callable[[], bool],
+    progress: PackageExportProgressSink = _ignore_progress,
+    destination_dependencies: ExportPackageDestinationDependencies | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> PreparedTargetSizePackage:
+    """Measure the fixed policy prefix and retain its terminal private candidate.
 
     Minimal change means the first satisfying policy in this versioned global
     schedule. It does not claim an optimum over arbitrary per-asset combinations.
@@ -187,7 +274,7 @@ def export_target_size_package(
             if expired():
                 reject_package_export(PackageExportErrorCode.TIMED_OUT, "target_size.deadline")
             producer.begin_attempt(profile)
-            outcome = export_package_plan(
+            staged = prepare_package_plan(
                 snapshot,
                 plan,
                 destination_parent,
@@ -205,11 +292,13 @@ def export_target_size_package(
         except Exception:
             reject_package_export(PackageExportErrorCode.INTERNAL_ERROR, "target_size.operation")
         if prepared is None:
+            staged.close()
             reject_package_export(PackageExportErrorCode.INTERNAL_ERROR, "target_size.review")
         attempts = prepared.attempts
         baseline_bindings = prepared.baseline_bindings
         if prepared.decision is not None:
-            return TargetSizePackageExportOutcome(outcome, prepared.decision, prepared.reports)
+            return PreparedTargetSizePackage(staged, prepared.decision, prepared.reports, expired)
+        staged.close()
     reject_package_export(PackageExportErrorCode.INTERNAL_ERROR, "target_size.schedule")
 
 

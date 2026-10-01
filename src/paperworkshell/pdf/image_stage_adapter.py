@@ -20,8 +20,10 @@ from paperworkshell.domain.pdf_export import (
 from paperworkshell.domain.pdf_image_stages import (
     PdfImageAnalysis,
     PdfImageAssetImpact,
+    PdfImageColorMode,
     PdfImagePageImpact,
     PdfImageStageOutcome,
+    PdfImageStageProfile,
     PdfImageStageReport,
     PdfImageStageRequest,
     stage_image_geometry,
@@ -200,6 +202,15 @@ class PdfImageStageAdapter:
                         result = _result(analysis, baseline_report, request, impacts, outcome)
                     else:
                         projection = {bindings[index].objgen: index for index in replacements}
+                        assert request.profile is not None
+                        # Bind the explicitly permitted color change in the
+                        # expected graph. All other dictionary semantics remain
+                        # compared, including unselected image color spaces.
+                        for index in replacements:
+                            if request.profile.allows_grayscale and (
+                                analysis.assets[index].color_mode is PdfImageColorMode.RGB
+                            ):
+                                bindings[index].ColorSpace = pikepdf.Name.DeviceGray
                         expected = _graph_fingerprint(
                             cast(pikepdf.Dictionary, document.trailer),
                             limits.export,
@@ -235,7 +246,7 @@ class PdfImageStageAdapter:
                                 analysis,
                                 baseline_report,
                                 request,
-                                _restore_impacts(impacts),
+                                _restore_impacts(impacts, analysis),
                                 PdfImageStageOutcome.NO_REDUCTION,
                             )
                         else:
@@ -247,6 +258,7 @@ class PdfImageStageAdapter:
                                 candidate_path,
                                 analysis,
                                 replacements,
+                                request.profile,
                                 expected,
                                 limits,
                                 control,
@@ -262,7 +274,7 @@ class PdfImageStageAdapter:
                                     analysis,
                                     baseline_report,
                                     request,
-                                    _restore_impacts(impacts),
+                                    _restore_impacts(impacts, analysis),
                                     PdfImageStageOutcome.NO_REDUCTION,
                                     candidate_byte_size=candidate.byte_size,
                                 )
@@ -359,7 +371,9 @@ class PdfImageStageAdapter:
                     asset.effective_dpi_y_milli
                     if encoded is None
                     else geometry.effective_dpi_y_milli,
-                    asset.color_mode,
+                    asset.color_mode
+                    if encoded is None
+                    else request.profile.output_color_mode(asset.color_mode),
                     asset.encoded_byte_size,
                     geometry.estimated_encoded_byte_size,
                     None if encoded is None else len(encoded.data),
@@ -376,6 +390,7 @@ class PdfImageStageAdapter:
         candidate_path: Path,
         analysis: PdfImageAnalysis,
         replacements: dict[int, EncodedImage],
+        profile: PdfImageStageProfile,
         expected: str,
         limits: PdfImageStageAdapterLimits,
         control: PdfExportAdapterControl,
@@ -401,7 +416,7 @@ class PdfImageStageAdapter:
                 actual = current.assets[index]
                 if (
                     actual.page_indexes != original.page_indexes
-                    or actual.color_mode is not original.color_mode
+                    or actual.color_mode is not profile.output_color_mode(original.color_mode)
                     or actual.width_pixels != encoded.geometry.width_pixels
                     or actual.height_pixels != encoded.geometry.height_pixels
                     or stream.get("/BitsPerComponent") != 8
@@ -462,7 +477,9 @@ class PdfImageStageAdapter:
             progress(page_index + 1)
 
 
-def _restore_impacts(impacts: tuple[PdfImageAssetImpact, ...]) -> tuple[PdfImageAssetImpact, ...]:
+def _restore_impacts(
+    impacts: tuple[PdfImageAssetImpact, ...], analysis: PdfImageAnalysis
+) -> tuple[PdfImageAssetImpact, ...]:
     return tuple(
         replace(
             impact,
@@ -470,6 +487,7 @@ def _restore_impacts(impacts: tuple[PdfImageAssetImpact, ...]) -> tuple[PdfImage
             output_height_pixels=impact.original_height_pixels,
             output_effective_dpi_x_milli=impact.original_effective_dpi_x_milli,
             output_effective_dpi_y_milli=impact.original_effective_dpi_y_milli,
+            color_mode=analysis.assets[impact.asset_id].color_mode,
             selected_encoded_byte_size=impact.original_encoded_byte_size,
             outcome=PdfImageStageOutcome.NO_REDUCTION,
         )

@@ -6,7 +6,7 @@ import threading
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.signature_images import (
@@ -31,6 +31,12 @@ from paperworkshell.worker.client.models import (
     WorkerTimeoutPolicy,
 )
 from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.compression_preview import (
+    NativeCompressionPreviewRenderer as NativeCompressionPreviewRenderer,
+)
+from paperworkshell.worker.compression_preview import (
+    create_compression_preview_renderer as create_compression_preview_renderer,
+)
 from paperworkshell.worker.flattened_pdf_export_composition import (
     FLATTENED_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES as FLATTENED_PDF_EXPORT_WORKER_MAXIMUM_PROCESSES,
 )
@@ -93,6 +99,7 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_CAPABILITY,
     IMAGE_PDF_EXPORT_CAPABILITY,
     IMAGE_TRANSFORM_CAPABILITY,
+    MAX_PDF_IMAGE_STAGE_EVIDENCE_BYTES,
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
@@ -649,6 +656,29 @@ def create_desktop_worker_composition_config(
         image_transform_policy=ImageTransformBrokerPolicy(image_transform_limits),
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
         venv_launcher=venv_launcher,
+    )
+
+
+if TYPE_CHECKING:
+    from paperworkshell.worker.pdf_image_stage_composition import PdfImageStageWorkerComposition
+
+
+def create_pdf_image_stage_worker_composition(
+    config: PdfExportWorkerCompositionConfig,
+    *,
+    heavy_operations: HeavyOperationCoordinator,
+    evidence_capacity_bytes: int = MAX_PDF_IMAGE_STAGE_EVIDENCE_BYTES,
+) -> PdfImageStageWorkerComposition:
+    """Expose image-stage composition through the desktop worker boundary."""
+
+    from paperworkshell.worker.pdf_image_stage_composition import (
+        create_pdf_image_stage_worker_composition as create,
+    )
+
+    return create(
+        config,
+        heavy_operations=heavy_operations,
+        evidence_capacity_bytes=evidence_capacity_bytes,
     )
 
 

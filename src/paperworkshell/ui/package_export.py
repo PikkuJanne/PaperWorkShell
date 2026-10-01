@@ -77,6 +77,7 @@ class PackageExportDialog(QDialog):
     mode_requested = Signal(object)
     refresh_requested = Signal()
     export_requested = Signal(bool, bool)
+    compression_requested = Signal(bool, bool)
     cancel_requested = Signal()
     summary_save_requested = Signal()
 
@@ -103,6 +104,7 @@ class PackageExportDialog(QDialog):
         self._terminal = False
         self._review_ready = False
         self._export_allowed = False
+        self._compression_allowed = False
         self._signed_required = False
         self._human_required = False
         self._save_available = False
@@ -247,6 +249,15 @@ class PackageExportDialog(QDialog):
         )
         self._export.clicked.connect(self._request_export)
         content_layout.addWidget(self._export)
+        self._compression = self._button(
+            "Preview size\nreduction",
+            "packageExportCompressionButton",
+            "Choose a destination and prepare a private size-reduction preview. Review actual "
+            "sizes and affected pages before explicitly publishing the selected candidate.",
+        )
+        self._compression.setAccessibleName("Preview size reduction")
+        self._compression.clicked.connect(self._request_compression)
+        content_layout.addWidget(self._compression)
         self._save = self._button(
             "Save summary",
             "packageExportSaveSummaryButton",
@@ -296,6 +307,7 @@ class PackageExportDialog(QDialog):
             self._signed_ack,
             self._status,
             self._export,
+            self._compression,
             self._save,
             self._cancel,
             self._close,
@@ -325,6 +337,7 @@ class PackageExportDialog(QDialog):
         export_allowed: bool,
         signed_source_confirmation_required: bool = False,
         human_review_required: bool = False,
+        compression_allowed: bool = False,
     ) -> None:
         """Replace the review and clear acknowledgements for the previous snapshot."""
 
@@ -335,6 +348,7 @@ class PackageExportDialog(QDialog):
             or type(export_allowed) is not bool
             or type(signed_source_confirmation_required) is not bool
             or type(human_review_required) is not bool
+            or type(compression_allowed) is not bool
         ):
             raise ValueError("Package review requires a review summary and explicit gates.")
         self._summary = summary
@@ -344,6 +358,7 @@ class PackageExportDialog(QDialog):
         self._terminal = False
         self._review_ready = True
         self._export_allowed = export_allowed
+        self._compression_allowed = compression_allowed
         self._signed_required = signed_source_confirmation_required
         self._human_required = human_review_required
         self._signed_ack.setChecked(False)
@@ -354,6 +369,9 @@ class PackageExportDialog(QDialog):
             "Package review ready. Read the summary and complete any required review steps "
             "before choosing Export package."
             if export_allowed
+            else "The package has a size constraint to resolve. Read the summary and complete "
+            "any required review steps before choosing Preview size reduction."
+            if compression_allowed
             else "Package needs attention before export. Read the summary, then close this dialog "
             "to resolve blocking items and refresh the review.",
             assertive=not export_allowed,
@@ -537,6 +555,14 @@ class PackageExportDialog(QDialog):
         self.set_busy("saving_summary", cancelable=True)
         self.summary_save_requested.emit()
 
+    def _request_compression(self) -> None:
+        if not self._compression.isEnabled():
+            return
+        signed = self._signed_required and self._signed_ack.isChecked()
+        human = self._human_required and self._human_ack.isChecked()
+        self.set_busy("preparing")
+        self.compression_requested.emit(signed, human)
+
     def _request_cancel(self) -> None:
         if not self._busy:
             return
@@ -571,6 +597,14 @@ class PackageExportDialog(QDialog):
             and (not self._signed_required or self._signed_ack.isChecked())
         )
         self._export.setVisible(not self._terminal)
+        self._compression.setEnabled(
+            editable
+            and self._review_ready
+            and self._compression_allowed
+            and (not self._human_required or self._human_ack.isChecked())
+            and (not self._signed_required or self._signed_ack.isChecked())
+        )
+        self._compression.setVisible(not self._terminal)
         self._refresh.setVisible(not self._terminal)
         self._save.setVisible(self._terminal and self._save_available)
         self._save.setEnabled(self._terminal and self._save_available and not self._busy)

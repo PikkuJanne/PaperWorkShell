@@ -277,3 +277,51 @@ def test_cancel_summary_save_waits_and_retains_known_package_inventory() -> None
         assert "cancellation request" in status
         assert "package result above is unchanged" in status
         assert "summary was saved" not in status
+
+
+def test_size_only_blocker_allows_preview_with_explicit_human_and_signed_consent() -> None:
+    with _dialog() as dialog:
+        requests: list[tuple[bool, bool]] = []
+        dialog.compression_requested.connect(lambda signed, human: requests.append((signed, human)))
+        dialog.show_review(
+            _summary(PackageSummaryStatus.NEEDS_REVIEW),
+            export_allowed=False,
+            compression_allowed=True,
+            human_review_required=True,
+            signed_source_confirmation_required=True,
+        )
+        preview = _widget(dialog, QPushButton, "packageExportCompressionButton")
+        assert not preview.isEnabled()
+        _widget(dialog, QCheckBox, "packageExportHumanReviewCheck").setChecked(True)
+        assert not preview.isEnabled()
+        _widget(dialog, QCheckBox, "packageExportUnsignedDerivativeCheck").setChecked(True)
+        assert preview.isEnabled()
+        assert not _widget(dialog, QPushButton, "packageExportStartButton").isEnabled()
+        _press(preview)
+        _press(preview)
+        assert requests == [(True, True)]
+        assert dialog.busy
+
+
+def test_preview_requires_explicit_capability_and_new_reviews_clear_its_consent() -> None:
+    with _dialog() as dialog:
+        dialog.show_review(_summary(), export_allowed=True)
+        preview = _widget(dialog, QPushButton, "packageExportCompressionButton")
+        assert not preview.isEnabled()
+        dialog.show_review(
+            _summary(),
+            export_allowed=True,
+            compression_allowed=True,
+            human_review_required=True,
+        )
+        _widget(dialog, QCheckBox, "packageExportHumanReviewCheck").setChecked(True)
+        assert preview.isEnabled()
+        dialog.show_review(
+            _summary(),
+            export_allowed=True,
+            compression_allowed=True,
+            human_review_required=True,
+        )
+        assert not preview.isEnabled()
+        dialog.show_result(_summary(PackageSummaryStatus.COMMITTED))
+        assert not preview.isVisible()

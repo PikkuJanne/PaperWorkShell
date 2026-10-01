@@ -52,7 +52,11 @@ all-page render checks; the result reports measured sizes or why the verified ba
 PWS-0503 adds an explicit worker-only [image analysis and re-encoding stage](docs/architecture/pdf-image-stages.md).
 It reports image eligibility and per-page size effects, then applies one selected RGB/gray
 quality/resolution profile to eligible assets. Ordinary exports retain their existing lossless
-policy. Target-size search and the compression preview UI remain PWS-0504/PWS-0505 work.
+policy. PWS-0504 adds bounded [target-size search](docs/architecture/target-size-export.md).
+PWS-0505 connects **Preview size reduction** to package review, with actual page
+comparisons, explicit grayscale choice, and a fixed 200 dpi/JPEG quality 80 floor.
+The [review workflow](docs/architecture/compression-review.md) publishes the exact
+verified candidate after confirmation; these settings do not guarantee readability.
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,

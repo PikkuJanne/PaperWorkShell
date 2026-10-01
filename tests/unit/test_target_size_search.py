@@ -17,9 +17,12 @@ from paperworkshell.domain.resource_policy import (
     NORMAL_RESOURCE_POLICY_V1,
 )
 from paperworkshell.domain.target_size_search import (
+    TARGET_SIZE_LEGIBILITY_FLOOR_V1,
     TARGET_SIZE_PROFILE_LADDER,
     TargetSizeAttempt,
+    TargetSizeColorChoice,
     TargetSizeDecisionReport,
+    TargetSizeLegibilityFloor,
     TargetSizeSearchPolicy,
     TargetSizeSearchTerminal,
 )
@@ -62,6 +65,9 @@ def test_search_starts_safe_and_ends_at_existing_color_preserving_floor() -> Non
         PdfImageStageProfile.PRESERVE_200_DPI_Q80,
     )
     assert policy.max_duration_ms == CONSTRAINED_RESOURCE_POLICY_V1.worker_cpu_time_ms * 4
+    assert policy.policy_version == 1
+    assert policy.color_choice is TargetSizeColorChoice.PRESERVE
+    assert policy.legibility_floor == TARGET_SIZE_LEGIBILITY_FLOOR_V1
     assert policy.profiles[-1] is not None
     assert policy.profiles[-1].floor_dpi == 200
     for maximum in range(1, 5):
@@ -92,6 +98,116 @@ def test_custom_resource_policy_changes_duration_and_complete_resource_fingerpri
     assert _report().resource_policy_fingerprint == constrained.resource_policy_fingerprint
 
 
+def test_grayscale_permission_selects_one_versioned_ladder_without_more_work() -> None:
+    policy = TargetSizeSearchPolicy.for_resource_policy(
+        CONSTRAINED_RESOURCE_POLICY_V1, color_choice=TargetSizeColorChoice.ALLOW_GRAYSCALE
+    )
+    assert policy.policy_version == 2
+    assert policy.profiles == (
+        None,
+        PdfImageStageProfile.GRAYSCALE_300_DPI_Q90,
+        PdfImageStageProfile.GRAYSCALE_240_DPI_Q85,
+        PdfImageStageProfile.GRAYSCALE_200_DPI_Q80,
+    )
+    assert policy.max_duration_ms == _policy().max_duration_ms
+    assert policy.resource_policy_fingerprint == _policy().resource_policy_fingerprint
+    assert policy != _policy()
+    assert (
+        replace(policy, color_choice=TargetSizeColorChoice.PRESERVE).profiles == _policy().profiles
+    )
+    for maximum in range(1, 5):
+        assert replace(policy, max_attempts=maximum).profiles == policy.profiles[:maximum]
+    baseline = replace(
+        _report(), policy=policy, attempts=(_attempt(success=True),), selected_profile=None
+    )
+    assert baseline.terminal is TargetSizeSearchTerminal.SATISFIED
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"minimum_dpi": 199},
+        {"minimum_dpi": 300},
+        {"minimum_dpi": True},
+        {"minimum_dpi": 200.0},
+        {"minimum_jpeg_quality": 79},
+        {"minimum_jpeg_quality": 90},
+        {"minimum_jpeg_quality": True},
+        {"minimum_jpeg_quality": 80.0},
+        {"floor_version": 0},
+        {"floor_version": 2},
+        {"floor_version": True},
+    ),
+)
+def test_floor_rejects_unversioned_threshold_changes_and_coercion(
+    changes: dict[str, object],
+) -> None:
+    with pytest.raises(PdfExportError) as caught:
+        replace(TARGET_SIZE_LEGIBILITY_FLOOR_V1, **changes)  # type: ignore[arg-type]
+    assert caught.value.code is PdfExportErrorCode.MODEL_INVALID
+
+
+def test_floor_is_immutable_and_every_supported_profile_obeys_both_thresholds() -> None:
+    floor = TargetSizeLegibilityFloor()
+    assert (floor.minimum_dpi, floor.minimum_jpeg_quality, floor.floor_version) == (200, 80, 1)
+    assert floor.permits(None)
+    assert all(floor.permits(profile) for profile in PdfImageStageProfile)
+    with pytest.raises(FrozenInstanceError):
+        floor.minimum_dpi = 150  # type: ignore[misc]
+    with pytest.raises(PdfExportError):
+        floor.permits("grayscale_150_dpi_q60_v1")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("selected_ordinal", (2, 4))
+def test_grayscale_success_above_and_at_floor_needs_explicit_permission(
+    selected_ordinal: int,
+) -> None:
+    policy = TargetSizeSearchPolicy.for_resource_policy(
+        CONSTRAINED_RESOURCE_POLICY_V1, color_choice=TargetSizeColorChoice.ALLOW_GRAYSCALE
+    )
+    attempts = tuple(
+        replace(
+            _attempt(ordinal, success=ordinal == selected_ordinal),
+            profile=policy.profiles[ordinal - 1],
+        )
+        for ordinal in range(1, selected_ordinal + 1)
+    )
+    report = replace(
+        _report(), policy=policy, attempts=attempts, selected_profile=attempts[-1].profile
+    )
+    assert report.terminal is TargetSizeSearchTerminal.SATISFIED
+    assert report.policy.legibility_floor.permits(report.selected_profile)
+    with pytest.raises(PdfExportError):
+        replace(report, policy=_policy())
+    with pytest.raises(PdfExportError):
+        replace(report, attempts=(*attempts[:-1], _attempt(selected_ordinal, success=True)))
+
+
+def test_target_beyond_grayscale_floor_has_alternatives_and_no_forced_selection() -> None:
+    policy = TargetSizeSearchPolicy.for_resource_policy(
+        CONSTRAINED_RESOURCE_POLICY_V1, color_choice=TargetSizeColorChoice.ALLOW_GRAYSCALE
+    )
+    attempts = tuple(
+        replace(_attempt(ordinal), profile=profile)
+        for ordinal, profile in enumerate(policy.profiles, 1)
+    )
+    report = TargetSizeDecisionReport(
+        _SEMANTIC, policy, attempts, TargetSizeSearchTerminal.UNATTAINABLE
+    )
+    assert report.selected_profile is None
+    assert report.suggestions(allow_splitting=False) == (
+        "Increase the allowed size if the recipient's instructions permit it.",
+    )
+    assert "supported image policies" in report.message
+    assert "unreadable" not in report.message
+    with pytest.raises(PdfExportError):
+        replace(report, selected_profile=PdfImageStageProfile.GRAYSCALE_200_DPI_Q80)
+    with pytest.raises(PdfExportError):
+        replace(report, attempts=attempts[:3])
+    with pytest.raises(PdfExportError):
+        replace(report, attempts=(*attempts[:3], replace(attempts[-1], budget_skipped=True)))
+
+
 @pytest.mark.parametrize(
     "changes",
     (
@@ -107,7 +223,13 @@ def test_custom_resource_policy_changes_duration_and_complete_resource_fingerpri
         {"max_duration_ms": MAX_SAFE_MANIFEST_INTEGER + 1},
         {"policy_version": True},
         {"policy_version": 0},
-        {"policy_version": 2},
+        {"policy_version": 3},
+        {"color_choice": True},
+        {"color_choice": "allow_grayscale"},
+        {"color_choice": None},
+        {"color_choice": TargetSizeColorChoice.ALLOW_GRAYSCALE},
+        {"legibility_floor": False},
+        {"legibility_floor": {"minimum_dpi": 200}},
     ),
 )
 def test_search_policy_rejects_invalid_or_unbounded_configuration(

@@ -8,7 +8,12 @@ from dataclasses import replace
 import pytest
 
 from paperworkshell.domain.pdf_export import PdfExportError
-from paperworkshell.domain.pdf_image_stages import PdfImageStageRequest
+from paperworkshell.domain.pdf_image_stages import (
+    PdfImageColorMode,
+    PdfImageStageProfile,
+    PdfImageStageRequest,
+    validate_pdf_image_stage_report,
+)
 from paperworkshell.worker.pdf_image_stage_wire import (
     PdfImageStageWorkerResult,
     decode_pdf_image_stage_evidence,
@@ -23,7 +28,13 @@ from tests.unit.worker.pdf_image_stage_fixtures import StageSystem
 from tests.unit.worker.test_pdf_export_broker import _plan, _uuid
 
 
-@pytest.mark.parametrize("intent", (PdfImageStageRequest(), _request()))
+@pytest.mark.parametrize(
+    "intent",
+    (
+        PdfImageStageRequest(),
+        *(replace(_request(), profile=profile) for profile in PdfImageStageProfile),
+    ),
+)
 def test_plan_round_trip_preserves_explicit_intent_and_hides_authority(
     intent: PdfImageStageRequest,
 ) -> None:
@@ -35,6 +46,24 @@ def test_plan_round_trip_preserves_explicit_intent_and_hides_authority(
     assert value.base.handle_for(plan.sources[0].source_id) == 900
     assert plan.manifest_sha256 not in repr(value)
     assert "900" not in repr(value)
+
+
+def test_grayscale_evidence_round_trip_keeps_original_and_selected_color_distinct() -> None:
+    analysis = _analysis()
+    profile = PdfImageStageProfile.GRAYSCALE_300_DPI_Q90
+    report = replace(
+        _report(),
+        profile=profile,
+        assets=(replace(_report().assets[0], color_mode=PdfImageColorMode.GRAYSCALE),),
+    )
+    decoded_analysis, decoded_report = decode_pdf_image_stage_evidence(
+        encode_pdf_image_stage_evidence(analysis, report)
+    )
+    assert decoded_analysis.assets[0].color_mode is PdfImageColorMode.RGB
+    assert decoded_report.assets[0].color_mode is PdfImageColorMode.GRAYSCALE
+    validate_pdf_image_stage_report(
+        replace(_request(), profile=profile), decoded_analysis, decoded_report
+    )
 
 
 def test_evidence_and_small_header_round_trip_separate_stage_and_baseline() -> None:

@@ -1,6 +1,6 @@
 # Target-size export search
 
-- Task: PWS-0504
+- Tasks: PWS-0504 and PWS-0505
 - Policy: [ADR 0012](../adr/0012-target-size-search.md)
 - Building blocks: [package export](package-export.md),
   [safe optimization](pdf-safe-optimization.md), [image stages](pdf-image-stages.md)
@@ -14,9 +14,9 @@ through the existing package producer. `export.target_size_export.export_target_
 runs the bounded schedule and returns decision evidence alongside the real package
 publication result.
 
-This is an explicit backend API for the PWS-0505 review workflow. It is not wired into
-ordinary desktop export, a new CLI, or a sibling-facing interface. The application
-imports a narrow protocol; native document objects remain inside worker adapters.
+The PWS-0505 [compression review](compression-review.md) uses the prepared variant
+of this API through the desktop package workflow. The application imports a narrow
+protocol; native document objects remain inside worker adapters.
 
 ## Policy and constraints
 
@@ -25,13 +25,21 @@ Every policy uses its immutable baseline. Processing stops at the first measured
 success, even if a later stage might be smaller. An ineffective stage does not skip
 remaining supported stages, because size changes need not be monotonic.
 
+The explicit grayscale choice uses version 2 with matching 300/240/200 dpi stages.
+It preserves the four-attempt bound and the fixed 200 dpi/JPEG80 floor. Version 1
+retains its original semantics; no below-floor override is admitted. See
+[ADR 0013](../adr/0013-compression-review-and-floor.md).
+
 Combined mode measures its one PDF. Separate mode measures each PDF and their sum.
 ZIP mode measures the archive after writing and reopening it; member file limits still
 apply separately. The canonical portal evaluator also checks naming, organization,
 file count, pages, and encryption. A non-size failure stops image escalation.
 
-Every unsuccessful package transaction discards its private stages. The successful
-transaction publishes exactly the bytes it measured and verified. A collision or
+The immediate-export API discards unsuccessful attempts. The review API retains the
+last verified attempt privately, including an unsafe result for inspection, and keeps
+ZIP member PDFs available for page previews. Only a satisfied candidate may publish.
+Closing or replacing review discards the private stages. Publication uses exactly
+the bytes measured and verified. A collision or
 partial/uncertain save never triggers another compression attempt. The decision's
 `satisfied` state means constraints passed; only `package.successful` means the whole
 package was committed and reopened.
@@ -62,7 +70,8 @@ chunks. Nothing loads a complete packet as full-resolution rasters.
 
 Originals, manifest intent, signed-source consent, no-network processing, and no-replace
 destinations retain their existing contracts. Routine representations exclude paths,
-names, document values, and hashes. No new controls need accessibility acceptance in
-this backend task; existing desktop workflow and accessibility tests remain required.
+names, document values, and hashes. Compression review adds keyboard controls,
+announcements and a scrolling layout for 200% scaling. Human review has no timeout;
+each prepare/render/commit operation has its own bounded deadline and cancellation.
 No dependency or schema changes are needed. Release documents retain their existing
 candidate evidence and `TBD` facts; this adds no ThirdLife compatibility claim.

@@ -23,9 +23,10 @@ the baseline. Attempts do not successively recompress the preceding lossy output
 The result is a transient `VerifiedPdfImageStageCandidate` with bounded reads, analysis and stage
 evidence, plus a separately identified baseline verification report. The caller must close it.
 This operation does not commit a destination, change case/history state, or add a UI action.
-[PWS-0504 target-size search](target-size-export.md) consumes this operation;
-PWS-0505 owns affected-page preview and the user-facing
-legibility/floor/override workflow. Existing export paths keep their lossless image policy.
+[PWS-0504 target-size search](target-size-export.md) consumes this operation.
+The PWS-0505 [review workflow](compression-review.md) adds affected-page previews,
+explicit grayscale and the fixed floor without a lower-quality override. Ordinary
+export retains its existing lossless image policy.
 
 ## Analysis and eligibility
 
@@ -64,6 +65,14 @@ Unsupported content is therefore not always representable as a successful inelig
 | Preserve 300 | 300 dpi | 90 | Preserve RGB/gray; RGB 4:4:4 |
 | Preserve 240 | 240 dpi | 85 | Preserve RGB/gray; RGB 4:4:4 |
 | Preserve 200 | 200 dpi | 80 | Preserve RGB/gray; RGB 4:4:4 |
+| Grayscale 300 | 300 dpi | 90 | Explicit RGB-to-gray conversion for selected eligible assets |
+| Grayscale 240 | 240 dpi | 85 | Explicit RGB-to-gray conversion for selected eligible assets |
+| Grayscale 200 | 200 dpi | 80 | Explicit RGB-to-gray conversion for selected eligible assets |
+
+The grayscale profiles are additive named v1 image-stage values used by the explicit
+version 2 target-search policy. Existing preserve profiles retain their exact meaning.
+Grayscale output verification requires the selected asset's expected DeviceGray
+dictionary; unselected assets and text/vector color still compare unchanged.
 
 No upscaling occurs. Uniform scaling uses the lowest resolution across axes and placements, with
 conservative rounding. Another axis or smaller placement may remain above target; an asset already

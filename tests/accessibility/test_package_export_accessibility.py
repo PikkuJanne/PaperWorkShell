@@ -83,6 +83,7 @@ def test_labels_roles_descriptions_and_plain_text_are_available_without_color() 
             "packageExportUnsignedDerivativeCheck",
             "packageExportStatus",
             "packageExportStartButton",
+            "packageExportCompressionButton",
             "packageExportSaveSummaryButton",
             "packageExportCancelButton",
             "packageExportCloseButton",

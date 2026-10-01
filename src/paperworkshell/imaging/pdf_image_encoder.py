@@ -121,11 +121,17 @@ def _resize_encode(
     checkpoint()
     target = (geometry.width_pixels, geometry.height_pixels)
     resized = opened if opened.size == target else opened.resize(target, Image.Resampling.LANCZOS)
+    converted: Image.Image | None = None
     try:
         checkpoint()
+        # Convert only the selected, resized raster. The admitted memory bound
+        # includes two target cores; no full-size color conversion is retained.
+        if profile.allows_grayscale and resized.mode == "RGB":
+            converted = resized.convert("L")
+        selected = resized if converted is None else converted
         with _JpegBuffer(maximum_bytes, checkpoint) as destination:
             try:
-                resized.save(
+                selected.save(
                     destination,
                     format="JPEG",
                     quality=profile.jpeg_quality,
@@ -143,7 +149,7 @@ def _resize_encode(
                 return None
             data = destination.getvalue()
         with io.BytesIO(data) as source, Image.open(source) as verify:
-            if verify.format != "JPEG" or verify.mode != opened.mode or verify.size != target:
+            if verify.format != "JPEG" or verify.mode != selected.mode or verify.size != target:
                 reject_pdf_export(
                     PdfExportErrorCode.VERIFICATION_STRUCTURE_FAILED, "image_stage.encoded_image"
                 )
@@ -151,5 +157,7 @@ def _resize_encode(
         checkpoint()
         return EncodedImage(data, hashlib.sha256(data).hexdigest(), geometry)
     finally:
+        if converted is not None:
+            converted.close()
         if resized is not opened:
             resized.close()

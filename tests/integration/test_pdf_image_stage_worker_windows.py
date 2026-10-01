@@ -19,6 +19,7 @@ from paperworkshell.domain.pdf_export import (
     build_pdf_export_plan,
 )
 from paperworkshell.domain.pdf_image_stages import (
+    PdfImageColorMode,
     PdfImageEligibility,
     PdfImageStageOutcome,
     PdfImageStageProfile,
@@ -174,6 +175,31 @@ def test_live_constrained_stage_analysis_reduction_failure_cancel_and_recovery(
             selected = _read_candidate(staged)
         assert staged_progress[-1].completed_pages == plan.page_count
         assert any(0 < item.completed_pages < plan.page_count for item in staged_progress)
+        # The opt-in profile changes eligible RGB images only. It reuses the
+        # immutable analyzed baseline rather than the preceding lossy output.
+        with (
+            sources.borrow_committed_pdf_sources(
+                plan, deadline=lambda: False, cancellation=lambda: False
+            ) as lease,
+            processor.process(
+                plan,
+                lease,
+                replace(request, profile=PdfImageStageProfile.GRAYSCALE_300_DPI_Q90),
+                deadline=lambda: False,
+                cancellation=lambda: False,
+            ) as grayscale,
+        ):
+            assert grayscale.report.outcome is PdfImageStageOutcome.REENCODED
+            assert grayscale.report.profile is PdfImageStageProfile.GRAYSCALE_300_DPI_Q90
+            assert grayscale.analysis.assets[0].color_mode is PdfImageColorMode.RGB
+            assert grayscale.report.assets[0].color_mode is PdfImageColorMode.GRAYSCALE
+            assert grayscale.report.assets[0].output_effective_dpi_x_milli == 300_000
+            assert grayscale.report.verified_page_count == 2
+            assert grayscale.report.baseline_sha256 == request.baseline_sha256
+            grayscale_bytes = _read_candidate(grayscale)
+        assert runtime._worker.query().phase is WorkerLifecyclePhase.STOPPED
+        with pytest.raises(PdfExportError):
+            grayscale.read(1)
         snapshot = runtime.resource_snapshot()
         assert snapshot is not None
         assert snapshot.process_memory_limit_bytes == policy.worker_process_memory_bytes
@@ -245,12 +271,20 @@ def test_live_constrained_stage_analysis_reduction_failure_cancel_and_recovery(
     baseline_path, selected_path = tmp_path / "baseline.pdf", tmp_path / "selected.pdf"
     baseline_path.write_bytes(baseline)
     selected_path.write_bytes(selected)
+    grayscale_path = tmp_path / "grayscale.pdf"
+    grayscale_path.write_bytes(grayscale_bytes)
     with pikepdf.Pdf.open(baseline_path) as before, pikepdf.Pdf.open(selected_path) as after:
         assert len(after.pages) == len(before.pages) == 2
         assert before.docinfo == after.docinfo
         for left, right in zip(before.pages, after.pages, strict=True):
             assert left.obj.Contents.read_bytes() == right.obj.Contents.read_bytes()
         assert after.pages[0].obj.Resources.XObject.Pixels.ColorSpace == pikepdf.Name.DeviceRGB
+    with pikepdf.Pdf.open(baseline_path) as before, pikepdf.Pdf.open(grayscale_path) as after:
+        assert len(after.pages) == len(before.pages) == 2
+        assert before.docinfo == after.docinfo
+        for left, right in zip(before.pages, after.pages, strict=True):
+            assert left.obj.Contents.read_bytes() == right.obj.Contents.read_bytes()
+        assert after.pages[0].obj.Resources.XObject.Pixels.ColorSpace == pikepdf.Name.DeviceGray
     assert original.read_bytes() == original_bytes
     assert committed.read_bytes() == committed_bytes
     assert hashlib.sha256(committed_bytes).hexdigest() == imported.sha256

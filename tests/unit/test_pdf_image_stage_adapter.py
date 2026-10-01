@@ -151,7 +151,7 @@ def test_analysis_reports_unique_assets_dpi_and_largest_coverage_without_writing
 @pytest.mark.parametrize("profile", list(PdfImageStageProfile))
 @pytest.mark.parametrize("mode", ["RGB", "L"])
 @pytest.mark.parametrize("encoding", ["raw", "flate", "jpeg"])
-def test_each_profile_preserves_text_vector_color_and_reports_measured_selection(
+def test_each_profile_preserves_text_vector_and_reports_permitted_color_selection(
     tmp_path: Path, profile: PdfImageStageProfile, mode: str, encoding: str
 ) -> None:
     baseline, candidate = tmp_path / "baseline.pdf", tmp_path / "candidate.pdf"
@@ -192,8 +192,14 @@ def test_each_profile_preserves_text_vector_color_and_reports_measured_selection
         for left, right in zip(before.pages, after.pages, strict=True):
             assert left.obj.Contents.read_bytes() == right.obj.Contents.read_bytes()
         image = after.pages[0].obj.Resources.XObject.Pixels
+        expected_color = profile.output_color_mode(
+            PdfImageColorMode.RGB if mode == "RGB" else PdfImageColorMode.GRAYSCALE
+        )
+        assert impact.color_mode is expected_color
         assert image.ColorSpace == (
-            pikepdf.Name.DeviceRGB if mode == "RGB" else pikepdf.Name.DeviceGray
+            pikepdf.Name.DeviceRGB
+            if expected_color is PdfImageColorMode.RGB
+            else pikepdf.Name.DeviceGray
         )
         assert image.Filter == pikepdf.Name.DCTDecode and image.BitsPerComponent == 8
     renders = []
@@ -344,20 +350,48 @@ def test_constrained_stage_keeps_exact_baseline_when_work_cannot_fit(
     assert result.candidate_sha256 is None and not candidate.exists()
 
 
-def test_candidate_capacity_overflow_restores_original_impact_dimensions(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "profile",
+    (PdfImageStageProfile.PRESERVE_300_DPI_Q90, PdfImageStageProfile.GRAYSCALE_300_DPI_Q90),
+)
+def test_candidate_capacity_overflow_restores_original_impact_dimensions(
+    tmp_path: Path, profile: PdfImageStageProfile
+) -> None:
     baseline, candidate = tmp_path / "baseline.pdf", tmp_path / "candidate.pdf"
     make_image_baseline(baseline)
     result = run_image_stage(
         baseline,
         candidate,
-        profile=PdfImageStageProfile.PRESERVE_300_DPI_Q90,
+        profile=profile,
         selected_limits=replace(image_limits(), maximum_candidate_bytes=100),
     )
     assert result.report.outcome is PdfImageStageOutcome.NO_REDUCTION
     impact = result.report.assets[0]
     assert impact.output_width_pixels == impact.original_width_pixels == 600
+    assert impact.color_mode is PdfImageColorMode.RGB
     assert impact.candidate_encoded_byte_size is not None
     assert result.report.candidate_byte_size is None and not candidate.exists()
+
+
+def test_grayscale_permission_cannot_change_an_original_below_the_resolution_floor(
+    tmp_path: Path,
+) -> None:
+    def low_resolution(document: pikepdf.Pdf, image: pikepdf.Stream, page: pikepdf.Page) -> None:
+        page.obj.Contents.write(b"q 288 0 0 230.4 0 0 cm /Pixels Do Q")
+
+    baseline, candidate = tmp_path / "baseline.pdf", tmp_path / "candidate.pdf"
+    make_image_baseline(baseline, mutate=low_resolution)
+    original = baseline.read_bytes()
+    analyzed = run_image_stage(baseline, candidate)
+    assert analyzed.analysis.assets[0].eligibility is PdfImageEligibility.BELOW_FLOOR
+    assert analyzed.analysis.assets[0].color_mode is PdfImageColorMode.RGB
+    with pytest.raises(PdfExportError):
+        run_image_stage(baseline, candidate, profile=PdfImageStageProfile.GRAYSCALE_200_DPI_Q80)
+    retained = run_image_stage(
+        baseline, candidate, profile=PdfImageStageProfile.GRAYSCALE_200_DPI_Q80, selected=()
+    )
+    assert retained.report.outcome is PdfImageStageOutcome.UNCHANGED
+    assert baseline.read_bytes() == original and not candidate.exists()
 
 
 def test_retained_compressed_replacements_reduce_later_image_memory_admission(

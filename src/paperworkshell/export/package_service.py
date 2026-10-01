@@ -28,6 +28,9 @@ from paperworkshell.domain.package_summary import (
     reject_package_summary,
 )
 from paperworkshell.domain.resource_policy import ResourcePolicy
+from paperworkshell.export.compression_review import (
+    WindowsCompressionReviewService as WindowsCompressionReviewService,
+)
 from paperworkshell.export.package_export import (
     PackageExportErrorCode,
     PackageExportOutcome,

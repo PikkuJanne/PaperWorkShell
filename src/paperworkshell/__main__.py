@@ -68,6 +68,11 @@ from paperworkshell.app.source_ingest import (
     SourceIngestService,
 )
 from paperworkshell.app.source_inspection import SourceInspectorRouter
+from paperworkshell.app.target_size_pdf_export import (
+    PdfImageStageCandidatePort,
+    PdfImageStageProcessorPort,
+    TargetSizePdfCandidateProducer,
+)
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
@@ -77,9 +82,11 @@ from paperworkshell.domain.pdf_export import (
     IMAGE_PDF_EXPORT_PROFILE,
     PdfExportErrorCode,
     PdfExportOutcome,
+    PdfExportPlan,
     PdfExportProfile,
     reject_pdf_export,
 )
+from paperworkshell.domain.pdf_image_stages import PdfImageStageRequest
 from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_FRAME_BYTES
 from paperworkshell.domain.quality_ocr_review import (
     MAX_QUALITY_OCR_REVIEW_PIXELS,
@@ -96,7 +103,10 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportPlan,
     reject_searchable_pdf_export,
 )
-from paperworkshell.export.package_service import WindowsPackageExportService
+from paperworkshell.export.package_service import (
+    WindowsCompressionReviewService,
+    WindowsPackageExportService,
+)
 from paperworkshell.export.package_summary import build_package_summary
 from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
 from paperworkshell.overlays.exporting import (
@@ -148,6 +158,7 @@ from paperworkshell.worker.desktop_composition import (
     QualityOcrReviewWorkerCompositionConfig,
     SearchablePdfExportWorkerComposition,
     SearchablePdfExportWorkerCompositionConfig,
+    create_compression_preview_renderer,
     create_desktop_heavy_operation_coordinator,
     create_desktop_worker_composition,
     create_desktop_worker_composition_config,
@@ -157,6 +168,7 @@ from paperworkshell.worker.desktop_composition import (
     create_ocr_worker_composition_config,
     create_pdf_export_worker_composition,
     create_pdf_export_worker_composition_config,
+    create_pdf_image_stage_worker_composition,
     create_quality_ocr_review_worker_composition,
     create_quality_ocr_review_worker_composition_config,
     create_searchable_pdf_export_worker_composition,
@@ -582,6 +594,106 @@ def _package_pdf_producer_context(
         )
 
 
+class _LazyPackageImageStageProcessor:
+    """Admit an image-stage worker only when an eligible PDF is prepared."""
+
+    def __init__(self, resources: DesktopApplicationResourceContext, stack: ExitStack) -> None:
+        self._resources = resources
+        self._stack = stack
+        self._processor: PdfImageStageProcessorPort | None = None
+
+    def process(
+        self,
+        base_plan: PdfExportPlan,
+        sources: CommittedPdfSourceBatchLease,
+        request: PdfImageStageRequest,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: PdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
+    ) -> PdfImageStageCandidatePort:
+        _require_package_runtime_active(deadline, cancellation)
+        processor = self._processor
+        if processor is None:
+            # The image-capable export budget already derives its source-pixel
+            # allowance from the central worker memory limit. This configuration
+            # does not select any stage; the typed request carries that choice.
+            config = build_windows_pdf_export_worker_config(
+                resource_policy=self._resources.resource_policy,
+                profile=IMAGE_PDF_EXPORT_PROFILE,
+            )
+            composition = create_pdf_image_stage_worker_composition(
+                config, heavy_operations=self._resources.heavy_operations
+            )
+            self._stack.callback(composition.close)
+            if (
+                composition.closed
+                or composition.image_stage_processor.heavy_operations
+                is not self._resources.heavy_operations
+            ):
+                reject_package_pdf_candidate(
+                    PackagePdfCandidateErrorCode.MODEL_INVALID, "package.image_stage_composition"
+                )
+            processor = composition.image_stage_processor
+            self._processor = processor
+        _require_package_runtime_active(deadline, cancellation)
+        return processor.process(
+            base_plan,
+            sources,
+            request,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+            reserved_temporary_bytes=reserved_temporary_bytes,
+        )
+
+
+@contextmanager
+def _target_size_pdf_producer_context(
+    sources: WindowsSourceIngestStore,
+    rasterizer: FlattenedPdfRasterizer,
+    resources: DesktopApplicationResourceContext,
+) -> Iterator[TargetSizePdfCandidateProducer]:
+    """Close every selected pipeline before leaving private package preparation."""
+
+    selected = _require_application_resource_context(resources, required=True)
+    with ExitStack() as stack:
+        fallback = stack.enter_context(_package_pdf_producer_context(sources, rasterizer, selected))
+        yield TargetSizePdfCandidateProducer(
+            sources,
+            _LazyPackageImageStageProcessor(selected, stack),
+            fallback,
+            selected.resource_policy,
+        )
+
+
+def build_windows_compression_review_service(
+    sources: WindowsSourceIngestStore,
+    rasterizer: FlattenedPdfRasterizer,
+    *,
+    resources: DesktopApplicationResourceContext,
+    preview_config: DesktopWorkerCompositionConfig,
+) -> WindowsCompressionReviewService:
+    """Compose explicit compression review with the app's one heavy-operation gate."""
+
+    selected = _require_application_resource_context(resources, required=True)
+    renderer = create_compression_preview_renderer(
+        preview_config,
+        sources,
+        selected.resource_policy,
+        heavy_operations=selected.heavy_operations,
+    )
+    return WindowsCompressionReviewService(
+        lambda: _target_size_pdf_producer_context(sources, rasterizer, selected),
+        WindowsExportDestination(
+            minimum_free_space_reserve_bytes=selected.resource_policy.minimum_export_free_space_reserve_bytes
+        ),
+        selected.resource_policy,
+        renderer,
+    )
+
+
 def _require_package_runtime_active(
     deadline: DeadlineProbe,
     cancellation: CancellationProbe,
@@ -910,8 +1022,9 @@ def _build_backend(
         WindowsSourcePrechecker(_import_limits(selected_policy)),
     )
     thumbnail_cache = WindowsThumbnailCacheStore(manager)
+    desktop_config = _desktop_worker_config(selected_policy)
     composition = create_desktop_worker_composition(
-        _desktop_worker_config(selected_policy),
+        desktop_config,
         prepared_sources=source_store,
         committed_inspection_sources=source_store,
         committed_pages=source_store,
@@ -981,6 +1094,12 @@ def _build_backend(
                 ),
                 summary_builder=build_package_summary,
                 source_inspector=composition.source_inspector,
+                compression=build_windows_compression_review_service(
+                    source_store,
+                    composition.signature_image_rasterizer,
+                    resources=selected_resources,
+                    preview_config=desktop_config,
+                ),
             ),
         )
     except BaseException:
