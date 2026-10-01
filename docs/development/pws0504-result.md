@@ -1,6 +1,6 @@
 # Task result — PWS-0504: target-size search and constraint-aware export policy
 
-**Status:** implementation complete; verification in progress.
+**Status:** review; final regression verification in progress.
 
 ## Scope and plan
 
@@ -95,7 +95,39 @@ typing, schema and documentation checks passed. A further resource review correc
 the OCR directory monitor's allowance to reserve the parent output/status sections as
 well as the live plan. Sources remain counted once inside the monitored directory;
 27 searchable-operation tests passed, including the forwarded allowance invariant.
-Real worker reruns and full CI remain pending.
+The real-worker rerun passed 14 tests in 698.90 seconds using
+`python -m pytest -q tests/integration/test_package_pilot.py
+tests/integration/test_target_size_worker_windows.py
+tests/integration/test_pdf_image_stage_worker_windows.py
+tests/unit/worker/test_pdf_image_stage_operation.py --tb=short`. This includes the
+unchanged pilot that failed before the correction, all three target-size output modes,
+existing image-stage behavior and native operation checks. Full CI remains pending.
+
+The second full CI run is recorded at
+[run 36865827012](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36865827012),
+revision `4b43fe6a39f7b5c6bd9f7d4f2cabbd075c98c40e`, including both resource corrections.
+Its core job passed: 5,320 unit tests, 686 security tests and 71 accessibility tests,
+with no skips. All registered core gates passed, including fixture/reference validation,
+reachable-history and working-tree secret scanning, and five quality self-tests. The
+integration job completed in 4,546.70 seconds with 532 passed, seven existing
+OCR/private-artifact prerequisite skips, and the one-byte failure below. No timeout
+or quality-workflow change was needed. The full local integration run completed with
+529 passed, ten existing environment-dependent skips, and the same one-byte failure
+in 3,573.78 seconds. Its three additional skips concern local symbolic-link privileges.
+
+The full local run exposed an existing one-byte-output failure scenario that requires
+a correlated worker result. The new parent-side 4,096-byte floor rejected it too early.
+The preserved contract admits positive configured output caps; the worker reports the
+bounded failure. The PWS-0208 version 1 workload and its evidence remain unchanged.
+Three broker regressions cover dispatch, the exact one-byte cap, correlation and cleanup.
+They reproduced the regression before the narrow correction, then passed in a
+114-test broker/reservation/security run. The correction restores positive output
+caps in all three brokers; worker-side limits and bounded writes remain unchanged.
+Registered formatting, lint, import boundaries and typing passed afterward.
+The unchanged live regression
+`test_live_output_bound_failure_is_correlated_terminated_clean_and_private` passed
+in 29.77 seconds, proving correlated failure, worker termination, cleanup and privacy
+with the one-byte limit. Full corrected-revision CI remains the final gate.
 
 ### Synthetic visual inspection
 

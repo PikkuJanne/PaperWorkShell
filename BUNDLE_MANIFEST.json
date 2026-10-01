@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 332126,
-      "sha256": "b967f23f8e0f99c7a22fd3a3eae9ad77b71429d74014b0f97c5af6a1f6351955"
+      "bytes": 332121,
+      "sha256": "30344205871be3de17a02eecd7a01b5f056489db11d7efd2b4a7fb48944e4d44"
     },
     {
       "path": "TASKS.schema.json",
@@ -165,8 +165,8 @@
     },
     {
       "path": "docs/development/pws0504-result.md",
-      "bytes": 12695,
-      "sha256": "3a8ee158741a05196d0b3b7d6e62533e96583887bd818281348242aaf1c371ac"
+      "bytes": 15062,
+      "sha256": "820a5bb69e7a1c1e4406b053afe3aa3521fd23d790349c7b86d165747fb9ca26"
     }
   ],
   "validation": {

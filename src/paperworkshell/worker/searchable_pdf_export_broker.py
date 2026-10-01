@@ -25,7 +25,6 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgressPhase,
     reject_pdf_export,
 )
-from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_REPORT_BYTES
 from paperworkshell.domain.searchable_pdf_export import (
     MAX_SEARCHABLE_PDF_PAGES,
     SearchablePdfExportError,
@@ -860,7 +859,7 @@ def _operation_limits(
     # Two copies cover the worker PDF and its shared section (then the section
     # and destination stage). A third share leaves sequential page/OCR scratch.
     output_bytes = min(policy.limits.output_bytes, available // 3)
-    if output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+    if output_bytes < 1:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "searchable.operation_limits")
     limits = replace(policy.limits, temporary_storage_bytes=remaining, output_bytes=output_bytes)
     return ResourceLimits(

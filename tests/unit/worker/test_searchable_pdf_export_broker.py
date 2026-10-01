@@ -1100,6 +1100,23 @@ def test_correlated_worker_resource_limit_maps_to_retryable_export_limit() -> No
     assert system.status.close_calls == 1
 
 
+def test_tiny_positive_output_limit_preserves_correlated_worker_failure() -> None:
+    system = _System(policy=_policy(output_bytes=1))
+    system.worker.outcome = OperationOutcome.FAILED
+    system.worker.error_code = ErrorCode.WORKER_OPERATION_FAILED
+    system.worker.error_category = ErrorCategory.RESOURCE_LIMIT
+
+    error = _error(system)
+
+    assert error.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert error.context == "searchable.worker_resource_limit"
+    assert system.worker.payload is not None
+    assert system.worker.payload.requested_limits.output_bytes == 1
+    assert system.output.capacity == 1
+    assert system.worker.terminated
+    assert system.output.close_calls == system.status.close_calls == 1
+
+
 def test_permanent_revocation_fails_before_allocating_or_launching() -> None:
     system = _System()
     system.exporter._revoke_permanently()

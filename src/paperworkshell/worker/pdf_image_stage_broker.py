@@ -25,7 +25,6 @@ from paperworkshell.domain.pdf_image_stages import (
     PdfImageStageRequest,
     validate_pdf_image_stage_report,
 )
-from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_REPORT_BYTES
 from paperworkshell.domain.source_ingest import SourceIngestError
 from paperworkshell.worker._windows_broker import WindowsResultPipe
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
@@ -644,7 +643,7 @@ def _stage_operation_limits(
         - maximum_plan_bytes
     )
     output_bytes = min(policy.limits.output_bytes, available // 2)
-    if output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+    if output_bytes < 1:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "image_stage.operation_limits")
     limits = replace(policy.limits, temporary_storage_bytes=remaining, output_bytes=output_bytes)
     # One disk candidate and one mapped output section overlap. Safe optimization

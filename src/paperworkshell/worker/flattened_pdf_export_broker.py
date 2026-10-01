@@ -27,7 +27,6 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgress,
     PdfExportProgressPhase,
 )
-from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_REPORT_BYTES
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportError,
@@ -1109,7 +1108,7 @@ def _preflight_operation_limits(
         policy.output_bytes,
         (policy.temporary_storage_bytes - source_bytes - raster_bytes - plan_bytes) // 2,
     )
-    if output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+    if output_bytes < 1:
         reject_flattened_pdf_export(
             FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
             "flattened.operation_limits",

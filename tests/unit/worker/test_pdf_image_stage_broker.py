@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import cast
+from uuid import UUID
 
 import pytest
 
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode, PdfExportProgress
 from paperworkshell.domain.pdf_image_stages import PdfImageStageProfile, PdfImageStageRequest
 from paperworkshell.worker.pdf_export_broker import PdfExportOutputBuffer, PdfExportSourceBatchLease
+from paperworkshell.worker.protocol.models import (
+    ErrorCategory,
+    ErrorCode,
+    OperationOutcome,
+    OperationStartPayload,
+)
 from tests.unit.worker.pdf_image_stage_fixtures import StageSystem
 from tests.unit.worker.test_pdf_export_broker import _uuid
 
@@ -128,16 +135,12 @@ def test_constrained_storage_lowers_output_capacity_before_allocation(
     assert system.heavy.snapshot().active_operations == 0
 
 
-@pytest.mark.parametrize("spare_bytes", (0, 2 * 4095))
-def test_exhausted_storage_rejects_before_worker_or_allocation_without_raising_budget(
-    spare_bytes: int,
-) -> None:
+def test_exhausted_storage_rejects_before_worker_or_allocation_without_raising_budget() -> None:
     system = StageSystem()
     reserved = (
         system.policy.limits.temporary_storage_bytes
         - sum(source.byte_size for source in system.plan.sources)
         - system.policy.evidence_capacity_bytes
-        - spare_bytes
     )
     with pytest.raises(PdfExportError) as caught:
         system.processor.process(
@@ -153,6 +156,43 @@ def test_exhausted_storage_rejects_before_worker_or_allocation_without_raising_b
     assert system._buffer_calls == 0
     assert system.processor._policy == system.policy
     assert system.heavy.snapshot().active_operations == 0
+
+
+def test_tiny_positive_output_capacity_remains_a_worker_dispatched_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    system = StageSystem()
+    system.processor._policy = replace(
+        system.policy, limits=replace(system.policy.limits, output_bytes=1)
+    )
+    system.output.capacity = 1
+    system.worker.outcome = OperationOutcome.FAILED
+    start_operation = system.worker.start_operation
+
+    def resource_limited_start(
+        payload: OperationStartPayload, *, operation_id: UUID | None = None
+    ) -> UUID:
+        selected = start_operation(payload, operation_id=operation_id)
+        assert system.worker.terminal_result is not None
+        system.worker.terminal_result = replace(
+            system.worker.terminal_result,
+            error_code=ErrorCode.WORKER_OPERATION_FAILED,
+            error_category=ErrorCategory.RESOURCE_LIMIT,
+        )
+        return selected
+
+    monkeypatch.setattr(system.worker, "start_operation", resource_limited_start)
+    with pytest.raises(PdfExportError) as caught:
+        system.process()
+    assert caught.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert caught.value.context == "image_stage.worker_result"
+    assert caught.value.__cause__ is caught.value.__context__ is None
+    assert system.worker.started and system.worker.terminated
+    assert system.worker.payload is not None
+    assert system.worker.payload.requested_limits.output_bytes == 1
+    assert system.output.close_calls == system.evidence.close_calls == 1
+    assert system.heavy.snapshot().active_operations == 0
+    assert system.sources.revalidate_calls == system.pipe.read_calls == 0
 
 
 def test_broker_policy_accepts_output_ceiling_needing_a_smaller_operation_section() -> None:

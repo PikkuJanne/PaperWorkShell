@@ -994,6 +994,23 @@ def test_exact_plan_limit_and_resource_limited_worker_cleanup_all_sections() -> 
     assert worker_limited.output.close_calls == 1
 
 
+def test_tiny_positive_output_limit_preserves_correlated_worker_failure() -> None:
+    system = _System(policy=_policy(output_bytes=1))
+    system.worker.outcome = OperationOutcome.FAILED
+    system.worker.error_category = ErrorCategory.RESOURCE_LIMIT
+
+    error = _error(system)
+
+    assert error.code is FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
+    assert error.context == "flattened.worker_result"
+    assert system.worker.payload is not None
+    assert system.worker.payload.requested_limits.output_bytes == 1
+    assert system.output.capacity == 1
+    assert system.worker.terminated
+    assert system.output.close_calls == 1
+    assert all(buffer.close_calls >= 1 for buffer in system.raster_buffers)
+
+
 def test_candidate_short_read_cleanup_failure_and_private_failures_are_sanitized() -> None:
     short = _System()
     candidate = short.export()
