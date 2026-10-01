@@ -151,6 +151,9 @@ class _UnusedWorkerPort:
     def rasterize_committed(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not read a committed signature image")
 
+    def render_comparison(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not render a compression preview")
+
 
 class _Composition:
     source_inspector = _UnusedWorkerPort()
@@ -216,6 +219,8 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
     composition_observations: list[bool] = []
     resources = desktop.create_desktop_application_resource_context()
     policy_observations: list[object] = []
+    preview_observations: list[bool] = []
+    configured_worker = object()
 
     def compose(*_args: object, **_kwargs: object) -> _Composition:
         composition_observations.append(stale_temp.exists())
@@ -224,10 +229,25 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
 
     def worker_config(policy: object) -> object:
         policy_observations.append(policy)
-        return object()
+        return configured_worker
+
+    def preview_renderer(
+        config: object,
+        sources: object,
+        policy: object,
+        *,
+        heavy_operations: object,
+    ) -> _UnusedWorkerPort:
+        preview_observations.append(stale_temp.exists())
+        assert config is configured_worker
+        assert isinstance(sources, WindowsSourceIngestStore)
+        assert policy is resources.resource_policy
+        assert heavy_operations is resources.heavy_operations
+        return _UnusedWorkerPort()
 
     monkeypatch.setattr(desktop, "_desktop_worker_config", worker_config)
     monkeypatch.setattr(desktop, "create_desktop_worker_composition", compose)
+    monkeypatch.setattr(desktop, "create_compression_preview_renderer", preview_renderer)
     monkeypatch.setattr(
         desktop,
         "_optional_quality_ocr_review_composition",
@@ -243,6 +263,7 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
         assert result.cases[0].released_bytes == len(b"synthetic-leftover-work")
         assert not stale_temp.exists()
         assert composition_observations == [False]
+        assert preview_observations == [False]
         assert policy_observations == [resources.resource_policy]
     finally:
         backend.shutdown()

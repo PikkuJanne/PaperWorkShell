@@ -1,6 +1,6 @@
 # Task result — PWS-0505: compression preview, grayscale option, and legibility floor
 
-**Status:** review; full repository verification is running.
+**Status:** review; Windows CI core passed; integration retry is required after a fixture correction and timeout.
 
 ## Scope and plan
 
@@ -35,7 +35,7 @@ Resolve signed-source consent before preparing candidate evidence.
 
 Native PDF/image parsing remains in restricted workers. Only authenticated bounded
 pixels reach widgets. Routine representations exclude document content and paths.
-No new dependency or license obligation is planned; no manifest migration is needed.
+No new dependency or license obligation was added; no manifest migration is needed.
 
 ## Portfolio boundary and release-interface notes
 
@@ -108,18 +108,91 @@ No applicant document or real personal information was used.
 Automatic approval review rejected a narrow deletion of a 600-byte synthetic stage
 left by the deliberate pre-fix cache-admission regression, with reason “blocked by
 policy.” No alternate deletion was attempted. The test now cleans its stages in a
-`finally` block. The prior file remains outside the repository under pytest temporary
-storage; it contains only synthetic test bytes. It is not included in Git or runtime
-artifacts. Its local path is
+`finally` block. A later read-only check after subsequent pytest sessions found the
+file absent; no manual deletion retry was made. It contained only synthetic test bytes
+and was never included in Git or runtime artifacts. Its former local path is
 `%TEMP%/pytest-of-<user>/pytest-2769/test_review_admits_combined_li0/.bbe2e3be-8357-4639-a3fa-3692de5de38a.pws-package-stage.tmp`.
 
 ## Verification checkpoint
 
 Implementation commit: `1b88998752e1844a6360cba5d7200c4794048b29`.
 Full local accessibility suite: `python -m pytest -q tests/accessibility --tb=short`
-passed 74 tests in 5.57 seconds. Full unit and security suites are running.
+passed 74 tests in 5.57 seconds. Full local security suite:
+`python -m pytest -q tests/security --tb=short` passed 700 tests and 510 subtests in
+341.27 seconds. Six existing tests skipped because this local account lacks symbolic-link
+privileges; junction coverage ran. The first full local unit run passed 5,474 tests
+and 1,208 subtests but failed its checked-in bundle check: this evidence report was
+updated while the suite was still running, making its recorded hash stale. Refreshing
+the canonical hash resolved that metadata error. The full local rerun passed 5,475
+tests and 1,208 subtests in 685.08 seconds using
+`python -m pytest -q tests/unit --tb=short`. The CI checkout was unaffected by this
+local documentation edit. Windows CI integration remains required for final acceptance.
 The unchanged scan-quality recorder and validator passed at the implementation
 revision; only the recorded revision changed, with all eight metrics identical.
 See [provenance](scan-quality-evaluation.md). The local pytest console launcher remains
 blocked by Windows Application Control; locked `python -m pytest` is the equivalent
 working invocation. No host security setting was changed.
+
+### Clean Windows CI
+
+[Run 36892591130](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36892591130)
+tests revision `b78447469ca02d1439b0703194df76e5980ffca6`. The core job passed in
+23 minutes 48 seconds using `python tools/dev.py check --ci-group core`: 5,475 unit,
+706 security and 74 accessibility tests passed with no skips. All six symbolic-link
+tests skipped locally ran successfully on the clean runner.
+
+The core job passed formatting, lint, strict typing (657 files), import boundaries,
+synthetic-fixture/reference checks, every registered schema, task graph, documentation,
+portfolio-boundary and resource-evidence validator, reachable-history and working-tree
+secret scans, and all five deliberate quality self-tests.
+
+The integration job collected 556 tests and hit its unchanged 90-minute job limit.
+Partial log progress showed 487 passes, one failure and seven existing prerequisite
+skips before cancellation at 89%; there is no complete suite result. Both the new
+compression-review native test and the extended image-stage native test passed,
+including the final combined-cache admission change. Forced cancellation interrupted
+a live containment test and its staged-resource teardown, which then reported a file
+sharing violation. This cancelled run is not acceptance evidence for the full suite.
+
+The earlier failure was reproduced locally in the existing cold-start recovery test.
+Its worker-configuration stub returns an opaque object, while the new compression
+renderer correctly requires a validated configuration. The fixture now stubs the
+renderer factory too, asserts recovery completed before either composition, verifies
+the exact configuration/policy/shared gate, and fails if any preview is rendered.
+Production validation remains unchanged. All three startup-recovery tests and all
+three compression-composition tests passed in 4.53 seconds afterward, using
+`python -m pytest -q tests/integration/test_desktop_startup_recovery_windows.py
+tests/unit/test_compression_review_composition.py --tb=short`.
+
+Comparison with the prior successful integration run found broadly slower native
+test groups (roughly 18–22%), consistent with a slower runner; a fresh complete run
+is still required. No timeout or resource limit was increased.
+
+## Changed files
+
+| Files | Purpose |
+|---|---|
+| `src/paperworkshell/domain/compression_review.py` | Validated transient review facts and private preview identities |
+| `src/paperworkshell/domain/target_size_search.py`, `src/paperworkshell/domain/pdf_image_stages.py` | Explicit grayscale policy and fixed automatic floor |
+| `src/paperworkshell/imaging/pdf_image_encoder.py`, `src/paperworkshell/pdf/image_stage_adapter.py` | Bounded grayscale conversion and strict expected-output validation |
+| `src/paperworkshell/app/target_size_pdf_export.py` | Authenticated original image analyses for before/proposed facts |
+| `src/paperworkshell/export/compression_review.py` | Private candidate ownership, measured presentation, preview binding and commit |
+| `src/paperworkshell/export/package_export.py`, `src/paperworkshell/export/target_size_export.py`, `src/paperworkshell/storage/export_package_destination.py` | Retained prepared transactions, authenticated PDF reads, ZIP members and fresh operation probes |
+| `src/paperworkshell/export/package_service.py`, `src/paperworkshell/export/package_summary.py` | Public service seam and suppression of size findings only when exact measurements resolve them |
+| `src/paperworkshell/worker/compression_preview.py`, `src/paperworkshell/worker/desktop_composition.py`, `src/paperworkshell/__main__.py` | Restricted fresh-worker rendering and lazy desktop composition with shared resource gates |
+| `src/paperworkshell/app/package_workflow.py`, `src/paperworkshell/app/organizer.py`, `src/paperworkshell/ui/backend.py` | Saved-case authority, signed-source consent, cancellation and typed UI bridge |
+| `src/paperworkshell/ui/compression_review.py`, `src/paperworkshell/ui/preview_comparison.py` | Keyboard-accessible measured review and bounded direct-image comparison |
+| `src/paperworkshell/ui/package_export.py`, `src/paperworkshell/ui/window.py` | Review entry point, generation/case checks, acknowledgement and recovery |
+| `tests/helpers/compression_review.py`, `tests/unit/test_compression_review_models.py`, `tests/unit/test_target_size_search.py`, `tests/unit/test_pdf_image_stages.py`, `tests/unit/test_pdf_image_stage_adapter.py` | Synthetic review fixtures and policy/model/adapter contracts |
+| `tests/unit/test_compression_review_backend_bridge.py`, `tests/unit/test_compression_review_composition.py`, `tests/unit/test_compression_workflow.py` | Composition, typed calls, stale authority, consent and malformed cancellation regressions |
+| `tests/unit/test_compression_review_dialog.py`, `tests/unit/test_compression_review_window.py`, `tests/unit/test_package_export_dialog.py`, `tests/unit/test_package_summary.py` | UI state, late results, explicit approval, preserved publication inventory and truthful summary |
+| `tests/unit/worker/test_compression_preview.py`, `tests/unit/worker/test_pdf_image_stage_wire.py` | Preview worker admission, deadlines, cancellation, malformed replies and grayscale transport |
+| `tests/integration/test_compression_review_service.py`, `tests/integration/test_prepared_package_export.py` | Exact staged bytes, ZIP reads, cleanup ownership, combined evidence budget and failure paths |
+| `tests/integration/test_compression_review_worker_windows.py`, `tests/integration/test_pdf_image_stage_worker_windows.py` | Real constrained preparation, grayscale, rendering, reopen and publication |
+| `tests/integration/test_desktop_startup_recovery_windows.py` | Extend the isolated startup fixture to the new renderer factory while preserving recovery order and no-render assertions |
+| `tests/security/test_pdf_image_stage_safety.py` | Grayscale preservation and hostile-input contracts |
+| `tests/accessibility/test_compression_review_accessibility.py`, `tests/accessibility/test_package_export_accessibility.py` | Labels, keyboard, focus, announcements and 200% scaling |
+| `docs/adr/0013-compression-review-and-floor.md`, `docs/architecture/compression-review.md`, `docs/architecture/target-size-export.md`, `docs/architecture/pdf-image-stages.md` | Decision, workflow, supported scope and resource contracts |
+| `README.md`, `KNOWN_LIMITATIONS.md` | Current desktop workflow and limits |
+| `benchmarks/pws0207-quality-findings-v1.json`, `docs/development/scan-quality-evaluation.md` | Unchanged quality metrics rebound to the changed desktop surfaces |
+| `docs/development/pws0505-result.md`, `TASKS.yaml`, `BUNDLE_MANIFEST.json` | Completion evidence, task state and canonical bundle hashes |
