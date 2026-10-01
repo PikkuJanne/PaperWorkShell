@@ -32,8 +32,8 @@ A smaller candidate must pass all of these checks:
    content, text/font structures, overlays, annotations, metadata, attachments, and shared/cyclic
    references. Object numbers and storage-only trailer keys are normalized. Unfiltered streams
    and single Flate streams without decode parameters are compared by their decoded bytes;
-   other filters and encoded bytes remain exact. Incremental Flate decoding enforces the semantic
-   byte budget before producing the next chunk.
+   other filters and encoded bytes remain exact. Incremental Flate decoding bounds each chunk
+   and rejects expansion beyond the semantic budget (using one sentinel byte to detect overflow).
 3. The existing fixed qpdf structural check without recovery or warnings.
 4. Sequential PDFium rendering and exact raster/geometry comparison of every baseline/candidate
    page using the existing bounded verification profile.
@@ -63,6 +63,7 @@ existing authenticated cleanup removes remaining private files on completion or 
 The pinned writer can rewrite ASCIIHex streams to Flate even with generalized decoding disabled.
 This profile rejects that representation change rather than introducing another decoder into the
 semantic comparator. The regression corpus records this conservative compatibility limitation.
+Streams that reference external files through `/F`, `/FFilter`, or `/FDecodeParms` are rejected.
 
 ## Resource accounting
 

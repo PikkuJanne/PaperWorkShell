@@ -1,8 +1,10 @@
 # Task result — PWS-0502: Safe object/stream optimization baseline
 
-**Status: `in_progress`.** Implementation and focused checks are recorded below. Final registered
-quality checks, live-worker evidence, and closure review remain pending. This draft does not mark
-the task done, claim a final full-suite result, or establish release acceptance.
+**Status: `done`.** Implementation is committed and pushed as
+`9b7514830a8a89329cc994b08d42360fb8980d37`. Both Windows CI jobs passed on that revision, and the
+run conclusion is successful. The evidence below preserves the seven capability skips and the
+separate local platform failures. Final metadata checks for the documentation/task closure are
+listed separately; no packaged release or human acceptance is claimed.
 
 ## Plan
 
@@ -68,7 +70,8 @@ The complete possible candidate extent must fit before native writing starts, an
 free-space reserve remains enforced.
 
 The semantic byte allowance is at most one quarter of the operation memory budget. Incremental
-Flate decoding checks that allowance before producing the next bounded chunk. Existing worker
+Flate decoding bounds each chunk and rejects expansion beyond that allowance, using one sentinel
+byte to detect overflow. Existing worker
 memory/CPU limits and deadlines still cover native allocations. Rendering remains sequential;
 the task introduces no extra worker, queue, cache, concurrency, or resource-policy increase.
 
@@ -97,13 +100,17 @@ memory; serialized legacy bytes are unchanged. Restart history-only recovery the
 the legacy verification facts without recreating transient optimization details. There is no
 case/history migration and no claim that recovery reran optimization.
 
-## Acceptance evidence under review
+## Acceptance evidence
 
-| Criterion | Implemented evidence | Remaining closure work |
+| Criterion | Implemented evidence | Result |
 |---|---|---|
-| Preserve page count, intended rendering, text presence, overlays, and encryption policy | Complete reachable-graph comparison plus exact all-page raster/geometry checks; synthetic mutation and policy regressions | Consolidate final registered checks and live-worker results |
-| Reopen, structurally check, and render output | Candidate strict reopen/syntax checks, fixed qpdf check, sequential PDFium comparisons, final hash/size authentication | Record verified constrained-worker runs for the production paths |
-| A larger or invalid optimized result cannot replace good output | Smaller-than-baseline write cap; ineffective-result fallback; invalid-candidate failure; separate baseline and candidate; existing no-replace publication | Close failure/cleanup and publication evidence on the final implementation revision |
+| Preserve page count, intended rendering, text presence, overlays, and encryption policy | Complete reachable-graph comparison plus exact all-page raster/geometry checks; synthetic mutation and policy regressions | Passed in the full core suites and supported live PDF/image/flattened worker scenarios at the implementation revision |
+| Reopen, structurally check, and render output | Candidate strict reopen/syntax checks, fixed qpdf check, sequential PDFium comparisons, final hash/size authentication | Passed; CI executed all three flattened-worker cases, the image-worker case, and both standard PDF-worker cases |
+| A larger or invalid optimized result cannot replace good output | Smaller-than-baseline write cap; ineffective-result fallback; invalid-candidate failure; separate baseline and candidate; existing no-replace publication | Passed; full unit/security failure-path coverage and live output-bound/termination scenarios |
+
+The searchable operation's integration and report propagation are covered by core tests. Its
+new live optimization assertion did not execute because the admitted OCR runtime was absent;
+that existing capability skip is documented below and is not claimed as live OCR evidence.
 
 The synthetic corpus covers visible and invisible text, ToUnicode mappings, Form overlays,
 image streams, metadata/comments, reachable unused resources, shared/cyclic references, opaque
@@ -114,8 +121,10 @@ and fresh retry. These are implementation checks, not a new human pilot or relea
 
 ## Changed files
 
-This inventory reflects the draft worktree diff and new files when this report was prepared.
-Closure evidence files and any later implementation changes must be reconciled before completion.
+This inventory was checked against all 36 changed files in implementation commit
+`9b7514830a8a89329cc994b08d42360fb8980d37`; every changed file is named below. Later closure edits
+are limited to the two documentation files, task state, and bundle metadata listed in the
+closure section. No later implementation is included.
 
 | Area | Files and purpose |
 |---|---|
@@ -128,38 +137,140 @@ Closure evidence files and any later implementation changes must be reconciled b
 | Report compatibility tests | `tests/unit/worker/test_pdf_export_report.py`, `tests/unit/worker/test_flattened_pdf_export_report.py`, `tests/unit/worker/test_searchable_pdf_export_wire.py`: legacy/current base report, nested envelopes, strict bounds and invalid evidence |
 | Summary/privacy tests | `tests/unit/test_package_summary.py`: measured outcomes and no preview claim; `tests/security/test_pdf_optimization_safety.py`: hostile/fault behavior, unchanged baseline, cleanup, private-value exclusion and recovery |
 | Windows integration tests | `tests/integration/test_pdf_export_worker_windows.py`, `tests/integration/test_image_pdf_export_worker_windows.py`, `tests/integration/test_flattened_pdf_export_worker_windows.py`, `tests/integration/test_searchable_pdf_export_worker_windows.py`: production-path optimization report and selected-output assertions |
-| Documentation and task state | `docs/architecture/pdf-safe-optimization.md`, `docs/architecture/pdf-export.md`, `docs/schemas/worker-rpc-v1.md`, `README.md`, `KNOWN_LIMITATIONS.md`, `TASKS.yaml`, `BUNDLE_MANIFEST.json`, `docs/development/pws0502-result.md`: fixed policy, compatibility, limitations and provisional task evidence |
+| Documentation and task state | `docs/architecture/pdf-safe-optimization.md`, `docs/architecture/pdf-export.md`, `docs/schemas/worker-rpc-v1.md`, `README.md`, `KNOWN_LIMITATIONS.md`, `TASKS.yaml`, `BUNDLE_MANIFEST.json`, `docs/development/pws0502-result.md`: fixed policy, compatibility, limitations and task evidence |
 
-## Verification — provisional
+## Verification
 
-The following focused runs overlap. Their counts must not be added together or represented as a
-single full-suite result. They ran against the evolving worktree; final revision and registered
-command evidence are pending consolidation by the root agent. No live-worker result is claimed
-by these rows.
+The [Windows CI core job](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36823185868/job/110242998778)
+passed `python tools/dev.py check --ci-group core` against exact implementation commit
+`9b7514830a8a89329cc994b08d42360fb8980d37`. The sanitized local copy of its log is
+`output/pws0502-ci-core.log`. This covers the full unit, security, and accessibility suites plus
+all registered core checks. It supersedes the earlier overlapping focused unit/security results.
 
-| Command or reported scope | Result | Evidence scope |
+The [integration job](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36823185868/job/110242998573)
+also passed at that exact revision. [CI run 36823185868](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36823185868)
+has conclusion `success`. The combined results are **6,126 passed and 7 capability skips** across
+the four test suites. The core and integration partitions together ran the full registered
+`check` command; the local host failures remain separately recorded.
+
+### Completed core job
+
+The registered core group invoked the external commands below through
+`uv run --locked --no-sync`; `scan-secrets` is the registered in-process scanner.
+
+| Command/check within the core group | Result |
+|---|---|
+| `ruff format --check .` | Passed; 609 files already formatted |
+| `ruff check .` | Passed |
+| `python tools/check_import_boundaries.py` | Passed; 13 layers, 210 source files |
+| `python -m mypy src tools tests` | Passed; 609 source files |
+| `pytest tests/unit` | **4,960 passed in 821.62 s; no skips** |
+| `pytest tests/security` | **598 passed in 302.78 s; no skips** |
+| `pytest tests/accessibility` | **71 passed in 4.42 s; no skips** |
+| `python -m tools.validate_synthetic_fixtures` | Passed; 46 public synthetic fixtures, 15 analytical renderer references, 6 approved image-transform references, 3 approved overlay references, 237,165 corpus bytes; scanned 2,703 historical blobs, 868 index blobs and 898 working files |
+| `python -m tools.validate_schemas` | Passed; task, case-manifest v1/v2, fixture-index v1, template v1 and generic packet scenarios, worker-RPC v1, dependency-inventory v1, M1 report v1/v2/v3, and export-history v1 schemas |
+| `python tools/validate_tasks.py` | Passed; 82 tasks, 243 dependencies, 9 milestones, 42 decisions |
+| `python -m tools.validate_pillow_runtime` | Passed; locked wheel, 8 native members, licence and component record |
+| `python -m tools.validate_docs` | Passed; local links, references and security traceability |
+| `python -m tools.validate_portfolio_boundary` | Passed; 82 tasks, 243 dependencies, 24 bundled canonical files |
+| `python -m tools.m1_vertical_slice_benchmark validate` | Passed; constrained-resource M1 report schema v3 |
+| `python -m tools.pws0208_resource_evidence --workload benchmarks/pws0208-searchable-mixed-workload-v1.json` | Passed; constrained incremental workload |
+| `python -m tools.pdf_renderer_benchmark validate` | Passed; 15 analytical goldens, 2 semantic comparisons, 3 stable outcomes, 2 renderer identities and the software-enforced budget |
+| `scan-secrets` | Passed; reachable object/source-path coverage, 2,703 historical blobs, 288 historical commit/tag objects, 2,738 historical path/blob pairs, 868 index blobs, 898 tracked working files and 0 nonignored untracked files |
+| `python -m tools.quality_self_test` | Passed; all 5 deliberate format/type/schema/graph/secret violations detected without retaining test data |
+
+The separate local `validate-dependencies` check also passed. It is excluded from the default
+`check` group, so that result is not attributed to the CI core command.
+
+### Completed integration job and capability skips
+
+`python tools/dev.py check --ci-group integration` invoked
+`uv run --locked --no-sync pytest tests/integration`: **497 passed and 7 skipped in 4,649.79 s**.
+The job took 1 h 18 min 35 s including setup. Its sanitized log is
+`output/pws0502-ci-integration.log`.
+
+All three cases in `test_flattened_pdf_export_worker_windows.py`, the case in
+`test_image_pdf_export_worker_windows.py`, and both cases in `test_pdf_export_worker_windows.py`
+passed. This closes the required platform checks for the implemented safe optimization profile,
+including the constrained flattened-export cases that the local host blocked before execution.
+
+The seven skips use pre-existing capability checks. Locations below are the skip sites reported
+by pytest under `tests/integration/`:
+
+| Test(s) | Reported skip location | Missing capability |
 |---|---|---|
-| `uv run --locked --no-sync pytest tests/unit/test_pdf_optimization.py tests/unit/test_pdf_export.py tests/unit/test_pdf_export_retry.py tests/unit/test_pdf_export_history.py tests/unit/worker/test_pdf_export_report.py tests/unit/worker/test_flattened_pdf_export_report.py tests/unit/worker/test_searchable_pdf_export_wire.py -q --tb=short` | 181 passed, 1.16 s | Pure model, report codec, nested wrappers, canonical history and retry |
-| `uv run --locked --no-sync pytest tests/unit/test_pdf_export_service.py tests/unit/test_pdf_export_history.py tests/unit/test_pdf_export_retry.py tests/unit/test_pdf_export_retry_recovery.py tests/unit/test_package_pdf_export.py tests/unit/test_searchable_pdf_export_service.py tests/unit/test_flattened_pdf_export_app.py tests/unit/test_package_summary.py tests/integration/test_package_export.py -q --tb=short` | 214 passed, 2.28 s | In-process/fake producer application, history/retry, package/destination and summary checks; no worker launch |
-| `uv run --locked --no-sync pytest tests/unit/test_pdf_optimization_adapter.py tests/security/test_pdf_optimization_safety.py -q --tb=short` | 36 passed, 1.30 s; no skips | Adapter owner's final focused semantic, resource, fault, cleanup and privacy batch |
-| Worker integration scope reported by root: `tests/unit/worker/test_pdf_export_worker_adapter.py`, `tests/unit/worker/test_flattened_pdf_export_operation.py`, `tests/unit/worker/test_searchable_pdf_export_operation.py` | 63 passed | Provisional overlapping count; not the adapter owner's final two-file batch |
-| Worker optimization helper scope reported by root: `tests/unit/worker/test_pdf_optimization_worker.py` | 11 passed, 0.40 s | Selection/quota/authority coverage, including the corrected negative remaining-quota case; helper file renamed to avoid collision with the domain test module |
-| Package summary scope reported by root: `tests/unit/test_package_summary.py` | 33 passed, 0.63 s | Provisional summary coverage |
-| Focused Ruff formatting/lint and strict mypy on the ten domain/codec/test files owned by the report agent | Passed; mypy checked 10 files | Narrow checks, not the complete registered quality commands |
-| Adapter owner's focused Ruff formatting/lint and strict mypy | Passed; mypy checked 3 files | Adapter and its two focused test files |
-| Full-tree static and validation checks reported by root | Format, lint, typing, import boundaries, schemas, docs, task graph, and dependency checks passed | Typing checked 609 files; import boundaries covered 210 source files; exact final command/revision rows pending consolidation |
+| `test_exact_ocr_admission_succeeds_inside_appcontainer` | `test_ocr_admission_appcontainer_windows.py:80` | Admitted PWS-0204 Tesseract runtime not staged |
+| `test_live_ocr_worker_emits_verified_volatile_candidate_and_preserves_case` | `test_ocr_worker_windows.py:139` | Admitted PWS-0204 Tesseract runtime not staged |
+| `test_production_adapter_reports_incremental_scheduler_peaks`; `test_live_constrained_signed_source_resource_workflow` | `test_pws0208_resource_workload_windows.py:137` (2 skips) | PWS-0208 live runner private artifact stage absent |
+| `test_live_mixed_pdf_jpeg_png_export_is_searchable_verified_and_content_free` | `test_pws0209_mixed_searchable_export_gate_windows.py:195` | Exact admitted PWS-0209 OCR environment absent |
+| `test_live_quality_ocr_review_returns_counts_and_recovers_after_cancellation` | `test_quality_ocr_review_worker_windows.py:74` | Admitted PWS-0209 Tesseract runtime not staged |
+| `test_live_searchable_mixed_export_preserves_text_ocrs_images_and_verifies_output` | `test_searchable_pdf_export_worker_windows.py:167` | Admitted PWS-0204 Tesseract runtime not staged |
 
-The registered unit lane is currently running with
-`PYTEST_ADDOPTS='-k "export or optimization or package_summary" --tb=short --durations=5'`
-and `uv run --locked --no-sync python tools/dev.py test-unit`: 1,186 tests were selected and 3,774
-deselected. Its final result is pending and is intended to supersede the overlapping earlier
-focused counts. The separate seven-case live integration run is also in progress; initial
-failures require diagnosis, so no live integration pass is claimed here.
+Five skips concern admitted OCR runtime/environment capabilities; two concern the private
+PWS-0208 artifact stage. In particular, the new searchable-worker optimization assertion was not
+executed. Neither that assertion nor any new live OCR behavior is counted as verified here.
 
-Final registered command results, relevant integration/security/accessibility evidence,
-portfolio-boundary and fixture/secret checks, and clean diff/evidence checks must be recorded before
-task completion. Extended live-worker assertions being present in the diff are not evidence that
-those scenarios have passed. Any source repair after a passing check needs appropriate revalidation.
+### Completed local worker run
+
+The seven-case run covering `tests/integration/test_pdf_export_worker_windows.py`,
+`tests/integration/test_image_pdf_export_worker_windows.py`,
+`tests/integration/test_flattened_pdf_export_worker_windows.py`, and
+`tests/integration/test_searchable_pdf_export_worker_windows.py` finished with **3 passed,
+3 failed, and 1 skipped in 712.55 seconds**:
+
+- Passed: image reopen/export without OCR resources; repeatable standard PDF export with verified
+  output, recorded history and preserved originals; worker termination without destination
+  publication.
+- Failed: both constrained flattened-export parameter cases and the flattened output-bound
+  failure case. All three stopped during worker handshake with `ASSEMBLY_FAILED`, before the
+  optimizer ran. They do not establish optimizer or constrained flattened-worker success.
+- Skipped: the searchable export case because the admitted PWS-0204 Tesseract runtime was absent.
+  This is not searchable optimization execution evidence.
+
+The host's Code Integrity denial and unchanged policy are recorded below. The successful
+exact-commit CI integration job supplies the required platform verification; it does not change
+the outcome or policy limitations of this local run.
+
+### Earlier local checks
+
+These earlier runs overlap the full core job and must not be added to its counts:
+
+- The registered selected unit run used
+  `PYTEST_ADDOPTS='-k "export or optimization or package_summary" --tb=short --durations=5'`
+  followed by `uv run --locked --no-sync python tools/dev.py test-unit`: 1,186 passed,
+  3,774 deselected, no skips in 723.56 s.
+- `uv run --locked --no-sync pytest tests/unit/test_pdf_export_service.py tests/unit/test_pdf_export_history.py tests/unit/test_pdf_export_retry.py tests/unit/test_pdf_export_retry_recovery.py tests/unit/test_package_pdf_export.py tests/unit/test_searchable_pdf_export_service.py tests/unit/test_flattened_pdf_export_app.py tests/unit/test_package_summary.py tests/integration/test_package_export.py -q --tb=short`:
+  214 passed in 2.28 s. This included in-process/fake producer package/destination integration
+  checks; it launched no worker. Its unit subset is superseded by the full core unit result.
+- The local full accessibility suite passed 71 tests in 6.21 s before the core CI rerun.
+  Earlier narrow model/codec, adapter/security, worker-seam and summary batches are superseded
+  by the full unit/security results above.
+
+These local observations supplement the complete CI result. Any source repair after the tested
+implementation revision requires appropriate revalidation.
+
+### Automated review and closure metadata
+
+Three automated agent reviews of exact implementation commit
+`9b7514830a8a89329cc994b08d42360fb8980d37` reported no actionable findings in their final review
+scopes. These are automated development reviews, not independent human acceptance or manual NVDA
+evidence. The earlier quota finding was corrected before this implementation commit.
+
+Post-implementation closure changes are limited to `docs/architecture/pdf-safe-optimization.md`,
+`docs/development/pws0502-result.md`, `TASKS.yaml`, and `BUNDLE_MANIFEST.json`. Runtime and test
+sources remain at the exact CI-tested implementation revision.
+
+**All five documentation/task/bundle closure checks below passed.** The final graph contains
+82 tasks and 243 dependencies; the bundle validates all 24 canonical files. The post-CI diff
+contains only the four closure files listed above.
+
+```text
+uv run --locked --no-sync python tools/dev.py validate-schemas
+uv run --locked --no-sync python tools/dev.py validate-docs
+uv run --locked --no-sync python tools/dev.py validate-task-graph
+uv run --locked --no-sync python tools/dev.py validate-portfolio-boundary
+git diff --check
+```
 
 ### Local environment and visual inspection
 
@@ -167,10 +278,13 @@ Windows Code Integrity events 3033/3077 show the host blocking the pinned HarfBu
 in the staged worker runtime because it does not meet the active signing policy. The copied test
 environment also encountered a blocked compiled mypy module; the repository environment's full
 strict typecheck passed. No system policy, binary, dependency pin, or worker restriction was changed
-to work around these denials. The seven-case live run remains pending its final diagnostics.
+to work around these denials. The completed local run retains its three pre-optimizer failures.
+The exact-commit Windows integration CI job passed those three flattened-worker cases in its
+configured environment; this does not establish that the local signing-policy limitation is fixed.
 
-A generated two-page synthetic baseline was optimized with the actual pinned qpdf checker and
-PDFium. It reduced from 51,036 to 2,349 bytes. Both pages were also rendered for visual inspection
+A generated two-page synthetic baseline was optimized in an in-process adapter/visual check with
+the actual pinned qpdf checker and PDFium. It reduced from 51,036 to 2,349 bytes. Both pages were
+also rendered for visual inspection
 at three pixels per point: the 588-by-468 and rotated 468-by-588 images matched byte-for-byte.
 Inspection showed unchanged visible text, blue vector/Form mark, image patch, annotation icon,
 crop and rotation. Hidden text and reachable object preservation are covered by the separate
@@ -187,8 +301,9 @@ bound to verified size/digest and the existing transfer/publication lifecycle.
 
 Current summary/result wording is plain text using the existing accessible report surfaces. No
 new control or permission prompt is introduced. Cancellation and deadlines reuse the existing
-operation control. Final accessibility regression evidence is still pending; this draft claims no
-new manual NVDA observation, PDF/UA result, or hardware certification.
+operation control. The full registered accessibility suite passed 71 tests locally in 6.21 seconds
+and in the exact-commit core CI job in 4.42 seconds. This does not claim new manual NVDA observation,
+PDF/UA results, or hardware certification.
 
 ## Portfolio boundary and release-interface notes
 
@@ -204,6 +319,7 @@ or public release-interface fact is established here; unproved release facts rem
   The comparator rejects that opaque encoding change, fails export, and preserves the baseline;
   it does not guess that unsupported filter representations are equivalent. A regression records
   this behavior.
+- External-file stream references (`/F`, `/FFilter`, `/FDecodeParms`) also fail closed.
 - A compact baseline or insufficient candidate storage may produce no reduction. No target-size
   or universal reader-compatibility guarantee is made. Image-heavy analysis/re-encoding and
   target-size search remain PWS-0503/PWS-0504 work.
@@ -218,7 +334,8 @@ or public release-interface fact is established here; unproved release facts rem
 
 ## Task graph
 
-- PWS-0502 remains `in_progress` pending final verification and evidence closure.
+- PWS-0502 is `done` with implementation and CI evidence at
+  `9b7514830a8a89329cc994b08d42360fb8980d37`.
 - PWS-0501 and PWS-0112 remain completed prerequisites.
-- PWS-0503 is the next task this change will unblock after PWS-0502 is complete; it remains
-  `planned` in this draft. No later task is marked ready by this report.
+- Next dependency-ready task: PWS-0503, image-heavy page analysis and staged re-encoding. The
+  task closure marks it `ready`; no PWS-0503 or later implementation is included in this change.

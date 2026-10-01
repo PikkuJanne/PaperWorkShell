@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 324457,
-      "sha256": "085dd885dd64c435b3f18f41813c99078201a30d195237b7696da280267f9155"
+      "bytes": 328729,
+      "sha256": "15d9acc6fdc417d434207b92dfb29323f7db222532f85a0671976aa4bc5277c5"
     },
     {
       "path": "TASKS.schema.json",
@@ -135,8 +135,8 @@
     },
     {
       "path": "docs/development/pws0502-result.md",
-      "bytes": 19123,
-      "sha256": "278f8111d4b7bbab191cbc0e4b8fa6dd474dc08df08bdbf47be2d7ed6302cd18"
+      "bytes": 26034,
+      "sha256": "8fadd1fc6121080923b9806bcfa1d44619cf6d3769b9c384aff4c3c01eb2037d"
     }
   ],
   "validation": {
@@ -146,11 +146,13 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
+    "initial_ready_tasks": [
+      "PWS-0503"
+    ],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0501 feature inspection is done. PWS-0502 safe object/stream optimization is in progress; see docs/development/pws0502-result.md for verification scope. Packaged-release facts remain TBD.",
+    "PWS-0502 safe object/stream optimization is done with full Windows CI at implementation revision 9b7514830a8a89329cc994b08d42360fb8980d37. See docs/development/pws0502-result.md for verification scope and capability skips. PWS-0503 is the next ready task. Packaged-release facts remain TBD.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

@@ -3877,7 +3877,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0501
@@ -3906,17 +3906,62 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: "2026-10-01"
+    revision: 9b7514830a8a89329cc994b08d42360fb8980d37
+    commands:
+    - python tools/dev.py check --ci-group core - passed in Windows CI at the exact implementation
+      revision; 4960 unit tests, 598 security tests and 71 accessibility tests passed with no skips.
+      Unit, security and accessibility durations were 821.62, 302.78 and 4.42 seconds respectively
+    - python tools/dev.py check --ci-group integration - 497 passed and 7 pre-existing capability
+      skips in 4649.79 seconds. All three flattened export worker cases, the image export worker
+      case and both standard PDF export worker cases passed
+    - Core CI format-check, lint, check-import-boundaries and typecheck - passed; 609 formatted
+      and typed files, 13 import layers and 210 source files
+    - Core CI validate-fixtures, validate-schemas, validate-task-graph, validate-pillow-runtime,
+      validate-docs, validate-portfolio-boundary, validate-m1-benchmark-report,
+      validate-pws0208-resource-workload, validate-pdf-renderer-benchmark, scan-secrets and
+      quality-self-test - passed; 24 canonical bundle files and all five deliberate violations detected
+    - python tools/dev.py validate-dependencies - passed locally; no dependency or license change
+    - Final documentation/task closure validate-schemas, validate-docs, validate-task-graph,
+      validate-portfolio-boundary and git diff --check - passed; all four post-CI changed files
+      are documentation, task evidence/status or bundle metadata
+    - Registered selected local unit lane - 1186 passed, 3774 deselected in 723.56 seconds;
+      superseded by the complete core CI result. The separate local seven-case worker lane had
+      3 passes, 3 flattened-worker handshake failures and 1 unavailable OCR runtime skip;
+      CI supplies the successful flattened-worker evidence without weakening host signing policy
+    - Synthetic two-page adapter and visual check with the pinned qpdf checker and PDFium -
+      51036 bytes reduced to 2349 bytes; both separately rendered page images matched byte-for-byte
+    notes:
+    - Both jobs in https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36823185868 passed at
+      9b7514830a8a89329cc994b08d42360fb8980d37. Full commands, the 36-file inventory, acceptance
+      mapping, local platform failures and skip details are in docs/development/pws0502-result.md
+    - The fixed safe_object_stream_v1 profile writes a separate bounded candidate after baseline
+      verification. Only a smaller candidate with matching reachable-object semantics and every
+      page's rendered pixels/geometry is selected after strict reopen and qpdf checks. Ineffective
+      attempts retain the exact baseline; invalid candidates and cleanup failures fail export
+    - Worker accounting includes existing private extents, transferred output capacity and caller
+      reservations before admitting a candidate. Regression coverage rejects negative remaining
+      quota and exercises low disk, decompression limits, cancellation, timeout, cleanup and retry.
+      Immutable originals, worker network denial and existing ResourcePolicy budgets are preserved
+    - Versioned optimization facts appear in current reports and summaries. Legacy report v1 and
+      serialized history/retry bytes retain their meanings; recovery does not recreate transient
+      optimization statistics. No case, history, dependency or released schema migration was added
+    - The pinned writer's opaque ASCIIHex representation change and external-file stream references
+      fail closed. The seven CI skips cover five absent admitted OCR environments/runtimes and two
+      private PWS-0208 artifact-stage cases; no new live searchable/OCR evidence is claimed
+    - Three automated agents reviewed the exact implementation revision with no actionable finding.
+      This is not new human/NVDA acceptance. Closure changes only documentation, task evidence/status
+      and bundle hashes; the implementation and tests remain exactly those checked by CI
+    - Standalone operation and PaperWorkShell data ownership remain intact; no sibling dependency,
+      shared service or release-interface claim was added. Release facts remain TBD. PWS-0503 is
+      the next dependency-ready task and is marked ready; no PWS-0503 implementation is included
 - id: PWS-0503
   milestone: M5
   title: Implement image-heavy page analysis and staged re-encoding
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0502
