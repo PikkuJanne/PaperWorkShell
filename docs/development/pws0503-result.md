@@ -68,7 +68,7 @@ reported separately. Full registered verification remains required before task c
   even when a terminal pump coalesces the last progress event, and honor cancellation from that
   final callback before returning a candidate.
 
-Independent review reproduced seven alias/encoding/Flate cases after their fixes. The native
+Additional automated agent review reproduced seven alias/encoding/Flate cases after their fixes. The native
 image and existing optimization tests passed 118 cases in 24.93 seconds. Full CI evidence will
 be added below after the implementation checkpoint is verified.
 
@@ -85,6 +85,7 @@ be added below after the implementation checkpoint is verified.
 | Native/domain tests | `tests/unit/test_pdf_image_stages.py`, `test_pdf_image_stage_adapter.py`; `tests/security/test_pdf_image_stage_safety.py`: profiles, corpus, selection closure, preservation, bounds and failure recovery |
 | Broker/worker tests | `tests/unit/worker/pdf_image_stage_fixtures.py`, `test_pdf_image_stage_broker.py`, `test_pdf_image_stage_composition.py`, `test_pdf_image_stage_operation.py`, `test_pdf_image_stage_wire.py`; `tests/security/test_pdf_image_stage_broker_security.py`, `test_pdf_image_stage_transport_security.py`: wire, authority, cancellation, quotas and cleanup |
 | Compatibility tests | `tests/unit/worker/test_client_lifecycle.py`, `test_pdf_inspect_protocol.py`, `test_pdf_thumbnail_protocol.py`: explicit complete-capability test inventories; `tests/unit/test_validate_worker_rpc.py`, `test_validate_worker_rpc_image_stage.py`: offline/runtime contract checks |
+| Existing corpus provenance | `benchmarks/pws0207-quality-findings-v1.json`, `docs/development/scan-quality-evaluation.md`: rerun unchanged quality evaluation and bind its identical measurements to the changed worker registration/protocol surfaces; `tests/unit/test_worker_protocol_codec.py`: round-trip all 20 checked-in RPC examples |
 | Live worker test | `tests/integration/test_pdf_image_stage_worker_windows.py`: constrained real AppContainer analysis, re-encoding, stale binding, cancellation, timeout, cleanup and retry |
 | Documentation/evidence | `README.md`, `KNOWN_LIMITATIONS.md`, `docs/architecture/pdf-export.md`, `pdf-safe-optimization.md`, `pdf-image-stages.md`, `docs/schemas/worker-rpc-v1.md`, `docs/adr/0011-staged-pdf-image-reencoding.md`, this report, `TASKS.yaml`, `BUNDLE_MANIFEST.json`: behavior, limits and task evidence |
 
@@ -102,7 +103,7 @@ boundary check passes without an allowlist exception.
 - Native image-stage and existing optimization corpus: 118 passed in 24.93 seconds.
 - Offline RPC validator selector through registered `test-unit`: 61 passed in 7.93 seconds,
   including 42 new operation-specific tests.
-- Independent hostile broker selector through registered `test-security`: 29 passed.
+- Additional automated agent hostile-broker tests through registered `test-security`: 29 passed.
 - Final worker/protocol/security batch: 236 passed in 1.87 seconds, including 35 transport-security
   cases and 29 hostile-broker cases.
 - Registered `test-integration` with `PYTEST_ADDOPTS='-k pdf_image_stage_worker_windows --tb=short
@@ -117,6 +118,38 @@ Registered command prefix: `uv run --locked --no-sync python tools/dev.py`.
 Focused suites use the recorded `PYTEST_ADDOPTS` selectors; they do not substitute for full CI.
 The live Windows test uses the previously staged copy-owned CPython runtime and virtual
 environment. No OS policy, DLL admission, ACL, dependency or resource budget was weakened.
+
+## CI reconciliation
+
+The first [Windows CI run](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36835599588)
+at `b42b56fa610eed2c202f8d3286e94a6993780a8f` passed formatting, lint, import boundaries and
+typing, then reported 5,187 unit passes and two failures in 929.56 seconds. Both failures exposed
+existing evidence inventories that needed to account for the additive operation:
+
+- The codec round-trip test expected 15 examples; this task adds five schema-valid examples.
+  Its exact count is now 20, with every example still decoded and round-tripped. The five
+  focused codec tests pass.
+- The scan-quality baseline binds 27 existing source surfaces, including four worker
+  registration/protocol files changed here. The unchanged evaluator and exact-revision recorder
+  were rerun at the implementation checkpoint. Only the recorded revision changed; all eight
+  metric rows, corpus/profile digests and policy fields remain identical. The binding inventory,
+  validator and approved visual goldens remain unchanged. See
+  [quality evaluation provenance](scan-quality-evaluation.md).
+  The registered quality-evaluation selector passed all 40 tests in 57.55 seconds.
+
+These corrections change tests and evidence only. The image-stage runtime remains identical to
+the first implementation checkpoint. A complete replacement CI run is required for closure.
+
+The additional local `test-accessibility` run passed all 71 tests in 4.87 seconds. Pillow runtime,
+M1 report, PWS-0208 workload and renderer-workload validators passed; the quality self-test
+rejected all five deliberate violations.
+
+Local `validate-fixtures` reported `FIXTURE_UNINDEXED_DOCUMENT` because its all-ref scan also
+includes two pre-existing Codex turn-diff refs retaining an older PWS-0307 synthetic PDF and
+temporary render outputs. All 11 offending blobs are absent from this branch's history and from
+every `origin` remote ref. They belong to a local tree snapshot, not a published commit ancestor.
+The snapshot, fixture validator and allowlist are preserved. Clean published-history CI supplies
+the required fixture gate for this task; this local snapshot finding is not hidden by a skip.
 
 ## Adjacent issue requiring separate follow-up
 

@@ -337,7 +337,7 @@ class WorkerProtocolCodecTests(unittest.TestCase):
         observed_types: set[MessageType] = set()
         observed_outcomes: set[OperationOutcome] = set()
 
-        self.assertEqual(15, len(paths))
+        self.assertEqual(20, len(paths))
         for path in paths:
             with self.subTest(path=path.name):
                 decoded = decode_message(path.read_bytes())

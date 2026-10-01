@@ -140,8 +140,8 @@
     },
     {
       "path": "docs/adr/0011-staged-pdf-image-reencoding.md",
-      "bytes": 7585,
-      "sha256": "107720ed76d5e719713f00a800663adadf6eaba3823bca7f80a9fa16e8289073"
+      "bytes": 7680,
+      "sha256": "98eb081e7a6cdae44ee21afab7fe1e59d06021aa5e89c5eae4825bbf9b1f8dd4"
     },
     {
       "path": "docs/architecture/pdf-image-stages.md",
@@ -150,8 +150,8 @@
     },
     {
       "path": "docs/development/pws0503-result.md",
-      "bytes": 13096,
-      "sha256": "9afd36bbd5d5859ad29d05ff4cebeaefa2ba97bd846771ffc8d3435ff4a1ee9a"
+      "bytes": 15639,
+      "sha256": "72e6bc257978c8af9092775f8bfcaa05fe553dadce5bbf5547731db81d4a4dac"
     }
   ],
   "validation": {

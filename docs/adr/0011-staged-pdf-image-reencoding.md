@@ -102,8 +102,9 @@ history commit path.
 ## Consequences and evidence
 
 No frozen decision changes. No new dependency, license obligation, manifest/history migration,
-sibling integration, or packaged-release claim is introduced. Unsupported assets remain visible
-in analysis as unsupported/uncertain. The completed corpus, bounds, failure-path and live-worker
+sibling integration, or packaged-release claim is introduced. When analysis succeeds, unsupported
+assets remain visible as unsupported/uncertain. Unsupported content-stream filters or decode
+parameters can instead fail analysis. The completed corpus, bounds, failure-path and live-worker
 evidence will be recorded in [PWS-0503 results](../development/pws0503-result.md).
 
 ### API references

@@ -188,7 +188,7 @@ corpus change must explain the changed false-positive/false-negative counts and 
 reviewed baseline rather than refreshing the file merely to pass tests.
 
 The frozen recipe/profile evaluation recorded against implementation revision
-`3b195294e05d212c1570d7a8e608cb8b564ffff2` is:
+`b42b56fa610eed2c202f8d3286e94a6993780a8f` is:
 
 - corpus SHA-256:
   `36fad4f6a94e06971ea9e8e3226df18f92050e8f6f14ba1a1dd5b5b4056bfd8e`;
@@ -205,8 +205,8 @@ validated candidate differs from the previous canonical baseline only in `revisi
 metric rows, corpus/profile digests, and resource-policy fields are unchanged. The original
 baseline remains in Git history, and the exact-revision validation rules remain unchanged.
 
-PWS-0501 replayed the same frozen evaluator and exact-revision recorder for the current
-revision above. Compared with the PWS-0201 binding at
+PWS-0501 replayed the same frozen evaluator and exact-revision recorder for implementation
+`3b195294e05d212c1570d7a8e608cb8b564ffff2`. Compared with the PWS-0201 binding at
 `a55c5b7a3866fac5c54640e5de06eaee9fe86339`, six of the 27 bound surfaces changed:
 the desktop entry point, organizer, backend bridge, window, worker composition, and protocol
 models. The quality algorithms, evaluator/corpus, profile, resource policy, and remaining 21
@@ -214,6 +214,31 @@ bound surfaces are unchanged. A separately recorded and validated candidate diff
 `revision`; all eight metric rows and all corpus/profile/resource fields remain identical.
 The validator, binding inventory, and visual golden files were not changed. The evaluator's
 40 focused tests pass; [PWS-0501 evidence](pws0501-result.md) records the wider verification.
+
+PWS-0503 reran the unchanged production evaluator, exact-revision recorder, and validator
+against `b42b56fa610eed2c202f8d3286e94a6993780a8f`. Four of the 27 bound surfaces changed since
+the PWS-0501 binding: worker host registration and protocol codec, models, and state. These
+changes admit the explicit image-stage operation. The other 23 surfaces, including the quality
+algorithms, evaluator/corpus, profile, resource policy, and OCR-review producer, remain identical.
+The new PDF/imaging adapter files are outside this closed provenance inventory; the inventory
+was not expanded or weakened to resolve the CI failure.
+
+The evaluator generated all 28 recipe observations and four duplicate-pair decisions again.
+A separate no-replace candidate was recorded and validated before replacing the checked-in
+baseline. Canonical JSON comparison proved that only `revision` changed: all eight metric rows,
+corpus/profile digests, and resource-policy fields are identical. The resulting 2,201-byte
+artifact has SHA-256 `a2c748213a0e9f48dd39e7f8d0a74eba1ac405328c6746c163aba9932ff7e388`.
+Approved visual goldens, the evaluator, and revision-validation rules remain unchanged.
+
+The first local recording attempt correctly rejected CRLF working copies of the protocol codec
+and state files. Their index and filtered working content already matched the implementation
+commit. Restoring only their exact committed LF bytes satisfied the existing raw-byte check;
+no source semantics changed. The successful evaluation, record, candidate validation, and
+comparison logs are retained locally under the ignored
+`output/pws0503-quality-baseline-b42b56fa/` directory.
+The registered `uv run --locked --no-sync python -m tools.dev test-unit` command with
+`PYTEST_ADDOPTS='-q -k pws0207_quality_evaluation'` passed all 40 selected tests, with 5,149
+deselected, in 57.55 seconds. Registered `validate-docs` and `git diff --check` also passed.
 
 | Metric kind | Applicable | TP | FP | TN | FN | Precision ppm | Recall ppm | FPR ppm | FNR ppm |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
