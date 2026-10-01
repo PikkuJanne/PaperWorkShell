@@ -228,6 +228,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         "Prepare, guide, and record the remaining PWS-0307 reader checks.",
         include_in_check=False,
     ),
+    "pws0506-compatibility-test": CommandSpec(
+        ("python", "-m", "tools.pws0506_portal_compatibility"),
+        "Prepare and record the synthetic PWS-0506 reader and upload-constraint matrix.",
+        include_in_check=False,
+    ),
     "pws0408-pilot": CommandSpec(
         ("python", "-m", "tools.pws0408_pilot"),
         "Open the synthetic PWS-0408 human pilot in an isolated constrained workspace.",

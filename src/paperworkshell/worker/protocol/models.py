@@ -246,6 +246,7 @@ PDF_INSPECT_CAPABILITY: Final = CapabilityDescriptor("pdf.inspect", 2)
 PDF_THUMBNAIL_CAPABILITY: Final = CapabilityDescriptor("pdf.thumbnail", 1)
 PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 1)
 IMAGE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 2)
+PORTAL_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export", 3)
 FLATTENED_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.flattened", 1)
 IMAGE_NORMALIZE_CAPABILITY: Final = CapabilityDescriptor("image.normalize", 1)
 SIGNATURE_IMAGE_RASTER_CAPABILITY: Final = CapabilityDescriptor("image.signature_raster", 1)
@@ -348,6 +349,7 @@ PDF_EXPORT_RESULT_HANDLE_PARAMETER: Final = "result_handle"
 PDF_EXPORT_OUTPUT_OBJECT_ID_PARAMETER: Final = "output_object_id"
 PDF_EXPORT_PLAN_CONTENT_KIND: Final = "pdf-export-plan-v1"
 IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND: Final = "pdf-export-plan-v2"
+PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND: Final = "pdf-export-plan-v3"
 PDF_EXPORT_OUTPUT_CONTENT_KIND: Final = "pdf-export-pdf"
 MAX_PDF_EXPORT_PLAN_BYTES: Final = 2 * 1024 * 1024
 MAX_PDF_EXPORT_PAGES: Final = 4_096
@@ -1803,14 +1805,16 @@ def validate_pdf_thumbnail_result(
 
 
 def validate_pdf_export_start(payload: OperationStartPayload) -> None:
-    """Validate v1 PDF copying or additive v2 image-page assembly authority."""
+    """Validate exact PDF-copy, image-page, or portal-profile authority."""
 
-    if payload.operation_version not in {1, 2}:
+    if payload.operation_version not in {1, 2, 3}:
         reject("RPC_INVALID_OPERATION", "payload.operation_version", "unsupported export version")
-    image_profile = payload.operation_version == IMAGE_PDF_EXPORT_CAPABILITY.capability_version
-    plan_kind = (
-        IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND if image_profile else PDF_EXPORT_PLAN_CONTENT_KIND
-    )
+    image_profile = payload.operation_version in {2, 3}
+    plan_kind = {
+        1: PDF_EXPORT_PLAN_CONTENT_KIND,
+        2: IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
+        3: PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND,
+    }[payload.operation_version]
     source_kinds = {"pdf", "jpeg", "png"} if image_profile else {"pdf"}
 
     if not 2 <= len(payload.inputs) <= MAX_PDF_EXPORT_SOURCES + 1:

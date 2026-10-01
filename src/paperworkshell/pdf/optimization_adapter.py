@@ -38,6 +38,7 @@ from paperworkshell.pdf.export_adapter import (
     _verify_candidate_with_qpdf,
 )
 from paperworkshell.pdf.pdfium_renderer import PdfiumPageRenderer
+from paperworkshell.pdf.portal_policy import require_portal_output
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.pdf.renderer import PdfPageRenderer
 
@@ -125,7 +126,12 @@ class PdfOptimizationAdapter:
                 PdfExportErrorCode.VERIFICATION_STRUCTURE_FAILED, "optimization.baseline"
             )
         expected = _fingerprint(
-            baseline_path, baseline_report.page_count, limits, control, maximum_semantic_bytes
+            baseline_path,
+            baseline_report.page_count,
+            limits,
+            control,
+            maximum_semantic_bytes,
+            portal=baseline_report.portal_profile_verified,
         )
         try:
             stream = candidate_path.open("x+b")
@@ -164,7 +170,12 @@ class PdfOptimizationAdapter:
                 )
             candidate = _measure_output(candidate_path, limits=limits, control=control)
             actual = _fingerprint(
-                candidate_path, baseline_report.page_count, limits, control, maximum_semantic_bytes
+                candidate_path,
+                baseline_report.page_count,
+                limits,
+                control,
+                maximum_semantic_bytes,
+                portal=baseline_report.portal_profile_verified,
             )
             if actual != expected:
                 reject_pdf_export(
@@ -290,6 +301,8 @@ def _fingerprint(
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
     maximum_bytes: int,
+    *,
+    portal: bool = False,
 ) -> str:
     with path.open("rb") as source, _strict_open(source) as document:
         _checkpoint(control)
@@ -301,6 +314,12 @@ def _fingerprint(
             limits.inspection.maximum_objects
         ):
             reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "optimization.objects")
+        if portal:
+            require_portal_output(
+                document,
+                maximum_objects=limits.inspection.maximum_objects,
+                checkpoint=lambda: _checkpoint(control),
+            )
         fingerprint = _graph_fingerprint(
             cast(pikepdf.Dictionary, document.trailer), limits, control, maximum_bytes
         )

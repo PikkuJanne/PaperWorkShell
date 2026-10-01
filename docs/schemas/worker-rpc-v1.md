@@ -153,6 +153,20 @@ future version fails closed. No OCR options, source paths, output paths, or addi
 are introduced. Success retains the existing single `pdf-export-pdf` staging output and
 the existing verified report; the v2 semantic fingerprint includes source media type.
 
+PWS-0506 adds `pdf.export` version 3 for the conservative portal profile. It uses
+`pdf-export-plan-v3` and the exact `pikepdf_portal_v3` assembly/profile pair, with
+the existing bounded PDF/JPEG/PNG handle transport. Package flattened, searchable
+and image-stage operations carry the same versioned base policy inside their plans.
+The generic RPC envelope remains version 1. Old operation and profile meanings are
+unchanged; crossed or unknown versions fail before native processing.
+
+Portal base reports use version 3, or version 4 when they include optimization
+evidence, and require `PORTAL_PROFILE_VERIFIED`. Legacy report versions 1 and 2
+cannot authorize that claim. Brokers bind the report's policy to the requested plan.
+Persisted export-history v1 retains its closed base-check projection and does not
+record or reconstruct the transient portal claim. See the
+[profile contract](../architecture/portal-export-profile.md).
+
 PWS-0204 adds `ocr.process` version 1. Its start has exactly one authenticated PDF, JPEG, or PNG
 `source_read` input; distinct positive worker-local source, output-section, and result-pipe handle
 parameters; a distinct output UUID; a bounded page count; and opaque trusted language-set and OCR
@@ -232,7 +246,7 @@ Validation is intentionally split:
 
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 2, `pdf.thumbnail`
-version 1, `pdf.export` versions 1 and 2, `image.normalize` version 1, `image.transform` version 1,
+version 1, `pdf.export` versions 1, 2 and 3, `image.normalize` version 1, `image.transform` version 1,
 `ocr.process` version 1, `ocr.review` version 1, `pdf.export.searchable` version 1, and
 `pdf.image_stage` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and

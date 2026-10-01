@@ -443,6 +443,7 @@ class BrokeredPdfImageStageProcessor:
                     or baseline.page_count != plan.page_count
                     or baseline.optimization is None
                     or baseline.unsigned_derivative != plan.contains_signature_markers
+                    or baseline.portal_profile_verified != plan.profile.is_portal
                     or header.output_byte_size != output_reference.expected_byte_size
                     or header.output_sha256 != output_reference.expected_sha256
                     or header.evidence_byte_size != evidence_reference.expected_byte_size

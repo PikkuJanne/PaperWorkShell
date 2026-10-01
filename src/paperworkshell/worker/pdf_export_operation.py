@@ -85,6 +85,7 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
     PDF_EXPORT_OUTPUT_CONTENT_KIND,
     PDF_EXPORT_PLAN_CONTENT_KIND,
+    PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND,
     CaseObjectReference,
     ReferenceArea,
 )
@@ -186,7 +187,7 @@ class WindowsPdfExportOperationAdapter:
     operation_version: int = 1
 
     def __post_init__(self) -> None:
-        if type(self.operation_version) is not int or self.operation_version not in {1, 2}:
+        if type(self.operation_version) is not int or self.operation_version not in {1, 2, 3}:
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.worker_version")
         if not callable(getattr(self.candidate_adapter, "assemble_and_verify", None)) or any(
             not callable(getattr(self.private_temp_storage, member, None))
@@ -342,7 +343,11 @@ def _validate_outer_request(
         plan_reference.area is not ReferenceArea.OPERATION_TEMP
         or plan_reference.operation_id != context.operation_id
         or plan_reference.content_kind
-        not in {PDF_EXPORT_PLAN_CONTENT_KIND, IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND}
+        not in {
+            PDF_EXPORT_PLAN_CONTENT_KIND,
+            IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
+            PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND,
+        }
         or plan_reference.expected_byte_size is None
         or plan_reference.expected_sha256 is None
     ):
@@ -356,11 +361,11 @@ def _bind_worker_plan(
     plan = worker_plan.plan
     if plan.case_id != context.case_id:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.plan_case")
-    expected_plan_kind = (
-        IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND
-        if plan.plan_version == 2
-        else PDF_EXPORT_PLAN_CONTENT_KIND
-    )
+    expected_plan_kind = {
+        1: PDF_EXPORT_PLAN_CONTENT_KIND,
+        2: IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
+        3: PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND,
+    }[plan.plan_version]
     if context.inputs[0].content_kind != expected_plan_kind:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.plan_reference")
     if plan.page_count > context.limits.page_count:

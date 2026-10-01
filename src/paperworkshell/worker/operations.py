@@ -87,6 +87,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_PAGE_ID_PARAMETER,
     PDF_THUMBNAIL_SOURCE_HANDLE_PARAMETER,
     PDF_THUMBNAIL_SOURCE_PAGE_INDEX_PARAMETER,
+    PORTAL_PDF_EXPORT_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_OUTPUT_CONTENT_KIND,
     SEARCHABLE_PDF_EXPORT_OUTPUT_HANDLE_PARAMETER,
@@ -909,12 +910,16 @@ class PdfExportOperationHandler:
     operation_version: int = 1
 
     def __post_init__(self) -> None:
-        if type(self.operation_version) is not int or self.operation_version not in {1, 2}:
+        if type(self.operation_version) is not int or self.operation_version not in {1, 2, 3}:
             raise ValueError("Unsupported PDF export operation version")
 
     @property
     def descriptor(self) -> CapabilityDescriptor:
-        return PDF_EXPORT_CAPABILITY if self.operation_version == 1 else IMAGE_PDF_EXPORT_CAPABILITY
+        return {
+            1: PDF_EXPORT_CAPABILITY,
+            2: IMAGE_PDF_EXPORT_CAPABILITY,
+            3: PORTAL_PDF_EXPORT_CAPABILITY,
+        }[self.operation_version]
 
     def execute(self, context: OperationContext) -> OperationResultPayload:
         request = _pdf_export_operation_request(context)

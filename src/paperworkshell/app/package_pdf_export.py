@@ -43,6 +43,7 @@ from paperworkshell.app.source_ingest import (
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.pdf_export import (
+    PORTAL_PDF_EXPORT_PROFILE,
     PdfExportError,
     PdfExportProgress,
     PdfExportVerificationReport,
@@ -439,6 +440,7 @@ class PackagePdfCandidateProducer:
                     )
                     for asset in assets
                 },
+                profile=PORTAL_PDF_EXPORT_PROFILE,
             )
         except FlattenedPdfExportError as error:
             if error.code not in _FLATTENED_FALLBACK_CODES:
@@ -504,7 +506,10 @@ class PackagePdfCandidateProducer:
                 "package.ocr_language",
             )
         try:
-            return SearchablePdfExportProfile(ocr_language_set_id=selected)
+            return SearchablePdfExportProfile(
+                ocr_language_set_id=selected,
+                pdf_profile=PORTAL_PDF_EXPORT_PROFILE,
+            )
         except SearchablePdfExportError:
             reject_package_pdf_candidate(
                 PackagePdfCandidateErrorCode.INTERNAL_ERROR,
@@ -797,6 +802,7 @@ class _PackagePdfCandidateSession:
             self._snapshot,
             self._planned_pdf.page_ids,
             {asset_id: source.metadata for asset_id, source in self._rasters.items()},
+            profile=planning_plan.base_plan.profile,
         )
         if plan.base_plan != planning_plan.base_plan or plan.pages != planning_plan.pages:
             reject_package_pdf_candidate(

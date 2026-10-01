@@ -61,15 +61,15 @@ class WorkerRpcValidationTests(unittest.TestCase):
         self.assertEqual(20, summary.positive_count)
         self.assertEqual(33, summary.negative_count)
 
-    def test_pdf_export_negotiation_accepts_exact_old_and_image_versions(self) -> None:
-        for version in (1, 2, 3):
+    def test_pdf_export_negotiation_accepts_exact_old_image_and_portal_versions(self) -> None:
+        for version in (1, 2, 3, 4):
             with self.subTest(version=version):
                 data = _load_example("session-ready.json")
                 data["payload"]["capabilities"] = [
                     {"capability_id": "pdf.export", "capability_version": version}
                 ]
                 issues = self._issues(data)
-                if version in (1, 2):
+                if version in (1, 2, 3):
                     self.assertEqual([], issues)
                 else:
                     self.assertTrue(issues)

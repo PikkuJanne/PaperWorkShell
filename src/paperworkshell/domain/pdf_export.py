@@ -37,8 +37,11 @@ from paperworkshell.domain.pdf_optimization import (
 PDF_EXPORT_PLAN_VERSION: Final = 1
 PDF_EXPORT_PROFILE_VERSION: Final = 1
 IMAGE_PDF_EXPORT_VERSION: Final = 2
+PORTAL_PDF_EXPORT_VERSION: Final = 3
 PDF_EXPORT_REPORT_VERSION: Final = 1
 OPTIMIZED_PDF_EXPORT_REPORT_VERSION: Final = 2
+PORTAL_PDF_EXPORT_REPORT_VERSION: Final = 3
+OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION: Final = 4
 PDF_EXPORT_SEMANTIC_FINGERPRINT_VERSION: Final = 1
 # One export source consumes one out-of-band worker handle.  Keeping the batch
 # ceiling in the pure contract lets worker/protocol code import it without the
@@ -265,6 +268,7 @@ class PdfExportAssemblyProfile(StrEnum):
 
     PIKEPDF_PAGE_COPY_V1 = "pikepdf_page_copy_v1"
     PIKEPDF_IMAGE_PAGES_V2 = "pikepdf_image_pages_v2"
+    PIKEPDF_PORTAL_V3 = "pikepdf_portal_v3"
 
 
 class PdfExportRenderProfile(StrEnum):
@@ -347,6 +351,7 @@ class PdfExportProfile:
             not in {
                 (PdfExportAssemblyProfile.PIKEPDF_PAGE_COPY_V1, PDF_EXPORT_PROFILE_VERSION),
                 (PdfExportAssemblyProfile.PIKEPDF_IMAGE_PAGES_V2, IMAGE_PDF_EXPORT_VERSION),
+                (PdfExportAssemblyProfile.PIKEPDF_PORTAL_V3, PORTAL_PDF_EXPORT_VERSION),
             }
             or self.render
             is not PdfExportRenderProfile.PDFIUM_RGBA8_CROP_WHITE_STORED_APPEARANCES_V1
@@ -355,11 +360,21 @@ class PdfExportProfile:
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "profile.model")
 
+    @property
+    def is_portal(self) -> bool:
+        """Whether the conservative portal feature policy is required."""
+
+        return self.assembly is PdfExportAssemblyProfile.PIKEPDF_PORTAL_V3
+
 
 DEFAULT_PDF_EXPORT_PROFILE: Final = PdfExportProfile()
 IMAGE_PDF_EXPORT_PROFILE: Final = PdfExportProfile(
     assembly=PdfExportAssemblyProfile.PIKEPDF_IMAGE_PAGES_V2,
     profile_version=IMAGE_PDF_EXPORT_VERSION,
+)
+PORTAL_PDF_EXPORT_PROFILE: Final = PdfExportProfile(
+    assembly=PdfExportAssemblyProfile.PIKEPDF_PORTAL_V3,
+    profile_version=PORTAL_PDF_EXPORT_VERSION,
 )
 
 
@@ -546,6 +561,7 @@ class PdfExportCheckCode(StrEnum):
     ORDER_ROTATION_MATCHED = "ORDER_ROTATION_MATCHED"
     OUTPUT_COMMIT_REOPENED = "OUTPUT_COMMIT_REOPENED"
     UNSIGNED_DERIVATIVE = "UNSIGNED_DERIVATIVE"
+    PORTAL_PROFILE_VERIFIED = "PORTAL_PROFILE_VERIFIED"
 
 
 _COUNTED_CHECKS: Final = frozenset(
@@ -602,6 +618,11 @@ class PdfExportCheck:
             )
         if self.code is PdfExportCheckCode.OUTPUT_COMMIT_REOPENED:
             return "PaperWorkShell reopened the committed output successfully."
+        if self.code is PdfExportCheckCode.PORTAL_PROFILE_VERIFIED:
+            return (
+                "The exported PDF passed the conservative portal feature checks. "
+                "Portal acceptance still depends on the receiving service."
+            )
         return (
             "The exported PDF is an unsigned derivative because at least one source "
             "contained digital-signature markers or its marker state could not be confirmed."
@@ -637,10 +658,15 @@ class PdfExportVerificationReport:
             or type(self.unsigned_derivative) is not bool
             or type(self.report_version) is not int
             or self.report_version
-            not in {PDF_EXPORT_REPORT_VERSION, OPTIMIZED_PDF_EXPORT_REPORT_VERSION}
+            not in {
+                PDF_EXPORT_REPORT_VERSION,
+                OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+                PORTAL_PDF_EXPORT_REPORT_VERSION,
+                OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
+            }
         ):
             reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "report.model")
-        if self.report_version == PDF_EXPORT_REPORT_VERSION:
+        if self.report_version in {PDF_EXPORT_REPORT_VERSION, PORTAL_PDF_EXPORT_REPORT_VERSION}:
             if self.optimization is not None:
                 reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "report.optimization")
         elif (
@@ -657,6 +683,8 @@ class PdfExportVerificationReport:
         expected_codes = _BASE_SUCCESSFUL_CHECKS + (
             (PdfExportCheckCode.UNSIGNED_DERIVATIVE,) if self.unsigned_derivative else ()
         )
+        if self.portal_profile_verified:
+            expected_codes += (PdfExportCheckCode.PORTAL_PROFILE_VERIFIED,)
         if tuple(check.code for check in self.checks) != expected_codes:
             reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "report.checks")
         if any(
@@ -681,6 +709,8 @@ class PdfExportVerificationReport:
         codes = _BASE_SUCCESSFUL_CHECKS + (
             (PdfExportCheckCode.UNSIGNED_DERIVATIVE,) if plan.contains_signature_markers else ()
         )
+        if plan.profile.is_portal:
+            codes += (PdfExportCheckCode.PORTAL_PROFILE_VERIFIED,)
         checks = tuple(
             PdfExportCheck(
                 code=code,
@@ -695,7 +725,21 @@ class PdfExportVerificationReport:
             page_count=plan.page_count,
             checks=checks,
             unsigned_derivative=plan.contains_signature_markers,
+            report_version=(
+                PORTAL_PDF_EXPORT_REPORT_VERSION
+                if plan.profile.is_portal
+                else PDF_EXPORT_REPORT_VERSION
+            ),
         )
+
+    @property
+    def portal_profile_verified(self) -> bool:
+        """Whether this version requires the successful portal-policy check."""
+
+        return self.report_version in {
+            PORTAL_PDF_EXPORT_REPORT_VERSION,
+            OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
+        }
 
     @property
     def claims(self) -> tuple[str, ...]:
@@ -1022,7 +1066,7 @@ def _reject_active_overlays(
 
 def _select_export_source(source: _ManifestSource, profile: PdfExportProfile) -> PdfExportSource:
     if source.media_type != PdfExportSourceMediaType.PDF.value:
-        if profile != IMAGE_PDF_EXPORT_PROFILE:
+        if profile not in {IMAGE_PDF_EXPORT_PROFILE, PORTAL_PDF_EXPORT_PROFILE}:
             reject_pdf_export(PdfExportErrorCode.SOURCE_UNSUPPORTED, "plan.source_media")
         try:
             return PdfExportSource(
@@ -1086,7 +1130,7 @@ def _calculate_semantic_fingerprint(
             {
                 **(
                     {"source_media_type": source_by_id[page.source_id].media_type.value}
-                    if plan_version == IMAGE_PDF_EXPORT_VERSION
+                    if plan_version in {IMAGE_PDF_EXPORT_VERSION, PORTAL_PDF_EXPORT_VERSION}
                     else {}
                 ),
                 "source_sha256": source_by_id[page.source_id].sha256,

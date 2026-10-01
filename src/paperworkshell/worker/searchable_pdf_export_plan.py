@@ -11,6 +11,10 @@ from uuid import UUID
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.ocr_languages import resolve_ocr_language_set
 from paperworkshell.domain.page_operations import NormalizedPageBox
+from paperworkshell.domain.pdf_export import (
+    DEFAULT_PDF_EXPORT_PROFILE,
+    PORTAL_PDF_EXPORT_PROFILE,
+)
 from paperworkshell.domain.searchable_pdf_export import (
     MAX_SEARCHABLE_PDF_PAGES,
     MAX_SEARCHABLE_PDF_SOURCES,
@@ -258,8 +262,16 @@ def decode_searchable_pdf_worker_plan(payload: bytes) -> SearchablePdfWorkerPlan
         profile_doc = _object(root["profile"], _PROFILE_MEMBERS)
         selected_language_set_id = _string(profile_doc["ocr_language_set_id"])
         resolve_ocr_language_set(selected_language_set_id)
+        pdf_profile_version = _integer(profile_doc["pdf_profile_version"])
+        pdf_profiles = {
+            DEFAULT_PDF_EXPORT_PROFILE.profile_version: DEFAULT_PDF_EXPORT_PROFILE,
+            PORTAL_PDF_EXPORT_PROFILE.profile_version: PORTAL_PDF_EXPORT_PROFILE,
+        }
+        if pdf_profile_version not in pdf_profiles:
+            raise _PlanDecodeError
         expected_profile = SearchablePdfExportProfile(
             ocr_language_set_id=selected_language_set_id,
+            pdf_profile=pdf_profiles[pdf_profile_version],
         )
         expected_pdf = expected_profile.pdf_profile
         expected_profile_values = {

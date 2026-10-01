@@ -33,6 +33,8 @@ from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
     MAX_PDF_EXPORT_PAGES,
     MAX_PDF_EXPORT_SOURCES,
+    PDF_EXPORT_REPORT_VERSION,
+    PORTAL_PDF_EXPORT_REPORT_VERSION,
     PdfExportCheck,
     PdfExportCheckCode,
     PdfExportError,
@@ -653,6 +655,7 @@ def _validate_report(report: FlattenedPdfExportVerificationReport) -> None:
         report.base_report.semantic_fingerprint != report.plan.semantic_fingerprint
         or report.base_report.page_count != report.plan.page_count
         or report.base_report.unsigned_derivative != report.plan.contains_signature_markers
+        or report.base_report.portal_profile_verified != report.plan.base_plan.profile.is_portal
         or report.checks != _successful_checks(report.plan)
     ):
         reject_flattened_pdf_export(
@@ -686,6 +689,8 @@ def _verified_report(
     )
     if plan.contains_signature_markers:
         codes += (PdfExportCheckCode.UNSIGNED_DERIVATIVE,)
+    if plan.base_plan.profile.is_portal:
+        codes += (PdfExportCheckCode.PORTAL_PROFILE_VERIFIED,)
     try:
         base_report = PdfExportVerificationReport(
             semantic_fingerprint=plan.semantic_fingerprint,
@@ -700,6 +705,11 @@ def _verified_report(
                 for code in codes
             ),
             unsigned_derivative=plan.contains_signature_markers,
+            report_version=(
+                PORTAL_PDF_EXPORT_REPORT_VERSION
+                if plan.base_plan.profile.is_portal
+                else PDF_EXPORT_REPORT_VERSION
+            ),
         )
     except Exception:
         reject_flattened_pdf_export(
@@ -808,6 +818,7 @@ def _build_plan(
             sources=tuple(export_sources),
             pages=tuple(base_pages),
             profile=profile,
+            plan_version=profile.profile_version,
         )
     except PdfExportError as error:
         _translate_pdf_export_error(error)

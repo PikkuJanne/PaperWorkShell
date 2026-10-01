@@ -11,7 +11,9 @@ from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
     MAX_PDF_EXPORT_CHECKS,
     OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+    OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
     PDF_EXPORT_REPORT_VERSION,
+    PORTAL_PDF_EXPORT_REPORT_VERSION,
     PdfExportCheck,
     PdfExportCheckCode,
     PdfExportError,
@@ -203,16 +205,23 @@ def decode_pdf_export_worker_report(payload: bytes) -> PdfExportWorkerReport:
     if type(raw_report) is not dict:
         reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report")
     report_version = _integer(raw_report.get("report_version"), "export.domain_report_version")
-    if report_version == PDF_EXPORT_REPORT_VERSION:
+    if report_version in {PDF_EXPORT_REPORT_VERSION, PORTAL_PDF_EXPORT_REPORT_VERSION}:
         report_members = _REPORT_MEMBERS
-    elif report_version == OPTIMIZED_PDF_EXPORT_REPORT_VERSION:
+    elif report_version in {
+        OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+        OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
+    }:
         report_members = _REPORT_MEMBERS | {"optimization"}
     else:
         reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.domain_report_version")
     report_record = _object(raw_report, report_members, "export.report")
     optimization = (
         _optimization_report(report_record["optimization"])
-        if report_version == OPTIMIZED_PDF_EXPORT_REPORT_VERSION
+        if report_version
+        in {
+            OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+            OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
+        }
         else None
     )
     raw_checks = report_record["checks"]

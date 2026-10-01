@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from paperworkshell.domain.pdf_export import (
     OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+    OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
     PdfExportErrorCode,
     PdfExportVerificationReport,
     reject_pdf_export,
@@ -96,6 +97,11 @@ def optimize_verified_pdf(
     ):
         reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "optimization.worker_input")
     _checkpoint(control)
+    selected_report_version = (
+        OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION
+        if report.portal_profile_verified
+        else OPTIMIZED_PDF_EXPORT_REPORT_VERSION
+    )
     _authenticate_baseline(baseline_path, report, control)
     used_bytes = _private_temp_bytes(
         operation_temp,
@@ -130,7 +136,7 @@ def optimize_verified_pdf(
             baseline_path,
             replace(
                 report,
-                report_version=OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+                report_version=selected_report_version,
                 optimization=optimization,
             ),
         )
@@ -175,7 +181,7 @@ def optimize_verified_pdf(
             report,
             output_sha256=result.candidate_sha256,
             output_byte_size=result.report.selected_byte_size,
-            report_version=OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+            report_version=selected_report_version,
             optimization=result.report,
         )
         _authenticate_baseline(candidate_path, selected_report, control)
@@ -186,7 +192,7 @@ def optimize_verified_pdf(
         baseline_path,
         replace(
             report,
-            report_version=OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+            report_version=selected_report_version,
             optimization=result.report,
         ),
     )

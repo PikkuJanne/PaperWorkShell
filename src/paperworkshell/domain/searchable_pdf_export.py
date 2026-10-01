@@ -41,6 +41,8 @@ from paperworkshell.domain.page_operations import (
 )
 from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
+    PDF_EXPORT_REPORT_VERSION,
+    PORTAL_PDF_EXPORT_REPORT_VERSION,
     PdfExportCheck,
     PdfExportCheckCode,
     PdfExportHistoryRetryReceipt,
@@ -715,6 +717,7 @@ class SearchablePdfVerificationReport:
             self.base_report.semantic_fingerprint != self.plan.semantic_fingerprint
             or self.base_report.page_count != self.plan.page_count
             or self.base_report.unsigned_derivative != self.plan.requires_unsigned_derivative
+            or self.base_report.portal_profile_verified != self.plan.profile.pdf_profile.is_portal
             or len(self.page_outcomes) != self.plan.page_count
         ):
             reject_searchable_pdf_export(
@@ -768,6 +771,8 @@ class SearchablePdfVerificationReport:
         )
         if plan.requires_unsigned_derivative:
             codes += (PdfExportCheckCode.UNSIGNED_DERIVATIVE,)
+        if plan.profile.pdf_profile.is_portal:
+            codes += (PdfExportCheckCode.PORTAL_PROFILE_VERIFIED,)
         try:
             base_report = PdfExportVerificationReport(
                 semantic_fingerprint=plan.semantic_fingerprint,
@@ -782,6 +787,11 @@ class SearchablePdfVerificationReport:
                     for code in codes
                 ),
                 unsigned_derivative=plan.requires_unsigned_derivative,
+                report_version=(
+                    PORTAL_PDF_EXPORT_REPORT_VERSION
+                    if plan.profile.pdf_profile.is_portal
+                    else PDF_EXPORT_REPORT_VERSION
+                ),
             )
         except Exception:
             reject_searchable_pdf_export(

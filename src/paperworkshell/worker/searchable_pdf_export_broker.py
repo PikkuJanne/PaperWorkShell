@@ -1025,6 +1025,7 @@ def _require_worker_report(
         or value.output_object_id != output_object_id
         or value.status_object_id != status_object_id
         or report.semantic_fingerprint != plan.semantic_fingerprint
+        or report.portal_profile_verified != plan.profile.pdf_profile.is_portal
         or report.page_count != plan.page_count
         or report.unsigned_derivative != plan.requires_unsigned_derivative
         or output.expected_byte_size != report.output_byte_size

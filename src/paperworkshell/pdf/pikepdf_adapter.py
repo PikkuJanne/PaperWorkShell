@@ -6,7 +6,7 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import BinaryIO, Final
+from typing import BinaryIO, Final, Protocol
 
 import pikepdf
 
@@ -25,6 +25,17 @@ from paperworkshell.domain.pdf_inspection import (
 
 CancellationProbe = Callable[[], bool]
 MonotonicClock = Callable[[], float]
+DictionaryObserver = Callable[[pikepdf.Dictionary, bool, bool], None]
+
+
+class _InspectionCheckpoint(Protocol):
+    def checkpoint(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentCheckpoint:
+    checkpoint: Callable[[], None]
+
 
 DEFAULT_MAXIMUM_GRAPH_DEPTH: Final = 64
 DEFAULT_MAXIMUM_COLLECTION_ITEMS: Final = 65_536
@@ -321,12 +332,38 @@ class PikePdfAdapter:
         except Exception:
             reject_pdf_inspection(PdfInspectionErrorCode.INTERNAL_ERROR, "pdf.adapter")
 
+    def inspect_open_features(
+        self,
+        document: pikepdf.Pdf,
+        *,
+        maximum_objects: int,
+        checkpoint: Callable[[], None],
+        dictionary_observer: DictionaryObserver | None = None,
+    ) -> PdfFeatureSummary:
+        """Inspect an already strictly opened worker document with the same graph budgets.
+
+        The owner remains responsible for syntax, encryption and page-count checks.
+        An optional native observer adds profile restrictions during this single walk.
+        """
+
+        checkpoint()
+        object_count = len(document.objects)
+        if not 1 <= object_count <= maximum_objects:
+            reject_pdf_inspection(PdfInspectionErrorCode.LIMIT_EXCEEDED, "pdf.objects")
+        return self._scan_all_objects(
+            document,
+            operation=_DocumentCheckpoint(checkpoint),
+            node_budget=min(MAXIMUM_GRAPH_NODES, object_count * self.graph_nodes_per_object),
+            dictionary_observer=dictionary_observer,
+        ).freeze()
+
     def _scan_all_objects(
         self,
         document: pikepdf.Pdf,
         *,
-        operation: _InspectionOperation,
+        operation: _InspectionCheckpoint,
         node_budget: int,
+        dictionary_observer: DictionaryObserver | None = None,
     ) -> _FeatureAccumulator:
         accumulator = _FeatureAccumulator()
         stack: list[tuple[object, int, bool]] = [
@@ -366,6 +403,8 @@ class PikePdfAdapter:
                     maximum_collection_items=self.maximum_collection_items,
                     is_stream=True,
                 )
+                if dictionary_observer is not None:
+                    dictionary_observer(dictionary, False, True)
                 stack.extend((value, depth + 1, False) for _, value in dictionary.items())
             elif isinstance(current, pikepdf.Dictionary):
                 if len(current) > self.maximum_collection_items:
@@ -379,6 +418,8 @@ class PikePdfAdapter:
                     maximum_collection_items=self.maximum_collection_items,
                     is_trailer=is_trailer,
                 )
+                if dictionary_observer is not None:
+                    dictionary_observer(current, is_trailer, False)
                 stack.extend((value, depth + 1, False) for _, value in current.items())
             elif isinstance(current, pikepdf.Array):
                 if len(current) > self.maximum_collection_items:

@@ -16,6 +16,8 @@ from paperworkshell.domain.pdf_export import (
     MAX_PDF_EXPORT_PAGES,
     MAX_PDF_EXPORT_SOURCES,
     PDF_EXPORT_PLAN_VERSION,
+    PORTAL_PDF_EXPORT_PROFILE,
+    PORTAL_PDF_EXPORT_VERSION,
     PdfExportError,
     PdfExportErrorCode,
     PdfExportPage,
@@ -221,7 +223,11 @@ def decode_pdf_export_worker_plan(payload: bytes) -> PdfExportWorkerPlan:
     if _require_integer(root["worker_plan_version"], "export.worker_plan_version") != 1:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.worker_plan_version")
     plan_version = _require_integer(root["plan_version"], "export.plan_version")
-    if plan_version not in {PDF_EXPORT_PLAN_VERSION, IMAGE_PDF_EXPORT_VERSION}:
+    if plan_version not in {
+        PDF_EXPORT_PLAN_VERSION,
+        IMAGE_PDF_EXPORT_VERSION,
+        PORTAL_PDF_EXPORT_VERSION,
+    }:
         reject_pdf_export(PdfExportErrorCode.RESULT_INVALID, "export.plan_version")
     profile = _decode_profile(root["profile"], plan_version)
 
@@ -425,11 +431,11 @@ def _require_uuid(value: object, context: str) -> UUID:
 
 def _decode_profile(value: object, plan_version: int) -> PdfExportProfile:
     profile = _require_object(value, _PROFILE_MEMBERS, "export.worker_profile")
-    expected = (
-        DEFAULT_PDF_EXPORT_PROFILE
-        if plan_version == PDF_EXPORT_PLAN_VERSION
-        else IMAGE_PDF_EXPORT_PROFILE
-    )
+    expected = {
+        PDF_EXPORT_PLAN_VERSION: DEFAULT_PDF_EXPORT_PROFILE,
+        IMAGE_PDF_EXPORT_VERSION: IMAGE_PDF_EXPORT_PROFILE,
+        PORTAL_PDF_EXPORT_VERSION: PORTAL_PDF_EXPORT_PROFILE,
+    }[plan_version]
     if profile != {
         "profile_version": expected.profile_version,
         "assembly": expected.assembly.value,

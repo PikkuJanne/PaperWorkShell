@@ -641,6 +641,7 @@ def _require_candidate(
     if (
         type(report) is not PdfExportVerificationReport
         or report.semantic_fingerprint != plan.semantic_fingerprint
+        or report.portal_profile_verified != plan.profile.is_portal
         or report.page_count != plan.page_count
         or report.unsigned_derivative != plan.contains_signature_markers
         or not callable(reader)

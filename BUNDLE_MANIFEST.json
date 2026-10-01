@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 33267,
-      "sha256": "5637710e227658bdd72ee51e5d618e2e2ccc5a96ff8c2e86db5c5e0ecb2ef00d"
+      "bytes": 33762,
+      "sha256": "b3ed2caa4dd71b3f01a0e23c4e7982e7ef61ec6bd9b8de5eb065abc1d44c258f"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 7611,
-      "sha256": "6019eb09c5870d321171b96f759e70471d7aa26ca1f80da636b8cedcc0ef3c91"
+      "bytes": 8129,
+      "sha256": "00d55f6c3d0116efe45dc0ef7bc5f7857fe62fa7a439a5c2d8e0187e930fee67"
     },
     {
       "path": "LOW_SPEC.md",

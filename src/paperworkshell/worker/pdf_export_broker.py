@@ -60,6 +60,8 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_PLAN_CONTENT_KIND,
     PDF_EXPORT_PLAN_HANDLE_PARAMETER,
     PDF_EXPORT_RESULT_HANDLE_PARAMETER,
+    PORTAL_PDF_EXPORT_CAPABILITY,
+    PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND,
     CancelReason,
     CaseObjectReference,
     OperationOutcome,
@@ -521,11 +523,11 @@ class BrokeredPdfExporter:
                         deadline=deadline,
                         cancellation=cancellation,
                     )
-                    capability = (
-                        IMAGE_PDF_EXPORT_CAPABILITY
-                        if plan.plan_version == 2
-                        else PDF_EXPORT_CAPABILITY
-                    )
+                    capability = {
+                        1: PDF_EXPORT_CAPABILITY,
+                        2: IMAGE_PDF_EXPORT_CAPABILITY,
+                        3: PORTAL_PDF_EXPORT_CAPABILITY,
+                    }[plan.plan_version]
                     if capability not in ready.capabilities:
                         reject_pdf_export(
                             PdfExportErrorCode.WORKER_FAILED,
@@ -808,7 +810,7 @@ def _operation_limits(policy: ResourceLimits, plan: PdfExportPlan) -> ResourceLi
         # independently constrained and verified against the immutable plan.
         page_count=required_page_capacity,
         pixel_count=policy.pixel_count
-        if plan.plan_version == 2
+        if plan.plan_version in {2, 3}
         else PDF_EXPORT_VERIFICATION_PIXELS,
     )
 
@@ -834,11 +836,11 @@ def _operation_payload(
                 area=ReferenceArea.OPERATION_TEMP,
                 object_id=plan_object_id,
                 operation_id=operation_id,
-                content_kind=(
-                    IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND
-                    if plan.plan_version == 2
-                    else PDF_EXPORT_PLAN_CONTENT_KIND
-                ),
+                content_kind={
+                    1: PDF_EXPORT_PLAN_CONTENT_KIND,
+                    2: IMAGE_PDF_EXPORT_PLAN_CONTENT_KIND,
+                    3: PORTAL_PDF_EXPORT_PLAN_CONTENT_KIND,
+                }[plan.plan_version],
                 expected_byte_size=plan_byte_size,
                 expected_sha256=plan_sha256,
             ),
@@ -931,6 +933,7 @@ def _require_report(
         value.operation_id != operation_id
         or value.output_object_id != output_object_id
         or report.semantic_fingerprint != plan.semantic_fingerprint
+        or report.portal_profile_verified != plan.profile.is_portal
         or report.page_count != plan.page_count
         or report.unsigned_derivative != plan.contains_signature_markers
         or output.expected_byte_size != report.output_byte_size

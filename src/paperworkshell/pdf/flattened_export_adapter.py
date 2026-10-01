@@ -32,6 +32,7 @@ from paperworkshell.domain.page_coordinates import (
     PageCoordinateTransform,
     PdfPageCoordinateGeometry,
 )
+from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_geometry import (
     MAX_PDF_PAGE_COORDINATE_MAGNITUDE_UNITS,
     MAX_PDF_PAGE_SPAN_UNITS,
@@ -96,6 +97,11 @@ from paperworkshell.pdf.page_geometry import (
     to_page_coordinate_geometry,
 )
 from paperworkshell.pdf.pdfium_renderer import PdfiumPageRenderer
+from paperworkshell.pdf.portal_policy import (
+    PORTAL_MINIMUM_OUTPUT_VERSION,
+    require_portal_output,
+    require_portal_source_version,
+)
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.pdf.renderer import PdfPageRenderer, PdfRasterDestination
 
@@ -701,7 +707,7 @@ class FlattenedPdfExportAdapter:
             control,
         )
         _checkpoint(control)
-        _validate_sources(bindings, limits, control)
+        _validate_sources(bindings, limits, control, portal=plan.base_plan.profile.is_portal)
         maximum_output = _candidate_maximum_bytes(limits)
 
         try:
@@ -746,7 +752,7 @@ class FlattenedPdfExportAdapter:
             _verify_candidate_structure(output_path, plan, expected_pages, limits, control)
             _verify_with_qpdf(self.qpdf_checker, output_path, limits, control)
             _verify_rendered_pages(self.renderer, output_path, expected_pages, limits, control)
-            _validate_sources(bindings, limits, control)
+            _validate_sources(bindings, limits, control, portal=plan.base_plan.profile.is_portal)
             final = _measure_output(output_path, maximum_output, control)
             if final != first:
                 reject_flattened_pdf_export(
@@ -902,6 +908,8 @@ def _validate_sources(
     bindings: tuple[_SourceBinding, ...],
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
+    *,
+    portal: bool = False,
 ) -> None:
     total = 0
     for binding in bindings:
@@ -918,7 +926,7 @@ def _validate_sources(
                 FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
                 "flattened.source_total",
             )
-        _validate_source_structure(binding, limits, control)
+        _validate_source_structure(binding, limits, control, portal=portal)
 
 
 def _measure_source(
@@ -973,6 +981,8 @@ def _validate_source_structure(
     binding: _SourceBinding,
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
+    *,
+    portal: bool = False,
 ) -> None:
     original = _stream_position(binding.stream, "flattened.source_state")
     operation_error: FlattenedPdfExportError | None = None
@@ -980,6 +990,8 @@ def _validate_source_structure(
         binding.stream.seek(0)
         with _strict_open(binding.stream) as document:
             _checkpoint(control)
+            if portal:
+                _require_portal_document(document, limits, control, source=True)
             if document.is_encrypted:
                 reject_flattened_pdf_export(
                     FlattenedPdfExportErrorCode.SOURCE_ENCRYPTED,
@@ -1014,6 +1026,33 @@ def _validate_source_structure(
         )
     if operation_error is not None:
         raise operation_error from None
+
+
+def _require_portal_document(
+    document: pikepdf.Pdf,
+    limits: PdfExportAdapterLimits,
+    control: PdfExportAdapterControl,
+    *,
+    source: bool = False,
+) -> None:
+    try:
+        if source:
+            require_portal_source_version(document)
+        else:
+            require_portal_output(
+                document,
+                maximum_objects=limits.inspection.maximum_objects,
+                checkpoint=lambda: _checkpoint(control),
+            )
+    except PdfExportError as error:
+        code = (
+            FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
+            if error.code is PdfExportErrorCode.LIMIT_EXCEEDED
+            else FlattenedPdfExportErrorCode.SOURCE_UNSUPPORTED
+            if source
+            else FlattenedPdfExportErrorCode.VERIFICATION_STRUCTURE_FAILED
+        )
+        reject_flattened_pdf_export(code, error.context)
 
 
 def _assemble_candidate(
@@ -1198,6 +1237,9 @@ def _assemble_candidate(
                 object_stream_mode=pikepdf.ObjectStreamMode.generate,
                 normalize_content=False,
                 linearize=False,
+                min_version=(
+                    PORTAL_MINIMUM_OUTPUT_VERSION if plan.base_plan.profile.is_portal else ""
+                ),
             )
             _checkpoint(control)
     except FlattenedPdfExportError:
@@ -4059,6 +4101,8 @@ def _verify_candidate_structure(
                         FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
                         "flattened.output_objects",
                     )
+                if plan.base_plan.profile.is_portal:
+                    _require_portal_document(document, limits, control)
                 if _NAME_ACRO_FORM in document.Root or _NAME_OPEN_ACTION in document.Root:
                     _overlay_presence_failure("flattened.output_interactive")
                 for expected in expected_pages:

@@ -48,6 +48,7 @@ from paperworkshell.pdf.image_stage_analysis import analyze_document, fail, raw_
 from paperworkshell.pdf.image_stage_encoder import EncodedImage, encode_image, required_image_memory
 from paperworkshell.pdf.optimization_adapter import _graph_fingerprint
 from paperworkshell.pdf.pdfium_renderer import PdfiumPageRenderer
+from paperworkshell.pdf.portal_policy import require_portal_output
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.pdf.renderer import PdfPageRenderer
 
@@ -155,6 +156,12 @@ class PdfImageStageAdapter:
         keep = False
         try:
             with baseline_path.open("rb") as source, _strict_open(source) as document:
+                if baseline_report.portal_profile_verified:
+                    require_portal_output(
+                        document,
+                        maximum_objects=limits.export.inspection.maximum_objects,
+                        checkpoint=lambda: _checkpoint(control),
+                    )
                 analysis, bindings = analyze_document(
                     document,
                     baseline_sha256=baseline.sha256,
@@ -268,6 +275,7 @@ class PdfImageStageAdapter:
                                     + 2 * completed,
                                     total,
                                 ),
+                                portal=baseline_report.portal_profile_verified,
                             )
                             if candidate.byte_size >= baseline.byte_size:
                                 result = _result(
@@ -395,8 +403,16 @@ class PdfImageStageAdapter:
         limits: PdfImageStageAdapterLimits,
         control: PdfExportAdapterControl,
         progress: Callable[[int], None],
+        *,
+        portal: bool = False,
     ) -> None:
         with candidate_path.open("rb") as source, _strict_open(source) as document:
+            if portal:
+                require_portal_output(
+                    document,
+                    maximum_objects=limits.export.inspection.maximum_objects,
+                    checkpoint=lambda: _checkpoint(control),
+                )
             current, bindings = analyze_document(
                 document,
                 baseline_sha256=analysis.baseline_sha256,

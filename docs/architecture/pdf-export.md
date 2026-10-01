@@ -7,6 +7,7 @@
 - Extension: PWS-0307 [verified flattened visual-overlay export](flattened-overlay-export.md)
 - Extension: PWS-0502 [safe object/stream optimization](pdf-safe-optimization.md)
 - Separate operation: PWS-0503 [explicit image analysis/re-encoding](pdf-image-stages.md)
+- Package policy: PWS-0506 [conservative portal profile](portal-export-profile.md)
 - Decisions: PWS-D009, PWS-D011, PWS-D015, PWS-D029, PWS-D037, PWS-D038
 
 ## Scope and claims

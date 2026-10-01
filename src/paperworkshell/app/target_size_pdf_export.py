@@ -32,10 +32,12 @@ from paperworkshell.app.source_ingest import (
 )
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.pdf_export import (
+    PORTAL_PDF_EXPORT_PROFILE,
     PdfExportError,
     PdfExportErrorCode,
     PdfExportPlan,
     PdfExportProgress,
+    PdfExportSourceMediaType,
     PdfExportVerificationReport,
     build_pdf_export_plan_for_pages,
     reject_pdf_export,
@@ -326,7 +328,13 @@ class TargetSizePdfCandidateProducer:
             reject_pdf_export(PdfExportErrorCode.PLAN_STALE, "target.snapshot_binding")
         plan: PdfExportPlan | None
         try:
-            plan = build_pdf_export_plan_for_pages(snapshot, planned_pdf.page_ids)
+            plan = build_pdf_export_plan_for_pages(
+                snapshot, planned_pdf.page_ids, profile=PORTAL_PDF_EXPORT_PROFILE
+            )
+            if any(
+                source.media_type is not PdfExportSourceMediaType.PDF for source in plan.sources
+            ):
+                plan = None
         except PdfExportError as error:
             if error.code not in _FALLBACK_CODES:
                 raise
@@ -546,6 +554,7 @@ class _TargetCandidateSession:
             or baseline.output_byte_size != analysis.baseline_byte_size
             or baseline.optimization is None
             or baseline.unsigned_derivative != plan.contains_signature_markers
+            or baseline.portal_profile_verified != plan.profile.is_portal
             or report.output_byte_size + self._reserved_bytes
             > self._producer._policy.maximum_temporary_storage_bytes
         ):

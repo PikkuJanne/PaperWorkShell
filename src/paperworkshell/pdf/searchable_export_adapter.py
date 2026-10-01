@@ -92,6 +92,11 @@ from paperworkshell.imaging.pillow_decoder import PillowImageDecoder
 from paperworkshell.imaging.pillow_transformer import PillowImageTransformer
 from paperworkshell.pdf.page_geometry import PikePdfPageGeometryResolver
 from paperworkshell.pdf.pdfium_renderer import PdfiumPageRenderer
+from paperworkshell.pdf.portal_policy import (
+    PORTAL_MINIMUM_OUTPUT_VERSION,
+    require_portal_output,
+    require_portal_source_version,
+)
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.pdf.raster_pdf_page import (
     RasterPdfPageAdapter,
@@ -490,7 +495,7 @@ class SearchablePdfExportAdapter:
             resource_observer,
         )
         _checkpoint(control)
-        _validate_sources(bindings, limits, control)
+        _validate_sources(bindings, limits, control, portal=plan.profile.pdf_profile.is_portal)
         binding_by_id = {binding.source.source_id: binding for binding in bindings}
         selected_pages: list[_SelectedPage] = []
         output_saved = False
@@ -563,7 +568,9 @@ class SearchablePdfExportAdapter:
                 scheduler.require_complete()
                 if _NAME_METADATA in output.Root:
                     del output.Root[_NAME_METADATA]
-                _save_output(output, output_path, limits, control)
+                _save_output(
+                    output, output_path, limits, control, portal=plan.profile.pdf_profile.is_portal
+                )
                 output_saved = True
 
             _emit_progress(
@@ -591,7 +598,7 @@ class SearchablePdfExportAdapter:
                 limits,
                 control,
             )
-            _validate_sources(bindings, limits, control)
+            _validate_sources(bindings, limits, control, portal=plan.profile.pdf_profile.is_portal)
             final_output = _measure_output(output_path, limits, control)
             if final_output != first_output:
                 reject_pdf_export(
@@ -718,6 +725,8 @@ def _validate_sources(
     bindings: tuple[_SourceBinding, ...],
     limits: SearchablePdfExportAdapterLimits,
     control: SearchablePdfExportAdapterControl,
+    *,
+    portal: bool = False,
 ) -> None:
     total = 0
     for binding in bindings:
@@ -734,18 +743,22 @@ def _validate_sources(
         if total > limits.maximum_total_source_bytes:
             reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.searchable_source_bytes")
         if binding.source.media_type is SearchablePdfSourceMediaType.PDF:
-            _strict_validate_pdf_source(binding, limits, control)
+            _strict_validate_pdf_source(binding, limits, control, portal=portal)
 
 
 def _strict_validate_pdf_source(
     binding: _SourceBinding,
     limits: SearchablePdfExportAdapterLimits,
     control: SearchablePdfExportAdapterControl,
+    *,
+    portal: bool = False,
 ) -> None:
     try:
         with binding.path.open("rb") as stream:
             with _strict_open(stream) as document:
                 _checkpoint(control)
+                if portal:
+                    require_portal_source_version(document)
                 if document.is_encrypted:
                     reject_pdf_export(PdfExportErrorCode.SOURCE_ENCRYPTED, "export.source")
                 if len(document.pages) != binding.source.page_count:
@@ -1634,6 +1647,8 @@ def _save_output(
     output_path: Path,
     limits: SearchablePdfExportAdapterLimits,
     control: SearchablePdfExportAdapterControl,
+    *,
+    portal: bool = False,
 ) -> None:
     try:
         stream = output_path.open("x+b")
@@ -1653,6 +1668,7 @@ def _save_output(
                 object_stream_mode=pikepdf.ObjectStreamMode.generate,
                 normalize_content=False,
                 linearize=False,
+                min_version=PORTAL_MINIMUM_OUTPUT_VERSION if portal else "",
             )
             bounded.flush()
             os.fsync(bounded.fileno())
@@ -1692,6 +1708,12 @@ def _verify_structure(
                     )
                 if len(document.objects) > limits.inspection.maximum_objects:
                     reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.output_objects")
+                if plan.profile.pdf_profile.is_portal:
+                    require_portal_output(
+                        document,
+                        maximum_objects=limits.inspection.maximum_objects,
+                        checkpoint=lambda: _checkpoint(control),
+                    )
                 warnings = document.check_pdf_syntax(progress=lambda _value: _checkpoint(control))
                 if type(warnings) is not list or warnings:
                     reject_pdf_export(

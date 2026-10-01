@@ -102,6 +102,7 @@ _ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
         ("pdf.thumbnail", 1),
         ("pdf.export", 1),
         ("pdf.export", 2),
+        ("pdf.export", 3),
         ("pdf.export.searchable", 1),
         ("pdf.image_stage", 1),
         ("image.normalize", 1),

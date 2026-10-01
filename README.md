@@ -57,6 +57,10 @@ PWS-0505 connects **Preview size reduction** to package review, with actual page
 comparisons, explicit grayscale choice, and a fixed 200 dpi/JPEG quality 80 floor.
 The [review workflow](docs/architecture/compression-review.md) publishes the exact
 verified candidate after confirmation; these settings do not guarantee readability.
+PWS-0506 adds a versioned [conservative portal profile](docs/architecture/portal-export-profile.md)
+to package export. Final worker checks reject prohibited retained PDF features and
+unsupported versions. Its [new reader matrix](docs/compatibility/pws-0506-portal-matrix.md)
+records exact artifacts and pending observations; it does not promise portal acceptance.
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,
@@ -176,6 +180,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py run-pws0208-resource-workload` | Run the constrained signed-source/OCR workload and publish local evidence |
 | `py -3.14 tools/dev.py benchmark-pdf-renderers` | Compare the pinned PDFium and Qt PDF candidates on Windows |
 | `py -3.14 tools/dev.py pws0307-reader-test` | Prepare, guide, and record PWS-0307 reader checks |
+| `py -3.14 tools/dev.py pws0506-compatibility-test` | Prepare and record the PWS-0506 reader and local upload-constraint matrix |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
 On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).

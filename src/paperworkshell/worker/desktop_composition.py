@@ -103,6 +103,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_EXPORT_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    PORTAL_PDF_EXPORT_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     ResourceLimits,
 )
@@ -261,7 +262,7 @@ class PdfExportWorkerCompositionConfig:
             <= self.resource_policy.maximum_processes
             or type(self.export_policy) is not PdfExportBrokerPolicy
             or type(self.operation_version) is not int
-            or self.operation_version not in {1, 2}
+            or self.operation_version not in {1, 2, 3}
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
@@ -701,7 +702,11 @@ def create_pdf_export_worker_composition(
         config.resource_policy,
         config.timeout_policy,
         required_capabilities=(
-            PDF_EXPORT_CAPABILITY if config.operation_version == 1 else IMAGE_PDF_EXPORT_CAPABILITY,
+            {
+                1: PDF_EXPORT_CAPABILITY,
+                2: IMAGE_PDF_EXPORT_CAPABILITY,
+                3: PORTAL_PDF_EXPORT_CAPABILITY,
+            }[config.operation_version],
         ),
     )
     return PdfExportWorkerComposition(

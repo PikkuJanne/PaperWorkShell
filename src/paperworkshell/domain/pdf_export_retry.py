@@ -398,12 +398,17 @@ def _require_exact_receipt(
             "export_retry.receipt",
         )
     # History/journal v1 retains the exact committed-output verification facts.
-    # Optimization evidence is transient and deliberately absent after restart;
+    # Optimization and portal-policy evidence are transient and absent after restart;
     # do not change an existing persistent schema to store these new details.
     legacy_report = replace(
         receipt.report,
         report_version=PDF_EXPORT_REPORT_VERSION,
         optimization=None,
+        checks=tuple(
+            check
+            for check in receipt.report.checks
+            if check.code is not PdfExportCheckCode.PORTAL_PROFILE_VERIFIED
+        ),
     )
     if replace(receipt, report=legacy_report) != expected:
         reject_pdf_export_history(

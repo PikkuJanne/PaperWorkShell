@@ -530,7 +530,14 @@ def build_pdf_export_history_record_for_binding(
         output_sha256=report.output_sha256,
         output_byte_size=report.output_byte_size,
         page_count=report.page_count,
-        check_codes=tuple(check.code for check in report.checks)
+        # History v1 stores its original concrete check vocabulary. The portal
+        # audit remains transient report evidence; a history record cannot be
+        # used to reconstruct or claim that additional verification.
+        check_codes=tuple(
+            check.code
+            for check in report.checks
+            if check.code is not PdfExportCheckCode.PORTAL_PROFILE_VERIFIED
+        )
         + (PdfExportCheckCode.OUTPUT_COMMIT_REOPENED,),
         unsigned_derivative=report.unsigned_derivative,
     )

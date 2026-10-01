@@ -24,6 +24,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_IMAGE_STAGE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
+    PORTAL_PDF_EXPORT_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
@@ -457,7 +458,11 @@ class ConversationState:
                     "pdf.thumbnail operation and object identifiers must be distinct",
                 )
             thumbnail_cache_object_id = thumbnail_bound_object_ids[2]
-        if descriptor in {PDF_EXPORT_CAPABILITY, IMAGE_PDF_EXPORT_CAPABILITY}:
+        if descriptor in {
+            PDF_EXPORT_CAPABILITY,
+            IMAGE_PDF_EXPORT_CAPABILITY,
+            PORTAL_PDF_EXPORT_CAPABILITY,
+        }:
             validate_pdf_export_start(payload)
             export_bound_object_ids = pdf_export_bound_object_ids(payload)
             if payload.inputs[0].operation_id != message.operation_id:

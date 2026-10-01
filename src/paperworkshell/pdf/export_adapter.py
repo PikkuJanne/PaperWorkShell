@@ -51,6 +51,11 @@ from paperworkshell.domain.pdf_rendering import (
 )
 from paperworkshell.imaging.pillow_decoder import PillowImageDecoder
 from paperworkshell.pdf.pdfium_renderer import PdfiumPageRenderer
+from paperworkshell.pdf.portal_policy import (
+    PORTAL_MINIMUM_OUTPUT_VERSION,
+    require_portal_output,
+    require_portal_source_version,
+)
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.pdf.raster_pdf_page import RasterPdfPageAdapter, RasterPdfPageLimits
 from paperworkshell.pdf.renderer import PdfPageRenderer, PdfRasterDestination
@@ -349,7 +354,7 @@ class PdfExportAdapter:
 
         bindings = _validate_call(plan, source_paths, output_path, limits, control)
         _checkpoint(control)
-        _validate_sources(bindings, limits=limits, control=control)
+        _validate_sources(bindings, limits=limits, control=control, portal=plan.profile.is_portal)
 
         try:
             output_stream = output_path.open("x+b")
@@ -396,7 +401,9 @@ class PdfExportAdapter:
                 limits=limits,
                 control=control,
             )
-            _validate_sources(bindings, limits=limits, control=control)
+            _validate_sources(
+                bindings, limits=limits, control=control, portal=plan.profile.is_portal
+            )
             final_output = _measure_output(output_path, limits=limits, control=control)
             if final_output != first_output:
                 reject_pdf_export(
@@ -475,6 +482,7 @@ def _validate_sources(
     *,
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
+    portal: bool = False,
 ) -> None:
     total_bytes = 0
     for binding in bindings:
@@ -488,7 +496,7 @@ def _validate_sources(
         total_bytes += measured.byte_size
         if total_bytes > limits.maximum_total_source_bytes:
             reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.source_total")
-        _strict_validate_source(binding, limits=limits, control=control)
+        _strict_validate_source(binding, limits=limits, control=control, portal=portal)
 
 
 def _measure_source(
@@ -539,6 +547,7 @@ def _strict_validate_source(
     *,
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
+    portal: bool = False,
 ) -> None:
     if binding.source.media_type is not PdfExportSourceMediaType.PDF:
         if limits.image_normalization is None:
@@ -548,6 +557,8 @@ def _strict_validate_source(
         with binding.path.open("rb") as stream:
             with _strict_open(stream) as document:
                 _checkpoint(control)
+                if portal:
+                    require_portal_source_version(document)
                 if document.is_encrypted:
                     reject_pdf_export(
                         PdfExportErrorCode.SOURCE_ENCRYPTED, "export.source_encrypted"
@@ -653,6 +664,7 @@ def _assemble_candidate(
                 object_stream_mode=pikepdf.ObjectStreamMode.generate,
                 normalize_content=False,
                 linearize=False,
+                min_version=PORTAL_MINIMUM_OUTPUT_VERSION if plan.profile.is_portal else "",
             )
             _checkpoint(control)
     except PdfExportError:
@@ -827,6 +839,12 @@ def _verify_candidate_structure(
                     or len(document.objects) > limits.inspection.maximum_objects
                 ):
                     reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.output_structure")
+                if plan.profile.is_portal:
+                    require_portal_output(
+                        document,
+                        maximum_objects=limits.inspection.maximum_objects,
+                        checkpoint=lambda: _checkpoint(control),
+                    )
                 for page_index, expected in enumerate(expected_rotations):
                     _checkpoint(control)
                     page = document.pages[page_index].obj

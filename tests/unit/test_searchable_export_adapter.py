@@ -686,9 +686,11 @@ def test_final_output_physical_geometry_change_is_rejected(
         output_path: Path,
         limits: SearchablePdfExportAdapterLimits,
         control: SearchablePdfExportAdapterControl,
+        *,
+        portal: bool = False,
     ) -> None:
         assert output_path == output
-        save_output(document, output_path, limits, control)
+        save_output(document, output_path, limits, control, portal=portal)
         payload = output.read_bytes()
         with pikepdf.open(
             io.BytesIO(payload),

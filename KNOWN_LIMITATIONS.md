@@ -48,6 +48,12 @@ This describes the current development checkout, not a packaged release.
 
 ## Guided package review and export
 
+- The [conservative portal profile](docs/architecture/portal-export-profile.md) blocks
+  prohibited features retained in final package PDFs. It does not convert arbitrary
+  source forms or annotations, sanitize page content, or guarantee portal acceptance.
+  Source fonts remain preserved and may be substituted by a reader. PDF 2.0 and
+  extension-dependent sources are outside this profile. New reader evidence, including
+  Android, is tracked in the [PWS-0506 matrix](docs/compatibility/pws-0506-portal-matrix.md).
 - Opening or refreshing package review inspects saved PDFs in the restricted worker.
   The bounded marker inventory distinguishes detected, not-detected, and unknown states;
   it does not prove the absence of all hidden data or remove metadata, comments, form
