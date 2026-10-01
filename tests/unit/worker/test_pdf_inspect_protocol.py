@@ -18,6 +18,7 @@ from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
     OCR_PROCESS_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
+    PDF_IMAGE_STAGE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
@@ -131,6 +132,7 @@ def test_pdf_inspect_is_registered_and_round_trips_only_its_exact_contract() -> 
         IMAGE_PDF_EXPORT_CAPABILITY,
         FLATTENED_PDF_EXPORT_CAPABILITY,
         SEARCHABLE_PDF_EXPORT_CAPABILITY,
+        PDF_IMAGE_STAGE_CAPABILITY,
     )
     assert accepted_start.payload == payload
 

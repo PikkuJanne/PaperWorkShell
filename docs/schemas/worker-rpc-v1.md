@@ -37,6 +37,24 @@ versions and extra fields fail closed. See the
 [safe optimization contract](../architecture/pdf-safe-optimization.md) for selection, bounds,
 and transient-versus-persisted evidence.
 
+PWS-0503 adds the explicit `pdf.image_stage` version 1 capability. It accepts a canonical
+`pdf-image-stage-plan-v1` section followed by authenticated PDF/JPEG/PNG source references.
+The immutable anonymous plan section uses `source_read` with a null reference operation ID,
+matching the existing searchable-export plan convention. Its distinct read-only section handle,
+content kind, object ID, size and digest authenticate the plan; it grants no filesystem authority.
+The exact parameters are `plan_handle`, `output_handle`, `evidence_handle`, `result_handle`,
+`output_object_id`, `evidence_object_id`, and `evidence_capacity_bytes`. Handles and output
+authorities must be distinct. Success returns exactly two ordered staging references:
+`pdf-image-stage-pdf-v1`, then `pdf-image-stage-evidence-v1`. Failed/canceled results publish no
+references. A bounded result header binds both outputs by operation/object IDs, sizes and hashes.
+Evidence is canonical, closed, versioned JSON with a 2 MiB ceiling, the existing 65,536-node
+structural ceiling, and a capacity no greater than one eighth of operation memory. The client
+terminates the worker and revalidates source authority before authenticating output and evidence.
+The embedded lossless verification report describes the baseline; separate stage evidence
+describes the selected output. Existing export operation and history meanings are unchanged.
+See [PDF image stages](../architecture/pdf-image-stages.md) for analysis/apply binding,
+selection, resource accounting and verification.
+
 ## Common envelope
 
 Every message contains every envelope member. Objects are closed; an unknown member, message type,
@@ -215,7 +233,8 @@ Validation is intentionally split:
 Consequently, a structurally valid but unregistered operation fails closed as unsupported. The
 registered pairs are now `protocol.noop` version 1, `pdf.inspect` version 2, `pdf.thumbnail`
 version 1, `pdf.export` versions 1 and 2, `image.normalize` version 1, `image.transform` version 1,
-`ocr.process` version 1, `ocr.review` version 1, and `pdf.export.searchable` version 1.
+`ocr.process` version 1, `ocr.review` version 1, `pdf.export.searchable` version 1, and
+`pdf.image_stage` version 1.
 Each document operation's exact source reference, handle parameters, correlations, and
 limits are validated before host dispatch; any missing, extra, mistyped, nonpositive, aliased, or
 out-of-policy value fails closed.

@@ -32,6 +32,13 @@ This describes the current development checkout, not a packaged release.
 - The conservative optimization profile requires opaque stream encodings to remain
   exact. The pinned writer rewrites ASCIIHex streams as Flate streams; this case fails
   export during comparison and preserves the originals and existing exports.
+- Image re-encoding is an explicit internal worker operation. It currently supports opaque
+  eight-bit RGB/gray images with known direct-page placement and page-local resources. Shared
+  images, inherited resource aliases, masks, forms, unsupported color/filter semantics, and
+  uncertain placement remain unchanged.
+  Its 200 dpi floor does not prove legibility; size estimates are rough pixel-area estimates.
+  Target search, preview controls, and the user review/override workflow remain pending.
+  See the [image stage contract](docs/architecture/pdf-image-stages.md).
 
 ## Guided package review and export
 

@@ -58,8 +58,8 @@ class WorkerRpcValidationTests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertIsNotNone(summary)
         assert summary is not None
-        self.assertEqual(15, summary.positive_count)
-        self.assertEqual(27, summary.negative_count)
+        self.assertEqual(20, summary.positive_count)
+        self.assertEqual(33, summary.negative_count)
 
     def test_pdf_export_negotiation_accepts_exact_old_and_image_versions(self) -> None:
         for version in (1, 2, 3):
@@ -116,6 +116,12 @@ class WorkerRpcValidationTests(unittest.TestCase):
             "malformed-json.json": "RPC_JSON_INVALID",
             "missing-negotiated-version.json": "RPC_NEGOTIATION_INVALID",
             "noop-input.json": "RPC_OPERATION_INPUT_INVALID",
+            "pdf-image-stage-future-version.json": "RPC_OPERATION_UNSUPPORTED",
+            "pdf-image-stage-handle-alias.json": "RPC_OPERATION_INPUT_INVALID",
+            "pdf-image-stage-plan-scope.json": "RPC_OPERATION_INPUT_INVALID",
+            "pdf-image-stage-result-evidence-oversized.json": "RPC_RESULT_INVALID",
+            "pdf-image-stage-result-missing-evidence.json": "RPC_RESULT_INVALID",
+            "pdf-image-stage-storage.json": "RPC_OPERATION_INPUT_INVALID",
             "progress-overrun.json": "RPC_PROGRESS_INVALID",
             "progress-stage-unregistered.json": "RPC_PROGRESS_INVALID",
             "prohibited-path-field.json": "RPC_PROHIBITED_MEMBER",

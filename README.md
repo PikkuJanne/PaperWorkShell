@@ -49,7 +49,10 @@ interactive content and newly discovered signature uncertainty can block export.
 PWS-0502 adds [safe PDF object/stream optimization](docs/architecture/pdf-safe-optimization.md)
 after export verification. A smaller candidate is used only after semantic, structural, and
 all-page render checks; the result reports measured sizes or why the verified baseline was kept.
-Image re-encoding and target-size search remain later Milestone 5 work.
+PWS-0503 adds an explicit worker-only [image analysis and re-encoding stage](docs/architecture/pdf-image-stages.md).
+It reports image eligibility and per-page size effects, then applies one selected RGB/gray
+quality/resolution profile to eligible assets. Ordinary exports retain their existing lossless
+policy. Target-size search and the compression preview UI remain PWS-0504/PWS-0505 work.
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,

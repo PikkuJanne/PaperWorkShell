@@ -316,8 +316,15 @@ def _graph_fingerprint(
     limits: PdfExportAdapterLimits,
     control: PdfExportAdapterControl,
     maximum_bytes: int,
+    selected_images: dict[tuple[int, int], int] | None = None,
 ) -> str:
-    """Hash all reachable objects; only storage representation is normalized."""
+    """Hash reachable state, optionally projecting authenticated image replacements.
+
+    The optional map is worker-local analysis state. Its caller must authenticate
+    every replacement's bytes and image dictionary separately. Reference ordinals
+    and aliases remain in the graph, as do all other image dictionary entries.
+    The default lossless comparator never projects image content.
+    """
 
     digest = hashlib.sha256()
     budget = _SemanticBudget(maximum_bytes, control)
@@ -361,12 +368,27 @@ def _graph_fingerprint(
                 if value.get("/Type") == pikepdf.Name.XRef:
                     omitted |= _XREF_STREAM_KEYS
             if isinstance(value, pikepdf.Stream):
-                normalized = _is_plain_or_flate(value)
-                omitted = frozenset({"/Length"})
-                if normalized:
-                    omitted |= frozenset({"/Filter", "/DecodeParms"})
-                stream_size, stream_digest = _stream_fingerprint(value, normalized, budget)
-                emit(b"S", stream_size.to_bytes(8, "big") + stream_digest)
+                selected = None if selected_images is None else selected_images.get(value.objgen)
+                if selected is not None:
+                    if value.get("/Subtype") != pikepdf.Name.Image:
+                        reject_pdf_export(
+                            PdfExportErrorCode.VERIFICATION_STRUCTURE_FAILED,
+                            "optimization.image_projection",
+                        )
+                    omitted = frozenset({"/Length", "/Width", "/Height", "/Filter", "/DecodeParms"})
+                    emit(b"I", selected.to_bytes(8, "big"))
+                else:
+                    # Image-stage callers must retain exact unselected encoded
+                    # streams, both for preservation and honest byte impacts.
+                    # The default lossless optimization comparator is unchanged.
+                    normalized = _is_plain_or_flate(value) and not (
+                        selected_images is not None and value.get("/Subtype") == pikepdf.Name.Image
+                    )
+                    omitted = frozenset({"/Length"})
+                    if normalized:
+                        omitted |= frozenset({"/Filter", "/DecodeParms"})
+                    stream_size, stream_digest = _stream_fingerprint(value, normalized, budget)
+                    emit(b"S", stream_size.to_bytes(8, "big") + stream_digest)
             else:
                 emit(b"D")
             keys = sorted(key for key in value.keys() if key not in omitted)

@@ -135,6 +135,14 @@ def _build_operation_registry(
     except Exception:
         pass
     try:
+        from paperworkshell.worker.pdf_image_stage_operation import (
+            build_pdf_image_stage_operation_handler,
+        )
+
+        handlers.append(build_pdf_image_stage_operation_handler())
+    except Exception:
+        pass
+    try:
         from paperworkshell.worker.flattened_pdf_export_operation import (
             build_flattened_pdf_export_operation_handler,
         )

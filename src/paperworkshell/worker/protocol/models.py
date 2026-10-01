@@ -253,6 +253,12 @@ IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
 QUALITY_OCR_REVIEW_CAPABILITY: Final = CapabilityDescriptor("ocr.review", 1)
 SEARCHABLE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.searchable", 1)
+PDF_IMAGE_STAGE_CAPABILITY: Final = CapabilityDescriptor("pdf.image_stage", 1)
+
+PDF_IMAGE_STAGE_PLAN_CONTENT_KIND: Final = "pdf-image-stage-plan-v1"
+PDF_IMAGE_STAGE_OUTPUT_CONTENT_KIND: Final = "pdf-image-stage-pdf-v1"
+PDF_IMAGE_STAGE_EVIDENCE_CONTENT_KIND: Final = "pdf-image-stage-evidence-v1"
+MAX_PDF_IMAGE_STAGE_EVIDENCE_BYTES: Final = 2 * 1024 * 1024
 
 IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER: Final = "source_handle"
 IMAGE_NORMALIZE_OUTPUT_HANDLE_PARAMETER: Final = "output_handle"

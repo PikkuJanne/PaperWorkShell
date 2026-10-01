@@ -3961,7 +3961,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: review
   critical_path: true
   depends_on:
   - PWS-0502
@@ -3991,8 +3991,32 @@ tasks:
   evidence:
     completed_at: null
     revision: null
-    commands: []
-    notes: []
+    commands:
+    - uv run --locked --no-sync python tools/dev.py format-check
+    - uv run --locked --no-sync python tools/dev.py lint
+    - uv run --locked --no-sync python tools/dev.py typecheck
+    - uv run --locked --no-sync python tools/dev.py check-import-boundaries
+    - uv run --locked --no-sync python tools/dev.py validate-schemas
+    - uv run --locked --no-sync python tools/dev.py validate-dependencies
+    - uv run --locked --no-sync python tools/dev.py validate-task-graph
+    - uv run --locked --no-sync python tools/dev.py validate-docs
+    - uv run --locked --no-sync python tools/dev.py validate-portfolio-boundary
+    - uv run --locked --no-sync python tools/dev.py test-unit (focused domain and RPC selectors)
+    - uv run --locked --no-sync python tools/dev.py test-security (focused image-stage selectors)
+    - uv run --locked --no-sync python tools/dev.py test-integration (pdf_image_stage_worker_windows selector)
+    notes:
+    - Implementation and focused verification complete on codex/pws-0503-image-stages; full Windows CI pending.
+      See docs/development/pws0503-result.md and docs/architecture/pdf-image-stages.md.
+    - Explicit versioned image analysis and selected RGB/gray stages use the verified safe-optimization baseline;
+      ordinary exports keep their existing lossless policy. ResourcePolicy, dependency locks and RPC schema v1 are unchanged.
+    - Final constrained Windows worker test passed 1 test with 504 deselected in 121.89 seconds, covering
+      analysis, actual re-encoding, stale binding, cancellation, timeout, cleanup and identical retry.
+    - Native image and existing optimization corpus passed 118 tests; final worker/protocol/security focus
+      passed 236 tests. Domain models passed 80 tests and offline RPC validation passed 61 tests.
+    - Six synthetic stage outputs passed real qpdf/PDFium checks and visual inspection; text and vector
+      pixels remain unchanged. Exact unselected image encodings and reopened page size totals have regressions.
+    - Standalone operation and data ownership are preserved; no sibling dependency or release-interface
+      claim is introduced. PWS-0504 remains planned until PWS-0503 completes full required verification.
 - id: PWS-0504
   milestone: M5
   title: Implement target-size search and constraint-aware export policy

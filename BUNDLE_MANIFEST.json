@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.27",
+  "bundle_version": "0.2.28",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 328729,
-      "sha256": "15d9acc6fdc417d434207b92dfb29323f7db222532f85a0671976aa4bc5277c5"
+      "bytes": 330930,
+      "sha256": "99fffddfaf38626a3e92b78598328c73e34c1b76edaf17b0604405ff3fa3dc28"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 32612,
-      "sha256": "801e179d67bb869bcec6ca1ad18f5922e0cb359df905956094f184c502093c96"
+      "bytes": 32932,
+      "sha256": "f6a8ad166c0a3736f179c197adddeeddec801909a0f44815d86bab5f5303b6b5"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 6656,
-      "sha256": "22222a4e91c2a298db5834cab9d250cb239fedda9da4a08c6aeb04ae9ce88628"
+      "bytes": 7229,
+      "sha256": "9ed5ea6f0ea83c0fa7cc0eb5c71fad93db78cd2aa0bcb45d4cb46c92b816c4bb"
     },
     {
       "path": "LOW_SPEC.md",
@@ -137,6 +137,21 @@
       "path": "docs/development/pws0502-result.md",
       "bytes": 26034,
       "sha256": "8fadd1fc6121080923b9806bcfa1d44619cf6d3769b9c384aff4c3c01eb2037d"
+    },
+    {
+      "path": "docs/adr/0011-staged-pdf-image-reencoding.md",
+      "bytes": 7585,
+      "sha256": "107720ed76d5e719713f00a800663adadf6eaba3823bca7f80a9fa16e8289073"
+    },
+    {
+      "path": "docs/architecture/pdf-image-stages.md",
+      "bytes": 8906,
+      "sha256": "87aeb2acd06dc762b1d1b748b35db60946c300f203c811f625f715ef52d8f972"
+    },
+    {
+      "path": "docs/development/pws0503-result.md",
+      "bytes": 13096,
+      "sha256": "9afd36bbd5d5859ad29d05ff4cebeaefa2ba97bd846771ffc8d3435ff4a1ee9a"
     }
   ],
   "validation": {
@@ -146,13 +161,11 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0503"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0502 safe object/stream optimization is done with full Windows CI at implementation revision 9b7514830a8a89329cc994b08d42360fb8980d37. See docs/development/pws0502-result.md for verification scope and capability skips. PWS-0503 is the next ready task. Packaged-release facts remain TBD.",
+    "PWS-0503 image analysis and staged re-encoding is in review after focused native, protocol, security and constrained Windows-worker verification. Full Windows CI is pending. See docs/development/pws0503-result.md. Packaged-release facts remain TBD.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

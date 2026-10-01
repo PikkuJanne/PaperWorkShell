@@ -10,6 +10,7 @@ from typing import Final, cast
 from uuid import UUID
 
 from paperworkshell.worker.protocol.errors import reject
+from paperworkshell.worker.protocol.image_stage import validate_pdf_image_stage_start
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
@@ -25,6 +26,7 @@ from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
     OCR_PROCESS_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
+    PDF_IMAGE_STAGE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     PROTOCOL_NAME,
@@ -593,6 +595,7 @@ class OperationRegistry:
             IMAGE_PDF_EXPORT_CAPABILITY,
             FLATTENED_PDF_EXPORT_CAPABILITY,
             SEARCHABLE_PDF_EXPORT_CAPABILITY,
+            PDF_IMAGE_STAGE_CAPABILITY,
         )
 
     def validate_descriptor(self, operation_kind: str, operation_version: int) -> None:
@@ -638,6 +641,8 @@ class OperationRegistry:
             validate_flattened_pdf_export_start(payload)
         if payload.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id:
             validate_searchable_pdf_export_start(payload)
+        if payload.operation_kind == PDF_IMAGE_STAGE_CAPABILITY.capability_id:
+            validate_pdf_image_stage_start(payload)
 
     def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
         """Reject worker-advertised capabilities absent from the local registry."""

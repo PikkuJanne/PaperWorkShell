@@ -8,6 +8,10 @@ from typing import Final
 from uuid import UUID
 
 from paperworkshell.worker.protocol.errors import reject
+from paperworkshell.worker.protocol.image_stage import (
+    pdf_image_stage_binding,
+    validate_pdf_image_stage_result,
+)
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     IMAGE_NORMALIZE_CAPABILITY,
@@ -17,6 +21,7 @@ from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
     OCR_PROCESS_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
+    PDF_IMAGE_STAGE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
@@ -105,6 +110,9 @@ class _ActiveOperation:
     searchable_export_output_object_id: UUID | None = None
     searchable_export_status_object_id: UUID | None = None
     searchable_export_status_capacity_bytes: int | None = None
+    image_stage_output_object_id: UUID | None = None
+    image_stage_evidence_object_id: UUID | None = None
+    image_stage_evidence_capacity_bytes: int | None = None
     accepted: bool = False
     pending_cancel_request_ids: frozenset[UUID] = field(default_factory=frozenset)
     progress_seen: bool = False
@@ -511,6 +519,24 @@ class ConversationState:
             searchable_export_status_capacity_bytes = searchable_pdf_export_status_capacity_bytes(
                 payload
             )
+        image_stage_output_object_id = None
+        image_stage_evidence_object_id = None
+        image_stage_evidence_capacity_bytes = None
+        if descriptor == PDF_IMAGE_STAGE_CAPABILITY:
+            (
+                image_stage_output_object_id,
+                image_stage_evidence_object_id,
+                image_stage_evidence_capacity_bytes,
+            ) = pdf_image_stage_binding(payload)
+            correlated_ids = (
+                self.case_id,
+                message.operation_id,
+                *(reference.object_id for reference in payload.inputs),
+                image_stage_output_object_id,
+                image_stage_evidence_object_id,
+            )
+            if len(set(correlated_ids)) != len(correlated_ids):
+                reject("RPC_INVALID_OPERATION", "operation_id", "image stage scope is invalid")
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",
@@ -536,6 +562,9 @@ class ConversationState:
                 searchable_export_output_object_id=(searchable_export_output_object_id),
                 searchable_export_status_object_id=(searchable_export_status_object_id),
                 searchable_export_status_capacity_bytes=(searchable_export_status_capacity_bytes),
+                image_stage_output_object_id=image_stage_output_object_id,
+                image_stage_evidence_object_id=image_stage_evidence_object_id,
+                image_stage_evidence_capacity_bytes=image_stage_evidence_capacity_bytes,
             ),
         )
 
@@ -616,7 +645,10 @@ class ConversationState:
                 "payload",
                 "ocr.review progress must use one exact page",
             )
-        if active.operation_kind == SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id and (
+        if active.operation_kind in {
+            SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id,
+            PDF_IMAGE_STAGE_CAPABILITY.capability_id,
+        } and (
             payload.unit is not ProgressUnit.PAGES
             or payload.total_units != active.requested_limits.page_count
         ):
@@ -905,6 +937,21 @@ class ConversationState:
                 status_object_id=active.searchable_export_status_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
                 maximum_status_bytes=active.searchable_export_status_capacity_bytes,
+            )
+        if active.operation_kind == PDF_IMAGE_STAGE_CAPABILITY.capability_id:
+            if (
+                active.image_stage_output_object_id is None
+                or active.image_stage_evidence_object_id is None
+                or active.image_stage_evidence_capacity_bytes is None
+            ):
+                reject("RPC_INVALID_STATE", "payload.outputs", "image stage binding is unavailable")
+            validate_pdf_image_stage_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.image_stage_output_object_id,
+                evidence_object_id=active.image_stage_evidence_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+                maximum_evidence_bytes=active.image_stage_evidence_capacity_bytes,
             )
         terminal = _TerminalOperation(
             operation_id=active.operation_id,

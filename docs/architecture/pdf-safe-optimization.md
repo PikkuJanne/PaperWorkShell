@@ -104,5 +104,6 @@ No case/history schema migration is introduced.
 
 This is local export behavior with PaperWorkShell-owned data. It introduces no sibling dependency,
 shared service, portfolio handoff, public CLI, or release compatibility claim. Existing public
-release facts remain `TBD` until the owning packaged-release tasks provide evidence. Image-heavy
-analysis/re-encoding and target-size search remain PWS-0503/PWS-0504 work.
+release facts remain `TBD` until the owning packaged-release tasks provide evidence.
+[PWS-0503 image analysis/re-encoding](pdf-image-stages.md) uses this verified baseline in a
+separate explicitly requested operation. Target-size search remains PWS-0504 work.

@@ -103,6 +103,7 @@ _ADVERTISED_OPERATION_CAPABILITIES: Final = frozenset(
         ("pdf.export", 1),
         ("pdf.export", 2),
         ("pdf.export.searchable", 1),
+        ("pdf.image_stage", 1),
         ("image.normalize", 1),
         ("image.transform", 1),
         ("ocr.process", 1),
@@ -115,6 +116,7 @@ _OFFLINE_START_CAPABILITIES: Final = frozenset(
         ("image.transform", 1),
         ("ocr.process", 1),
         ("pdf.export.searchable", 1),
+        ("pdf.image_stage", 1),
     }
 )
 
@@ -1187,7 +1189,118 @@ def _operation_registry_issues(data: Mapping[str, Any], document: str) -> list[R
     ):
         for issue in _searchable_pdf_export_start_issues(data, payload, document):
             _add_issue(issues, issue)
+    elif message_type == "operation.start" and descriptor == ("pdf.image_stage", 1):
+        for issue in _pdf_image_stage_start_issues(data, payload, document):
+            _add_issue(issues, issue)
     return _sorted_issues(issues)
+
+
+def _pdf_image_stage_start_issues(
+    data: Mapping[str, Any], payload: Mapping[str, Any], document: str
+) -> list[RpcIssue]:
+    """Admit only the new operation's private plan and reduced source authorities."""
+
+    def invalid(path: str, message: str) -> list[RpcIssue]:
+        return [_issue("RPC_OPERATION_INPUT_INVALID", document, path, message)]
+
+    inputs = payload.get("inputs")
+    if (
+        not isinstance(inputs, list)
+        or not 2 <= len(inputs) <= MAX_JSON_COLLECTION_ITEMS
+        or any(not isinstance(reference, Mapping) for reference in inputs)
+    ):
+        return invalid("$.payload.inputs", "image stage requires one plan and at least one source")
+    plan, *sources = cast(list[Mapping[str, Any]], inputs)
+    if (
+        plan.get("area") != "source_read"
+        or plan.get("operation_id") is not None
+        or plan.get("content_kind") != "pdf-image-stage-plan-v1"
+        or type(plan.get("expected_byte_size")) is not int
+        or not 1 <= cast(int, plan.get("expected_byte_size")) <= 2 * 1024 * 1024
+        or not isinstance(plan.get("expected_sha256"), str)
+    ):
+        return invalid("$.payload.inputs[0]", "image stage requires one authenticated private plan")
+    if any(
+        source.get("area") != "source_read"
+        or source.get("operation_id") is not None
+        or source.get("content_kind") not in {"pdf", "jpeg", "png"}
+        or type(source.get("expected_byte_size")) is not int
+        or cast(int, source.get("expected_byte_size")) < 1
+        or not isinstance(source.get("expected_sha256"), str)
+        for source in sources
+    ):
+        return invalid(
+            "$.payload.inputs", "image stage requires authenticated PDF or image sources"
+        )
+    expected_types = {
+        "plan_handle": "integer",
+        "output_handle": "integer",
+        "evidence_handle": "integer",
+        "result_handle": "integer",
+        "output_object_id": "uuid",
+        "evidence_object_id": "uuid",
+        "evidence_capacity_bytes": "integer",
+    }
+    parameters = payload.get("parameters")
+    parameter_map: dict[str, Mapping[str, Any]] = {}
+    if isinstance(parameters, list):
+        for parameter in parameters:
+            if isinstance(parameter, Mapping) and isinstance(parameter.get("name"), str):
+                parameter_map[parameter["name"]] = parameter
+    if (
+        not isinstance(parameters, list)
+        or len(parameters) != len(expected_types)
+        or set(parameter_map) != set(expected_types)
+        or any(
+            parameter_map[name].get("value_type") != value_type
+            for name, value_type in expected_types.items()
+            if name in parameter_map
+        )
+    ):
+        return invalid(
+            "$.payload.parameters", "image stage requires its exact closed parameter set"
+        )
+    handles = tuple(
+        parameter_map[name].get("value")
+        for name in ("plan_handle", "output_handle", "evidence_handle", "result_handle")
+    )
+    identifiers = (
+        *(reference.get("object_id") for reference in inputs),
+        parameter_map["output_object_id"].get("value"),
+        parameter_map["evidence_object_id"].get("value"),
+    )
+    capacity = parameter_map["evidence_capacity_bytes"].get("value")
+    limits = payload.get("requested_limits")
+    if not isinstance(limits, Mapping):
+        return invalid("$.payload.requested_limits", "image stage requires bounded resource limits")
+    memory = limits.get("memory_bytes")
+    temporary = limits.get("temporary_storage_bytes")
+    output = limits.get("output_bytes")
+    pages = limits.get("page_count")
+    if (
+        any(type(handle) is not int or handle < 1 for handle in handles)
+        or len(set(handles)) != len(handles)
+        or any(not _canonical_uuid_v4(identifier) for identifier in identifiers)
+        or len(set(identifiers)) != len(identifiers)
+        or type(capacity) is not int
+        or not 1 <= capacity <= 2 * 1024 * 1024
+        or any(type(value) is not int or value < 1 for value in (memory, temporary, output, pages))
+    ):
+        return invalid(
+            "$.payload", "image stage identities, handles and resource limits are invalid"
+        )
+    if (
+        capacity > cast(int, memory) // 8
+        or cast(int, pages) > 4_096
+        or sum(cast(int, source["expected_byte_size"]) for source in sources)
+        + 2 * cast(int, output)
+        + capacity
+        > cast(int, temporary)
+    ):
+        return invalid(
+            "$.payload.requested_limits", "image stage evidence or storage exceeds its budget"
+        )
+    return []
 
 
 def _searchable_pdf_export_start_issues(
@@ -1754,6 +1867,8 @@ def _result_and_progress_issues(data: Mapping[str, Any], document: str) -> list[
                     "failed and timed-out results require an error and contain no outputs",
                 ),
             )
+        for issue in _pdf_image_stage_result_issues(payload, document):
+            _add_issue(issues, issue)
     elif message_type == "operation.progress":
         if payload.get("stage_code") != "processing":
             _add_issue(
@@ -1778,6 +1893,52 @@ def _result_and_progress_issues(data: Mapping[str, Any], document: str) -> list[
                 ),
             )
     return _sorted_issues(issues)
+
+
+def _pdf_image_stage_result_issues(payload: Mapping[str, Any], document: str) -> list[RpcIssue]:
+    """Check recognizable image-stage output pairs without inventing session state.
+
+    Runtime state additionally binds IDs and per-operation byte capacities to the
+    accepted start. A standalone result fixture supplies neither of those facts.
+    """
+
+    outputs = payload.get("outputs")
+    kinds = ("pdf-image-stage-pdf-v1", "pdf-image-stage-evidence-v1")
+    if not isinstance(outputs, list) or not any(
+        isinstance(reference, Mapping) and reference.get("content_kind") in kinds
+        for reference in outputs
+    ):
+        return []
+    invalid = (
+        payload.get("outcome") != "succeeded"
+        or len(outputs) != 2
+        or any(not isinstance(reference, Mapping) for reference in outputs)
+    )
+    if not invalid:
+        references = cast(list[Mapping[str, Any]], outputs)
+        invalid = (
+            tuple(reference.get("content_kind") for reference in references) != kinds
+            or references[0].get("object_id") == references[1].get("object_id")
+            or any(
+                type(reference.get("expected_byte_size")) is not int
+                or cast(int, reference.get("expected_byte_size")) < 1
+                for reference in references
+            )
+            or type(references[1].get("expected_byte_size")) is not int
+            or cast(int, references[1].get("expected_byte_size")) > 2 * 1024 * 1024
+        )
+    return (
+        [
+            _issue(
+                "RPC_RESULT_INVALID",
+                document,
+                "$.payload.outputs",
+                "image stage requires its exact bounded PDF and evidence output pair",
+            )
+        ]
+        if invalid
+        else []
+    )
 
 
 def _parameter_issues(data: Mapping[str, Any], document: str) -> list[RpcIssue]:

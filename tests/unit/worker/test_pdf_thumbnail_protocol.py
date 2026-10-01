@@ -19,6 +19,7 @@ from paperworkshell.worker.protocol.models import (
     NOOP_CAPABILITY,
     OCR_PROCESS_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
+    PDF_IMAGE_STAGE_CAPABILITY,
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_ADDITIONAL_ROTATION_PARAMETER,
     PDF_THUMBNAIL_CACHE_HANDLE_PARAMETER,
@@ -214,6 +215,7 @@ def test_pdf_thumbnail_is_registered_and_round_trips_its_exact_contract() -> Non
         IMAGE_PDF_EXPORT_CAPABILITY,
         FLATTENED_PDF_EXPORT_CAPABILITY,
         SEARCHABLE_PDF_EXPORT_CAPABILITY,
+        PDF_IMAGE_STAGE_CAPABILITY,
     )
     assert accepted_start.payload == payload
 
