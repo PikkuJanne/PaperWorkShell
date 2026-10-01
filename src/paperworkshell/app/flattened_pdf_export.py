@@ -121,6 +121,7 @@ class FlattenedPdfExportBroker(Protocol):
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> VerifiedFlattenedPdfCandidate: ...
 
 

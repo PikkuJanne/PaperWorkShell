@@ -221,6 +221,7 @@ class BrokeredPdfImageStageProcessor:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: PdfExportProgressSink = _ignore_progress,
+        reserved_temporary_bytes: int = 0,
     ) -> VerifiedPdfImageStageCandidate:
         if self._revoked:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "image_stage.composition_closed")
@@ -230,6 +231,8 @@ class BrokeredPdfImageStageProcessor:
                 type(base_plan) is not PdfExportPlan
                 or type(request) is not PdfImageStageRequest
                 or not callable(progress)
+                or type(reserved_temporary_bytes) is not int
+                or reserved_temporary_bytes < 0
             ):
                 reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "image_stage.request")
             if (
@@ -250,6 +253,7 @@ class BrokeredPdfImageStageProcessor:
                     deadline=deadline,
                     cancellation=cancellation,
                     progress=progress,
+                    reserved_temporary_bytes=reserved_temporary_bytes,
                 )
         except PdfExportError:
             raise
@@ -280,11 +284,17 @@ class BrokeredPdfImageStageProcessor:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: PdfExportProgressSink,
+        reserved_temporary_bytes: int,
     ) -> VerifiedPdfImageStageCandidate:
         handles = _require_source_binding(plan, sources)
+        if reserved_temporary_bytes >= self._policy.limits.temporary_storage_bytes:
+            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "image_stage.reserved_storage")
         limits = replace(
             _operation_limits(self._policy.limits, plan),
             pixel_count=self._policy.limits.pixel_count,
+            temporary_storage_bytes=(
+                self._policy.limits.temporary_storage_bytes - reserved_temporary_bytes
+            ),
         )
         if (
             sum(source.byte_size for source in plan.sources)

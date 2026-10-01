@@ -636,6 +636,7 @@ class _System:
         deadline: DeadlineProbe = lambda: False,
         cancellation: CancellationProbe = lambda: False,
         progress: Callable[[PdfExportProgress], None] = lambda _value: None,
+        reserved_temporary_bytes: int = 0,
     ) -> BrokeredFlattenedPdfExportCandidate:
         return self.exporter.export(
             self.plan,
@@ -644,6 +645,7 @@ class _System:
             deadline=deadline,
             cancellation=cancellation,
             progress=progress,
+            reserved_temporary_bytes=reserved_temporary_bytes,
         )
 
 
@@ -656,6 +658,49 @@ def _error(
     with pytest.raises(FlattenedPdfExportError) as raised:
         system.export(deadline=deadline, cancellation=cancellation)
     return raised.value
+
+
+def test_retained_package_bytes_reduce_worker_quota_without_raising_other_limits() -> None:
+    system = _System()
+    reserved = 100_000
+    with system.export(reserved_temporary_bytes=reserved):
+        assert system.worker.payload is not None
+        assert system.worker.payload.requested_limits == replace(
+            system.policy.limits,
+            temporary_storage_bytes=system.policy.limits.temporary_storage_bytes - reserved,
+            page_count=system.plan.page_count,
+        )
+    assert system.output.close_calls == 1
+
+
+@pytest.mark.parametrize("reserved", [-1, True, "1024", 4 * 1024 * 1024])
+def test_bad_package_reservation_fails_before_allocating(reserved: object) -> None:
+    system = _System()
+    with pytest.raises(FlattenedPdfExportError) as error:
+        system.export(reserved_temporary_bytes=cast(int, reserved))
+    assert error.value.code is (
+        FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
+        if reserved == 4 * 1024 * 1024
+        else FlattenedPdfExportErrorCode.MODEL_INVALID
+    )
+    assert system.output_factory_calls == system.raster_factory_calls == 0
+    assert not system.events
+
+
+def test_package_reservation_counts_sources_and_rasters_before_allocating() -> None:
+    system = _System()
+    source_bytes = sum(source.byte_size for source in system.plan.base_plan.sources)
+    reserved = (
+        system.policy.limits.temporary_storage_bytes
+        - 2 * system.policy.limits.output_bytes
+        - source_bytes
+        - len(system.pixels)
+        + 1
+    )
+    with pytest.raises(FlattenedPdfExportError) as error:
+        system.export(reserved_temporary_bytes=reserved)
+    assert error.value.code is FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
+    assert system.output_factory_calls == system.raster_factory_calls == 0
 
 
 def test_success_binds_exact_authorities_restores_raster_and_streams_candidate() -> None:
@@ -910,7 +955,7 @@ def test_exact_plan_limit_and_resource_limited_worker_cleanup_all_sections() -> 
     limited = _System(policy=_policy(temporary_storage_bytes=1_050_000))
     error = _error(limited)
     assert error.code is FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
-    assert limited.output.close_calls == 1
+    assert limited.output_factory_calls == 0
     assert all(buffer.close_calls >= 1 for buffer in limited.raster_buffers)
 
     worker_limited = _System()

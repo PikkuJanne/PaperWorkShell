@@ -651,6 +651,7 @@ class _System:
         deadline: DeadlineProbe = lambda: False,
         cancellation: CancellationProbe = lambda: False,
         progress: Callable[[PdfExportProgress], None] = lambda _value: None,
+        reserved_temporary_bytes: int = 0,
     ) -> BrokeredSearchablePdfExportCandidate:
         return self.exporter.export(
             self.plan,
@@ -658,6 +659,7 @@ class _System:
             deadline=deadline,
             cancellation=cancellation,
             progress=progress,
+            reserved_temporary_bytes=reserved_temporary_bytes,
         )
 
 
@@ -670,6 +672,46 @@ def _error(
     with pytest.raises(PdfExportError) as raised:
         system.export(deadline=deadline, cancellation=cancellation)
     return raised.value
+
+
+def test_retained_package_bytes_reduce_worker_quota_without_raising_other_limits() -> None:
+    system = _System()
+    reserved = 500
+    with system.export(reserved_temporary_bytes=reserved):
+        assert system.worker.payload is not None
+        assert system.worker.payload.requested_limits == replace(
+            system.policy.limits,
+            temporary_storage_bytes=system.policy.limits.temporary_storage_bytes - reserved,
+            page_count=system.plan.page_count,
+        )
+    assert system.output.close_calls == 1
+
+
+@pytest.mark.parametrize("reserved", [-1, True, "1024", 8_192])
+def test_bad_package_reservation_fails_before_allocating(reserved: object) -> None:
+    system = _System()
+    with pytest.raises(PdfExportError) as error:
+        system.export(reserved_temporary_bytes=cast(int, reserved))
+    assert error.value.code is (
+        PdfExportErrorCode.LIMIT_EXCEEDED if reserved == 8_192 else PdfExportErrorCode.MODEL_INVALID
+    )
+    assert system.buffer_factory_calls == 0
+    assert not system.events
+
+
+def test_package_reservation_counts_sources_output_and_status_before_allocating() -> None:
+    system = _System()
+    source_bytes = sum(source.byte_size for source in system.plan.sources)
+    reserved = (
+        system.policy.limits.temporary_storage_bytes
+        - 2 * system.policy.limits.output_bytes
+        - system.policy.status_capacity_bytes
+        - source_bytes
+    )
+    with pytest.raises(PdfExportError) as error:
+        system.export(reserved_temporary_bytes=reserved)
+    assert error.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
+    assert system.buffer_factory_calls == 0
 
 
 def test_success_terminates_revalidates_authenticates_status_then_streams_pdf() -> None:

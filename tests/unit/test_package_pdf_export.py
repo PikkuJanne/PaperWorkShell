@@ -207,6 +207,7 @@ class _FlattenedBroker:
         self.plan: FlattenedPdfExportPlan | None = None
         self.candidate: _Candidate | None = None
         self.report_override: object | None = None
+        self.reserved_temporary_bytes = 0
 
     def export(
         self,
@@ -217,9 +218,11 @@ class _FlattenedBroker:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> _Candidate:
         del sources, rasters, deadline, cancellation, progress
         self.calls += 1
+        self.reserved_temporary_bytes = reserved_temporary_bytes
         self.plan = plan
         report = self.report_override or FlattenedPdfExportVerificationReport.for_verified_plan(
             plan,
@@ -281,6 +284,7 @@ class _SearchableBroker:
         self.plan: SearchablePdfExportPlan | None = None
         self.candidate: _Candidate | None = None
         self.report_override: object | None = None
+        self.reserved_temporary_bytes = 0
 
     def export(
         self,
@@ -290,9 +294,11 @@ class _SearchableBroker:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> _Candidate:
         del sources, deadline, cancellation, progress
         self.calls += 1
+        self.reserved_temporary_bytes = reserved_temporary_bytes
         self.plan = plan
         report = self.report_override or _searchable_report(plan)
         self.candidate = _Candidate(report)
@@ -369,6 +375,56 @@ def _assert_package_error(
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
     return raised.value
+
+
+@pytest.mark.parametrize("page_id", [PDF_PAGE_ID, IMAGE_PAGE_ID])
+def test_package_reservation_reaches_selected_worker_and_can_reset_after_close(
+    page_id: UUID,
+) -> None:
+    stack = _Stack()
+    snapshot = _snapshot(_document(overlays=page_id == PDF_PAGE_ID))
+    stack.producer.reserve_temporary_bytes(12_345)
+    with stack.producer.produce(
+        snapshot,
+        _planned(page_id),
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    ):
+        broker = stack.flattened if page_id == PDF_PAGE_ID else stack.searchable
+        assert broker.reserved_temporary_bytes == 12_345
+        _assert_package_error(
+            PackagePdfCandidateErrorCode.SESSION_STATE_INVALID,
+            lambda: stack.producer.reserve_temporary_bytes(0),
+        )
+    stack.producer.reserve_temporary_bytes(0)
+    with stack.producer.produce(
+        snapshot,
+        _planned(page_id),
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    ):
+        assert broker.reserved_temporary_bytes == 0
+
+
+@pytest.mark.parametrize("reserved", [-1, True, "1024"])
+def test_package_rejects_invalid_external_stage_reservation(reserved: object) -> None:
+    stack = _Stack()
+    _assert_package_error(
+        PackagePdfCandidateErrorCode.MODEL_INVALID,
+        lambda: stack.producer.reserve_temporary_bytes(cast(int, reserved)),
+    )
+    assert stack.flattened.calls == stack.searchable.calls == 0
+
+
+def test_package_rejects_external_stage_reservation_exhausting_resource_policy() -> None:
+    stack = _Stack()
+    _assert_package_error(
+        PackagePdfCandidateErrorCode.LIMIT_EXCEEDED,
+        lambda: stack.producer.reserve_temporary_bytes(
+            CONSTRAINED_RESOURCE_POLICY_V1.maximum_temporary_storage_bytes
+        ),
+    )
+    assert stack.flattened.calls == stack.searchable.calls == 0
 
 
 def test_flattened_candidate_binds_subset_report_and_retains_resources_until_close() -> None:

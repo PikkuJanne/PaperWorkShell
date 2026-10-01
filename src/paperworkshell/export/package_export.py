@@ -144,6 +144,7 @@ class PackagePdfPipeline(StrEnum):
 
     FLATTENED = "flattened"
     SEARCHABLE = "searchable"
+    IMAGE_STAGE = "image_stage"
 
 
 class PackageExportStatus(StrEnum):
@@ -252,6 +253,13 @@ class PackagePdfProducerPort(Protocol):
         cancellation: Callable[[], bool],
         progress: Callable[[PdfExportProgress], None],
     ) -> PackagePdfCandidatePort: ...
+
+
+@runtime_checkable
+class PackagePdfReservedCapacityPort(Protocol):
+    """Account destination-local stages in the next worker's storage allowance."""
+
+    def reserve_temporary_bytes(self, byte_count: int) -> None: ...
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -518,6 +526,7 @@ def export_package_plan(
     cancellation: Callable[[], bool],
     progress: PackageExportProgressSink = _ignore_progress,
     destination_dependencies: ExportPackageDestinationDependencies | None = None,
+    review: Callable[[PackageAggregateVerificationReport], None] | None = None,
 ) -> PackageExportOutcome:
     """Generate, verify, constraint-check, then publish one exact package plan."""
 
@@ -533,6 +542,7 @@ def export_package_plan(
             cancellation=cancellation,
             progress=progress,
             destination_dependencies=destination_dependencies,
+            review=review,
         )
     except PackageExportError:
         raise
@@ -560,6 +570,7 @@ def _export_package_plan(
     cancellation: Callable[[], bool],
     progress: PackageExportProgressSink,
     destination_dependencies: ExportPackageDestinationDependencies | None,
+    review: Callable[[PackageAggregateVerificationReport], None] | None,
 ) -> PackageExportOutcome:
     if (
         type(snapshot) is not ManifestSnapshot
@@ -571,6 +582,7 @@ def _export_package_plan(
         or not callable(deadline)
         or not callable(cancellation)
         or not callable(progress)
+        or (review is not None and not callable(review))
         or (
             destination_dependencies is not None
             and type(destination_dependencies) is not ExportPackageDestinationDependencies
@@ -642,6 +654,10 @@ def _export_package_plan(
                 )
 
             try:
+                if isinstance(producer, PackagePdfReservedCapacityPort):
+                    producer.reserve_temporary_bytes(
+                        policy.maximum_temporary_storage_bytes - transaction.remaining_staged_bytes
+                    )
                 candidate_context = producer.produce(
                     snapshot,
                     planned_pdf,
@@ -769,6 +785,10 @@ def _export_package_plan(
             constraint_findings=findings,
             constraint_checks=_constraint_checks(plan, findings, archive_report),
         )
+        if review is not None:
+            # Validate all additional policy evidence while every output remains
+            # private. A reviewer failure must never erase committed inventory.
+            review(aggregate)
         if findings:
             return PackageExportOutcome(PackageExportStatus.CONSTRAINTS_BLOCKED, aggregate)
 

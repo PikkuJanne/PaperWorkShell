@@ -14,7 +14,7 @@ import hmac
 import math
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import TracebackType
 from typing import Final, Never, Protocol, Self, cast
 from uuid import UUID, uuid4
@@ -402,6 +402,7 @@ class BrokeredFlattenedPdfExporter:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink = _ignore_progress,
+        reserved_temporary_bytes: int = 0,
     ) -> BrokeredFlattenedPdfExportCandidate:
         """Return a candidate only after termination and retained-source revalidation."""
 
@@ -419,6 +420,7 @@ class BrokeredFlattenedPdfExporter:
                     deadline=deadline,
                     cancellation=cancellation,
                     progress=progress,
+                    reserved_temporary_bytes=reserved_temporary_bytes,
                 )
         except FlattenedPdfExportError:
             raise
@@ -459,17 +461,19 @@ class BrokeredFlattenedPdfExporter:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink,
+        reserved_temporary_bytes: int,
     ) -> BrokeredFlattenedPdfExportCandidate:
         if type(plan) is not FlattenedPdfExportPlan or not callable(progress):
             reject_flattened_pdf_export(
                 FlattenedPdfExportErrorCode.MODEL_INVALID,
                 "flattened.broker_input",
             )
+        policy_limits = _reserved_operation_limits(self._policy.limits, reserved_temporary_bytes)
         _require_active(deadline, cancellation)
         _require_input_reference_capacity(plan)
         local_source_handles = _require_source_binding(plan, sources)
         raster_bindings = _require_raster_binding(plan, rasters)
-        _preflight_operation_limits(self._policy.limits, plan, raster_bindings)
+        _preflight_operation_limits(policy_limits, plan, raster_bindings)
         forbidden = _plan_identifiers(plan)
         operation_id = self._new_id(forbidden)
         forbidden.add(operation_id)
@@ -547,7 +551,7 @@ class BrokeredFlattenedPdfExporter:
                     )
                     plan_digest = hashlib.sha256(plan_payload).hexdigest()
                     limits = _operation_limits(
-                        self._policy.limits,
+                        policy_limits,
                         plan,
                         raster_bindings,
                         plan_byte_size=len(plan_payload),
@@ -1051,6 +1055,23 @@ def _read_exact_raster(
         )
 
 
+def _reserved_operation_limits(
+    policy: ResourceLimits, reserved_temporary_bytes: int
+) -> ResourceLimits:
+    """Leave caller-retained package stages inside the original operation quota."""
+
+    if type(reserved_temporary_bytes) is not int or reserved_temporary_bytes < 0:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.MODEL_INVALID, "flattened.temp_reservation"
+        )
+    remaining = policy.temporary_storage_bytes - reserved_temporary_bytes
+    if remaining <= policy.output_bytes:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.LIMIT_EXCEEDED, "flattened.temp_reservation"
+        )
+    return replace(policy, temporary_storage_bytes=remaining)
+
+
 def _preflight_operation_limits(
     policy: ResourceLimits,
     plan: FlattenedPdfExportPlan,
@@ -1065,7 +1086,7 @@ def _preflight_operation_limits(
         or raster_bytes // 4 > policy.pixel_count
         or source_bytes > policy.temporary_storage_bytes
         or raster_bytes > policy.temporary_storage_bytes - source_bytes
-        or policy.output_bytes > policy.temporary_storage_bytes - source_bytes - raster_bytes
+        or 2 * policy.output_bytes > policy.temporary_storage_bytes - source_bytes - raster_bytes
     ):
         reject_flattened_pdf_export(
             FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
@@ -1102,7 +1123,7 @@ def _operation_limits(
         or plan_byte_size < 1
         or required_page_capacity > policy.page_count
         or input_bytes > policy.temporary_storage_bytes
-        or policy.output_bytes > policy.temporary_storage_bytes - input_bytes
+        or 2 * policy.output_bytes > policy.temporary_storage_bytes - input_bytes
     ):
         reject_flattened_pdf_export(
             FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,

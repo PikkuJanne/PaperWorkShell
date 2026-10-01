@@ -406,6 +406,7 @@ class _Broker:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> _Candidate:
         del sources, deadline, cancellation, progress
         self.calls += 1

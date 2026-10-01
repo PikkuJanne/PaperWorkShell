@@ -476,6 +476,7 @@ class _LazyPackageFlattenedBroker:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> VerifiedFlattenedPdfCandidate:
         _require_package_runtime_active(deadline, cancellation)
         if self._composition is None:
@@ -497,6 +498,11 @@ class _LazyPackageFlattenedBroker:
             deadline=deadline,
             cancellation=cancellation,
             progress=progress,
+            **(
+                {"reserved_temporary_bytes": reserved_temporary_bytes}
+                if reserved_temporary_bytes
+                else {}
+            ),
         )
 
 
@@ -526,6 +532,7 @@ class _LazyPackageSearchableBroker:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> VerifiedSearchablePdfCandidate:
         _require_package_runtime_active(deadline, cancellation)
         if self._composition is None:
@@ -547,6 +554,11 @@ class _LazyPackageSearchableBroker:
             deadline=deadline,
             cancellation=cancellation,
             progress=progress,
+            **(
+                {"reserved_temporary_bytes": reserved_temporary_bytes}
+                if reserved_temporary_bytes
+                else {}
+            ),
         )
 
 

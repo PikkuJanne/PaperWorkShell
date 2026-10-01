@@ -109,6 +109,7 @@ class SearchablePdfExportBroker(Protocol):
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> VerifiedSearchablePdfCandidate: ...
 
 

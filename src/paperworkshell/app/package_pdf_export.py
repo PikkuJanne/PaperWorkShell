@@ -297,6 +297,7 @@ class PackagePdfCandidateProducer:
         "_overlay_limits",
         "_policy",
         "_rasterizer",
+        "_reserved_temporary_bytes",
         "_searchable_broker",
         "_sources",
     )
@@ -334,6 +335,28 @@ class PackagePdfCandidateProducer:
         self._ocr_languages = ocr_languages or built_in_ocr_language_availability()
         self._active_lock = Lock()
         self._active = False
+        self._reserved_temporary_bytes = 0
+
+    def reserve_temporary_bytes(self, byte_count: int) -> None:
+        """Account for private package stages retained outside the next worker."""
+
+        if type(byte_count) is not int or byte_count < 0:
+            reject_package_pdf_candidate(
+                PackagePdfCandidateErrorCode.MODEL_INVALID,
+                "package.temp_reservation",
+            )
+        if byte_count >= self._policy.maximum_temporary_storage_bytes:
+            reject_package_pdf_candidate(
+                PackagePdfCandidateErrorCode.LIMIT_EXCEEDED,
+                "package.temp_reservation",
+            )
+        with self._active_lock:
+            if self._active:
+                reject_package_pdf_candidate(
+                    PackagePdfCandidateErrorCode.SESSION_STATE_INVALID,
+                    "package.active_reservation",
+                )
+            self._reserved_temporary_bytes = byte_count
 
     def produce(
         self,
@@ -793,6 +816,11 @@ class _PackagePdfCandidateSession:
             deadline=self._deadline,
             cancellation=self._cancellation,
             progress=self._progress,
+            **(
+                {"reserved_temporary_bytes": self._producer._reserved_temporary_bytes}
+                if self._producer._reserved_temporary_bytes
+                else {}
+            ),
         )
         candidate = self._stack.enter_context(candidate_context)
         report, reader = _require_flattened_candidate(
@@ -823,6 +851,11 @@ class _PackagePdfCandidateSession:
             deadline=self._deadline,
             cancellation=self._cancellation,
             progress=self._progress,
+            **(
+                {"reserved_temporary_bytes": self._producer._reserved_temporary_bytes}
+                if self._producer._reserved_temporary_bytes
+                else {}
+            ),
         )
         candidate = self._stack.enter_context(candidate_context)
         report, reader = _require_searchable_candidate(

@@ -272,6 +272,7 @@ class _Broker:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink,
+        reserved_temporary_bytes: int = 0,
     ) -> _Candidate:
         del sources, deadline, cancellation, progress
         assert plan == self.plan

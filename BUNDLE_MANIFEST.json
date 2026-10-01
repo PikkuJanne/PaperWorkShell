@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.28",
+  "bundle_version": "0.2.29",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 332120,
-      "sha256": "33103e295299d799b1d508178dae30baa3ed2140c6563faf2b043a5ea0eef448"
+      "bytes": 332126,
+      "sha256": "b967f23f8e0f99c7a22fd3a3eae9ad77b71429d74014b0f97c5af6a1f6351955"
     },
     {
       "path": "TASKS.schema.json",
@@ -152,6 +152,21 @@
       "path": "docs/development/pws0503-result.md",
       "bytes": 18108,
       "sha256": "06e56ac3b57ef6cb893fbb501e9f972917abb2a553e31f56d4664f6647c20a9b"
+    },
+    {
+      "path": "docs/adr/0012-target-size-search.md",
+      "bytes": 5104,
+      "sha256": "dd1785e7194e3bcd1202f9509e72bfd7826488ace9eb5f84afef404dd66f06ee"
+    },
+    {
+      "path": "docs/architecture/target-size-export.md",
+      "bytes": 3816,
+      "sha256": "207d7c5b6b56e0b808d62c5ef9b0946f0a7cc077715c400ac0aeb0734a06daa3"
+    },
+    {
+      "path": "docs/development/pws0504-result.md",
+      "bytes": 2551,
+      "sha256": "32dea082d1fda96c97a8597ea83608c05da781e422027d489ce29db359731c09"
     }
   ],
   "validation": {
@@ -161,13 +176,11 @@
     "dependency_edge_count": 243,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [
-      "PWS-0504"
-    ],
+    "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0503 image analysis and staged re-encoding is done after full Windows CI at 38b1fc86af4771a19a8d701381f1cd7f2b7281f6, including 5189 unit, 682 security, 71 accessibility and 498 integration passes with seven prior prerequisite skips. PWS-0504 is ready. See docs/development/pws0503-result.md. Packaged-release facts remain TBD.",
+    "PWS-0504 target-size policy and package integration are implemented with verification in progress. PWS-0503 remains done. See docs/development/pws0504-result.md. Packaged-release facts remain TBD.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

@@ -13,7 +13,7 @@ import hmac
 import math
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final, Never, Protocol, Self
 from uuid import UUID, uuid4
 
@@ -385,6 +385,7 @@ class BrokeredSearchablePdfExporter:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink = _ignore_progress,
+        reserved_temporary_bytes: int = 0,
     ) -> BrokeredSearchablePdfExportCandidate:
         if self._revoked:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "searchable.composition_closed")
@@ -396,6 +397,7 @@ class BrokeredSearchablePdfExporter:
                     deadline=deadline,
                     cancellation=cancellation,
                     progress=progress,
+                    reserved_temporary_bytes=reserved_temporary_bytes,
                 )
         except PdfExportError:
             raise
@@ -432,12 +434,15 @@ class BrokeredSearchablePdfExporter:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink,
+        reserved_temporary_bytes: int,
     ) -> BrokeredSearchablePdfExportCandidate:
         if type(plan) is not SearchablePdfExportPlan or not callable(progress):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "searchable.broker_input")
         _require_active(deadline, cancellation)
         local_handles = _require_source_binding(plan, sources)
-        limits = _operation_limits(self._policy, plan)
+        limits = _operation_limits(
+            self._policy, plan, reserved_temporary_bytes=reserved_temporary_bytes
+        )
         forbidden = {
             plan.case_id,
             *(source.source_id for source in plan.sources),
@@ -825,9 +830,16 @@ def _require_source_binding(
 def _operation_limits(
     policy: SearchablePdfExportBrokerPolicy,
     plan: SearchablePdfExportPlan,
+    *,
+    reserved_temporary_bytes: int = 0,
 ) -> ResourceLimits:
+    if type(reserved_temporary_bytes) is not int or reserved_temporary_bytes < 0:
+        reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "searchable.temp_reservation")
+    remaining = policy.limits.temporary_storage_bytes - reserved_temporary_bytes
+    if remaining <= policy.limits.output_bytes:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "searchable.temp_reservation")
     source_bytes = sum(source.byte_size for source in plan.sources)
-    limits = policy.limits
+    limits = replace(policy.limits, temporary_storage_bytes=remaining)
     required_page_capacity = max(plan.page_count, *(source.page_count for source in plan.sources))
     if (
         required_page_capacity > limits.page_count
