@@ -490,6 +490,20 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
         - request.status_capacity_bytes
         - len(plan_payload)
     )
+    # This is the limit actually handed to the native candidate adapter, whose
+    # OCR monitor counts the whole private directory but cannot see parent sections.
+    assert (
+        adapter_limits.maximum_ocr_temporary_storage_bytes
+        + context.limits.output_bytes
+        + request.status_capacity_bytes
+        + len(plan_payload)
+        <= context.limits.temporary_storage_bytes
+    )
+    assert adapter_limits.maximum_ocr_temporary_storage_bytes == (
+        sum(source.byte_size for source in plan.sources)
+        + context.limits.output_bytes
+        + adapter_limits.maximum_page_scratch_bytes
+    )
     assert optimization.adapter_limits.inspection == replace(
         adapter_limits.inspection, maximum_temporary_bytes=context.limits.output_bytes
     )
@@ -767,10 +781,15 @@ def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request
         )
         <= limits.maximum_page_scratch_bytes
     )
+    assert limits.inspection.maximum_input_bytes == temporary_bytes - plan_byte_size
     assert (
-        limits.maximum_ocr_temporary_storage_bytes
-        == limits.inspection.maximum_input_bytes
-        == temporary_bytes - plan_byte_size
+        limits.maximum_ocr_temporary_storage_bytes + plan_byte_size + output_bytes + status_bytes
+        <= temporary_bytes
+    )
+    # Whole-directory monitoring includes sources; this remaining share must
+    # continue to fit them together with the bounded candidate and page scratch.
+    assert limits.maximum_ocr_temporary_storage_bytes == (
+        large_source.byte_size + output_bytes + limits.maximum_page_scratch_bytes
     )
 
 

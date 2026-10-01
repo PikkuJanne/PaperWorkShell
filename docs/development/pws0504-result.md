@@ -91,8 +91,11 @@ as well.
 
 The correction passed 112 flattened/searchable unit tests and 149 image-stage,
 reservation and protocol/security tests. Registered formatting, lint, import boundaries,
-typing, schema and documentation checks passed. Real worker reruns and full CI remain
-pending.
+typing, schema and documentation checks passed. A further resource review corrected
+the OCR directory monitor's allowance to reserve the parent output/status sections as
+well as the live plan. Sources remain counted once inside the monitored directory;
+27 searchable-operation tests passed, including the forwarded allowance invariant.
+Real worker reruns and full CI remain pending.
 
 ### Synthetic visual inspection
 

@@ -817,7 +817,12 @@ def _adapter_limits(
         maximum_page_scratch_bytes=scratch,
         maximum_ocr_output_bytes=min(values.output_bytes, scratch),
         maximum_ocr_image_pixels=page_rgba_pixels,
-        maximum_ocr_temporary_storage_bytes=values.temporary_storage_bytes,
+        # OCR monitors the whole private directory, including staged sources.
+        # Parent output/status sections stay live outside that directory; the
+        # plan section was already subtracted above. Do not charge sources twice.
+        maximum_ocr_temporary_storage_bytes=(
+            values.temporary_storage_bytes - values.output_bytes - status_capacity
+        ),
         pdf_transform_width_pixels=transform_dimension,
         pdf_transform_height_pixels=transform_dimension,
         verification_width_pixels=_VERIFICATION_DIMENSION_PIXELS,
