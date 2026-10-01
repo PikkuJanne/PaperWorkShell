@@ -477,10 +477,19 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
     assert worker_report.base_report.report.optimization.selected_byte_size == len(expected_output)
     assert len(optimizer.calls) == 1
     optimization = optimizer.calls[0]
-    assert optimization.reserved_temporary_bytes == request.status_capacity_bytes
+    assert optimization.reserved_temporary_bytes == request.status_capacity_bytes + len(
+        plan_payload
+    )
     assert optimization.resource_limits == context.limits
     adapter_limits = observed["limits"]
     assert isinstance(adapter_limits, SearchablePdfExportAdapterLimits)
+    assert adapter_limits.maximum_page_scratch_bytes == (
+        context.limits.temporary_storage_bytes
+        - sum(source.byte_size for source in plan.sources)
+        - 2 * context.limits.output_bytes
+        - request.status_capacity_bytes
+        - len(plan_payload)
+    )
     assert optimization.adapter_limits.inspection == replace(
         adapter_limits.inspection, maximum_temporary_bytes=context.limits.output_bytes
     )
@@ -694,8 +703,10 @@ def test_resource_preflight_classifies_subreport_output_capacity_as_limit(
     assert raised.value.context == "export.worker_capacity"
 
 
+@pytest.mark.parametrize("plan_byte_size", [0, 2 * 1024 * 1024])
 def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request(
     tmp_path: Path,
+    plan_byte_size: int,
 ) -> None:
     source_path = tmp_path / "source.pdf"
     source_path.write_bytes(PDF_FIXTURE.read_bytes())
@@ -728,7 +739,7 @@ def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request
         ),
     )
 
-    limits = operation._adapter_limits(context, plan, status_bytes)
+    limits = operation._adapter_limits(context, plan, status_bytes, plan_byte_size=plan_byte_size)
 
     assert limits.rendering.maximum_width_pixels == limits.pdf_transform_width_pixels
     assert limits.rendering.maximum_height_pixels == limits.pdf_transform_height_pixels
@@ -739,7 +750,11 @@ def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request
     assert limits.verification_height_pixels == 1024
     assert limits.text_presence.maximum_source_bytes == large_source.byte_size
     assert limits.maximum_page_scratch_bytes == (
-        temporary_bytes - large_source.byte_size - (2 * output_bytes) - status_bytes
+        temporary_bytes
+        - large_source.byte_size
+        - (2 * output_bytes)
+        - status_bytes
+        - plan_byte_size
     )
     assert (
         max(
@@ -755,7 +770,7 @@ def test_derived_limits_admit_transform_ceiling_and_smaller_verification_request
     assert (
         limits.maximum_ocr_temporary_storage_bytes
         == limits.inspection.maximum_input_bytes
-        == temporary_bytes
+        == temporary_bytes - plan_byte_size
     )
 
 

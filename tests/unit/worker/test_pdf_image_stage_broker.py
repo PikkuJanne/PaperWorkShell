@@ -9,7 +9,7 @@ import pytest
 
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode, PdfExportProgress
 from paperworkshell.domain.pdf_image_stages import PdfImageStageProfile, PdfImageStageRequest
-from paperworkshell.worker.pdf_export_broker import PdfExportSourceBatchLease
+from paperworkshell.worker.pdf_export_broker import PdfExportOutputBuffer, PdfExportSourceBatchLease
 from tests.unit.worker.pdf_image_stage_fixtures import StageSystem
 from tests.unit.worker.test_pdf_export_broker import _uuid
 
@@ -72,9 +72,12 @@ def test_terminal_before_processing_publishes_nothing(kind: str) -> None:
     assert system.heavy.snapshot().active_operations == 0
 
 
-def test_constrained_storage_rejects_before_worker_without_raising_budget() -> None:
+@pytest.mark.parametrize("reserve_previous_output", (False, True))
+def test_constrained_storage_lowers_output_capacity_before_allocation(
+    reserve_previous_output: bool,
+) -> None:
     system = StageSystem()
-    system.processor._policy = replace(
+    configured = replace(
         system.policy,
         limits=replace(
             system.policy.limits,
@@ -83,10 +86,88 @@ def test_constrained_storage_rejects_before_worker_without_raising_budget() -> N
             + 1,
         ),
     )
+    system.processor._policy = configured
+    capacities: list[int] = []
+
+    def allocate(capacity: int) -> PdfExportOutputBuffer:
+        capacities.append(capacity)
+        if system._buffer_calls == 0:
+            system.output.capacity = capacity
+        return system.make_output_buffer(capacity)
+
+    system.processor.output_buffer_factory = allocate
+    reserved = configured.limits.output_bytes if reserve_previous_output else 0
+    with system.processor.process(
+        system.plan,
+        cast(PdfExportSourceBatchLease, system.sources),
+        PdfImageStageRequest(),
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        reserved_temporary_bytes=reserved,
+    ) as candidate:
+        assert candidate.read(1024) == system.output.payload
+        assert candidate.read(1024) == b""
+        assert system.worker.payload is not None
+        assert system.plan_buffer is not None
+        limits = system.worker.payload.requested_limits
+        assert 0 < limits.output_bytes < configured.limits.output_bytes
+        assert capacities == [limits.output_bytes, configured.evidence_capacity_bytes]
+        assert (
+            limits.temporary_storage_bytes == configured.limits.temporary_storage_bytes - reserved
+        )
+        assert (
+            reserved
+            + sum(source.byte_size for source in system.plan.sources)
+            + 2 * limits.output_bytes
+            + configured.evidence_capacity_bytes
+            + len(system.plan_buffer.payload)
+            <= configured.limits.temporary_storage_bytes
+        )
+    assert system.processor._policy == configured
+    assert system.output.close_calls == system.evidence.close_calls == 1
+    assert system.heavy.snapshot().active_operations == 0
+
+
+@pytest.mark.parametrize("spare_bytes", (0, 2 * 4095))
+def test_exhausted_storage_rejects_before_worker_or_allocation_without_raising_budget(
+    spare_bytes: int,
+) -> None:
+    system = StageSystem()
+    reserved = (
+        system.policy.limits.temporary_storage_bytes
+        - sum(source.byte_size for source in system.plan.sources)
+        - system.policy.evidence_capacity_bytes
+        - spare_bytes
+    )
     with pytest.raises(PdfExportError) as caught:
-        system.process()
+        system.processor.process(
+            system.plan,
+            cast(PdfExportSourceBatchLease, system.sources),
+            PdfImageStageRequest(),
+            deadline=lambda: False,
+            cancellation=lambda: False,
+            reserved_temporary_bytes=reserved,
+        )
     assert caught.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
     assert not system.worker.started
+    assert system._buffer_calls == 0
+    assert system.processor._policy == system.policy
+    assert system.heavy.snapshot().active_operations == 0
+
+
+def test_broker_policy_accepts_output_ceiling_needing_a_smaller_operation_section() -> None:
+    system = StageSystem()
+    configured = replace(
+        system.policy,
+        limits=replace(
+            system.policy.limits,
+            output_bytes=system.policy.limits.temporary_storage_bytes // 2,
+        ),
+    )
+    assert configured.limits == replace(
+        system.policy.limits,
+        output_bytes=system.policy.limits.temporary_storage_bytes // 2,
+    )
 
 
 def test_distinct_transferred_authorities_are_required() -> None:

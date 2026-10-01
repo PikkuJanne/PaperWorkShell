@@ -12,12 +12,14 @@ from uuid import UUID
 
 import pytest
 
+from paperworkshell import __main__ as desktop
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
     PdfExportProgress,
     PdfExportProgressPhase,
 )
+from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportPlan,
     SearchablePdfPage,
@@ -158,8 +160,8 @@ def _page_outcomes(plan: SearchablePdfExportPlan) -> tuple[SearchablePdfPageOutc
 def _policy(
     *,
     page_count: int = 10,
-    temporary_storage_bytes: int = 8_192,
-    output_bytes: int = 2_048,
+    temporary_storage_bytes: int = 65_536,
+    output_bytes: int = 8_192,
     status_bytes: int = 1_024,
     pixel_count: int = PDF_EXPORT_VERIFICATION_PIXELS,
 ) -> SearchablePdfExportBrokerPolicy:
@@ -623,6 +625,9 @@ class _System:
 
         def buffer_factory(capacity: int) -> _Buffer:
             self.buffer_factory_calls += 1
+            if self.buffer_factory_calls == 1:
+                assert 1 <= capacity <= self.policy.limits.output_bytes
+                self.output.capacity = capacity
             return (
                 self.output
                 if self.buffer_factory_calls == 1 or self.alias_status_buffer
@@ -687,13 +692,15 @@ def test_retained_package_bytes_reduce_worker_quota_without_raising_other_limits
     assert system.output.close_calls == 1
 
 
-@pytest.mark.parametrize("reserved", [-1, True, "1024", 8_192])
+@pytest.mark.parametrize("reserved", [-1, True, "1024", 65_536])
 def test_bad_package_reservation_fails_before_allocating(reserved: object) -> None:
     system = _System()
     with pytest.raises(PdfExportError) as error:
         system.export(reserved_temporary_bytes=cast(int, reserved))
     assert error.value.code is (
-        PdfExportErrorCode.LIMIT_EXCEEDED if reserved == 8_192 else PdfExportErrorCode.MODEL_INVALID
+        PdfExportErrorCode.LIMIT_EXCEEDED
+        if reserved == 65_536
+        else PdfExportErrorCode.MODEL_INVALID
     )
     assert system.buffer_factory_calls == 0
     assert not system.events
@@ -704,7 +711,6 @@ def test_package_reservation_counts_sources_output_and_status_before_allocating(
     source_bytes = sum(source.byte_size for source in system.plan.sources)
     reserved = (
         system.policy.limits.temporary_storage_bytes
-        - 2 * system.policy.limits.output_bytes
         - system.policy.status_capacity_bytes
         - source_bytes
     )
@@ -712,6 +718,42 @@ def test_package_reservation_counts_sources_output_and_status_before_allocating(
         system.export(reserved_temporary_bytes=reserved)
     assert error.value.code is PdfExportErrorCode.LIMIT_EXCEEDED
     assert system.buffer_factory_calls == 0
+
+
+@pytest.mark.parametrize("reserved", [0, 1024 * 1024, 300 * 1024 * 1024])
+def test_desktop_constrained_capacity_leaves_two_outputs_status_plan_and_scratch(
+    reserved: int,
+) -> None:
+    policy = SearchablePdfExportBrokerPolicy(
+        desktop.build_windows_searchable_pdf_export_limits(CONSTRAINED_RESOURCE_POLICY_V1)
+    )
+    system = _System(policy=policy)
+    with system.export(reserved_temporary_bytes=reserved) as candidate:
+        assert system.worker.payload is not None
+        assert system.plan_buffer is not None
+        limits = system.worker.payload.requested_limits
+        source_bytes = sum(source.byte_size for source in system.plan.sources)
+        assert source_bytes > 0
+        assert limits.temporary_storage_bytes == policy.limits.temporary_storage_bytes - reserved
+        assert 4_096 <= limits.output_bytes <= policy.limits.output_bytes
+        assert limits.output_bytes == system.output.capacity == candidate.maximum_output_bytes
+        if reserved == 300 * 1024 * 1024:
+            assert limits.output_bytes < policy.limits.output_bytes
+        assert (
+            source_bytes
+            + policy.status_capacity_bytes
+            + system.plan_buffer.payload_size
+            + 3 * limits.output_bytes
+            <= limits.temporary_storage_bytes
+        )
+        assert limits == replace(
+            policy.limits,
+            output_bytes=limits.output_bytes,
+            temporary_storage_bytes=limits.temporary_storage_bytes,
+            page_count=system.plan.page_count,
+        )
+        assert candidate.read(1024) == system.output.payload
+    assert system.output.close_calls == 1
 
 
 def test_success_terminates_revalidates_authenticates_status_then_streams_pdf() -> None:

@@ -71,7 +71,7 @@ def _start() -> OperationStartPayload:
             wall_time_ms=10_000,
             cpu_time_ms=5_000,
             memory_bytes=64 * 1024 * 1024,
-            temporary_storage_bytes=6144,
+            temporary_storage_bytes=6400,
             output_bytes=2048,
             page_count=2,
             pixel_count=4096,
@@ -156,7 +156,7 @@ def test_exact_temporary_reservation_passes_and_one_byte_short_fails() -> None:
         validate_pdf_image_stage_start(
             replace(
                 payload,
-                requested_limits=replace(payload.requested_limits, temporary_storage_bytes=6143),
+                requested_limits=replace(payload.requested_limits, temporary_storage_bytes=6399),
             )
         )
 

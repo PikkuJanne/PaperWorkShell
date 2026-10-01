@@ -19,6 +19,7 @@ from types import TracebackType
 from typing import Final, Never, Protocol, Self, cast
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
     MAX_PDF_EXPORT_PAGES,
     PdfExportError,
@@ -26,6 +27,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgress,
     PdfExportProgressPhase,
 )
+from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_REPORT_BYTES
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportError,
@@ -473,7 +475,7 @@ class BrokeredFlattenedPdfExporter:
         _require_input_reference_capacity(plan)
         local_source_handles = _require_source_binding(plan, sources)
         raster_bindings = _require_raster_binding(plan, rasters)
-        _preflight_operation_limits(policy_limits, plan, raster_bindings)
+        policy_limits = _preflight_operation_limits(policy_limits, plan, raster_bindings)
         forbidden = _plan_identifiers(plan)
         operation_id = self._new_id(forbidden)
         forbidden.add(operation_id)
@@ -481,12 +483,12 @@ class BrokeredFlattenedPdfExporter:
         forbidden.add(plan_object_id)
         output_object_id = self._new_id(forbidden)
 
-        output_buffer = self._output_buffer_factory(self._policy.limits.output_bytes)
+        output_buffer = self._output_buffer_factory(policy_limits.output_bytes)
         transferred = False
         try:
             _require_output_buffer(
                 output_buffer,
-                self._policy.limits.output_bytes,
+                policy_limits.output_bytes,
                 "flattened.output_buffer",
             )
             result: WorkerOperationResultSnapshot | None = None
@@ -1065,7 +1067,7 @@ def _reserved_operation_limits(
             FlattenedPdfExportErrorCode.MODEL_INVALID, "flattened.temp_reservation"
         )
     remaining = policy.temporary_storage_bytes - reserved_temporary_bytes
-    if remaining <= policy.output_bytes:
+    if remaining <= 0:
         reject_flattened_pdf_export(
             FlattenedPdfExportErrorCode.LIMIT_EXCEEDED, "flattened.temp_reservation"
         )
@@ -1076,7 +1078,7 @@ def _preflight_operation_limits(
     policy: ResourceLimits,
     plan: FlattenedPdfExportPlan,
     rasters: tuple[_RasterBinding, ...],
-) -> None:
+) -> ResourceLimits:
     source_bytes = sum(source.byte_size for source in plan.base_plan.sources)
     raster_bytes = sum(binding.source.metadata.byte_count for binding in rasters)
     if (
@@ -1086,12 +1088,35 @@ def _preflight_operation_limits(
         or raster_bytes // 4 > policy.pixel_count
         or source_bytes > policy.temporary_storage_bytes
         or raster_bytes > policy.temporary_storage_bytes - source_bytes
-        or 2 * policy.output_bytes > policy.temporary_storage_bytes - source_bytes - raster_bytes
     ):
         reject_flattened_pdf_export(
             FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
             "flattened.operation_limits",
         )
+    # The canonical envelope differs only in its integer handle values after
+    # worker startup. Distinct maximum-width values bound its exact byte size
+    # before any section allocation without reserving the full schema ceiling.
+    source_handles = {
+        source.source_id: MAX_SAFE_MANIFEST_INTEGER - index
+        for index, source in enumerate(plan.base_plan.sources)
+    }
+    raster_handles = {
+        binding.asset_id: MAX_SAFE_MANIFEST_INTEGER - len(source_handles) - index
+        for index, binding in enumerate(rasters)
+    }
+    plan_bytes = len(encode_flattened_pdf_worker_plan(plan, source_handles, raster_handles))
+    output_bytes = min(
+        policy.output_bytes,
+        (policy.temporary_storage_bytes - source_bytes - raster_bytes - plan_bytes) // 2,
+    )
+    if output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+        reject_flattened_pdf_export(
+            FlattenedPdfExportErrorCode.LIMIT_EXCEEDED,
+            "flattened.operation_limits",
+        )
+    # The worker candidate and shared section overlap; the section and private
+    # destination stage overlap later. Both copies stay in the remaining quota.
+    return replace(policy, output_bytes=output_bytes)
 
 
 def _require_input_reference_capacity(plan: FlattenedPdfExportPlan) -> None:

@@ -86,7 +86,7 @@
       "wall_time_ms": 10000,
       "cpu_time_ms": 5000,
       "memory_bytes": 67108864,
-      "temporary_storage_bytes": 6400,
+      "temporary_storage_bytes": 6912,
       "output_bytes": 2048,
       "page_count": 2,
       "pixel_count": 4096

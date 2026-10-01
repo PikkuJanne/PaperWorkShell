@@ -338,7 +338,9 @@ def test_worker_adapter_publishes_bound_output_report_and_closes_every_handle_on
         ).checks
     )
     assert len(optimizer.calls) == 1
-    assert optimizer.calls[0].reserved_temporary_bytes == plan.assets[0].raster_asset.byte_count
+    assert optimizer.calls[0].reserved_temporary_bytes == (
+        plan.assets[0].raster_asset.byte_count + len(payload)
+    )
     assert optimizer.calls[0].resource_limits == _limits()
 
 

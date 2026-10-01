@@ -287,14 +287,10 @@ def _run_operation(
     assert stage.temp is not None and not stage.temp.exists()
     assert stage.limits is not None
     assert stage.limits.maximum_memory_bytes == limits.memory_bytes // 2
-    assert (
-        stage.limits.maximum_temporary_bytes
-        == limits.temporary_storage_bytes
-        - 2 * len(source_payload)
-        - limits.output_bytes
-        - evidence_capacity
-    )
-    assert optimizer.calls[0].reserved_temporary_bytes == evidence_capacity
+    assert stage.limits.maximum_temporary_bytes == limits.temporary_storage_bytes - 2 * len(
+        source_payload
+    ) - limits.output_bytes - evidence_capacity - len(payload)
+    assert optimizer.calls[0].reserved_temporary_bytes == evidence_capacity + len(payload)
 
 
 @pytest.mark.parametrize("mode", ("analyze", "stage", "cancel", "timeout", "limit"))

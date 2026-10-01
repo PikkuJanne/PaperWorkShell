@@ -13,12 +13,14 @@ from uuid import UUID
 
 import pytest
 
+from paperworkshell import __main__ as desktop
 from paperworkshell.domain.pdf_export import (
     PdfExportProgress,
     PdfExportProgressPhase,
     PdfExportSourceEncryptionState,
     PdfExportSourceMediaType,
 )
+from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportAsset,
@@ -592,7 +594,8 @@ class _System:
         def output_factory(capacity: int) -> _OutputBuffer:
             self.events.append("output.create")
             self.output_factory_calls += 1
-            assert capacity == self.policy.limits.output_bytes
+            assert 1 <= capacity <= self.policy.limits.output_bytes
+            self.output.capacity = capacity
             return self.output
 
         def raster_factory(payload: bytes) -> _RasterBuffer:
@@ -690,17 +693,41 @@ def test_bad_package_reservation_fails_before_allocating(reserved: object) -> No
 def test_package_reservation_counts_sources_and_rasters_before_allocating() -> None:
     system = _System()
     source_bytes = sum(source.byte_size for source in system.plan.base_plan.sources)
-    reserved = (
-        system.policy.limits.temporary_storage_bytes
-        - 2 * system.policy.limits.output_bytes
-        - source_bytes
-        - len(system.pixels)
-        + 1
-    )
+    reserved = system.policy.limits.temporary_storage_bytes - source_bytes - len(system.pixels) + 1
     with pytest.raises(FlattenedPdfExportError) as error:
         system.export(reserved_temporary_bytes=reserved)
     assert error.value.code is FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
     assert system.output_factory_calls == system.raster_factory_calls == 0
+
+
+@pytest.mark.parametrize("reserved", [0, 1024 * 1024, 300 * 1024 * 1024])
+def test_desktop_constrained_capacity_fits_sources_plan_and_two_outputs(reserved: int) -> None:
+    policy = FlattenedPdfExportBrokerPolicy(
+        desktop.build_windows_flattened_pdf_export_limits(CONSTRAINED_RESOURCE_POLICY_V1)
+    )
+    system = _System(policy=policy)
+    with system.export(reserved_temporary_bytes=reserved) as candidate:
+        assert system.worker.payload is not None
+        assert system.plan_buffer is not None
+        limits = system.worker.payload.requested_limits
+        source_bytes = sum(source.byte_size for source in system.plan.base_plan.sources)
+        raster_bytes = sum(source.metadata.byte_count for source in system.rasters.values())
+        assert source_bytes > 0 and raster_bytes > 0
+        assert limits.temporary_storage_bytes == policy.limits.temporary_storage_bytes - reserved
+        assert 0 < limits.output_bytes < policy.limits.output_bytes
+        assert limits.output_bytes == system.output.capacity == candidate.maximum_output_bytes
+        assert (
+            source_bytes + raster_bytes + system.plan_buffer.payload_size + 2 * limits.output_bytes
+            <= limits.temporary_storage_bytes
+        )
+        assert limits == replace(
+            policy.limits,
+            output_bytes=limits.output_bytes,
+            temporary_storage_bytes=limits.temporary_storage_bytes,
+            page_count=system.plan.page_count,
+        )
+        assert candidate.read(1024) == system.output.payload
+    assert system.output.close_calls == 1
 
 
 def test_success_binds_exact_authorities_restores_raster_and_streams_candidate() -> None:
@@ -952,7 +979,7 @@ def test_cancellation_timeout_crash_termination_and_source_change_are_closed() -
 
 
 def test_exact_plan_limit_and_resource_limited_worker_cleanup_all_sections() -> None:
-    limited = _System(policy=_policy(temporary_storage_bytes=1_050_000))
+    limited = _System(policy=_policy(temporary_storage_bytes=1_500, output_bytes=1_000))
     error = _error(limited)
     assert error.code is FlattenedPdfExportErrorCode.LIMIT_EXCEEDED
     assert limited.output_factory_calls == 0

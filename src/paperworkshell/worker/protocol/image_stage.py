@@ -92,7 +92,8 @@ def validate_pdf_image_stage_start(payload: OperationStartPayload) -> None:
         capacity > MAX_PDF_IMAGE_STAGE_EVIDENCE_BYTES
         or capacity > limits.memory_bytes // 8
         or limits.page_count > MAX_PDF_EXPORT_PAGES
-        or source_total + 2 * limits.output_bytes + capacity > limits.temporary_storage_bytes
+        or source_total + plan.expected_byte_size + 2 * limits.output_bytes + capacity
+        > limits.temporary_storage_bytes
     ):
         reject(
             "RPC_INVALID_OPERATION",

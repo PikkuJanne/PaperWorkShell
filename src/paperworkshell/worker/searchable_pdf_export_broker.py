@@ -17,6 +17,7 @@ from dataclasses import dataclass, replace
 from typing import Final, Never, Protocol, Self
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
@@ -24,6 +25,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgressPhase,
     reject_pdf_export,
 )
+from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_REPORT_BYTES
 from paperworkshell.domain.searchable_pdf_export import (
     MAX_SEARCHABLE_PDF_PAGES,
     SearchablePdfExportError,
@@ -836,24 +838,31 @@ def _operation_limits(
     if type(reserved_temporary_bytes) is not int or reserved_temporary_bytes < 0:
         reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "searchable.temp_reservation")
     remaining = policy.limits.temporary_storage_bytes - reserved_temporary_bytes
-    if remaining <= policy.limits.output_bytes:
+    if remaining <= 0:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "searchable.temp_reservation")
     source_bytes = sum(source.byte_size for source in plan.sources)
-    limits = replace(policy.limits, temporary_storage_bytes=remaining)
     required_page_capacity = max(plan.page_count, *(source.page_count for source in plan.sources))
     if (
-        required_page_capacity > limits.page_count
-        or source_bytes > limits.temporary_storage_bytes
-        or limits.output_bytes > limits.temporary_storage_bytes - source_bytes
-        or policy.status_capacity_bytes
-        > limits.temporary_storage_bytes - source_bytes - limits.output_bytes
-        or limits.output_bytes
-        >= limits.temporary_storage_bytes
-        - source_bytes
-        - limits.output_bytes
-        - policy.status_capacity_bytes
+        required_page_capacity > policy.limits.page_count
+        or source_bytes + policy.status_capacity_bytes >= remaining
     ):
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "searchable.operation_limits")
+    plan_bytes = len(
+        encode_searchable_pdf_worker_plan(
+            plan,
+            {
+                source.source_id: MAX_SAFE_MANIFEST_INTEGER - index
+                for index, source in enumerate(plan.sources)
+            },
+        )
+    )
+    available = remaining - source_bytes - policy.status_capacity_bytes - plan_bytes
+    # Two copies cover the worker PDF and its shared section (then the section
+    # and destination stage). A third share leaves sequential page/OCR scratch.
+    output_bytes = min(policy.limits.output_bytes, available // 3)
+    if output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "searchable.operation_limits")
+    limits = replace(policy.limits, temporary_storage_bytes=remaining, output_bytes=output_bytes)
     return ResourceLimits(
         wall_time_ms=limits.wall_time_ms,
         cpu_time_ms=limits.cpu_time_ms,

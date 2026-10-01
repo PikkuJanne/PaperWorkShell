@@ -1293,6 +1293,7 @@ def _pdf_image_stage_start_issues(
         capacity > cast(int, memory) // 8
         or cast(int, pages) > 4_096
         or sum(cast(int, source["expected_byte_size"]) for source in sources)
+        + cast(int, plan["expected_byte_size"])
         + 2 * cast(int, output)
         + capacity
         > cast(int, temporary)

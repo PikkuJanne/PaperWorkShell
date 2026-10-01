@@ -345,7 +345,9 @@ class WindowsFlattenedPdfExportOperationAdapter:
                         adapter_limits=adapter_limits,
                         control=control,
                         private_temp_storage=self.private_temp_storage,
-                        reserved_temporary_bytes=raster_total,
+                        reserved_temporary_bytes=(
+                            raster_total + (plan_reference.expected_byte_size or 0)
+                        ),
                     )
                     candidate_path = selection.path
                     report = replace(report, base_report=selection.report)

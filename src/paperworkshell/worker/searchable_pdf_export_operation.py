@@ -266,6 +266,8 @@ class WindowsSearchablePdfExportOperationAdapter:
                 expected_sha256=plan_reference.expected_sha256 or "",
             )
             worker_plan = decode_searchable_pdf_worker_plan(plan_payload)
+            plan_byte_size = len(plan_payload)
+            del plan_payload
             context.report_progress(_processing_progress(0, context.limits.page_count))
             source_handles = tuple(source.worker_handle for source in worker_plan.sources)
             if set(source_handles) & {
@@ -280,7 +282,12 @@ class WindowsSearchablePdfExportOperationAdapter:
                 )
             authorities.add(source_handles)
             references = _bind_plan(context, worker_plan)
-            limits = _adapter_limits(context, worker_plan.plan, request.status_capacity_bytes)
+            limits = _adapter_limits(
+                context,
+                worker_plan.plan,
+                request.status_capacity_bytes,
+                plan_byte_size=plan_byte_size,
+            )
             control = SearchablePdfExportAdapterControl(
                 deadline=absolute_deadline,
                 cancellation_probe=context.cancel_requested.is_set,
@@ -380,7 +387,7 @@ class WindowsSearchablePdfExportOperationAdapter:
                         monotonic=control.monotonic,
                     ),
                     private_temp_storage=self.private_temp_storage,
-                    reserved_temporary_bytes=request.status_capacity_bytes,
+                    reserved_temporary_bytes=request.status_capacity_bytes + plan_byte_size,
                 )
                 candidate_path = selection.path
                 report = replace(report, base_report=selection.report)
@@ -661,8 +668,19 @@ def _adapter_limits(
     context: OperationContext,
     plan: SearchablePdfExportPlan,
     status_capacity: int,
+    *,
+    plan_byte_size: int = 0,
 ) -> SearchablePdfExportAdapterLimits:
-    values = context.limits
+    if (
+        type(plan_byte_size) is not int
+        or not 0 <= plan_byte_size < context.limits.temporary_storage_bytes
+    ):
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.worker_capacity")
+    # The parent retains the read-only plan section until the worker exits.
+    values = replace(
+        context.limits,
+        temporary_storage_bytes=context.limits.temporary_storage_bytes - plan_byte_size,
+    )
     if values.output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
         reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "export.worker_capacity")
     source_total = sum(source.byte_size for source in plan.sources)

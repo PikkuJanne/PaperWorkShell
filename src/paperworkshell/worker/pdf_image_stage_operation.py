@@ -158,7 +158,8 @@ class WindowsPdfImageStageOperationAdapter:
                 context.limits,
                 temporary_storage_bytes=context.limits.temporary_storage_bytes
                 - context.limits.output_bytes
-                - request.evidence_capacity_bytes,
+                - request.evidence_capacity_bytes
+                - len(payload),
             )
             baseline_limits = _adapter_limits(
                 replace(context, limits=working_limits), base.plan, source_total=source_total
@@ -194,7 +195,7 @@ class WindowsPdfImageStageOperationAdapter:
                     adapter_limits=baseline_limits,
                     control=control,
                     private_temp_storage=self.private_temp_storage,
-                    reserved_temporary_bytes=request.evidence_capacity_bytes,
+                    reserved_temporary_bytes=request.evidence_capacity_bytes + len(payload),
                 )
                 baseline_path, baseline_report = selection.path, selection.report
                 used = _private_temp_bytes(
@@ -208,6 +209,7 @@ class WindowsPdfImageStageOperationAdapter:
                     - used
                     - context.limits.output_bytes
                     - request.evidence_capacity_bytes
+                    - len(payload)
                 )
                 if remaining < 0:
                     reject_pdf_export(

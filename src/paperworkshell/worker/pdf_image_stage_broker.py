@@ -9,6 +9,7 @@ from dataclasses import dataclass, field, replace
 from typing import Self
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
@@ -24,6 +25,7 @@ from paperworkshell.domain.pdf_image_stages import (
     PdfImageStageRequest,
     validate_pdf_image_stage_report,
 )
+from paperworkshell.domain.pdf_inspection import MAX_PDF_INSPECTION_REPORT_BYTES
 from paperworkshell.domain.source_ingest import SourceIngestError
 from paperworkshell.worker._windows_broker import WindowsResultPipe
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
@@ -107,8 +109,7 @@ class PdfImageStageBrokerPolicy:
             or not 1
             <= self.evidence_capacity_bytes
             <= min(MAX_PDF_IMAGE_STAGE_EVIDENCE_BYTES, self.limits.memory_bytes // 8)
-            or self.evidence_capacity_bytes + 2 * self.limits.output_bytes
-            >= self.limits.temporary_storage_bytes
+            or self.evidence_capacity_bytes >= self.limits.temporary_storage_bytes
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "image_stage.broker_policy")
 
@@ -287,22 +288,9 @@ class BrokeredPdfImageStageProcessor:
         reserved_temporary_bytes: int,
     ) -> VerifiedPdfImageStageCandidate:
         handles = _require_source_binding(plan, sources)
-        if reserved_temporary_bytes >= self._policy.limits.temporary_storage_bytes:
-            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "image_stage.reserved_storage")
-        limits = replace(
-            _operation_limits(self._policy.limits, plan),
-            pixel_count=self._policy.limits.pixel_count,
-            temporary_storage_bytes=(
-                self._policy.limits.temporary_storage_bytes - reserved_temporary_bytes
-            ),
+        limits, maximum_plan_bytes = _stage_operation_limits(
+            self._policy, plan, request, reserved_temporary_bytes
         )
-        if (
-            sum(source.byte_size for source in plan.sources)
-            + 2 * limits.output_bytes
-            + self._policy.evidence_capacity_bytes
-            > limits.temporary_storage_bytes
-        ):
-            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "image_stage.operation_limits")
         forbidden = {
             plan.case_id,
             *(source.source_id for source in plan.sources),
@@ -349,6 +337,10 @@ class BrokeredPdfImageStageProcessor:
                         for source in plan.sources
                     }
                     payload = encode_pdf_image_stage_plan(plan, transferred_sources, request)
+                    if len(payload) > maximum_plan_bytes:
+                        reject_pdf_export(
+                            PdfExportErrorCode.RESULT_INVALID, "image_stage.plan_capacity"
+                        )
                     with self.plan_buffer_factory(payload) as plan_buffer:
                         if (
                             plan_buffer.payload_size != len(payload)
@@ -622,6 +614,46 @@ class BrokeredPdfImageStageProcessor:
             if type(value) is UUID and value.version == 4 and value not in forbidden:
                 return value
         reject_pdf_export(PdfExportErrorCode.INTERNAL_ERROR, "export.identifier")
+
+
+def _stage_operation_limits(
+    policy: PdfImageStageBrokerPolicy,
+    plan: PdfExportPlan,
+    request: PdfImageStageRequest,
+    reserved_temporary_bytes: int,
+) -> tuple[ResourceLimits, int]:
+    """Lower section capacity to actual headroom without increasing any budget."""
+
+    remaining = policy.limits.temporary_storage_bytes - reserved_temporary_bytes
+    # The canonical envelope changes only in its positive integer handle values
+    # after startup. Maximum-width distinct handles bound its live section now.
+    maximum_plan_bytes = len(
+        encode_pdf_image_stage_plan(
+            plan,
+            {
+                source.source_id: MAX_SAFE_MANIFEST_INTEGER - index
+                for index, source in enumerate(plan.sources)
+            },
+            request,
+        )
+    )
+    available = (
+        remaining
+        - sum(source.byte_size for source in plan.sources)
+        - policy.evidence_capacity_bytes
+        - maximum_plan_bytes
+    )
+    output_bytes = min(policy.limits.output_bytes, available // 2)
+    if output_bytes < MAX_PDF_INSPECTION_REPORT_BYTES:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "image_stage.operation_limits")
+    limits = replace(policy.limits, temporary_storage_bytes=remaining, output_bytes=output_bytes)
+    # One disk candidate and one mapped output section overlap. Safe optimization
+    # and image-stage scratch use only remaining *measured* space in the worker;
+    # either stage can truthfully keep the baseline when another copy cannot fit.
+    return (
+        replace(_operation_limits(limits, plan), pixel_count=policy.limits.pixel_count),
+        maximum_plan_bytes,
+    )
 
 
 def _payload(
