@@ -3961,7 +3961,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0502
@@ -3989,9 +3989,11 @@ tasks:
   - performance
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
+    completed_at: '2026-10-01'
+    revision: 38b1fc86af4771a19a8d701381f1cd7f2b7281f6
     commands:
+    - python tools/dev.py check --ci-group core
+    - python tools/dev.py check --ci-group integration
     - uv run --locked --no-sync python tools/dev.py format-check
     - uv run --locked --no-sync python tools/dev.py lint
     - uv run --locked --no-sync python tools/dev.py typecheck
@@ -4005,7 +4007,7 @@ tasks:
     - uv run --locked --no-sync python tools/dev.py test-security (focused image-stage selectors)
     - uv run --locked --no-sync python tools/dev.py test-integration (pdf_image_stage_worker_windows selector)
     notes:
-    - Implementation and focused verification complete on codex/pws-0503-image-stages; full Windows CI pending.
+    - Implementation and full Windows CI verified on codex/pws-0503-image-stages.
       See docs/development/pws0503-result.md and docs/architecture/pdf-image-stages.md.
     - Explicit versioned image analysis and selected RGB/gray stages use the verified safe-optimization baseline;
       ordinary exports keep their existing lossless policy. ResourcePolicy, dependency locks and RPC schema v1 are unchanged.
@@ -4016,14 +4018,24 @@ tasks:
     - Six synthetic stage outputs passed real qpdf/PDFium checks and visual inspection; text and vector
       pixels remain unchanged. Exact unselected image encodings and reopened page size totals have regressions.
     - Standalone operation and data ownership are preserved; no sibling dependency or release-interface
-      claim is introduced. PWS-0504 remains planned until PWS-0503 completes full required verification.
+      claim is introduced. PWS-0504 is now dependency-ready and marked ready.
+    - Full Windows CI https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36838247754 passed
+      at revision 38b1fc86af4771a19a8d701381f1cd7f2b7281f6 with 5189 unit, 682 security, 71 accessibility
+      and 498 integration passes. Seven integration skips concern unstaged prior OCR/private-artifact prerequisites;
+      the new constrained image-stage worker test passed without a skip. All registered validation gates passed.
+    - Replayed the unchanged scan-quality evaluator and exact-revision recorder after four bound worker/protocol
+      surfaces changed; only the evidence revision changed, with all eight metrics and corpus/profile/policy fields identical.
+      The RPC round-trip inventory now covers all 20 examples. No validator or approved golden was weakened.
+    - Closure changes task state, evidence documentation and bundle hashes only; runtime and tests remain
+      exactly those checked by successful CI. Local all-ref fixture-scan limitations from unrelated Codex
+      snapshot artifacts are documented; published-history CI passed without a suppression or ref deletion.
 - id: PWS-0504
   milestone: M5
   title: Implement target-size search and constraint-aware export policy
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0407

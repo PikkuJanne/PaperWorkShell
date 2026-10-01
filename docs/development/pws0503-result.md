@@ -1,6 +1,6 @@
 # Task result — PWS-0503: Image-heavy page analysis and staged re-encoding
 
-**Status: `review` — implementation and focused verification complete; full Windows CI pending.**
+**Status: `done` — implementation, documentation and full Windows CI verified.**
 This work starts from PWS-0502 closure commit
 `3088c1d2acc01c3b5a86400c4eb6d061e01ff733` on `codex/pws-0503-image-stages`.
 The attached worktree was clean before this task. PWS-0502 and PWS-0202 are done.
@@ -24,7 +24,7 @@ The first profile supports page-local opaque eight-bit RGB/gray image XObjects.
 Shared images across pages, inherited-resource/nonpage aliases, masks, unsupported color/filter semantics, and uncertain geometry
 remain unchanged. Image resolution comes from physical placement, not image pixel dimensions
 alone. Per-page stream-byte estimates are explicitly approximate; measured whole-PDF size is
-reported separately. Full registered verification remains required before task closure.
+reported separately. Full registered verification passed at the checkpoint recorded below.
 
 ## Effects
 
@@ -69,8 +69,8 @@ reported separately. Full registered verification remains required before task c
   final callback before returning a candidate.
 
 Additional automated agent review reproduced seven alias/encoding/Flate cases after their fixes. The native
-image and existing optimization tests passed 118 cases in 24.93 seconds. Full CI evidence will
-be added below after the implementation checkpoint is verified.
+image and existing optimization tests passed 118 cases in 24.93 seconds. The CI evidence below
+identifies the tested checkpoint and completed integration gate.
 
 ## Changed files
 
@@ -138,7 +138,7 @@ existing evidence inventories that needed to account for the additive operation:
   The registered quality-evaluation selector passed all 40 tests in 57.55 seconds.
 
 These corrections change tests and evidence only. The image-stage runtime remains identical to
-the first implementation checkpoint. A complete replacement CI run is required for closure.
+the first implementation checkpoint. Both replacement CI jobs passed.
 
 The additional local `test-accessibility` run passed all 71 tests in 4.87 seconds. Pillow runtime,
 M1 report, PWS-0208 workload and renderer-workload validators passed; the quality self-test
@@ -150,6 +150,38 @@ temporary render outputs. All 11 offending blobs are absent from this branch's h
 every `origin` remote ref. They belong to a local tree snapshot, not a published commit ancestor.
 The snapshot, fixture validator and allowlist are preserved. Clean published-history CI supplies
 the required fixture gate for this task; this local snapshot finding is not hidden by a skip.
+
+## Full Windows CI
+
+[Run 36838247754](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36838247754) tests
+`38b1fc86af4771a19a8d701381f1cd7f2b7281f6`, including the reconciled evidence and fixture inventory.
+Its runtime source is identical to `b42b56fa610eed2c202f8d3286e94a6993780a8f`.
+
+| Registered check | Result |
+|---|---|
+| `python tools/dev.py check --ci-group core` | Pass, 29 minutes 48 seconds |
+| `test-unit` | 5,189 passed in 935.68 seconds; no skips |
+| `test-security` | 682 passed in 326.60 seconds; no skips |
+| `test-accessibility` | 71 passed in 4.42 seconds; no skips |
+| Formatting, lint, import boundaries and strict typing | Pass, 631 Python files; 13 layers and 220 application source files |
+| Fixture, schema (including dependency inventory), task, Pillow, documentation, portfolio and benchmark validators | Pass |
+| Secret scan and quality self-test | Pass; all five deliberate violations rejected |
+| `python tools/dev.py check --ci-group integration` | Pass; 498 passed, seven prerequisite skips in 3,266.82 seconds |
+
+The integration job completed in 55 minutes 18 seconds. The new constrained image-stage worker
+test passed without a skip. Seven existing tests skipped for unavailable staged prerequisites:
+four admitted Tesseract runtimes, one exact PWS-0209 OCR environment, and two private PWS-0208
+artifact-stage cases. No image-stage requirement depends on those missing prerequisites.
+
+The clean CI fixture scan validated 46 public synthetic fixtures, 15 analytical renderer
+references, six image-transform references and three overlay references. It inspected 2,766
+historical blobs, 904 index blobs and 934 working files. This passes the published-history gate
+without admitting or deleting the unrelated local snapshot artifacts described above.
+
+The additional full local security run passed 676 tests in 404.24 seconds; six link-creation
+cases skipped because the local Windows account lacks symlink/reparse-point privileges. The
+682-test CI security pass exercises all six cases. Complete job logs remain under ignored
+`output/pws0503-ci/`.
 
 ## Adjacent issue requiring separate follow-up
 
@@ -195,5 +227,10 @@ renderings. No approved golden was refreshed.
 
 ## Task graph
 
-PWS-0503 is `review` while full Windows CI is pending. Completion will unblock PWS-0504.
-No later task is implemented here.
+PWS-0503 is `done`. PWS-0504 is the next dependency-ready task and is marked `ready`.
+No later task is implemented here. The closure commit changes only task/evidence documentation
+and bundle hashes; runtime and tests remain those verified at `38b1fc86`.
+
+After updating task state, registered formatting, lint, schema, task-graph, documentation and
+portfolio checks passed, as did `git diff --check`. The standalone `validate-dependencies`
+command also passed locally; it is separate from CI's dependency-inventory schema validation.

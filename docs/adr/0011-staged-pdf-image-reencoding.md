@@ -1,6 +1,6 @@
 # ADR 0011: Explicit stages for selected PDF image assets
 
-- Status: Implementation selection for PWS-0503; verification pending
+- Status: Implemented and verified for PWS-0503
 - Date: 2026-10-01
 - Decisions preserved: PWS-D009, PWS-D012, PWS-D013, PWS-D015, PWS-D024, PWS-D029,
   PWS-D034, PWS-D036, PWS-D037, PWS-D041, PWS-D042
@@ -105,7 +105,7 @@ No frozen decision changes. No new dependency, license obligation, manifest/hist
 sibling integration, or packaged-release claim is introduced. When analysis succeeds, unsupported
 assets remain visible as unsupported/uncertain. Unsupported content-stream filters or decode
 parameters can instead fail analysis. The completed corpus, bounds, failure-path and live-worker
-evidence will be recorded in [PWS-0503 results](../development/pws0503-result.md).
+evidence is recorded in [PWS-0503 results](../development/pws0503-result.md).
 
 ### API references
 
