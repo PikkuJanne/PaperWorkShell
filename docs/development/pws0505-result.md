@@ -112,3 +112,14 @@ policy.” No alternate deletion was attempted. The test now cleans its stages i
 storage; it contains only synthetic test bytes. It is not included in Git or runtime
 artifacts. Its local path is
 `%TEMP%/pytest-of-<user>/pytest-2769/test_review_admits_combined_li0/.bbe2e3be-8357-4639-a3fa-3692de5de38a.pws-package-stage.tmp`.
+
+## Verification checkpoint
+
+Implementation commit: `1b88998752e1844a6360cba5d7200c4794048b29`.
+Full local accessibility suite: `python -m pytest -q tests/accessibility --tb=short`
+passed 74 tests in 5.57 seconds. Full unit and security suites are running.
+The unchanged scan-quality recorder and validator passed at the implementation
+revision; only the recorded revision changed, with all eight metrics identical.
+See [provenance](scan-quality-evaluation.md). The local pytest console launcher remains
+blocked by Windows Application Control; locked `python -m pytest` is the equivalent
+working invocation. No host security setting was changed.
