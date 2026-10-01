@@ -21,6 +21,7 @@ from paperworkshell.app.source_ingest import CancellationProbe, DeadlineProbe, S
 from paperworkshell.domain.import_precheck import ImportLimits
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.pdf_export import build_pdf_export_plan
+from paperworkshell.domain.pdf_optimization import PdfOptimizationOutcome, PdfOptimizationProfile
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
@@ -269,6 +270,7 @@ def _composition(
 
 def _workspace(
     tmp_path: Path,
+    source_path: Path = _SOURCE_FIXTURE,
 ) -> tuple[
     CaseWorkspaceManager,
     WindowsSourceIngestStore,
@@ -314,7 +316,7 @@ def _workspace(
     )
     imported = SourceIngestService(sources, _OnePagePdfInspector()).import_source(
         _CASE_ID,
-        _SOURCE_FIXTURE,
+        source_path,
         _PRIVATE_LOG_CANARY,
     )
     snapshot = WindowsManifestRepository(manager).load(_CASE_ID).snapshot
@@ -421,15 +423,31 @@ def _read_candidate(candidate: BrokeredFlattenedPdfExportCandidate) -> bytes:
         chunks.append(chunk)
 
 
+@pytest.mark.parametrize("compressible_source", (False, True))
 def test_live_constrained_flattened_export_authenticates_raster_and_revalidates_source(
     tmp_path: Path,
     worker_test_resources: WorkerTestResources,
     caplog: pytest.LogCaptureFixture,
+    compressible_source: bool,
 ) -> None:
     caplog.set_level(logging.DEBUG)
     _stage_python_closure(worker_test_resources)
-    fixture_before = _SOURCE_FIXTURE.read_bytes()
-    manager, sources, plan, rasters, committed_path, committed_before = _workspace(tmp_path)
+    source_path = _SOURCE_FIXTURE
+    if compressible_source:
+        source_path = tmp_path / "synthetic-lossless-overhead.pdf"
+        with pikepdf.Pdf.open(_SOURCE_FIXTURE, attempt_recovery=False) as document:
+            page = document.pages[0]
+            contents = page.obj.Contents
+            streams = list(contents) if isinstance(contents, pikepdf.Array) else [contents]
+            # Harmless comments leave source text and visible content unchanged;
+            # a separate lossless stream compression has a measurable benefit.
+            streams.append(document.make_stream(b"% synthetic repeated overhead\n" * 1024))
+            page.obj.Contents = pikepdf.Array(streams)
+            document.save(source_path, compress_streams=False, deterministic_id=True)
+    fixture_before = source_path.read_bytes()
+    manager, sources, plan, rasters, committed_path, committed_before = _workspace(
+        tmp_path, source_path
+    )
     composition = _composition(worker_test_resources, _qpdf_executable(), _limits())
     raster_buffers = _track_raster_buffers(composition)
     counting: _RevalidationCountingLease | None = None
@@ -468,6 +486,14 @@ def test_live_constrained_flattened_export_authenticates_raster_and_revalidates_
     assert report.plan.placed_signature_image_count == 1
     assert hashlib.sha256(output).hexdigest() == report.base_report.output_sha256
     assert len(output) == report.base_report.output_byte_size
+    optimization = report.base_report.optimization
+    assert optimization is not None
+    assert optimization.profile is PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1
+    assert optimization.selected_byte_size == len(output)
+    assert optimization.selected_byte_size <= optimization.baseline_byte_size
+    if compressible_source:
+        assert optimization.outcome is PdfOptimizationOutcome.OPTIMIZED
+        assert optimization.verified_page_count == 1
     assert tuple(check.code for check in report.checks) == (
         FlattenedPdfExportCheckCode.VISIBLE_OVERLAYS_FLATTENED,
         FlattenedPdfExportCheckCode.OVERLAY_PRESENCE_MATCHED,
@@ -480,7 +506,7 @@ def test_live_constrained_flattened_export_authenticates_raster_and_revalidates_
     assert private_temp.sampled_peak_bytes <= _limits().temporary_storage_bytes
     _assert_raster_buffers_closed(raster_buffers)
     assert manager.measure_usage(_CASE_ID).temp_bytes == 0
-    assert _SOURCE_FIXTURE.read_bytes() == fixture_before
+    assert source_path.read_bytes() == fixture_before
     assert committed_path.read_bytes() == committed_before
     assert (
         hashlib.sha256(committed_path.read_bytes()).hexdigest() == plan.base_plan.sources[0].sha256

@@ -8,13 +8,14 @@ replay only the latter.  Neither phase stores a destination path or filename.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Final, Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from paperworkshell.domain.pdf_export import (
     PDF_EXPORT_HISTORY_RETRY_RECEIPT_VERSION,
+    PDF_EXPORT_REPORT_VERSION,
     PdfExportCheck,
     PdfExportCheckCode,
     PdfExportHistoryRetryReceipt,
@@ -396,7 +397,15 @@ def _require_exact_receipt(
             PdfExportHistoryErrorCode.DOCUMENT_INVALID,
             "export_retry.receipt",
         )
-    if receipt != expected:
+    # History/journal v1 retains the exact committed-output verification facts.
+    # Optimization evidence is transient and deliberately absent after restart;
+    # do not change an existing persistent schema to store these new details.
+    legacy_report = replace(
+        receipt.report,
+        report_version=PDF_EXPORT_REPORT_VERSION,
+        optimization=None,
+    )
+    if replace(receipt, report=legacy_report) != expected:
         reject_pdf_export_history(
             PdfExportHistoryErrorCode.RECORD_MISMATCH,
             "export_retry.receipt",

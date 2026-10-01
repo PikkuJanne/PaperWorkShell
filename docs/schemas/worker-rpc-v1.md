@@ -27,6 +27,16 @@ See the [worker lifecycle contract](../architecture/worker-lifecycle.md),
 [advisory page-quality review contract](../architecture/quality-review.md), and
 [verified searchable mixed-output contract](../architecture/searchable-mixed-output.md).
 
+PWS-0502 adds base PDF export report version 2 with a required, closed optimization record:
+`report_version`, `profile`, `outcome`, `baseline_byte_size`, `candidate_byte_size`,
+`selected_byte_size`, and `verified_page_count`. Legacy base report version 1 keeps its exact
+shape. Existing flattened/searchable envelopes embed the versioned base report, and current
+workers apply one fixed safe profile after baseline verification. Transport and plan schemas
+remain unchanged. Sizes and verified page counts must agree with the enclosing report; future
+versions and extra fields fail closed. See the
+[safe optimization contract](../architecture/pdf-safe-optimization.md) for selection, bounds,
+and transient-versus-persisted evidence.
+
 ## Common envelope
 
 Every message contains every envelope member. Objects are closed; an unknown member, message type,

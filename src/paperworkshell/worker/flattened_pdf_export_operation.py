@@ -89,6 +89,7 @@ from paperworkshell.worker.pdf_export_report import (
     PIKEPDF_EXPORT_ENGINE_VERSION,
     QPDF_EXPORT_ENGINE_VERSION,
 )
+from paperworkshell.worker.pdf_optimization import optimize_verified_pdf
 from paperworkshell.worker.private_temp import (
     OsWorkerPrivateTempStorage,
     WorkerPrivateTempStorage,
@@ -335,6 +336,19 @@ class WindowsFlattenedPdfExportOperationAdapter:
                         overlay_limits,
                         control,
                     )
+                    _require_active(context, absolute_deadline=absolute_deadline)
+                    selection = optimize_verified_pdf(
+                        candidate_path,
+                        report.base_report,
+                        operation_temp=operation_temp,
+                        resource_limits=context.limits,
+                        adapter_limits=adapter_limits,
+                        control=control,
+                        private_temp_storage=self.private_temp_storage,
+                        reserved_temporary_bytes=raster_total,
+                    )
+                    candidate_path = selection.path
+                    report = replace(report, base_report=selection.report)
                     _require_active(context, absolute_deadline=absolute_deadline)
                     section = _copy_verified_candidate(
                         context,

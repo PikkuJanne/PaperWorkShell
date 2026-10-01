@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -16,6 +17,11 @@ from paperworkshell.domain.pdf_export import (
     PdfExportSource,
     PdfExportSourceSignatureState,
     PdfExportVerificationReport,
+)
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
 )
 from paperworkshell.worker.pdf_export_report import (
     DEFAULT_PDF_EXPORT_ENGINE_PROFILE,
@@ -152,3 +158,128 @@ def test_worker_report_size_is_bounded_before_json_parsing() -> None:
         decode_pdf_export_worker_report(b"x" * (MAX_PDF_EXPORT_WORKER_REPORT_BYTES + 1))
 
     assert raised.value.code is PdfExportErrorCode.REPORT_INVALID
+
+
+def _optimized_worker_report(
+    outcome: PdfOptimizationOutcome = PdfOptimizationOutcome.OPTIMIZED,
+) -> PdfExportWorkerReport:
+    legacy = _worker_report()
+    optimized = outcome is PdfOptimizationOutcome.OPTIMIZED
+    optimization = PdfOptimizationReport(
+        profile=PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
+        outcome=outcome,
+        baseline_byte_size=2_048 if optimized else 1_024,
+        candidate_byte_size=None if outcome is PdfOptimizationOutcome.SKIPPED_BUDGET else 1_024,
+        selected_byte_size=1_024,
+        verified_page_count=1 if optimized else 0,
+    )
+    return replace(
+        legacy,
+        report=replace(legacy.report, report_version=2, optimization=optimization),
+    )
+
+
+@pytest.mark.parametrize("outcome", tuple(PdfOptimizationOutcome))
+def test_v2_optimization_outcomes_round_trip_inside_unchanged_pipe_bound(
+    outcome: PdfOptimizationOutcome,
+) -> None:
+    value = _optimized_worker_report(outcome)
+
+    payload = encode_pdf_export_worker_report(value)
+
+    assert len(payload) < MAX_PDF_EXPORT_WORKER_REPORT_BYTES
+    assert decode_pdf_export_worker_report(payload) == value
+    assert encode_pdf_export_worker_report(decode_pdf_export_worker_report(payload)) == payload
+    document = json.loads(payload)
+    assert document["worker_report_version"] == 1
+    assert document["report"]["report_version"] == 2
+    assert document["report"]["optimization"]["report_version"] == 1
+
+
+def test_legacy_report_wire_shape_is_unchanged_and_rejects_new_fields() -> None:
+    payload = encode_pdf_export_worker_report(_worker_report())
+    document = json.loads(payload)
+    assert document["report"]["report_version"] == 1
+    assert set(document["report"]) == {
+        "report_version",
+        "semantic_fingerprint",
+        "output_sha256",
+        "output_byte_size",
+        "page_count",
+        "checks",
+        "unsigned_derivative",
+    }
+    assert decode_pdf_export_worker_report(payload).report.optimization is None
+    document["report"]["optimization"] = None
+    with pytest.raises(PdfExportError) as captured:
+        decode_pdf_export_worker_report(json.dumps(document).encode("ascii"))
+    assert captured.value.code is PdfExportErrorCode.REPORT_INVALID
+
+
+@pytest.mark.parametrize(
+    ("member", "value"),
+    (
+        ("report_version", 3),
+        ("report_version", True),
+        ("optimization", None),
+        ("optimization", {}),
+        ("output_byte_size", 1_025),
+        ("unexpected", "PRIVATE_REPORT_CANARY"),
+    ),
+)
+def test_v2_report_rejects_version_shape_and_selected_size_mismatch(
+    member: str, value: object
+) -> None:
+    document = json.loads(encode_pdf_export_worker_report(_optimized_worker_report()))
+    document["report"][member] = value
+
+    with pytest.raises(PdfExportError) as captured:
+        decode_pdf_export_worker_report(json.dumps(document).encode("ascii"))
+
+    assert captured.value.code is PdfExportErrorCode.REPORT_INVALID
+    assert "PRIVATE_REPORT_CANARY" not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    ("member", "value"),
+    (
+        ("report_version", 2),
+        ("profile", "PRIVATE_PROFILE_CANARY"),
+        ("outcome", "PRIVATE_OUTCOME_CANARY"),
+        ("baseline_byte_size", 1_024),
+        ("candidate_byte_size", None),
+        ("candidate_byte_size", 1_025),
+        ("candidate_byte_size", True),
+        ("selected_byte_size", 1_025),
+        ("verified_page_count", 0),
+        ("verified_page_count", 2),
+        ("verified_page_count", True),
+        ("unexpected", "PRIVATE_REPORT_CANARY"),
+    ),
+)
+def test_v2_report_rejects_unverified_or_contradictory_optimization_without_raw_context(
+    member: str, value: object
+) -> None:
+    document = json.loads(encode_pdf_export_worker_report(_optimized_worker_report()))
+    document["report"]["optimization"][member] = value
+
+    with pytest.raises(PdfExportError) as captured:
+        decode_pdf_export_worker_report(json.dumps(document).encode("ascii"))
+
+    assert captured.value.code is PdfExportErrorCode.REPORT_INVALID
+    assert "PRIVATE_" not in str(captured.value)
+    assert captured.value.__context__ is None
+    assert captured.value.__cause__ is None
+
+
+def test_v2_report_requires_optimization_and_rejects_duplicate_optimization_fields() -> None:
+    document = json.loads(encode_pdf_export_worker_report(_optimized_worker_report()))
+    del document["report"]["optimization"]
+    with pytest.raises(PdfExportError):
+        decode_pdf_export_worker_report(json.dumps(document).encode("ascii"))
+    payload = encode_pdf_export_worker_report(_optimized_worker_report()).replace(
+        b'"selected_byte_size":1024',
+        b'"selected_byte_size":1024,"selected_byte_size":1024',
+    )
+    with pytest.raises(PdfExportError):
+        decode_pdf_export_worker_report(payload)

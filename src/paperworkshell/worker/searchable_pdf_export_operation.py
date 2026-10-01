@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
 from pathlib import Path
@@ -67,7 +67,11 @@ from paperworkshell.domain.searchable_pdf_export import (
 )
 from paperworkshell.ocr.ocrmypdf_adapter import OcrMyPdfAdapter, loaded_ocrmypdf_version
 from paperworkshell.ocr.tesseract_runner import TesseractCommandRunner, TesseractRunnerError
-from paperworkshell.pdf.export_adapter import loaded_pikepdf_engine_versions
+from paperworkshell.pdf.export_adapter import (
+    PdfExportAdapterControl,
+    PdfExportAdapterLimits,
+    loaded_pikepdf_engine_versions,
+)
 from paperworkshell.pdf.qpdf_checker import QpdfCommandChecker
 from paperworkshell.pdf.raster_pdf_page import RasterPdfPageLimits
 from paperworkshell.pdf.searchable_export_adapter import (
@@ -104,6 +108,7 @@ from paperworkshell.worker.pdf_export_report import (
     QPDF_EXPORT_ENGINE_VERSION,
     PdfExportWorkerReport,
 )
+from paperworkshell.worker.pdf_optimization import optimize_verified_pdf
 from paperworkshell.worker.private_temp import (
     OsWorkerPrivateTempStorage,
     WorkerPrivateTempStorage,
@@ -350,6 +355,35 @@ class WindowsSearchablePdfExportOperationAdapter:
                             context.limits.page_count,
                         )
                     )
+                _require_active(context, absolute_deadline=absolute_deadline)
+                selection = optimize_verified_pdf(
+                    candidate_path,
+                    report.base_report,
+                    operation_temp=operation_temp,
+                    resource_limits=context.limits,
+                    adapter_limits=PdfExportAdapterLimits(
+                        # Page scratch has been released. The optimizer admits
+                        # its additional candidate against the shared quota;
+                        # the inspection cap here describes the final PDF.
+                        inspection=replace(
+                            limits.inspection,
+                            maximum_temporary_bytes=context.limits.output_bytes,
+                        ),
+                        rendering=limits.rendering,
+                        maximum_total_source_bytes=limits.maximum_total_source_bytes,
+                        verification_width_pixels=limits.verification_width_pixels,
+                        verification_height_pixels=limits.verification_height_pixels,
+                    ),
+                    control=PdfExportAdapterControl(
+                        deadline=control.deadline,
+                        cancellation_probe=control.cancellation_probe,
+                        monotonic=control.monotonic,
+                    ),
+                    private_temp_storage=self.private_temp_storage,
+                    reserved_temporary_bytes=request.status_capacity_bytes,
+                )
+                candidate_path = selection.path
+                report = replace(report, base_report=selection.report)
                 _require_active(context, absolute_deadline=absolute_deadline)
                 output_result = _copy_file_section(
                     authorities,

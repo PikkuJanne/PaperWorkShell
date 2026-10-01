@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -15,7 +15,10 @@ import pypdfium2  # type: ignore[import-untyped]
 import pypdfium2_raw  # type: ignore[import-untyped]
 import pytest
 
-from paperworkshell.__main__ import build_windows_startup_recovery_service
+from paperworkshell.__main__ import (
+    build_windows_pdf_export_limits,
+    build_windows_startup_recovery_service,
+)
 from paperworkshell.app.export_history import PdfExportHistoryService
 from paperworkshell.app.pdf_export import PdfExportService
 from paperworkshell.app.source_ingest import SourceIngestService
@@ -28,7 +31,9 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProgress,
     PdfExportProgressPhase,
 )
+from paperworkshell.domain.pdf_optimization import PdfOptimizationOutcome, PdfOptimizationProfile
 from paperworkshell.domain.recovery import CaseRecoveryStatus, StartupRecoveryStatus
+from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
     PreparedSourceSummary,
@@ -54,7 +59,7 @@ from paperworkshell.worker.pdf_export_broker import (
     BrokeredPdfExporter,
     PdfExportBrokerPolicy,
 )
-from paperworkshell.worker.protocol.models import PDF_EXPORT_CAPABILITY, ResourceLimits
+from paperworkshell.worker.protocol.models import PDF_EXPORT_CAPABILITY
 from tests.worker_resources import WorkerTestResources
 
 pytestmark = pytest.mark.skipif(
@@ -185,13 +190,14 @@ def _import_limits() -> ImportLimits:
 
 
 def _worker(resources: WorkerTestResources, qpdf_executable: Path) -> WorkerClient:
+    policy = CONSTRAINED_RESOURCE_POLICY_V1
     return WorkerClient(
         WindowsProcessLauncher(_launch_config(resources, qpdf_executable)),
         WorkerResourcePolicy(
-            process_memory_bytes=512 * 1024 * 1024,
-            job_memory_bytes=768 * 1024 * 1024,
-            cpu_time_ms=60_000,
-            maximum_processes=2,
+            process_memory_bytes=policy.worker_process_memory_bytes,
+            job_memory_bytes=policy.worker_job_memory_bytes,
+            cpu_time_ms=min(60_000, policy.worker_cpu_time_ms),
+            maximum_processes=policy.worker_maximum_processes,
         ),
         WorkerTimeoutPolicy(
             handshake_seconds=20.0,
@@ -204,7 +210,8 @@ def _worker(resources: WorkerTestResources, qpdf_executable: Path) -> WorkerClie
 
 def _broker_policy() -> PdfExportBrokerPolicy:
     return PdfExportBrokerPolicy(
-        ResourceLimits(
+        replace(
+            build_windows_pdf_export_limits(CONSTRAINED_RESOURCE_POLICY_V1),
             wall_time_ms=30_000,
             cpu_time_ms=25_000,
             memory_bytes=64 * 1024 * 1024,
@@ -300,6 +307,16 @@ def test_live_export_is_repeatable_verified_recorded_and_preserves_source(
     assert second.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
     assert first.report.semantic_fingerprint == second.report.semantic_fingerprint
     assert first.report.output_sha256 == second.report.output_sha256
+    optimization = first.report.optimization
+    assert optimization is not None
+    assert optimization.profile is PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1
+    assert optimization.outcome in {
+        PdfOptimizationOutcome.OPTIMIZED,
+        PdfOptimizationOutcome.NO_REDUCTION,
+    }
+    assert optimization.selected_byte_size == first.report.output_byte_size
+    assert optimization.selected_byte_size <= optimization.baseline_byte_size
+    assert second.report.optimization == optimization
     assert first_path.read_bytes() == second_path.read_bytes()
     assert _FIXTURE.read_bytes() == source_bytes
     assert committed_source.read_bytes() == committed_source_bytes

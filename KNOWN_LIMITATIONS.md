@@ -23,6 +23,15 @@ This describes the current development checkout, not a packaged release.
   calculation-heavy forms, and cryptographic signature fields are outside v0.1 editing.
 - Target-size compression and broader compatibility/sanitization work remain in
   Milestone 5. A size limit can block export; it does not guarantee a smaller output.
+- Safe object/stream optimization may keep the same size when the verified baseline is
+  already compact or the temporary-storage budget cannot hold another candidate. It does
+  not change image resolution/quality or remove reachable metadata, annotations, or
+  attachments. An invalid candidate fails export. Current result/summary size comparisons
+  are transient; history recovery retains final sizes and checks without recreating them.
+  See the [optimization contract](docs/architecture/pdf-safe-optimization.md).
+- The conservative optimization profile requires opaque stream encodings to remain
+  exact. The pinned writer rewrites ASCIIHex streams as Flate streams; this case fails
+  export during comparison and preserves the originals and existing exports.
 
 ## Guided package review and export
 

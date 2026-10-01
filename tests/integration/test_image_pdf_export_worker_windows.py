@@ -104,6 +104,12 @@ def test_live_images_reopen_and_export_without_ocr_resources(
     assert result.status is PdfExportOutcomeStatus.COMMITTED_RECORDED
     assert len(result.checks) == 7
     assert result.report.page_count == 2
+    assert result.report.optimization is not None
+    assert result.report.optimization.selected_byte_size == destination.stat().st_size
+    assert (
+        result.report.optimization.selected_byte_size
+        <= result.report.optimization.baseline_byte_size
+    )
     with pikepdf.Pdf.open(destination, attempt_recovery=False) as output:
         assert len(output.pages) == 2
         for page in output.pages:

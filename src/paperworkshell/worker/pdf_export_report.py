@@ -10,12 +10,19 @@ from uuid import UUID
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
     MAX_PDF_EXPORT_CHECKS,
+    OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+    PDF_EXPORT_REPORT_VERSION,
     PdfExportCheck,
     PdfExportCheckCode,
     PdfExportError,
     PdfExportErrorCode,
     PdfExportVerificationReport,
     reject_pdf_export,
+)
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
 )
 
 PDF_EXPORT_WORKER_REPORT_VERSION: Final = 1
@@ -50,6 +57,17 @@ _REPORT_MEMBERS: Final = frozenset(
     }
 )
 _CHECK_MEMBERS: Final = frozenset({"code", "page_count"})
+_OPTIMIZATION_MEMBERS: Final = frozenset(
+    {
+        "report_version",
+        "profile",
+        "outcome",
+        "baseline_byte_size",
+        "candidate_byte_size",
+        "selected_byte_size",
+        "verified_page_count",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +122,28 @@ def encode_pdf_export_worker_report(value: PdfExportWorkerReport) -> bytes:
         reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report_encode")
     report = value.report
     engine = value.engine_profile
+    report_document: dict[str, object] = {
+        "report_version": report.report_version,
+        "semantic_fingerprint": report.semantic_fingerprint,
+        "output_sha256": report.output_sha256,
+        "output_byte_size": report.output_byte_size,
+        "page_count": report.page_count,
+        "checks": [
+            {"code": check.code.value, "page_count": check.page_count} for check in report.checks
+        ],
+        "unsigned_derivative": report.unsigned_derivative,
+    }
+    if report.optimization is not None:
+        optimization = report.optimization
+        report_document["optimization"] = {
+            "report_version": optimization.report_version,
+            "profile": optimization.profile.value,
+            "outcome": optimization.outcome.value,
+            "baseline_byte_size": optimization.baseline_byte_size,
+            "candidate_byte_size": optimization.candidate_byte_size,
+            "selected_byte_size": optimization.selected_byte_size,
+            "verified_page_count": optimization.verified_page_count,
+        }
     document = {
         "worker_report_version": value.worker_report_version,
         "operation_id": str(value.operation_id),
@@ -114,18 +154,7 @@ def encode_pdf_export_worker_report(value: PdfExportWorkerReport) -> bytes:
             "pypdfium2": engine.pypdfium2,
             "pdfium": engine.pdfium,
         },
-        "report": {
-            "report_version": report.report_version,
-            "semantic_fingerprint": report.semantic_fingerprint,
-            "output_sha256": report.output_sha256,
-            "output_byte_size": report.output_byte_size,
-            "page_count": report.page_count,
-            "checks": [
-                {"code": check.code.value, "page_count": check.page_count}
-                for check in report.checks
-            ],
-            "unsigned_derivative": report.unsigned_derivative,
-        },
+        "report": report_document,
     }
     try:
         payload = json.dumps(
@@ -170,7 +199,22 @@ def decode_pdf_export_worker_report(payload: bytes) -> PdfExportWorkerReport:
         pypdfium2=_string(engine_record["pypdfium2"], "export.engine_pypdfium2"),
         pdfium=_string(engine_record["pdfium"], "export.engine_pdfium"),
     )
-    report_record = _object(root["report"], _REPORT_MEMBERS, "export.report")
+    raw_report = root["report"]
+    if type(raw_report) is not dict:
+        reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report")
+    report_version = _integer(raw_report.get("report_version"), "export.domain_report_version")
+    if report_version == PDF_EXPORT_REPORT_VERSION:
+        report_members = _REPORT_MEMBERS
+    elif report_version == OPTIMIZED_PDF_EXPORT_REPORT_VERSION:
+        report_members = _REPORT_MEMBERS | {"optimization"}
+    else:
+        reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.domain_report_version")
+    report_record = _object(raw_report, report_members, "export.report")
+    optimization = (
+        _optimization_report(report_record["optimization"])
+        if report_version == OPTIMIZED_PDF_EXPORT_REPORT_VERSION
+        else None
+    )
     raw_checks = report_record["checks"]
     if type(raw_checks) is not list or not 1 <= len(raw_checks) <= MAX_PDF_EXPORT_CHECKS:
         reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report_checks")
@@ -196,7 +240,8 @@ def decode_pdf_export_worker_report(payload: bytes) -> PdfExportWorkerReport:
         unsigned_derivative=_boolean(
             report_record["unsigned_derivative"], "export.report_signature"
         ),
-        report_version=_integer(report_record["report_version"], "export.domain_report_version"),
+        report_version=report_version,
+        optimization=optimization,
     )
     return PdfExportWorkerReport(
         operation_id=_uuid(root["operation_id"], "export.report_operation"),
@@ -205,6 +250,39 @@ def decode_pdf_export_worker_report(payload: bytes) -> PdfExportWorkerReport:
         engine_profile=engine,
         worker_report_version=version,
     )
+
+
+def _optimization_report(value: object) -> PdfOptimizationReport:
+    record = _object(value, _OPTIMIZATION_MEMBERS, "export.report_optimization")
+    candidate_size = record["candidate_byte_size"]
+    if candidate_size is not None:
+        candidate_size = _integer(candidate_size, "export.optimization_candidate_size")
+    try:
+        return PdfOptimizationReport(
+            profile=PdfOptimizationProfile(
+                _string(record["profile"], "export.optimization_profile")
+            ),
+            outcome=PdfOptimizationOutcome(
+                _string(record["outcome"], "export.optimization_outcome")
+            ),
+            baseline_byte_size=_integer(
+                record["baseline_byte_size"], "export.optimization_baseline_size"
+            ),
+            candidate_byte_size=candidate_size,
+            selected_byte_size=_integer(
+                record["selected_byte_size"], "export.optimization_selected_size"
+            ),
+            verified_page_count=_integer(
+                record["verified_page_count"], "export.optimization_pages"
+            ),
+            report_version=_integer(record["report_version"], "export.optimization_version"),
+        )
+    except PdfExportError:
+        raise
+    except ValueError:
+        pass
+    # Enum exceptions may retain hostile strings. Reject outside their scope.
+    reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report_optimization")
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

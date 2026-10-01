@@ -87,6 +87,7 @@ from paperworkshell.worker.searchable_pdf_export_report import (
 from paperworkshell.worker.searchable_pdf_export_status import (
     decode_searchable_pdf_page_status,
 )
+from tests.unit.worker.pdf_optimization_fixtures import OptimizationStub
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows handle composition is required")
 
@@ -96,6 +97,13 @@ PDF_FIXTURE = PROJECT_ROOT / "tests/fixtures/synthetic/v1/pdf/born-digital.pdf"
 _DUPLICATE_SAME_ACCESS = 0x0000_0002
 _FILE_MAP_READ = 0x0000_0004
 _FILE_MAP_WRITE = 0x0000_0002
+
+
+@pytest.fixture(autouse=True)
+def optimizer(monkeypatch: pytest.MonkeyPatch) -> OptimizationStub:
+    stub = OptimizationStub()
+    monkeypatch.setattr(operation, "optimize_verified_pdf", stub)
+    return stub
 
 
 def _uuid(value: int) -> UUID:
@@ -334,12 +342,17 @@ def _candidate_adapter() -> SearchablePdfExportAdapter:
     return SearchablePdfExportAdapter(ocr_processor=cast(Any, _NoopOcr()))
 
 
+@pytest.mark.parametrize("select_smaller", (False, True))
 def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    optimizer: OptimizationStub,
+    select_smaller: bool,
 ) -> None:
     source_path = tmp_path / "source.pdf"
     output_payload = PDF_FIXTURE.read_bytes()
+    expected_output = output_payload[:128] if select_smaller else output_payload
+    optimizer.output = expected_output if select_smaller else None
     source_path.write_bytes(output_payload)
     plan = _plan(
         source_path,
@@ -447,7 +460,7 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
         request.output_object_id,
         request.status_object_id,
     )
-    assert output_bytes == output_payload
+    assert output_bytes == expected_output
     assert status_document.operation_id == context.operation_id
     assert status_document.status_object_id == status_reference.object_id
     assert status_document.semantic_fingerprint == plan.semantic_fingerprint
@@ -458,6 +471,20 @@ def test_worker_adapter_publishes_exact_correlated_pdf_status_and_report(
     assert worker_report.status_byte_size == status_reference.expected_byte_size
     assert worker_report.status_sha256 == status_reference.expected_sha256
     assert worker_report.base_report.report.output_sha256 == output_reference.expected_sha256
+    assert worker_report.base_report.report.output_byte_size == len(expected_output)
+    assert worker_report.base_report.report.optimization is not None
+    assert worker_report.base_report.report.optimization.baseline_byte_size == len(output_payload)
+    assert worker_report.base_report.report.optimization.selected_byte_size == len(expected_output)
+    assert len(optimizer.calls) == 1
+    optimization = optimizer.calls[0]
+    assert optimization.reserved_temporary_bytes == request.status_capacity_bytes
+    assert optimization.resource_limits == context.limits
+    adapter_limits = observed["limits"]
+    assert isinstance(adapter_limits, SearchablePdfExportAdapterLimits)
+    assert optimization.adapter_limits.inspection == replace(
+        adapter_limits.inspection, maximum_temporary_bytes=context.limits.output_bytes
+    )
+    assert optimization.adapter_limits.rendering == adapter_limits.rendering
     assert progress[-1].completed_units == context.limits.page_count
     assert {fact.total_units for fact in progress} == {context.limits.page_count}
     assert tuple(private_root.iterdir()) == ()
@@ -861,12 +888,25 @@ def test_nested_image_error_mapping_is_exhaustive_stable_and_sanitized() -> None
             ImagePageError(ImagePageErrorCode.TIMED_OUT, "image.private"),
             OperationOutcome.TIMED_OUT,
         ),
+        (
+            PdfExportError(PdfExportErrorCode.CANCELLED, "optimization.synthetic"),
+            OperationOutcome.CANCELLED,
+        ),
+        (
+            PdfExportError(PdfExportErrorCode.TIMED_OUT, "optimization.synthetic"),
+            OperationOutcome.TIMED_OUT,
+        ),
+        (
+            PdfExportError(PdfExportErrorCode.LIMIT_EXCEEDED, "optimization.synthetic"),
+            OperationOutcome.FAILED,
+        ),
     ),
 )
 def test_nested_terminal_failures_drive_exact_handler_terminal_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    nested_error: OcrError | ImagePageError,
+    optimizer: OptimizationStub,
+    nested_error: OcrError | ImagePageError | PdfExportError,
     expected_outcome: OperationOutcome,
 ) -> None:
     source_path = tmp_path / "source.pdf"
@@ -896,6 +936,26 @@ def test_nested_terminal_failures_drive_exact_handler_terminal_state(
     def fail_processing(*_args: object, **_kwargs: object) -> object:
         raise nested_error
 
+    def complete_processing(
+        _self: object,
+        selected_plan: SearchablePdfExportPlan,
+        _sources: object,
+        output_path: Path,
+        _temporary_directory: Path,
+        **_kwargs: object,
+    ) -> SearchablePdfVerificationReport:
+        output = source_path.read_bytes()
+        output_path.write_bytes(output)
+        return SearchablePdfVerificationReport.for_verified_plan(
+            selected_plan,
+            output_sha256=hashlib.sha256(output).hexdigest(),
+            output_byte_size=len(output),
+            page_outcomes=(_outcome(selected_plan),),
+        )
+
+    if isinstance(nested_error, PdfExportError):
+        optimizer.failure = nested_error
+
     monkeypatch.setattr(operation, "read_pdf_export_plan_section", read_plan)
     monkeypatch.setattr(operation, "_close_native_handle_no_raise", closed.append)
     monkeypatch.setattr(
@@ -906,7 +966,7 @@ def test_nested_terminal_failures_drive_exact_handler_terminal_state(
     monkeypatch.setattr(
         SearchablePdfExportAdapter,
         "assemble_and_verify",
-        fail_processing,
+        complete_processing if isinstance(nested_error, PdfExportError) else fail_processing,
     )
     monkeypatch.setattr(operation, "_materialize_worker_private_temp", lambda: tmp_path)
     storage = OsWorkerPrivateTempStorage(
@@ -924,6 +984,9 @@ def test_nested_terminal_failures_drive_exact_handler_terminal_state(
     assert result.outcome is expected_outcome
     assert result.outputs == ()
     assert set(closed) == {1, 2, 3, 4, 5}
+    assert len(optimizer.calls) == int(isinstance(nested_error, PdfExportError))
+    assert source_path.read_bytes() == PDF_FIXTURE.read_bytes()
+    assert tuple(tmp_path.iterdir()) == (source_path,)
 
 
 def test_exact_available_qpdf_and_tesseract_authorities_are_admitted(

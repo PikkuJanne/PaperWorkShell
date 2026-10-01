@@ -15,6 +15,7 @@ from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
     MAX_PDF_EXPORT_PAGES,
     MAX_PDF_EXPORT_SOURCES,
+    OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
     PDF_EXPORT_PLAN_VERSION,
     PDF_EXPORT_SEMANTIC_FINGERPRINT_VERSION,
     PdfExportCheck,
@@ -34,6 +35,11 @@ from paperworkshell.domain.pdf_export import (
     PdfExportVerificationReport,
     build_pdf_export_plan,
     build_pdf_export_plan_for_pages,
+)
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
 )
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000111")
@@ -819,6 +825,50 @@ def test_report_without_signature_markers_omits_unsigned_derivative_claim() -> N
     assert PdfExportCheckCode.UNSIGNED_DERIVATIVE not in tuple(
         check.code for check in report.checks
     )
+
+
+def test_optimized_report_binds_selected_size_pages_and_keeps_baseline_checks() -> None:
+    baseline = PdfExportVerificationReport.for_verified_plan(
+        build_pdf_export_plan(_snapshot()),
+        output_sha256="f" * 64,
+        output_byte_size=1_024,
+    )
+    optimization = PdfOptimizationReport(
+        PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
+        PdfOptimizationOutcome.OPTIMIZED,
+        2_048,
+        1_024,
+        1_024,
+        3,
+    )
+    report = replace(
+        baseline,
+        optimization=optimization,
+        report_version=OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+    )
+
+    assert report.checks == baseline.checks
+    assert report.claims == baseline.claims + (optimization.claim,)
+    outcome = PdfExportOutcome(
+        export_id=EXPORT_ID,
+        status=PdfExportOutcomeStatus.COMMITTED_RECORDED,
+        report=report,
+        destination_reopened=True,
+        history_retry=_history_retry(report),
+    )
+    assert outcome.claims == report.claims + (
+        "PaperWorkShell reopened the committed output successfully.",
+    )
+    for changes in (
+        {"optimization": None},
+        {"report_version": 1},
+        {"report_version": 3},
+        {"output_byte_size": 1_025},
+        {"optimization": replace(optimization, verified_page_count=2)},
+    ):
+        with pytest.raises(PdfExportError) as captured:
+            replace(report, **changes)
+        assert captured.value.code is PdfExportErrorCode.REPORT_INVALID
 
 
 def test_report_rejects_missing_reordered_or_mismatched_checks() -> None:

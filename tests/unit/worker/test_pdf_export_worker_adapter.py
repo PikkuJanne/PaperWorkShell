@@ -15,6 +15,7 @@ from uuid import UUID
 
 import pytest
 
+import paperworkshell.worker.pdf_export_operation as operation
 from paperworkshell.domain.pdf_export import (
     PdfExportError,
     PdfExportErrorCode,
@@ -64,6 +65,7 @@ from paperworkshell.worker.protocol.models import (
     ScalarValueType,
     TaggedScalar,
 )
+from tests.unit.worker.pdf_optimization_fixtures import OptimizationStub
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows handle composition is required")
 
@@ -82,6 +84,13 @@ _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_NORMAL = 0x0000_0080
 _FILE_FLAG_BACKUP_SEMANTICS = 0x0200_0000
 _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+
+@pytest.fixture(autouse=True)
+def optimizer(monkeypatch: pytest.MonkeyPatch) -> OptimizationStub:
+    stub = OptimizationStub()
+    monkeypatch.setattr(operation, "optimize_verified_pdf", stub)
+    return stub
 
 
 def _uuid(value: int) -> UUID:
@@ -512,8 +521,11 @@ def test_mid_export_private_disk_full_removes_partial_and_fresh_retry_recovers(
     assert tuple(temp_root.iterdir()) == ()
 
 
+@pytest.mark.parametrize("select_smaller", (False, True))
 def test_production_adapter_consumes_handles_stages_sources_and_correlates_outputs(
     tmp_path: Path,
+    optimizer: OptimizationStub,
+    select_smaller: bool,
 ) -> None:
     source_path = tmp_path / "source.pdf"
     source_payload = PDF_FIXTURE.read_bytes()
@@ -523,6 +535,8 @@ def test_production_adapter_consumes_handles_stages_sources_and_correlates_outpu
     _close_if_open(source_authority)
     plan = _plan(source_path)
     candidate = _RecordingCandidateAdapter(source_path, source_payload)
+    expected_output = source_payload[:128] if select_smaller else source_payload
+    optimizer.output = expected_output if select_smaller else None
 
     with (
         WindowsPdfExportOutputBuffer.create(1024 * 1024) as output,
@@ -560,17 +574,61 @@ def test_production_adapter_consumes_handles_stages_sources_and_correlates_outpu
         assert reference.object_id == request.output_object_id
         assert reference.operation_id == context.operation_id
         assert reference.content_kind == PDF_EXPORT_OUTPUT_CONTENT_KIND
-        assert reference.expected_byte_size == len(source_payload)
-        assert reference.expected_sha256 == hashlib.sha256(source_payload).hexdigest()
-        assert b"".join(output.iter_chunks(len(source_payload))) == source_payload
+        assert reference.expected_byte_size == len(expected_output)
+        assert reference.expected_sha256 == hashlib.sha256(expected_output).hexdigest()
+        assert b"".join(output.iter_chunks(len(expected_output))) == expected_output
         worker_report = decode_pdf_export_worker_report(result_pipe.read_complete_frame())
 
     assert candidate.calls == 1
     assert worker_report.operation_id == context.operation_id
     assert worker_report.output_object_id == request.output_object_id
     assert worker_report.report.output_sha256 == reference.expected_sha256
+    assert worker_report.report.output_byte_size == len(expected_output)
+    assert worker_report.report.optimization is not None
+    assert worker_report.report.optimization.baseline_byte_size == len(source_payload)
+    assert worker_report.report.optimization.selected_byte_size == len(expected_output)
+    assert len(optimizer.calls) == 1
+    assert optimizer.calls[0].reserved_temporary_bytes == 0
+    assert optimizer.calls[0].resource_limits == context.limits
     assert candidate.operation_temp is not None
     assert not candidate.operation_temp.exists()
+
+
+@pytest.mark.parametrize(
+    "code",
+    (PdfExportErrorCode.CANCELLED, PdfExportErrorCode.TIMED_OUT, PdfExportErrorCode.LIMIT_EXCEEDED),
+)
+def test_optimizer_failure_discards_private_candidates_and_fresh_retry_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    optimizer: OptimizationStub,
+    code: PdfExportErrorCode,
+) -> None:
+    source_path = tmp_path / "source.pdf"
+    payload = PDF_FIXTURE.read_bytes()
+    source_path.write_bytes(payload)
+    local_root = tmp_path / "worker-profile"
+    local_root.mkdir()
+    temp_root = local_root / "Temp"
+    monkeypatch.setenv("LOCALAPPDATA", os.fspath(local_root))
+    monkeypatch.setenv("TEMP", os.fspath(temp_root))
+    monkeypatch.setenv("TMP", os.fspath(temp_root))
+    storage = OsWorkerPrivateTempStorage(
+        available_bytes_probe=lambda _root: 64 * 1024 * 1024,
+        minimum_free_space_reserve_bytes=0,
+    )
+    candidate = _RecordingCandidateAdapter(source_path, payload)
+    optimizer.failure = PdfExportError(code, "optimization.synthetic")
+    with pytest.raises(PdfExportError) as caught:
+        _execute_worker_export_once(source_path, candidate, storage)
+    assert caught.value.code is code
+    assert len(optimizer.calls) == 1
+    assert tuple(temp_root.iterdir()) == ()
+    assert source_path.read_bytes() == payload
+    optimizer.failure = None
+    reference = _execute_worker_export_once(source_path, candidate, storage)
+    assert reference.expected_byte_size == len(payload)
+    assert tuple(temp_root.iterdir()) == ()
 
 
 def test_plan_decode_failure_consumes_every_discoverable_transfer_handle(tmp_path: Path) -> None:

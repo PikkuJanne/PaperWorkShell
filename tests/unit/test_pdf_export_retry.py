@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -28,6 +29,11 @@ from paperworkshell.domain.pdf_export_retry import (
     PdfExportRetryPhase,
     canonical_pdf_export_retry_entry_bytes,
     decode_pdf_export_retry_entry,
+)
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
 )
 
 CASE_ID = UUID("10000000-0000-4000-8000-000000000713")
@@ -154,6 +160,39 @@ def test_retry_journal_rejects_a_semantically_forged_receipt() -> None:
         PdfExportRetryJournalEntry(PdfExportRetryPhase.PREPARED, forged)
 
     assert raised.value.code is PdfExportHistoryErrorCode.RECORD_MISMATCH
+
+
+@pytest.mark.parametrize("phase", tuple(PdfExportRetryPhase))
+def test_v2_report_journal_preserves_exact_v1_facts_without_persisting_optimization(
+    phase: PdfExportRetryPhase,
+) -> None:
+    legacy = _receipt()
+    optimization = PdfOptimizationReport(
+        PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
+        PdfOptimizationOutcome.OPTIMIZED,
+        2_468,
+        1_234,
+        1_234,
+        1,
+    )
+    current = replace(
+        legacy,
+        report=replace(legacy.report, report_version=2, optimization=optimization),
+    )
+    payload = canonical_pdf_export_retry_entry_bytes(PdfExportRetryJournalEntry(phase, current))
+
+    assert payload == canonical_pdf_export_retry_entry_bytes(
+        PdfExportRetryJournalEntry(phase, legacy)
+    )
+    recovered = decode_pdf_export_retry_entry(payload)
+    assert recovered.receipt == legacy
+    assert recovered.receipt.report.optimization is None
+    assert recovered.receipt.report.claims == legacy.report.claims
+
+    forged = replace(current, report=replace(current.report, output_sha256="d" * 64))
+    with pytest.raises(PdfExportHistoryError) as captured:
+        PdfExportRetryJournalEntry(phase, forged)
+    assert captured.value.code is PdfExportHistoryErrorCode.RECORD_MISMATCH
 
 
 def test_retry_inventory_is_sorted_bounded_and_reserves_both_phases() -> None:

@@ -31,6 +31,11 @@ from paperworkshell.domain.pdf_export import (
     PdfExportCheckCode,
     PdfExportVerificationReport,
 )
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
+)
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.export.package_export import (
     PackageAggregateVerificationReport,
@@ -445,6 +450,36 @@ def test_preview_does_not_claim_pdf_or_byte_verification_before_export() -> None
         "Final file sizes, PDF verification, and destination save checks have not been completed."
         in text
     )
+
+
+@pytest.mark.parametrize("mode", tuple(PortalOutputMode))
+@pytest.mark.parametrize("optimization_outcome", tuple(PdfOptimizationOutcome))
+def test_summary_includes_only_the_recorded_optimization_outcome(
+    mode: PortalOutputMode, optimization_outcome: PdfOptimizationOutcome
+) -> None:
+    inputs = summary_inputs(mode)
+    outcome = summary_outcome(inputs)
+    optimized = optimization_outcome is PdfOptimizationOutcome.OPTIMIZED
+    pdfs = []
+    for item in outcome.report.pdfs:
+        base = item.base_report
+        optimization = PdfOptimizationReport(
+            profile=PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
+            outcome=optimization_outcome,
+            baseline_byte_size=base.output_byte_size + (100 if optimized else 0),
+            candidate_byte_size=base.output_byte_size if optimized else None,
+            selected_byte_size=base.output_byte_size,
+            verified_page_count=base.page_count if optimized else 0,
+        )
+        pdfs.append(
+            replace(item, base_report=replace(base, report_version=2, optimization=optimization))
+        )
+    updated = replace(outcome, report=replace(outcome.report, pdfs=tuple(pdfs)))
+    text = inputs.build(updated).to_plain_text()
+    for item in pdfs:
+        assert item.base_report.optimization is not None
+        assert item.base_report.optimization.claim in text
+    assert "Safe optimization" not in inputs.build().to_plain_text()
 
 
 def test_missing_scenario_shows_missing_category_unassigned_page_and_recovery() -> None:

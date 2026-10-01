@@ -29,11 +29,16 @@ from paperworkshell.domain.page_operations import (
     PageOperationError,
     PageOperationErrorCode,
 )
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationReport,
+)
 
 PDF_EXPORT_PLAN_VERSION: Final = 1
 PDF_EXPORT_PROFILE_VERSION: Final = 1
 IMAGE_PDF_EXPORT_VERSION: Final = 2
 PDF_EXPORT_REPORT_VERSION: Final = 1
+OPTIMIZED_PDF_EXPORT_REPORT_VERSION: Final = 2
 PDF_EXPORT_SEMANTIC_FINGERPRINT_VERSION: Final = 1
 # One export source consumes one out-of-band worker handle.  Keeping the batch
 # ceiling in the pure contract lets worker/protocol code import it without the
@@ -614,6 +619,7 @@ class PdfExportVerificationReport:
     checks: tuple[PdfExportCheck, ...]
     unsigned_derivative: bool
     report_version: int = PDF_EXPORT_REPORT_VERSION
+    optimization: PdfOptimizationReport | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -630,9 +636,24 @@ class PdfExportVerificationReport:
             or any(type(check) is not PdfExportCheck for check in self.checks)
             or type(self.unsigned_derivative) is not bool
             or type(self.report_version) is not int
-            or self.report_version != PDF_EXPORT_REPORT_VERSION
+            or self.report_version
+            not in {PDF_EXPORT_REPORT_VERSION, OPTIMIZED_PDF_EXPORT_REPORT_VERSION}
         ):
             reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "report.model")
+        if self.report_version == PDF_EXPORT_REPORT_VERSION:
+            if self.optimization is not None:
+                reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "report.optimization")
+        elif (
+            type(self.optimization) is not PdfOptimizationReport
+            or self.optimization.selected_byte_size != self.output_byte_size
+            or self.optimization.verified_page_count
+            != (
+                self.page_count
+                if self.optimization.outcome is PdfOptimizationOutcome.OPTIMIZED
+                else 0
+            )
+        ):
+            reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "report.optimization")
         expected_codes = _BASE_SUCCESSFUL_CHECKS + (
             (PdfExportCheckCode.UNSIGNED_DERIVATIVE,) if self.unsigned_derivative else ()
         )
@@ -678,7 +699,8 @@ class PdfExportVerificationReport:
 
     @property
     def claims(self) -> tuple[str, ...]:
-        return tuple(check.claim for check in self.checks)
+        optimization_claims = () if self.optimization is None else (self.optimization.claim,)
+        return tuple(check.claim for check in self.checks) + optimization_claims
 
 
 class PdfExportOutcomeStatus(StrEnum):
@@ -751,7 +773,9 @@ class PdfExportOutcome:
 
     @property
     def claims(self) -> tuple[str, ...]:
-        return tuple(check.claim for check in self.checks)
+        return self.report.claims + (
+            PdfExportCheck(PdfExportCheckCode.OUTPUT_COMMIT_REOPENED).claim,
+        )
 
     @property
     def history_retry_required(self) -> bool:

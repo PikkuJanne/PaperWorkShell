@@ -5,6 +5,7 @@
 - Extension: PWS-0201 ordinary JPEG/PNG page export through `pdf.export` version 2
 - Extension: PWS-0206 [verified searchable mixed-document output](searchable-mixed-output.md)
 - Extension: PWS-0307 [verified flattened visual-overlay export](flattened-overlay-export.md)
+- Extension: PWS-0502 [safe object/stream optimization](pdf-safe-optimization.md)
 - Decisions: PWS-D009, PWS-D011, PWS-D015, PWS-D029, PWS-D037, PWS-D038
 
 ## Scope and claims

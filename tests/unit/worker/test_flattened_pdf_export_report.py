@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
+)
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportError,
     FlattenedPdfExportErrorCode,
@@ -45,6 +51,31 @@ def test_flattened_worker_report_round_trips_and_binds_base_evidence() -> None:
     assert decoded.report.base_report.output_sha256 == "5" * 64
     assert decoded.report.checks == value.report.checks
     assert payload == encode_flattened_pdf_worker_report(decoded)
+
+
+def test_flattened_wrapper_retains_v2_base_optimization_without_wrapper_version_change() -> None:
+    legacy = _worker_report()
+    optimized = replace(
+        legacy.report.base_report,
+        report_version=2,
+        optimization=PdfOptimizationReport(
+            PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
+            PdfOptimizationOutcome.OPTIMIZED,
+            4_096,
+            2_048,
+            2_048,
+            legacy.report.base_report.page_count,
+        ),
+    )
+    value = replace(legacy, report=replace(legacy.report, base_report=optimized))
+
+    payload = encode_flattened_pdf_worker_report(value)
+    decoded = decode_flattened_pdf_worker_report(payload, plan=value.report.plan)
+
+    assert decoded == value
+    assert decoded.worker_report_version == legacy.worker_report_version
+    assert decoded.report.report_version == legacy.report.report_version
+    assert decoded.report.base_report.optimization == optimized.optimization
 
 
 @pytest.mark.parametrize(

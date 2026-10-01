@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
 
 from paperworkshell.domain.pdf_export import PdfExportError
+from paperworkshell.domain.pdf_optimization import (
+    PdfOptimizationOutcome,
+    PdfOptimizationProfile,
+    PdfOptimizationReport,
+)
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportError,
     SearchablePdfExportPlan,
@@ -130,7 +136,8 @@ def test_searchable_worker_plan_rejects_unsupported_language_set() -> None:
         decode_searchable_pdf_worker_plan(payload)
 
 
-def test_searchable_status_and_worker_report_round_trip() -> None:
+@pytest.mark.parametrize("optimized", (False, True))
+def test_searchable_status_and_worker_report_round_trip(optimized: bool) -> None:
     plan = _plan()
     output_bytes = b"verified-output"
     report = SearchablePdfVerificationReport.for_verified_plan(
@@ -139,6 +146,22 @@ def test_searchable_status_and_worker_report_round_trip() -> None:
         output_byte_size=len(output_bytes),
         page_outcomes=(_outcome(),),
     )
+    if optimized:
+        report = replace(
+            report,
+            base_report=replace(
+                report.base_report,
+                report_version=2,
+                optimization=PdfOptimizationReport(
+                    PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
+                    PdfOptimizationOutcome.OPTIMIZED,
+                    2 * len(output_bytes),
+                    len(output_bytes),
+                    len(output_bytes),
+                    1,
+                ),
+            ),
+        )
     status = SearchablePdfPageStatusDocument(
         operation_id=OPERATION_ID,
         status_object_id=STATUS_ID,

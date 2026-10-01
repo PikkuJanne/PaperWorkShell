@@ -75,6 +75,7 @@ from paperworkshell.worker.pdf_export_report import (
     PdfExportWorkerReport,
     encode_pdf_export_worker_report,
 )
+from paperworkshell.worker.pdf_optimization import optimize_verified_pdf
 from paperworkshell.worker.private_temp import (
     OsWorkerPrivateTempStorage,
     WorkerPrivateTempStorage,
@@ -285,6 +286,17 @@ class WindowsPdfExportOperationAdapter:
                     adapter_limits,
                     control,
                 )
+                _require_active(context, absolute_deadline=absolute_deadline)
+                selection = optimize_verified_pdf(
+                    candidate_path,
+                    report,
+                    operation_temp=operation_temp,
+                    resource_limits=context.limits,
+                    adapter_limits=adapter_limits,
+                    control=control,
+                    private_temp_storage=self.private_temp_storage,
+                )
+                candidate_path, report = selection.path, selection.report
                 _require_active(context, absolute_deadline=absolute_deadline)
                 section_result = _copy_verified_candidate(
                     context,

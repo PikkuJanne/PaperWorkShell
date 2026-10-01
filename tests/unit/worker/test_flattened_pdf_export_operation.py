@@ -14,6 +14,7 @@ from uuid import UUID
 import pytest
 
 import paperworkshell.worker.flattened_pdf_export_operation as operation
+from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportError,
     FlattenedPdfExportErrorCode,
@@ -59,6 +60,14 @@ from tests.unit.worker.flattened_pdf_export_fixtures import (
     synthetic_flattened_plan,
     uuid4,
 )
+from tests.unit.worker.pdf_optimization_fixtures import OptimizationStub
+
+
+@pytest.fixture(autouse=True)
+def optimizer(monkeypatch: pytest.MonkeyPatch) -> OptimizationStub:
+    stub = OptimizationStub()
+    monkeypatch.setattr(operation, "optimize_verified_pdf", stub)
+    return stub
 
 
 def _limits(*, memory_bytes: int = 256 * 1024 * 1024) -> ResourceLimits:
@@ -285,14 +294,19 @@ def _patch_boundary(
     return state
 
 
+@pytest.mark.parametrize("select_smaller", (False, True))
 def test_worker_adapter_publishes_bound_output_report_and_closes_every_handle_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    optimizer: OptimizationStub,
+    select_smaller: bool,
 ) -> None:
     plan = synthetic_flattened_plan()
     payload = _payload(plan)
     output = b"%PDF flattened synthetic output"
     candidate = _Candidate(output)
+    expected_output = b"%PDF selected" if select_smaller else output
+    optimizer.output = expected_output if select_smaller else None
     consumed: list[int] = []
     frames: list[bytes] = []
     state = _patch_boundary(monkeypatch, tmp_path, payload, consumed, frames)
@@ -303,8 +317,8 @@ def test_worker_adapter_publishes_bound_output_report_and_closes_every_handle_on
     ).export(_context(plan, payload), _request())
 
     assert reference.object_id == _request().output_object_id
-    assert reference.expected_byte_size == len(output)
-    assert reference.expected_sha256 == hashlib.sha256(output).hexdigest()
+    assert reference.expected_byte_size == len(expected_output)
+    assert reference.expected_sha256 == hashlib.sha256(expected_output).hexdigest()
     assert sorted((*consumed, *_MappedRaster.closed_handles)) == [501, 503, 505, 601, 603]
     assert len(set((*consumed, *_MappedRaster.closed_handles))) == 5
     assert state["temp_exited"]
@@ -313,6 +327,50 @@ def test_worker_adapter_publishes_bound_output_report_and_closes_every_handle_on
     assert decoded.operation_id == uuid4(31)
     assert decoded.output_object_id == _request().output_object_id
     assert decoded.report.base_report.output_sha256 == reference.expected_sha256
+    assert decoded.report.base_report.output_byte_size == len(expected_output)
+    assert decoded.report.base_report.optimization is not None
+    assert decoded.report.base_report.optimization.baseline_byte_size == len(output)
+    assert decoded.report.base_report.optimization.selected_byte_size == len(expected_output)
+    assert (
+        decoded.report.checks
+        == FlattenedPdfExportVerificationReport.for_verified_plan(
+            plan, output_byte_size=len(output), output_sha256=hashlib.sha256(output).hexdigest()
+        ).checks
+    )
+    assert len(optimizer.calls) == 1
+    assert optimizer.calls[0].reserved_temporary_bytes == plan.assets[0].raster_asset.byte_count
+    assert optimizer.calls[0].resource_limits == _limits()
+
+
+@pytest.mark.parametrize(
+    ("code", "mapped"),
+    (
+        (PdfExportErrorCode.CANCELLED, FlattenedPdfExportErrorCode.CANCELLED),
+        (PdfExportErrorCode.TIMED_OUT, FlattenedPdfExportErrorCode.TIMED_OUT),
+        (PdfExportErrorCode.LIMIT_EXCEEDED, FlattenedPdfExportErrorCode.LIMIT_EXCEEDED),
+    ),
+)
+def test_optimizer_failure_keeps_output_unpublished_and_closes_raster_and_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    optimizer: OptimizationStub,
+    code: PdfExportErrorCode,
+    mapped: FlattenedPdfExportErrorCode,
+) -> None:
+    plan = synthetic_flattened_plan()
+    payload = _payload(plan)
+    consumed: list[int] = []
+    frames: list[bytes] = []
+    state = _patch_boundary(monkeypatch, tmp_path, payload, consumed, frames)
+    optimizer.failure = PdfExportError(code, "optimization.synthetic")
+    with pytest.raises(FlattenedPdfExportError) as caught:
+        operation.WindowsFlattenedPdfExportOperationAdapter(
+            _Candidate(b"%PDF baseline"), cast(Any, _Storage())
+        ).export(_context(plan, payload), _request())
+    assert caught.value.code is mapped
+    assert frames == [] and state["temp_exited"]
+    assert len(optimizer.calls) == 1
+    assert sorted((*consumed, *_MappedRaster.closed_handles)) == [501, 503, 505, 601, 603]
 
 
 def test_malformed_plan_closes_only_discoverable_request_handles(

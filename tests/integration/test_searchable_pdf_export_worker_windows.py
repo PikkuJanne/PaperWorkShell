@@ -374,6 +374,10 @@ def test_live_searchable_mixed_export_preserves_text_ocrs_images_and_verifies_ou
     assert outcome.report.existing_text_page_count == 1
     assert outcome.report.ocr_text_page_count == 2
     assert outcome.report.needs_review_page_count == 0
+    optimization = outcome.report.base_report.optimization
+    assert optimization is not None
+    assert optimization.selected_byte_size == output.stat().st_size
+    assert optimization.selected_byte_size <= optimization.baseline_byte_size
     assert tuple(item.outcome for item in outcome.report.page_outcomes) == (
         SearchablePdfPageOutcomeCode.EXISTING_TEXT_PRESERVED,
         SearchablePdfPageOutcomeCode.OCR_TEXT_VERIFIED,

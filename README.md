@@ -46,6 +46,10 @@ encryption, and signature markers appear as findings or explicit unknown states;
 interactive content and newly discovered signature uncertainty can block export. See the
 [inspection contract](docs/architecture/pdf-structural-inspection.md) and
 [verification report](docs/development/pws0501-result.md).
+PWS-0502 adds [safe PDF object/stream optimization](docs/architecture/pdf-safe-optimization.md)
+after export verification. A smaller candidate is used only after semantic, structural, and
+all-page render checks; the result reports measured sizes or why the verified baseline was kept.
+Image re-encoding and target-size search remain later Milestone 5 work.
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,

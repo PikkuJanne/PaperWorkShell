@@ -503,6 +503,8 @@ def _outputs(
                     checks.append(check.claim)
                 else:
                     checks.append("Before saving: " + check.claim)
+            if report.base_report.optimization is not None:
+                checks.append("Before saving: " + report.base_report.optimization.claim)
             if state is PackageSummaryOutputState.COMMITTED:
                 checks.append(
                     "The saved file was reopened and matched the verified bytes."
