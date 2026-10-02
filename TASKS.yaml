@@ -4202,7 +4202,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: review
   critical_path: true
   depends_on:
   - PWS-0501
@@ -4237,12 +4237,12 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: 96e7563af9075f082da51b4c62d6ec18de65071b
+    revision: ce4868cf3bbc0f86d524420324c02fa3f5ecfc47
     commands:
-    - Focused native policy/security and constrained Windows worker tests passed (67 tests).
+    - Focused native policy/security and constrained Windows worker tests passed (72 tests).
     - Focused profile/report/retry/capability regressions passed (137 tests).
     notes:
-    - Implementation and synthetic corpus are committed; full regression verification is in progress.
+    - Implementation and synthetic corpus are committed; final automated acceptance and manual reader review remain pending.
     - Exact-output reader matrix remains NOT RUN; see docs/compatibility/pws-0506-portal-matrix.md.
 - id: PWS-0507
   milestone: M5

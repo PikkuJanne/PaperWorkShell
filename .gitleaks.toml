@@ -17,3 +17,8 @@ id = "generic-api-key"
 description = "Allow only the fixed public PWS-0104 privacy-test canary."
 regexTarget = "secret"
 regexes = ['''^PRIVATE-PARENT-PWS0104-CANARY$''']
+
+[[rules.allowlists]]
+description = "Allow only the fixed public PWS-0506 corpus compare-and-swap token."
+regexTarget = "secret"
+regexes = ['''^pws0506-corpus-v1$''']

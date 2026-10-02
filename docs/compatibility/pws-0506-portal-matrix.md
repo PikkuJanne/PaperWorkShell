@@ -158,7 +158,7 @@ Remove the uploaded test material when the service's supported workflow permits.
 No suitable permitted destination has been established here; remote upload status
 is **NOT RUN**. Local results must not be relabelled as remote upload results.
 
-## Initial automated artifact evidence
+## Automated artifact evidence
 
 The native generator completed twice with the same seven artifact hashes. Each
 PDF passed its production adapter's strict reopen, qpdf and PDFium checks. Both
@@ -175,8 +175,13 @@ passed. No manual reader pass follows from these automated results.
 
 The generator pins all seven expected artifact hashes; a self-consistent changed
 PDF/evidence pair is rejected. The exact implementation/evidence binding for human
-checks is supplied by the final prepared workspace. Source changes require fresh
-preparation before observations are recorded.
+checks was prepared on 2026-10-02 at source revision
+`ce4868cf3bbc0f86d524420324c02fa3f5ecfc47`. The workspace is
+`output/pws0506-portal-compatibility/a3741d06357b/`, with evidence SHA-256
+`b046984e5ddee6a30704932cf9220a884e8d1b2343ee599541b793b9ee0aef52`.
+All seven pinned hashes and 22 local checks matched. Source changes require fresh
+preparation before observations are recorded. The guided command verifies the current
+implementation binding before it records an attempt.
 
 ## Provenance, limitations and portfolio boundary
 

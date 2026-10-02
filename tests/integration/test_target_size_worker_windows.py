@@ -24,7 +24,11 @@ from paperworkshell.app.target_size_pdf_export import (
 )
 from paperworkshell.domain.checklist import TemplateBinding
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
-from paperworkshell.domain.pdf_export import PdfExportCheckCode, build_pdf_export_plan
+from paperworkshell.domain.pdf_export import (
+    PORTAL_PDF_EXPORT_PROFILE,
+    PdfExportCheckCode,
+    build_pdf_export_plan,
+)
 from paperworkshell.domain.pdf_image_stages import (
     PdfImageEligibility,
     PdfImageStageOutcome,
@@ -214,7 +218,7 @@ def test_live_target_search_combined_separate_and_zip_preserves_sources_and_clea
     manifest_before = layout.manifest.read_bytes()
     files_before = {path.relative_to(layout.case_root) for path in layout.case_root.rglob("*")}
     snapshot = WindowsManifestRepository(manager).load(_CASE_ID).snapshot
-    pdf_plan = build_pdf_export_plan(snapshot)
+    pdf_plan = build_pdf_export_plan(snapshot, profile=PORTAL_PDF_EXPORT_PROFILE)
     policy = CONSTRAINED_RESOURCE_POLICY_V1
     heavy_operations = HeavyOperationCoordinator(policy.maximum_heavy_operation_concurrency)
     config = create_pdf_export_worker_composition_config(
@@ -260,6 +264,7 @@ def test_live_target_search_combined_separate_and_zip_preserves_sources_and_clea
             baseline_digest = analyzed.analysis.baseline_sha256
             assert analyzed.report.outcome is PdfImageStageOutcome.UNCHANGED
             assert analyzed.baseline_report.optimization is not None
+            assert analyzed.baseline_report.portal_profile_verified
             assert analyzed.analysis.assets[0].eligibility is PdfImageEligibility.ELIGIBLE
         assert runtime._worker.query().phase is WorkerLifecyclePhase.STOPPED
 
@@ -323,6 +328,7 @@ def test_live_target_search_combined_separate_and_zip_preserves_sources_and_clea
                     PdfExportCheckCode.STRUCTURE_CLEAN,
                     PdfExportCheckCode.ALL_PAGES_RENDERED,
                     PdfExportCheckCode.PAGE_COUNT_MATCHED,
+                    PdfExportCheckCode.PORTAL_PROFILE_VERIFIED,
                 }.issubset({check.code for check in verified.base_report.checks})
             assert progress[-1].phase.value == "complete"
             assert progress[-1].completed_pages == 2

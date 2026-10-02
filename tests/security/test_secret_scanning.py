@@ -104,6 +104,56 @@ def _commit_all(git: str, root: Path, message: str) -> None:
 
 
 class SecretScanningSecurityTests(unittest.TestCase):
+    def test_pws0506_public_corpus_token_allowlist_is_exact_and_rule_scoped(self) -> None:
+        benign_token = "pws0506-corpus-v1"
+        one_character_near_miss = f"{benign_token[:-1]}2"
+        realistic_access_key = "".join(("AK", "IA", "Q7W8E9R0T1Y2U3I4"))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            trusted_ignore = Path(temporary) / "trusted-empty-ignore"
+            trusted_ignore.touch()
+            shutil.copy2(PROJECT_ROOT / ".gitleaks.toml", _trusted_gitleaks_config(trusted_ignore))
+            gitleaks = _gitleaks_executable()
+
+            _scan_working_path_batch(
+                gitleaks,
+                trusted_ignore,
+                [
+                    (
+                        Path("pws0506-benign.py"),
+                        f'manifest_cas_token = "{benign_token}"\n'.encode("ascii"),
+                        "PWS-0506 fixed public corpus token",
+                    )
+                ],
+                category="PWS-0506 allowlist regression",
+                batch_number=1,
+                budget=_SecretScanEnumerationBudget(),
+            )
+
+            for batch_number, credential_like_value in enumerate(
+                (one_character_near_miss, realistic_access_key), start=2
+            ):
+                with (
+                    self.subTest(batch_number=batch_number),
+                    self.assertRaises(SecretScanError) as raised,
+                ):
+                    _scan_working_path_batch(
+                        gitleaks,
+                        trusted_ignore,
+                        [
+                            (
+                                Path(f"credential-near-miss-{batch_number}.py"),
+                                f'manifest_cas_token = "{credential_like_value}"\n'.encode("ascii"),
+                                "credential-like allowlist near miss",
+                            )
+                        ],
+                        category="PWS-0506 allowlist regression",
+                        batch_number=batch_number,
+                        budget=_SecretScanEnumerationBudget(),
+                    )
+
+                self.assertEqual("SECRET_SCAN_FINDING", raised.exception.code)
+
     def test_pws0104_public_canary_allowlist_is_exact_and_rule_scoped(self) -> None:
         benign_canary = "PRIVATE-PARENT-PWS0104-CANARY"
         one_character_near_miss = f"{benign_canary[:-1]}Z"
