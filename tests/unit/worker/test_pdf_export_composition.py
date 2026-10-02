@@ -35,6 +35,7 @@ from paperworkshell.worker.pdf_export_broker import PdfExportBrokerPolicy
 from paperworkshell.worker.protocol.models import (
     IMAGE_PDF_EXPORT_CAPABILITY,
     PDF_EXPORT_CAPABILITY,
+    PORTAL_PDF_EXPORT_CAPABILITY,
     CapabilityDescriptor,
     ResourceLimits,
 )
@@ -187,24 +188,30 @@ def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(
     assert caught.value.code is WorkerClientErrorCode.CONFIGURATION_INVALID
 
 
-def test_image_export_composition_negotiates_only_explicit_v2_without_ocr(
+@pytest.mark.parametrize(
+    ("version", "capability"),
+    ((2, IMAGE_PDF_EXPORT_CAPABILITY), (3, PORTAL_PDF_EXPORT_CAPABILITY)),
+)
+def test_export_composition_negotiates_explicit_image_or_portal_version_without_ocr(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    version: int,
+    capability: CapabilityDescriptor,
 ) -> None:
     monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
     composition = create_pdf_export_worker_composition(
-        replace(_config(tmp_path), operation_version=2),
+        replace(_config(tmp_path), operation_version=version),
         heavy_operations=HeavyOperationCoordinator(1),
     )
     worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
-    assert worker.required_capabilities == (IMAGE_PDF_EXPORT_CAPABILITY,)
+    assert worker.required_capabilities == (capability,)
     launch = cast(Any, worker.launcher)._config
     assert launch.tesseract_executable is None
     assert launch.tessdata_root is None
     composition.close()
 
 
-@pytest.mark.parametrize("version", [0, 3, True])
+@pytest.mark.parametrize("version", [0, 4, True])
 def test_export_composition_rejects_unsupported_version(tmp_path: Path, version: int) -> None:
     with pytest.raises(WorkerClientError):
         replace(_config(tmp_path), operation_version=version)

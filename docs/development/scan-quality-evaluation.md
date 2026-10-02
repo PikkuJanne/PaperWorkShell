@@ -304,6 +304,21 @@ Commands: `python tools/pws0207_quality_evaluation.py record --revision
 and `python tools/pws0207_quality_evaluation.py validate output/pws0505-quality-rebind.json
 --revision 1b88998752e1844a6360cba5d7200c4794048b29`.
 
+### PWS-0506 evidence replay
+
+The unchanged exact-revision recorder and validator were replayed at implementation
+`96e7563af9075f082da51b4c62d6ec18de65071b`. Five bound worker surfaces changed:
+desktop composition, host, protocol codec, models and state. The quality algorithms,
+corpus, evaluator, profile and ResourcePolicy stayed unchanged. A separately recorded
+no-replace candidate was validated before replacing the baseline. JSON comparison
+confirmed that only `revision` changed; all eight metric rows and every other field
+match. No golden or validation rule changed.
+
+Commands: `python tools/pws0207_quality_evaluation.py record --revision
+96e7563af9075f082da51b4c62d6ec18de65071b --output output/pws0506-quality-rebind.json`
+and `python tools/pws0207_quality_evaluation.py validate output/pws0506-quality-rebind.json
+--revision 96e7563af9075f082da51b4c62d6ec18de65071b`.
+
 ### Interpretation limits
 
 - Blur, clipping, blank, orientation, and duplicate evidence is calculated from the bounded

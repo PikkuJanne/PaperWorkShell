@@ -4202,7 +4202,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0501
@@ -4237,9 +4237,13 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    revision: 96e7563af9075f082da51b4c62d6ec18de65071b
+    commands:
+    - Focused native policy/security and constrained Windows worker tests passed (67 tests).
+    - Focused profile/report/retry/capability regressions passed (137 tests).
+    notes:
+    - Implementation and synthetic corpus are committed; full regression verification is in progress.
+    - Exact-output reader matrix remains NOT RUN; see docs/compatibility/pws-0506-portal-matrix.md.
 - id: PWS-0507
   milestone: M5
   title: Run Milestone 5 compression and compatibility gate

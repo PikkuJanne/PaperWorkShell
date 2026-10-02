@@ -30,6 +30,7 @@ from paperworkshell.app.target_size_pdf_export import (
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.pdf_export import (
     OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+    OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
     PdfExportError,
     PdfExportErrorCode,
     PdfExportPlan,
@@ -83,7 +84,11 @@ class _StageCandidate:
             PdfExportVerificationReport.for_verified_plan(
                 plan, output_sha256=baseline_digest, output_byte_size=len(BASELINE_BYTES)
             ),
-            report_version=OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
+            report_version=(
+                OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION
+                if plan.profile.is_portal
+                else OPTIMIZED_PDF_EXPORT_REPORT_VERSION
+            ),
             optimization=PdfOptimizationReport(
                 PdfOptimizationProfile.SAFE_OBJECT_STREAM_V1,
                 PdfOptimizationOutcome.OPTIMIZED,
