@@ -3,7 +3,7 @@
 - Task: PWS-0506
 - Decision: [ADR 0014](../adr/0014-conservative-portal-profile.md)
 - Evidence: [reader and upload matrix](../compatibility/pws-0506-portal-matrix.md)
-- Status: Implemented; final verification and reader acceptance pending
+- Status: Implemented and automatically verified; reader acceptance pending
 
 Package export uses the versioned conservative portal profile. Ordinary legacy export
 profiles keep their existing meanings. A recipient can impose additional requirements;

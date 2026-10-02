@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 340050,
-      "sha256": "608dde2e785ce8e4eaa26b93066c1eb6b0f0794cecb45f224080ca5e1e06f8b8"
+      "bytes": 340925,
+      "sha256": "b92d92912f6f23ae9a44f0cab3d813c5a2e2fcd11eab95f4c79cc7bc2bf3b880"
     },
     {
       "path": "TASKS.schema.json",
@@ -185,13 +185,13 @@
     },
     {
       "path": "docs/adr/0014-conservative-portal-profile.md",
-      "bytes": 3313,
-      "sha256": "9d0a9f8b6119d645a934fd241aaaba650e68d6e1cf7684f72c3ff37f7124b1ee"
+      "bytes": 3317,
+      "sha256": "5dd257943a5986e10fda548103173127fd4b8c88c498a31d1e1852760cf7a895"
     },
     {
       "path": "docs/architecture/portal-export-profile.md",
-      "bytes": 4227,
-      "sha256": "0fb77d466e2bfa6590d8c0fbfb9bbeadfb33fdd84a904e170a2b8ff91030db0f"
+      "bytes": 4231,
+      "sha256": "690b795648336eb87a54cf65768bb5d87a9d7e33ca58b312dce0be8526c38672"
     },
     {
       "path": "docs/compatibility/pws-0506-portal-matrix.md",
@@ -200,8 +200,8 @@
     },
     {
       "path": "docs/development/pws0506-result.md",
-      "bytes": 12384,
-      "sha256": "2766f4cdd43a50b98a9d48d59625c3eafe71a5bc714dd7ce379683746d09f30b"
+      "bytes": 14637,
+      "sha256": "74c90a13c3a3a8a25f9795aa6e2556897a708c68999f6e5e7684fea31220f87c"
     }
   ],
   "validation": {
@@ -215,7 +215,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0506 conservative portal profile and synthetic compatibility corpus are implemented and in review. Final automated acceptance and exact-output reader observations remain pending. PWS-0507 is not ready. Standalone operation, case-data ownership and release-interface TBD facts are preserved.",
+    "PWS-0506 conservative portal profile and synthetic compatibility corpus passed full Windows CI, constrained native checks and automated corpus validation. The task remains in review for exact-output reader observations. PWS-0507 is not ready. Standalone operation, case-data ownership and release-interface TBD facts are preserved.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

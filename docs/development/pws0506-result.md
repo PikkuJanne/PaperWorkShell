@@ -1,6 +1,14 @@
 # Task result — PWS-0506: conservative portal profile and compatibility matrix
 
-**Status:** review. Final automated acceptance and exact-output reader observations are pending.
+**Status:** review. Implementation and automated verification are complete; the
+required exact-output desktop and Android reader observations are pending.
+
+[Windows CI run 36979077905](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36979077905)
+passed at `480053ba3d116c9ebde5b97d21466f6d88d8e136`: 5,557 unit, 733 security,
+74 accessibility and 551 integration tests passed. Seven existing integration tests
+require unstaged OCR runtimes or private workload artifacts. No PWS-0506 test skipped.
+This closure updates evidence, task metadata and documentation only; product code
+and tests remain exactly those verified by CI.
 
 ## Scope and plan
 
@@ -85,8 +93,33 @@ tested source commit `ce4868cf3bbc0f86d524420324c02fa3f5ecfc47`:
   skips and one failure in 5,046.27 seconds. The target-size reference baseline
   still used the legacy profile while production used the portal profile. The
   test now requests the portal profile and requires its proof; exact digest and
-  size assertions remain. The corrected live test passed locally in 134.63 seconds;
-  the final full rerun is pending.
+  size assertions remain. The corrected live test passed locally in 134.63 seconds
+  and in the successful final full run below.
+
+### Final automated acceptance
+
+Both jobs in
+[run 36979077905](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36979077905)
+passed at `480053ba3d116c9ebde5b97d21466f6d88d8e136`:
+
+| Repository command | Result |
+|---|---|
+| `python tools/dev.py check --ci-group core` | Pass: 5,557 unit tests in 732.58 seconds, 733 security tests in 250.11 seconds, and 74 accessibility tests in 3.53 seconds. No core test skipped. Job duration 24 minutes 33 seconds. |
+| `python tools/dev.py check --ci-group integration` | Pass: 551 tests, seven existing prerequisite skips, 3,832.40 seconds. Job duration 64 minutes 46 seconds. |
+
+Core also passed formatting, lint, strict typing, import boundaries, synthetic fixture
+and analytical/approved visual-reference validation, all registered schemas, task graph,
+Pillow runtime provenance, documentation, portfolio boundaries and resource-workload
+validators. The complete secret scan covered 2,971 historical blobs, 309 commit/tag
+objects, 3,006 historical path/blob pairs, 947 index blobs and 977 tracked working files.
+All five deliberate quality violations were detected by the final self-test.
+
+The seven integration skips concern unstaged admitted OCR runtimes and the existing
+PWS-0208 private artifact stage. New constrained portal success/failure tests and the
+corrected combined/separate/ZIP target-size test all passed. No timeout, resource
+limit, test exclusion or core validation rule was weakened. A separate redacted scan
+of all 69 path/blob pairs introduced by the five PWS-0506 implementation commits also
+reported zero findings after the exact public-token exception.
 
 ### Native, visual and artifact evidence
 
@@ -145,9 +178,10 @@ failures keep the existing sanitized worker error; recovery guidance is document
 
 ## Task graph
 
-PWS-0506 is in review while final automated acceptance and the named reader
-observations remain pending. PWS-0507 remains planned. There is no
+PWS-0506 is in review because the named reader observations remain pending despite
+successful automated acceptance. PWS-0507 remains planned. There is no
 dependency-ready task in the current milestone while PWS-0506 awaits acceptance.
+After its reader evidence is accepted, the next task is PWS-0507.
 
 ## Changed files
 

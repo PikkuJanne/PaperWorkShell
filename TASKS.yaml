@@ -4237,12 +4237,17 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: ce4868cf3bbc0f86d524420324c02fa3f5ecfc47
+    revision: 480053ba3d116c9ebde5b97d21466f6d88d8e136
     commands:
+    - python tools/dev.py check --ci-group core - passed in Windows CI run 36979077905; 5557 unit, 733 security and 74 accessibility tests, every core gate and all five quality self-tests.
+    - python tools/dev.py check --ci-group integration - passed in the same run; 551 tests and seven existing prerequisite skips; no PWS-0506 test skipped.
+    - python -m tools.pws0506_portal_compatibility prepare - passed; all seven pinned artifact hashes and 22 local constraint checks matched.
     - Focused native policy/security and constrained Windows worker tests passed (72 tests).
     - Focused profile/report/retry/capability regressions passed (137 tests).
     notes:
-    - Implementation and synthetic corpus are committed; final automated acceptance and manual reader review remain pending.
+    - Conservative portal profile v3 is verified in restricted workers and after rewrites; legacy profiles and persisted history meanings remain intact.
+    - See docs/development/pws0506-result.md for final CI, constrained native, visual, privacy and standalone-boundary evidence. No universal portal acceptance or release-interface claim is made.
+    - Implementation and automated verification are complete; review remains pending for exact-output Adobe Reader, Edge, Chrome, Firefox and Android observations.
     - Exact-output reader matrix remains NOT RUN; see docs/compatibility/pws-0506-portal-matrix.md.
 - id: PWS-0507
   milestone: M5

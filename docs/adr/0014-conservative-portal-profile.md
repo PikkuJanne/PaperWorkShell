@@ -1,6 +1,6 @@
 # ADR 0014: Verify a conservative portal PDF profile
 
-- Status: Implemented for PWS-0506; final verification and reader acceptance pending
+- Status: Implemented and automatically verified for PWS-0506; reader acceptance pending
 - Date: 2026-10-01
 - Decisions preserved: PWS-D008, PWS-D019, PWS-D024, PWS-D029, PWS-D037, PWS-D041, PWS-D042
 - Builds on: [target-size search](0012-target-size-search.md) and
