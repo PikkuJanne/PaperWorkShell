@@ -96,7 +96,14 @@ def _require_static_dictionary(
         _reject("portal.output_features")
     if is_stream and any(key in value for key in ("/F", "/FFilter", "/FDecodeParms", "/Ref")):
         _reject("portal.output_external_stream")
-    if str(value.get("/Type", "")) in {"/Filespec", "/OCG", "/OCMD"}:
+    object_type = value.get("/Type")
+    if object_type is not None and not isinstance(object_type, pikepdf.Name):
+        _reject("portal.output_type")
+    if isinstance(object_type, pikepdf.Name) and object_type in {
+        pikepdf.Name("/Filespec"),
+        pikepdf.Name("/OCG"),
+        pikepdf.Name("/OCMD"),
+    }:
         _reject("portal.output_features")
 
 

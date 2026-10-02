@@ -55,6 +55,25 @@ def test_malformed_feature_is_blocked_without_treating_unknown_as_absent() -> No
     assert caught.value.context == "portal.output_features"
 
 
+@pytest.mark.parametrize("kind", ("string", "integer", "array", "dictionary", "stream"))
+def test_malformed_type_is_blocked_without_materializing_its_value(kind: str) -> None:
+    with pikepdf.Pdf.open(BytesIO(_payload())) as document:
+        marker = pikepdf.String("SYNTHETIC TYPE CANARY")
+        values = {
+            "string": marker,
+            "integer": 123,
+            "array": pikepdf.Array([marker]),
+            "dictionary": pikepdf.Dictionary(Value=marker),
+            "stream": document.make_stream(b"SYNTHETIC TYPE CANARY"),
+        }
+        document.pages[0].Resources.PWSPolicy.Type = values[kind]
+        with pytest.raises(PdfExportError) as caught:
+            require_portal_output(document, maximum_objects=100_000, checkpoint=lambda: None)
+    assert caught.value.code is PdfExportErrorCode.VERIFICATION_STRUCTURE_FAILED
+    assert caught.value.context == "portal.output_type"
+    assert "SYNTHETIC" not in str(caught.value) + repr(caught.value)
+
+
 def test_graph_depth_and_object_count_limits_fail_closed() -> None:
     with pikepdf.Pdf.open(BytesIO(_payload())) as document:
         with pytest.raises(PdfExportError) as caught:
