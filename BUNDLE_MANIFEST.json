@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 345465,
-      "sha256": "7379aacdfae9f2824526d765313e983934096d1d0310a2b0878cfe92d6b2e37b"
+      "bytes": 340032,
+      "sha256": "652f882024ca164b03f09064abf5e08b5a6c7eeb277d791a0f7b97c6cb2bbfbe"
     },
     {
       "path": "TASKS.schema.json",
@@ -182,6 +182,26 @@
       "path": "docs/development/pws0505-result.md",
       "bytes": 18103,
       "sha256": "3ea36408278c1cf54a9b64201036178ef0634e9d1530855e97140b77c085ff01"
+    },
+    {
+      "path": "docs/adr/0014-conservative-portal-profile.md",
+      "bytes": 3291,
+      "sha256": "1c40ae21e2a0012d5e993ebc36516491c0761784bea8edd8604158f4ccecd46d"
+    },
+    {
+      "path": "docs/architecture/portal-export-profile.md",
+      "bytes": 4209,
+      "sha256": "5775094d1888c59454be6458bd5dc8a50db9b9337bc2de57f39cbd8aa0646342"
+    },
+    {
+      "path": "docs/compatibility/pws-0506-portal-matrix.md",
+      "bytes": 12169,
+      "sha256": "845eb5661f5705e8c208138885296c15f3df51bd52c54c55f2c37cc9e6a330fb"
+    },
+    {
+      "path": "docs/development/pws0506-result.md",
+      "bytes": 3062,
+      "sha256": "7965bd29ded7a2e6263e827d14dbb6981c82ec702c1363ed377195df40683a46"
     }
   ],
   "validation": {
