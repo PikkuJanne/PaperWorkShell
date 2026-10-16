@@ -8,7 +8,10 @@ from uuid import UUID
 
 from paperworkshell.app.checklist import checklist_definition_from_template
 from paperworkshell.domain.checklist import ASSIGNMENT_CONFIRMATION_CODE
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.templates.catalog import (
     GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
     built_in_template_repository,
@@ -58,7 +61,7 @@ def pilot_document(*, missing: bool = False, signature: str = "none_detected") -
             }
         )
     return {
-        "schema_version": 2,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(CASE_ID),
         "revision": 7,
         "created_at": "2026-09-05T10:00:00Z",
@@ -88,6 +91,7 @@ def pilot_document(*, missing: bool = False, signature: str = "none_detected") -
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": assignments,
         "confirmations": confirmations,
         "constraints": {
@@ -107,5 +111,10 @@ def pilot_snapshot(document: dict[str, object] | None = None) -> ManifestSnapsho
     selected = pilot_document() if document is None else document
     revision = cast(int, selected["revision"])
     return ManifestSnapshot(
-        CASE_ID, 2, revision, selected, f"{revision:064x}", f"{revision + 1:064x}"
+        CASE_ID,
+        CURRENT_MANIFEST_SCHEMA_VERSION,
+        revision,
+        selected,
+        f"{revision:064x}",
+        f"{revision + 1:064x}",
     )

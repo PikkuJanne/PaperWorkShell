@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
@@ -372,3 +372,53 @@ def test_pointer_regions_invert_active_crop_and_each_quarter_turn(
         # Integer widget positions introduce at most one preview-pixel error.
         for actual, wanted in zip((box.x, box.y, box.width, box.height), expected, strict=True):
             assert abs(actual - wanted) < 5_000
+
+
+def test_refresh_scans_record_and_selection_facades_a_constant_number_of_times(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from paperworkshell.domain.redaction import RedactionMark
+
+    base = _state()
+    marks = tuple(
+        RedactionMark(
+            UUID(int=10_000 + index, version=4),
+            base.page_id,
+            NormalizedPageBox(0, 0, 10_000, 10_000),
+        )
+        for index in range(64)
+    )
+    state = RedactionToolsState(
+        base.case_id,
+        base.manifest_revision,
+        base.page_id,
+        base.editor_session_id,
+        marks,
+        selected_mark_id=marks[-1].mark_id,
+    )
+    with _dialog(state=state) as dialog:
+        record_reads = 0
+        selected_reads = 0
+        original_records = cast(
+            Callable[[RedactionToolsState], tuple[RedactionMark, ...]],
+            cast(property, RedactionToolsState.__dict__["records"]).fget,
+        )
+        original_selected = cast(
+            Callable[[RedactionToolsState], RedactionMark | None],
+            cast(property, RedactionToolsState.__dict__["selected_record"]).fget,
+        )
+
+        def records(value: RedactionToolsState) -> tuple[RedactionMark, ...]:
+            nonlocal record_reads
+            record_reads += 1
+            return original_records(value)
+
+        def selected(value: RedactionToolsState) -> RedactionMark | None:
+            nonlocal selected_reads
+            selected_reads += 1
+            return original_selected(value)
+
+        monkeypatch.setattr(RedactionToolsState, "records", property(records))
+        monkeypatch.setattr(RedactionToolsState, "selected_record", property(selected))
+        dialog._refresh()
+        assert record_reads == 2 and selected_reads == 1

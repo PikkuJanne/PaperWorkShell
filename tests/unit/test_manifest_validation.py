@@ -80,7 +80,7 @@ def test_canonical_examples_validate_without_mutation() -> None:
         ("duplicate-key.json", "MANIFEST_SCHEMA_VALIDATION"),
         ("duplicate-source-id.json", "MANIFEST_SOURCE_ID_DUPLICATE"),
         ("executable-operation-field.json", "MANIFEST_SCHEMA_VALIDATION"),
-        ("future-version.json", "MANIFEST_SCHEMA_IDENTITY_MISMATCH"),
+        ("future-version.json", "MANIFEST_VERSION_UNSUPPORTED"),
         ("invalid-hash.json", "MANIFEST_SCHEMA_VALIDATION"),
         ("legacy-version.json", "MANIFEST_VERSION_UNSUPPORTED"),
         ("malformed-normalized-box.json", "MANIFEST_NORMALIZED_BOX_INVALID"),
@@ -103,7 +103,7 @@ def test_decoded_negative_fixtures_remain_rejected(filename: str, expected_code:
         (True, "MANIFEST_VERSION_INVALID"),
         ("1", "MANIFEST_VERSION_INVALID"),
         (0, "MANIFEST_VERSION_UNSUPPORTED"),
-        (3, "MANIFEST_VERSION_UNSUPPORTED"),
+        (4, "MANIFEST_VERSION_UNSUPPORTED"),
     ],
 )
 def test_version_dispatch_precedes_schema_execution(version: object, expected_code: str) -> None:

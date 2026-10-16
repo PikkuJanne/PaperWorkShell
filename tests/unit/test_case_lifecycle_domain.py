@@ -55,7 +55,7 @@ def test_case_summary_is_path_free_and_immutable() -> None:
             CaseLifecycleErrorCode.CASE_ID_INVALID,
         ),
         (
-            {"manifest_version": 3},
+            {"manifest_version": CURRENT_CASE_MANIFEST_VERSION + 1},
             CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,
         ),
         ({"revision": True}, CaseLifecycleErrorCode.MANIFEST_INVALID),

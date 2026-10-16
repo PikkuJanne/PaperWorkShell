@@ -196,7 +196,7 @@ def test_future_candidate_version_fails_before_repository_mutation() -> None:
     repository = _Repository()
     service = ManifestAutosaveService(repository, _case_id())
     future = _document(edit="future")
-    future["schema_version"] = 3
+    future["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION + 1
     service.queue(future)
 
     with pytest.raises(ManifestRepositoryError) as raised:

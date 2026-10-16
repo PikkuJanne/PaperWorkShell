@@ -27,7 +27,10 @@ from paperworkshell.app.portal_constraints import (
     ConstraintEditorState,
     PortalConstraintWorkflowService,
 )
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.domain.manifest_validation import MAX_OUTPUT_NAME_UTF16_CODE_UNITS
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.templates.catalog import (
@@ -53,7 +56,7 @@ def _id(value: UUID) -> Callable[[], UUID]:
 
 def _state() -> ConstraintEditorState:
     document: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(CASE_ID),
         "revision": 4,
         "created_at": "2026-08-28T10:00:00Z",
@@ -72,6 +75,7 @@ def _state() -> ConstraintEditorState:
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": [],
         "constraints": {
             "constraints_version": 1,
@@ -81,7 +85,9 @@ def _state() -> ConstraintEditorState:
         "confirmations": [],
         "export_history": {"storage_name": "export-history.json", "entries": []},
     }
-    snapshot = ManifestSnapshot(CASE_ID, 2, 4, document, "a" * 64, "b" * 64)
+    snapshot = ManifestSnapshot(
+        CASE_ID, CURRENT_MANIFEST_SCHEMA_VERSION, 4, document, "a" * 64, "b" * 64
+    )
     service = PortalConstraintWorkflowService(
         SafeTemplateLoader(built_in_template_repository()),
         GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,

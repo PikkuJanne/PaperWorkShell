@@ -20,6 +20,7 @@ from paperworkshell.app.portal_constraints import (
     preview_output_names,
 )
 from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
     MAX_SAFE_MANIFEST_INTEGER,
     ManifestSnapshot,
 )
@@ -50,7 +51,7 @@ def _document(
     template_ref: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
-        "schema_version": 2,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(CASE_ID),
         "revision": revision,
         "created_at": "2026-08-28T10:00:00Z",
@@ -69,6 +70,7 @@ def _document(
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": [],
         "constraints": constraints
         if constraints is not None
@@ -93,7 +95,7 @@ def _snapshot(
     assert type(revision) is int
     return ManifestSnapshot(
         CASE_ID,
-        2,
+        CURRENT_MANIFEST_SCHEMA_VERSION,
         revision,
         selected,
         sha256,

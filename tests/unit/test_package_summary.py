@@ -18,7 +18,10 @@ from paperworkshell.domain.checklist import (
     ChecklistDefinition,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.domain.package_summary import (
     PackageSummary,
     PackageSummaryError,
@@ -161,7 +164,7 @@ def summary_inputs(
             }
         )
     document: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(CASE_ID),
         "revision": 7,
         "created_at": "2026-09-05T10:00:00Z",
@@ -191,6 +194,7 @@ def summary_inputs(
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": assignments,
         "confirmations": confirmations,
         "constraints": {
@@ -204,7 +208,9 @@ def summary_inputs(
         },
         "export_history": {"storage_name": "export-history.json", "entries": []},
     }
-    snapshot = ManifestSnapshot(CASE_ID, 2, 7, document, "b" * 64, "c" * 64)
+    snapshot = ManifestSnapshot(
+        CASE_ID, CURRENT_MANIFEST_SCHEMA_VERSION, 7, document, "b" * 64, "c" * 64
+    )
     plan = (
         None
         if missing
@@ -625,7 +631,7 @@ def test_summary_rejects_mismatched_authority(mutation: str) -> None:
     if mutation in {"sha", "cas"}:
         snapshot = ManifestSnapshot(
             CASE_ID,
-            2,
+            CURRENT_MANIFEST_SCHEMA_VERSION,
             7,
             inputs.snapshot.document,
             "e" * 64 if mutation == "sha" else inputs.snapshot.sha256,

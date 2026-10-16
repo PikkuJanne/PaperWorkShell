@@ -1,4 +1,4 @@
-"""Windows transactional evidence for automatic case-manifest v1-to-v2 migration."""
+"""Windows transactional evidence for supported older case migration to current v3."""
 
 from __future__ import annotations
 
@@ -10,8 +10,12 @@ from uuid import UUID
 
 import pytest
 
-from paperworkshell.domain.manifest_migrations import migrate_manifest_v1_to_v2
+from paperworkshell.domain.manifest_migrations import (
+    migrate_manifest_v1_to_v2,
+    migrate_manifest_v2_to_v3,
+)
 from paperworkshell.domain.manifest_repository import (
+    MAX_SAFE_MANIFEST_INTEGER,
     ManifestLoadStatus,
     ManifestRepositoryError,
     ManifestRepositoryErrorCode,
@@ -67,6 +71,12 @@ def _install_v1(manifest_path: Path) -> dict[str, object]:
     return document
 
 
+def _current_candidate(source: dict[str, object]) -> dict[str, object]:
+    intermediate = migrate_manifest_v1_to_v2(source)
+    intermediate["revision"] = source["revision"]
+    return migrate_manifest_v2_to_v3(intermediate)
+
+
 def test_load_migrates_v1_losslessly_through_journal_and_is_idempotent(tmp_path: Path) -> None:
     manager, manifest_path = _stack(tmp_path)
     source = _install_v1(manifest_path)
@@ -78,7 +88,7 @@ def test_load_migrates_v1_losslessly_through_journal_and_is_idempotent(tmp_path:
     migrated = WindowsManifestRepository(manager).load(CASE_ID)
 
     assert migrated.status is ManifestLoadStatus.MIGRATED
-    assert migrated.snapshot.document == migrate_manifest_v1_to_v2(source)
+    assert migrated.snapshot.document == _current_candidate(source)
     assert (
         tuple(
             cast(dict[str, object], record)["sha256"]
@@ -94,7 +104,7 @@ def test_load_migrates_v1_losslessly_through_journal_and_is_idempotent(tmp_path:
     assert second.snapshot.document == migrated.snapshot.document
 
 
-def test_interrupted_migration_checkpoint_recovers_exact_v2_candidate(
+def test_interrupted_migration_checkpoint_recovers_exact_v3_candidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -115,15 +125,13 @@ def test_interrupted_migration_checkpoint_recovers_exact_v2_candidate(
 
     layout = manager.layout(CASE_ID)
     assert manifest_path.read_bytes() == previous
-    assert json.loads((layout.journal / "latest.json").read_bytes()) == (
-        migrate_manifest_v1_to_v2(source)
-    )
+    assert json.loads((layout.journal / "latest.json").read_bytes()) == (_current_candidate(source))
 
     monkeypatch.undo()
     reopened_manager = CaseWorkspaceManager(profile_root=manager.profile_root, quota=_quota())
     recovered = WindowsManifestRepository(reopened_manager).load(CASE_ID)
     assert recovered.status is ManifestLoadStatus.RECOVERED_MIGRATED
-    assert recovered.snapshot.document == migrate_manifest_v1_to_v2(source)
+    assert recovered.snapshot.document == _current_candidate(source)
     assert manifest_path.read_bytes() == (layout.journal / "latest.json").read_bytes()
 
 
@@ -140,3 +148,46 @@ def test_invalid_v1_is_rejected_before_migration_or_checkpoint_mutation(tmp_path
     assert raised.value.code is ManifestRepositoryErrorCode.MANIFEST_INVALID
     assert manifest_path.read_bytes() == previous
     assert not (manager.layout(CASE_ID).journal / "latest.json").exists()
+
+
+def test_v2_migrates_once_without_changing_existing_intent(tmp_path: Path) -> None:
+    manager, manifest_path = _stack(tmp_path)
+    source_v1 = _install_v1(manifest_path)
+    source = migrate_manifest_v1_to_v2(source_v1)
+    manifest_path.write_bytes(canonical_manifest_bytes(source))
+
+    loaded = WindowsManifestRepository(manager).load(CASE_ID)
+
+    assert loaded.status is ManifestLoadStatus.MIGRATED
+    assert loaded.snapshot.document == migrate_manifest_v2_to_v3(source)
+    assert loaded.snapshot.document["redaction_marks"] == []
+    assert WindowsManifestRepository(manager).load(CASE_ID).status is ManifestLoadStatus.CURRENT
+
+
+def test_old_v2_checkpoint_recovers_then_migrates_to_v3(tmp_path: Path) -> None:
+    manager, manifest_path = _stack(tmp_path)
+    source = _install_v1(manifest_path)
+    old_checkpoint = migrate_manifest_v1_to_v2(source)
+    layout = manager.layout(CASE_ID)
+    (layout.journal / "latest.json").write_bytes(canonical_manifest_bytes(old_checkpoint))
+
+    recovered = WindowsManifestRepository(manager).load(CASE_ID)
+
+    assert recovered.status is ManifestLoadStatus.RECOVERED_MIGRATED
+    assert recovered.snapshot.document == migrate_manifest_v2_to_v3(old_checkpoint)
+    assert recovered.snapshot.revision == cast(int, source["revision"]) + 2
+    assert recovered.snapshot.document["sources"] == source["sources"]
+    assert manifest_path.read_bytes() == (layout.journal / "latest.json").read_bytes()
+
+
+def test_v1_migration_uses_only_one_remaining_safe_revision(tmp_path: Path) -> None:
+    manager, manifest_path = _stack(tmp_path)
+    source = _install_v1(manifest_path)
+    source["revision"] = MAX_SAFE_MANIFEST_INTEGER - 1
+    manifest_path.write_bytes(canonical_manifest_bytes(source))
+
+    migrated = WindowsManifestRepository(manager).load(CASE_ID)
+
+    assert migrated.status is ManifestLoadStatus.MIGRATED
+    assert migrated.snapshot.revision == MAX_SAFE_MANIFEST_INTEGER
+    assert migrated.snapshot.document == _current_candidate(source)

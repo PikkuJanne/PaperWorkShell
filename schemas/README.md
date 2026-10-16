@@ -48,7 +48,7 @@ is released.
 - Released overlay-v1 runtime binding:
   [`docs/architecture/overlay-domain-model.md`](../docs/architecture/overlay-domain-model.md)
 
-Version 2 is the current manifest contract. It retains the closed v1 top-level graph and adds
+Version 2 is frozen migration input. It retains the closed v1 top-level graph and adds
 version-coupled deskew, contrast, and background-cleanup intent. Repository load migrates a fully
 validated v1 copy through the existing transactional recovery journal before returning state.
 PWS-0302 binds the overlay-v1 wire already shared by v1 and v2: per-page z-order is semantic,
@@ -56,6 +56,21 @@ visibility is derived rather than stored, and the signature-image and ordinary-s
 metadata cannot claim cryptographic signing or permanent removal. No schema bytes or reviewed v1/v2
 fingerprints changed for that runtime binding, and migration fresh-copies both populated and empty
 asset/overlay collections without inserting defaults.
+
+## Case manifest v3
+
+- Contract: [`case-manifest-v3.schema.json`](case-manifest-v3.schema.json)
+- Examples: [`minimal`](examples/case-manifest-v3-minimal.json) and
+  [`representative synthetic`](examples/case-manifest-v3-representative.json)
+- Semantics, closed review states, and migration:
+  [`docs/schemas/case-manifest-v3.md`](../docs/schemas/case-manifest-v3.md)
+
+Version 3 is current. It adds bounded `redaction_marks` separately from ordinary visual overlays.
+Only unapplied permanent-removal intent is accepted; marks contain no source text, paths, or
+authored verification claims. The permanent-removal pipeline remains disabled and active marked
+pages block ordinary export. Frozen v1/v2 migrations add an empty collection without promoting
+shapes or altering existing document intent. Applied, verified, and failed labels describe future
+pipeline review results and cannot be persisted as trusted case status.
 
 ## Export history v1
 

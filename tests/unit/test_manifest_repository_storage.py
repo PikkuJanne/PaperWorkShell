@@ -36,6 +36,8 @@ def _document(*, case_id: UUID = CASE_ID, revision: int = 0) -> dict[str, Any]:
     loaded = json.loads(MINIMAL_MANIFEST.read_text(encoding="utf-8"))
     assert type(loaded) is dict
     document = cast(dict[str, Any], loaded)
+    document["schema_version"] = 3
+    document["redaction_marks"] = []
     document["case_id"] = str(case_id)
     document["revision"] = revision
     document["created_at"] = "2026-08-03T09:00:00Z"
@@ -102,11 +104,11 @@ def test_packaged_runtime_schema_is_the_exact_canonical_contract() -> None:
         .read_text(encoding="utf-8")
     )
     current = json.loads(
-        (ROOT / "schemas" / "case-manifest-v2.schema.json").read_text(encoding="utf-8")
+        (ROOT / "schemas" / "case-manifest-v3.schema.json").read_text(encoding="utf-8")
     )
     packaged_current = json.loads(
         files("paperworkshell.storage")
-        .joinpath("case-manifest-v2.schema.json")
+        .joinpath("case-manifest-v3.schema.json")
         .read_text(encoding="utf-8")
     )
 
@@ -133,7 +135,7 @@ def test_invalid_save_target_is_rejected_before_any_storage_access(
     repository, manager = _repository_without_storage()
     candidate = _document(revision=1)
     if mutation == "future-version":
-        candidate["schema_version"] = 3
+        candidate["schema_version"] = 4
     elif mutation == "invalid-version":
         candidate["schema_version"] = "2"
     elif mutation == "case-mismatch":
@@ -182,7 +184,7 @@ def test_strict_payload_failures_are_sanitized_and_never_echo_bytes(payload: byt
 
 def test_future_version_dispatch_precedes_current_version_float_rules() -> None:
     future = _document()
-    future["schema_version"] = 3
+    future["schema_version"] = 4
     future["future_shape"] = {"fraction": 1.25, "members": ["unknown"]}
     payload = json.dumps(future, separators=(",", ":"), sort_keys=True).encode() + b"\n"
 

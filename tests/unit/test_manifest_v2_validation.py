@@ -12,7 +12,7 @@ import pytest
 
 from paperworkshell.domain.manifest_validation import (
     CANONICAL_SCHEMA_FINGERPRINT,
-    CURRENT_SCHEMA_FINGERPRINT,
+    V2_SCHEMA_FINGERPRINT,
     ManifestValidationIssue,
     validate_manifest,
 )
@@ -129,7 +129,7 @@ def test_released_schema_identities_are_distinct_and_v1_packaged_bytes_stay_froz
     assert CANONICAL_SCHEMA_FINGERPRINT == (
         "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
     )
-    assert CURRENT_SCHEMA_FINGERPRINT == (
+    assert V2_SCHEMA_FINGERPRINT == (
         "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
     )
 
@@ -146,6 +146,6 @@ def test_version_and_schema_identity_dispatch_before_schema_execution() -> None:
     assert {issue.code for issue in validate_manifest(v2, _schema(1))} == {
         "MANIFEST_SCHEMA_IDENTITY_MISMATCH"
     }
-    assert {issue.code for issue in validate_manifest({"schema_version": 3}, {})} == {
+    assert {issue.code for issue in validate_manifest({"schema_version": 4}, {})} == {
         "MANIFEST_VERSION_UNSUPPORTED"
     }

@@ -599,7 +599,7 @@ def test_ingest_validator_rejects_cumulative_page_count_amplification() -> None:
 
 def test_ingest_validator_rejects_future_version_before_other_state() -> None:
     document = _valid_candidate_document()
-    document["schema_version"] = 3
+    document["schema_version"] = 4
     document["sources"] = "Sensitive Applicant Source"
 
     with pytest.raises(SourceIngestError) as raised:

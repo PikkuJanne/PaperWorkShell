@@ -12,7 +12,10 @@ from uuid import UUID
 
 import pytest
 
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.domain.ocr import TRUSTED_OCR_ENGINE_PROFILE_SHA256
 from paperworkshell.domain.pdf_export import (
     PdfExportCheck,
@@ -63,6 +66,8 @@ EXPORT_ID = UUID("50000000-0000-4000-8000-000000000099")
 
 def _document() -> dict[str, Any]:
     document: dict[str, Any] = json.loads(REPRESENTATIVE_MANIFEST.read_text("utf-8"))
+    document["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION
+    document["redaction_marks"] = []
     # Overlays are owned by Milestone 3. Searchable output must reject an active
     # overlay rather than silently drop it, so the normal PWS-0206 fixture omits
     # them explicitly.
@@ -73,10 +78,12 @@ def _document() -> dict[str, Any]:
 def _snapshot(
     document: dict[str, Any] | None = None,
     *,
-    schema_version: int = 2,
+    schema_version: int = CURRENT_MANIFEST_SCHEMA_VERSION,
 ) -> ManifestSnapshot:
     selected = _document() if document is None else document
     selected["schema_version"] = schema_version
+    if schema_version in {1, 2}:
+        selected.pop("redaction_marks", None)
     return ManifestSnapshot(
         case_id=CASE_ID,
         schema_version=schema_version,
@@ -355,11 +362,14 @@ def test_pdf_encryption_states_fail_closed(
     _assert_error(code, lambda: build_searchable_pdf_export_plan(_snapshot(document)))
 
 
-def test_legacy_manifest_and_active_overlay_are_not_silently_reinterpreted() -> None:
+@pytest.mark.parametrize("legacy_version", [1, 2])
+def test_legacy_manifest_and_active_overlay_are_not_silently_reinterpreted(
+    legacy_version: int,
+) -> None:
     legacy = _document()
     _assert_error(
         SearchablePdfExportErrorCode.VERSION_UNSUPPORTED,
-        lambda: build_searchable_pdf_export_plan(_snapshot(legacy, schema_version=1)),
+        lambda: build_searchable_pdf_export_plan(_snapshot(legacy, schema_version=legacy_version)),
     )
 
 

@@ -1,30 +1,43 @@
-"""Bounded, disposable preview of unapplied removal intent; never covers source pixels."""
+"""Bounded preview of unapplied intent using outlines, without filled coverings."""
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleEvent,
     QHideEvent,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPaintEvent,
     QPen,
     QPixmap,
     QResizeEvent,
+    QTransform,
 )
 from PySide6.QtWidgets import QLabel, QWidget
 
 from paperworkshell.domain.page_coordinates import (
     BoxQuantization,
+    NormalizedPagePoint,
     PageCoordinateError,
     PageCoordinateTransform,
     RenderedImageSize,
     ScreenBox,
     ScreenViewport,
 )
-from paperworkshell.domain.redaction import RedactionMark
+from paperworkshell.domain.redaction import MAX_REDACTION_MARKS, RedactionMark
+
+_CONTRAST_OUTLINE_WIDTH = 6
+_DENSE_DESCRIPTION = "Dense preview: only the visible part of the selected region is shown; all regions remain in the list."
+_SELECT_FROM_LIST = "Select a region in the list to show its outline."
+_PREVIEW_DESCRIPTION = (
+    "Dashed crossed outlines show intent only. Information is still present. "
+    "Use the region list and numeric fields for all actions without a pointer."
+)
 
 
 class RedactionIntentCanvas(QLabel):
@@ -56,30 +69,90 @@ class RedactionIntentCanvas(QLabel):
         self._pointer_mapping_enabled = pointer_mapping_enabled
         self._records: tuple[RedactionMark, ...] = ()
         self._selected: UUID | None = None
+        self._selected_position: int | None = None
         self._start: QPointF | None = None
         self._end: QPointF | None = None
+        self._projection_key: tuple[object, ...] | None = None
+        self._outline_path = QPainterPath()
+        self._projected_rects: dict[UUID, QRectF] = {}
+        self._dense_preview = False
         self.setObjectName("redactionIntentCanvas")
         self.setAccessibleName("Unapplied removal regions preview")
-        self.setAccessibleDescription(
-            "Dashed crossed outlines show intent only. Information is still present. "
-            "Use the region list and numeric fields for all actions without a pointer."
-        )
+        self.setAccessibleDescription(_PREVIEW_DESCRIPTION)
         marker = QPixmap(1, 1)
         marker.fill(Qt.GlobalColor.transparent)
         self.setPixmap(marker)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setMinimumSize(240, 200)
+        self.setMinimumSize(240, 320)
         self.setMouseTracking(True)
 
     def set_records(self, records: tuple[RedactionMark, ...], selected: UUID | None) -> None:
-        if type(records) is not tuple or any(
-            type(record) is not RedactionMark for record in records
+        if (
+            type(records) is not tuple
+            or len(records) > MAX_REDACTION_MARKS
+            or any(type(record) is not RedactionMark for record in records)
         ):
             raise ValueError("invalid removal preview records")
+        if records != self._records:
+            self._invalidate_projection()
         self._records = records
         self._selected = selected
+        self._selected_position = next(
+            (
+                position
+                for position, mark in enumerate(records, start=1)
+                if mark.mark_id == selected
+            ),
+            None,
+        )
         self._cancel_drag()
         self.update()
+
+    def _invalidate_projection(self) -> None:
+        self._projection_key = None
+        self._outline_path = QPainterPath()
+        self._projected_rects.clear()
+
+    def _legend_text(self) -> str:
+        text = "UNAPPLIED — information remains."
+        if self._dense_preview:
+            text += f"\n{_DENSE_DESCRIPTION}"
+        if self._selected_position is not None:
+            text += f"\nSelected region {self._selected_position}: UNAPPLIED."
+        elif self._dense_preview:
+            text += f"\n{_SELECT_FROM_LIST}"
+        return text
+
+    def _legend_height(self) -> int:
+        # Reserve the largest legend before projection. Density/selection changes
+        # cannot move the page or change the pointer mapping between frames.
+        base = f"UNAPPLIED — information remains.\n{_DENSE_DESCRIPTION}\n"
+        candidates = (
+            base + f"Selected region {MAX_REDACTION_MARKS}: UNAPPLIED.",
+            base + _SELECT_FROM_LIST,
+        )
+        metrics = self.fontMetrics()
+        text_height = max(
+            metrics.boundingRect(
+                QRect(0, 0, max(1, self.width() - 8), 100_000),
+                int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap),
+                text,
+            ).height()
+            for text in candidates
+        )
+        return text_height + 8
+
+    def _update_accessible_description(self) -> None:
+        description = _PREVIEW_DESCRIPTION
+        if self._dense_preview:
+            description += f" {_DENSE_DESCRIPTION}"
+            if self._selected_position is None:
+                description += f" {_SELECT_FROM_LIST}"
+        if description != self.accessibleDescription():
+            self.setAccessibleDescription(description)
+            QAccessible.updateAccessibility(
+                QAccessibleEvent(self, QAccessible.Event.DescriptionChanged)
+            )
 
     def _page_rect(self) -> QRectF:
         if self._preview is not None and not self._preview.isNull():
@@ -91,11 +164,13 @@ class RedactionIntentCanvas(QLabel):
             width, height = 612 * crop.width, 792 * crop.height
             if int(self._transform.manifest_rotation) in {90, 270}:
                 width, height = height, width
-        scale = min(max(1, self.width() - 24) / width, max(1, self.height() - 24) / height)
+        legend_height = self._legend_height()
+        available_height = max(1, self.height() - legend_height - 24)
+        scale = min(max(1, self.width() - 24) / width, available_height / height)
         page_width, page_height = width * scale, height * scale
         return QRectF(
             (self.width() - page_width) / 2,
-            (self.height() - page_height) / 2,
+            legend_height + (self.height() - legend_height - page_height) / 2,
             page_width,
             page_height,
         )
@@ -107,10 +182,78 @@ class RedactionIntentCanvas(QLabel):
             ScreenViewport(page.x(), page.y(), page.width(), page.height()),
         )
 
+    def _ensure_projection(self) -> None:
+        # Keep one disposable path/rectangle projection, bounded by MAX_REDACTION_MARKS.
+        # The shared page preview is referenced; no source pixel copy is retained.
+        key = (
+            self.width(),
+            self.height(),
+            self._legend_height(),
+            self._transform,
+            self._display_size,
+            None if self._preview is None else self._preview.cacheKey(),
+        )
+        if key == self._projection_key:
+            self._update_accessible_description()
+            return
+        path = QPainterPath()
+        rectangles: dict[UUID, QRectF] = {}
+        outline_footprint = 0.0
+        size, viewport = self._mapping()
+        crop = self._transform.manifest_crop
+        # The domain model maps crop/quarter-turn geometry affinely. Derive the
+        # Qt map from three validated corner projections, then project all trusted
+        # mark rectangles in Qt without repeating Python coordinate validation.
+        origin = self._transform.normalized_to_screen(
+            NormalizedPagePoint(crop.x, crop.y), size, viewport
+        )
+        right = self._transform.normalized_to_screen(
+            NormalizedPagePoint(crop.x + crop.width, crop.y), size, viewport
+        )
+        bottom = self._transform.normalized_to_screen(
+            NormalizedPagePoint(crop.x, crop.y + crop.height), size, viewport
+        )
+        xx, xy = (right.x - origin.x) / crop.width, (right.y - origin.y) / crop.width
+        yx, yy = (bottom.x - origin.x) / crop.height, (bottom.y - origin.y) / crop.height
+        projection = QTransform(
+            xx,
+            xy,
+            yx,
+            yy,
+            origin.x - crop.x * xx - crop.y * yx,
+            origin.y - crop.x * xy - crop.y * yy,
+        )
+        crop_rect = QRectF(crop.x, crop.y, crop.width, crop.height)
+        for record in self._records:
+            box = record.box
+            visible = QRectF(box.x, box.y, box.width, box.height).intersected(crop_rect)
+            if visible.isEmpty():
+                continue
+            rect = projection.mapRect(visible)
+            rectangles[record.mark_id] = rect
+            outline_footprint += (rect.width() + rect.height()) * 2 * _CONTRAST_OUTLINE_WIDTH
+            path.addRect(rect)
+            path.moveTo(rect.topLeft())
+            path.lineTo(rect.bottomRight())
+            path.moveTo(rect.topRight())
+            path.lineTo(rect.bottomLeft())
+        self._outline_path = path
+        self._projected_rects = rectangles
+        self._projection_key = key
+        self._dense_preview = outline_footprint > viewport.width * viewport.height
+        self._update_accessible_description()
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         del event
+        self._ensure_projection()
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.palette().window())
+        painter.setPen(Qt.GlobalColor.black)
+        painter.drawText(
+            QRectF(4, 0, max(1, self.width() - 8), self._legend_height()),
+            int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap),
+            self._legend_text(),
+        )
         page = self._page_rect()
         painter.fillRect(page, Qt.GlobalColor.white)
         if self._preview is not None and not self._preview.isNull():
@@ -124,37 +267,34 @@ class RedactionIntentCanvas(QLabel):
                 if not self._pointer_mapping_enabled
                 else "Preview unavailable. Use exact full-page fields and review the source.",
             )
-        size, viewport = self._mapping()
-        for position, record in enumerate(self._records, start=1):
-            visible = self._transform.visible_part(record.box)
-            if visible is None:
-                continue
-            screen = self._transform.normalized_box_to_screen(visible, size, viewport)
-            rect = QRectF(
-                screen.left, screen.top, screen.right - screen.left, screen.bottom - screen.top
-            )
-            # Dual outlines retain contrast over dark or light page pixels. No fill hides content.
-            painter.setPen(QPen(Qt.GlobalColor.white, 6, Qt.PenStyle.SolidLine))
-            painter.drawRect(rect)
-            painter.setPen(
-                QPen(
-                    Qt.GlobalColor.black,
-                    3 if record.mark_id == self._selected else 2,
-                    Qt.PenStyle.DashLine,
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        selected_rect = self._projected_rects.get(self._selected) if self._selected else None
+        if self._dense_preview:
+            # Dense crossed strokes can resemble an opaque cover. Keep source
+            # pixels reviewable by showing only the explicitly selected region.
+            if selected_rect is not None:
+                selected_path = QPainterPath()
+                selected_path.addRect(selected_rect)
+                selected_path.moveTo(selected_rect.topLeft())
+                selected_path.lineTo(selected_rect.bottomRight())
+                selected_path.moveTo(selected_rect.topRight())
+                selected_path.lineTo(selected_rect.bottomLeft())
+                painter.setPen(
+                    QPen(Qt.GlobalColor.white, _CONTRAST_OUTLINE_WIDTH, Qt.PenStyle.SolidLine)
                 )
+                painter.drawPath(selected_path)
+                painter.setPen(QPen(Qt.GlobalColor.black, 3, Qt.PenStyle.DashLine))
+                painter.drawPath(selected_path)
+        else:
+            painter.setPen(
+                QPen(Qt.GlobalColor.white, _CONTRAST_OUTLINE_WIDTH, Qt.PenStyle.SolidLine)
             )
-            painter.drawRect(rect)
-            painter.drawLine(rect.topLeft(), rect.bottomRight())
-            painter.drawLine(rect.topRight(), rect.bottomLeft())
-            label = f"{position}: UNAPPLIED"
-            label_rect = QRectF(
-                rect.left(),
-                rect.top(),
-                painter.fontMetrics().horizontalAdvance(label) + 8,
-                painter.fontMetrics().height() + 4,
-            )
-            painter.fillRect(label_rect, Qt.GlobalColor.white)
-            painter.drawText(label_rect, int(Qt.AlignmentFlag.AlignCenter), label)
+            painter.drawPath(self._outline_path)
+            painter.setPen(QPen(Qt.GlobalColor.black, 2, Qt.PenStyle.DashLine))
+            painter.drawPath(self._outline_path)
+            if selected_rect is not None:
+                painter.setPen(QPen(Qt.GlobalColor.black, 3, Qt.PenStyle.DashLine))
+                painter.drawRect(selected_rect)
         if self._start is not None and self._end is not None:
             painter.setPen(QPen(Qt.GlobalColor.black, 2, Qt.PenStyle.DashLine))
             painter.drawRect(QRectF(self._start, self._end).normalized())
@@ -225,10 +365,11 @@ class RedactionIntentCanvas(QLabel):
         super().hideEvent(event)
 
     def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        if event.type() is QEvent.Type.EnabledChange:
+        if event.type() in {QEvent.Type.EnabledChange, QEvent.Type.FontChange}:
             self._cancel_drag()
         super().changeEvent(event)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        self._invalidate_projection()
         self._cancel_drag()
         super().resizeEvent(event)

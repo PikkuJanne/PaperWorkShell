@@ -44,6 +44,35 @@ BINDING = TemplateBinding(
 )
 
 
+def test_v3_removal_marks_reserve_identifiers_for_checklist_edits() -> None:
+    document = _document()
+    document["schema_version"] = 3
+    mark_id = ASSIGNMENT_IDS[0]
+    document["redaction_marks"] = [
+        {
+            "mark_id": str(mark_id),
+            "mark_version": 1,
+            "page_id": str(PAGE_IDS[0]),
+            "box": {
+                "coordinate_space": "normalized_page_millionths_v1",
+                "x": 0,
+                "y": 0,
+                "width": 100000,
+                "height": 100000,
+            },
+            "state": "unapplied",
+        }
+    ]
+    snapshot = ManifestSnapshot(CASE_ID, 3, 0, document, "a" * 64, "b" * 24)
+    history = ChecklistCommandHistory.from_snapshot(snapshot, _definition())
+    generated = iter((mark_id, ASSIGNMENT_IDS[1]))
+    edited = history.execute(
+        AddDocumentAssignmentCommand("application-form", (PAGE_IDS[0],), TIMES[1]),
+        id_factory=lambda: next(generated),
+    )
+    assert edited.assignments[0].assignment_id == ASSIGNMENT_IDS[1]
+
+
 def _definition(*, application_minimum: int = 1) -> ChecklistDefinition:
     return ChecklistDefinition(
         BINDING,

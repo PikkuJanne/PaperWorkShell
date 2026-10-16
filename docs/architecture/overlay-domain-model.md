@@ -94,7 +94,12 @@ and revision verification.
 
 ## Manifest migration
 
-The existing v1-to-v2 migration remains the only manifest transition. It validates and settles v1,
+PWS-0602 extends the case record to [manifest v3](../schemas/case-manifest-v3.md), preserving this
+overlay wire and keeping new unapplied removal marks in a separate collection. Current repository
+loads upgrade v1/v2 to v3 in one atomic transaction. The historical overlay-preservation behavior
+of the v1-to-v2 step remains as follows.
+
+The v1-to-v2 migration validates and settles v1,
 creates a defensive deep copy, changes `schema_version` to `2`, increments `revision`, validates the
 complete v2 candidate, and publishes through the transactional repository. Assets, overlays,
 nested boxes and payloads, collection order, and every other member are copied without

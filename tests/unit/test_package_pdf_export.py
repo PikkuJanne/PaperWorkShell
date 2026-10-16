@@ -35,7 +35,10 @@ from paperworkshell.app.source_ingest import (
     CommittedSearchablePdfSourceBatchLease,
     DeadlineProbe,
 )
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 from paperworkshell.domain.pdf_export import PdfExportPlan, PdfExportProgress
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
@@ -83,6 +86,8 @@ PRIVATE_TOKEN = "PRIVATE PACKAGE CANDIDATE TOKEN"
 
 def _document(*, overlays: bool = True) -> dict[str, object]:
     value = cast(dict[str, object], json.loads(REPRESENTATIVE.read_text("utf-8")))
+    value["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION
+    value["redaction_marks"] = []
     if not overlays:
         value["overlays"] = []
         value["assets"] = []

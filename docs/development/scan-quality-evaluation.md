@@ -319,6 +319,21 @@ Commands: `python tools/pws0207_quality_evaluation.py record --revision
 and `python tools/pws0207_quality_evaluation.py validate output/pws0506-quality-rebind.json
 --revision 96e7563af9075f082da51b4c62d6ec18de65071b`.
 
+### PWS-0602 evidence replay
+
+The unchanged evaluator, exact-revision recorder and validator were replayed against the local
+PWS-0602 implementation commit `946ba43deca06fdb7f7253bf40671e4aae00174f`. The removal-intent
+editor changes the organizer, UI backend and window, which are existing bound surfaces; it does
+not change quality algorithms, corpus, profile, evaluator or ResourcePolicy. A separately recorded
+no-replace candidate was validated before updating the canonical baseline. JSON comparison proved
+that only `revision` changed: every metric row and corpus/profile/resource field is identical.
+No golden, threshold, accuracy claim or validation guard changed. The implementation commit contains
+only PWS-0602 source/schema/tests; inherited M5/PWS-0601 working-tree evidence remains separate.
+
+Commands: `python tools/pws0207_quality_evaluation.py evaluate`, `record --revision
+946ba43deca06fdb7f7253bf40671e4aae00174f --output output/pws0602/quality-rebind.json`, and
+`validate output/pws0602/quality-rebind.json --revision 946ba43deca06fdb7f7253bf40671e4aae00174f`.
+
 ### Interpretation limits
 
 - Blur, clipping, blank, orientation, and duplicate evidence is calculated from the bounded

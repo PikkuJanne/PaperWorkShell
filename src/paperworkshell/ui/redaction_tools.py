@@ -88,6 +88,8 @@ class RedactionToolsDialog(QDialog):
         self._commit_started = False
         self._properties_dirty = False
         self._loading = False
+        self._listed_records: tuple[object, ...] | None = None
+        self._listed_rows: dict[UUID, int] = {}
         self._shortcuts: list[QShortcut] = []
         self._transform = page_transform or PageCoordinateTransform()
         self.setObjectName("redactionToolsDialog")
@@ -193,7 +195,7 @@ class RedactionToolsDialog(QDialog):
         self._add_button = self._button(
             "Add region",
             "addRedactionRegionButton",
-            "Add an unapplied region at the page center. No information is removed. Alt+A.",
+            "Add an unapplied region with editable position and size. No information is removed. Alt+A.",
             lambda: self._transition(lambda state: state.create()),
         )
         self._remove_button = self._button(
@@ -402,42 +404,45 @@ class RedactionToolsDialog(QDialog):
             self._list.setCurrentRow(selected_row)
 
     def _refresh(self) -> None:
+        records = self._state.records
+        selected = self._state.selected_record
         self._loading = True
         try:
             with QSignalBlocker(self._list):
-                self._list.clear()
-                for position, record in enumerate(self._state.records, start=1):
-                    box = record.box
-                    visible = self._transform.visible_part(box)
-                    visibility = (
-                        "outside active crop"
-                        if visible is None
-                        else (
-                            "fully shown in active crop"
-                            if visible == box
-                            else "partly shown in active crop"
+                if records != self._listed_records:
+                    self._list.clear()
+                    self._listed_rows.clear()
+                    for position, record in enumerate(records, start=1):
+                        box = record.box
+                        visible = self._transform.visible_part(box)
+                        visibility = (
+                            "outside active crop"
+                            if visible is None
+                            else (
+                                "fully shown in active crop"
+                                if visible == box
+                                else "partly shown in active crop"
+                            )
                         )
-                    )
-                    summary = (
-                        f"Unapplied removal region {position} of {len(self._state.records)}; "
-                        f"left {box.x / 10000:g} percent; top {box.y / 10000:g} percent; "
-                        f"width {box.width / 10000:g} percent; height {box.height / 10000:g} percent; "
-                        f"{visibility}. Information is still present."
-                    )
-                    item = QListWidgetItem(summary)
-                    item.setData(Qt.ItemDataRole.UserRole, record.mark_id)
-                    item.setData(Qt.ItemDataRole.AccessibleTextRole, summary)
-                    item.setData(
-                        Qt.ItemDataRole.AccessibleDescriptionRole,
-                        "Unapplied intent. Select and edit numeric fields; no removal verified.",
-                    )
-                    self._list.addItem(item)
-                    if (
-                        self._state.selected_record is not None
-                        and record.mark_id == self._state.selected_record.mark_id
-                    ):
-                        self._list.setCurrentItem(item)
-            selected = self._state.selected_record
+                        summary = (
+                            f"Unapplied removal region {position} of {len(records)}; "
+                            f"left {box.x / 10000:g} percent; top {box.y / 10000:g} percent; "
+                            f"width {box.width / 10000:g} percent; height {box.height / 10000:g} percent; "
+                            f"{visibility}. Information is still present."
+                        )
+                        item = QListWidgetItem(summary)
+                        item.setData(Qt.ItemDataRole.UserRole, record.mark_id)
+                        item.setData(Qt.ItemDataRole.AccessibleTextRole, summary)
+                        item.setData(
+                            Qt.ItemDataRole.AccessibleDescriptionRole,
+                            "Unapplied intent. Select and edit numeric fields; no removal verified.",
+                        )
+                        self._list.addItem(item)
+                        self._listed_rows[record.mark_id] = position - 1
+                    self._listed_records = records
+                self._list.setCurrentRow(
+                    -1 if selected is None else self._listed_rows[selected.mark_id]
+                )
             self._properties.setEnabled(selected is not None)
             if selected is not None:
                 for field, value in zip(
@@ -449,9 +454,7 @@ class RedactionToolsDialog(QDialog):
             self._remove_button.setEnabled(selected is not None)
             self._undo_button.setEnabled(self._state.can_undo)
             self._redo_button.setEnabled(self._state.can_redo)
-            self._canvas.set_records(
-                self._state.records, None if selected is None else selected.mark_id
-            )
+            self._canvas.set_records(records, None if selected is None else selected.mark_id)
             self._status.setAccessibleDescription(self._status.text())
         finally:
             self._loading = False

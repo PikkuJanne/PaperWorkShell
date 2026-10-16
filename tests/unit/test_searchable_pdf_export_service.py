@@ -27,6 +27,7 @@ from paperworkshell.app.source_ingest import (
     DeadlineProbe,
 )
 from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
     ManifestLoadResult,
     ManifestLoadStatus,
     ManifestRepository,
@@ -88,9 +89,11 @@ def _snapshot() -> ManifestSnapshot:
         (ROOT / "schemas/examples/case-manifest-v2-representative.json").read_text("utf-8")
     )
     document["overlays"] = []
+    document["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION
+    document["redaction_marks"] = []
     return ManifestSnapshot(
         case_id=CASE_ID,
-        schema_version=2,
+        schema_version=CURRENT_MANIFEST_SCHEMA_VERSION,
         revision=document["revision"],
         document=document,
         sha256="f" * 64,

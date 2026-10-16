@@ -244,6 +244,7 @@ def _document(*, page_count: int = 3, include_image: bool = False) -> dict[str, 
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": [],
         "constraints": {
             "constraints_version": 1,

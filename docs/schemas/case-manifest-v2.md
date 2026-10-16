@@ -1,6 +1,10 @@
 # Case manifest JSON Schema v2
 
-`PWS-0202` introduces the current case-state contract at
+Historical contract: PWS-0602 introduces [current v3](case-manifest-v3.md). Frozen v2 remains
+a validated migration input; its bytes and semantics are unchanged. The v1-to-v2 behavior below
+records its original transition. Current repository loads upgrade v1/v2 to v3 in one transaction.
+
+`PWS-0202` introduced the frozen v2 case-state contract at
 [`schemas/case-manifest-v2.schema.json`](../../schemas/case-manifest-v2.schema.json). The schema is
 a closed, self-contained JSON Schema Draft 2020-12 document and is fingerprint-bound independently
 from the immutable [v1 contract](case-manifest-v1.md). Validation never retrieves a network

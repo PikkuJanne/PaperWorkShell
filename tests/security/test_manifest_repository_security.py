@@ -124,13 +124,13 @@ def test_manifest_values_and_raw_storage_failures_never_reach_errors_or_logs(
     assert str(layout.case_root) not in storage_rendered
 
 
-def test_future_current_is_not_downgraded_from_valid_v2_checkpoint(tmp_path: Path) -> None:
+def test_future_current_is_not_downgraded_from_valid_current_checkpoint(tmp_path: Path) -> None:
     manager, layout = _stack(tmp_path)
     current = layout.manifest.read_bytes()
     (layout.journal / "latest.json").write_bytes(current)
     future = json.loads(current)
     assert type(future) is dict
-    future["schema_version"] = 3
+    future["schema_version"] = 4
     future["future_shape"] = {"fraction": 1.25, "members": ["unknown"]}
     future["future_text"] = "x" * (MAX_JSON_STRING_CODEPOINTS + 1)
     layout.manifest.write_bytes(

@@ -1,4 +1,4 @@
-"""Validate the frozen v1 and current v2 case-manifest contracts and fixtures."""
+"""Validate frozen v1/v2 and current v3 case-manifest contracts and fixtures."""
 
 from __future__ import annotations
 
@@ -21,22 +21,29 @@ from jsonschema.exceptions import SchemaError
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v1.schema.json")
-CURRENT_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v2.schema.json")
+V2_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v2.schema.json")
+CURRENT_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v3.schema.json")
 MANIFEST_EXAMPLE_DIRECTORY: Final = Path("schemas/examples")
 MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v1/invalid")
-CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v2/invalid")
+V2_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v2/invalid")
+CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v3/invalid")
 MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v1-*.json"
-CURRENT_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v2-*.json"
-SUPPORTED_SCHEMA_VERSION: Final = 2
+V2_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v2-*.json"
+CURRENT_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v3-*.json"
+SUPPORTED_SCHEMA_VERSION: Final = 3
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
 )
-CURRENT_CANONICAL_SCHEMA_FINGERPRINT: Final = (
+V2_CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+)
+CURRENT_CANONICAL_SCHEMA_FINGERPRINT: Final = (
+    "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
 )
 _SCHEMA_FINGERPRINTS_BY_VERSION: Final = {
     1: CANONICAL_SCHEMA_FINGERPRINT,
-    2: CURRENT_CANONICAL_SCHEMA_FINGERPRINT,
+    2: V2_CANONICAL_SCHEMA_FINGERPRINT,
+    3: CURRENT_CANONICAL_SCHEMA_FINGERPRINT,
 }
 
 MAX_MANIFEST_BYTES: Final = 8 * 1024 * 1024
@@ -507,7 +514,7 @@ def load_manifest_schema(
 def load_current_manifest_schema(
     root: Path = PROJECT_ROOT,
 ) -> tuple[dict[str, Any] | None, list[ManifestIssue]]:
-    """Strictly load and check the current self-contained v2 schema."""
+    """Strictly load and check the current self-contained v3 schema."""
 
     return _load_manifest_schema_at(
         root,
@@ -915,6 +922,7 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
     operations = cast(list[Mapping[str, Any]], data["page_operations"])
     assets = cast(list[Mapping[str, Any]], data["assets"])
     overlays = cast(list[Mapping[str, Any]], data["overlays"])
+    redaction_marks = cast(list[Mapping[str, Any]], data.get("redaction_marks", []))
     assignments = cast(list[Mapping[str, Any]], data["assignments"])
     confirmations = cast(list[Mapping[str, Any]], data["confirmations"])
     export_history = cast(Mapping[str, Any], data["export_history"])
@@ -960,6 +968,14 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
         document=document,
         issues=issues,
     )
+    redaction_index = _index_records(
+        redaction_marks,
+        id_field="mark_id",
+        collection_path="$.redaction_marks",
+        duplicate_code="MANIFEST_REDACTION_MARK_ID_DUPLICATE",
+        document=document,
+        issues=issues,
+    )
     assignment_index = _index_records(
         assignments,
         id_field="assignment_id",
@@ -992,6 +1008,7 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
         (operation_index, "operation", "operation_id", "$.page_operations"),
         (asset_index, "asset", "asset_id", "$.assets"),
         (overlay_index, "overlay", "overlay_id", "$.overlays"),
+        (redaction_index, "redaction_mark", "mark_id", "$.redaction_marks"),
         (assignment_index, "assignment", "assignment_id", "$.assignments"),
         (confirmation_index, "confirmation", "confirmation_id", "$.confirmations"),
         (export_index, "export", "export_id", "$.export_history.entries"),
@@ -1406,6 +1423,24 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
                     ),
                 )
 
+    for index, mark in enumerate(redaction_marks):
+        if mark["page_id"] not in page_index:
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_PAGE_REFERENCE_UNKNOWN",
+                    document,
+                    f"$.redaction_marks[{index}].page_id",
+                    "page reference does not resolve",
+                ),
+            )
+        _check_box(
+            cast(Mapping[str, Any], mark["box"]),
+            document=document,
+            path=f"$.redaction_marks[{index}].box",
+            issues=issues,
+        )
+
     assignment_times: dict[str, datetime | None] = {}
     for index, assignment in enumerate(assignments):
         _check_known_page_list(
@@ -1589,6 +1624,10 @@ def validate_manifest_document(
     if active_schema is None:
         if data.get("schema_version") == SUPPORTED_SCHEMA_VERSION:
             active_schema, schema_issues = load_current_manifest_schema(root)
+        elif data.get("schema_version") == 2:
+            active_schema, schema_issues = _load_manifest_schema_at(
+                root, V2_MANIFEST_SCHEMA_PATH, V2_CANONICAL_SCHEMA_FINGERPRINT
+            )
         else:
             active_schema, schema_issues = load_manifest_schema(root)
         if active_schema is None:
@@ -1636,17 +1675,27 @@ def _fixture_paths(
 def validate_manifest_fixture_set(
     root: Path = PROJECT_ROOT,
 ) -> tuple[ManifestFixtureSummary | None, list[ManifestIssue]]:
-    """Validate frozen v1/current v2 examples and every negative fixture."""
+    """Validate frozen v1/v2/current v3 examples and every negative fixture."""
 
     legacy_schema, legacy_schema_issues = load_manifest_schema(root)
+    v2_schema, v2_schema_issues = _load_manifest_schema_at(
+        root, V2_MANIFEST_SCHEMA_PATH, V2_CANONICAL_SCHEMA_FINGERPRINT
+    )
     current_schema, current_schema_issues = load_current_manifest_schema(root)
-    if legacy_schema is None or current_schema is None:
-        return None, _sorted_issues([*legacy_schema_issues, *current_schema_issues])
+    if legacy_schema is None or v2_schema is None or current_schema is None:
+        return None, _sorted_issues(
+            [*legacy_schema_issues, *v2_schema_issues, *current_schema_issues]
+        )
     fixture_sets = (
         (
             legacy_schema,
             MANIFEST_EXAMPLE_PATTERN,
             MANIFEST_INVALID_FIXTURE_DIRECTORY,
+        ),
+        (
+            v2_schema,
+            V2_MANIFEST_EXAMPLE_PATTERN,
+            V2_MANIFEST_INVALID_FIXTURE_DIRECTORY,
         ),
         (
             current_schema,

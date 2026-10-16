@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.redaction import (
+    MAX_REDACTION_MARKS,
     RedactionErrorCode,
     RedactionMark,
     RedactionMarkCollection,
@@ -63,6 +64,81 @@ def _mark_facts(marks: tuple[RedactionMark, ...]) -> tuple[tuple[object, ...], .
 
 
 @dataclass(frozen=True, slots=True, repr=False)
+class RedactionEdit:
+    """One bounded before/after change; it never retains a whole-case snapshot."""
+
+    before: RedactionMark | None
+    after: RedactionMark | None
+
+    def __post_init__(self) -> None:
+        if self.before is None and self.after is None:
+            reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.edit")
+        for mark in (self.before, self.after):
+            if mark is not None:
+                if type(mark) is not RedactionMark:
+                    reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.edit")
+                mark.__post_init__()
+        if (
+            self.before is not None
+            and self.after is not None
+            and (
+                self.before.mark_id != self.after.mark_id
+                or self.before.page_id != self.after.page_id
+            )
+        ):
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.edit_identity")
+
+    def __repr__(self) -> str:
+        return "RedactionEdit(<intent-hidden>)"
+
+
+def _replay_edits(
+    opening_marks: tuple[RedactionMark, ...],
+    edits: tuple[RedactionEdit, ...],
+    cursor: int,
+    page_id: UUID,
+) -> tuple[RedactionMark, ...]:
+    """Validate all deltas in one pass, materializing only the requested revision.
+
+    Ordered dictionaries retain replacement positions. Replaying from the
+    opening order restores a deleted mark at its exact position on undo, while
+    creations append. Both the applied prefix and redo suffix are authenticated.
+    """
+
+    records = {mark.mark_id: mark for mark in opening_marks}
+    current = opening_marks if cursor == 0 else None
+    for position, edit in enumerate(edits, start=1):
+        if type(edit) is not RedactionEdit:
+            reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.edit")
+        edit.__post_init__()
+        before, after = edit.before, edit.after
+        if any(mark is not None and mark.page_id != page_id for mark in (before, after)):
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.page_scope")
+        identity = (
+            before.mark_id if before is not None else after.mark_id if after is not None else None
+        )
+        if identity is None:
+            reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.edit")
+        existing = records.get(identity)
+        if before is None:
+            if existing is not None:
+                reject_redaction(RedactionErrorCode.IDENTIFIER_COLLISION, "redaction.edit")
+        elif existing != before:
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.edit_before")
+        if after is None:
+            del records[identity]
+        else:
+            records[identity] = after
+        if len(records) > MAX_REDACTION_MARKS:
+            reject_redaction(RedactionErrorCode.CAPACITY_EXCEEDED, "redaction.collection")
+        if position == cursor:
+            current = tuple(records.values())
+    if current is None:
+        reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.cursor")
+    return current
+
+
+@dataclass(frozen=True, slots=True, repr=False)
 class RedactionToolsState:
     """Bounded in-memory intent journal; saving never applies permanent removal."""
 
@@ -71,12 +147,13 @@ class RedactionToolsState:
     page_id: UUID
     editor_session_id: UUID
     opening_marks: tuple[RedactionMark, ...] = field(repr=False)
-    steps: tuple[tuple[RedactionMark, ...], ...] = field(repr=False)
+    steps: tuple[RedactionEdit, ...] = field(default=(), repr=False)
     cursor: int = 0
     selected_mark_id: UUID | None = None
     announcement: str = (
         "Removal-mark editor ready. Marks are unapplied; source information remains."
     )
+    _current_marks: tuple[RedactionMark, ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -88,29 +165,20 @@ class RedactionToolsState:
             or self.manifest_revision < 0
             or type(self.opening_marks) is not tuple
             or type(self.steps) is not tuple
-            or not 1 <= len(self.steps) <= MAX_REDACTION_EDIT_STEPS + 1
+            or len(self.steps) > MAX_REDACTION_EDIT_STEPS
             or type(self.cursor) is not int
-            or not 0 <= self.cursor < len(self.steps)
+            or not 0 <= self.cursor <= len(self.steps)
             or not is_redaction_announcement_safe(self.announcement)
         ):
             reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.editor")
         RedactionMarkCollection(self.opening_marks)
-        opening_other = tuple(mark for mark in self.opening_marks if mark.page_id != self.page_id)
-        opening_other_ids = {mark.mark_id for mark in opening_other}
-        for step in self.steps:
-            RedactionMarkCollection(step)
-            if _mark_facts(
-                tuple(mark for mark in step if mark.page_id != self.page_id)
-            ) != _mark_facts(opening_other) or any(
-                mark.mark_id in opening_other_ids for mark in step if mark.page_id == self.page_id
-            ):
-                reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.page_scope")
-        if _mark_facts(self.steps[0]) != _mark_facts(self.opening_marks):
-            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.opening")
-        if self.selected_mark_id is not None and not any(
-            mark.mark_id == self.selected_mark_id for mark in self.records
-        ):
-            reject_redaction(RedactionErrorCode.RECORD_UNKNOWN, "redaction.selection")
+        current = _replay_edits(self.opening_marks, self.steps, self.cursor, self.page_id)
+        object.__setattr__(self, "_current_marks", current)
+        if self.selected_mark_id is not None:
+            if type(self.selected_mark_id) is not UUID or self.selected_mark_id.version != 4:
+                reject_redaction(RedactionErrorCode.IDENTIFIER_INVALID, "redaction.selection")
+            if not any(mark.mark_id == self.selected_mark_id for mark in self.records):
+                reject_redaction(RedactionErrorCode.RECORD_UNKNOWN, "redaction.selection")
 
     def __repr__(self) -> str:
         return f"RedactionToolsState(mark_count={len(self.records)}, changed={self.changed})"
@@ -124,11 +192,11 @@ class RedactionToolsState:
         if type(sequence) is not list or str(page_id) not in sequence:
             reject_redaction(RedactionErrorCode.PAGE_UNKNOWN, "redaction.open_page")
         marks = RedactionMarkCollection.from_manifest_document(document).marks
-        return cls(snapshot.case_id, snapshot.revision, page_id, uuid4(), marks, (marks,))
+        return cls(snapshot.case_id, snapshot.revision, page_id, uuid4(), marks)
 
     @property
     def records(self) -> tuple[RedactionMark, ...]:
-        return tuple(mark for mark in self.steps[self.cursor] if mark.page_id == self.page_id)
+        return tuple(mark for mark in self._current_marks if mark.page_id == self.page_id)
 
     @property
     def marks(self) -> tuple[RedactionMark, ...]:
@@ -144,7 +212,7 @@ class RedactionToolsState:
 
     @property
     def changed(self) -> bool:
-        return _mark_facts(self.steps[self.cursor]) != _mark_facts(self.opening_marks)
+        return _mark_facts(self._current_marks) != _mark_facts(self.opening_marks)
 
     @property
     def can_undo(self) -> bool:
@@ -152,7 +220,7 @@ class RedactionToolsState:
 
     @property
     def can_redo(self) -> bool:
-        return self.cursor + 1 < len(self.steps)
+        return self.cursor < len(self.steps)
 
     def select(self, mark_id: UUID) -> Self:
         if type(mark_id) is not UUID or not any(mark.mark_id == mark_id for mark in self.records):
@@ -170,7 +238,7 @@ class RedactionToolsState:
             reject_redaction(RedactionErrorCode.BOX_INVALID, "redaction.create")
         mark = RedactionMark(id_factory(), self.page_id, chosen_box)
         return self._edit(
-            (*self.steps[self.cursor], mark),
+            RedactionEdit(None, mark),
             mark.mark_id,
             "Unapplied removal mark added and selected.",
         )
@@ -183,10 +251,7 @@ class RedactionToolsState:
             return self
         replacement = RedactionMark(selected.mark_id, selected.page_id, box)
         return self._edit(
-            tuple(
-                replacement if mark.mark_id == selected.mark_id else mark
-                for mark in self.steps[self.cursor]
-            ),
+            RedactionEdit(selected, replacement),
             selected.mark_id,
             "Unapplied removal mark position and size updated.",
         )
@@ -194,7 +259,7 @@ class RedactionToolsState:
     def delete_selected(self) -> Self:
         selected = self._require_selected()
         return self._edit(
-            tuple(mark for mark in self.steps[self.cursor] if mark.mark_id != selected.mark_id),
+            RedactionEdit(selected, None),
             None,
             "Unapplied removal mark removed.",
         )
@@ -215,6 +280,8 @@ class RedactionToolsState:
         return self._transition(cursor=self.cursor + 1, announcement="Removal-mark edit redone.")
 
     def to_candidate(self, snapshot: ManifestSnapshot) -> dict[str, object]:
+        # Recompute the cache at the persistence boundary, including the redo suffix.
+        self.__post_init__()
         if (
             type(snapshot) is not ManifestSnapshot
             or snapshot.case_id != self.case_id
@@ -223,7 +290,7 @@ class RedactionToolsState:
             != _mark_facts(self.opening_marks)
         ):
             reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.binding")
-        candidate = RedactionMarkCollection(self.steps[self.cursor]).to_manifest_document(
+        candidate = RedactionMarkCollection(self._current_marks).to_manifest_document(
             snapshot.document
         )
         # Revalidate wire data even when presentation objects were changed through reflection.
@@ -242,22 +309,19 @@ class RedactionToolsState:
             reject_redaction(RedactionErrorCode.RECORD_UNKNOWN, "redaction.selection")
         return record
 
-    def _edit(
-        self, marks: tuple[RedactionMark, ...], selection: UUID | None, announcement: str
-    ) -> Self:
-        if len(self.steps) > MAX_REDACTION_EDIT_STEPS:
+    def _edit(self, edit: RedactionEdit, selection: UUID | None, announcement: str) -> Self:
+        if self.cursor >= MAX_REDACTION_EDIT_STEPS:
             reject_redaction(RedactionErrorCode.CAPACITY_EXCEEDED, "redaction.edit_steps")
-        RedactionMarkCollection(marks)
-        steps = (*self.steps[: self.cursor + 1], marks)
+        steps = (*self.steps[: self.cursor], edit)
         return self._transition(
-            steps=steps, cursor=len(steps) - 1, selection=selection, announcement=announcement
+            steps=steps, cursor=len(steps), selection=selection, announcement=announcement
         )
 
     def _transition(
         self,
         *,
         announcement: str,
-        steps: tuple[tuple[RedactionMark, ...], ...] | None = None,
+        steps: tuple[RedactionEdit, ...] | None = None,
         cursor: int | None = None,
         selection: UUID | None | object = ...,
     ) -> Self:
@@ -266,9 +330,7 @@ class RedactionToolsState:
         chosen_selection = self.selected_mark_id if selection is ... else selection
         if chosen_selection is not None and type(chosen_selection) is not UUID:
             reject_redaction(RedactionErrorCode.MODEL_INVALID, "redaction.selection")
-        if not any(mark.mark_id == chosen_selection for mark in chosen_steps[chosen_cursor]):
-            chosen_selection = None
-        return type(self)(
+        result = type(self)(
             self.case_id,
             self.manifest_revision,
             self.page_id,
@@ -276,6 +338,11 @@ class RedactionToolsState:
             self.opening_marks,
             chosen_steps,
             chosen_cursor,
-            chosen_selection,
+            None,
             announcement,
         )
+        # Replaying once establishes both the current records and valid selection.
+        # The cache is always recomputed again before a backend save can consume it.
+        if any(mark.mark_id == chosen_selection for mark in result.records):
+            object.__setattr__(result, "selected_mark_id", chosen_selection)
+        return result

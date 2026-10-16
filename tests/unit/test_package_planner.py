@@ -13,7 +13,10 @@ from paperworkshell.domain.checklist import (
     RequirementCountUnit,
     TemplateBinding,
 )
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.preflight.facts import (
     OutputOverlayFlatteningAvailability,
     OutputPlanAvailability,
@@ -147,7 +150,7 @@ def _document(
     if requested_names is not None:
         constraints["requested_output_names"] = requested_names
     return {
-        "schema_version": 2,
+        "schema_version": CURRENT_MANIFEST_SCHEMA_VERSION,
         "case_id": str(CASE_ID),
         "revision": 7,
         "created_at": "2026-08-29T10:00:00Z",
@@ -181,6 +184,7 @@ def _document(
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": selected_assignments,
         "constraints": constraints,
         "confirmations": selected_confirmations,
@@ -190,7 +194,9 @@ def _document(
 
 def _snapshot(document: dict[str, object] | None = None) -> ManifestSnapshot:
     selected = _document() if document is None else document
-    return ManifestSnapshot(CASE_ID, 2, 7, selected, "b" * 64, "c" * 64)
+    return ManifestSnapshot(
+        CASE_ID, CURRENT_MANIFEST_SCHEMA_VERSION, 7, selected, "b" * 64, "c" * 64
+    )
 
 
 def _plan(

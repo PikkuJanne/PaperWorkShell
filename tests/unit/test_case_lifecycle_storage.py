@@ -34,7 +34,7 @@ def _initial_document() -> dict[str, Any]:
     return cast(dict[str, Any], loaded)
 
 
-def test_initial_manifest_is_canonical_schema_valid_empty_v2() -> None:
+def test_initial_manifest_is_canonical_schema_valid_empty_v3() -> None:
     payload = build_initial_manifest_bytes(CASE_ID, TIMESTAMP)
     document = _initial_document()
     schema, schema_issues = load_current_manifest_schema()
@@ -43,7 +43,8 @@ def test_initial_manifest_is_canonical_schema_valid_empty_v2() -> None:
     assert validate_manifest_data(document, schema, document="generated-initial.json") == []
     assert payload.endswith(b"\n")
     assert payload == build_initial_manifest_bytes(CASE_ID, TIMESTAMP)
-    assert document["schema_version"] == 2
+    assert document["schema_version"] == 3
+    assert document["redaction_marks"] == []
     assert document["case_id"] == str(CASE_ID)
     assert document["revision"] == 0
     assert document["created_at"] == "2026-08-02T10:11:12.123456Z"
@@ -98,7 +99,7 @@ def test_strict_manifest_decoder_rejects_ambiguous_or_nonstandard_json(payload: 
 
 def test_future_version_dispatch_happens_before_other_envelope_validation() -> None:
     with pytest.raises(CaseLifecycleError) as raised:
-        _summary_from_manifest({"schema_version": 3}, CASE_ID)
+        _summary_from_manifest({"schema_version": 4}, CASE_ID)
 
     assert raised.value.code is CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED
 
@@ -107,7 +108,7 @@ def test_current_manifest_lifecycle_envelope_is_parsed_without_document_content(
     summary = _summary_from_manifest(_initial_document(), CASE_ID)
 
     assert summary.case_id == CASE_ID
-    assert summary.manifest_version == 2
+    assert summary.manifest_version == 3
     assert summary.revision == 0
     assert summary.created_at == TIMESTAMP
     assert summary.updated_at == TIMESTAMP

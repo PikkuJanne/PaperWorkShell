@@ -82,7 +82,7 @@ def _variant(kind: str, case_id: UUID) -> bytes:
     canonical = build_initial_manifest_bytes(case_id, NOW)
     if kind in {"future", "legacy"}:
         document = json.loads(canonical)
-        document["schema_version"] = 3 if kind == "future" else 0
+        document["schema_version"] = 4 if kind == "future" else 0
         return json.dumps(document, separators=(",", ":"), sort_keys=True).encode() + b"\n"
     if kind == "malformed":
         return b'{"schema_version":1'
@@ -377,7 +377,7 @@ def test_manifest_changed_after_inventory_is_revalidated_before_first_removal(
     service.close_case(FIRST_ID)
     layout = manager.layout(FIRST_ID)
     current = layout.manifest.read_bytes()
-    future = current.replace(b'"schema_version":2', b'"schema_version":3', 1)
+    future = current.replace(b'"schema_version":3', b'"schema_version":4', 1)
     assert len(future) == len(current)
     real_inventory = manager._inventory_directory
     injected = False
