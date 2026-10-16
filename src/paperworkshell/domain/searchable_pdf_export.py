@@ -51,6 +51,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProfile,
     PdfExportVerificationReport,
 )
+from paperworkshell.domain.redaction import require_redaction_export_allowed
 
 SEARCHABLE_PDF_SOURCE_VERSION: Final = 1
 SEARCHABLE_PDF_PAGE_VERSION: Final = 1
@@ -1015,6 +1016,7 @@ def _read_searchable_pdf_export_snapshot(
             SearchablePdfExportErrorCode.MANIFEST_INVALID,
             "searchable.manifest",
         )
+    require_redaction_export_allowed(document)
     return document, projection
 
 

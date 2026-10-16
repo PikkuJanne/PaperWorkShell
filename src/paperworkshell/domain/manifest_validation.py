@@ -1,4 +1,4 @@
-"""Pure, non-disclosing validation for decoded case-manifest v1/v2 data.
+"""Pure, non-disclosing validation for decoded case-manifest v1/v2/v3 data.
 
 The runtime validator intentionally implements only the reviewed JSON Schema
 subset used by the canonical manifest-v1/v2 contracts. Keeping this interpreter
@@ -25,16 +25,18 @@ from paperworkshell.domain.page_coordinates import (
 
 # ``CANONICAL_SCHEMA_FINGERPRINT`` remains the published v1 identity for
 # compatibility with callers that explicitly validate a historical manifest.
-SUPPORTED_SCHEMA_VERSION: Final = 2
+SUPPORTED_SCHEMA_VERSION: Final = 3
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
 )
+V2_SCHEMA_FINGERPRINT: Final = "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
 CURRENT_SCHEMA_FINGERPRINT: Final = (
-    "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+    "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
 )
 _SCHEMA_FINGERPRINTS_BY_VERSION: Final = {
     1: CANONICAL_SCHEMA_FINGERPRINT,
-    2: CURRENT_SCHEMA_FINGERPRINT,
+    2: V2_SCHEMA_FINGERPRINT,
+    3: CURRENT_SCHEMA_FINGERPRINT,
 }
 MAX_REPORTED_ISSUES: Final = 512
 MAX_VALIDATION_STEPS: Final = 1_000_000
@@ -67,6 +69,7 @@ _UUID_FIELDS: Final = frozenset(
         "group_id",
         "operation_id",
         "overlay_id",
+        "mark_id",
         "page_id",
         "source_id",
     }
@@ -995,6 +998,7 @@ def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, 
     operations = cast(list[Mapping[str, Any]], data["page_operations"])
     assets = cast(list[Mapping[str, Any]], data["assets"])
     overlays = cast(list[Mapping[str, Any]], data["overlays"])
+    redaction_marks = cast(list[Mapping[str, Any]], data.get("redaction_marks", []))
     assignments = cast(list[Mapping[str, Any]], data["assignments"])
     confirmations = cast(list[Mapping[str, Any]], data["confirmations"])
     export_history = cast(Mapping[str, Any], data["export_history"])
@@ -1035,6 +1039,13 @@ def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, 
         duplicate_code="MANIFEST_OVERLAY_ID_DUPLICATE",
         issues=issues,
     )
+    redaction_index = _index_records(
+        redaction_marks,
+        id_field="mark_id",
+        collection_path="$.redaction_marks",
+        duplicate_code="MANIFEST_REDACTION_MARK_ID_DUPLICATE",
+        issues=issues,
+    )
     assignment_index = _index_records(
         assignments,
         id_field="assignment_id",
@@ -1064,6 +1075,7 @@ def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, 
         (operation_index, "operation", "operation_id", "$.page_operations"),
         (asset_index, "asset", "asset_id", "$.assets"),
         (overlay_index, "overlay", "overlay_id", "$.overlays"),
+        (redaction_index, "redaction_mark", "mark_id", "$.redaction_marks"),
         (assignment_index, "assignment", "assignment_id", "$.assignments"),
         (confirmation_index, "confirmation", "confirmation_id", "$.confirmations"),
         (export_index, "export", "export_id", "$.export_history.entries"),
@@ -1437,6 +1449,22 @@ def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, 
                     ),
                 )
 
+    for index, mark in enumerate(redaction_marks):
+        if mark["page_id"] not in page_index:
+            _add_issue(
+                issues,
+                _issue(
+                    "MANIFEST_PAGE_REFERENCE_UNKNOWN",
+                    f"$.redaction_marks[{index}].page_id",
+                    "page reference does not resolve",
+                ),
+            )
+        _check_box(
+            cast(Mapping[str, Any], mark["box"]),
+            path=f"$.redaction_marks[{index}].box",
+            issues=issues,
+        )
+
     assignment_times: dict[str, datetime | None] = {}
     for index, assignment in enumerate(assignments):
         _check_known_page_list(
@@ -1541,12 +1569,12 @@ def validate_manifest(
     data: Mapping[str, object],
     schema: Mapping[str, object],
 ) -> tuple[ManifestValidationIssue, ...]:
-    """Validate decoded manifest-v1/v2 data without mutation, I/O, or disclosure.
+    """Validate decoded manifest-v1/v2/v3 data without mutation, I/O, or disclosure.
 
     Version dispatch happens before schema execution so unknown future versions
     fail closed without interpreting or traversing their content. Released v1
     remains independently valid only when paired with its exact frozen schema;
-    current persisted state uses v2.
+    current persisted state uses v3.
     """
 
     version = data.get("schema_version")

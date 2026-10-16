@@ -49,6 +49,7 @@ from paperworkshell.domain.pdf_export_retry import (
     PdfExportRetryRepository,
     PreparedPdfExportRetry,
 )
+from paperworkshell.domain.redaction import RedactionError
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportError,
     SearchablePdfExportErrorCode,
@@ -514,7 +515,7 @@ class SearchablePdfExportService:
                 ),
             )
             return plan, manifest_export_identifier_ids(loaded.snapshot.document)
-        except SearchablePdfExportError:
+        except SearchablePdfExportError, RedactionError:
             raise
         except SignedSourcePolicyError:
             raise

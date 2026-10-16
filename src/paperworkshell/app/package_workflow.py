@@ -35,6 +35,7 @@ from paperworkshell.domain.pdf_inspection import (
     PdfInspectionErrorCode,
     PdfInspectionResult,
 )
+from paperworkshell.domain.redaction import require_redaction_export_allowed
 from paperworkshell.domain.signed_source_policy import (
     SignedSourceModificationReview,
     SignedSourceModificationSource,
@@ -399,6 +400,7 @@ class PackageWorkflowService:
         service = self._require_compression_service()
         self.discard_compression()
         review = self._require_current()
+        require_redaction_export_allowed(review.snapshot.document)
         if type(review_id) is not UUID or review_id != review.state.review_id:
             reject_package_workflow(PackageWorkflowErrorCode.STALE)
         if type(color_choice) is not TargetSizeColorChoice:
@@ -543,6 +545,7 @@ class PackageWorkflowService:
         if not state.export_allowed:
             reject_package_workflow(PackageWorkflowErrorCode.BLOCKED)
         review = self._require_current()
+        require_redaction_export_allowed(review.snapshot.document)
         probe = _checked_compression_cancellation(cancellation)
         if probe():
             reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
@@ -609,6 +612,7 @@ class PackageWorkflowService:
     ) -> PackageSummary:
         self.discard_compression()
         review = self._require_current()
+        require_redaction_export_allowed(review.snapshot.document)
         if type(review_id) is not UUID or review_id != review.state.review_id:
             reject_package_workflow(PackageWorkflowErrorCode.STALE)
         if self._summary is not None:

@@ -33,6 +33,7 @@ from paperworkshell.domain.pdf_optimization import (
     PdfOptimizationOutcome,
     PdfOptimizationReport,
 )
+from paperworkshell.domain.redaction import require_redaction_export_allowed
 
 PDF_EXPORT_PLAN_VERSION: Final = 1
 PDF_EXPORT_PROFILE_VERSION: Final = 1
@@ -907,6 +908,7 @@ def _read_pdf_export_snapshot(
         reject_pdf_export(code, "plan.manifest")
     except Exception:
         reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "plan.manifest")
+    require_redaction_export_allowed(document)
     return document, projection
 
 

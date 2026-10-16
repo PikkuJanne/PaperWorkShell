@@ -1,0 +1,1153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paperworkshell.invalid/schemas/case-manifest-v3.json",
+  "title": "PaperWorkShell case manifest v3",
+  "description": "Authoritative, non-destructive case state. Display names are sensitive manifest data; every filesystem reference is case-relative and structurally constrained.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "revision",
+    "created_at",
+    "updated_at",
+    "template_ref",
+    "sources",
+    "pages",
+    "page_sequence_base",
+    "page_sequence",
+    "page_operations",
+    "assets",
+    "overlays",
+    "redaction_marks",
+    "assignments",
+    "constraints",
+    "confirmations",
+    "export_history"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 3
+    },
+    "case_id": {
+      "$ref": "#/$defs/uuidV4"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "created_at": {
+      "$ref": "#/$defs/utcTimestamp"
+    },
+    "updated_at": {
+      "$ref": "#/$defs/utcTimestamp"
+    },
+    "template_ref": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/templateReference"
+        }
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/sourceRecord"
+      }
+    },
+    "pages": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/pageRecord"
+      }
+    },
+    "page_sequence_base": {
+      "description": "Replay baseline for page-sequence operations. Array order is authoritative; later page identities enter through typed import operations.",
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/uuidV4"
+      }
+    },
+    "page_sequence": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/uuidV4"
+      }
+    },
+    "page_operations": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/pageOperation"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/assetRecord"
+      }
+    },
+    "overlays": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/overlayRecord"
+      }
+    },
+    "assignments": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/assignmentRecord"
+      }
+    },
+    "constraints": {
+      "$ref": "#/$defs/outputConstraints"
+    },
+    "confirmations": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/confirmationRecord"
+      }
+    },
+    "export_history": {
+      "$ref": "#/$defs/exportHistoryReference"
+    },
+    "redaction_marks": {
+      "description": "Unapplied permanent-removal intent only. No source content has been removed. Applied/verified/failed derivative results are not accepted as authored state.",
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/redactionMark"
+      }
+    }
+  },
+  "$defs": {
+    "uuidV4": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^\\u0000-\\u001f\\u007f/\\\\]+$",
+      "not": {
+        "enum": [
+          ".",
+          ".."
+        ]
+      }
+    },
+    "safeOutputName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 180,
+      "allOf": [
+        {
+          "pattern": "^[^\\u0000-\\u001f\\u007f<>:\"/\\\\|?*%]+$"
+        },
+        {
+          "pattern": "[^ .]$"
+        },
+        {
+          "not": {
+            "enum": [
+              ".",
+              ".."
+            ]
+          }
+        }
+      ]
+    },
+    "normalizedBox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coordinate_space",
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "coordinate_space": {
+          "const": "normalized_page_millionths_v1"
+        },
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      }
+    },
+    "templateReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template_id",
+        "template_version",
+        "sha256"
+      ],
+      "properties": {
+        "template_id": {
+          "$ref": "#/$defs/token"
+        },
+        "template_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "display_name",
+        "storage_name",
+        "detected_media_type",
+        "byte_size",
+        "page_count",
+        "sha256",
+        "signature_state",
+        "encryption_state",
+        "import_state",
+        "imported_at"
+      ],
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "display_name": {
+          "$ref": "#/$defs/displayName"
+        },
+        "storage_name": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.bin$"
+        },
+        "detected_media_type": {
+          "enum": [
+            "application/pdf",
+            "image/jpeg",
+            "image/png"
+          ]
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "page_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "signature_state": {
+          "enum": [
+            "not_checked",
+            "not_applicable",
+            "none_detected",
+            "markers_detected",
+            "unknown"
+          ]
+        },
+        "encryption_state": {
+          "enum": [
+            "not_checked",
+            "not_applicable",
+            "unencrypted",
+            "encrypted",
+            "unknown"
+          ]
+        },
+        "import_state": {
+          "const": "complete"
+        },
+        "imported_at": {
+          "$ref": "#/$defs/utcTimestamp"
+        }
+      }
+    },
+    "pageRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page_id",
+        "source_id",
+        "source_page_index"
+      ],
+      "properties": {
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "source_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "source_page_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "pageOperation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/legacyPageOperation"
+        },
+        {
+          "$ref": "#/$defs/scanTransformPageOperation"
+        }
+      ]
+    },
+    "legacyPageOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "operation_version",
+        "sequence",
+        "payload"
+      ],
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_version": {
+          "const": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/rotateOperation"
+            },
+            {
+              "$ref": "#/$defs/cropOperation"
+            },
+            {
+              "$ref": "#/$defs/sequenceChangeOperation"
+            },
+            {
+              "$ref": "#/$defs/groupOperation"
+            }
+          ]
+        }
+      }
+    },
+    "scanTransformPageOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "operation_version",
+        "sequence",
+        "payload"
+      ],
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "operation_version": {
+          "const": 2
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/deskewOperation"
+            },
+            {
+              "$ref": "#/$defs/contrastOperation"
+            },
+            {
+              "$ref": "#/$defs/backgroundCleanupOperation"
+            }
+          ]
+        }
+      }
+    },
+    "rotateOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "page_id",
+        "quarter_turns_clockwise"
+      ],
+      "properties": {
+        "kind": {
+          "const": "rotate"
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "quarter_turns_clockwise": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        }
+      }
+    },
+    "cropOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "page_id",
+        "box"
+      ],
+      "properties": {
+        "kind": {
+          "const": "crop"
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "box": {
+          "$ref": "#/$defs/normalizedBox"
+        }
+      }
+    },
+    "deskewOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "page_id",
+        "angle_millidegrees_clockwise"
+      ],
+      "properties": {
+        "kind": {
+          "const": "deskew"
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "angle_millidegrees_clockwise": {
+          "type": "integer",
+          "minimum": -15000,
+          "maximum": 15000
+        }
+      }
+    },
+    "contrastOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "page_id",
+        "factor_millionths"
+      ],
+      "properties": {
+        "kind": {
+          "const": "contrast"
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "factor_millionths": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4000000
+        }
+      }
+    },
+    "backgroundCleanupOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "page_id",
+        "strength_millionths"
+      ],
+      "properties": {
+        "kind": {
+          "const": "background_cleanup"
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "strength_millionths": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      }
+    },
+    "sequenceChangeOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reason",
+        "before_page_ids",
+        "after_page_ids"
+      ],
+      "properties": {
+        "kind": {
+          "const": "change_sequence"
+        },
+        "reason": {
+          "enum": [
+            "import",
+            "reorder",
+            "remove",
+            "restore",
+            "split",
+            "combine"
+          ]
+        },
+        "before_page_ids": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuidV4"
+          }
+        },
+        "after_page_ids": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuidV4"
+          }
+        }
+      }
+    },
+    "groupOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "group_id",
+        "page_ids"
+      ],
+      "properties": {
+        "kind": {
+          "const": "set_group"
+        },
+        "group_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "page_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuidV4"
+          }
+        }
+      }
+    },
+    "assetRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "kind",
+        "storage_name",
+        "media_type",
+        "byte_size",
+        "sha256"
+      ],
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "kind": {
+          "const": "signature_image"
+        },
+        "storage_name": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.bin$"
+        },
+        "media_type": {
+          "enum": [
+            "image/jpeg",
+            "image/png"
+          ]
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "overlayRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overlay_id",
+        "overlay_version",
+        "page_id",
+        "box",
+        "z_index",
+        "payload"
+      ],
+      "properties": {
+        "overlay_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "overlay_version": {
+          "const": 1
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "box": {
+          "$ref": "#/$defs/normalizedBox"
+        },
+        "z_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/textOverlay"
+            },
+            {
+              "$ref": "#/$defs/markOverlay"
+            },
+            {
+              "$ref": "#/$defs/signatureImageOverlay"
+            },
+            {
+              "$ref": "#/$defs/shapeOverlay"
+            }
+          ]
+        }
+      }
+    },
+    "rgbaColor": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{8}$"
+    },
+    "textOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value",
+        "font_token",
+        "font_size_points",
+        "color"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "text",
+            "date",
+            "initials"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "font_token": {
+          "$ref": "#/$defs/token"
+        },
+        "font_size_points": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 288
+        },
+        "color": {
+          "$ref": "#/$defs/rgbaColor"
+        }
+      }
+    },
+    "markOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "color"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "checkmark",
+            "cross"
+          ]
+        },
+        "color": {
+          "$ref": "#/$defs/rgbaColor"
+        }
+      }
+    },
+    "signatureImageOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "asset_id",
+        "terminology"
+      ],
+      "properties": {
+        "kind": {
+          "const": "signature_image"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "terminology": {
+          "const": "visual_mark_not_digital_signature"
+        }
+      }
+    },
+    "shapeOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "shape",
+        "fill_color",
+        "stroke_color",
+        "intent"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "highlight",
+            "shape"
+          ]
+        },
+        "shape": {
+          "enum": [
+            "rectangle",
+            "ellipse",
+            "line"
+          ]
+        },
+        "fill_color": {
+          "$ref": "#/$defs/rgbaColor"
+        },
+        "stroke_color": {
+          "$ref": "#/$defs/rgbaColor"
+        },
+        "intent": {
+          "const": "visual_overlay_only_not_permanent_removal"
+        }
+      }
+    },
+    "assignmentRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignment_id",
+        "requirement_id",
+        "page_ids",
+        "origin",
+        "status",
+        "confirmation_id",
+        "assigned_at"
+      ],
+      "properties": {
+        "assignment_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "requirement_id": {
+          "$ref": "#/$defs/token"
+        },
+        "page_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuidV4"
+          }
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "automation"
+          ]
+        },
+        "status": {
+          "enum": [
+            "suggested",
+            "user_confirmed"
+          ]
+        },
+        "confirmation_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/uuidV4"
+            }
+          ]
+        },
+        "assigned_at": {
+          "$ref": "#/$defs/utcTimestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "suggested"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "confirmation_id": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "confirmation_id": {
+                "$ref": "#/$defs/uuidV4"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "outputConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "constraints_version",
+        "allowed_output_modes",
+        "encryption_policy"
+      ],
+      "properties": {
+        "constraints_version": {
+          "const": 1
+        },
+        "allowed_output_modes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "combined_pdf",
+              "separate_pdfs",
+              "zip"
+            ]
+          }
+        },
+        "encryption_policy": {
+          "enum": [
+            "must_be_unencrypted",
+            "allowed"
+          ]
+        },
+        "maximum_file_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maximum_total_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maximum_file_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maximum_pages_per_file": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "requested_output_names": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/safeOutputName"
+          }
+        }
+      }
+    },
+    "confirmationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confirmation_id",
+        "confirmation_version",
+        "confirmation_code",
+        "statement_version",
+        "state",
+        "actor",
+        "scope",
+        "recorded_at"
+      ],
+      "properties": {
+        "confirmation_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "confirmation_version": {
+          "const": 1
+        },
+        "confirmation_code": {
+          "$ref": "#/$defs/token"
+        },
+        "statement_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "enum": [
+            "confirmed",
+            "withdrawn"
+          ]
+        },
+        "actor": {
+          "const": "user"
+        },
+        "scope": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/caseScope"
+            },
+            {
+              "$ref": "#/$defs/sourceScope"
+            },
+            {
+              "$ref": "#/$defs/pageScope"
+            },
+            {
+              "$ref": "#/$defs/assignmentScope"
+            },
+            {
+              "$ref": "#/$defs/exportScope"
+            }
+          ]
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/utcTimestamp"
+        }
+      }
+    },
+    "caseScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "case"
+        }
+      }
+    },
+    "sourceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source_id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "source"
+        },
+        "source_id": {
+          "$ref": "#/$defs/uuidV4"
+        }
+      }
+    },
+    "pageScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "page_id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "page"
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        }
+      }
+    },
+    "assignmentScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "assignment_id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "assignment"
+        },
+        "assignment_id": {
+          "$ref": "#/$defs/uuidV4"
+        }
+      }
+    },
+    "exportScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "export_id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "export"
+        },
+        "export_id": {
+          "$ref": "#/$defs/uuidV4"
+        }
+      }
+    },
+    "exportHistoryReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage_name",
+        "entries"
+      ],
+      "properties": {
+        "storage_name": {
+          "const": "export-history.json"
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/exportHistoryEntryReference"
+          }
+        }
+      }
+    },
+    "exportHistoryEntryReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_id",
+        "record_version",
+        "sha256"
+      ],
+      "properties": {
+        "export_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "record_version": {
+          "const": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "redactionMark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mark_id",
+        "mark_version",
+        "page_id",
+        "box",
+        "state"
+      ],
+      "properties": {
+        "mark_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "mark_version": {
+          "const": 1
+        },
+        "page_id": {
+          "$ref": "#/$defs/uuidV4"
+        },
+        "box": {
+          "$ref": "#/$defs/normalizedBox"
+        },
+        "state": {
+          "const": "unapplied"
+        }
+      }
+    }
+  }
+}

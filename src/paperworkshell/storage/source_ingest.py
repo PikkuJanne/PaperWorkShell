@@ -40,6 +40,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportSourceMediaType,
     PdfExportSourceSignatureState,
 )
+from paperworkshell.domain.redaction import RedactionError, require_redaction_export_allowed
 from paperworkshell.domain.searchable_pdf_export import (
     MAX_SEARCHABLE_PDF_SOURCES,
     SearchablePdfExportPlan,
@@ -1405,6 +1406,7 @@ class WindowsSourceIngestStore:
                     SourceIngestErrorCode.MANIFEST_CONFLICT,
                     "source.batch_manifest",
                 )
+            require_redaction_export_allowed(snapshot.document)
 
             records_by_id = {record.source_id: record for record in snapshot.sources}
             if len(records_by_id) != len(snapshot.sources):
@@ -1466,7 +1468,7 @@ class WindowsSourceIngestStore:
             )
             borrowed = True
             return lease
-        except SourceIngestError:
+        except SourceIngestError, RedactionError:
             raise
         except CaseLifecycleError as error:
             _map_manifest_error(error)
@@ -1531,6 +1533,7 @@ class WindowsSourceIngestStore:
                     SourceIngestErrorCode.MANIFEST_CONFLICT,
                     "source.searchable_batch_manifest",
                 )
+            require_redaction_export_allowed(snapshot.document)
 
             records_by_id = {record.source_id: record for record in snapshot.sources}
             if len(records_by_id) != len(snapshot.sources):
@@ -1588,7 +1591,7 @@ class WindowsSourceIngestStore:
             )
             borrowed = True
             return lease
-        except SourceIngestError:
+        except SourceIngestError, RedactionError:
             raise
         except CaseLifecycleError as error:
             _map_manifest_error(error)
@@ -2723,6 +2726,8 @@ def _manifest_identifiers(
     """Collect every identity-defining UUID from one fully validated manifest."""
 
     identifiers = {expected_case_id}
+    for mark in cast(list[dict[str, object]], document.get("redaction_marks", [])):
+        identifiers.add(_manifest_uuid(mark["mark_id"]))
     for collection_name, field_name in (
         ("sources", "source_id"),
         ("pages", "page_id"),

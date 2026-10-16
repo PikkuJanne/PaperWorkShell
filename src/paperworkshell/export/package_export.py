@@ -25,6 +25,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportVerificationReport,
 )
 from paperworkshell.domain.pdf_inspection import PdfEncryptionState
+from paperworkshell.domain.redaction import RedactionError, require_redaction_export_allowed
 from paperworkshell.domain.resource_policy import ResourcePolicy
 from paperworkshell.export.safe_zip import (
     SafeZipError,
@@ -580,7 +581,7 @@ class PreparedPackageExport:
             self._probes.cancellation = cancellation
             _require_active(deadline, cancellation)
             yield
-        except PackageExportError:
+        except PackageExportError, RedactionError:
             raise
         except ExportPackageDestinationError as error:
             _raise_destination_error(error)
@@ -751,7 +752,7 @@ def prepare_package_plan(
             destination_dependencies=destination_dependencies,
             review=review,
         )
-    except PackageExportError:
+    except PackageExportError, RedactionError:
         raise
     except SafeZipError as error:
         _raise_zip_error(error)
@@ -1243,6 +1244,7 @@ def _available_zip_policy(policy: ResourcePolicy, available_bytes: int) -> SafeZ
 
 
 def _require_plan_authority(snapshot: ManifestSnapshot, plan: PackageExportPlan) -> None:
+    require_redaction_export_allowed(snapshot.document)
     authority = plan.authority
     if (
         snapshot.case_id != authority.case_id

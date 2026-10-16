@@ -10,8 +10,10 @@ from uuid import UUID
 
 from paperworkshell.domain.case_lifecycle import (
     CURRENT_CASE_MANIFEST_VERSION,
+    INTERMEDIATE_CASE_MANIFEST_VERSION,
     LEGACY_CASE_MANIFEST_VERSION,
     MAX_SAFE_MANIFEST_INTEGER,
+    SUPPORTED_CASE_MANIFEST_VERSIONS,
     CaseLifecycleErrorCode,
     CaseSummary,
     reject_case_lifecycle,
@@ -125,7 +127,7 @@ def has_current_manifest_schema_version(payload: bytes) -> bool:
 
 
 def probe_supported_manifest_schema_version(payload: bytes) -> int | None:
-    """Return an exact supported v1/v2 dispatch value without interpreting fields.
+    """Return an exact supported v1/v2/v3 dispatch value without interpreting fields.
 
     Unknown future integer versions return ``None`` after the same bounded outer
     JSON probe. Malformed version tokens still fail as invalid JSON data.
@@ -163,6 +165,7 @@ def probe_supported_manifest_schema_version(payload: bytes) -> int | None:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_version")
     selected = {
         str(LEGACY_CASE_MANIFEST_VERSION): LEGACY_CASE_MANIFEST_VERSION,
+        str(INTERMEDIATE_CASE_MANIFEST_VERSION): INTERMEDIATE_CASE_MANIFEST_VERSION,
         str(CURRENT_CASE_MANIFEST_VERSION): CURRENT_CASE_MANIFEST_VERSION,
     }.get(version)
     if selected is not None:
@@ -207,12 +210,17 @@ def summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -
     version = document.get("schema_version")
     if type(version) is not int:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_version")
-    if version not in {LEGACY_CASE_MANIFEST_VERSION, CURRENT_CASE_MANIFEST_VERSION}:
+    if version not in SUPPORTED_CASE_MANIFEST_VERSIONS:
         reject_case_lifecycle(
             CaseLifecycleErrorCode.MANIFEST_VERSION_UNSUPPORTED,
             "case.manifest_version",
         )
-    if frozenset(document) != _MANIFEST_KEYS:
+    expected_keys = _MANIFEST_KEYS
+    collection_keys: tuple[str, ...] = _COLLECTION_KEYS
+    if version == CURRENT_CASE_MANIFEST_VERSION:
+        expected_keys = expected_keys | {"redaction_marks"}
+        collection_keys = (*collection_keys, "redaction_marks")
+    if frozenset(document) != expected_keys:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_members")
     raw_case_id = document["case_id"]
     if type(raw_case_id) is not str or _CASE_ID_RE.fullmatch(raw_case_id) is None:
@@ -226,7 +234,7 @@ def summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -
     revision = document["revision"]
     if type(revision) is not int or not 0 <= revision <= MAX_SAFE_MANIFEST_INTEGER:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_revision")
-    for key in _COLLECTION_KEYS:
+    for key in collection_keys:
         value = document[key]
         if type(value) is not list or len(value) > MAX_MANIFEST_COLLECTION_ITEMS:
             reject_case_lifecycle(

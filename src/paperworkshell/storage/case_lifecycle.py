@@ -296,7 +296,7 @@ class WindowsCaseLifecycleStore:
 
 
 def build_initial_manifest_bytes(case_id: UUID, timestamp: datetime) -> bytes:
-    """Build the exact empty v2 manifest using one canonical UTC lifecycle timestamp."""
+    """Build the exact empty v3 manifest using one canonical UTC lifecycle timestamp."""
 
     selected = require_case_id(case_id, context="case.initial_id")
     rendered_timestamp = _render_utc_timestamp(timestamp)
@@ -314,6 +314,7 @@ def build_initial_manifest_bytes(case_id: UUID, timestamp: datetime) -> bytes:
         "page_operations": [],
         "assets": [],
         "overlays": [],
+        "redaction_marks": [],
         "assignments": [],
         "constraints": {
             "constraints_version": 1,

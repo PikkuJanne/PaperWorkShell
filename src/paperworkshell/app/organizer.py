@@ -67,6 +67,7 @@ from paperworkshell.app.quality_analysis import (
     QualityReviewSnapshot,
     reject_quality_analysis,
 )
+from paperworkshell.app.redaction_tools import RedactionToolsState, _mark_facts
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewErrorCode,
@@ -153,6 +154,11 @@ from paperworkshell.domain.recovery import (
     RecoveryErrorCode,
     StartupRecoveryResult,
     reject_recovery,
+)
+from paperworkshell.domain.redaction import (
+    RedactionErrorCode,
+    reject_redaction,
+    require_redaction_export_allowed,
 )
 from paperworkshell.domain.signature_images import (
     SignatureImageCleanupResult,
@@ -517,6 +523,17 @@ class _CoreOverlayEditorAuthority:
     opening_history: OverlayCommandHistory
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class _RedactionEditorAuthority:
+    """Private primitive facts cannot alias the editable presentation draft."""
+
+    case_id: UUID
+    manifest_revision: int
+    page_id: UUID
+    editor_session_id: UUID
+    opening_facts: tuple[tuple[object, ...], ...]
+
+
 class OrganizerBackend:
     """Coordinate one active organizer without importing a desktop toolkit.
 
@@ -528,6 +545,7 @@ class OrganizerBackend:
     __slots__ = (
         "_active_checklist",
         "_active_core_overlay_tools",
+        "_active_redaction_tools",
         "_active_portal_constraints",
         "_active_scan_review",
         "_active_signature_draft_id",
@@ -650,6 +668,7 @@ class OrganizerBackend:
         self._active_checklist: ChecklistEditorState | None = None
         self._active_portal_constraints: ConstraintEditorState | None = None
         self._active_core_overlay_tools: _CoreOverlayEditorAuthority | None = None
+        self._active_redaction_tools: _RedactionEditorAuthority | None = None
         self._active_scan_review: _ActiveScanReview | None = None
         self._active_signature_draft_id: UUID | None = None
         self._pending_committed_import: SourceImportResult | None = None
@@ -851,6 +870,7 @@ class OrganizerBackend:
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.organizer_unavailable")
         self._active_scan_review = None
         self.flush_autosave()
+        require_redaction_export_allowed(session.snapshot.document)
         expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
         outcome = exporter.export_pdf(
             session.snapshot.case_id,
@@ -931,6 +951,70 @@ class OrganizerBackend:
             SequenceChangeCommand(SequenceChangeReason.REORDER, page_ids)
         )
         return self._queue_history(session, history)
+
+    def begin_redaction_tools(self, page_id: UUID) -> RedactionToolsState:
+        """Open an exclusive unapplied-intent draft after existing page edits save."""
+
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.review")
+        _require_active_page(session.history.projection, page_id)
+        self.flush_autosave()
+        state = RedactionToolsState.from_snapshot(session.snapshot, page_id)
+        self._active_redaction_tools = _RedactionEditorAuthority(
+            state.case_id,
+            state.manifest_revision,
+            state.page_id,
+            state.editor_session_id,
+            _mark_facts(state.opening_marks),
+        )
+        return state
+
+    def save_redaction_tools(self, editor_state: RedactionToolsState) -> OrganizerViewState:
+        """Save intent atomically; never invoke or claim permanent removal."""
+
+        session = self._require_session()
+        self._require_redaction_editor(editor_state)
+        _require_active_page(session.history.projection, editor_state.page_id)
+        if not editor_state.changed and not session.autosave.pending:
+            self._active_redaction_tools = None
+            return self.state
+        candidate = editor_state.to_candidate(session.snapshot)
+        session.autosave.queue(candidate)
+        state = self._flush_autosave_unchecked()
+        self._active_redaction_tools = None
+        return state
+
+    def cancel_redaction_tools(self, editor_state: RedactionToolsState) -> None:
+        """Discard a matching draft before any queued save attempt."""
+
+        session = self._require_session()
+        self._require_redaction_editor(editor_state)
+        if session.autosave.pending:
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.cancel_pending")
+        self._active_redaction_tools = None
+
+    def abort_redaction_tools(self) -> None:
+        """Release unusable presentation state only when no save is pending."""
+
+        session = self._require_session()
+        if self._active_redaction_tools is None or session.autosave.pending:
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.abort")
+        self._active_redaction_tools = None
+
+    def _require_redaction_editor(self, state: RedactionToolsState) -> None:
+        opening = self._active_redaction_tools
+        if (
+            type(state) is not RedactionToolsState
+            or opening is None
+            or state.case_id != opening.case_id
+            or state.manifest_revision != opening.manifest_revision
+            or state.page_id != opening.page_id
+            or state.editor_session_id != opening.editor_session_id
+            or not state.matches_opening_facts(opening.opening_facts)
+        ):
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.active")
 
     def begin_core_overlay_tools(self, page_id: UUID) -> CoreOverlayToolsState:
         """Open one exclusive, revision-bound core-overlay editing draft.
@@ -1049,6 +1133,8 @@ class OrganizerBackend:
         progress: Callable[[int, int], None] | None = None,
     ) -> PackageSummary:
         session = self._require_session()
+        self._require_redaction_editor_inactive()
+        require_redaction_export_allowed(session.snapshot.document)
 
         def consent_saved(snapshot: ManifestSnapshot) -> None:
             # Rebuild autosave as well as history: the old coordinator may hold
@@ -1092,6 +1178,8 @@ class OrganizerBackend:
         progress: Callable[[int, int], None] | None = None,
     ) -> CompressionReviewState:
         session = self._require_session()
+        self._require_redaction_editor_inactive()
+        require_redaction_export_allowed(session.snapshot.document)
 
         def consent_saved(snapshot: ManifestSnapshot) -> None:
             replacement = _session_from_load(
@@ -1137,7 +1225,9 @@ class OrganizerBackend:
         cancellation: SourceCancellationProbe | None = None,
         progress: Callable[[int, int], None] | None = None,
     ) -> PackageSummary:
-        self._require_session()
+        session = self._require_session()
+        self._require_redaction_editor_inactive()
+        require_redaction_export_allowed(session.snapshot.document)
         return self._require_package_workflow().commit_compression(
             review_id,
             human_review_confirmed=human_review_confirmed,
@@ -1869,6 +1959,7 @@ class OrganizerBackend:
             self._require_portal_constraints().abort(active_constraints.editor_session_id)
             self._active_portal_constraints = None
         self._active_core_overlay_tools = None
+        self._active_redaction_tools = None
         workflow = self._signature_images
         self._active_signature_draft_id = None
         if workflow is not None:
@@ -2025,6 +2116,7 @@ class OrganizerBackend:
             )
 
     def _require_core_overlay_tools_inactive(self) -> None:
+        self._require_redaction_editor_inactive()
         if self._package_workflow is not None and self._package_workflow.active:
             reject_package_workflow(PackageWorkflowErrorCode.ACTIVE)
         if self._active_core_overlay_tools is not None:
@@ -2038,6 +2130,12 @@ class OrganizerBackend:
                 ConstraintEditorErrorCode.WORKFLOW_ACTIVE,
                 "constraints.exclusive",
             )
+
+    def _require_redaction_editor_inactive(self) -> None:
+        """An existing package review is allowed; an unsaved intent editor is not."""
+
+        if self._active_redaction_tools is not None:
+            reject_redaction(RedactionErrorCode.CONCURRENT_CHANGE, "redaction.exclusive")
 
     def _require_checklist(self) -> ChecklistWorkflowService:
         workflow = self._checklist

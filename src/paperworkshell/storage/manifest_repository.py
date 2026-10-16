@@ -16,9 +16,13 @@ from uuid import UUID, uuid4
 
 from paperworkshell.domain.case_lifecycle import (
     CURRENT_CASE_MANIFEST_VERSION,
+    INTERMEDIATE_CASE_MANIFEST_VERSION,
     LEGACY_CASE_MANIFEST_VERSION,
 )
-from paperworkshell.domain.manifest_migrations import migrate_manifest_v1_to_v2
+from paperworkshell.domain.manifest_migrations import (
+    migrate_manifest_v1_to_v2,
+    migrate_manifest_v2_to_v3,
+)
 from paperworkshell.domain.manifest_repository import (
     MAX_SAFE_MANIFEST_INTEGER,
     ManifestLoadResult,
@@ -62,14 +66,18 @@ from paperworkshell.storage.workspace import (
 
 _SCHEMA_RESOURCES: Final = {
     LEGACY_CASE_MANIFEST_VERSION: "case-manifest-v1.schema.json",
-    CURRENT_CASE_MANIFEST_VERSION: "case-manifest-v2.schema.json",
+    INTERMEDIATE_CASE_MANIFEST_VERSION: "case-manifest-v2.schema.json",
+    CURRENT_CASE_MANIFEST_VERSION: "case-manifest-v3.schema.json",
 }
 _SCHEMA_FINGERPRINTS: Final = {
     LEGACY_CASE_MANIFEST_VERSION: (
         "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
     ),
-    CURRENT_CASE_MANIFEST_VERSION: (
+    INTERMEDIATE_CASE_MANIFEST_VERSION: (
         "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+    ),
+    CURRENT_CASE_MANIFEST_VERSION: (
+        "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
     ),
 }
 _MAX_SCHEMA_BYTES: Final = 2 * 1024 * 1024
@@ -333,7 +341,7 @@ class WindowsManifestRepository:
                     restored,
                     ManifestLoadStatus.RECOVERED,
                     recovered_migration=(
-                        current.validated.schema_version == LEGACY_CASE_MANIFEST_VERSION
+                        current.validated.schema_version < CURRENT_CASE_MANIFEST_VERSION
                         and restored.schema_version == CURRENT_CASE_MANIFEST_VERSION
                     ),
                 )
@@ -364,16 +372,19 @@ class WindowsManifestRepository:
         *,
         recovered_migration: bool = False,
     ) -> ManifestLoadResult:
-        """Return only v2, transactionally migrating a settled v1 state."""
+        """Return only v3, transactionally migrating a settled supported older state."""
 
         if snapshot.schema_version == CURRENT_CASE_MANIFEST_VERSION:
             selected_status = (
                 ManifestLoadStatus.RECOVERED_MIGRATED if recovered_migration else status
             )
             return ManifestLoadResult(selected_status, snapshot)
-        if snapshot.schema_version != LEGACY_CASE_MANIFEST_VERSION:
+        if snapshot.schema_version not in {
+            LEGACY_CASE_MANIFEST_VERSION,
+            INTERMEDIATE_CASE_MANIFEST_VERSION,
+        }:
             _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.migration_version")
-        migrated = self._migrate_v1_locked(authority, snapshot)
+        migrated = self._migrate_to_current_locked(authority, snapshot)
         selected_status = (
             ManifestLoadStatus.RECOVERED_MIGRATED
             if status is ManifestLoadStatus.RECOVERED
@@ -381,20 +392,26 @@ class WindowsManifestRepository:
         )
         return ManifestLoadResult(selected_status, migrated)
 
-    def _migrate_v1_locked(
+    def _migrate_to_current_locked(
         self,
         authority: AuthenticatedCase,
         source: ManifestSnapshot,
     ) -> ManifestSnapshot:
-        """Publish the exact lossless v1-to-v2 transition through the journal boundary."""
+        """Publish a copy-only transition to v3 through one journal boundary."""
 
         if (
             source.case_id != authority.case_id
-            or source.schema_version != LEGACY_CASE_MANIFEST_VERSION
+            or source.schema_version
+            not in {LEGACY_CASE_MANIFEST_VERSION, INTERMEDIATE_CASE_MANIFEST_VERSION}
             or source.revision >= MAX_SAFE_MANIFEST_INTEGER
         ):
             _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_source")
-        candidate = migrate_manifest_v1_to_v2(source.document)
+        candidate = source.document
+        if source.schema_version == LEGACY_CASE_MANIFEST_VERSION:
+            candidate = migrate_manifest_v1_to_v2(candidate)
+            # Intermediate data is never published: this is one durable revision.
+            candidate["revision"] = source.revision
+        candidate = migrate_manifest_v2_to_v3(candidate)
         candidate_payload = _canonical_manifest_bytes(candidate)
         _validate_manifest_payload(candidate_payload, authority.case_id)
         manifest_stage_id = _next_internal_id(
@@ -1020,7 +1037,7 @@ def _validate_loadable_manifest_payload(
     payload: bytes,
     expected_case_id: UUID,
 ) -> _ValidatedManifest:
-    """Validate a frozen v1 input or current v2 input without mutation."""
+    """Validate a frozen v1/v2 input or current v3 input without mutation."""
 
     selected = _require_case_id(expected_case_id, context="manifest.validation_case")
     if type(payload) is not bytes or not 1 <= len(payload) <= MAX_MANIFEST_BYTES:

@@ -50,6 +50,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportSourceSignatureState,
     PdfExportVerificationReport,
 )
+from paperworkshell.domain.redaction import require_redaction_export_allowed
 from paperworkshell.overlays.models import (
     MAX_OVERLAYS,
     OverlayAssetRecord,
@@ -886,6 +887,7 @@ def _read_snapshot(
             FlattenedPdfExportErrorCode.MANIFEST_INVALID,
             "flattened.manifest",
         )
+    require_redaction_export_allowed(document)
     return document, projection, collection
 
 

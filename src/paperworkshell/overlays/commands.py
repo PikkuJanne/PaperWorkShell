@@ -741,6 +741,15 @@ def _manifest_namespaces(document: Mapping[str, object]) -> tuple[set[UUID], set
     case_id = _parse_uuid_text(document.get("case_id"), context="overlay.manifest_namespace")
     _register_namespace(non_overlay, case_id)
 
+    if document.get("schema_version") == 3:
+        for record in _record_collection(
+            document.get("redaction_marks"), "overlay.manifest_namespace"
+        ):
+            _register_namespace(
+                non_overlay,
+                _parse_uuid_text(record.get("mark_id"), context="overlay.manifest_namespace"),
+            )
+
     operation_records: tuple[dict[str, object], ...] = ()
     for collection_name, id_field in _IDENTITY_COLLECTIONS:
         records = _record_collection(document.get(collection_name), "overlay.manifest_namespace")

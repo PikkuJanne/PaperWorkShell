@@ -42,6 +42,7 @@ from paperworkshell.app.quality_analysis import (
     QualityAnalysisProgress,
     QualityReviewSnapshot,
 )
+from paperworkshell.app.redaction_tools import RedactionToolsState
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewError,
@@ -77,6 +78,7 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailErrorCode,
 )
 from paperworkshell.domain.recovery import RecoveryError
+from paperworkshell.domain.redaction import RedactionError
 from paperworkshell.domain.signature_images import (
     SignatureImageError,
     SignatureImageErrorCode,
@@ -172,6 +174,7 @@ _KNOWN_FAILURES: Final = (
     PdfThumbnailError,
     PreflightError,
     RecoveryError,
+    RedactionError,
     ScanReviewError,
     SignatureImageError,
     SourceIngestError,
@@ -275,6 +278,23 @@ def _core_overlay_apply_state_matches(
     )
 
 
+def _redaction_save_state_matches(
+    editor_state: RedactionToolsState,
+    state: OrganizerViewState,
+) -> bool:
+    allowed_revisions = {
+        editor_state.manifest_revision,
+        editor_state.manifest_revision + 1,
+    }
+    return (
+        state.case_id == editor_state.case_id
+        and state.revision in allowed_revisions
+        and (not editor_state.changed or state.revision == editor_state.manifest_revision + 1)
+        and not state.autosave_pending
+        and any(page.page_id == editor_state.page_id for page in state.pages)
+    )
+
+
 def _checklist_apply_state_matches(
     editor_state: ChecklistEditorState,
     state: OrganizerViewState,
@@ -338,6 +358,12 @@ class OrganizerBackendWorker(QObject):
     core_overlay_tools_apply_failed = Signal(int, object)
     core_overlay_tools_cancelled = Signal(int)
     core_overlay_tools_cancel_failed = Signal(int, object)
+    redaction_tools_started = Signal(int, object)
+    redaction_tools_start_failed = Signal(int, object)
+    redaction_tools_saved = Signal(int, object)
+    redaction_tools_save_failed = Signal(int, object)
+    redaction_tools_cancelled = Signal(int)
+    redaction_tools_cancel_failed = Signal(int, object)
     checklist_started = Signal(int, object)
     checklist_start_failed = Signal(int, object)
     checklist_applied = Signal(int, object)
@@ -1041,6 +1067,200 @@ class OrganizerBackendWorker(QObject):
             )
             return
         self.core_overlay_tools_cancelled.emit(operation_id)
+
+    @Slot(int, object)
+    def begin_redaction_tools(self, operation_id: int, page_id: object) -> None:
+        """Open one exact redaction mark intent draft on the backend thread."""
+
+        if type(operation_id) is not int or operation_id <= 0 or type(page_id) is not UUID:
+            self.redaction_tools_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid redaction mark request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.redaction_tools_start_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            state = backend.begin_redaction_tools(page_id)
+            organizer_state = backend.state
+            if (
+                type(state) is not RedactionToolsState
+                or type(organizer_state) is not OrganizerViewState
+                or type(state.editor_session_id) is not UUID
+                or state.case_id != organizer_state.case_id
+                or state.manifest_revision != organizer_state.revision
+                or state.page_id != page_id
+                or organizer_state.autosave_pending
+                or not any(page.page_id == page_id for page in organizer_state.pages)
+            ):
+                raise TypeError
+        except BaseException as error:
+            # A malformed begin result must not strand an exclusive editor
+            # session that presentation code cannot safely identify or cancel.
+            try:
+                backend.abort_redaction_tools()
+            except BaseException:
+                pass
+            self.redaction_tools_start_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        # Beginning an editor can flush prior page intent. Publish that durable
+        # revision before the revision-bound editor reaches the window.
+        self.state_changed.emit(organizer_state)
+        self.redaction_tools_started.emit(operation_id, state)
+
+    @Slot(int, object)
+    def save_redaction_tools(self, operation_id: int, editor_state: object) -> None:
+        """Persist one validated local redaction mark draft and publish its organizer state."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not RedactionToolsState
+        ):
+            self.redaction_tools_save_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected invalid redaction mark changes.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.redaction_tools_save_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            state = backend.save_redaction_tools(editor_state)
+            current = backend.state
+            if (
+                type(state) is not OrganizerViewState
+                or type(current) is not OrganizerViewState
+                or state != current
+                or not _redaction_save_state_matches(editor_state, state)
+            ):
+                raise TypeError
+        except BaseException as error:
+            self.redaction_tools_save_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.state_changed.emit(state)
+        self.redaction_tools_saved.emit(operation_id, state)
+
+    @Slot(int, object)
+    def cancel_redaction_tools(self, operation_id: int, editor_state: object) -> None:
+        """Release one matching draft without mutating or saving the case."""
+
+        if (
+            type(operation_id) is not int
+            or operation_id <= 0
+            or type(editor_state) is not RedactionToolsState
+        ):
+            self.redaction_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid redaction mark cancellation.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.redaction_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.cancel_redaction_tools(editor_state)
+        except BaseException as error:
+            self.redaction_tools_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.redaction_tools_cancelled.emit(operation_id)
+
+    @Slot(int)
+    def abort_redaction_tools(self, operation_id: int) -> None:
+        """Release a backend draft whose returned presentation state was unusable."""
+
+        if type(operation_id) is not int or operation_id <= 0:
+            self.redaction_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_REQUEST_INVALID",
+                    message="PaperWorkShell rejected an invalid visual overlay abort request.",
+                    retryable=True,
+                    operation_id=(
+                        operation_id if type(operation_id) is int and operation_id > 0 else None
+                    ),
+                ),
+            )
+            return
+        backend = self._backend
+        if backend is None:
+            self.redaction_tools_cancel_failed.emit(
+                operation_id,
+                UiFailure(
+                    code="PWS_UI_NOT_READY",
+                    message="PaperWorkShell is still starting. Try the action again.",
+                    retryable=True,
+                    operation_id=operation_id,
+                ),
+            )
+            return
+        try:
+            backend.abort_redaction_tools()
+        except BaseException as error:
+            self.redaction_tools_cancel_failed.emit(
+                operation_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+            )
+            return
+        self.redaction_tools_cancelled.emit(operation_id)
 
     @Slot(int)
     def begin_checklist(self, operation_id: int) -> None:
@@ -2298,6 +2518,10 @@ class OrganizerBackendCommands(QObject):
     core_overlay_tools_apply_requested = Signal(int, object)
     core_overlay_tools_cancel_requested = Signal(int, object)
     core_overlay_tools_abort_requested = Signal(int)
+    redaction_tools_begin_requested = Signal(int, object)
+    redaction_tools_save_requested = Signal(int, object)
+    redaction_tools_cancel_requested = Signal(int, object)
+    redaction_tools_abort_requested = Signal(int)
     checklist_begin_requested = Signal(int)
     checklist_apply_requested = Signal(int, object)
     checklist_cancel_requested = Signal(int, object)
@@ -2353,6 +2577,10 @@ class OrganizerBackendCommands(QObject):
         self.core_overlay_tools_apply_requested.connect(worker.apply_core_overlay_tools)
         self.core_overlay_tools_cancel_requested.connect(worker.cancel_core_overlay_tools)
         self.core_overlay_tools_abort_requested.connect(worker.abort_core_overlay_tools)
+        self.redaction_tools_begin_requested.connect(worker.begin_redaction_tools)
+        self.redaction_tools_save_requested.connect(worker.save_redaction_tools)
+        self.redaction_tools_cancel_requested.connect(worker.cancel_redaction_tools)
+        self.redaction_tools_abort_requested.connect(worker.abort_redaction_tools)
         self.checklist_begin_requested.connect(worker.begin_checklist)
         self.checklist_apply_requested.connect(worker.apply_checklist)
         self.checklist_cancel_requested.connect(worker.cancel_checklist)

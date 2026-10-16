@@ -370,6 +370,9 @@ def _validate_candidate_namespace(candidate: Mapping[str, object]) -> None:
 def _manifest_namespace(document: Mapping[str, object]) -> set[UUID]:
     namespace: set[UUID] = set()
     _register(namespace, _parse_uuid_text(document.get("case_id")))
+    if document.get("schema_version") == 3:
+        for record in _record_collection(document.get("redaction_marks")):
+            _register(namespace, _parse_uuid_text(record.get("mark_id")))
     operations: tuple[dict[str, object], ...] = ()
     for collection_name, identifier_name in _IDENTITY_COLLECTIONS:
         records = _record_collection(document.get(collection_name))

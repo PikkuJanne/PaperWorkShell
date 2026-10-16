@@ -47,6 +47,7 @@ from paperworkshell.domain.pdf_export_retry import (
     PdfExportRetryRepository,
     PreparedPdfExportRetry,
 )
+from paperworkshell.domain.redaction import RedactionError
 from paperworkshell.domain.signed_source_policy import (
     SignedSourceModificationSource,
     SignedSourcePolicyError,
@@ -492,7 +493,7 @@ class PdfExportService:
                 ),
             )
             return plan, manifest_export_identifier_ids(loaded.snapshot.document)
-        except PdfExportError:
+        except PdfExportError, RedactionError:
             raise
         except SignedSourcePolicyError:
             raise
@@ -543,6 +544,15 @@ def manifest_export_identifier_ids(document: dict[str, object]) -> frozenset[UUI
 
     try:
         collect(document.get("case_id"))
+        redaction_marks = document.get("redaction_marks", [])
+        if type(redaction_marks) is not list:
+            reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_identifiers")
+        for mark in redaction_marks:
+            if type(mark) is not dict:
+                reject_pdf_export(
+                    PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_identifiers"
+                )
+            collect(mark.get("mark_id"))
         for collection_name, field_name in (
             ("sources", "source_id"),
             ("pages", "page_id"),

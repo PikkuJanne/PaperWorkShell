@@ -1655,6 +1655,9 @@ def _manifest_namespace(document: Mapping[str, object]) -> frozenset[UUID]:
     identifiers: list[UUID] = [
         _parse_uuid_text(document.get("case_id"), "checklist.namespace_case")
     ]
+    if document.get("schema_version") == 3:
+        for record in _require_list(document.get("redaction_marks"), "checklist.namespace"):
+            identifiers.append(_parse_record_uuid(record, "mark_id", "checklist.namespace"))
     for collection_name, id_field in (
         ("sources", "source_id"),
         ("pages", "page_id"),

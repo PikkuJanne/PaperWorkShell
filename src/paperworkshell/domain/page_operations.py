@@ -28,6 +28,7 @@ from paperworkshell.domain.image_transforms import (
     MAX_DESKEW_ANGLE_MILLIDEGREES as _MAX_DESKEW_ANGLE_MILLIDEGREES,
 )
 from paperworkshell.domain.manifest_repository import (
+    SUPPORTED_MANIFEST_SCHEMA_VERSIONS,
     ManifestSnapshot,
     copy_manifest_document,
 )
@@ -1587,10 +1588,12 @@ def _parse_snapshot(snapshot: ManifestSnapshot) -> _ParsedSnapshot:
         document = copy_manifest_document(snapshot.document, context="page.snapshot")
     except Exception:
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "snapshot.document")
-    _require_members(document, _ROOT_MEMBERS, context="snapshot.root")
-    if type(document["schema_version"]) is int and document["schema_version"] not in {1, 2}:
+    version = document.get("schema_version")
+    if type(version) is int and version not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
         reject_page_operation(PageOperationErrorCode.VERSION_UNSUPPORTED, "snapshot.version")
-    if document["schema_version"] not in {1, 2} or document["case_id"] != str(snapshot.case_id):
+    root_members = _ROOT_MEMBERS | {"redaction_marks"} if version == 3 else _ROOT_MEMBERS
+    _require_members(document, root_members, context="snapshot.root")
+    if type(version) is not int or document["case_id"] != str(snapshot.case_id):
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "snapshot.identity")
     case_id = _parse_uuid(document["case_id"], context="snapshot.case_id")
     unrelated_namespace: set[UUID] = {case_id}
@@ -1641,6 +1644,13 @@ def _parse_snapshot(snapshot: ManifestSnapshot) -> _ParsedSnapshot:
     _collect_record_namespace(
         document["overlays"], "overlay_id", unrelated_namespace, "snapshot.overlays"
     )
+    if document.get("schema_version") == 3:
+        _collect_record_namespace(
+            document.get("redaction_marks"),
+            "mark_id",
+            unrelated_namespace,
+            "snapshot.redaction_marks",
+        )
     _collect_record_namespace(
         document["assignments"], "assignment_id", unrelated_namespace, "snapshot.assignments"
     )

@@ -76,6 +76,10 @@ from paperworkshell.app.portal_constraints import (
     is_constraint_announcement_safe,
 )
 from paperworkshell.app.quality_analysis import QualityReviewSnapshot
+from paperworkshell.app.redaction_tools import (
+    RedactionToolsState,
+    is_redaction_announcement_safe,
+)
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewPreviewResult,
@@ -141,6 +145,7 @@ from paperworkshell.ui.overlay_tools import (
     safe_core_overlay_failure,
 )
 from paperworkshell.ui.package_export import PackageExportDialog
+from paperworkshell.ui.redaction_tools import RedactionToolsDialog, safe_redaction_failure
 from paperworkshell.ui.scan_review import ScanReviewDialog
 from paperworkshell.ui.signature_images import (
     SignatureImageDeleteDialog,
@@ -319,6 +324,29 @@ def _quality_state_invalidates_review(
 
 def _core_overlay_apply_result_matches(
     dialog: CoreOverlayToolsDialog,
+    result: OrganizerViewState,
+    current: OrganizerViewState | None,
+) -> bool:
+    """Correlate a save result to the exact open draft without trusting its strings."""
+
+    draft = dialog.state
+    allowed_revisions = {
+        draft.manifest_revision,
+        draft.manifest_revision + 1,
+    }
+    return (
+        type(current) is OrganizerViewState
+        and current == result
+        and result.case_id == draft.case_id
+        and result.revision in allowed_revisions
+        and (not draft.changed or result.revision == draft.manifest_revision + 1)
+        and not result.autosave_pending
+        and any(page.page_id == draft.page_id for page in result.pages)
+    )
+
+
+def _redaction_save_result_matches(
+    dialog: RedactionToolsDialog,
     result: OrganizerViewState,
     current: OrganizerViewState | None,
 ) -> bool:
@@ -607,6 +635,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._core_overlay_tools_start_operation_id: int | None = None
         self._core_overlay_tools_apply_operation_id: int | None = None
         self._core_overlay_tools_cancel_operation_id: int | None = None
+        self._redaction_tools_dialog: RedactionToolsDialog | None = None
+        self._redaction_tools_start_operation_id: int | None = None
+        self._redaction_tools_save_operation_id: int | None = None
+        self._redaction_tools_cancel_operation_id: int | None = None
         self._checklist_dialog: ChecklistEditorDialog | None = None
         self._checklist_start_operation_id: int | None = None
         self._checklist_apply_operation_id: int | None = None
@@ -967,6 +999,13 @@ class PaperWorkShellWindow(QMainWindow):
             "resize every overlay type without requiring a pointer. Ctrl+Shift+F.",
         )
         self._core_overlay_tools_button.setAccessibleName("Edit visual overlays")
+        self._redaction_tools_button = self._action_button(
+            "Permanently remove information…",
+            "redactionToolsButton",
+            "Mark areas on the selected page for future permanent removal. "
+            "Save marks only; removal and verification remain disabled. Ctrl+Shift+P.",
+        )
+        self._redaction_tools_button.setAccessibleName("Permanently remove information")
         self._place_signature_image_button = self._action_button(
             "Place signature image…",
             "placeSignatureImageButton",
@@ -1023,6 +1062,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._scan_review_button.clicked.connect(self._request_scan_review)
         self._change_order_button.clicked.connect(self._change_full_order)
         self._core_overlay_tools_button.clicked.connect(self._request_core_overlay_tools)
+        self._redaction_tools_button.clicked.connect(self._request_redaction_tools)
         self._place_signature_image_button.clicked.connect(self._choose_signature_image)
         self._remove_signature_image_button.clicked.connect(
             self._request_signature_image_placements
@@ -1043,9 +1083,10 @@ class PaperWorkShellWindow(QMainWindow):
         action_layout.addWidget(self._place_signature_image_button, 3, 0)
         action_layout.addWidget(self._remove_signature_image_button, 3, 1)
         action_layout.addWidget(self._checklist_button, 3, 2)
-        action_layout.addWidget(self._portal_constraints_button, 4, 0, 1, 3)
-        action_layout.addWidget(self._package_export_button, 5, 0, 1, 3)
-        action_layout.addWidget(self._pages_pdf_export_button, 6, 0, 1, 3)
+        action_layout.addWidget(self._redaction_tools_button, 4, 0, 1, 3)
+        action_layout.addWidget(self._portal_constraints_button, 5, 0, 1, 3)
+        action_layout.addWidget(self._package_export_button, 6, 0, 1, 3)
+        action_layout.addWidget(self._pages_pdf_export_button, 7, 0, 1, 3)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
@@ -1127,6 +1168,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._place_signature_image_button,
             self._remove_signature_image_button,
             self._checklist_button,
+            self._redaction_tools_button,
             self._portal_constraints_button,
             self._package_export_button,
             self._pages_pdf_export_button,
@@ -1167,6 +1209,7 @@ class PaperWorkShellWindow(QMainWindow):
             ("Ctrl+Shift+L", self._open_ocr_languages),
             ("Ctrl+Shift+O", self._change_full_order),
             ("Ctrl+Shift+F", self._request_core_overlay_tools),
+            ("Ctrl+Shift+P", self._request_redaction_tools),
             ("Ctrl+Shift+C", self._request_checklist),
             ("Ctrl+Shift+S", self._choose_signature_image),
             ("Ctrl+Shift+D", self._request_signature_image_placements),
@@ -1207,6 +1250,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.core_overlay_tools_cancel_failed.connect(
             self._core_overlay_tools_cancel_failed
         )
+        self._worker.redaction_tools_started.connect(self._redaction_tools_started)
+        self._worker.redaction_tools_start_failed.connect(self._redaction_tools_start_failed)
+        self._worker.redaction_tools_saved.connect(self._redaction_tools_saved)
+        self._worker.redaction_tools_save_failed.connect(self._redaction_tools_save_failed)
+        self._worker.redaction_tools_cancelled.connect(self._redaction_tools_cancelled)
+        self._worker.redaction_tools_cancel_failed.connect(self._redaction_tools_cancel_failed)
         self._worker.checklist_started.connect(self._checklist_started)
         self._worker.checklist_start_failed.connect(self._checklist_start_failed)
         self._worker.checklist_applied.connect(self._checklist_applied)
@@ -2341,6 +2390,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._closing_requested = False
         self._closing_import_cleanup = False
         self._dismiss_core_overlay_tools_after_shutdown_refusal()
+        self._dismiss_redaction_tools_after_shutdown_refusal()
         self._dismiss_checklist_after_shutdown_refusal()
         self._dismiss_portal_constraints_after_shutdown_refusal()
         self._update_organizer_guidance()
@@ -2392,6 +2442,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
+            or self._redaction_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
             or self._portal_constraints_is_opening_or_active()
             or self._package_export_is_opening_or_active()
@@ -2460,6 +2511,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
+            or self._redaction_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
             or self._portal_constraints_is_opening_or_active()
             or self._package_export_is_opening_or_active()
@@ -2479,6 +2531,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
+            or self._redaction_tools_is_opening_or_active()
             or self._checklist_is_opening_or_active()
             or self._portal_constraints_is_opening_or_active()
             or self._package_export_is_opening_or_active()
@@ -2831,7 +2884,10 @@ class PaperWorkShellWindow(QMainWindow):
         state = self._state
         scan_review_busy = self._scan_review_is_opening_or_active()
         quality_busy = self._quality_is_pending_or_running()
-        overlay_tools_busy = self._core_overlay_tools_is_opening_or_active()
+        overlay_tools_busy = (
+            self._core_overlay_tools_is_opening_or_active()
+            or self._redaction_tools_is_opening_or_active()
+        )
         checklist_busy = self._checklist_is_opening_or_active()
         portal_constraints_busy = self._portal_constraints_is_opening_or_active()
         package_export_busy = self._package_export_is_opening_or_active()
@@ -2881,6 +2937,7 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._change_order_button.setEnabled(editable and page_count > 1)
         self._core_overlay_tools_button.setEnabled(has_selection)
+        self._redaction_tools_button.setEnabled(has_selection)
         self._place_signature_image_button.setEnabled(has_selection)
         self._remove_signature_image_button.setEnabled(has_selection)
         self._checklist_button.setEnabled(
@@ -3446,6 +3503,230 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setVisible(True)
         self._announce(
             f"Visual form-mark editor could not finish. {safe_message}",
+            assertive=True,
+        )
+        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._error_label)
+
+    def _request_redaction_tools(self) -> None:
+        """Open the separate redaction mark intent editor for the selected page."""
+
+        if not self._redaction_tools_button.isEnabled():
+            return
+        page_id = self._selected_page_id()
+        if page_id is None or not self._prepare_for_mutation():
+            return
+        if (
+            self._redaction_tools_is_opening_or_active()
+            or self._core_overlay_tools_is_opening_or_active()
+            or self._checklist_is_opening_or_active()
+            or self._portal_constraints_is_opening_or_active()
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        self._redaction_tools_start_operation_id = operation_id
+        self._autosave_timer.stop()
+        self._preview_refresh_timer.stop()
+        self._deferred_preview_state = None
+        self._hide_error()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce("Opening redaction mark editor. No information has been removed.")
+        self._commands.redaction_tools_begin_requested.emit(operation_id, page_id)
+
+    @Slot(int, object)
+    def _redaction_tools_started(self, operation_id: int, editor_state: object) -> None:
+        expected = self._redaction_tools_start_operation_id
+        if operation_id != expected:
+            return
+        self._redaction_tools_start_operation_id = None
+        if (
+            self._closing_requested
+            or type(editor_state) is not RedactionToolsState
+            or type(editor_state.editor_session_id) is not UUID
+            or self._state is None
+            or editor_state.case_id != self._state.case_id
+            or editor_state.manifest_revision != self._state.revision
+            or editor_state.page_id != self._selected_page_id()
+            or not is_redaction_announcement_safe(editor_state.announcement)
+            or self._redaction_tools_dialog is not None
+        ):
+            if not self._closing_requested and self._redaction_tools_dialog is None:
+                cancel_operation_id = self._allocate_operation_id()
+                self._redaction_tools_cancel_operation_id = cancel_operation_id
+                self._commands.redaction_tools_abort_requested.emit(cancel_operation_id)
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            return
+        matching_pages = tuple(
+            page for page in self._state.pages if page.page_id == editor_state.page_id
+        )
+        if len(matching_pages) != 1:
+            cancel_operation_id = self._allocate_operation_id()
+            self._redaction_tools_cancel_operation_id = cancel_operation_id
+            self._commands.redaction_tools_abort_requested.emit(cancel_operation_id)
+            self._update_import_availability()
+            self._update_page_actions()
+            self._update_quality_actions()
+            return
+        transform, pointer_mapping_enabled = _overlay_editor_display_facts(matching_pages[0])
+        preview = self._model.preview(editor_state.page_id)
+        display_size = (
+            RenderedImageSize(preview.width(), preview.height())
+            if preview is not None and not preview.isNull()
+            else None
+        )
+        dialog = RedactionToolsDialog(
+            editor_state,
+            self,
+            page_transform=transform,
+            page_preview=preview if pointer_mapping_enabled else None,
+            page_display_size=display_size,
+            pointer_mapping_enabled=pointer_mapping_enabled,
+        )
+        dialog.save_requested.connect(self._save_redaction_tools)
+        dialog.finished.connect(self._redaction_tools_finished)
+        self._redaction_tools_dialog = dialog
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        dialog.open()
+
+    @Slot(int, object)
+    def _redaction_tools_start_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._redaction_tools_start_operation_id:
+            return
+        self._redaction_tools_start_operation_id = None
+        if self._state is not None and self._state.autosave_pending and not self._closing_requested:
+            self._autosave_timer.start()
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_redaction_tools_failure(failure)
+
+    @Slot(object)
+    def _save_redaction_tools(self, editor_state: object) -> None:
+        dialog = self._redaction_tools_dialog
+        if (
+            dialog is None
+            or type(editor_state) is not RedactionToolsState
+            or editor_state is not dialog.state
+            or self._redaction_tools_save_operation_id is not None
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        self._redaction_tools_save_operation_id = operation_id
+        dialog.set_save_pending()
+        self._commands.redaction_tools_save_requested.emit(operation_id, editor_state)
+
+    @Slot(int, object)
+    def _redaction_tools_saved(self, operation_id: int, state: object) -> None:
+        if operation_id != self._redaction_tools_save_operation_id:
+            return
+        self._redaction_tools_save_operation_id = None
+        dialog = self._redaction_tools_dialog
+        if dialog is None:
+            return
+        if type(state) is not OrganizerViewState or not _redaction_save_result_matches(
+            dialog,
+            state,
+            self._state,
+        ):
+            dialog.save_failed(
+                "PWS_UI_RESPONSE_INVALID",
+                "PaperWorkShell received an invalid save confirmation. Try saving again.",
+            )
+            return
+        dialog.finish_saved()
+        self._announce("Redaction marks saved. No information has been removed.")
+
+    @Slot(int, object)
+    def _redaction_tools_save_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._redaction_tools_save_operation_id:
+            return
+        self._redaction_tools_save_operation_id = None
+        dialog = self._redaction_tools_dialog
+        if dialog is None:
+            return
+        if type(failure) is UiFailure:
+            dialog.save_failed(failure.code, failure.message)
+            return
+        dialog.save_failed(
+            "PWS_UI_RESPONSE_INVALID",
+            "PaperWorkShell received an invalid save failure. Try saving again.",
+        )
+
+    @Slot(int)
+    def _redaction_tools_finished(self, _result: int) -> None:
+        dialog = self._redaction_tools_dialog
+        if dialog is None:
+            return
+        state = dialog.state
+        cancelled = (
+            _result != int(QDialog.DialogCode.Accepted)
+            and not dialog.commit_started
+            and self._redaction_tools_save_operation_id is None
+        )
+        dialog.deleteLater()
+        self._redaction_tools_dialog = None
+        self._redaction_tools_save_operation_id = None
+        if cancelled:
+            operation_id = self._allocate_operation_id()
+            self._redaction_tools_cancel_operation_id = operation_id
+            self._commands.redaction_tools_cancel_requested.emit(operation_id, state)
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        if (
+            not cancelled
+            and not self._closing_requested
+            and self._redaction_tools_button.isEnabled()
+        ):
+            QTimer.singleShot(0, self._focus_redaction_tools_button_after_dialog)
+
+    @Slot(int)
+    def _redaction_tools_cancelled(self, operation_id: int) -> None:
+        if operation_id != self._redaction_tools_cancel_operation_id:
+            return
+        self._redaction_tools_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._announce("Redaction mark changes cancelled. No information has been removed.")
+        if not self._closing_requested and self._redaction_tools_button.isEnabled():
+            QTimer.singleShot(0, self._focus_redaction_tools_button_after_dialog)
+
+    def _focus_redaction_tools_button_after_dialog(self) -> None:
+        if self._closing_requested or not self._redaction_tools_button.isEnabled():
+            return
+        self.activateWindow()
+        self._redaction_tools_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._redaction_tools_button)
+
+    @Slot(int, object)
+    def _redaction_tools_cancel_failed(self, operation_id: int, failure: object) -> None:
+        if operation_id != self._redaction_tools_cancel_operation_id:
+            return
+        self._redaction_tools_cancel_operation_id = None
+        self._update_import_availability()
+        self._update_page_actions()
+        self._update_quality_actions()
+        self._show_redaction_tools_failure(failure)
+
+    def _show_redaction_tools_failure(self, failure: object) -> None:
+        code = failure.code if type(failure) is UiFailure else None
+        message = failure.message if type(failure) is UiFailure else None
+        safe_code, _ = safe_redaction_failure(code, message)
+        safe_message = (
+            "PaperWorkShell could not finish the removal-mark editor. "
+            "Try again. No information has been removed."
+        )
+        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._error_label.setVisible(True)
+        self._announce(
+            f"Redaction mark editor could not finish. {safe_message}",
             assertive=True,
         )
         self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -5113,6 +5394,14 @@ class PaperWorkShellWindow(QMainWindow):
             or self._core_overlay_tools_cancel_operation_id is not None
         )
 
+    def _redaction_tools_is_opening_or_active(self) -> bool:
+        return (
+            self._redaction_tools_start_operation_id is not None
+            or self._redaction_tools_dialog is not None
+            or self._redaction_tools_save_operation_id is not None
+            or self._redaction_tools_cancel_operation_id is not None
+        )
+
     def _checklist_is_opening_or_active(self) -> bool:
         return (
             self._checklist_start_operation_id is not None
@@ -5239,6 +5528,7 @@ class PaperWorkShellWindow(QMainWindow):
             and (active is None or active.kind is _LongOperationKind.PREVIEW)
             and not self._scan_review_is_opening_or_active()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._redaction_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
             and not self._package_export_is_opening_or_active()
@@ -5400,6 +5690,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._closing_requested
             and not self._scan_review_is_opening_or_active()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._redaction_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
             and not self._package_export_is_opening_or_active()
@@ -5482,6 +5773,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._redaction_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
             and not self._package_export_is_opening_or_active()
@@ -5497,6 +5789,7 @@ class PaperWorkShellWindow(QMainWindow):
             and not self._scan_review_is_opening_or_active()
             and not self._quality_is_pending_or_running()
             and not self._core_overlay_tools_is_opening_or_active()
+            and not self._redaction_tools_is_opening_or_active()
             and not self._checklist_is_opening_or_active()
             and not self._portal_constraints_is_opening_or_active()
             and not self._package_export_is_opening_or_active()
@@ -5521,6 +5814,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._scan_review_button,
             self._change_order_button,
             self._core_overlay_tools_button,
+            self._redaction_tools_button,
             self._place_signature_image_button,
             self._remove_signature_image_button,
             self._checklist_button,
@@ -5578,6 +5872,17 @@ class PaperWorkShellWindow(QMainWindow):
                 assertive=True,
             )
             return
+        redaction_dialog = self._redaction_tools_dialog
+        if (
+            redaction_dialog is not None
+            and not redaction_dialog.save_pending
+            and redaction_dialog.latest_state_for_shutdown() is None
+        ):
+            self._announce(
+                "Resolve the redaction mark editor fields before closing PaperWorkShell.",
+                assertive=True,
+            )
+            return
         constraint_dialog = self._portal_constraints_dialog
         if (
             constraint_dialog is not None
@@ -5605,6 +5910,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._discard_ocr_language_dialog_for_shutdown()
         self._discard_scan_review_for_shutdown()
         self._discard_core_overlay_tools_for_shutdown()
+        self._discard_redaction_tools_for_shutdown()
         self._discard_checklist_for_shutdown()
         self._discard_portal_constraints_for_shutdown()
         self._discard_signature_images_for_shutdown()
@@ -5664,6 +5970,31 @@ class PaperWorkShellWindow(QMainWindow):
             operation_id = self._allocate_operation_id()
             self._core_overlay_tools_cancel_operation_id = operation_id
             self._commands.core_overlay_tools_cancel_requested.emit(operation_id, state)
+
+    def _discard_redaction_tools_for_shutdown(self) -> None:
+        dialog = self._redaction_tools_dialog
+        if dialog is None or dialog.save_pending:
+            return
+        state = dialog.latest_state_for_shutdown()
+        if state is None:
+            return
+        try:
+            dialog.finished.disconnect(self._redaction_tools_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._redaction_tools_dialog = None
+        if dialog.commit_started:
+            # A retained draft can be edited after a failed Save. Queue its
+            # latest exact state before shutdown so an older pending candidate
+            # cannot be saved while newer local changes are silently dropped.
+            operation_id = self._allocate_operation_id()
+            self._commands.redaction_tools_save_requested.emit(operation_id, state)
+        else:
+            operation_id = self._allocate_operation_id()
+            self._redaction_tools_cancel_operation_id = operation_id
+            self._commands.redaction_tools_cancel_requested.emit(operation_id, state)
 
     def _discard_checklist_for_shutdown(self) -> None:
         dialog = self._checklist_dialog
@@ -5751,6 +6082,21 @@ class PaperWorkShellWindow(QMainWindow):
         dialog.deleteLater()
         self._core_overlay_tools_dialog = None
         self._core_overlay_tools_apply_operation_id = None
+
+    def _dismiss_redaction_tools_after_shutdown_refusal(self) -> None:
+        """Expose the main retry surface after shutdown clears editor authority."""
+
+        dialog = self._redaction_tools_dialog
+        if dialog is None:
+            return
+        try:
+            dialog.finished.disconnect(self._redaction_tools_finished)
+        except RuntimeError:
+            pass
+        dialog.done(QDialog.DialogCode.Rejected)
+        dialog.deleteLater()
+        self._redaction_tools_dialog = None
+        self._redaction_tools_save_operation_id = None
 
     def _dismiss_checklist_after_shutdown_refusal(self) -> None:
         """Expose the main retry surface after shutdown clears checklist authority."""
