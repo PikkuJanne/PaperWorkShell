@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import replace
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -16,13 +15,16 @@ from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryError,
     ManifestRepositoryErrorCode,
 )
-from paperworkshell.domain.pdf_export import build_pdf_export_plan
+from paperworkshell.domain.pdf_export import PdfExportPlan, build_pdf_export_plan
 from paperworkshell.domain.redaction import (
     RedactionError,
     RedactionErrorCode,
     RedactionMarkCollection,
 )
-from paperworkshell.domain.searchable_pdf_export import build_searchable_pdf_export_plan
+from paperworkshell.domain.searchable_pdf_export import (
+    SearchablePdfExportPlan,
+    build_searchable_pdf_export_plan,
+)
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.errors import WorkspaceError, WorkspaceErrorCode
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
@@ -93,17 +95,25 @@ def test_intent_save_reopen_low_disk_failure_and_retry_preserve_original_facts(
         cast(WindowsSourcePrechecker, object()),
         maximum_page_count=4096,
     )
-    direct_pdf_plan = replace(
-        original_pdf_plan,
+    direct_pdf_plan = PdfExportPlan(
+        case_id=original_pdf_plan.case_id,
         manifest_revision=reopened.revision,
         manifest_sha256=reopened.sha256,
         manifest_cas_token=reopened.cas_token,
+        sources=original_pdf_plan.sources,
+        pages=original_pdf_plan.pages,
+        profile=original_pdf_plan.profile,
+        plan_version=original_pdf_plan.plan_version,
     )
-    direct_searchable_plan = replace(
-        original_searchable_plan,
+    direct_searchable_plan = SearchablePdfExportPlan(
+        case_id=original_searchable_plan.case_id,
         manifest_revision=reopened.revision,
         manifest_sha256=reopened.sha256,
         manifest_cas_token=reopened.cas_token,
+        sources=original_searchable_plan.sources,
+        pages=original_searchable_plan.pages,
+        profile=original_searchable_plan.profile,
+        plan_version=original_searchable_plan.plan_version,
     )
     with pytest.raises(RedactionError) as pdf_failure:
         source_store.borrow_committed_pdf_sources(
