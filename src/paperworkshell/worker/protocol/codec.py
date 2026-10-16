@@ -33,6 +33,7 @@ from paperworkshell.worker.protocol.models import (
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
     QUALITY_OCR_REVIEW_CAPABILITY,
+    REDACTION_RECONSTRUCTION_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CancelDisposition,
@@ -80,6 +81,7 @@ from paperworkshell.worker.protocol.models import (
     validate_searchable_pdf_export_start,
     validate_signature_image_raster_start,
 )
+from paperworkshell.worker.protocol.redaction_reconstruction import reconstruction_binding
 
 _ENVELOPE_FIELDS: Final = frozenset(
     {
@@ -604,7 +606,12 @@ class OperationRegistry:
         """Reject an operation descriptor absent from the protocol-v1 registry."""
 
         descriptor = CapabilityDescriptor(operation_kind, operation_version)
-        if descriptor not in self.capabilities:
+        # Private reconstruction is known to the codec but never part of
+        # default capability requests or ordinary worker advertisement.
+        if (
+            descriptor not in self.capabilities
+            and descriptor != REDACTION_RECONSTRUCTION_CAPABILITY
+        ):
             reject(
                 "RPC_UNSUPPORTED_OPERATION",
                 "payload.operation_kind",
@@ -645,6 +652,8 @@ class OperationRegistry:
             validate_searchable_pdf_export_start(payload)
         if payload.operation_kind == PDF_IMAGE_STAGE_CAPABILITY.capability_id:
             validate_pdf_image_stage_start(payload)
+        if payload.operation_kind == REDACTION_RECONSTRUCTION_CAPABILITY.capability_id:
+            reconstruction_binding(payload)
 
     def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
         """Reject worker-advertised capabilities absent from the local registry."""

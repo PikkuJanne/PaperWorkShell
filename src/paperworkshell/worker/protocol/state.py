@@ -26,6 +26,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     PORTAL_PDF_EXPORT_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
+    REDACTION_RECONSTRUCTION_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CancelDisposition,
@@ -78,6 +79,10 @@ from paperworkshell.worker.protocol.models import (
     validate_signature_image_raster_result,
     validate_signature_image_raster_start,
 )
+from paperworkshell.worker.protocol.redaction_reconstruction import (
+    reconstruction_binding,
+    validate_reconstruction_result,
+)
 
 MAX_TRACKED_MESSAGES: Final = 4_096
 MAX_TRACKED_OPERATIONS: Final = 1_024
@@ -111,6 +116,7 @@ class _ActiveOperation:
     searchable_export_output_object_id: UUID | None = None
     searchable_export_status_object_id: UUID | None = None
     searchable_export_status_capacity_bytes: int | None = None
+    reconstruction_output_object_id: UUID | None = None
     image_stage_output_object_id: UUID | None = None
     image_stage_evidence_object_id: UUID | None = None
     image_stage_evidence_capacity_bytes: int | None = None
@@ -542,6 +548,17 @@ class ConversationState:
             )
             if len(set(correlated_ids)) != len(correlated_ids):
                 reject("RPC_INVALID_OPERATION", "operation_id", "image stage scope is invalid")
+        reconstruction_output_object_id = None
+        if descriptor == REDACTION_RECONSTRUCTION_CAPABILITY:
+            reconstruction_output_object_id = reconstruction_binding(payload)
+            bound_ids = (
+                self.case_id,
+                message.operation_id,
+                *(item.object_id for item in payload.inputs),
+                reconstruction_output_object_id,
+            )
+            if len(set(bound_ids)) != len(bound_ids):
+                reject("RPC_INVALID_OPERATION", "operation_id", "reconstruction scope is invalid")
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",
@@ -567,6 +584,7 @@ class ConversationState:
                 searchable_export_output_object_id=(searchable_export_output_object_id),
                 searchable_export_status_object_id=(searchable_export_status_object_id),
                 searchable_export_status_capacity_bytes=(searchable_export_status_capacity_bytes),
+                reconstruction_output_object_id=reconstruction_output_object_id,
                 image_stage_output_object_id=image_stage_output_object_id,
                 image_stage_evidence_object_id=image_stage_evidence_object_id,
                 image_stage_evidence_capacity_bytes=image_stage_evidence_capacity_bytes,
@@ -642,6 +660,10 @@ class ConversationState:
                 "payload",
                 "ocr.process progress must use its exact numeric page total",
             )
+        if active.operation_kind == REDACTION_RECONSTRUCTION_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.PAGES or payload.total_units != 1
+        ):
+            reject("RPC_INVALID_PROGRESS", "payload", "reconstruction progress must use one page")
         if active.operation_kind == QUALITY_OCR_REVIEW_CAPABILITY.capability_id and (
             payload.unit is not ProgressUnit.PAGES or payload.total_units != 1
         ):
@@ -957,6 +979,17 @@ class ConversationState:
                 evidence_object_id=active.image_stage_evidence_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
                 maximum_evidence_bytes=active.image_stage_evidence_capacity_bytes,
+            )
+        if active.operation_kind == REDACTION_RECONSTRUCTION_CAPABILITY.capability_id:
+            if active.reconstruction_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE", "payload.outputs", "reconstruction binding is unavailable"
+                )
+            validate_reconstruction_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.reconstruction_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
             )
         terminal = _TerminalOperation(
             operation_id=active.operation_id,

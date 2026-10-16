@@ -254,6 +254,10 @@ IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
 QUALITY_OCR_REVIEW_CAPABILITY: Final = CapabilityDescriptor("ocr.review", 1)
 SEARCHABLE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.searchable", 1)
+REDACTION_RECONSTRUCTION_CAPABILITY: Final = CapabilityDescriptor("pdf.reconstruct_private", 1)
+REDACTION_RECONSTRUCTION_PLAN_CONTENT_KIND: Final = "redaction-reconstruction-plan-v1"
+REDACTION_RECONSTRUCTION_OUTPUT_CONTENT_KIND: Final = "redaction-reconstruction-unverified-pdf-v1"
+
 PDF_IMAGE_STAGE_CAPABILITY: Final = CapabilityDescriptor("pdf.image_stage", 1)
 
 PDF_IMAGE_STAGE_PLAN_CONTENT_KIND: Final = "pdf-image-stage-plan-v1"

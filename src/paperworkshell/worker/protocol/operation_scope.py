@@ -13,4 +13,5 @@ class WorkerOperationScope(StrEnum):
     """Authenticated parent-selected handler allowlists for one worker process."""
 
     ALL = "all-v1"
+    REDACTION_RECONSTRUCTION = "redaction-reconstruction-private-v1"
     QUALITY_OCR_REVIEW = "quality-ocr-review-v1"

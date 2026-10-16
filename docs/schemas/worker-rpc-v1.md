@@ -496,6 +496,32 @@ ordered staging outputs; no released JSON Schema meaning is widened. An older pe
 request or advertise `pdf.export.searchable` never negotiates it, while any changed searchable
 operation meaning requires a new operation version.
 
+## Private reconstruction operation
+
+PWS-0603 adds the internal `pdf.reconstruct_private` version 1 codec under the
+unchanged generic v1 envelope. It is excluded from default required capabilities
+and normal host operation registries. Only the explicit reconstruction launch scope
+loads it, and it is negotiated only when requested. The scope grants no external
+child executable; normal export and saved-mark state promotion remain disabled.
+
+The start has two authenticated `source_read` inputs: a canonical versioned request
+section and one PDF source. Four distinct positive handles grant read-only source,
+read-only request section, bounded writable output section and result pipe access;
+the only additional parameter is the output object ID. Extra parameters, paths,
+identifiers reused across scopes and insufficient temporary capacity are rejected.
+The request binds the case/revision/source/page and mark fingerprint. One-page
+progress uses the existing `processing` stage and `pages` unit.
+
+A succeeded result has exactly one `operation_staging` PDF reference with its exact
+operation/output IDs, size and digest. A separate canonical header of at most 4096
+bytes binds those same facts to the typed reconstruction report. The broker
+terminates the worker, rechecks the source lease and cancellation, and authenticates
+the candidate bytes before returning a private bounded reader. Its only status is
+`awaiting_verification`; it conveys no destination, export-history or current-manifest
+publication authority. Failure or an unknown result exposes no candidate. See the
+[reconstruction contract](../architecture/redaction-reconstruction.md) for geometry,
+pixel policy, budgets, supported input and remaining security gates.
+
 ## Limits and bounded decoding
 
 Every start requests versioned positive integer limits for wall time, CPU time, memory, temporary
