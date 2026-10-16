@@ -33,7 +33,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from paperworkshell.app.redaction_tools import RedactionToolsState, is_redaction_announcement_safe
+from paperworkshell.app.redaction_tools import (
+    MAX_REDACTION_EDIT_STEPS,
+    RedactionToolsState,
+    is_redaction_announcement_safe,
+)
 from paperworkshell.domain.case_lifecycle import CaseLifecycleErrorCode
 from paperworkshell.domain.manifest_repository import ManifestRepositoryErrorCode
 from paperworkshell.domain.page_coordinates import (
@@ -46,6 +50,10 @@ from paperworkshell.domain.redaction import RedactionError, RedactionErrorCode
 from paperworkshell.ui.redaction_canvas import RedactionIntentCanvas
 
 _NOT_APPLIED = "Unapplied — information is still present. No removal has been verified."
+_EDIT_LIMIT_STATUS = (
+    "The edit limit has been reached. Save the current marks, Undo an edit to continue, "
+    "or Cancel this draft. Information is still present."
+)
 _SAVE_FAILURE = "Removal marks could not be saved. Information is still present. Changes are retained for retry."
 _SAFE_FAILURE_CODES = frozenset(
     {code.value for code in RedactionErrorCode}
@@ -284,6 +292,8 @@ class RedactionToolsDialog(QDialog):
             shortcut.activated.connect(callback)
             self._shortcuts.append(shortcut)
         self._refresh()
+        if self._edit_limit_reached():
+            self._set_status(_EDIT_LIMIT_STATUS)
         QTimer.singleShot(0, self._initial_focus)
 
     @staticmethod
@@ -310,13 +320,40 @@ class RedactionToolsDialog(QDialog):
         return self._commit_started
 
     def _initial_focus(self) -> None:
-        target = self._list if self._state.selected_record is not None else self._add_button
+        target = (
+            self._undo_button
+            if self._edit_limit_reached()
+            else self._list
+            if self._state.selected_record is not None
+            else self._add_button
+        )
         target.setFocus(Qt.FocusReason.OtherFocusReason)
         self._scroll.ensureWidgetVisible(target)
 
     def _field_changed(self, _value: int) -> None:
         if not self._loading:
             self._properties_dirty = True
+
+    def _edit_limit_reached(self) -> bool:
+        return self._state.cursor >= MAX_REDACTION_EDIT_STEPS
+
+    def _capacity_status(self) -> str:
+        if self._edit_limit_reached():
+            if self._commit_started:
+                return (
+                    "The edit limit has been reached. Retry saving the current marks, "
+                    "or Undo an edit to continue. Information is still present."
+                )
+            return _EDIT_LIMIT_STATUS
+        if self._commit_started:
+            return (
+                "The case has reached the supported removal-mark limit. "
+                "Remove a mark or retry saving the current marks. Information is still present."
+            )
+        return (
+            "The case has reached the supported removal-mark limit. "
+            "Remove a mark, save the current marks, or cancel. Information is still present."
+        )
 
     def _update_region(self) -> bool:
         if self._save_pending:
@@ -338,13 +375,30 @@ class RedactionToolsDialog(QDialog):
             left, top, width, height = (field.value() for field in self._fields)
             box = NormalizedPageBox(left, top, width, height)
             state = self._state.replace_selected_box(box)
-        except RedactionError, PageCoordinateError:
+        except PageCoordinateError:
             self._set_status(
                 "Region must have a positive width and height and fit inside the full page. Correct the numeric fields.",
                 True,
             )
             self._fields[0].setFocus(Qt.FocusReason.OtherFocusReason)
             self._scroll.ensureWidgetVisible(self._fields[0])
+            return False
+        except RedactionError as error:
+            if error.code is RedactionErrorCode.CAPACITY_EXCEEDED:
+                # Disabled fields normally prevent this path. Restore the last
+                # accepted values if a queued/direct signal arrives at the limit.
+                self._properties_dirty = False
+                self._refresh()
+                self._set_status(self._capacity_status(), True)
+                self._undo_button.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._scroll.ensureWidgetVisible(self._undo_button)
+            else:
+                self._set_status(
+                    "The removal mark edit was rejected. Information is still present. "
+                    "Review the selected region and try again.",
+                    True,
+                )
+                self._status.setFocus(Qt.FocusReason.OtherFocusReason)
             return False
         self._publish(state)
         return True
@@ -354,9 +408,17 @@ class RedactionToolsDialog(QDialog):
             return
         try:
             state = operation(self._state)
-        except RedactionError, PageCoordinateError:
+        except RedactionError as error:
             self._set_status(
-                "The removal mark change was rejected. Information is still present. Review the selected region.",
+                self._capacity_status()
+                if error.code is RedactionErrorCode.CAPACITY_EXCEEDED
+                else "The removal mark change was rejected. Information is still present. Review the selected region.",
+                True,
+            )
+            return
+        except PageCoordinateError:
+            self._set_status(
+                "Region must have a positive width and height and fit inside the full page. Correct the numeric fields.",
                 True,
             )
             return
@@ -370,14 +432,23 @@ class RedactionToolsDialog(QDialog):
                 "The removal editor returned an invalid state. Information is still present.", True
             )
             return
+        previously_limited = self._edit_limit_reached()
         self._state = state
         self._properties_dirty = False
         self._refresh()
         self.draft_changed.emit(state)
-        self._set_status(state.announcement + " Information is still present.")
+        limited = self._edit_limit_reached()
+        self._set_status(
+            self._capacity_status()
+            if limited
+            else state.announcement + " Information is still present."
+        )
+        if limited and not previously_limited:
+            self._undo_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._scroll.ensureWidgetVisible(self._undo_button)
 
     def _add_pointer_region(self, box: object) -> None:
-        if type(box) is NormalizedPageBox:
+        if type(box) is NormalizedPageBox and not self._edit_limit_reached():
             self._transition(lambda state: state.create(box))
 
     def _selection_changed(self, row: int) -> None:
@@ -406,6 +477,7 @@ class RedactionToolsDialog(QDialog):
     def _refresh(self) -> None:
         records = self._state.records
         selected = self._state.selected_record
+        editing_enabled = not self._edit_limit_reached()
         self._loading = True
         try:
             with QSignalBlocker(self._list):
@@ -443,7 +515,7 @@ class RedactionToolsDialog(QDialog):
                 self._list.setCurrentRow(
                     -1 if selected is None else self._listed_rows[selected.mark_id]
                 )
-            self._properties.setEnabled(selected is not None)
+            self._properties.setEnabled(selected is not None and editing_enabled)
             if selected is not None:
                 for field, value in zip(
                     self._fields,
@@ -451,7 +523,9 @@ class RedactionToolsDialog(QDialog):
                     strict=True,
                 ):
                     field.setValue(value)
-            self._remove_button.setEnabled(selected is not None)
+            self._add_button.setEnabled(editing_enabled)
+            self._remove_button.setEnabled(selected is not None and editing_enabled)
+            self._canvas.setEnabled(editing_enabled)
             self._undo_button.setEnabled(self._state.can_undo)
             self._redo_button.setEnabled(self._state.can_redo)
             self._canvas.set_records(records, None if selected is None else selected.mark_id)
@@ -489,7 +563,10 @@ class RedactionToolsDialog(QDialog):
         self._cancel_button.setEnabled(not self._commit_started)
         self._save_button.setEnabled(True)
         safe_code, safe_message = safe_redaction_failure(code, message)
-        self._set_status(f"{safe_code}: {safe_message}", True)
+        message_text = f"{safe_code}: {safe_message}"
+        if self._edit_limit_reached():
+            message_text += f" {self._capacity_status()}"
+        self._set_status(message_text, True)
         self._status.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 

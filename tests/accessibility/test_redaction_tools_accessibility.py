@@ -17,13 +17,14 @@ from PySide6.QtGui import QAccessible, QColor, QFont, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QPushButton, QSpinBox, QWidget
 
-from paperworkshell.app.redaction_tools import RedactionToolsState
+from paperworkshell.app.redaction_tools import MAX_REDACTION_EDIT_STEPS, RedactionToolsState
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.page_coordinates import (
     ClockwiseRotation,
     NormalizedPageBox,
     PageCoordinateTransform,
 )
+from paperworkshell.domain.redaction import MAX_REDACTION_MARKS, RedactionMark
 from paperworkshell.ui.redaction_canvas import RedactionIntentCanvas
 from paperworkshell.ui.redaction_tools import RedactionToolsDialog
 
@@ -377,8 +378,6 @@ def test_pointer_regions_invert_active_crop_and_each_quarter_turn(
 def test_refresh_scans_record_and_selection_facades_a_constant_number_of_times(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from paperworkshell.domain.redaction import RedactionMark
-
     base = _state()
     marks = tuple(
         RedactionMark(
@@ -422,3 +421,159 @@ def test_refresh_scans_record_and_selection_facades_a_constant_number_of_times(
         monkeypatch.setattr(RedactionToolsState, "selected_record", property(selected))
         dialog._refresh()
         assert record_reads == 2 and selected_reads == 1
+
+
+def _one_edit_below_limit() -> RedactionToolsState:
+    state = (
+        _state()
+        .create(
+            NormalizedPageBox(100_000, 100_000, 100_000, 100_000),
+            id_factory=lambda: UUID(int=500, version=4),
+        )
+        .create(
+            NormalizedPageBox(400_000, 400_000, 100_000, 100_000),
+            id_factory=lambda: UUID(int=501, version=4),
+        )
+    )
+    for position in range(2, MAX_REDACTION_EDIT_STEPS - 1):
+        state = state.replace_selected_box(
+            NormalizedPageBox(100_000 + position, 100_000, 100_000, 100_000)
+        )
+    assert state.cursor == MAX_REDACTION_EDIT_STEPS - 1
+    return state
+
+
+def _reach_limit_through_numeric_controls(dialog: RedactionToolsDialog) -> None:
+    _widget(dialog, QSpinBox, "redactionLeftSpin").setValue(200_000)
+    _click(dialog, "updateRedactionRegionButton")
+    assert dialog.state.cursor == MAX_REDACTION_EDIT_STEPS
+
+
+def test_edit_limit_disables_mutation_controls_but_keeps_review_and_save_recovery() -> None:
+    with _dialog(state=_one_edit_below_limit()) as dialog:
+        requests: list[object] = []
+        dialog.save_requested.connect(requests.append)
+        _reach_limit_through_numeric_controls(dialog)
+        for name in ("Left", "Top", "Width", "Height"):
+            field = _widget(dialog, QSpinBox, f"redaction{name}Spin")
+            assert not field.isEnabled()
+            interface = QAccessible.queryAccessibleInterface(field)
+            assert interface is not None and interface.state().disabled
+        for name in (
+            "updateRedactionRegionButton",
+            "addRedactionRegionButton",
+            "removeRedactionRegionButton",
+        ):
+            assert not _widget(dialog, QPushButton, name).isEnabled()
+        assert not dialog._canvas.isEnabled()
+        for name in (
+            "undoRedactionRegionButton",
+            "saveRedactionMarksButton",
+            "cancelRedactionMarksButton",
+        ):
+            assert _widget(dialog, QPushButton, name).isEnabled()
+        regions = _widget(dialog, QListWidget, "redactionRegionList")
+        assert regions.isEnabled()
+        regions.setCurrentRow(0)
+        assert dialog.state.selected_mark_id == dialog.state.records[0].mark_id
+        assert dialog.state.cursor == MAX_REDACTION_EDIT_STEPS
+        status = _widget(dialog, QLabel, "redactionToolsStatus").text()
+        assert "edit limit" in status and all(
+            action in status for action in ("Save", "Undo", "Cancel")
+        )
+        before = dialog.state
+        dialog._canvas.region_requested.emit(NormalizedPageBox(0, 0, 10_000, 10_000))
+        assert dialog.state is before
+        _click(dialog, "saveRedactionMarksButton")
+        assert requests == [before] and dialog.save_pending
+        assert dialog.finish_saved()
+
+
+def test_edit_limit_undo_reenables_new_branch_and_failed_save_does_not_enable_discard() -> None:
+    with _dialog(state=_one_edit_below_limit()) as dialog:
+        _reach_limit_through_numeric_controls(dialog)
+        _click(dialog, "saveRedactionMarksButton")
+        assert dialog.save_failed("MANIFEST_SAVE_FAILED", "Try saving again.")
+        assert not _widget(dialog, QPushButton, "cancelRedactionMarksButton").isEnabled()
+        assert not _widget(dialog, QSpinBox, "redactionLeftSpin").isEnabled()
+        assert _widget(dialog, QPushButton, "undoRedactionRegionButton").isEnabled()
+        _click(dialog, "undoRedactionRegionButton")
+        assert dialog.state.cursor == MAX_REDACTION_EDIT_STEPS - 1
+        for name in ("Left", "Top", "Width", "Height"):
+            assert _widget(dialog, QSpinBox, f"redaction{name}Spin").isEnabled()
+        assert _widget(dialog, QPushButton, "addRedactionRegionButton").isEnabled()
+        assert _widget(dialog, QPushButton, "removeRedactionRegionButton").isEnabled()
+        assert dialog._canvas.isEnabled()
+        _widget(dialog, QSpinBox, "redactionLeftSpin").setValue(300_000)
+        _click(dialog, "updateRedactionRegionButton")
+        assert dialog.state.cursor == MAX_REDACTION_EDIT_STEPS and not dialog.state.can_redo
+        assert dialog.state.selected_record is not None
+        assert dialog.state.selected_record.box.x == 300_000
+        status = _widget(dialog, QLabel, "redactionToolsStatus").text()
+        assert "Retry saving" in status and "Cancel" not in status
+
+
+def test_queued_capacity_failure_restores_accepted_fields_and_never_reports_bad_geometry() -> None:
+    with _dialog(state=_one_edit_below_limit()) as dialog:
+        _reach_limit_through_numeric_controls(dialog)
+        left = _widget(dialog, QSpinBox, "redactionLeftSpin")
+        # Simulate an already queued value signal after the controls became disabled.
+        left.setValue(300_000)
+        _click(dialog, "saveRedactionMarksButton")
+        status = _widget(dialog, QLabel, "redactionToolsStatus").text()
+        assert (
+            "edit limit" in status and "positive width" not in status and "fit inside" not in status
+        )
+        assert left.value() == 200_000
+        assert not dialog.save_pending
+        _click(dialog, "undoRedactionRegionButton")
+        assert left.isEnabled() and dialog.state.cursor == MAX_REDACTION_EDIT_STEPS - 1
+
+
+def test_last_pending_numeric_edit_is_retained_when_original_add_action_reaches_capacity() -> None:
+    with _dialog(state=_one_edit_below_limit()) as dialog:
+        _widget(dialog, QSpinBox, "redactionLeftSpin").setValue(250_000)
+        _click(dialog, "addRedactionRegionButton")
+        assert dialog.state.cursor == MAX_REDACTION_EDIT_STEPS
+        assert len(dialog.state.records) == 2 and dialog.state.selected_record is not None
+        assert dialog.state.selected_record.box.x == 250_000
+        status = _widget(dialog, QLabel, "redactionToolsStatus").text()
+        assert "edit limit" in status and "positive width" not in status
+        assert QApplication.focusWidget() is _widget(
+            dialog, QPushButton, "undoRedactionRegionButton"
+        )
+        _click(dialog, "undoRedactionRegionButton")
+        assert dialog.state.cursor == MAX_REDACTION_EDIT_STEPS - 1
+        assert _widget(dialog, QSpinBox, "redactionLeftSpin").isEnabled()
+
+
+def test_mark_capacity_after_failed_save_never_advertises_unavailable_cancel() -> None:
+    base = _state()
+    marks = tuple(
+        RedactionMark(
+            UUID(int=100_000 + index, version=4),
+            base.page_id,
+            NormalizedPageBox(0, 0, 10_000, 10_000),
+        )
+        for index in range(MAX_REDACTION_MARKS)
+    )
+    state = RedactionToolsState(
+        base.case_id,
+        base.manifest_revision,
+        base.page_id,
+        base.editor_session_id,
+        marks,
+        selected_mark_id=marks[0].mark_id,
+    ).replace_selected_box(NormalizedPageBox(20_000, 20_000, 10_000, 10_000))
+    with _dialog(state=state) as dialog:
+        _click(dialog, "saveRedactionMarksButton")
+        assert dialog.save_failed("MANIFEST_SAVE_FAILED", "Try saving again.")
+        _click(dialog, "addRedactionRegionButton")
+        assert len(dialog.state.records) == MAX_REDACTION_MARKS
+        status = _widget(dialog, QLabel, "redactionToolsStatus").text()
+        assert "removal-mark limit" in status and "retry saving" in status
+        assert "cancel" not in status.lower()
+        assert not _widget(dialog, QPushButton, "cancelRedactionMarksButton").isEnabled()
+        _click(dialog, "removeRedactionRegionButton")
+        assert len(dialog.state.records) == MAX_REDACTION_MARKS - 1
+        assert _widget(dialog, QPushButton, "saveRedactionMarksButton").isEnabled()
