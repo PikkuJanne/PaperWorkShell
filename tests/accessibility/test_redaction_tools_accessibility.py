@@ -12,8 +12,15 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QAccessible, QColor, QFont, QPixmap
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleAnnouncementEvent,
+    QAccessibleEvent,
+    QColor,
+    QFont,
+    QPixmap,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QPushButton, QSpinBox, QWidget
 
@@ -27,6 +34,7 @@ from paperworkshell.domain.page_coordinates import (
 from paperworkshell.domain.redaction import MAX_REDACTION_MARKS, RedactionMark
 from paperworkshell.ui.redaction_canvas import RedactionIntentCanvas
 from paperworkshell.ui.redaction_tools import RedactionToolsDialog
+from tests.helpers.redaction_editor_manual_probe import RedactionEditorManualProbe
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -577,3 +585,126 @@ def test_mark_capacity_after_failed_save_never_advertises_unavailable_cancel() -
         _click(dialog, "removeRedactionRegionButton")
         assert len(dialog.state.records) == MAX_REDACTION_MARKS - 1
         assert _widget(dialog, QPushButton, "saveRedactionMarksButton").isEnabled()
+
+
+@pytest.mark.parametrize("assertive", (False, True))
+def test_status_is_visible_before_dialog_root_announcement_without_moving_keyboard_focus(
+    assertive: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _dialog(state=_state().create()) as dialog:
+        action = _widget(dialog, QPushButton, "updateRedactionRegionButton")
+        status = _widget(dialog, QLabel, "redactionToolsStatus")
+        action.setFocus()
+        dialog._scroll.verticalScrollBar().setValue(0)
+        viewport = dialog._scroll.viewport()
+
+        def visible_status_rect() -> QRect:
+            return QRect(status.mapTo(viewport, QPoint()), status.size())
+
+        assert not viewport.rect().intersects(visible_status_rect())
+        sequence: list[str] = []
+        original_ensure = dialog._scroll.ensureWidgetVisible
+        expected = "Removal-mark edit redone. Information is still present."
+
+        def ensure_visible(widget: QWidget, xmargin: int = 50, ymargin: int = 50) -> None:
+            assert widget is status
+            sequence.append("visible")
+            original_ensure(widget, xmargin, ymargin)
+
+        def announce(event: QAccessibleEvent) -> None:
+            assert type(event) is QAccessibleAnnouncementEvent
+            assert sequence == ["visible"]
+            assert event.object() is dialog
+            assert event.message() == expected
+            assert event.politeness() is (
+                QAccessible.AnnouncementPoliteness.Assertive
+                if assertive
+                else QAccessible.AnnouncementPoliteness.Polite
+            )
+            assert status.text() == expected and status.accessibleDescription() == expected
+            assert viewport.rect().intersects(visible_status_rect())
+            assert QApplication.focusWidget() is action
+            sequence.append("announcement")
+
+        monkeypatch.setattr(dialog._scroll, "ensureWidgetVisible", ensure_visible)
+        monkeypatch.setattr(QAccessible, "updateAccessibility", announce)
+        dialog._set_status(expected, assertive)
+        assert sequence == ["visible", "announcement"]
+        assert QApplication.focusWidget() is action
+
+
+def test_numeric_update_undo_redo_announce_from_dialog_and_keep_action_focus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _dialog(state=_state().create()) as dialog:
+        action = _widget(dialog, QPushButton, "updateRedactionRegionButton")
+        action.setFocus()
+        messages: list[str] = []
+
+        def announce(event: QAccessibleEvent) -> None:
+            if type(event) is QAccessibleAnnouncementEvent:
+                assert event.object() is dialog
+                assert QApplication.focusWidget() is action
+                messages.append(event.message())
+
+        monkeypatch.setattr(QAccessible, "updateAccessibility", announce)
+        _widget(dialog, QSpinBox, "redactionLeftSpin").setValue(150_000)
+        _click(dialog, "updateRedactionRegionButton")
+        QTest.keyClick(dialog, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+        QTest.keyClick(dialog, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
+        assert len(messages) == 3
+        assert "position and size updated" in messages[0]
+        assert "edit undone" in messages[1] and "edit redone" in messages[2]
+        assert QApplication.focusWidget() is action
+
+
+def test_manual_probe_uses_real_parent_modal_context_with_preview_retry_and_cancel() -> None:
+    app = _app()
+    probe = RedactionEditorManualProbe()
+    probe.start()
+    app.processEvents()
+    window = probe.window
+    try:
+        assert probe.signals._backend is None
+        assert window.isVisible() and window._active_operation is None
+        assert "effective DPR" in window.windowTitle()
+        window._request_redaction_tools()
+        app.processEvents()
+        dialog = window._redaction_tools_dialog
+        assert dialog is not None and dialog.parentWidget() is window
+        assert dialog.windowModality() is Qt.WindowModality.WindowModal
+        assert QApplication.activeModalWidget() is dialog
+        assert "effective DPR" in dialog.windowTitle()
+        preview = dialog._canvas._preview
+        assert preview is not None and (preview.width(), preview.height()) == (600, 780)
+        assert dialog.state.selected_record is not None
+        assert dialog.state.selected_record.box == NormalizedPageBox(
+            150_000, 250_000, 700_000, 150_000
+        )
+        _click(dialog, "addRedactionRegionButton")
+        _click(dialog, "saveRedactionMarksButton")
+        assert window._redaction_tools_dialog is dialog and not dialog.save_pending
+        assert "retained for retry" in dialog._status.text()
+        assert not _widget(dialog, QPushButton, "cancelRedactionMarksButton").isEnabled()
+        assert len(tuple(probe.marks)) == 1
+        _click(dialog, "saveRedactionMarksButton")
+        assert cast(object, window._redaction_tools_dialog) is None and window.isVisible()
+        assert (
+            "Redaction marks saved. No information has been removed." in window._status_label.text()
+        )
+        assert len(probe.marks) == 2 and probe.revision == 2
+        window._request_redaction_tools()
+        app.processEvents()
+        reopened = window._redaction_tools_dialog
+        assert reopened is not None and len(reopened.state.records) == 2
+        QTest.keyClick(reopened, Qt.Key.Key_Escape)
+        app.processEvents()
+        assert cast(object, window._redaction_tools_dialog) is None and window.isVisible()
+        assert "changes cancelled. No information has been removed." in window._status_label.text()
+        assert probe.signals._backend is None and window._active_operation is None
+    finally:
+        window._allow_close = True
+        window.close()
+        window.deleteLater()
+        app.processEvents()

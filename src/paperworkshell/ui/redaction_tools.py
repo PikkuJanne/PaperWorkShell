@@ -536,11 +536,13 @@ class RedactionToolsDialog(QDialog):
     def _set_status(self, text: str, assertive: bool = False) -> None:
         self._status.setText(text)
         self._status.setAccessibleDescription(text)
-        event = QAccessibleAnnouncementEvent(self._status, text)
+        self._scroll.ensureWidgetVisible(self._status)
+        # The native dialog is a stable, visible UIA source even when scrolling
+        # has just exposed the child status. Keep the user's keyboard focus.
+        event = QAccessibleAnnouncementEvent(self, text)
         if assertive:
             event.setPoliteness(QAccessible.AnnouncementPoliteness.Assertive)
         QAccessible.updateAccessibility(event)
-        self._scroll.ensureWidgetVisible(self._status)
 
     def _request_save(self) -> None:
         if self._save_pending or not self._update_region():
