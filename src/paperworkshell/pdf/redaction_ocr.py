@@ -15,14 +15,20 @@ import zlib
 from collections.abc import Buffer
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import BinaryIO, Never, cast
+from typing import BinaryIO, Never, Protocol, cast
 from uuid import uuid4
 
 import pikepdf
 import pypdfium2 as pdfium  # type: ignore[import-untyped]
 
 from paperworkshell.domain.image_pages import ImageRgba8Layout
-from paperworkshell.domain.ocr import DEFAULT_OCR_PROFILE_ID, OcrError, OcrErrorCode
+from paperworkshell.domain.ocr import (
+    DEFAULT_OCR_PROFILE_ID,
+    OcrAdapterProgressSink,
+    OcrAdapterResult,
+    OcrError,
+    OcrErrorCode,
+)
 from paperworkshell.domain.ocr_languages import resolve_ocr_language_set
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode, reject_pdf_export
 from paperworkshell.domain.pdf_geometry import (
@@ -41,7 +47,6 @@ from paperworkshell.domain.redaction_reconstruction import (
     RedactionReconstructionReport,
     validate_reconstruction_report,
 )
-from paperworkshell.ocr.ocrmypdf_adapter import OcrMyPdfAdapter
 from paperworkshell.pdf.page_geometry import PikePdfPageGeometryResolver
 from paperworkshell.pdf.raster_pdf_page import _BoundedOutput
 from paperworkshell.pdf.redaction_reconstruction import (
@@ -64,11 +69,31 @@ _REPARSE_POINT = 0x400
 _MAXIMUM_PRIVATE_DEPTH = 32
 
 
+class RedactionOcrProcessor(Protocol):
+    """Narrow worker-injected OCR authority; no native engine import is needed."""
+
+    def process(
+        self,
+        source_path: Path,
+        output_path: Path,
+        *,
+        temporary_directory: Path,
+        languages: tuple[str, ...],
+        profile_id: str,
+        expected_page_count: int,
+        maximum_output_bytes: int,
+        maximum_image_pixels: int,
+        maximum_temporary_storage_bytes: int,
+        control: RedactionReconstructionControl,
+        progress: OcrAdapterProgressSink,
+    ) -> OcrAdapterResult: ...
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class RedactionOcrAdapter:
     """Reconstruct, recognize masked pixels and return only unverified evidence."""
 
-    ocr: OcrMyPdfAdapter = field(repr=False)
+    ocr: RedactionOcrProcessor = field(repr=False)
     reconstructor: RedactionReconstructionAdapter = field(
         default_factory=RedactionReconstructionAdapter
     )

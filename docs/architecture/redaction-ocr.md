@@ -41,6 +41,11 @@ degraded, sideways or incomplete text. Synthetic positive controls demonstrate
 recognition before canary absence is accepted. OCR completion does not establish
 that every retained word is correct or recognized.
 
+The stage also inherits reconstruction's exact-render rejection behavior. Some
+fractional physical crop sizes can fail before OCR; recognition never bypasses
+that check or silently changes geometry to make the request fit. Native evidence
+proves only the exercised geometry and fidelity cases.
+
 ## Authority and evidence
 
 `pdf.redaction_ocr_private` version 1 has a separate launch scope and a closed
