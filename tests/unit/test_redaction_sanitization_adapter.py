@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import zlib
 from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 from uuid import uuid4
 
 import pikepdf
@@ -225,3 +226,95 @@ def test_failed_final_source_restore_discards_output(tmp_path: Path) -> None:
 
 def cast_source(source: BytesIO) -> BinaryIO:
     return source
+
+
+def _image_packet() -> bytes:
+    with pikepdf.Pdf.new() as document:
+        for color in (b"\xff\x00\x00", b"\x00\xff\x00"):
+            page = document.add_blank_page(page_size=(72, 48))
+            image = pikepdf.Stream(
+                document,
+                zlib.compress(color * 64 * 64),
+                Type=pikepdf.Name.XObject,
+                Subtype=pikepdf.Name.Image,
+                Width=64,
+                Height=64,
+                ColorSpace=pikepdf.Name.DeviceRGB,
+                BitsPerComponent=8,
+                Filter=pikepdf.Name.FlateDecode,
+            )
+            page.Resources = pikepdf.Dictionary(XObject=pikepdf.Dictionary(Im0=image))
+            page.Contents = pikepdf.Stream(document, b"q 72 0 0 48 0 0 cm /Im0 Do Q")
+        output = BytesIO()
+        document.save(output, deterministic_id=True)
+        return output.getvalue()
+
+
+def test_two_page_target_keeps_only_compressed_images_before_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = _image_packet()
+    request = replace(_request(content), source_page_count=2)
+    original = pikepdf.Pdf.save
+    retained_sizes: list[int] = []
+
+    def inspect_target_before_save(
+        document: pikepdf.Pdf, destination: Any, *args: Any, **kwargs: Any
+    ) -> None:
+        assert len(document.pages) == 2
+        for page, color in zip(document.pages, (b"\xff\x00\x00", b"\x00\xff\x00"), strict=True):
+            image = page.Resources.XObject.Im0
+            raw = image.read_raw_bytes()
+            assert image.Filter == pikepdf.Name.FlateDecode
+            assert len(raw) < 64 * 64 * 3
+            assert zlib.decompress(raw) == color * 64 * 64
+            retained_sizes.append(len(raw))
+        original(document, destination, *args, **kwargs)
+
+    monkeypatch.setattr(pikepdf.Pdf, "save", inspect_target_before_save)
+    source = BytesIO(content)
+    report = PikepdfRedactionSanitizer().sanitize(
+        source, tmp_path / "candidate.pdf", tmp_path, request, _limits(), _Control()
+    )
+    assert len(retained_sizes) == 2
+    assert report.after.empty
+    assert source.getvalue() == content
+
+
+@pytest.mark.parametrize("failure", ["encode", "cancel"])
+def test_image_encoding_failure_or_cancellation_leaves_no_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    content = _image_packet()
+    request = replace(_request(content), source_page_count=2)
+    control = _Control()
+    original = zlib.compressobj
+
+    class Encoder:
+        def __init__(self) -> None:
+            self.encoder = original()
+
+        def compress(self, data: Any) -> bytes:
+            if failure == "encode":
+                raise OSError("SYNTHETIC IMAGE ENCODING FAILURE")
+            result = self.encoder.compress(data)
+            control.cancel_at = 1
+            return result
+
+        def flush(self) -> bytes:
+            return self.encoder.flush()
+
+    monkeypatch.setattr(zlib, "compressobj", Encoder)
+    source = BytesIO(content)
+    source.seek(7)
+    with pytest.raises(PdfExportError) as caught:
+        PikepdfRedactionSanitizer().sanitize(
+            source, tmp_path / "candidate.pdf", tmp_path, request, _limits(), control
+        )
+    expected = (
+        PdfExportErrorCode.CANCELLED if failure == "cancel" else PdfExportErrorCode.ASSEMBLY_FAILED
+    )
+    assert caught.value.code is expected
+    assert source.getvalue() == content
+    assert source.tell() == 7
+    assert not list(tmp_path.iterdir())

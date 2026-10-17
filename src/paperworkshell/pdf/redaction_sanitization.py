@@ -716,6 +716,11 @@ class _Copier:
             target[name] = self.copy(item, fields[name], depth + 1)
         if role == "fontprogram":
             target["/Length1"] = len(cast(bytes, data))
+        if role == "image":
+            # Each validated raster is encoded before the next page is copied.
+            # The fresh document must retain compressed streams, never a packet
+            # of decoded full-resolution images awaiting the final save.
+            target["/Filter"] = pikepdf.Name.FlateDecode
         if stream:
             filters = value.get("/Filter")
             for filter_name in (
@@ -786,7 +791,24 @@ class _Copier:
         decoded = self._decoded(value, raw, min(expected, self.graph.limits.maximum_raster_bytes))
         if len(decoded) != expected:
             _unsupported()
-        return decoded
+        encoder = zlib.compressobj()
+        encoded: list[bytes] = []
+        size = 0
+        view = memoryview(decoded)
+        for offset in range(0, len(decoded), 64 * 1024):
+            _checkpoint(self.graph.control)
+            block = encoder.compress(view[offset : offset + 64 * 1024])
+            size += len(block)
+            if size > self.materialization_limit:
+                reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.image_encoding")
+            encoded.append(block)
+        _checkpoint(self.graph.control)
+        tail = encoder.flush()
+        if size + len(tail) > self.materialization_limit:
+            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.image_encoding")
+        encoded.append(tail)
+        _checkpoint(self.graph.control)
+        return b"".join(encoded)
 
     def _font(self, decoded: bytes) -> bytes:
         with _private_font_logging_suppressed():

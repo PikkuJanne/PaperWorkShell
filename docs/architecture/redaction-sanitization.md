@@ -66,6 +66,10 @@ Limits derive from the central ResourcePolicy and the existing bounded operation
 limits. Object traversal, collection size, recursion depth, stream materialization,
 input/output bytes and temporary storage are bounded. Processing uses one heavy
 operation and one restricted worker, with no OCR child or network authority.
+Each image is decoded and checked against its exact sample count, then immediately
+Flate-encoded before it enters the retained PDF. The next page is copied only after
+the current decoded image has been released; final saving does not retain decoded
+rasters for the whole packet. Encoding has bounded output and cancellation checks.
 Only reduced input/request/output/result handles cross the process boundary.
 One bounded candidate may be retained at a time and must close before reuse.
 
