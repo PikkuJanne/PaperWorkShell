@@ -102,6 +102,7 @@ class PdfExportErrorCode(StrEnum):
     TIMED_OUT = "PDF_EXPORT_TIMED_OUT"
     WORKER_FAILED = "PDF_EXPORT_WORKER_FAILED"
     ASSEMBLY_FAILED = "PDF_EXPORT_ASSEMBLY_FAILED"
+    OCR_LANGUAGE_UNAVAILABLE = "PDF_EXPORT_OCR_LANGUAGE_UNAVAILABLE"
     VERIFICATION_REOPEN_FAILED = "PDF_EXPORT_VERIFICATION_REOPEN_FAILED"
     VERIFICATION_STRUCTURE_FAILED = "PDF_EXPORT_VERIFICATION_STRUCTURE_FAILED"
     VERIFICATION_PAGE_COUNT_MISMATCH = "PDF_EXPORT_VERIFICATION_PAGE_COUNT_MISMATCH"
@@ -154,6 +155,10 @@ _SAFE_ERROR_MESSAGES: Final[dict[PdfExportErrorCode, str]] = {
     PdfExportErrorCode.TIMED_OUT: "PDF export exceeded its configured time limit.",
     PdfExportErrorCode.WORKER_FAILED: "The document worker could not export the PDF safely.",
     PdfExportErrorCode.ASSEMBLY_FAILED: "PaperWorkShell could not assemble the PDF safely.",
+    PdfExportErrorCode.OCR_LANGUAGE_UNAVAILABLE: (
+        "The selected OCR languages are not installed and verified. "
+        "Review OCR language settings before retrying. The removal candidate remains unverified."
+    ),
     PdfExportErrorCode.VERIFICATION_REOPEN_FAILED: (
         "The exported PDF could not be reopened for verification."
     ),

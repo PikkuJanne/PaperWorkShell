@@ -82,6 +82,18 @@ def _build_operation_registry(
     if type(operation_scope) is not WorkerOperationScope:
         raise WorkerProcessCreationDenied from None
     handlers: list[OperationHandler] = [NoopOperationHandler()]
+    if operation_scope is WorkerOperationScope.REDACTION_OCR:
+        try:
+            from paperworkshell.worker.redaction_ocr_operation import (
+                build_redaction_ocr_operation_handler,
+            )
+
+            handler = build_redaction_ocr_operation_handler()
+            if handler is not None:
+                handlers.append(handler)
+        except Exception:
+            pass
+        return RuntimeOperationRegistry(tuple(handlers))
     if operation_scope is WorkerOperationScope.REDACTION_RECONSTRUCTION:
         try:
             from paperworkshell.worker.redaction_reconstruction_operation import (

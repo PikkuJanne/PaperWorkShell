@@ -94,7 +94,8 @@ secure-erasure, OCR-accuracy, PDF/UA, portal-acceptance or release-redaction cla
 
 ## Remaining gate and product boundary
 
-PWS-0604 owns OCR regeneration/exclusion, PWS-0605 the complete derivative sanitizer,
+The [PWS-0604 OCR stage](redaction-ocr.md) consumes only authenticated reconstructed pixels.
+PWS-0605 owns the complete derivative sanitizer,
 PWS-0606 multi-method verification, PWS-0607 final export authority and reports, and
 PWS-0608 independent release approval. This intermediate cannot substitute for them.
 

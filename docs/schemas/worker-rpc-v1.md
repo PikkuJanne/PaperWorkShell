@@ -522,6 +522,27 @@ publication authority. Failure or an unknown result exposes no candidate. See th
 [reconstruction contract](../architecture/redaction-reconstruction.md) for geometry,
 pixel policy, budgets, supported input and remaining security gates.
 
+## Private redaction OCR operation
+
+PWS-0604 adds `pdf.redaction_ocr_private` version 1 under a separate private launch
+scope. Normal/default worker registries do not advertise it. The existing generic
+v1 envelope carries the same reduced read-source, read-request-section,
+write-bounded-output-section and write-result-pipe authorities as reconstruction;
+no path or export destination is accepted. Its canonical request nests the exact
+reconstruction request and binds a closed language-set ID and `redacted-page-ocr-v1`
+profile. Unknown versions, fields, duplicate keys, extra handles and insufficient
+temporary-storage capacity fail before processing.
+
+Only the fresh masked reconstruction reaches OCR. A bounded correlated report
+binds both reconstruction evidence and final output digest/size to the complete
+request fingerprint, language selection and admitted engine versions. A succeeded
+result contains one private operation-staging PDF with `awaiting_verification`
+and unsigned-derivative evidence; it cannot promote marks or publish an export.
+The broker authenticates all bindings and bytes after worker termination. A
+dependency failure for missing language data maps to the stable sanitized
+`PDF_EXPORT_OCR_LANGUAGE_UNAVAILABLE` remediation; other errors, cancellation and
+timeouts return no candidate. See the [profile contract](../architecture/redaction-ocr.md).
+
 ## Limits and bounded decoding
 
 Every start requests versioned positive integer limits for wall time, CPU time, memory, temporary
