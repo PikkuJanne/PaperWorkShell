@@ -69,6 +69,10 @@ worker host -> domain
    unable to import those dependencies. PWS-0303 admits `fpdf`, `fontTools`, and `uharfbuzz` only
    in the exact `paperworkshell.pdf.overlay_renderer` module. The pure `overlays.rendering`
    contract and every sibling PDF module remain unable to import that font-rendering stack.
+   PWS-0605 separately reuses only `fontTools.ttLib` in the exact
+   `paperworkshell.pdf.redaction_sanitization` adapter to rebuild admitted embedded font tables
+   without document-derived names or metadata. This exception admits neither the `fontTools`
+   root nor its sibling packages, fpdf2, HarfBuzz, sibling PDF adapters, or worker orchestration.
    Pikepdf remains confined to `pdf`; the exact
    `ocr` → `pdf.ocr_candidate_verifier` edge returns only a positive page count or closed failure
    after reopening the private candidate. No pikepdf object or general PDF feature crosses that

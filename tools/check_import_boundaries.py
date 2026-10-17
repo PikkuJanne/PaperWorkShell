@@ -56,6 +56,7 @@ APPROVED_EXTERNAL_IMPORT_PREFIXES: Final = {
     ),
 }
 APPROVED_EXTERNAL_IMPORT_MODULE_PREFIXES: Final = {
+    f"{PROJECT_PACKAGE}.pdf.redaction_sanitization": frozenset({"fontTools.ttLib"}),
     f"{PROJECT_PACKAGE}.pdf.overlay_renderer": frozenset(
         {
             "fontTools",

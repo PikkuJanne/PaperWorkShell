@@ -27,6 +27,7 @@ from paperworkshell.worker.protocol.models import (
     PORTAL_PDF_EXPORT_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
     REDACTION_RECONSTRUCTION_CAPABILITY,
+    REDACTION_SANITIZATION_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CancelDisposition,
@@ -83,6 +84,10 @@ from paperworkshell.worker.protocol.redaction_reconstruction import (
     reconstruction_binding,
     validate_reconstruction_result,
 )
+from paperworkshell.worker.protocol.redaction_sanitization import (
+    sanitization_binding,
+    validate_sanitization_result,
+)
 
 MAX_TRACKED_MESSAGES: Final = 4_096
 MAX_TRACKED_OPERATIONS: Final = 1_024
@@ -117,6 +122,7 @@ class _ActiveOperation:
     searchable_export_status_object_id: UUID | None = None
     searchable_export_status_capacity_bytes: int | None = None
     reconstruction_output_object_id: UUID | None = None
+    sanitization_output_object_id: UUID | None = None
     image_stage_output_object_id: UUID | None = None
     image_stage_evidence_object_id: UUID | None = None
     image_stage_evidence_capacity_bytes: int | None = None
@@ -559,6 +565,17 @@ class ConversationState:
             )
             if len(set(bound_ids)) != len(bound_ids):
                 reject("RPC_INVALID_OPERATION", "operation_id", "reconstruction scope is invalid")
+        sanitization_output_object_id = None
+        if descriptor == REDACTION_SANITIZATION_CAPABILITY:
+            sanitization_output_object_id = sanitization_binding(payload)
+            bound_ids = (
+                self.case_id,
+                message.operation_id,
+                *(item.object_id for item in payload.inputs),
+                sanitization_output_object_id,
+            )
+            if len(set(bound_ids)) != len(bound_ids):
+                reject("RPC_INVALID_OPERATION", "operation_id", "sanitization scope is invalid")
         if any(record.operation_id == message.operation_id for record in self.terminal_operations):
             reject(
                 "RPC_REPLAYED_OPERATION",
@@ -585,6 +602,7 @@ class ConversationState:
                 searchable_export_status_object_id=(searchable_export_status_object_id),
                 searchable_export_status_capacity_bytes=(searchable_export_status_capacity_bytes),
                 reconstruction_output_object_id=reconstruction_output_object_id,
+                sanitization_output_object_id=sanitization_output_object_id,
                 image_stage_output_object_id=image_stage_output_object_id,
                 image_stage_evidence_object_id=image_stage_evidence_object_id,
                 image_stage_evidence_capacity_bytes=image_stage_evidence_capacity_bytes,
@@ -672,6 +690,10 @@ class ConversationState:
                 "payload",
                 "ocr.review progress must use one exact page",
             )
+        if active.operation_kind == REDACTION_SANITIZATION_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.STEPS or payload.total_units != 1
+        ):
+            reject("RPC_INVALID_PROGRESS", "payload", "sanitization progress must use one step")
         if active.operation_kind in {
             SEARCHABLE_PDF_EXPORT_CAPABILITY.capability_id,
             PDF_IMAGE_STAGE_CAPABILITY.capability_id,
@@ -989,6 +1011,17 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 output_object_id=active.reconstruction_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if active.operation_kind == REDACTION_SANITIZATION_CAPABILITY.capability_id:
+            if active.sanitization_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE", "payload.outputs", "sanitization binding is unavailable"
+                )
+            validate_sanitization_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.sanitization_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         terminal = _TerminalOperation(

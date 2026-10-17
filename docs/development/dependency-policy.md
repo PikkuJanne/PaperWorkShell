@@ -360,6 +360,17 @@ and a replaceable/relinkable library layout in addition to verifying every packa
 edge. None of these components needs runtime network access, and all remain worker-only or
 data-only.
 
+PWS-0605 reuses the existing pinned fonttools 4.63.0 dependency specifically through
+`fontTools.ttLib` inside `pdf.redaction_sanitization`. The hardened derivative profile must parse
+and rebuild supported embedded font tables so document-derived font names and metadata cannot
+survive as opaque bytes while approved glyphs and searchable OCR text remain usable. The
+standard library and pikepdf do not implement that font-table capability. This adds no package,
+version change, native binary, executable, or network requirement; the existing MIT license,
+locked artifacts, inventory and SBOM inputs continue to apply. Untrusted font parsing stays in
+the isolated bounded document worker and unsupported fonts fail closed. The static architecture
+checker allows only this exact adapter and `fontTools.ttLib` prefix; fontTools sibling packages
+and every other adapter remain subject to their existing rules.
+
 ### OCRmyPDF, Tesseract, and Ghostscript
 
 `PWS-D016` fixes OCR orchestration as OCRmyPDF with Tesseract behind the OCR adapter. `PWS-0204`

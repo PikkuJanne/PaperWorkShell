@@ -548,6 +548,42 @@ class DependencyInventoryValidationTests(unittest.TestCase):
             self._codes(missing_usage_ref, repository_checks=True),
         )
 
+    def test_fonttools_sanitization_requires_hostile_input_boundary_and_owner_references(
+        self,
+    ) -> None:
+        component = _component(_load_inventory(), "fonttools")
+        self.assertTrue(component["binary"]["processes_untrusted_documents"])
+        self.assertTrue(component["security"]["adapter_required"])
+        self.assertTrue(component["security"]["contract_tests_required"])
+        self.assertEqual("worker-process", component["security"]["boundary"])
+        self.assertIn("PWS-0605", component["task_refs"])
+        self.assertIn("PWS-D022", component["decision_refs"])
+
+        for section, field in (
+            ("binary", "processes_untrusted_documents"),
+            ("security", "adapter_required"),
+            ("security", "contract_tests_required"),
+        ):
+            with self.subTest(section=section, field=field):
+                downgraded = _load_inventory()
+                _component(downgraded, "fonttools")[section][field] = False
+                codes = self._codes(downgraded)
+                self.assertIn("DEPENDENCY_ADMISSION_PROFILE_INVALID", codes)
+                self.assertIn("DEPENDENCY_SECURITY_BOUNDARY_INVALID", codes)
+
+        for field, reference in (("task_refs", "PWS-0605"), ("decision_refs", "PWS-D022")):
+            with self.subTest(field=field):
+                missing_reference = _load_inventory()
+                _component(missing_reference, "fonttools")[field].remove(reference)
+                self.assertIn(
+                    "DEPENDENCY_REQUIRED_FAMILY_REFERENCE_INVALID",
+                    self._codes(missing_reference, repository_checks=True),
+                )
+
+        changed_ecosystem = _load_inventory()
+        _component(changed_ecosystem, "fonttools")["ecosystem"] = "data"
+        self.assertIn("DEPENDENCY_SECURITY_CAPABILITY_UNREVIEWED", self._codes(changed_ecosystem))
+
     def test_initial_english_data_admission_does_not_wait_for_pack_management(self) -> None:
         data = _load_inventory()
         components = {

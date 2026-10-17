@@ -610,6 +610,23 @@ Run the offline gate with:
 py -3.14 tools/dev.py validate-schemas
 ```
 
+## Private redaction derivative sanitization
+
+PWS-0605 adds `pdf.redaction_sanitization_private` version 1 under a separate private
+launch scope. Ordinary desktop workers do not advertise it. The existing v1
+envelope, closed error registry and lifecycle semantics remain unchanged.
+
+The handle-only operation binds a closed `redaction-sanitization-v1` request to
+the active case, retained read-only source lease, exact digest, byte count and
+page count. Its result carries a bounded candidate reference and a correlated
+content-free report: request/input/output digests, output size, page count and
+numeric before/after feature inventories. The after inventory must be empty.
+The only status is `awaiting_verification`, always an unsigned derivative.
+No arbitrary metadata value, field value, filename, path or native exception
+crosses the report boundary. Unknown fields, versions and forged results fail
+closed. See the [sanitization profile](../architecture/redaction-sanitization.md)
+for supported structures and the remaining verification/publication gates.
+
 ## Evolution
 
 Protocol and message version 1 meanings are immutable once released. Unknown future versions and

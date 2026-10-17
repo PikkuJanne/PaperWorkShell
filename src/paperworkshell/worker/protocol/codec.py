@@ -35,6 +35,7 @@ from paperworkshell.worker.protocol.models import (
     QUALITY_OCR_REVIEW_CAPABILITY,
     REDACTION_OCR_CAPABILITY,
     REDACTION_RECONSTRUCTION_CAPABILITY,
+    REDACTION_SANITIZATION_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     CancelDisposition,
@@ -84,6 +85,7 @@ from paperworkshell.worker.protocol.models import (
 )
 from paperworkshell.worker.protocol.redaction_ocr import redaction_ocr_binding
 from paperworkshell.worker.protocol.redaction_reconstruction import reconstruction_binding
+from paperworkshell.worker.protocol.redaction_sanitization import sanitization_binding
 
 _ENVELOPE_FIELDS: Final = frozenset(
     {
@@ -613,6 +615,7 @@ class OperationRegistry:
         if descriptor not in self.capabilities and descriptor not in {
             REDACTION_RECONSTRUCTION_CAPABILITY,
             REDACTION_OCR_CAPABILITY,
+            REDACTION_SANITIZATION_CAPABILITY,
         }:
             reject(
                 "RPC_UNSUPPORTED_OPERATION",
@@ -658,6 +661,8 @@ class OperationRegistry:
             redaction_ocr_binding(payload)
         if payload.operation_kind == REDACTION_RECONSTRUCTION_CAPABILITY.capability_id:
             reconstruction_binding(payload)
+        if payload.operation_kind == REDACTION_SANITIZATION_CAPABILITY.capability_id:
+            sanitization_binding(payload)
 
     def validate_capabilities(self, capabilities: tuple[CapabilityDescriptor, ...]) -> None:
         """Reject worker-advertised capabilities absent from the local registry."""

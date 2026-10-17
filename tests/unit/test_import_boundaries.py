@@ -681,6 +681,42 @@ def test_only_exact_overlay_renderer_may_import_font_rendering_engines(engine: s
         assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
 
 
+def test_only_exact_sanitizer_may_reuse_fonttools_ttlib() -> None:
+    assert (
+        inspect_source(
+            "from fontTools.ttLib import TTFont, newTable\n",
+            module="paperworkshell.pdf.redaction_sanitization",
+            package="paperworkshell.pdf",
+            path="redaction_sanitization.py",
+        )
+        == ()
+    )
+    for module, package in (
+        ("paperworkshell.pdf.redaction_sanitization_helper", "paperworkshell.pdf"),
+        ("paperworkshell.pdf.redaction_sanitization.child", "paperworkshell.pdf"),
+        ("paperworkshell.pdf.redaction_reconstruction", "paperworkshell.pdf"),
+        ("paperworkshell.worker.redaction_sanitization_operation", "paperworkshell.worker"),
+        ("paperworkshell.domain.redaction_sanitization", "paperworkshell.domain"),
+    ):
+        violations = inspect_source(
+            "from fontTools.ttLib import TTFont\n",
+            module=module,
+            package=package,
+            path="sanitization_font_boundary.py",
+        )
+        assert {violation.code for violation in violations} == {
+            "ARCH_DOMAIN_EXTERNAL" if package.endswith(".domain") else "ARCH_EXTERNAL_IMPORT"
+        }
+    for target in ("fontTools", "fontTools.subset", "fontTools.misc", "fpdf", "uharfbuzz"):
+        violations = inspect_source(
+            f"import {target}\n",
+            module="paperworkshell.pdf.redaction_sanitization",
+            package="paperworkshell.pdf",
+            path="sanitization_font_boundary.py",
+        )
+        assert {violation.code for violation in violations} == {"ARCH_EXTERNAL_IMPORT"}
+
+
 def test_only_imaging_adapter_may_import_pillow() -> None:
     assert (
         inspect_source(

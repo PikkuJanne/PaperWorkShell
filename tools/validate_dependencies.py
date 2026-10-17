@@ -72,6 +72,7 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
         "charset-normalizer",
         "cryptography",
         "defusedxml",
+        "fonttools",
         "fpdf2",
         "ghostscript",
         "img2pdf",
@@ -94,7 +95,6 @@ KNOWN_DOCUMENT_PROCESSOR_IDS: Final = frozenset(
 )
 APPROVED_NATIVE_RUNTIME_BOUNDARIES: Final[dict[str, str]] = {
     "cffi": "worker-process",
-    "fonttools": "worker-process",
     "pydantic-core": "worker-process",
     "pyside6-essentials": "gui-process",
     "shiboken6": "gui-process",
@@ -103,6 +103,7 @@ EXPECTED_DOCUMENT_ECOSYSTEMS: Final[dict[str, str]] = {
     "charset-normalizer": "python-package",
     "cryptography": "python-package",
     "defusedxml": "python-package",
+    "fonttools": "python-package",
     "fpdf2": "python-package",
     "ghostscript": "native-tool",
     "img2pdf": "python-package",
@@ -206,6 +207,7 @@ REQUIRED_FAMILY_DECISIONS: Final[dict[str, frozenset[str]]] = {
     ),
     "PWS-D017": RENDERER_COMPONENT_IDS,
     "PWS-D018": frozenset({"fonttools", "fpdf2", "noto-sans", "uharfbuzz"}),
+    "PWS-D022": frozenset({"fonttools"}),
     "PWS-D034": frozenset({"pillow"}),
 }
 ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
@@ -244,7 +246,7 @@ ADMISSION_TASK_GATES: Final[dict[str, frozenset[str]]] = {
     "uharfbuzz": frozenset({"PWS-0204"}),
 }
 REQUIRED_USAGE_TASK_REFERENCES: Final[dict[str, frozenset[str]]] = {
-    "fonttools": frozenset({"PWS-0303"}),
+    "fonttools": frozenset({"PWS-0303", "PWS-0605"}),
     "fpdf2": frozenset({"PWS-0303"}),
     "noto-sans": frozenset({"PWS-0303"}),
     "pillow": frozenset({"PWS-0201"}),
@@ -928,10 +930,10 @@ EXPECTED_ADMISSION_PROFILES: Final[
         "planned",
         True,
         True,
-        False,
+        True,
         "worker-process",
-        False,
-        False,
+        True,
+        True,
     ),
     "fpdf2": (
         "python-package",
