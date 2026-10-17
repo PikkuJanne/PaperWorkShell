@@ -18,7 +18,12 @@ from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.redaction_sanitization import RedactionSanitizationRequest
 from paperworkshell.domain.resource_policy import CONSTRAINED_RESOURCE_POLICY_V1
 from paperworkshell.pdf.redaction_reconstruction import RedactionReconstructionLimits
-from paperworkshell.pdf.redaction_sanitization import PikepdfRedactionSanitizer, _Output
+from paperworkshell.pdf.redaction_sanitization import (
+    PikepdfRedactionSanitizer,
+    _canonical_content,
+    _Graph,
+    _Output,
+)
 
 
 class _Control:
@@ -85,7 +90,9 @@ def test_fresh_derivative_preserves_content_and_opaque_resource_names(
     assert report.after.empty
     assert report.output_sha256 == hashlib.sha256(output.read_bytes()).hexdigest()
     with pikepdf.Pdf.open(BytesIO(content)) as original, pikepdf.Pdf.open(output) as result:
-        assert result.pages[0].Contents.read_bytes() == original.pages[0].Contents.read_bytes()
+        assert pikepdf.unparse_content_stream(
+            pikepdf.parse_content_stream(result.pages[0])
+        ) == pikepdf.unparse_content_stream(pikepdf.parse_content_stream(original.pages[0]))
         assert list(result.pages[0].MediaBox) == list(original.pages[0].MediaBox)
         assert resource_name in result.pages[0].Resources.Font
         assert set(map(str, result.Root.keys())) == {"/Type", "/Pages"}
@@ -318,3 +325,25 @@ def test_image_encoding_failure_or_cancellation_leaves_no_candidate(
     assert source.getvalue() == content
     assert source.tell() == 7
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("budget", ["tokens", "array", "operands", "output", "cancel"])
+def test_content_lexer_enforces_budgets_before_collecting_instructions(budget: str) -> None:
+    limits, control = _limits(), _Control()
+    maximum = limits.maximum_memory_bytes // 4
+    if budget == "tokens":
+        limits = replace(limits, maximum_pdf_objects=1)
+        content = b"q Q " * 40
+    elif budget == "array":
+        content = b"BT [" + b"0 " * 65_537 + b"] TJ ET"
+    elif budget == "operands":
+        content, maximum = b"BT (" + b"S" * 32 + b") Tj ET", 16
+    elif budget == "output":
+        content, maximum = b"q Q q Q q Q q Q q Q", 16
+    else:
+        content, control = b"q Q " * 40, _Control(cancel_at=5)
+    with pytest.raises(PdfExportError) as caught:
+        _canonical_content(content, _Graph(limits, control), maximum)
+    assert caught.value.code is (
+        PdfExportErrorCode.CANCELLED if budget == "cancel" else PdfExportErrorCode.LIMIT_EXCEEDED
+    )

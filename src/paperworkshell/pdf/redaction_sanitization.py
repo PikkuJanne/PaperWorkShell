@@ -14,6 +14,7 @@ import stat
 import zlib
 from collections.abc import Buffer, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -272,6 +273,44 @@ _FONT_TABLES = frozenset(
         "cvt ",
     }
 )
+_CONTENT_OPERATORS: dict[str, tuple[str, ...]] = {
+    **dict.fromkeys(
+        (
+            "q",
+            "Q",
+            "h",
+            "S",
+            "s",
+            "f",
+            "F",
+            "f*",
+            "B",
+            "B*",
+            "b",
+            "b*",
+            "n",
+            "W",
+            "W*",
+            "BT",
+            "ET",
+            "T*",
+        ),
+        (),
+    ),
+    **dict.fromkeys(
+        ("w", "J", "j", "M", "i", "G", "g", "Tc", "Tw", "Tz", "TL", "Tr", "Ts"), ("number",)
+    ),
+    **dict.fromkeys(("m", "l", "Td", "TD"), ("number",) * 2),
+    **dict.fromkeys(("RG", "rg"), ("number",) * 3),
+    **dict.fromkeys(("v", "y", "re", "K", "k"), ("number",) * 4),
+    **dict.fromkeys(("c", "cm", "Tm"), ("number",) * 6),
+    **dict.fromkeys(("Do", "gs", "CS", "cs", "ri"), ("name",)),
+    **dict.fromkeys(("Tj", "'"), ("string",)),
+    '"': ("number", "number", "string"),
+    "Tf": ("name", "number"),
+    "TJ": ("text_array",),
+    "d": ("number_array", "number"),
+}
 
 
 def _unsupported() -> Never:
@@ -384,6 +423,172 @@ class _Graph:
             and len(collection) > _COLLECTION
         ):
             reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.collection")
+
+
+@dataclass(frozen=True, slots=True)
+class _ContentOperand:
+    kind: str
+    value: object
+    children: tuple[str, ...] = ()
+
+
+class _ContentFilter(pikepdf.TokenFilter):
+    """Lex and validate one instruction at a time without collecting a packet."""
+
+    def __init__(self, graph: _Graph, maximum_bytes: int) -> None:
+        super().__init__()
+        self.graph, self.maximum_bytes = graph, maximum_bytes
+        self.destination = BytesIO()
+        self.output = _BoundedOutput(self.destination, maximum_bytes)
+        self.operands: list[_ContentOperand] = []
+        self.array: list[_ContentOperand] | None = None
+        self.pending_bytes = 0
+        self.failure: PdfExportErrorCode | None = None
+        self.finished = False
+        self.in_text = False
+
+    def handle_token(self, token: pikepdf.Token | None = None) -> None:
+        try:
+            if token is None:
+                _unsupported()
+            self._handle(token)
+        except PdfExportError as error:
+            # Preserve only the closed code if native filtering wraps an error.
+            self.failure = error.code
+            raise
+
+    def _handle(self, token: pikepdf.Token) -> None:
+        self.graph.visit(None, 1 if self.array is not None else 0)
+        kind = token.type_
+        if kind in {pikepdf.TokenType.space, pikepdf.TokenType.comment}:
+            return
+        if kind is pikepdf.TokenType.eof:
+            if self.operands or self.array is not None or self.in_text:
+                _unsupported()
+            self.finished = True
+            return
+        if kind is pikepdf.TokenType.array_open:
+            if self.array is not None:
+                _unsupported()
+            self.array = []
+            return
+        if kind is pikepdf.TokenType.array_close:
+            if self.array is None:
+                _unsupported()
+            operand = _ContentOperand(
+                "array",
+                pikepdf.Array(item.value for item in self.array),
+                tuple(item.kind for item in self.array),
+            )
+            self.array = None
+            self._append(operand)
+            return
+        if kind is pikepdf.TokenType.word:
+            if self.array is not None:
+                _unsupported()
+            self._instruction(token.raw_value)
+            return
+        # Dictionaries, inline images, booleans, null, braces and bad tokens
+        # have no role in the approved drawing/text operand grammar.
+        types = {
+            pikepdf.TokenType.integer: "number",
+            pikepdf.TokenType.real: "number",
+            pikepdf.TokenType.name_: "name",
+            pikepdf.TokenType.string: "string",
+        }
+        if kind not in types:
+            _unsupported()
+        raw = token.raw_value
+        self.pending_bytes += len(raw)
+        if self.pending_bytes > self.maximum_bytes:
+            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.content_operands")
+        value: object = pikepdf.Object.parse(raw)
+        operand_kind = types[kind]
+        if operand_kind == "number" and (
+            type(value) not in (int, float, Decimal) or not math.isfinite(float(cast(float, value)))
+        ):
+            _unsupported()
+        if self.array is not None:
+            if operand_kind not in {"number", "string"}:
+                _unsupported()
+            if len(self.array) >= _COLLECTION:
+                reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.content_array")
+            self.array.append(_ContentOperand(operand_kind, value))
+        else:
+            self._append(_ContentOperand(operand_kind, value))
+
+    def _append(self, operand: _ContentOperand) -> None:
+        # Six is the largest arity in the explicitly supported PDF grammar.
+        if len(self.operands) >= 6:
+            _unsupported()
+        self.operands.append(operand)
+
+    def _instruction(self, word: bytes) -> None:
+        try:
+            operator = word.decode("ascii")
+        except UnicodeError:
+            _unsupported()
+        if operator in {"SC", "SCN", "sc", "scn"}:
+            if len(self.operands) not in {1, 3, 4}:
+                _unsupported()
+            expected = ("number",) * len(self.operands)
+        elif operator in _CONTENT_OPERATORS:
+            expected = _CONTENT_OPERATORS[operator]
+        else:
+            _unsupported()
+        if len(self.operands) != len(expected):
+            _unsupported()
+        for operand, target in zip(self.operands, expected, strict=True):
+            if target in {"number_array", "text_array"}:
+                allowed = {"number"} if target == "number_array" else {"number", "string"}
+                if operand.kind != "array" or any(item not in allowed for item in operand.children):
+                    _unsupported()
+            elif operand.kind != target:
+                _unsupported()
+        if operator == "BT":
+            if self.in_text:
+                _unsupported()
+            self.in_text = True
+        elif operator == "ET":
+            if not self.in_text:
+                _unsupported()
+            self.in_text = False
+        elif operator in {"Tj", "TJ", "'", '"'} and not self.in_text:
+            _unsupported()
+        instruction = pikepdf.unparse_content_stream(
+            [
+                (
+                    tuple(cast(pikepdf.Object, item.value) for item in self.operands),
+                    pikepdf.Operator(operator),
+                )
+            ]
+        )
+        if len(instruction) > self.maximum_bytes - self.output.tell() - 1:
+            reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.content_bytes")
+        self.output.write(instruction)
+        self.output.write(b"\n")
+        self.operands.clear()
+        self.pending_bytes = 0
+
+
+def _canonical_content(data: bytes, graph: _Graph, maximum_bytes: int) -> bytes:
+    # The temporary native stream holds only this bounded content stream. The
+    # callback emits no lexer output and stores at most one typed instruction.
+    filtering = _ContentFilter(graph, maximum_bytes)
+    try:
+        with pikepdf.Pdf.new() as document:
+            page = document.add_blank_page()
+            page.Contents = pikepdf.Stream(document, data)
+            page.get_filtered_contents(filtering)
+            if document.get_warnings() or not filtering.finished:
+                _unsupported()
+    except MemoryError, RecursionError:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.content_resources")
+    except Exception:
+        if filtering.failure is not None:
+            reject_pdf_export(filtering.failure, "sanitization.content")
+        _unsupported()
+    return filtering.destination.getvalue()
 
 
 def _inventory(
@@ -679,8 +884,11 @@ class _Copier:
                     data = decoded
             else:
                 if role in {"content", "form"}:
-                    self._decoded(value, raw)
-                data = raw
+                    data = _canonical_content(
+                        self._decoded(value, raw), self.graph, self.materialization_limit
+                    )
+                else:
+                    data = raw
             self.stream_bytes += max(0, len(data) - len(raw))
             if self.stream_bytes + self.scalar_bytes > self.materialization_limit:
                 reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "sanitization.materialization")
@@ -693,7 +901,15 @@ class _Copier:
             name = str(key)
             if name in _STRIP or stream and name == "/Length":
                 continue
-            if role in {"image", "cmap", "fontprogram", "cidmap", "cidset"} and name in {
+            if role in {
+                "content",
+                "form",
+                "image",
+                "cmap",
+                "fontprogram",
+                "cidmap",
+                "cidset",
+            } and name in {
                 "/Filter",
                 "/DecodeParms",
                 "/Length1",

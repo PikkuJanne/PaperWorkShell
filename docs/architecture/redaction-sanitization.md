@@ -40,6 +40,14 @@ The adapter inventories the full input graph, including orphan objects, and writ
 only the supported reachable rendering graph to a new PDF. A fresh full save
 discards previous revisions and unreferenced source objects.
 
+Page and Form content streams pass a streaming native token filter. It removes
+lexical comments without changing literal text, then emits one validated drawing
+or text instruction at a time with closed operand types and arity. Inline images,
+marked-content operators and property dictionaries, unsupported operators, dangling
+operands and invalid text-object boundaries fail closed. Text objects split across
+separate streams are outside this initial profile. Generated raster and OCR content
+uses supported image resources and complete text objects.
+
 Successful candidates are reopened and checked for expected pages, absence of
 prohibited features and revision history, and supported rendering structure.
 Independent extraction, image/object inspection, rendering and resave verification
@@ -64,7 +72,8 @@ restrictions are a deliberate initial profile, not general PDF compatibility.
 
 Limits derive from the central ResourcePolicy and the existing bounded operation
 limits. Object traversal, collection size, recursion depth, stream materialization,
-input/output bytes and temporary storage are bounded. Processing uses one heavy
+content tokens, pending operands, instruction output, input/output bytes and
+temporary storage are bounded. Processing uses one heavy
 operation and one restricted worker, with no OCR child or network authority.
 Each image is decoded and checked against its exact sample count, then immediately
 Flate-encoded before it enters the retained PDF. The next page is copied only after

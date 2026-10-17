@@ -15,6 +15,7 @@ import pikepdf
 import pytest
 from fontTools import subset  # type: ignore[import-untyped]
 from fontTools.ttLib import TTFont, newTable  # type: ignore[import-untyped]
+from PIL import Image
 
 from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.domain.pdf_rendering import PdfPageRenderRequest
@@ -99,7 +100,9 @@ def test_feature_corpus_leaves_no_recoverable_nonpage_canary(
     assert canary not in _all_bytes(output)
     assert output.read_bytes().count(b"startxref") == 1
     with pikepdf.Pdf.open(BytesIO(content)) as source, pikepdf.Pdf.open(output) as result:
-        assert source.pages[0].Contents.read_bytes() == result.pages[0].Contents.read_bytes()
+        assert pikepdf.unparse_content_stream(
+            pikepdf.parse_content_stream(source.pages[0])
+        ) == pikepdf.unparse_content_stream(pikepdf.parse_content_stream(result.pages[0]))
 
 
 def test_nested_resource_stream_and_global_carriers_are_removed_without_logging(
@@ -384,3 +387,123 @@ def test_font_identity_extensions_are_normalized_or_rejected(tmp_path: Path, fie
             _sanitize(content, output)
         assert caught.value.code is PdfExportErrorCode.SOURCE_UNSUPPORTED
         assert not output.exists()
+
+
+def _content_pdf(data: bytes, *, form: bool, compressed: bool) -> bytes:
+    with pikepdf.Pdf.new() as document:
+        page = document.add_blank_page(page_size=(72, 48))
+        resources = pikepdf.Dictionary(
+            Font=pikepdf.Dictionary(
+                F1=pikepdf.Dictionary(
+                    Type=pikepdf.Name.Font,
+                    Subtype=pikepdf.Name.Type1,
+                    BaseFont=pikepdf.Name.Helvetica,
+                )
+            )
+        )
+        stream = pikepdf.Stream(document, zlib.compress(data) if compressed else data)
+        if compressed:
+            stream.Filter = pikepdf.Name.FlateDecode
+        if form:
+            stream.Type = pikepdf.Name.XObject
+            stream.Subtype = pikepdf.Name.Form
+            stream.BBox = pikepdf.Array([0, 0, 72, 48])
+            stream.Resources = resources
+            page.Resources = pikepdf.Dictionary(XObject=pikepdf.Dictionary(Fm0=stream))
+            page.Contents = pikepdf.Stream(document, b"/Fm0 Do")
+        else:
+            page.Resources = resources
+            page.Contents = stream
+        return _serialize(document)
+
+
+def _inline_jpeg() -> bytes:
+    output = BytesIO()
+    with Image.new("RGB", (1, 1), (255, 0, 0)) as image:
+        image.save(output, format="JPEG", comment=_CANARY)
+    assert _CANARY in output.getvalue()
+    return b"q BI /W 1 /H 1 /BPC 8 /CS /RGB /F /DCT ID " + output.getvalue() + b" EI Q"
+
+
+@pytest.mark.parametrize("form", [False, True])
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize(
+    "carrier",
+    [
+        "inline",
+        "actualtext",
+        "properties",
+        "marked",
+        "point",
+        "unknown",
+        "extra",
+        "dangling",
+        "wrong_type",
+        "nested_array",
+        "outside_text",
+        "unfinished_text",
+    ],
+)
+def test_content_and_form_payload_carriers_fail_closed(
+    tmp_path: Path, form: bool, compressed: bool, carrier: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    cases = {
+        "inline": _inline_jpeg(),
+        "actualtext": b"/Span << /ActualText (" + _CANARY + b") >> BDC EMC",
+        "properties": b"/Span /PrivateProperties BDC EMC",
+        "marked": b"/Artifact BMC EMC",
+        "point": b"/Span << /ActualText (" + _CANARY + b") >> DP",
+        "unknown": b"(" + _CANARY + b") PrivateUnknownOperator",
+        "extra": b"(" + _CANARY + b") q Q",
+        "dangling": b"(" + _CANARY + b")",
+        "wrong_type": b"1 Do",
+        "nested_array": b"[[(SYNTHETIC)]] TJ",
+        "outside_text": b"(" + _CANARY + b") Tj",
+        "unfinished_text": b"BT /F1 8 Tf (" + _CANARY + b") Tj",
+    }
+    content = _content_pdf(cases[carrier], form=form, compressed=compressed)
+    source = BytesIO(content)
+    source.seek(7)
+    request = RedactionSanitizationRequest(
+        uuid4(), uuid4(), hashlib.sha256(content).hexdigest(), len(content), 1
+    )
+    output = tmp_path / "candidate.pdf"
+    with pytest.raises(PdfExportError) as caught:
+        PikepdfRedactionSanitizer().sanitize(
+            source, output, tmp_path, request, _limits(), _Control()
+        )
+    assert caught.value.code is PdfExportErrorCode.SOURCE_UNSUPPORTED
+    assert source.getvalue() == content and source.tell() == 7
+    assert not output.exists()
+    assert _CANARY.decode("ascii") not in caplog.text + str(caught.value)
+
+
+@pytest.mark.parametrize("form", [False, True])
+@pytest.mark.parametrize("compressed", [False, True])
+def test_content_tokenization_removes_comments_preserves_literal_text_and_rendering(
+    tmp_path: Path, form: bool, compressed: bool
+) -> None:
+    drawing = (
+        b"% " + _CANARY + b"\nq\n0.5 w [] 0 d 0 0 1 RG 1 1 70 46 re S\n"
+        b"BT /F1 5 Tf 1 0 0 1 2 20 Tm (KEEP % literal \\(parentheses\\)) Tj "
+        b"[(KEEP ) -10 <54455854>] TJ ET Q % " + _CANARY
+    )
+    content = _content_pdf(drawing, form=form, compressed=compressed)
+    output = tmp_path / "candidate.pdf"
+    assert _sanitize(content, output).after.empty
+    assert _CANARY not in _all_bytes(output)
+    with pikepdf.Pdf.open(BytesIO(content)) as original, pikepdf.Pdf.open(output) as sanitized:
+        left = original.pages[0].Resources.XObject.Fm0 if form else original.pages[0].Contents
+        right = sanitized.pages[0].Resources.XObject.Fm0 if form else sanitized.pages[0].Contents
+        assert pikepdf.unparse_content_stream(
+            pikepdf.parse_content_stream(left)
+        ) == pikepdf.unparse_content_stream(pikepdf.parse_content_stream(right))
+        assert b"KEEP % literal" in right.read_bytes()
+    request = PdfPageRenderRequest(0, 144, 96)
+    renderer = PdfiumPageRenderer()
+    expected = renderer.render(
+        BytesIO(content), _Sink(), request, _render_limits(_limits()), _Control()
+    )
+    with output.open("rb") as source:
+        actual = renderer.render(source, _Sink(), request, _render_limits(_limits()), _Control())
+    assert actual.pixel_sha256 == expected.pixel_sha256
