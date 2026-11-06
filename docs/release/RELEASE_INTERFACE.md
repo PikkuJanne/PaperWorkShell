@@ -29,17 +29,21 @@ pre-alpha development value, not the product version for this sheet.
 | Item | Release value |
 |---|---|
 | Product name | PaperWorkShell |
-| Reverse-domain application ID | **TBD — local frozen decision required** |
+| Reverse-domain application ID | `io.github.pikkujanne.paperworkshell`; selected in ADR 0018 |
 | Product version | **TBD for exact release** |
 | Release channel | **TBD — Development, Preview, or Stable** |
-| Publisher | **TBD** |
-| Product licence | **TBD after final distribution review** |
-| Supported operating systems | Windows-first; exact editions/builds **TBD** |
-| Supported architectures | **TBD** |
+| Publisher | Janne Vuorela |
+| Product licence | MIT for [authorized project-owned material](../../LICENSING.md); third-party terms preserved; official distribution free including commercial use |
+| Supported operating systems | Windows 11 only; supported release editions/builds require the [x64 support evidence](WINDOWS11_X64_SUPPORT.md) |
+| Supported architectures | x86-64 (x64) only under PWS-D043; ARM64 native and emulated application routes are outside project scope |
 | Portfolio dependency | None; PaperWorkShell must run without ThirdLife or sibling applications |
 
-The development dependency inventory targets Windows x86-64 artifacts where currently required,
-but that does not by itself freeze the supported release architecture or operating-system matrix.
+The architecture is selected by [PWS-D043 / ADR 0019](../adr/0019-windows-11-x64-only-scope.md),
+not inferred from dependency availability. No ARM environment, native/emulated result or
+future ARM task is a prerequisite for PWS-0802, PWS-0803 or public release. The
+[current continuation](../development/pws0802-x64-continuation-20261104.md) and
+[finite x64 matrix](../development/pws0802-x64-qualification-20261104.md) distinguish
+the settled target from still-unproved edition/build and scenario coverage.
 
 ## 2. Release artifact
 
@@ -56,8 +60,31 @@ but that does not by itself freeze the supported release architecture or operati
 | Offline-media source | **TBD or not supported with reason** |
 | Required external runtime | **TBD; release must not require development tools** |
 
-The checked-in dependency inventory is a policy baseline, not the final release SBOM. The release
-artifact does not exist yet.
+The checked-in dependency inventory is a policy baseline, not the final release SBOM. An
+[unsigned internal engineering installer](../development/pws0802-community-runtime-20261103.md)
+now exists with exact inventory and SBOMs. It is not the qualified signed release represented
+by the still-unproved release fields in this sheet. Its stable Inno upgrade identity is
+`{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`. No account, registration, email, activation,
+subscription or licence key is required; application document uploads, telemetry and automatic
+crash-report submission are prohibited.
+
+The preserved engineering R7 build includes the acquired Community 2022 app-local Microsoft
+runtime and offline component-only recipient agreement; it does not require a
+separately installed VC runtime. The current report separates actual native origin
+and workflow observations from the current Sandbox standard-account
+checks and the remaining Windows 11 x64 matrix and trusted-signing requirements. These engineering facts do not fill the public
+release fields above or create a supported-build claim.
+
+Its exact unsigned installer is 512,713,704 bytes, SHA-256
+`a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,
+with actual signature status **NotSigned**. The newer x64-only source metadata does
+not replace its authenticated embedded build metadata, inventory or audit; the
+installer is unchanged. Actual engineering target evidence names Windows 11
+Enterprise 26100.9711 x64 and a genuine standard account. Pro 26300.9711 is a host
+observation, not another qualified guest. R7 used the existing instrumented guest;
+R6 clean offline document evidence is reused only within the audited unchanged
+runtime/worker/export boundary. Public signed artifact/version/hash/signer fields
+remain unproved.
 
 ## 3. Install, update, repair, and remove
 
@@ -115,8 +142,8 @@ machine path.
 | Temporary processing data | Case-scoped `temp\` plus restricted worker-private temporary storage | Authenticated cleanup/recovery is implemented; packaged residue tests **TBD** |
 | OCR language data / optional engines | Source contract: built-in English plus exact optional German `tessdata_fast` 4.1.0 data; exact packaged path/inclusion **TBD for PWS-0801/PWS-0802** | Close/restart after a local pack change; exact installer/elevation/removal/notices **TBD for PWS-0802** |
 | Persistent logs | **TBD; current diagnostic logger is bounded and structured rather than a release log store** | Sanitized; retention **TBD** |
-| Support bundles | User-selected local destination; feature **not yet implemented** | Created only after preview and confirmation; user-controlled deletion |
-| Migration/rollback backups | **TBD** | **TBD** |
+| Support bundles | Implemented at a user-selected local destination; packaged release qualification pending | Created only after exact preview and explicit consent; user-controlled deletion |
+| Migration/rollback backups | Source implementation: bounded exact original `journal/migration-source-v1.json` or `migration-source-v2.json`; [contract](../architecture/case-migration.md) | Create-only backups retained inside the case; no automatic downgrade that could discard later edits; packaged release qualification remains pending |
 
 PaperWorkShell owns responsibility for its configuration and workspace formats, lifecycle, and
 migrations; users retain control of their local configuration and workspace content. ThirdLife may
@@ -204,18 +231,20 @@ It does not certify a named physical computer, CPU count, RAM amount, GPU, SSD, 
 
 ## 11. Support bundle
 
-The current repository implements a structured sanitized diagnostic baseline, not a support bundle.
-PWS-0805 owns the feature below.
+PWS-0805 implements a local, previewable support bundle with a closed allowlist. The
+[source contract](../architecture/support-bundle.md) and
+[synthetic sample](../../tests/fixtures/diagnostics/v1/README.md) specify exact bytes;
+release-grade packaged qualification remains separate.
 
 | Item | Release value |
 |---|---|
-| Creation path | **TBD** |
+| Creation path | Source implementation: Help → Create support bundle; exact packaged release verification pending |
 | User preview before creation | Required |
-| Default destination | **TBD; user-selected local path preferred** |
-| Included categories | Approved versions, operation IDs/codes, numeric counts, resource data, and sanitized diagnostics; exact allow-list **TBD** |
+| Default destination | Explicit user-selected local file; no automatic submission |
+| Included categories | Exact preview of `summary.txt` and `allowlist.txt`; numeric versions by default, other closed typed diagnostic fields only when actually recorded; no file collector |
 | Excluded | Document bytes/text, OCR text, form values, names, addresses, filenames, full paths, metadata values, thumbnails, signatures, and credentials; any future content-sample workflow requires a separate decision and approval |
-| Cancellation/failure behavior | **TBD and tested** |
-| Sample sanitized bundle | **TBD; publish hash in release evidence** |
+| Cancellation/failure behavior | Source-tested cancellation, no-replace publication, low/disk-full and partial-write cleanup; packaged release coverage pending |
+| Sample sanitized bundle | [Synthetic archive and exact allowlist](../../tests/fixtures/diagnostics/v1/README.md); SHA-256 `4f5bb7b36f1b58f36901f31c18b721a6875a44bc731fb8da3779e39b77662304` |
 
 PaperWorkShell and ThirdLife support artifacts remain separate.
 

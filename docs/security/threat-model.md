@@ -24,6 +24,10 @@ The concrete flows are in [data-flows.md](data-flows.md), decision/task coverage
 [threat-traceability.md](threat-traceability.md), and evidence expectations are in
 [security-test-plan.md](security-test-plan.md).
 
+The [permanent-redaction extension](redaction-threat-model.md) defines PWS-0601's supported
+claim, adversarial corpus oracles, failure taxonomy, and planned M6 evidence. Its completion does
+not enable permanent redaction; independent PWS-0608 approval remains required.
+
 ## Scope
 
 ### In scope

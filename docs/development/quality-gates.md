@@ -38,6 +38,20 @@ links/anchors/security references, and deliberate negative self-tests. Use
 the individual registered command when narrowing a failure. `format` is intentionally mutating
 and is not part of `check`.
 
+Run native-capable lanes serially within one Windows user session. Unit,
+integration, security and separate native worker tests share a per-user access
+recovery journal. Overlapping staged roots can be refused by its allowlist guard.
+Independent CI machines do not share that journal. Keep the normal sequential
+dispatcher locally; preserve failed receipts and wait for ordinary cleanup before
+a serial retry. Do not relax the guard or change resource ACLs to bypass it.
+
+The same serialization applies to publishing an owned dependency builder, assembling a release
+stage and running its native runtime probes. Preserve earlier evidence if builder publication
+reports `RELEASE_BUILDER_OUTPUT_BUSY`; let ordinary native lease cleanup finish and retry with a
+fresh output path. The [clean-builder procedure](../../packaging/README.md#reproduce-the-internal-dependency-stage)
+verifies its caller-anchored inventory before and after use. This is separate from changing an
+application resource budget or weakening the access-recovery allowlist.
+
 CI runs the same registry in two independent Windows jobs:
 
 ```powershell
@@ -85,6 +99,18 @@ JSON/YAML keys, and never executes or fetches a listed component. The baseline i
 release/SBOM proof; see
 [`dependency-policy.md`](dependency-policy.md) for the resolved-build requirements.
 
+PWS-0801 adds `validate-release-inventory` to `check`. It validates the closed
+resolved dependency-stage schema and current/old-policy/future/invalid synthetic fixtures,
+offline. `validate-schemas` also includes that contract. The exact candidate has additional
+explicit `tools.release_evidence validate` and `freeze` steps: these authenticate consumed
+archives and recipe/review hashes, reconcile every staged file and required notice/source,
+generate CycloneDX 1.6 and SPDX 2.3, and reopen the deterministic ZIP. Both generated SBOMs
+are checked against the vendored official schemas by the release tests. See the
+[packaging procedure](../../packaging/README.md) and [ADR 0017](../adr/0017-release-dependency-staging.md).
+The internal `0.0.0` dependency stage is separate from PWS-0802's installer, identity,
+product terms, signing and clean-machine qualification; later candidates must regenerate
+the evidence against their own exact bytes.
+
 Case manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a
 self-contained Draft
 2020-12 schema, and semantic checks for IDs, references, source-page bounds, operation replay,
@@ -120,6 +146,15 @@ Neither automated pattern scan is anonymization; closed no-input generation and 
 are the corpus admission rule. See
 [`synthetic-fixture-policy.md`](synthetic-fixture-policy.md) for scheduled engine-owned classes,
 on-demand hostile generation, limitations, and restricted bug-sample handling.
+
+PWS-0801 retains upstream licence and official-schema attribution contacts without editing
+original notice bytes. The repository callback recognizes only 60 fixed SHA-256 digests documented
+in `packaging/release-reviews/upstream-attribution-privacy-v1.json` and the static data module
+`tools/_reviewed_upstream_notices.py`. This allows public email attribution only for those exact
+reviewed blobs. Changed bytes, new contacts and ordinary fixture-content calls remain strict;
+number/MRZ patterns and unapproved document detection are unchanged. There is no directory or
+filename exemption. New upstream bytes require authenticated provenance, a code-reviewed digest
+addition and the same mutation/context regression checks.
 
 Regeneration is explicit and mutating, so it is not part of `check`:
 

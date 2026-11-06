@@ -1,0 +1,51 @@
+Lxml static native libraries: source and recipient relinking information
+
+The reviewed Windows lxml6.1.1 wheel contains static libiconv and native
+libxml2/libxslt/zlib code. Full library source archives at the exact reviewed
+winlibs commits are supplied under sources/native/. The application code
+using those libraries is the generated C and Python source in
+sources/python/lxml-6.1.1-approved-subset.tar.xz. Only the two separately
+approved unlicensed Schematron resources are omitted; all other source-file
+bytes are preserved. The source archive includes the upstream BSD license,
+setup.py/setupinfo.py, generated C, headers and build documentation.
+
+Libiconv uses LGPL-2.1-or-later. The complete LGPL text and copyright notices
+are included. A recipient may change the library and rebuild/relink the lxml
+extension from the supplied source. Do not prohibit reverse engineering for
+debugging those changes. The integrity pins in PaperWorkShell's own source
+may be changed when the recipient builds their own modified application.
+
+Build approach, expressed independently from upstream aggregate glue scripts:
+
+1. Extract the four exact native-source archives into a separate build area.
+   Retain their Windows project files and library license notices. Use an
+   appropriate x64 Microsoft C/C++ build-tool environment and CPython3.14
+   development headers/libraries. The recipient obtains and licenses those
+   tools independently; the staged dependency bundle does not install them.
+2. Build libiconv's MSVC17/libiconv_static project in Release/x64 mode. Its
+   source project files are provided in the exact libiconv source archive.
+   Preserve the interface and use the resulting static iconv_a.lib.
+3. Build zlib's static library with its win32/Makefile.msc zlib_a.lib target;
+   provide that library under the zlib.lib name expected by lxml.
+4. Configure libxml2 in its win32 directory with configure.js, the iconv/zlib
+   include and library directories, vcmanifest=yes and zlib=yes; build the
+   libxmla target with nmake.
+5. Configure libxslt similarly with the iconv/zlib/libxml2 directories and
+   build its libxslta and libexslta nmake targets.
+6. In the supplied lxml source tree, leave STATICBUILD unset, supply the
+   resulting include paths in INCLUDE and library paths in LIBRARY, and run
+   setup.py build_ext --static --without-cython with the chosen CPython.
+   The --static option uses these local inputs; --static-deps/STATICBUILD
+   would instead activate upstream dependency downloading and are not used
+   for this local rebuild. This source includes generated C, so Cython is
+   unnecessary for the unchanged interfaces.
+7. Shut down PaperWorkShell and its worker. Preserve a working copy, replace
+   the rebuilt lxml extension in the same package layout, and rebuild the
+   recipient's own PaperWorkShell manifest pins as needed. Re-run synthetic
+   PDF/XML/OCR and failure-path checks before using the modified build.
+
+These are source availability/relinking instructions, not a claim of an
+independently reproduced MSVC build or an approved Windows installer. Final
+installation paths and release packaging remain PWS-0802 responsibilities.
+No private case, document, account, sibling product or network processing is
+needed for the normal supported document workflow.

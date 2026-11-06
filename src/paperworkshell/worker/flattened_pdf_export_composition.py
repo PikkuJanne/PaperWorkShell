@@ -61,6 +61,7 @@ class FlattenedPdfExportWorkerCompositionConfig:
     broker_policy: FlattenedPdfExportBrokerPolicy
     resource_sampling_interval_ms: int = 50
     venv_launcher: Path | None = field(default=None, repr=False)
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -97,6 +98,7 @@ class FlattenedPdfExportWorkerCompositionConfig:
                 code_roots=self.code_roots,
                 working_directory=self.working_directory,
                 venv_launcher=self.venv_launcher,
+                recovery_authority_roots=self.recovery_authority_roots,
                 qpdf_executable=self.qpdf_executable,
             ),
         )
@@ -272,6 +274,7 @@ def create_flattened_pdf_export_worker_composition_config(
     resource_sampling_interval_ms: int = 50,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
+    recovery_authority_roots: tuple[Path, ...] = (),
 ) -> FlattenedPdfExportWorkerCompositionConfig:
     """Create the flattened-export policy behind one fixed production seam."""
 
@@ -291,4 +294,5 @@ def create_flattened_pdf_export_worker_composition_config(
             pump_interval_seconds=pump_interval_seconds,
         ),
         venv_launcher=venv_launcher,
+        recovery_authority_roots=recovery_authority_roots,
     )

@@ -1,0 +1,815 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-libtiff-static-build-support",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "parent_artifact_sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+  "source_build_recipe_sha256": "af49ae37ab7b0f4e8c9db71a6ae5b46002ef30cf0b4d9beb9de8513ace873550",
+  "evidence": {
+    "method": "Frozen native build commands and inputs replayed with only linker -Map output added in an isolated generated build directory; resulting stripped DLL hash is identical.",
+    "link_map_sha256": "699e4bd90eeca791043840bbfb91a97af6d385f00b2ffe53402c9d11859d5b81",
+    "link_map_receipt": "output/pws0801/native-rebuild/link-map-probe/receipt.json",
+    "scope": "Actual selected object/archive members from an independently repeated byte-identical link, with source/notice review tied to signed binary and source-package provenance. Compiler binary reproducibility is not claimed."
+  },
+  "components": [
+    {
+      "type": "library",
+      "scope": "runtime",
+      "relationship": "embedded",
+      "parent_component_id": "paperworkshell-libtiff-no-jbig",
+      "parent_file": "bin/libtiff-6.dll",
+      "artifact_sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+      "dependencies": [],
+      "component_id": "libtiff-build-gcc-runtime",
+      "name": "GCC runtime startup and support in rebuilt LibTIFF",
+      "version": "16.2.0-6",
+      "supplier": "Free Software Foundation, Inc.",
+      "purl": "pkg:generic/msys2/libgcc-static-support@16.2.0-6?arch=x86_64&distro=msys2-ucrt64",
+      "license_expression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "license_texts": [
+        {
+          "path": "notices/build-support/gcc-runtime/COPYING3",
+          "asset_path": "packaging/licenses/release-build-support/gcc-runtime/COPYING3",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/build-support/gcc-runtime/COPYING.RUNTIME",
+          "asset_path": "packaging/licenses/release-build-support/gcc-runtime/COPYING.RUNTIME",
+          "size_bytes": 3324,
+          "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/build-support/gcc-runtime/SELECTED-SOURCE-NOTICES.txt",
+          "asset_path": "packaging/licenses/release-build-support/gcc-runtime/SELECTED-SOURCE-NOTICES.txt",
+          "size_bytes": 5514,
+          "sha256": "9a64a12138a2513b088b066a6b0c7cc33d87d48933f42638dd6e8203166882ed",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+      "source_artifacts": [
+        {
+          "name": "mingw-w64-gcc-16.2.0-6.src.tar.zst",
+          "url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+          "size_bytes": 107229138,
+          "sha256": "a901d8afb78438abcff9ed020cd9aa9431db76de1992171c2454c3c07ad289e8",
+          "local_path": "output/pws0801/native-rebuild/build-support/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+          "stage_path": "sources/build-support/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+          "required_for_corresponding_source": true,
+          "signature_sha256": "4e6dcbe01d9b6072c7416a9e7d6d306f245a05e828e49d30a774d31de23badbf",
+          "signature_size_bytes": 566,
+          "signature_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst.sig",
+          "signature_result": "VALIDSIG",
+          "signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+        }
+      ],
+      "input_artifact": {
+        "component_id": "mingw-w64-ucrt-x86_64-gcc",
+        "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst",
+        "filename": "mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst",
+        "sha256": "0290e91f5a9a8a3699bcea6221a899403bb9bd5d6f7dbd98c883d74e2ef36338",
+        "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-gcc",
+        "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst.sig",
+        "size_bytes": 48529712,
+        "version": "16.2.0-6",
+        "scope": "release-build-only-not-shipped",
+        "license_labels": [
+          "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
+        ],
+        "upstream_url": "https://gcc.gnu.org",
+        "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+        "pkginfo_sha256": "781469630361665ce594c309c815b870039a0e04c0b307db538b1a23b1256a54",
+        "licenses": [
+          {
+            "path": "ucrt64/share/licenses/gcc/COPYING.RUNTIME",
+            "size_bytes": 3324,
+            "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+          },
+          {
+            "path": "ucrt64/share/licenses/gcc/COPYING3",
+            "size_bytes": 35147,
+            "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+          }
+        ],
+        "signature_sha256": "b5222c79f95692ab08aebda10781c01e2a1816d6a500eaa3ce0edd33721a4185",
+        "signature_size_bytes": 566,
+        "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+        "kind": "msys2-toolchain"
+      },
+      "pkgbuild_sha256": "1a123ea062e01beb611c4375999492b0f41ef2d92d03e38cb29e7c23e855ad45",
+      "source_recipe": "mingw-w64-gcc/PKGBUILD",
+      "source_recipe_authentication": "Signed binary .BUILDINFO expected pkgbuild_sha256sum equals the exact recipe bytes in the independently signed source-only archive.",
+      "native_archives": [
+        {
+          "path_within_toolchain": "lib/gcc/x86_64-w64-mingw32/16.2.0/libgcc.a",
+          "size_bytes": 3030766,
+          "sha256": "3bf27ff273d71b177ace7b12396a71b53bb813f763f67b3140166df1f9bb90b1",
+          "members": [
+            {
+              "name": "_chkstk_ms.o",
+              "size_bytes": 347,
+              "sha256": "61ecf5c74d0f08becbeef1ec12eb94de2c4b2cd34976cd1b03cf5ca087b24f2b"
+            },
+            {
+              "name": "_ctors.o",
+              "size_bytes": 462,
+              "sha256": "88c60febece586c2979f3bfd8b9c208b7441d02a57183eca8c9b1b11aa3a89cb"
+            }
+          ]
+        }
+      ],
+      "source_files": [
+        {
+          "path": "libgcc/libgcc2.c",
+          "sha256": "83e1247be3f78dd8c70d32c4df95f04161c0f47838cf62be8cdb5b9eb2f06c34"
+        },
+        {
+          "path": "libgcc/crtstuff.c",
+          "sha256": "fa00143fa2d869d542d20b73cf94cd326b1c52786d39fb12bf21319581d848eb"
+        },
+        {
+          "path": "libgcc/config/i386/cygwin.S",
+          "sha256": "dcfa7bf32b80b874c74db182e57f79e3e2bb29fb0ac0e080ae6063ea910c7123"
+        },
+        {
+          "path": "libgcc/config/i386/cygming-crtbegin.c",
+          "sha256": "1cc4372b67a2bf0990f84d36e7878fcb7e5cfcf21f111277ba7bc07383caa1f0"
+        },
+        {
+          "path": "libgcc/config/i386/cygming-crtend.c",
+          "sha256": "3f94421847d09ef9bb3ea0836dfd542b7e74c65b53f75c8238a1b650a7a510b5"
+        }
+      ],
+      "distribution_note": "The link map for a byte-identical rebuilt LibTIFF identifies _chkstk_ms.o, _ctors.o, crtbegin.o and crtend.o. Their exact GCC16.2.0 source headers grant the GCC Runtime Library Exception3.1 in addition to GPL3-or-later. Full corresponding GCC source, MSYS2 recipe and patches are retained; no product-source or general relinking guarantee is inferred."
+    },
+    {
+      "type": "library",
+      "scope": "runtime",
+      "relationship": "embedded",
+      "parent_component_id": "paperworkshell-libtiff-no-jbig",
+      "parent_file": "bin/libtiff-6.dll",
+      "artifact_sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+      "dependencies": [],
+      "component_id": "libtiff-build-mingw-crt",
+      "name": "MinGW-w64 UCRT startup and support in rebuilt LibTIFF",
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "supplier": "MinGW-w64 project",
+      "purl": "pkg:generic/msys2/mingw-w64-crt-static-support@14.0.0.r569.g34eeafb7d-1?arch=x86_64&distro=msys2-ucrt64",
+      "license_expression": "ZPL-2.1 AND LicenseRef-PWS-MinGW-Public-Domain",
+      "license_texts": [
+        {
+          "path": "notices/build-support/mingw-crt/COPYING",
+          "asset_path": "packaging/licenses/release-build-support/mingw-crt/COPYING",
+          "size_bytes": 2326,
+          "sha256": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f",
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/build-support/mingw-crt/DISCLAIMER.PD",
+          "asset_path": "packaging/licenses/release-build-support/mingw-crt/DISCLAIMER.PD",
+          "size_bytes": 454,
+          "sha256": "87f33608570312a0f2a9745edcb2527275df813b13982e8c3b3f893d88a4141a",
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/build-support/mingw-crt/SELECTED-PUBLIC-DOMAIN-NOTICES.txt",
+          "asset_path": "packaging/licenses/release-build-support/mingw-crt/SELECTED-PUBLIC-DOMAIN-NOTICES.txt",
+          "size_bytes": 3869,
+          "sha256": "8f9651ba1fd4e35aa8b652958191d9df7a188a7264f547d577a8e82b4a9cda54",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "source_artifacts": [
+        {
+          "name": "mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "size_bytes": 59745832,
+          "sha256": "c573674268a283806703868cf210a2d063000ec129e8d391fe043ce89c53c77e",
+          "local_path": "output/pws0801/native-rebuild/build-support/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "stage_path": "sources/build-support/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "required_for_corresponding_source": true,
+          "signature_sha256": "7964d5bcc241cf3d1ef792a5253f99aef539d18d96a067cfd1867c6af3c762d4",
+          "signature_size_bytes": 566,
+          "signature_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst.sig",
+          "signature_result": "VALIDSIG",
+          "signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+        }
+      ],
+      "input_artifact": {
+        "component_id": "mingw-w64-ucrt-x86_64-crt",
+        "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+        "sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
+        "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-crt",
+        "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst.sig",
+        "size_bytes": 4071159,
+        "version": "14.0.0.r569.g34eeafb7d-1",
+        "scope": "release-build-only-not-shipped",
+        "license_labels": [
+          "spdx:ZPL-2.1"
+        ],
+        "upstream_url": "https://www.mingw-w64.org/",
+        "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+        "pkginfo_sha256": "c9849cff2531b9bf6decd0f5b71aba5e3574b67f973ac35d4a0cd12b55d10ff8",
+        "licenses": [
+          {
+            "path": "ucrt64/share/licenses/crt/COPYING",
+            "size_bytes": 2326,
+            "sha256": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f"
+          },
+          {
+            "path": "ucrt64/share/licenses/crt/COPYING.MinGW-w64-runtime.txt",
+            "size_bytes": 12155,
+            "sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f"
+          },
+          {
+            "path": "ucrt64/share/licenses/crt/COPYING.MinGW-w64.txt",
+            "size_bytes": 5905,
+            "sha256": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1"
+          }
+        ],
+        "signature_sha256": "6f5b065b47f72ac400f7e2a08c75e9f1871bf53894078e1eb865a39d97e5d0af",
+        "signature_size_bytes": 566,
+        "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+        "kind": "msys2-toolchain"
+      },
+      "pkgbuild_sha256": "7a487b036265834d0f36df66bcc8389a1987368ce4c42961e5dde821f27c39d7",
+      "source_recipe": "mingw-w64-crt/PKGBUILD",
+      "source_revision": "34eeafb7d0e5b037b4644c17defc4f4131ad85cc",
+      "source_recipe_authentication": "Signed binary .BUILDINFO recipe hash equals the exact signed source-package PKGBUILD; that recipe pins the source Git revision whose verified blobs supplied these per-file notices.",
+      "native_archives": [
+        {
+          "path_within_toolchain": "lib/libkernel32.a",
+          "size_bytes": 1391318,
+          "sha256": "a0906d87ca3c7bceb571f5de5fd44b6f6c571d2600ae8c70fb006ad651700198",
+          "members": [
+            {
+              "name": "libkernel32h.o",
+              "size_bytes": 656,
+              "sha256": "809985d9bc10159b060b75366ba10cec7234e710783bd2a4f20231fdc7091ba1"
+            },
+            {
+              "name": "libkernel32s00151.o",
+              "size_bytes": 624,
+              "sha256": "9bd7e7404e8ceebac5eb2636f245aabede7f251ecff4c7a0e4518d3dda37ab06"
+            },
+            {
+              "name": "libkernel32s00218.o",
+              "size_bytes": 624,
+              "sha256": "9f6c3aa439bee68f8b9d0ce16c7e6adce9ec44fb54a968c185357dee36e75688"
+            },
+            {
+              "name": "libkernel32s00219.o",
+              "size_bytes": 646,
+              "sha256": "a8602b0c82fc20ea2e92a48911a6ee6fe8f22681b50c82a729714bc066162ecd"
+            },
+            {
+              "name": "libkernel32s00226.o",
+              "size_bytes": 624,
+              "sha256": "d4840293d1cff610ba3524c840a74d136a162fccd41fb274a3e60154809098eb"
+            },
+            {
+              "name": "libkernel32s00632.o",
+              "size_bytes": 628,
+              "sha256": "0c05b2e3cb9141a2689b06d6e12d80faca138f3a960670c4fed65218699b362c"
+            },
+            {
+              "name": "libkernel32s00653.o",
+              "size_bytes": 626,
+              "sha256": "6e924c8b7769cb8f5dddb6b3b70733208928c447ff3042db4f65d5d8a380652d"
+            },
+            {
+              "name": "libkernel32s01052.o",
+              "size_bytes": 628,
+              "sha256": "f8ba2d0de6304b5fae79d82deb7753ddfd9686d199aa8517f9aa5e4cd6eceef0"
+            },
+            {
+              "name": "libkernel32s01206.o",
+              "size_bytes": 605,
+              "sha256": "77d1f7e430a678ce85544bb3173be4debfecc0beeba5b8be0bd80f8fd4b2a1e3"
+            },
+            {
+              "name": "libkernel32s01361.o",
+              "size_bytes": 634,
+              "sha256": "488fe8aea6489ecce243acbe95de53c6fd97630cd6e80ad35f7711b9bba9a3fd"
+            },
+            {
+              "name": "libkernel32s01456.o",
+              "size_bytes": 598,
+              "sha256": "f6d5d6177b8adbf1b7194a1a30f2c2595846929e023705ce7de091ebc752dd40"
+            },
+            {
+              "name": "libkernel32s01510.o",
+              "size_bytes": 636,
+              "sha256": "5a60e0a7534a57fff89ce2eb2c50a03b8f6715b53cc29279b9640b10a9cbb95e"
+            },
+            {
+              "name": "libkernel32s01540.o",
+              "size_bytes": 634,
+              "sha256": "2dd3d02bcbabf04f4218cbf48f9da3d939ec190029f6415a642e189a690df4ef"
+            },
+            {
+              "name": "libkernel32s01542.o",
+              "size_bytes": 626,
+              "sha256": "4ec83c142d794cae5fde26cacccb6cf62168c27c3fcc0b22e0350b2baec1be62"
+            },
+            {
+              "name": "libkernel32s01595.o",
+              "size_bytes": 648,
+              "sha256": "9f6bb1b873bf26f02f502b4aaed8d6a0d84b2f05c064b6da954d4b5f2e2601b7"
+            },
+            {
+              "name": "libkernel32s01615.o",
+              "size_bytes": 616,
+              "sha256": "a09caca6240ce130e2fe553253c17892a1685913842808a90ca954258474607a"
+            },
+            {
+              "name": "libkernel32t.o",
+              "size_bytes": 594,
+              "sha256": "3770e138611eea1677b3c7876d7ad4062d2c9cf8e7098ad441b9486de6bd001b"
+            }
+          ]
+        },
+        {
+          "path_within_toolchain": "lib/libmingw32.a",
+          "size_bytes": 49228,
+          "sha256": "26b6d5cea09c4fa2241e53d250c2018c613edbd991c206c0d6806478fff969be",
+          "members": [
+            {
+              "name": "lib64_libmingw32_a-cinitexe.o",
+              "size_bytes": 842,
+              "sha256": "6cc748481c523414c8716dc29f39020ef09f317ec0b32e201dd470232245dce1"
+            },
+            {
+              "name": "lib64_libmingw32_a-crtdll_atexit_register.o",
+              "size_bytes": 1215,
+              "sha256": "bd2f45fdeccdb94c7a4b6b48482339e508b8141b9cc91c650a9053b3f4e7cfee"
+            },
+            {
+              "name": "lib64_libmingw32_a-mingw_dll_ctors_dtors.o",
+              "size_bytes": 1418,
+              "sha256": "60fb123e07532fc5a66f465d3c341b1f6919b6a3b7a10c0d1216d14322b60f8d"
+            },
+            {
+              "name": "lib64_libmingw32_a-mingw_helpers.o",
+              "size_bytes": 469,
+              "sha256": "7532919fcea6ad0172cc2dd2abe6aac7860bcd45dfbca9dd300e6e65cfba0557"
+            },
+            {
+              "name": "lib64_libmingw32_a-natstart.o",
+              "size_bytes": 615,
+              "sha256": "e3ce1a946a0caa9f03de18a1ae995b90dd4929c2a62e852d6c9298f33e15ace9"
+            },
+            {
+              "name": "lib64_libmingw32_a-pseudo-reloc-list.o",
+              "size_bytes": 554,
+              "sha256": "7bfc95c842e0f51a66229e134488af676b94c0620ffdf537143afab58359fd67"
+            },
+            {
+              "name": "lib64_libmingw32_a-pseudo-reloc.o",
+              "size_bytes": 4348,
+              "sha256": "e3b0d1539b94078245fc2e81edb189abb60c73778f21e07fe2c5490c0b357f96"
+            }
+          ]
+        },
+        {
+          "path_within_toolchain": "lib/libmingwex.a",
+          "size_bytes": 558520,
+          "sha256": "18eed21dc92be399a2792683a98931759f05ca6e0825f3ef54e897f5de1671ae",
+          "members": [
+            {
+              "name": "lib64_libmingwex_a-dllmain.o",
+              "size_bytes": 684,
+              "sha256": "d82ac6eb16b6c5175033b98df44f3a22c6e3561a1e35823909e57046c6ea540c"
+            },
+            {
+              "name": "lib64_libmingwex_a-winbs_uint64.o",
+              "size_bytes": 701,
+              "sha256": "20b8bd0505577be4444a72c8aafc9ab5a141ecd64a94f4ecc92c90d1c86cff55"
+            }
+          ]
+        },
+        {
+          "path_within_toolchain": "lib/libmsvcrt.a",
+          "size_bytes": 2094512,
+          "sha256": "bf17690d34211b6db09dac09ffec8cdcde2214f4e01312ebf9347439396610d7",
+          "members": [
+            {
+              "name": "lib64_libucrt_extra_a-ucrt___local_stdio_printf_options.o",
+              "size_bytes": 793,
+              "sha256": "21a8ece3064ebc3b7f5af7a5d31c2b0941f1e51a720bd802fb1554779c877a1f"
+            },
+            {
+              "name": "lib64_libucrt_extra_a-ucrt_fprintf.o",
+              "size_bytes": 865,
+              "sha256": "ede0b99068707cedb6c4cca5622d57fdad15be8f850dfaf2a73f206b55cbe32e"
+            },
+            {
+              "name": "lib64_libucrt_extra_a-ucrt_snprintf.o",
+              "size_bytes": 885,
+              "sha256": "dc9eb5418fc5f3f710e66e6c27c97f9d46700acd0f49b22bc64a6214dd297c5b"
+            },
+            {
+              "name": "lib64_libucrt_extra_a-ucrt_vfprintf.o",
+              "size_bytes": 849,
+              "sha256": "d8fd9026c8644a76c4b5b7b095b4e7d8a4d1bb1b564e25c525beb83959108f00"
+            },
+            {
+              "name": "libapi-ms-win-crt-convert-l1-1-0h.o",
+              "size_bytes": 698,
+              "sha256": "92b18fde0bb57ac3c3143b0b597c202d5a4d59bf9dc7b512ede6fea5e1d8cdbd"
+            },
+            {
+              "name": "libapi-ms-win-crt-convert-l1-1-0s00084.o",
+              "size_bytes": 618,
+              "sha256": "1b93361323ac60b2cc93492b5ce13112247f1e3f35c809cf9b76695b0a67af7d"
+            },
+            {
+              "name": "libapi-ms-win-crt-convert-l1-1-0t.o",
+              "size_bytes": 635,
+              "sha256": "9085fc911cda9498147deb5c921d434c8ab07e5bb9252dceb28ba6a869c5af79"
+            },
+            {
+              "name": "libapi-ms-win-crt-environment-l1-1-0h.o",
+              "size_bytes": 706,
+              "sha256": "2b4a5bc46aa90e6b8e13ae894d4be14b3e3bf0b0d0610ad891bf2d45d7418558"
+            },
+            {
+              "name": "libapi-ms-win-crt-environment-l1-1-0s00018.o",
+              "size_bytes": 628,
+              "sha256": "15a53fbeccf69f0791fd64b714e424fc928da15743a7183432ce0971c2a78e83"
+            },
+            {
+              "name": "libapi-ms-win-crt-environment-l1-1-0t.o",
+              "size_bytes": 643,
+              "sha256": "4a64e49b9d71747bc13875414ef755f3f7ab6bf0b37135cffa131508a754e587"
+            },
+            {
+              "name": "libapi-ms-win-crt-heap-l1-1-0h.o",
+              "size_bytes": 692,
+              "sha256": "2d6d90552f98bd62a35219da2e295631cc3b81a5b14d3f7129a3087abc7a898d"
+            },
+            {
+              "name": "libapi-ms-win-crt-heap-l1-1-0s00024.o",
+              "size_bytes": 621,
+              "sha256": "c2b908537b6d7037799793d9b279b08293cb52bed5c2a7b454fbe6026590dbc9"
+            },
+            {
+              "name": "libapi-ms-win-crt-heap-l1-1-0s00025.o",
+              "size_bytes": 615,
+              "sha256": "fb6f6ec33cfad1b33aa636dade1f9ce2bd53e55dac6769b29818e38de4ee926e"
+            },
+            {
+              "name": "libapi-ms-win-crt-heap-l1-1-0s00026.o",
+              "size_bytes": 621,
+              "sha256": "556f373c6594d9956a557052c43efbe2b69bf5687f60f475c0ee391d7dddd946"
+            },
+            {
+              "name": "libapi-ms-win-crt-heap-l1-1-0s00027.o",
+              "size_bytes": 622,
+              "sha256": "f3de7ef91e0d67db2c9d9e74c5c051c4845b8aac2541eb0dfb7ba3b350c49379"
+            },
+            {
+              "name": "libapi-ms-win-crt-heap-l1-1-0t.o",
+              "size_bytes": 628,
+              "sha256": "17ee5467e8a052bf8d563c75616f984b8d62e629c90bf28586bd9b3383726b41"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0h.o",
+              "size_bytes": 692,
+              "sha256": "34d42877c1ab9315bd83454c83cae44902837838fc8f60fc6673f61e0add760c"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0s00093.o",
+              "size_bytes": 616,
+              "sha256": "bfd5adc136c9f0148a64c22af3a1e8c5f658c892bdec5d850b3e9746072ec154"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0s00158.o",
+              "size_bytes": 614,
+              "sha256": "62898f067ae32042fac8deab2db7ab57689a31a57baf8153975c9f64e1f2c685"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0s00188.o",
+              "size_bytes": 614,
+              "sha256": "520fa2536bd0501a241bf66d7998e497d8aec8e3a975d3229da71ba5c57b3ff4"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0s00193.o",
+              "size_bytes": 615,
+              "sha256": "60125e5febbaaf962577840ac26b1626dd9871e93c2df45fa0b751f6d73e2a7a"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0s00213.o",
+              "size_bytes": 614,
+              "sha256": "01d5d6c9967fa120cf6e1f02176eeaca5673e75869d880572340222023ea1578"
+            },
+            {
+              "name": "libapi-ms-win-crt-math-l1-1-0t.o",
+              "size_bytes": 628,
+              "sha256": "be84676d6dc6dc568a5d046d9752570989469c977ece2d649eef881317bdeb61"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0h.o",
+              "size_bytes": 698,
+              "sha256": "04270c8fcc2f2152e57b9aaa97d1ad1dc1bc7107be5b99205b46bce874409c62"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0s00035.o",
+              "size_bytes": 637,
+              "sha256": "8f39e6b25e3a1e68d16e8a168ea11de9e6dd3de1531525bce11746bf7120565a"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0s01085.o",
+              "size_bytes": 625,
+              "sha256": "2ee4cb9a55a0c8ba599735dd578f7900346cf8016d3d19b18c27497b047fe089"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0s01087.o",
+              "size_bytes": 624,
+              "sha256": "6cca72efdde45186427b79c409a1fd8d9bf2daaeff44cd5b08513d090d8e4838"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0s01088.o",
+              "size_bytes": 624,
+              "sha256": "a21f60fb04facc8e4f53c7bfa893875848fa28873b2877fd8e6a45fcba9d895d"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0s01089.o",
+              "size_bytes": 625,
+              "sha256": "a1ee3c4fec2c3489e599e5835031606d7e0d6c6ad70eb3a80fec62d0a4229748"
+            },
+            {
+              "name": "libapi-ms-win-crt-private-l1-1-0t.o",
+              "size_bytes": 635,
+              "sha256": "7755fa26406407031367816a114733796d4f6b295c6c039588019be4f55761c1"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0h.o",
+              "size_bytes": 698,
+              "sha256": "6f887976fd2aa68361a50e791113144041d94ca7bbc43753e0f2df7d73ddafd5"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0s00034.o",
+              "size_bytes": 673,
+              "sha256": "a4dfeb1d231adc47c1bae02c915c9cd42ba56a707e161c7165ea6173f89abf9f"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0s00053.o",
+              "size_bytes": 683,
+              "sha256": "3e7e2da36a74bc237c00685638c3a7035368a14a5a703965ab1d327bfdb8157c"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0s00057.o",
+              "size_bytes": 637,
+              "sha256": "b40c3b073d3291f23b974461287636680582303b0de7281d160f6e8adfa9e607"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0s00058.o",
+              "size_bytes": 645,
+              "sha256": "4130da04816d4b697435d36e6f6151ee9c4127c08866653042bcb75914ee2fe7"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0s00062.o",
+              "size_bytes": 685,
+              "sha256": "986ddf90ed0b26f5e0d8da715a82ca1af7032af2a590500f817f1f4d03706ec9"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0s00087.o",
+              "size_bytes": 619,
+              "sha256": "04d66b226d1e3e3ad8dda651eb554d3b3b70368e779e4cdb1755c11a2ad717e0"
+            },
+            {
+              "name": "libapi-ms-win-crt-runtime-l1-1-0t.o",
+              "size_bytes": 635,
+              "sha256": "f4d82658f6cd44674111e13aa6a183c2f69f798b7fa659bd54af5e8d540462db"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0h.o",
+              "size_bytes": 694,
+              "sha256": "1de918c4dd3b932cc777dcb685daaf69b8694c98c8de637d1902fdb040cc7754"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0s00000.o",
+              "size_bytes": 655,
+              "sha256": "50a5555217f76aaaf3f6ca6403c98f2cdcf7419eed912c7a16beb2fbc72e44de"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0s00003.o",
+              "size_bytes": 679,
+              "sha256": "0e1a580d9a4c8e5ee4e4b0283e3467380c30bc93ec5c18e6091cd604a0075ff2"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0s00013.o",
+              "size_bytes": 679,
+              "sha256": "70ead41ec9ddb6579a0494ae20371d9c53a4e78c12b9c5f7740cb90c336174f4"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0s00166.o",
+              "size_bytes": 617,
+              "sha256": "6e51608b600ce6ebe986b95dc35863636e0989bf95927f617f6652cef7e5fa42"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0s00167.o",
+              "size_bytes": 617,
+              "sha256": "6d82cf541c6384a8a9d43c4b4d409ddc27584da02b846cfc61f7361153d011ad"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0s00180.o",
+              "size_bytes": 622,
+              "sha256": "d9362b6d6139914dff948edbf5a89a7441d374047e5d68541cb85506c6a202c9"
+            },
+            {
+              "name": "libapi-ms-win-crt-stdio-l1-1-0t.o",
+              "size_bytes": 629,
+              "sha256": "347d70b1208e3212ad73047b5f3efbed54debed5722e7a685e89ea8721fade8d"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0h.o",
+              "size_bytes": 696,
+              "sha256": "fef6a9320fdbed9fbf20ebac7c7dd70b5ed262e26f07288b6c25967a7a3758e3"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0s00136.o",
+              "size_bytes": 624,
+              "sha256": "c0f3f459561bd0ad531138e4f79eb23727e4c6a4735a2e343d17b0ffd7ab2b67"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0s00160.o",
+              "size_bytes": 623,
+              "sha256": "404c0404dd3fff1003894199851e4fa6546cbe01faecf18a8dbaaf2d94782f35"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0s00163.o",
+              "size_bytes": 623,
+              "sha256": "6d942712350a53eec7a9f3dc8cbb4cde55923feafa1087de44eb0cc3198d525b"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0s00165.o",
+              "size_bytes": 623,
+              "sha256": "96a0d804eeef15c8bd63e4d506b06e5a56214cd43a6c19c42f5882c12aefd051"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0s00168.o",
+              "size_bytes": 623,
+              "sha256": "b2884d88102a28247a7ec5c107887a7d0dfc5b678979db56b01ff211bd15f456"
+            },
+            {
+              "name": "libapi-ms-win-crt-string-l1-1-0t.o",
+              "size_bytes": 634,
+              "sha256": "a9f39f98ef0df0aba0b23fe44804c32be3d7452f94efd0a23bfaf358f2909d66"
+            },
+            {
+              "name": "libapi-ms-win-crt-time-l1-1-0h.o",
+              "size_bytes": 692,
+              "sha256": "09e24410ae48e094b132b8dd8613238866e2cd7d64794081ba6086e0c3c4ecf9"
+            },
+            {
+              "name": "libapi-ms-win-crt-time-l1-1-0s00063.o",
+              "size_bytes": 622,
+              "sha256": "433ff72e207f81f4ff4212ea0e00fa16b5f581fea2f3c0f369b2f0493a1c8a0d"
+            },
+            {
+              "name": "libapi-ms-win-crt-time-l1-1-0t.o",
+              "size_bytes": 628,
+              "sha256": "cdfcbbcd5ae30a6e8f93d251d57a394bdc3fe2f8720ab843ba432c11d0597db3"
+            },
+            {
+              "name": "libapi-ms-win-crt-utility-l1-1-0h.o",
+              "size_bytes": 698,
+              "sha256": "e99eae2f8c2688f39ba827ddd16c4dcdcd492183a46dff24484dd2a5ff018a37"
+            },
+            {
+              "name": "libapi-ms-win-crt-utility-l1-1-0s00019.o",
+              "size_bytes": 625,
+              "sha256": "c1d8798d8b53062dbf1c3a9f01022f07e3fc8721c97cf4c7700abfe5f511a08d"
+            },
+            {
+              "name": "libapi-ms-win-crt-utility-l1-1-0s00028.o",
+              "size_bytes": 619,
+              "sha256": "24d3cc6d3fdb4546d3ceda8b6cccc4a9f63f0ad4688a9f27aac6c0765119c93c"
+            },
+            {
+              "name": "libapi-ms-win-crt-utility-l1-1-0t.o",
+              "size_bytes": 635,
+              "sha256": "aec3942b19ff3de8d1a7724fae39ed6752b46243056115fb5984313888b34585"
+            }
+          ]
+        }
+      ],
+      "source_files": [
+        {
+          "path": "mingw-w64-crt/crt/cinitexe.c",
+          "sha256": "98c9238561c0ed1b3d7edfd1e32423dfda93c3ae285807873f637d03406bdcc9",
+          "selected_route": "ZPL-2.1 default COPYING"
+        },
+        {
+          "path": "mingw-w64-crt/crt/crtdll.c",
+          "sha256": "158dcc7681f335dc36c4bcf86e41444d6507679cab80a68433666df690217990",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/crtdll_atexit_register.c",
+          "sha256": "53268a62ba7b80f6bda1bca04a5a43affddb8799c8db512b2051696af1192e08",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/mingw_dll_ctors_dtors.c",
+          "sha256": "682be7d58c77d70fdf116ad53168c893dbeaa0c85b8a9b86300493e66d3eeaae",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/mingw_helpers.c",
+          "sha256": "a5639b68c3176c4c6a358c48f869c2a081434c07d7a0e435013f44909a2003c5",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/natstart.c",
+          "sha256": "c65fb9a3cb70536b8f757e07df8febb0b1a5fd72889bcff4fee924add1078d14",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/pseudo-reloc-list.c",
+          "sha256": "853116d1ba135ea499714152be5705c72678a86fbd9bd5b90469b0ad51ab8acc",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/pseudo-reloc.c",
+          "sha256": "24d57d7fec056a84268fcb3fa43dc7fc726c3c3f4c2ff4796652ca3dba33314a",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/misc/dllmain.c",
+          "sha256": "ad3eb745bc2e614de38f43700c274cae2b7edec7ee40950cc918d8b98d3d9505",
+          "selected_route": "ZPL-2.1 default COPYING"
+        },
+        {
+          "path": "mingw-w64-crt/misc/winbs_uint64.c",
+          "sha256": "e5779b33aadb8a4551dced3abcc6849bea852c30ecec7dcf017f7fe85481433f",
+          "selected_route": "ZPL-2.1 default COPYING"
+        },
+        {
+          "path": "mingw-w64-crt/stdio/ucrt___local_stdio_printf_options.c",
+          "sha256": "0c8ab6443db6f80930f95ee4f380faf7e0bd7a04ecafa0fcba8016bd77a0c98c",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/stdio/ucrt_fprintf.c",
+          "sha256": "080d99fcea70a61cde96b5347e8a381c28778928584227cb6b70a543c3b0933c",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/stdio/ucrt_snprintf.c",
+          "sha256": "b56140978418c08398206288697bd9bc4eafff21c02a9be963089fe9632167bd",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/stdio/ucrt_vfprintf.c",
+          "sha256": "682fc042d9007afcfa6c022373178d22591af8c9cb93de9ab5525b3d17cd5b75",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        },
+        {
+          "path": "mingw-w64-crt/crt/gccmain.c",
+          "sha256": "07c83e890740008bb74b26ecf60d97048cfeb74d89d973b6e8db4f437bc66ac9",
+          "selected_route": "explicit per-file public-domain dedication plus DISCLAIMER.PD"
+        }
+      ],
+      "distribution_note": "The exact link map selects MinGW DLL startup, constructors, pseudo-relocation, default DLL main, byte-swap and UCRT printf wrappers plus Windows import stubs. Selected files without a separate dedication use the source tree's ZPL2.1 default; the remaining selected files expressly dedicate the code to the public domain. No Cephes or gdtoa archive member is selected; broad unrelated aggregate-runtime license labels are not used to select this subset's route. Windows OS DLLs remain external and are not redistributed."
+    }
+  ],
+  "startup_objects": [
+    {
+      "name": "dllcrt2.o",
+      "path_within_toolchain": "lib/dllcrt2.o",
+      "size_bytes": 5191,
+      "sha256": "61b467ed78d6cb6cd3bba5143ad165fd850912458609134466b7f532c28cd583",
+      "component_id": "libtiff-build-mingw-crt"
+    },
+    {
+      "name": "crtbegin.o",
+      "path_within_toolchain": "lib/gcc/x86_64-w64-mingw32/16.2.0/crtbegin.o",
+      "size_bytes": 854,
+      "sha256": "b61d8cef207fe4928c44d91ad722d15c53b9ae32a26fb69f05ace4287e887905",
+      "component_id": "libtiff-build-gcc-runtime"
+    },
+    {
+      "name": "crtend.o",
+      "path_within_toolchain": "lib/gcc/x86_64-w64-mingw32/16.2.0/crtend.o",
+      "size_bytes": 1037,
+      "sha256": "c3c2b8de9ec26db0994f669680d4aadad3639fc970e96f858ac0a6cc9515bde3",
+      "component_id": "libtiff-build-gcc-runtime"
+    }
+  ],
+  "license_refs": [
+    {
+      "license_id": "LicenseRef-PWS-MinGW-Public-Domain",
+      "name": "Selected MinGW-w64 explicit public-domain dedications and disclaimer",
+      "asset_path": "packaging/licenses/release-build-support/mingw-crt/SELECTED-PUBLIC-DOMAIN-NOTICES.txt",
+      "sha256": "8f9651ba1fd4e35aa8b652958191d9df7a188a7264f547d577a8e82b4a9cda54"
+    }
+  ]
+}

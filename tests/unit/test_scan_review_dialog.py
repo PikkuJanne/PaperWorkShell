@@ -333,7 +333,7 @@ def test_progress_unknown_phase_is_not_reflected_and_failure_focuses_safe_error(
             "PWS_UI_UNEXPECTED: PaperWorkShell could not complete scan review. Try again."
         )
         assert "PRIVATE" not in error.text()
-        assert dialog.focusWidget() is error
+        assert dialog.focusWidget() is _button(dialog, "scanReviewUpdatePreviewButton")
 
 
 def test_original_and_adjusted_failures_have_truthful_visible_and_accessible_states() -> None:

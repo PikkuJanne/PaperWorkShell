@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "inventory_profile": "resolved-dependency-stage",
+  "candidate": {
+    "id": "synthetic-dependency-stage",
+    "version": "0.0.0",
+    "created_utc": "2026-11-03T00:00:00Z",
+    "source_revision": "synthetic-fixture",
+    "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "target": {
+    "os": "Windows",
+    "architecture": "x86_64",
+    "python_version": "3.14.6"
+  },
+  "components": [
+    {
+      "component_id": "paperworkshell",
+      "name": "PaperWorkShell",
+      "version": "0.0.0",
+      "type": "application",
+      "scope": "runtime",
+      "supplier": "PaperWorkShell project",
+      "purl": "pkg:pypi/paperworkshell@0.0.0",
+      "license_expression": "NOASSERTION",
+      "license_texts": [],
+      "source_url": "https://example.invalid/paperworkshell",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "dependencies": [
+        "synthetic"
+      ],
+      "relationship": "root"
+    },
+    {
+      "component_id": "synthetic",
+      "name": "Synthetic test dependency",
+      "version": "1",
+      "type": "data",
+      "scope": "runtime",
+      "supplier": "PaperWorkShell project",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/synthetic/LICENSE.txt",
+          "sha256": "a49fb16bab5c2a91d0badbe47badeaabb22a369f3e905991d8c884f2d7cd074f",
+          "text": "Synthetic license text; no third-party work is reproduced.\n"
+        }
+      ],
+      "source_url": "https://example.invalid/paperworkshell",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "dependencies": [],
+      "relationship": "direct"
+    }
+  ],
+  "files": [
+    {
+      "path": "notices/synthetic/LICENSE.txt",
+      "component_id": "synthetic",
+      "size_bytes": 59,
+      "sha256": "a49fb16bab5c2a91d0badbe47badeaabb22a369f3e905991d8c884f2d7cd074f",
+      "sha1": "f73aa03531c63ad88317ff5f6dee1d8ace5ac822"
+    },
+    {
+      "path": "runtime/synthetic.bin",
+      "component_id": "synthetic",
+      "size_bytes": 28,
+      "sha256": "f5d72bd3a0cb7eef8d43f63fd91d8a03566006e53518e044141f03dc8442b9ec",
+      "sha1": "bb90ed2ed0b3ba0d1a57bc8eb71a7aaaf511f7e1"
+    }
+  ],
+  "license_refs": [],
+  "input_artifacts": [
+    {
+      "name": "synthetic.zip",
+      "url": "https://example.invalid/synthetic.zip",
+      "size_bytes": 1,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "scope": "runtime"
+    }
+  ],
+  "review_inputs": [
+    {
+      "path": "packaging/release-reviews/lxml-exclusions-v1.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "obligations": [
+    {
+      "component_id": "paperworkshell",
+      "source_paths": [],
+      "replacement_instructions_path": null,
+      "distribution_note": "Synthetic fixture only."
+    },
+    {
+      "component_id": "synthetic",
+      "source_paths": [],
+      "replacement_instructions_path": null,
+      "distribution_note": "Synthetic fixture only."
+    }
+  ]
+}

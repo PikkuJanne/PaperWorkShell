@@ -32,6 +32,22 @@ REQUIRED_GRAPH_RULES: Final = (
     "decision_refs_must_exist",
     "cycles_forbidden",
 )
+X64_SCOPE_DECISION: Final = "PWS-D043"
+X64_SCOPE_TASKS: Final = frozenset({"PWS-0802", "PWS-0803", "PWS-0808"})
+_ARM_SCOPE: Final = re.compile(r"\b(?:arm(?:64)?|aarch64|x64\s+emulation)\b", re.IGNORECASE)
+_SCOPE_EXCLUSION: Final = re.compile(
+    r"\b(?:outside (?:the )?(?:project )?scope|out of scope|not supported|"
+    r"not required|not (?:an? )?prerequisite)\b",
+    re.IGNORECASE,
+)
+_NEGATIVE_REQUIREMENT: Final = re.compile(
+    r"\bnot (?:supported|required|enabled|(?:an? )?prerequisites?)\b", re.IGNORECASE
+)
+_DEFERRED_OR_REQUIRED_SCOPE: Final = re.compile(
+    r"\b(?:until|pending|must|shall|will|needs?|before|after|if|unless|but|however|"
+    r"except|although|yet|supported|enabled|required|requires?|prerequisites?|qualified)\b",
+    re.IGNORECASE,
+)
 
 
 class DuplicateKeyError(yaml.YAMLError):
@@ -250,6 +266,116 @@ def _transitive_dependencies(
     return found
 
 
+def _x64_scope_adopted(decisions_text: str) -> bool:
+    section = re.search(r"(?ms)^## PWS-D043\b.*?(?=^## PWS-D|\Z)", decisions_text)
+    return section is not None and "**Status:** FROZEN" in section.group()
+
+
+def _x64_task_scope_issues(
+    tasks: Sequence[Mapping[str, Any]], decisions_text: str
+) -> list[ValidationIssue]:
+    """Check current requirements only after the new scope decision is adopted.
+
+    Evidence and blocker.evidence are intentionally historical records. Upstream
+    inventories and older governance snapshots are not current product promises.
+    """
+    if not _x64_scope_adopted(decisions_text):
+        return []
+    issues: list[ValidationIssue] = []
+    for index, task in enumerate(tasks):
+        if task["id"] not in X64_SCOPE_TASKS or task["status"] == "deferred":
+            continue
+        path = f"$.tasks[{index}]"
+        if X64_SCOPE_DECISION not in task["decision_refs"]:
+            issues.append(
+                ValidationIssue(
+                    "TASK_ARCHITECTURE_DECISION",
+                    path + ".decision_refs",
+                    f"{task['id']} must reference {X64_SCOPE_DECISION}",
+                )
+            )
+        fields: list[tuple[str, str]] = [("objective", task["objective"])]
+        for name in ("deliverables", "acceptance_criteria", "verification"):
+            fields.extend((f"{name}[{i}]", text) for i, text in enumerate(task[name]))
+        if task["blocker"] is not None:
+            fields.extend(
+                (f"blocker.{name}", task["blocker"][name])
+                for name in ("reason", "requested_action")
+            )
+        for field, text in fields:
+            # An explicit exclusion is allowed. Conditional/deferred support or
+            # a positive requirement in that same sentence remains a refusal.
+            for sentence in re.split(r"[.!?;\n]", text):
+                if not _ARM_SCOPE.search(sentence):
+                    continue
+                remainder = _NEGATIVE_REQUIREMENT.sub("", sentence)
+                if not _SCOPE_EXCLUSION.search(sentence) or _DEFERRED_OR_REQUIRED_SCOPE.search(
+                    remainder
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            "TASK_ARCHITECTURE_SCOPE",
+                            path + "." + field,
+                            "current requirements must keep ARM native and emulation out of scope",
+                        )
+                    )
+                    break
+    return issues
+
+
+def _x64_repository_scope_issues(root: Path) -> list[ValidationIssue]:
+    """Join current product, target schemas and installer policy without artifacts.
+
+    Immutable R7 metadata is validated by its retained build-epoch tools/receipts,
+    not by loading it as the current source product configuration.
+    """
+    product_path = "packaging/windows/product-v1.json"
+    try:
+        product = _load_json(root / product_path)
+        expected = {
+            "schema_version": 1,
+            "os": "Windows 11",
+            "minimum_os_build": 22000,
+            "architecture": "x64",
+            "arm64_route": (
+                "not supported; native ARM64 and x64 emulation are outside project scope"
+            ),
+        }
+        if any(
+            type(product.get(k)) is not type(v) or product.get(k) != v for k, v in expected.items()
+        ):
+            raise ValueError
+        script = _read_text(root / "packaging/windows/paperworkshell.iss")
+        directives = [
+            line.strip()
+            for line in script.splitlines()
+            if line.strip().startswith(
+                ("ArchitecturesAllowed=", "ArchitecturesInstallIn64BitMode=")
+            )
+        ]
+        if sorted(directives) != [
+            "ArchitecturesAllowed=x64os",
+            "ArchitecturesInstallIn64BitMode=x64os",
+        ]:
+            raise ValueError
+        for name in ("dependency-inventory-v1", "resolved-dependency-inventory-v1"):
+            schema = _load_json(root / f"schemas/{name}.schema.json")
+            target = schema["properties"]["target"]
+            if "$ref" in target:
+                target = schema["$defs"]["target"]
+            if target["properties"]["architecture"] != {"const": "x86_64"}:
+                raise ValueError
+    except RepositoryInputError, KeyError, TypeError, ValueError:
+        return [
+            ValidationIssue(
+                "REPOSITORY_ARCHITECTURE_SCOPE",
+                product_path,
+                "current product, dependency targets and installer must agree on native Windows 11 x64 only",
+            )
+        ]
+    return []
+
+
 def semantic_issues(data: Mapping[str, Any], decisions_text: str) -> list[ValidationIssue]:
     """Return cross-record, dependency, gate, and evidence errors."""
 
@@ -258,6 +384,7 @@ def semantic_issues(data: Mapping[str, Any], decisions_text: str) -> list[Valida
     tasks = cast(list[Mapping[str, Any]], data["tasks"])
     milestone_map = _indexed_records(milestones, "milestone", issues)
     task_map = _indexed_records(tasks, "task", issues)
+    issues.extend(_x64_task_scope_issues(tasks, decisions_text))
 
     decision_matches = DECISION_HEADING.findall(decisions_text)
     decision_counts = Counter(decision_matches)
@@ -514,6 +641,8 @@ def validate_repository(
         return None, [error.issue]
 
     issues = validate_data(data, schema, decisions_text, schema_only=schema_only)
+    if not schema_only and _x64_scope_adopted(decisions_text):
+        issues.extend(_x64_repository_scope_issues(root))
     if issues:
         return None, issues
 

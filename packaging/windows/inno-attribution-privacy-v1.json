@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "task_id": "PWS-0802",
+  "reviewed_on": "2026-11-03",
+  "scope": "One exact already-admitted public upstream licence blob; public attribution contacts only. No fixture, applicant data, document, number-pattern or distribution-rights exception.",
+  "source_review": "packaging/windows/inno-setup-7.1.1-review.json",
+  "source_review_sha256": "6a0967d86f7cb7e4c2c5a8ac4633df60299b8b26dd634b6da225d1de6cb05fbc",
+  "source_commit": "2527da77ff7983514f535d19391a748c5d898336",
+  "upstream_member_suffix": "/UniPs/LICENSE.md",
+  "notice_path": "packaging/licenses/release-installer/inno-setup-7.1.1/UniPs-LICENSE.md",
+  "notice_sha256": "a08799bb2385a3af99a9bbb7c746d0ad9ac7dd07be0fb1473f2f4d1dc3e11bd1",
+  "notice_size_bytes": 1098,
+  "public_attribution_contacts": 2,
+  "exact_original_bytes_preserved": true,
+  "historical_pws0801_review_unchanged": true,
+  "fixture_default_remains_strict": true,
+  "other_privacy_patterns_remain_active": true,
+  "static_module_path": "tools/_reviewed_upstream_notices.py",
+  "static_module_sha256": "9406e229bd66895f91dce2c6f3c555f49f738d2d0fc3ebacffd7c6d491835af1"
+}

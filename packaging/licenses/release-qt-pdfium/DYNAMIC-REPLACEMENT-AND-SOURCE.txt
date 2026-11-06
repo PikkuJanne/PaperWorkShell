@@ -1,0 +1,44 @@
+Qt / PySide6 / shiboken6 dynamic replacement and corresponding source
+
+The QtCore, QtGui and QtWidgets bindings, their Qt libraries and the two selected
+Windows plugins are ordinary separate DLL/PYD files. This dependency stage does
+not statically link them into PaperWorkShell or place them in an opaque executable.
+PaperWorkShell does not impose an additional prohibition on reverse engineering
+for debugging modifications to these LGPL libraries.
+
+The exact corresponding source inputs are supplied at:
+  sources/qt/qtbase-everywhere-src-6.11.1.tar.xz
+  sources/qt/pyside-setup-everywhere-src-6.11.1.tar.xz
+The source archives include original notices, build scripts, and bundled sources.
+Their identities and the binary input identities are recorded in the resolved
+inventory. They are upstream sources, not a claim of a local reproducible rebuild.
+
+To replace an ABI-compatible modified library, first exit PaperWorkShell and keep
+a copy of the unmodified application files. Put replacement x86_64 Qt 6.11.1 DLLs
+and plugins in the corresponding relative locations under:
+  runtime/Lib/site-packages/PySide6/
+Put compatible shiboken support under:
+  runtime/Lib/site-packages/shiboken6/
+Keep the selected binding names, Qt library names, and plugin directories. A Qt
+ABI change may require rebuilding PySide6/shiboken6 and the complete matching Qt
+library set, rather than replacing one incompatible DLL. No user original or case
+needs to be edited. The supplied inventory continues to identify the original
+stage, so a modified set must not be represented as the original verified release.
+
+Rebuilding requires separately installed x86_64 build prerequisites appropriate
+to Qt 6.11.1, including a compatible MSVC/Windows SDK, CMake, Ninja and Python.
+The original source trees contain the authoritative configure/build scripts.
+QtBase supports an open-source shared release build with Core, Gui and Widgets;
+retain the Windows platform and modern Windows style plugins, bundled selected
+dependencies and required accessibility/font/text features. Qt for Python's
+setup.py supports an explicit Qt installation and --module-subset=Core,Gui,Widgets.
+Its source tree includes shiboken6 and the generation/build support for these
+bindings. Build and install a matched library set, then retest it. The upstream
+build documentation is https://doc.qt.io/qt-6/build-sources.html and
+https://doc.qt.io/qtforpython-6/building_from_source/index.html .
+
+The stage supplies the preferred source form and its build scripts. It does not
+claim to have rebuilt Qt, certify an untested replacement, select an installer,
+or impose signature/hash enforcement that prevents library replacement. Final
+installer/update handling and any required installation information remain
+subject to the exact packaged candidate's PWS-0802/PWS-0803 release checks.

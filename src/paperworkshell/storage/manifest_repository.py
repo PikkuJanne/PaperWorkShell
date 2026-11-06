@@ -20,8 +20,7 @@ from paperworkshell.domain.case_lifecycle import (
     LEGACY_CASE_MANIFEST_VERSION,
 )
 from paperworkshell.domain.manifest_migrations import (
-    migrate_manifest_v1_to_v2,
-    migrate_manifest_v2_to_v3,
+    migrate_manifest_to_current,
 )
 from paperworkshell.domain.manifest_repository import (
     MAX_SAFE_MANIFEST_INTEGER,
@@ -57,6 +56,7 @@ from paperworkshell.storage.manifest_codec import (
     probe_supported_manifest_schema_version,
     summary_from_manifest,
 )
+from paperworkshell.storage.manifest_migration_backup import retain_migration_source
 from paperworkshell.storage.quotas import QuotaArea
 from paperworkshell.storage.workspace import (
     AuthenticatedCase,
@@ -406,14 +406,19 @@ class WindowsManifestRepository:
             or source.revision >= MAX_SAFE_MANIFEST_INTEGER
         ):
             _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_source")
-        candidate = source.document
-        if source.schema_version == LEGACY_CASE_MANIFEST_VERSION:
-            candidate = migrate_manifest_v1_to_v2(candidate)
-            # Intermediate data is never published: this is one durable revision.
-            candidate["revision"] = source.revision
-        candidate = migrate_manifest_v2_to_v3(candidate)
+        candidate = migrate_manifest_to_current(source.document)
         candidate_payload = _canonical_manifest_bytes(candidate)
         _validate_manifest_payload(candidate_payload, authority.case_id)
+        observed_source = _read_raw_manifest(authority)
+        if hashlib.sha256(observed_source.payload).hexdigest() != source.sha256:
+            _reject(ManifestRepositoryErrorCode.REVISION_CONFLICT, "manifest.migration_source")
+        retain_migration_source(
+            self._manager,
+            authority,
+            payload=observed_source.payload,
+            schema_version=source.schema_version,
+            id_factory=self._id_factory,
+        )
         manifest_stage_id = _next_internal_id(
             self._id_factory,
             context="manifest.migration_stage_id",

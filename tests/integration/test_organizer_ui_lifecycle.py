@@ -107,6 +107,7 @@ def _many_page_state(page_count: int) -> OrganizerViewState:
 
 class _BlockingOrganizerBackend:
     startup_recovery_result = StartupRecoveryResult()
+    assisted_use: None = None
 
     def __init__(
         self,

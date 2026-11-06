@@ -261,10 +261,37 @@ Tests should use the most direct level available: widget/unit checks, automated 
 ### 9.2 Required test behavior
 
 - Tests must be deterministic and independent of the user's documents.
-- Human tests must minimize setup, transcription, and repeated work. Provide one stable entry point
-  with explicit recovery, make synthetic visual targets comfortably large with intended alignment
-  obvious unless size or offset is itself under test, and do not repeat accepted evidence solely to
-  improve test ergonomics.
+- All future human testing follows [the human-testing policy](docs/development/human-testing.md).
+  Minimize setup, transcription, and repeated work. Reuse or automatically collect known environment
+  metadata with its provenance. An explicit maintainer statement that the environment is unchanged
+  authorizes reuse without another confirmation or numeric-version prompt; never invent missing facts
+  or copy an earlier test outcome into a new observation.
+- This policy also applies to historical human-test helpers when next used. Update or prefill their
+  interaction before asking the person to use them. Existing accepted helpers need no bulk retrofit,
+  and accepted M3/M5 evidence must not be rerun merely to retrofit ergonomics.
+- Human tests cover new or affected behavior. Preserve accepted evidence and do not repeat it solely
+  to improve test ergonomics. Required acceptance, security and release-gate checks still apply.
+- Human testing must be straightforward and easy across the whole session. Excessive effort and
+  repetition reduce observation quality. Splitting an arduous script into many short prompts does
+  not make it human friendly. Minimize total human actions, repeated review, context switching,
+  memory demands and transcription; consolidate logically related observations and automate
+  mechanically checkable work, reserving human effort for necessary interaction and judgment.
+- Before handing over a human test, walk through its complete journey across every required reader
+  or device and record the estimated total human actions and active time. Include setup, save/reopen
+  cycles, recording and recovery. If the journey remains arduous, redesign its method, fixtures or
+  automation before asking the person to run it. Do not silently waive mandatory coverage or repeat
+  completed valid observations to make that redesign convenient.
+- Finish, test and freeze the helper before asking for human observations. Provide one stable entry
+  point, one plain-language action at a time, its expected outcome, and explicit Copy/Open-folder
+  actions for fixed queries and paths. Never ask the human to calculate hashes, edit JSON, or type
+  paths. Make synthetic visual targets comfortably large and their intended alignment obvious unless
+  size or offset is itself under test.
+- Persist each completed human step immediately. Pause and resume without losing valid observations;
+  retry invalid entries and recover missing-file steps without wiping earlier work. Keep human
+  recording and status fast; run expensive automated verification separately and bind its receipts to
+  the exact observations, artifacts, environment and implementation. Missing or stale evidence cannot
+  become a pass. Clipboard helpers write only after an explicit Copy action and never read clipboard
+  contents.
 - Tests must clean up case and temporary directories.
 - Network-dependent tests are prohibited for core processing.
 - External executables and language packs should have capability-detection tests and clear skips only where the task permits optional availability.

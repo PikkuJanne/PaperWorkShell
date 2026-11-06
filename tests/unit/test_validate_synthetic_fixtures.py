@@ -19,6 +19,7 @@ from tools.generate_synthetic_fixtures import (
 from tools.image_transform_goldens import (
     GOLDEN_DIRECTORY as IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
 )
+from tools.redaction_corpus import CANARY_INVENTORY_PATH
 from tools.validate_synthetic_fixtures import (
     EXPECTED_NEGATIVE_CODES,
     MAX_CORPUS_ENTRIES,
@@ -44,6 +45,8 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
             PROJECT_ROOT / OVERLAY_GOLDEN_DIRECTORY,
             destination / OVERLAY_GOLDEN_DIRECTORY,
         )
+        (destination / CANARY_INVENTORY_PATH).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(PROJECT_ROOT / CANARY_INVENTORY_PATH, destination / CANARY_INVENTORY_PATH)
 
     def test_checked_in_index_and_corpus_pass(self) -> None:
         index_summary, index_issues = validate_fixture_index_set()
@@ -51,13 +54,13 @@ class SyntheticFixtureValidatorTests(unittest.TestCase):
 
         self.assertEqual([], index_issues)
         self.assertIsNotNone(index_summary)
-        self.assertEqual(46, index_summary.fixture_count if index_summary else 0)
+        self.assertEqual(60, index_summary.fixture_count if index_summary else 0)
         self.assertEqual(24, index_summary.coverage_count if index_summary else 0)
         self.assertEqual(
             len(EXPECTED_NEGATIVE_CODES), index_summary.negative_count if index_summary else 0
         )
         self.assertEqual([], corpus_issues)
-        self.assertEqual(46, corpus_summary.fixture_count if corpus_summary else 0)
+        self.assertEqual(60, corpus_summary.fixture_count if corpus_summary else 0)
         self.assertEqual(15, corpus_summary.golden_reference_count if corpus_summary else 0)
         self.assertEqual(
             6,

@@ -1,0 +1,1300 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-exact-gpg-build-verifier-v1",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "scope": "Build and signature-verification tools only; none of these executables/DLLs is a product runtime payload. GPL build-tool use does not relicense the separately constructed product.",
+  "artifacts": [
+    {
+      "name": "Git-2.56.0.4-64-bit.tar.bz2",
+      "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "size_bytes": 118642037,
+      "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+      "scope": "build"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "gpg-build-bzip2",
+      "name": "libbz2 (external GPG verifier closure)",
+      "version": "1.0.8-4",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libbz2 contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libbz2@1.0.8-4",
+      "license_expression": "bzip2-1.0.6",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-bzip2/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-bzip2/LICENSE.txt",
+          "size_bytes": 1896,
+          "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-bz2-1.dll",
+          "name": "usr/bin/msys-bz2-1.dll",
+          "size_bytes": 67277,
+          "sha256": "1082896c71da5e62dfd8e421fba35fa3123e6e1e2782381c08258917117b51cd",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-bz2-1.dll",
+        "selected_file_sha256": "1082896c71da5e62dfd8e421fba35fa3123e6e1e2782381c08258917117b51cd"
+      }
+    },
+    {
+      "component_id": "gpg-build-gcc-runtime",
+      "name": "gcc-libs (external GPG verifier closure)",
+      "version": "16.2.0-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream gcc-libs contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/gcc-libs@16.2.0-1",
+      "license_expression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-gcc-runtime/GPL-3.0.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gcc-runtime/GPL-3.0.txt",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/gpg-build/gpg-build-gcc-runtime/GCC-RUNTIME-EXCEPTION-3.1.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gcc-runtime/GCC-RUNTIME-EXCEPTION-3.1.txt",
+          "size_bytes": 3324,
+          "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-gcc_s-seh-1.dll",
+          "name": "usr/bin/msys-gcc_s-seh-1.dll",
+          "size_bytes": 144609,
+          "sha256": "38118e2bb6231318025efdfd8fc836baa6697e0e9ec9f9ac25deddcdda4bd136",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-gcc_s-seh-1.dll",
+        "selected_file_sha256": "38118e2bb6231318025efdfd8fc836baa6697e0e9ec9f9ac25deddcdda4bd136"
+      }
+    },
+    {
+      "component_id": "gpg-build-gnupg",
+      "name": "gnupg (external GPG verifier closure)",
+      "version": "2.4.9-3",
+      "type": "application",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream gnupg contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/gnupg@2.4.9-3",
+      "license_expression": "GPL-3.0-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-gnupg/gnupg-COPYING.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gnupg/gnupg-COPYING.txt",
+          "size_bytes": 35069,
+          "sha256": "bc2d6664f6276fa0a72d57633b3ae68dc7dcb677b71018bf08c8e93e509f1357",
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/gpg-build/gpg-build-gnupg/VERSION-AND-GRANT-NOTICE.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gnupg/VERSION-AND-GRANT-NOTICE.txt",
+          "size_bytes": 262,
+          "sha256": "7bbc81843435aeb80d4c1b404322e2e96e4300f9691d45407a362e5ca00f71e9",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://gnupg.org/ftp/gcrypt/gnupg/gnupg-2.4.9.tar.bz2",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-bzip2",
+        "gpg-build-libassuan",
+        "gpg-build-libgcrypt",
+        "gpg-build-libgpg-error",
+        "gpg-build-libiconv",
+        "gpg-build-libintl",
+        "gpg-build-msys2-runtime",
+        "gpg-build-npth",
+        "gpg-build-readline",
+        "gpg-build-sqlite",
+        "gpg-build-zlib"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/gpg.exe",
+          "name": "usr/bin/gpg.exe",
+          "size_bytes": 1129818,
+          "sha256": "14953ed8b4549020e185c0f7ab600bb9d0384457ea74da9d574e8d31139aff4f",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/gpg.exe",
+        "selected_file_sha256": "14953ed8b4549020e185c0f7ab600bb9d0384457ea74da9d574e8d31139aff4f"
+      }
+    },
+    {
+      "component_id": "gpg-build-libassuan",
+      "name": "libassuan (external GPG verifier closure)",
+      "version": "3.0.2-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libassuan contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libassuan@3.0.2-1",
+      "license_expression": "LGPL-2.1-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-libassuan/libassuan-COPYING.LIB.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libassuan/libassuan-COPYING.LIB.txt",
+          "size_bytes": 26527,
+          "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://gnupg.org/ftp/gcrypt/libassuan/libassuan-3.0.2.tar.bz2",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-libgpg-error",
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-assuan-9.dll",
+          "name": "usr/bin/msys-assuan-9.dll",
+          "size_bytes": 69674,
+          "sha256": "3eaf1c57c85b1ca2303e7d9544c0a96507f483aae7ae5a1125dfde09bdb12b26",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-assuan-9.dll",
+        "selected_file_sha256": "3eaf1c57c85b1ca2303e7d9544c0a96507f483aae7ae5a1125dfde09bdb12b26"
+      }
+    },
+    {
+      "component_id": "gpg-build-libgcrypt",
+      "name": "libgcrypt (external GPG verifier closure)",
+      "version": "1.12.4-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libgcrypt contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libgcrypt@1.12.4-1",
+      "license_expression": "LGPL-2.1-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-libgcrypt/libgcrypt-COPYING.LIB.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libgcrypt/libgcrypt-COPYING.LIB.txt",
+          "size_bytes": 26419,
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.12.4.tar.bz2",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-gcc-runtime",
+        "gpg-build-libgpg-error",
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-gcrypt-20.dll",
+          "name": "usr/bin/msys-gcrypt-20.dll",
+          "size_bytes": 1066499,
+          "sha256": "0d21151b0cd93a64187177a0913c5a7b5d88941baea504bb96a35dfbde9fc070",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-gcrypt-20.dll",
+        "selected_file_sha256": "0d21151b0cd93a64187177a0913c5a7b5d88941baea504bb96a35dfbde9fc070"
+      }
+    },
+    {
+      "component_id": "gpg-build-libgpg-error",
+      "name": "libgpg-error (external GPG verifier closure)",
+      "version": "1.61-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libgpg-error contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libgpg-error@1.61-1",
+      "license_expression": "LGPL-2.1-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-libgpg-error/libgpg-error-COPYING.LIB.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libgpg-error/libgpg-error-COPYING.LIB.txt",
+          "size_bytes": 26527,
+          "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.61.tar.bz2",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-libintl",
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-gpg-error-0.dll",
+          "name": "usr/bin/msys-gpg-error-0.dll",
+          "size_bytes": 156385,
+          "sha256": "a53ec385fd2133d39dd6074ee8262a6904d0c5f63ec30720e0d8acb1a75fd38c",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-gpg-error-0.dll",
+        "selected_file_sha256": "a53ec385fd2133d39dd6074ee8262a6904d0c5f63ec30720e0d8acb1a75fd38c"
+      }
+    },
+    {
+      "component_id": "gpg-build-libiconv",
+      "name": "libiconv (external GPG verifier closure)",
+      "version": "1.19-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libiconv contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libiconv@1.19-1",
+      "license_expression": "LGPL-2.1-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-libiconv/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libiconv/LICENSE.txt",
+          "size_bytes": 26419,
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.19.tar.gz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-iconv-2.dll",
+          "name": "usr/bin/msys-iconv-2.dll",
+          "size_bytes": 1103690,
+          "sha256": "50012969ed96a5232220185d2fc1ac1e3abe5790f6b3027f4fc3c4cad3fd38f0",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-iconv-2.dll",
+        "selected_file_sha256": "50012969ed96a5232220185d2fc1ac1e3abe5790f6b3027f4fc3c4cad3fd38f0"
+      }
+    },
+    {
+      "component_id": "gpg-build-libintl",
+      "name": "libintl (external GPG verifier closure)",
+      "version": "0.22.5-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libintl contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libintl@0.22.5-1",
+      "license_expression": "LGPL-2.1-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-libintl/gettext-COPYING.LIB.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libintl/gettext-COPYING.LIB.txt",
+          "size_bytes": 26545,
+          "sha256": "3fe5361f24b7c49ba12911c08f5a33f9cb18871d95d9fb881f5b8a4793e04288",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://ftp.gnu.org/pub/gnu/gettext/gettext-0.22.5.tar.xz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-libiconv",
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-intl-8.dll",
+          "name": "usr/bin/msys-intl-8.dll",
+          "size_bytes": 111181,
+          "sha256": "50f7de0c712d867ddca2c9eb8562ca6ee2d69e120e798ec6126ad29dd1ed5402",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-intl-8.dll",
+        "selected_file_sha256": "50f7de0c712d867ddca2c9eb8562ca6ee2d69e120e798ec6126ad29dd1ed5402"
+      }
+    },
+    {
+      "component_id": "gpg-build-msys2-runtime",
+      "name": "msys2-runtime (external GPG verifier closure)",
+      "version": "3.6.10-4",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream msys2-runtime contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/msys2-runtime@3.6.10-4",
+      "license_expression": "GPL-3.0-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-msys2-runtime/msys2-runtime-COPYING.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-msys2-runtime/msys2-runtime-COPYING.txt",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/msys2/msys2-runtime/tree/msys2-3.6.10",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-2.0.dll",
+          "name": "usr/bin/msys-2.0.dll",
+          "size_bytes": 3373151,
+          "sha256": "2a89b7c31b323c42e2fb37900af087aeb27417694e630a210bc75b0369410bc7",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-2.0.dll",
+        "selected_file_sha256": "2a89b7c31b323c42e2fb37900af087aeb27417694e630a210bc75b0369410bc7"
+      }
+    },
+    {
+      "component_id": "gpg-build-ncurses",
+      "name": "ncurses (external GPG verifier closure)",
+      "version": "6.6-2",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream ncurses contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/ncurses@6.6-2",
+      "license_expression": "X11",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-ncurses/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-ncurses/LICENSE.txt",
+          "size_bytes": 1447,
+          "sha256": "708999f95527e1ffa670c6fce288c6c600cb477dd04afcc1171422b3dd4ee226",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://invisible-mirror.net/archives/ncurses/ncurses-6.6.tar.gz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-ncursesw6.dll",
+          "name": "usr/bin/msys-ncursesw6.dll",
+          "size_bytes": 353237,
+          "sha256": "aef26ffbcd20ee5781c3a5e81265390494090e13561a13336d000d9d5f9a84cb",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-ncursesw6.dll",
+        "selected_file_sha256": "aef26ffbcd20ee5781c3a5e81265390494090e13561a13336d000d9d5f9a84cb"
+      }
+    },
+    {
+      "component_id": "gpg-build-npth",
+      "name": "libnpth (external GPG verifier closure)",
+      "version": "1.8-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libnpth contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libnpth@1.8-1",
+      "license_expression": "LGPL-2.1-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-npth/npth-COPYING.LIB.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-npth/npth-COPYING.LIB.txt",
+          "size_bytes": 26525,
+          "sha256": "ce64d5f7b49ea6d80fdb6d4cdee6839d1a94274f7493dc797c3b55b65ec8e9ed",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://gnupg.org/ftp/gcrypt/npth/npth-1.8.tar.bz2",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-npth-0.dll",
+          "name": "usr/bin/msys-npth-0.dll",
+          "size_bytes": 17194,
+          "sha256": "740e76727c26411d263788f175e4d12420a88079544bb690fd3a2f4d97f4845b",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-npth-0.dll",
+        "selected_file_sha256": "740e76727c26411d263788f175e4d12420a88079544bb690fd3a2f4d97f4845b"
+      }
+    },
+    {
+      "component_id": "gpg-build-readline",
+      "name": "libreadline (external GPG verifier closure)",
+      "version": "8.3.006-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libreadline contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libreadline@8.3.006-1",
+      "license_expression": "GPL-3.0-or-later",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-readline/readline-COPYING.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-readline/readline-COPYING.txt",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime",
+        "gpg-build-ncurses"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-readline8.dll",
+          "name": "usr/bin/msys-readline8.dll",
+          "size_bytes": 286879,
+          "sha256": "0c7c38f1b76e087add0faca414659c3d25008a893dd4b185604a4183bb68132b",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-readline8.dll",
+        "selected_file_sha256": "0c7c38f1b76e087add0faca414659c3d25008a893dd4b185604a4183bb68132b"
+      }
+    },
+    {
+      "component_id": "gpg-build-sqlite",
+      "name": "libsqlite (external GPG verifier closure)",
+      "version": "3.54.0-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream libsqlite contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/libsqlite@3.54.0-1",
+      "license_expression": "LicenseRef-GPG-SQLite-Public-Domain",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-sqlite/PUBLIC-DOMAIN.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-sqlite/PUBLIC-DOMAIN.txt",
+          "size_bytes": 1528,
+          "sha256": "0b76663a90e034f3d7f2af5bfada4cedec5ebc275361899eccc5c18e6f01ff1f",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://sqlite.org/src/info/version-3.54.0",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-sqlite3-0.dll",
+          "name": "usr/bin/msys-sqlite3-0.dll",
+          "size_bytes": 1588219,
+          "sha256": "339e1ad49ec711bbf22b4305048a1d32533d9e97734686ce0a6cd32476fd8ea4",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-sqlite3-0.dll",
+        "selected_file_sha256": "339e1ad49ec711bbf22b4305048a1d32533d9e97734686ce0a6cd32476fd8ea4"
+      }
+    },
+    {
+      "component_id": "gpg-build-zlib",
+      "name": "zlib (external GPG verifier closure)",
+      "version": "1.3.2-1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "supplier": "Upstream zlib contributors; Git for Windows project / MSYS2",
+      "purl": "pkg:generic/git-for-windows/zlib@1.3.2-1",
+      "license_expression": "Zlib",
+      "license_texts": [
+        {
+          "path": "notices/gpg-build/gpg-build-zlib/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-gpg-build/gpg-build-zlib/LICENSE.txt",
+          "size_bytes": 1002,
+          "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://zlib.net/fossils/zlib-1.3.2.tar.gz",
+      "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+      "artifact_url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+      "dependencies": [
+        "gpg-build-msys2-runtime"
+      ],
+      "input_artifact": {
+        "name": "Git-2.56.0.4-64-bit.tar.bz2",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.tar.bz2",
+        "size_bytes": 118642037,
+        "sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "local_path": "output/pws0801/gpg-build-review/Git-2.56.0.4-64-bit.tar.bz2",
+        "scope": "build"
+      },
+      "selected_external_files": [
+        {
+          "member": "usr/bin/msys-z.dll",
+          "name": "usr/bin/msys-z.dll",
+          "size_bytes": 91648,
+          "sha256": "f548bb1632160282c3853415182d695c655d0eb7c12aa42a0538161898694b6f",
+          "installed_bytes_match": true
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "notice_source_provenance": {
+        "vendor_package_version_member": "etc/package-versions.txt",
+        "vendor_package_version_member_sha256": "d845eb4c3a34dd134233841edf1c2e1bfc067b5843797b944f31145c5a3cb689",
+        "selected_file_member": "usr/bin/msys-z.dll",
+        "selected_file_sha256": "f548bb1632160282c3853415182d695c655d0eb7c12aa42a0538161898694b6f"
+      }
+    }
+  ],
+  "license_refs": [
+    {
+      "license_id": "LicenseRef-GPG-SQLite-Public-Domain",
+      "name": "SQLite deliverable-code public-domain dedication and explicit broad use grant",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-sqlite/PUBLIC-DOMAIN.txt",
+      "sha256": "0b76663a90e034f3d7f2af5bfada4cedec5ebc275361899eccc5c18e6f01ff1f"
+    }
+  ],
+  "notice_assets": [
+    {
+      "path": "notices/gpg-build/gpg-build-bzip2/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-bzip2/LICENSE.txt",
+      "size_bytes": 1896,
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-bzip2",
+      "source": {
+        "reviewed_asset": "packaging/licenses/release-python-native/cpython-bzip2/LICENSE",
+        "upstream_version": "1.0.8",
+        "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+        "basis": "Same exact upstream component version; this reuses the complete selected-library legal text, not a claim that MSYS/UCRT64 binaries are identical."
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-gcc-runtime/GCC-RUNTIME-EXCEPTION-3.1.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gcc-runtime/GCC-RUNTIME-EXCEPTION-3.1.txt",
+      "size_bytes": 3324,
+      "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-gcc-runtime",
+      "source": {
+        "artifact": "Git-2.56.0.4-64-bit.tar.bz2",
+        "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "member": "usr/share/licenses/gcc-libs/RUNTIME.LIBRARY.EXCEPTION"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-gcc-runtime/GPL-3.0.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gcc-runtime/GPL-3.0.txt",
+      "size_bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-gcc-runtime",
+      "source": {
+        "artifact": "Git-2.56.0.4-64-bit.tar.bz2",
+        "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "member": "usr/share/licenses/gcc-libs/COPYING3"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-gnupg/VERSION-AND-GRANT-NOTICE.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gnupg/VERSION-AND-GRANT-NOTICE.txt",
+      "size_bytes": 262,
+      "sha256": "7bbc81843435aeb80d4c1b404322e2e96e4300f9691d45407a362e5ca00f71e9",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-gnupg",
+      "source": {
+        "method": "Installed exact hash-verified gpg.exe --version output before Home line; no private home path retained.",
+        "executable_sha256": "14953ed8b4549020e185c0f7ab600bb9d0384457ea74da9d574e8d31139aff4f"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-gnupg/gnupg-COPYING.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-gnupg/gnupg-COPYING.txt",
+      "size_bytes": 35069,
+      "sha256": "bc2d6664f6276fa0a72d57633b3ae68dc7dcb677b71018bf08c8e93e509f1357",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-gnupg",
+      "source": {
+        "name": "gnupg-COPYING.txt",
+        "url": "https://raw.githubusercontent.com/gpg/gnupg/gnupg-2.4.9/COPYING",
+        "size_bytes": 35069,
+        "sha256": "bc2d6664f6276fa0a72d57633b3ae68dc7dcb677b71018bf08c8e93e509f1357",
+        "local_path": "output/pws0801/gpg-build-review/gnupg-COPYING.txt"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-libassuan/libassuan-COPYING.LIB.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libassuan/libassuan-COPYING.LIB.txt",
+      "size_bytes": 26527,
+      "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-libassuan",
+      "source": {
+        "name": "libassuan-COPYING.LIB.txt",
+        "url": "https://raw.githubusercontent.com/gpg/libassuan/libassuan-3.0.2/COPYING.LIB",
+        "size_bytes": 26527,
+        "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+        "local_path": "output/pws0801/gpg-build-review/libassuan-COPYING.LIB.txt"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-libgcrypt/libgcrypt-COPYING.LIB.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libgcrypt/libgcrypt-COPYING.LIB.txt",
+      "size_bytes": 26419,
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-libgcrypt",
+      "source": {
+        "name": "libgcrypt-COPYING.LIB.txt",
+        "url": "https://raw.githubusercontent.com/gpg/libgcrypt/libgcrypt-1.12.4/COPYING.LIB",
+        "size_bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+        "local_path": "output/pws0801/gpg-build-review/libgcrypt-COPYING.LIB.txt"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-libgpg-error/libgpg-error-COPYING.LIB.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libgpg-error/libgpg-error-COPYING.LIB.txt",
+      "size_bytes": 26527,
+      "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-libgpg-error",
+      "source": {
+        "name": "libgpg-error-COPYING.LIB.txt",
+        "url": "https://raw.githubusercontent.com/gpg/libgpg-error/libgpg-error-1.61/COPYING.LIB",
+        "size_bytes": 26527,
+        "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+        "local_path": "output/pws0801/gpg-build-review/libgpg-error-COPYING.LIB.txt"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-libiconv/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libiconv/LICENSE.txt",
+      "size_bytes": 26419,
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-libiconv",
+      "source": {
+        "reviewed_asset": "packaging/licenses/release-native/msys2-libiconv/COPYING.LIB",
+        "upstream_version": "1.19",
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+        "basis": "Same exact upstream component version; this reuses the complete selected-library legal text, not a claim that MSYS/UCRT64 binaries are identical."
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-libintl/gettext-COPYING.LIB.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-libintl/gettext-COPYING.LIB.txt",
+      "size_bytes": 26545,
+      "sha256": "3fe5361f24b7c49ba12911c08f5a33f9cb18871d95d9fb881f5b8a4793e04288",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-libintl",
+      "source": {
+        "name": "gettext-COPYING.LIB.txt",
+        "url": "https://ftp.gnu.org/pub/gnu/gettext/gettext-0.22.5.tar.xz",
+        "size_bytes": 26545,
+        "sha256": "3fe5361f24b7c49ba12911c08f5a33f9cb18871d95d9fb881f5b8a4793e04288",
+        "local_path": "output/pws0801/gpg-build-review/gettext-COPYING.LIB.txt",
+        "source_archive": {
+          "name": "gettext-0.22.5.tar.xz",
+          "url": "https://ftp.gnu.org/pub/gnu/gettext/gettext-0.22.5.tar.xz",
+          "size_bytes": 10270724,
+          "sha256": "fe10c37353213d78a5b83d48af231e005c4da84db5ce88037d88355938259640",
+          "local_path": "output/pws0801/gpg-build-review/gettext-0.22.5.tar.xz",
+          "member": "gettext-0.22.5/gettext-runtime/intl/COPYING.LIB",
+          "verification": "Downloaded from upstream HTTPS release directory at exact version; source checksum recorded during this legal-text review, not asserted to attest vendor binary reconstruction."
+        }
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-msys2-runtime/msys2-runtime-COPYING.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-msys2-runtime/msys2-runtime-COPYING.txt",
+      "size_bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-msys2-runtime",
+      "source": {
+        "name": "msys2-runtime-COPYING.txt",
+        "url": "https://raw.githubusercontent.com/msys2/msys2-runtime/msys2-3.6.10/winsup/COPYING",
+        "size_bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        "local_path": "output/pws0801/gpg-build-review/msys2-runtime-COPYING.txt"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-ncurses/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-ncurses/LICENSE.txt",
+      "size_bytes": 1447,
+      "sha256": "708999f95527e1ffa670c6fce288c6c600cb477dd04afcc1171422b3dd4ee226",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-ncurses",
+      "source": {
+        "artifact": "Git-2.56.0.4-64-bit.tar.bz2",
+        "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "member": "usr/share/licenses/ncurses/LICENSE"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-npth/npth-COPYING.LIB.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-npth/npth-COPYING.LIB.txt",
+      "size_bytes": 26525,
+      "sha256": "ce64d5f7b49ea6d80fdb6d4cdee6839d1a94274f7493dc797c3b55b65ec8e9ed",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-npth",
+      "source": {
+        "name": "npth-COPYING.LIB.txt",
+        "url": "https://raw.githubusercontent.com/gpg/npth/npth-1.8/COPYING.LIB",
+        "size_bytes": 26525,
+        "sha256": "ce64d5f7b49ea6d80fdb6d4cdee6839d1a94274f7493dc797c3b55b65ec8e9ed",
+        "local_path": "output/pws0801/gpg-build-review/npth-COPYING.LIB.txt"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-readline/readline-COPYING.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-readline/readline-COPYING.txt",
+      "size_bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-readline",
+      "source": {
+        "name": "readline-COPYING.txt",
+        "url": "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz",
+        "size_bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        "local_path": "output/pws0801/gpg-build-review/readline-COPYING.txt",
+        "source_archive": {
+          "name": "readline-8.3.tar.gz",
+          "url": "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz",
+          "size_bytes": 3419642,
+          "sha256": "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc",
+          "local_path": "output/pws0801/gpg-build-review/readline-8.3.tar.gz",
+          "member": "readline-8.3/COPYING",
+          "verification": "Downloaded from upstream HTTPS release directory at exact version; source checksum recorded during this legal-text review, not asserted to attest vendor binary reconstruction."
+        }
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-sqlite/PUBLIC-DOMAIN.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-sqlite/PUBLIC-DOMAIN.txt",
+      "size_bytes": 1528,
+      "sha256": "0b76663a90e034f3d7f2af5bfada4cedec5ebc275361899eccc5c18e6f01ff1f",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-sqlite",
+      "source": {
+        "artifact": "Git-2.56.0.4-64-bit.tar.bz2",
+        "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "member": "usr/share/licenses/libsqlite/LICENSE"
+      }
+    },
+    {
+      "path": "notices/gpg-build/gpg-build-zlib/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-gpg-build/gpg-build-zlib/LICENSE.txt",
+      "size_bytes": 1002,
+      "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+      "encoding": "utf-8",
+      "component_id": "gpg-build-zlib",
+      "source": {
+        "artifact": "Git-2.56.0.4-64-bit.tar.bz2",
+        "artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+        "member": "usr/share/licenses/zlib/LICENSE"
+      }
+    }
+  ],
+  "tool_files": [
+    {
+      "name": "gpg.exe",
+      "member": "usr/bin/gpg.exe",
+      "component_id": "gpg-build-gnupg",
+      "size_bytes": 1129818,
+      "sha256": "14953ed8b4549020e185c0f7ab600bb9d0384457ea74da9d574e8d31139aff4f",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll",
+        "msys-assuan-9.dll",
+        "msys-bz2-1.dll",
+        "msys-gcrypt-20.dll",
+        "msys-gpg-error-0.dll",
+        "msys-iconv-2.dll",
+        "msys-intl-8.dll",
+        "msys-npth-0.dll",
+        "msys-readline8.dll",
+        "msys-sqlite3-0.dll",
+        "msys-z.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll",
+        "msys-assuan-9.dll",
+        "msys-bz2-1.dll",
+        "msys-gcrypt-20.dll",
+        "msys-gpg-error-0.dll",
+        "msys-iconv-2.dll",
+        "msys-intl-8.dll",
+        "msys-npth-0.dll",
+        "msys-readline8.dll",
+        "msys-sqlite3-0.dll",
+        "msys-z.dll"
+      ],
+      "vendor_package": "gnupg",
+      "vendor_package_version": "2.4.9-3"
+    },
+    {
+      "name": "msys-2.0.dll",
+      "member": "usr/bin/msys-2.0.dll",
+      "component_id": "gpg-build-msys2-runtime",
+      "size_bytes": 3373151,
+      "sha256": "2a89b7c31b323c42e2fb37900af087aeb27417694e630a210bc75b0369410bc7",
+      "normal_imports": [
+        "kernel32.dll",
+        "ntdll.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [],
+      "vendor_package": "msys2-runtime",
+      "vendor_package_version": "3.6.10-4"
+    },
+    {
+      "name": "msys-assuan-9.dll",
+      "member": "usr/bin/msys-assuan-9.dll",
+      "component_id": "gpg-build-libassuan",
+      "size_bytes": 69674,
+      "sha256": "3eaf1c57c85b1ca2303e7d9544c0a96507f483aae7ae5a1125dfde09bdb12b26",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll",
+        "msys-gpg-error-0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll",
+        "msys-gpg-error-0.dll"
+      ],
+      "vendor_package": "libassuan",
+      "vendor_package_version": "3.0.2-1"
+    },
+    {
+      "name": "msys-bz2-1.dll",
+      "member": "usr/bin/msys-bz2-1.dll",
+      "component_id": "gpg-build-bzip2",
+      "size_bytes": 67277,
+      "sha256": "1082896c71da5e62dfd8e421fba35fa3123e6e1e2782381c08258917117b51cd",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "libbz2",
+      "vendor_package_version": "1.0.8-4"
+    },
+    {
+      "name": "msys-gcc_s-seh-1.dll",
+      "member": "usr/bin/msys-gcc_s-seh-1.dll",
+      "component_id": "gpg-build-gcc-runtime",
+      "size_bytes": 144609,
+      "sha256": "38118e2bb6231318025efdfd8fc836baa6697e0e9ec9f9ac25deddcdda4bd136",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "gcc-libs",
+      "vendor_package_version": "16.2.0-1"
+    },
+    {
+      "name": "msys-gcrypt-20.dll",
+      "member": "usr/bin/msys-gcrypt-20.dll",
+      "component_id": "gpg-build-libgcrypt",
+      "size_bytes": 1066499,
+      "sha256": "0d21151b0cd93a64187177a0913c5a7b5d88941baea504bb96a35dfbde9fc070",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll",
+        "msys-gcc_s-seh-1.dll",
+        "msys-gpg-error-0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll",
+        "msys-gcc_s-seh-1.dll",
+        "msys-gpg-error-0.dll"
+      ],
+      "vendor_package": "libgcrypt",
+      "vendor_package_version": "1.12.4-1"
+    },
+    {
+      "name": "msys-gpg-error-0.dll",
+      "member": "usr/bin/msys-gpg-error-0.dll",
+      "component_id": "gpg-build-libgpg-error",
+      "size_bytes": 156385,
+      "sha256": "a53ec385fd2133d39dd6074ee8262a6904d0c5f63ec30720e0d8acb1a75fd38c",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll",
+        "msys-intl-8.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll",
+        "msys-intl-8.dll"
+      ],
+      "vendor_package": "libgpg-error",
+      "vendor_package_version": "1.61-1"
+    },
+    {
+      "name": "msys-iconv-2.dll",
+      "member": "usr/bin/msys-iconv-2.dll",
+      "component_id": "gpg-build-libiconv",
+      "size_bytes": 1103690,
+      "sha256": "50012969ed96a5232220185d2fc1ac1e3abe5790f6b3027f4fc3c4cad3fd38f0",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "libiconv",
+      "vendor_package_version": "1.19-1"
+    },
+    {
+      "name": "msys-intl-8.dll",
+      "member": "usr/bin/msys-intl-8.dll",
+      "component_id": "gpg-build-libintl",
+      "size_bytes": 111181,
+      "sha256": "50f7de0c712d867ddca2c9eb8562ca6ee2d69e120e798ec6126ad29dd1ed5402",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll",
+        "msys-iconv-2.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll",
+        "msys-iconv-2.dll"
+      ],
+      "vendor_package": "libintl",
+      "vendor_package_version": "0.22.5-1"
+    },
+    {
+      "name": "msys-ncursesw6.dll",
+      "member": "usr/bin/msys-ncursesw6.dll",
+      "component_id": "gpg-build-ncurses",
+      "size_bytes": 353237,
+      "sha256": "aef26ffbcd20ee5781c3a5e81265390494090e13561a13336d000d9d5f9a84cb",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "ncurses",
+      "vendor_package_version": "6.6-2"
+    },
+    {
+      "name": "msys-npth-0.dll",
+      "member": "usr/bin/msys-npth-0.dll",
+      "component_id": "gpg-build-npth",
+      "size_bytes": 17194,
+      "sha256": "740e76727c26411d263788f175e4d12420a88079544bb690fd3a2f4d97f4845b",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "libnpth",
+      "vendor_package_version": "1.8-1"
+    },
+    {
+      "name": "msys-readline8.dll",
+      "member": "usr/bin/msys-readline8.dll",
+      "component_id": "gpg-build-readline",
+      "size_bytes": 286879,
+      "sha256": "0c7c38f1b76e087add0faca414659c3d25008a893dd4b185604a4183bb68132b",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll",
+        "msys-ncursesw6.dll",
+        "user32.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll",
+        "msys-ncursesw6.dll"
+      ],
+      "vendor_package": "libreadline",
+      "vendor_package_version": "8.3.006-1"
+    },
+    {
+      "name": "msys-sqlite3-0.dll",
+      "member": "usr/bin/msys-sqlite3-0.dll",
+      "component_id": "gpg-build-sqlite",
+      "size_bytes": 1588219,
+      "sha256": "339e1ad49ec711bbf22b4305048a1d32533d9e97734686ce0a6cd32476fd8ea4",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "libsqlite",
+      "vendor_package_version": "3.54.0-1"
+    },
+    {
+      "name": "msys-z.dll",
+      "member": "usr/bin/msys-z.dll",
+      "component_id": "gpg-build-zlib",
+      "size_bytes": 91648,
+      "sha256": "f548bb1632160282c3853415182d695c655d0eb7c12aa42a0538161898694b6f",
+      "normal_imports": [
+        "kernel32.dll",
+        "msys-2.0.dll"
+      ],
+      "delay_imports": [],
+      "local_dependencies": [
+        "msys-2.0.dll"
+      ],
+      "vendor_package": "zlib",
+      "vendor_package_version": "1.3.2-1"
+    }
+  ],
+  "parent_evidence": {},
+  "evidence_limits": [
+    "The14exact executable/DLL bytes match the independently SHA256-pinned official Git for Windows2.56.0.windows.4 archive. This proves the consumed external tool inputs, not a bit-for-bit reconstruction of those upstream binaries.",
+    "The installed package-version file contains an unrelated additional package line; all14selected provider versions agree with the authenticated vendor package-version member. No unused Git executables or packages are classified as consumed build components.",
+    "Upstream source URLs and license-file hashes describe the reviewed legal inputs. Required corresponding source for an unshipped external build tool is not represented as product payload or a product runtime obligation."
+  ],
+  "tool_identity": {
+    "program": "gpg",
+    "version": "2.4.9",
+    "libgcrypt_version_reported": "1.12.4-unknown",
+    "vendor_distribution": "Git for Windows2.56.0.windows.4",
+    "selected_package_versions_equal_installed_manifest": true,
+    "binary_proof_receipt": "output/pws0801/gpg-build-review/vendor-byte-verification.json",
+    "binary_proof_receipt_sha256": "18578610dadd7214fdeb5822cc51a28077472c5355e2971b4241a8f6d122b479"
+  }
+}

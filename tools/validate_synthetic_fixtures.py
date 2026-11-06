@@ -19,6 +19,9 @@ from typing import IO, Any, Final, NoReturn, cast
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from tools._reviewed_upstream_notices import (
+    REVIEWED_UPSTREAM_NOTICE_EMAIL_DIGESTS as _REVIEWED_UPSTREAM_NOTICE_EMAIL_DIGESTS,
+)
 from tools.dev import SecretScanError, inspect_repository_contents
 from tools.generate_synthetic_fixtures import (
     CORPUS_DIRECTORY,
@@ -48,6 +51,7 @@ from tools.overlay_render_goldens import (
 from tools.overlay_render_goldens import (
     canonical_index_bytes as canonical_overlay_golden_index_bytes,
 )
+from tools.redaction_corpus import CANARY_INVENTORY_PATH, canonical_canary_inventory_bytes
 
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "33229d2fdd6a84377fd10bdc690634037307862257f938f9a6c4c053ef954f2e"
@@ -1048,10 +1052,17 @@ def _is_reserved_email_domain(domain: bytes) -> bool:
     )
 
 
-def _contains_prohibited_pattern(content: bytes) -> bool:
+def _contains_prohibited_pattern(content: bytes, *, reviewed_source_notice: bool = False) -> bool:
+    # Only immutable reviewed source attribution may carry its public contact
+    # addresses. Fixture-content callers retain the strict default. No other
+    # personal-data pattern or document-identity check is exempted here.
+    reviewed_email = (
+        reviewed_source_notice
+        and hashlib.sha256(content).digest() in _REVIEWED_UPSTREAM_NOTICE_EMAIL_DIGESTS
+    )
     for match in _EMAIL_PATTERN.finditer(content):
         domain = match.group(0).split(b"@", maxsplit=1)[1].lower()
-        if not _is_reserved_email_domain(domain):
+        if not _is_reserved_email_domain(domain) and not reviewed_email:
             return True
     if _SSN_PATTERN.search(content) is not None or _MRZ_PATTERN.search(content) is not None:
         return True
@@ -1072,7 +1083,7 @@ def _repository_inspector(
                     "FIXTURE_UNINDEXED_DOCUMENT",
                     "repository snapshot contains an unapproved document or image blob",
                 )
-        if _contains_prohibited_pattern(content):
+        if _contains_prohibited_pattern(content, reviewed_source_notice=True):
             raise RepositoryPrivacyFinding(
                 "FIXTURE_PRIVACY_PATTERN",
                 "repository snapshot contains a prohibited data-shaped pattern",
@@ -1217,6 +1228,69 @@ def _validate_overlay_goldens(
     return len(artifacts), frozenset(approved), []
 
 
+def validate_redaction_canary_inventory(root: Path = PROJECT_ROOT) -> list[FixtureIssue]:
+    """Authenticate the closed source-canary oracle without parsing document content."""
+
+    document = CANARY_INVENTORY_PATH.as_posix()
+    content, read_issues = _read_regular_bytes(
+        root / CANARY_INVENTORY_PATH,
+        trusted_root=root,
+        maximum_bytes=MAX_INDEX_BYTES,
+        document=document,
+        code_prefix="REDACTION_CANARY",
+    )
+    if content is None:
+        return read_issues
+    files, inventory_issues = _enumerate_committed_files(
+        root / CANARY_INVENTORY_PATH.parent,
+        document=CANARY_INVENTORY_PATH.parent.as_posix(),
+    )
+    if files is None:
+        return inventory_issues
+    if files != {Path(CANARY_INVENTORY_PATH.name)}:
+        return [
+            _issue(
+                "REDACTION_CANARY_SET_MISMATCH",
+                document,
+                "$",
+                "source-canary inventory contains unexpected entries",
+            )
+        ]
+    # Comparing canonical bytes also rejects duplicate keys, unknown/old/future
+    # versions, path substitution and altered expected methods or canary values.
+    if content != canonical_canary_inventory_bytes():
+        return [
+            _issue(
+                "REDACTION_CANARY_CONTENT_MISMATCH",
+                document,
+                "$",
+                "source-canary inventory differs from the closed generator",
+            )
+        ]
+    # Directory enumeration is a separate operation. Reauthenticate the complete
+    # chain and same bytes afterward so an ancestor swap cannot turn a valid
+    # first read into acceptance of an unrelated inventory.
+    final_content, final_read_issues = _read_regular_bytes(
+        root / CANARY_INVENTORY_PATH,
+        trusted_root=root,
+        maximum_bytes=MAX_INDEX_BYTES,
+        document=document,
+        code_prefix="REDACTION_CANARY",
+    )
+    if final_content is None:
+        return final_read_issues
+    if final_content != content:
+        return [
+            _issue(
+                "REDACTION_CANARY_CONTENT_MISMATCH",
+                document,
+                "$",
+                "source-canary inventory changed during validation",
+            )
+        ]
+    return []
+
+
 def validate_fixture_corpus(
     root: Path = PROJECT_ROOT,
     *,
@@ -1227,6 +1301,9 @@ def validate_fixture_corpus(
     _, index_issues = validate_fixture_index_set(root)
     if index_issues:
         return None, index_issues
+    canary_issues = validate_redaction_canary_inventory(root)
+    if canary_issues:
+        return None, canary_issues
     loaded, load_issues = validate_fixture_index_document(root / INDEX_PATH, root)
     if loaded is None:
         return None, load_issues

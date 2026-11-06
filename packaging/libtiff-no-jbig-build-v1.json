@@ -1,0 +1,1070 @@
+{
+  "schema_version": 1,
+  "recipe_id": "paperworkshell-libtiff-no-jbig-windows-ucrt64-v1",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "target": {
+    "os": "Windows",
+    "architecture": "x86_64",
+    "abi": "MinGW-w64 UCRT64; dynamic C ABI"
+  },
+  "purpose": "Rebuild the exact libtiff 4.7.2 source with the optional JBIG codec disabled; retain every other original external codec and the upstream Windows I/O implementation.",
+  "source": {
+    "component_id": "libtiff-no-jbig",
+    "version": "4.7.2-pws-no-jbig1",
+    "upstream_version": "4.7.2",
+    "url": "https://download.osgeo.org/libtiff/tiff-4.7.2.tar.gz",
+    "filename": "tiff-4.7.2.tar.gz",
+    "sha256": "672bd7d10aee4606171afb864f3570b83340f6a33e2c186dc0512f7145ffdf6a",
+    "expected_digest_source": "https://raw.githubusercontent.com/msys2/MINGW-packages/14b74f53a76a732b920ecac30667cd0b91d3e7cd/mingw-w64-libtiff/PKGBUILD",
+    "license_expression": "LicenseRef-PWS-LibTIFF-4.7.2-Notice",
+    "size_bytes": 4083368,
+    "license_file": {
+      "path": "tiff-4.7.2/LICENSE.md",
+      "size_bytes": 2416,
+      "sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade"
+    },
+    "upstream_package_declared_license_expression": "MIT"
+  },
+  "build_inputs": [
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-gcc",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst",
+      "sha256": "0290e91f5a9a8a3699bcea6221a899403bb9bd5d6f7dbd98c883d74e2ef36338",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-gcc",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-16.2.0-6-any.pkg.tar.zst.sig",
+      "size_bytes": 48529712,
+      "version": "16.2.0-6",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
+      ],
+      "upstream_url": "https://gcc.gnu.org",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+      "pkginfo_sha256": "781469630361665ce594c309c815b870039a0e04c0b307db538b1a23b1256a54",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/gcc/COPYING.RUNTIME",
+          "size_bytes": 3324,
+          "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+        },
+        {
+          "path": "ucrt64/share/licenses/gcc/COPYING3",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        }
+      ],
+      "signature_sha256": "b5222c79f95692ab08aebda10781c01e2a1816d6a500eaa3ce0edd33721a4185",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-binutils",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-binutils-2.47-4-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-binutils-2.47-4-any.pkg.tar.zst",
+      "sha256": "c18a40b871bfddb5da030f015003479ca85625afde1cb89f7313945e6151397d",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-binutils",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-binutils-2.47-4-any.pkg.tar.zst.sig",
+      "size_bytes": 6625838,
+      "version": "2.47-4",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-3.0-or-later AND LGPL-2.0-or-later"
+      ],
+      "upstream_url": "https://www.gnu.org/software/binutils/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-binutils-2.47-4.src.tar.zst",
+      "pkginfo_sha256": "01bf7957537d79ed5584e3f34777c91d2493db3dd6bcd0ccf64ff9a02dc80804",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/binutils/COPYING",
+          "size_bytes": 18002,
+          "sha256": "231f7edcc7352d7734a96eef0b8030f77982678c516876fcb81e25b32d68564c"
+        },
+        {
+          "path": "ucrt64/share/licenses/binutils/COPYING.LIB",
+          "size_bytes": 25291,
+          "sha256": "56bdea73b6145ef6ac5259b3da390b981d840c24cb03b8e1cbc678de7ecfa18d"
+        },
+        {
+          "path": "ucrt64/share/licenses/binutils/COPYING3",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "ucrt64/share/licenses/binutils/COPYING3.LIB",
+          "size_bytes": 7639,
+          "sha256": "a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c"
+        }
+      ],
+      "signature_sha256": "36326260428a8567fcb936b3c3fa80c6cd5e59083c8a34f9464718b5b0f586dd",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-crt",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-crt",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-crt-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst.sig",
+      "size_bytes": 4071159,
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:ZPL-2.1"
+      ],
+      "upstream_url": "https://www.mingw-w64.org/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "pkginfo_sha256": "c9849cff2531b9bf6decd0f5b71aba5e3574b67f973ac35d4a0cd12b55d10ff8",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/crt/COPYING",
+          "size_bytes": 2326,
+          "sha256": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f"
+        },
+        {
+          "path": "ucrt64/share/licenses/crt/COPYING.MinGW-w64-runtime.txt",
+          "size_bytes": 12155,
+          "sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f"
+        },
+        {
+          "path": "ucrt64/share/licenses/crt/COPYING.MinGW-w64.txt",
+          "size_bytes": 5905,
+          "sha256": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1"
+        }
+      ],
+      "signature_sha256": "6f5b065b47f72ac400f7e2a08c75e9f1871bf53894078e1eb865a39d97e5d0af",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-headers",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-headers-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-headers-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "1dfbdb987964e5ec9eecd2653ef365767ca7970abf9c7de1b05c066f18e3eb21",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-headers",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-headers-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst.sig",
+      "size_bytes": 6897478,
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:ZPL-2.1 AND LGPL-2.1-or-later"
+      ],
+      "upstream_url": "https://www.mingw-w64.org/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-headers-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "pkginfo_sha256": "941bff6899f1b3c12fb097995049bbf84cc7f771693ec3c17fae7af3bd74f918",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/headers/COPYING",
+          "size_bytes": 2326,
+          "sha256": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f"
+        },
+        {
+          "path": "ucrt64/share/licenses/headers/COPYING.MinGW-w64-runtime.txt",
+          "size_bytes": 12155,
+          "sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f"
+        },
+        {
+          "path": "ucrt64/share/licenses/headers/COPYING.MinGW-w64.txt",
+          "size_bytes": 5905,
+          "sha256": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1"
+        },
+        {
+          "path": "ucrt64/share/licenses/headers/ddk-readme.txt",
+          "size_bytes": 650,
+          "sha256": "8d8f9924e4ea5466932000bdb9a4104da1d8ca3e4c979bb8207225522ba63826"
+        }
+      ],
+      "signature_sha256": "6841df285ab09adfa73aec62d86fa0fe85609eeef3bd8a967d95ebeb48cd5ef6",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-gmp",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+      "sha256": "e82a75968a556484a50084578238a84eb60fb93e34986fd6695c537975bd39ea",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-gmp",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gmp-6.3.0-2-any.pkg.tar.zst.sig",
+      "size_bytes": 592359,
+      "version": "6.3.0-2",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "LGPL3",
+        "GPL"
+      ],
+      "upstream_url": "https://gmplib.org/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gmp-6.3.0-2.src.tar.zst",
+      "pkginfo_sha256": "718a5adb829fb97ea376efe87f4321159c877f8872c842631f9e36043cd5092b",
+      "licenses": [],
+      "signature_sha256": "99d2b95269ef099bdc8f3dd0e3db8a9171346e4076bfe0c0c58855d7b97220ff",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-isl",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-isl-0.28-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-isl-0.28-1-any.pkg.tar.zst",
+      "sha256": "8594e01a253d5a72646c586cf5a1626c1b1c2be7c30060fe67abd9bebe3fe223",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-isl",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-isl-0.28-1-any.pkg.tar.zst.sig",
+      "size_bytes": 1540719,
+      "version": "0.28-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:MIT"
+      ],
+      "upstream_url": "https://libisl.sourceforge.io/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-isl-0.28-1.src.tar.zst",
+      "pkginfo_sha256": "cceb45e79f094d63842193f82c6f579b43087be1c4cf07e563c677c38106ddfe",
+      "licenses": [],
+      "signature_sha256": "7154a96c9936f5d00504ae012c74a82cd15f094d925e0cf1a17b7a2bf1be11a6",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-libgcc",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst",
+      "sha256": "80b2497f019977dd9528b1abc8621b1328a0115ab1f724047ccbb56bf323f11d",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-libgcc",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libgcc-16.2.0-6-any.pkg.tar.zst.sig",
+      "size_bytes": 77191,
+      "version": "16.2.0-6",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
+      ],
+      "upstream_url": "https://gcc.gnu.org",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+      "pkginfo_sha256": "4b05a2063f6f7be2cc1e0a5874dc04ca0d144ad366e75043c4fc10ea25f8544a",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/libgcc/COPYING.RUNTIME",
+          "size_bytes": 3324,
+          "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+        },
+        {
+          "path": "ucrt64/share/licenses/libgcc/COPYING3",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        }
+      ],
+      "signature_sha256": "47722822a5d94a7d2e5ec9daaa02dc1f6b7f420765efaa8fd8a86bd3012788db",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-libstdc++",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libstdc%2B%2B-16.2.0-6-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-6-any.pkg.tar.zst",
+      "sha256": "33c5e58a85a538cf843a8672991cce591f0231d66da3b66a57629712d64be17f",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-libstdc%2B%2B",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libstdc%2B%2B-16.2.0-6-any.pkg.tar.zst.sig",
+      "size_bytes": 795910,
+      "version": "16.2.0-6",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later"
+      ],
+      "upstream_url": "https://gcc.gnu.org",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst",
+      "pkginfo_sha256": "34829f9301bbd4505e1c021c50c233b89712cf11c419ed2e74a165b6684d01ab",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/libstdc++/COPYING.RUNTIME",
+          "size_bytes": 3324,
+          "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+        },
+        {
+          "path": "ucrt64/share/licenses/libstdc++/COPYING3",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        }
+      ],
+      "signature_sha256": "f2855b4509de406b931fe69ddac645285824cb2330375843f504e97d0ce35848",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-mpc",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-mpc-1.4.1-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-mpc-1.4.1-1-any.pkg.tar.zst",
+      "sha256": "f06556e811c711ce91609484e31d358e4f495811ba29813bf2284a3b236d82ce",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-mpc",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-mpc-1.4.1-1-any.pkg.tar.zst.sig",
+      "size_bytes": 139585,
+      "version": "1.4.1-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:LGPL-3.0-or-later"
+      ],
+      "upstream_url": "https://www.multiprecision.org",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-mpc-1.4.1-1.src.tar.zst",
+      "pkginfo_sha256": "1f725c9af0f369c1f4a2c2221290bd0bcab38e01f1ff9ad394c0a7d583024de7",
+      "licenses": [],
+      "signature_sha256": "c6816cce004dfe57f976a60bdac037a52c7dbf29a4ee0f8085acca13b26cb5a0",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-mpfr",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-mpfr-4.2.2-3-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-mpfr-4.2.2-3-any.pkg.tar.zst",
+      "sha256": "6b70a275d2ec75c70aa50a236c218e6b7ee9a5ab4c6d52cb0b580267b7d200fe",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-mpfr",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-mpfr-4.2.2-3-any.pkg.tar.zst.sig",
+      "size_bytes": 553765,
+      "version": "4.2.2-3",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:LGPL-3.0-or-later"
+      ],
+      "upstream_url": "https://www.mpfr.org",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-mpfr-4.2.2-3.src.tar.zst",
+      "pkginfo_sha256": "8edb102509ae8f47b426ef3c40fd85fa0f49061cbb56b82d92556b847f2a69c9",
+      "licenses": [],
+      "signature_sha256": "6eb04885039d85bbf17a932840fc54aca8b871545711347c04309dcc840e11cd",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-windows-default-manifest",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-windows-default-manifest-20260815-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-windows-default-manifest-20260815-1-any.pkg.tar.zst",
+      "sha256": "b39039f754a600cc0dec49df7d675a59a3cb2b63691d91b4ae60735ee7075eca",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-windows-default-manifest",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-windows-default-manifest-20260815-1-any.pkg.tar.zst.sig",
+      "size_bytes": 2652,
+      "version": "20260815-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "custom:Public Domain"
+      ],
+      "upstream_url": "",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-windows-default-manifest-20260815-1.src.tar.zst",
+      "pkginfo_sha256": "cdcb864b568dac1d05f99a102a8d22fae85bcaa8b9ef315681c133ca7011e618",
+      "licenses": [],
+      "signature_sha256": "e3d5eeee4fc45230c973bb8f08bd1fb3e0cd97846ffbe0a34c4ca54cc09a84fb",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-winpthreads",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "7c610b0ed967d277530c2f50bb7c9ce5760056324901fbc8e0df9912e75a0aa8",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-winpthreads",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst.sig",
+      "size_bytes": 48342,
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:MIT AND BSD-3-Clause"
+      ],
+      "upstream_url": "https://www.mingw-w64.org/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "pkginfo_sha256": "3569a9e581e0b985f4887c130ce5361f3ac1bd4958646f0f44cbbd0b300663b4",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/winpthreads/COPYING",
+          "size_bytes": 2883,
+          "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177"
+        }
+      ],
+      "signature_sha256": "00e66b8d66f44163193a13e38503864dae0c9e7df57010b92832b64077f8c6a6",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-libwinpthread",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst",
+      "sha256": "b4ebe2826e848c5e790e06ea7b37d3e0594e005f42382b0506886f17df8127da",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-libwinpthread",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r569.g34eeafb7d-1-any.pkg.tar.zst.sig",
+      "size_bytes": 34529,
+      "version": "14.0.0.r569.g34eeafb7d-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:MIT AND BSD-3-Clause"
+      ],
+      "upstream_url": "https://www.mingw-w64.org/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+      "pkginfo_sha256": "8dc1a10605a4ed040e105ca6039b4cb5b48f861374d463edd09daa27ad2b843a",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/libwinpthread/COPYING",
+          "size_bytes": 2883,
+          "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177"
+        }
+      ],
+      "signature_sha256": "3e16ed09ba3d0c4cd426cff73624326266b7cbb80b030f77093ca435598fb021",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-zlib",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-3-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-zlib-1.3.2-3-any.pkg.tar.zst",
+      "sha256": "130e6ef04c654fc2150a177600aa5ed0035087665a893479d2c85ba7485d5704",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-zlib",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-1.3.2-3-any.pkg.tar.zst.sig",
+      "size_bytes": 108848,
+      "version": "1.3.2-3",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:Zlib"
+      ],
+      "upstream_url": "https://www.zlib.net/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-3.src.tar.zst",
+      "pkginfo_sha256": "ad21f7367879d2ac725f08bb520407ccb7680831d7dcaf48ec44cefaa18e8dbd",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/zlib/LICENSE",
+          "size_bytes": 1002,
+          "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+        }
+      ],
+      "signature_sha256": "02f4d0f0e7dcee24cce17eb5d4fe8d74095c0caf3db98318afc56a2e8ec74d33",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-zstd",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "sha256": "dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-zstd",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst.sig",
+      "size_bytes": 668277,
+      "version": "1.5.7-2",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:BSD-3-Clause OR GPL-2.0-or-later"
+      ],
+      "upstream_url": "https://facebook.github.io/zstd/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-zstd-1.5.7-2.src.tar.zst",
+      "pkginfo_sha256": "5ccf7351f501ab144aaa79b964862ce09331525119197e6467e25ec7cad01874",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/zstd/LICENSE",
+          "size_bytes": 1549,
+          "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+        }
+      ],
+      "signature_sha256": "97b4fe48e37ed32bc8a952c01737b6263dceb5a9c2c6f6b3a2def8e22f4e8b35",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-gettext-runtime",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+      "sha256": "ba693dda4ac375af76ce481ff3a6e7481286546cc7dc6d56c7021dae34084157",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-gettext-runtime",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst.sig",
+      "size_bytes": 417977,
+      "version": "1.0-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:GPL-3.0-or-later AND LGPL-2.1-or-later"
+      ],
+      "upstream_url": "https://www.gnu.org/software/gettext/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gettext-1.0-1.src.tar.zst",
+      "pkginfo_sha256": "9f764c25d7ef78382dee1c4fe490c684a6afce481da84a44085b11bf90c0f8b4",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/gettext-runtime/COPYING",
+          "size_bytes": 495,
+          "sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0"
+        },
+        {
+          "path": "ucrt64/share/licenses/gettext-runtime/intl/COPYING.LIB",
+          "size_bytes": 26419,
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+        },
+        {
+          "path": "ucrt64/share/licenses/gettext-runtime/libasprintf/COPYING",
+          "size_bytes": 65,
+          "sha256": "03133addae5b99a6148c538300e6d97074453089be1423b741bd081f18e2b298"
+        },
+        {
+          "path": "ucrt64/share/licenses/gettext-runtime/libasprintf/COPYING.LIB",
+          "size_bytes": 26419,
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+        }
+      ],
+      "signature_sha256": "4754e870d55cacb5e7e3707313b68edb29d2598cc7a1ee399c74715007f38c4d",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "mingw-w64-ucrt-x86_64-libiconv",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "filename": "mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+      "expected_digest_source": "https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-libiconv",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst.sig",
+      "size_bytes": 744750,
+      "version": "1.19-1",
+      "scope": "release-build-only-not-shipped",
+      "license_labels": [
+        "spdx:LGPL-2.1-or-later",
+        "documentation:spdx:GPL-3.0-or-later"
+      ],
+      "upstream_url": "https://www.gnu.org/software/libiconv/",
+      "distribution_source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libiconv-1.19-1.src.tar.zst",
+      "pkginfo_sha256": "64cbb0cd423ab0761c1487666f8b9399b85581820cec21003007ce7583d19da1",
+      "licenses": [
+        {
+          "path": "ucrt64/share/licenses/libiconv/COPYING",
+          "size_bytes": 35147,
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "ucrt64/share/licenses/libiconv/COPYING.LIB",
+          "size_bytes": 26419,
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+        },
+        {
+          "path": "ucrt64/share/licenses/libiconv/README",
+          "size_bytes": 5741,
+          "sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4"
+        },
+        {
+          "path": "ucrt64/share/licenses/libiconv/libcharset/COPYING.LIB",
+          "size_bytes": 26419,
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+        }
+      ],
+      "signature_sha256": "e18abd753c47dbed046cf619f0855c2bc05ae17a7f3eabba8a2e841478a4f6b2",
+      "signature_size_bytes": 566,
+      "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "kind": "msys2-toolchain"
+    },
+    {
+      "component_id": "cmake",
+      "version": "4.4.5",
+      "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "filename": "cmake-4.4.5-windows-x86_64.zip",
+      "sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "size_bytes": 54412232,
+      "expected_digest_source": "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+      "source_ref": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "license_expression": "BSD-3-Clause",
+      "scope": "release-build-only-not-shipped",
+      "licenses": [
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmcppdap/NOTICE",
+          "size_bytes": 178,
+          "sha256": "47bc4ee3ca11c006ac8b38d90d97455d18c0a0c3eafdf7f98c3623e4dada1f19"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmcurl/COPYING",
+          "size_bytes": 1110,
+          "sha256": "2eb469aebc37f20dda0960d9a5b03bfb8c0bb8a9d3fa5be0a356aa02fd0a8673"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibarchive/COPYING",
+          "size_bytes": 3154,
+          "sha256": "7ed079693e6fcd4d9535360a65e8c3832d6302a2cb9d936efc00bf7f9fa16909"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmliblzma/COPYING",
+          "size_bytes": 3968,
+          "sha256": "37d1b090446045d3e87418631a6c0ac08a5e49c84a666d8be089f552b0c48e49"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibrhash/COPYING",
+          "size_bytes": 751,
+          "sha256": "62fd8327a27a4170361e097fbbfafaf68cdacadfdcad993ca251238112947a8f"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibuv/LICENSE",
+          "size_bytes": 1098,
+          "sha256": "7aab26dd7e0e6661accc1fd9fc19410e01b466aa0ac36ea668b2013152a8ca23"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmnghttp2/COPYING",
+          "size_bytes": 1179,
+          "sha256": "296913fdae167d19f8c463622b7d4ce4012781b9a13d9dcf21a2c7541a96dc39"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmsys/Copyright.txt",
+          "size_bytes": 1851,
+          "sha256": "0998690e8dc877e5d9d79d852f85630ba42b4061962baefc9651675ecf972082"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmzlib/Copyright.txt",
+          "size_bytes": 1063,
+          "sha256": "d5bbd7748a19e3fed6ea31242e8de9814e69a0125ae7758a7491057d5fe76f34"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/cmzstd/LICENSE",
+          "size_bytes": 1579,
+          "sha256": "d3baadc2e1dd7a7e0b483633e6b39743c16a16f28d696baff507fcd451f3d4ad"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/share/cmake-4.4/Templates/CPack.GenericLicense.txt",
+          "size_bytes": 104,
+          "sha256": "3492bd63a25464006f25e47fdbce0d660d4e8b843ddbc08f916d803d243aef17"
+        },
+        {
+          "path": "cmake-4.4.5-windows-x86_64/doc/cmake/LICENSE.rst",
+          "size_bytes": 1526,
+          "sha256": "cd944d878806fee998ef3f88ca41ec060ae198bd8ba615e284f7d8d90c25593e"
+        }
+      ],
+      "kind": "portable-build-tool"
+    },
+    {
+      "component_id": "ninja",
+      "version": "1.13.2",
+      "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip",
+      "filename": "ninja-win.zip",
+      "sha256": "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65",
+      "size_bytes": 291570,
+      "expected_digest_source": "https://api.github.com/repos/ninja-build/ninja/releases/tags/v1.13.2",
+      "source_ref": "3441b633c2fe2c494e958780ba0f4227b1327634",
+      "source_url": "https://github.com/ninja-build/ninja/tree/3441b633c2fe2c494e958780ba0f4227b1327634",
+      "license_expression": "Apache-2.0",
+      "scope": "release-build-only-not-shipped",
+      "licenses": [
+        {
+          "source_url": "https://raw.githubusercontent.com/ninja-build/ninja/3441b633c2fe2c494e958780ba0f4227b1327634/COPYING",
+          "size_bytes": 11358,
+          "sha256": "eb7e9ab9690124c5c9f42bdc81383d886a3dede26345b6ed15bbad7caf81f7ea",
+          "local_evidence": "output/pws0801/native-rebuild/notices/Ninja-COPYING.txt"
+        }
+      ],
+      "kind": "portable-build-tool"
+    }
+  ],
+  "codec_inputs": [
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-lerc",
+      "version": "4.1.1-1",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+      "size_bytes": 312118,
+      "sha256": "c0afbf4832488d67030c6f313349cd814946c9a7bc3ae9fd54524825c9ca055d",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "17858084c0705229216468aabad2a2d906c0087f75b0c79b72d672f665045e31",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libdeflate",
+      "version": "1.25-1",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst",
+      "size_bytes": 93623,
+      "sha256": "47115edd02f6139a0b62ebb6a73aec9d893664905f72b98e87af5befdb7dc69d",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "b98e4c8021b7a9a1ad270dc3f61422ddc3e9861008789c831afd753f5cbb576a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+      "version": "3.2.0-1",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst",
+      "size_bytes": 791232,
+      "sha256": "7c001d00df557cfee969ad43d37b9c31ae22869e8aac4091a89dc3ae6d95e11d",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "aed8e731a0e62326023ebebe6e3830936298289d1d9e08d584b328c657aa0b44",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libwebp",
+      "version": "1.6.0-1",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+      "size_bytes": 623411,
+      "sha256": "34ff8396c403d484c8777ad49ad0fc06dfb94fadf6f14bcf84d50c45bc6fd17e",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "7669ea161adb081e9f3b4ff15a613dd22e6c05010287b21a0cd14ad7c68a548b",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-xz",
+      "version": "5.8.3-1",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst",
+      "size_bytes": 952999,
+      "sha256": "840af0192f4b67be09238e783249c78cc1672981e7d0acc5c67a6bd0b4bca0cb",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "d29ba7425155f3ee135d3e399d9e45033b02c0a3e0c2e1aeca864a89e75b621a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-zlib-ng-compat",
+      "version": "2.3.3-2",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst",
+      "size_bytes": 155061,
+      "sha256": "b3ca6b437fb154a0fa26652002cdda591498ee4a0e08d91cc653c3702d090f25",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "b8a36462b351869f52a1517c891cef6466115d06bd50b2fce4ba904a7a1bdc50",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-zstd",
+      "version": "1.5.7-2",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "size_bytes": 668277,
+      "sha256": "dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "97b4fe48e37ed32bc8a952c01737b6263dceb5a9c2c6f6b3a2def8e22f4e8b35",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+      "filename": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "kind": "reviewed-codec-build-input",
+      "scope": "headers-and-import-libraries-only; runtime files remain original closure"
+    }
+  ],
+  "keyring": {
+    "filename": "msys2-keyring-1~20260214-1-any.pkg.tar.zst",
+    "url": "https://mirror.msys2.org/msys/x86_64/msys2-keyring-1~20260214-1-any.pkg.tar.zst",
+    "size_bytes": 42159,
+    "sha256": "c93044188c49f6f75e6f75709017ffa9234c2bdd8fe7c6a4c47d62a9cd8bfb1f",
+    "public_key_path": "usr/share/pacman/keyrings/msys2.gpg",
+    "public_key_size_bytes": 54878,
+    "public_key_sha256": "79cc43bd8b8a4e8c952340adc0ae93d3ff8e50c40f244321cf58fa014282f4ea",
+    "required_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+  },
+  "configuration": {
+    "jbig": false,
+    "win32_io": true,
+    "tiff_cxx": false,
+    "dynamic_libraries": true,
+    "codecs_retained": [
+      "ccitt",
+      "packbits",
+      "lzw",
+      "thunder",
+      "next",
+      "logluv",
+      "mdi",
+      "jpeg",
+      "zlib",
+      "libdeflate",
+      "lerc",
+      "lzma",
+      "webp",
+      "zstd"
+    ],
+    "source_patches": [],
+    "heavy_build_concurrency": 2,
+    "source_date_epoch": 1786579200,
+    "linker_timestamp": "--no-insert-timestamp at link; binutils strip uses the same fixed SOURCE_DATE_EPOCH 1786579200 for COFF timestamp and recomputes the image checksum",
+    "strip": "binutils --strip-unneeded"
+  },
+  "expected_output": {
+    "filename": "libtiff-6.dll",
+    "size_bytes": 557070,
+    "sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+    "normal_imports": [
+      "api-ms-win-crt-convert-l1-1-0.dll",
+      "api-ms-win-crt-environment-l1-1-0.dll",
+      "api-ms-win-crt-heap-l1-1-0.dll",
+      "api-ms-win-crt-math-l1-1-0.dll",
+      "api-ms-win-crt-private-l1-1-0.dll",
+      "api-ms-win-crt-runtime-l1-1-0.dll",
+      "api-ms-win-crt-stdio-l1-1-0.dll",
+      "api-ms-win-crt-string-l1-1-0.dll",
+      "api-ms-win-crt-time-l1-1-0.dll",
+      "api-ms-win-crt-utility-l1-1-0.dll",
+      "kernel32.dll",
+      "libdeflate.dll",
+      "libjpeg-8.dll",
+      "liblerc.dll",
+      "liblzma-5.dll",
+      "libwebp-7.dll",
+      "libzstd.dll",
+      "zlib1.dll"
+    ],
+    "delay_imports": [],
+    "exports": [
+      "TIFFAccessTagMethods",
+      "TIFFCIELabToRGBInit",
+      "TIFFCIELabToXYZ",
+      "TIFFCheckTile",
+      "TIFFCheckpointDirectory",
+      "TIFFCleanup",
+      "TIFFClientOpen",
+      "TIFFClientOpenExt",
+      "TIFFClientdata",
+      "TIFFClose",
+      "TIFFComputeStrip",
+      "TIFFComputeTile",
+      "TIFFCreateCustomDirectory",
+      "TIFFCreateDirectory",
+      "TIFFCreateEXIFDirectory",
+      "TIFFCreateGPSDirectory",
+      "TIFFCurrentDirOffset",
+      "TIFFCurrentDirectory",
+      "TIFFCurrentRow",
+      "TIFFCurrentStrip",
+      "TIFFCurrentTile",
+      "TIFFDataWidth",
+      "TIFFDefaultStripSize",
+      "TIFFDefaultTileSize",
+      "TIFFDeferStrileArrayWriting",
+      "TIFFError",
+      "TIFFErrorExt",
+      "TIFFErrorExtR",
+      "TIFFFdOpen",
+      "TIFFFdOpenExt",
+      "TIFFFieldDataType",
+      "TIFFFieldIsAnonymous",
+      "TIFFFieldName",
+      "TIFFFieldPassCount",
+      "TIFFFieldReadCount",
+      "TIFFFieldSetGetCountSize",
+      "TIFFFieldSetGetSize",
+      "TIFFFieldTag",
+      "TIFFFieldWithName",
+      "TIFFFieldWithTag",
+      "TIFFFieldWriteCount",
+      "TIFFFileName",
+      "TIFFFileno",
+      "TIFFFindCODEC",
+      "TIFFFindField",
+      "TIFFFlush",
+      "TIFFFlushData",
+      "TIFFForceStrileArrayWriting",
+      "TIFFFreeDirectory",
+      "TIFFGetBitRevTable",
+      "TIFFGetClientInfo",
+      "TIFFGetCloseProc",
+      "TIFFGetConfiguredCODECs",
+      "TIFFGetField",
+      "TIFFGetFieldDefaulted",
+      "TIFFGetMapFileProc",
+      "TIFFGetMaxCompressionRatio",
+      "TIFFGetMode",
+      "TIFFGetReadProc",
+      "TIFFGetSeekProc",
+      "TIFFGetSizeProc",
+      "TIFFGetStrileByteCount",
+      "TIFFGetStrileByteCountWithErr",
+      "TIFFGetStrileOffset",
+      "TIFFGetStrileOffsetWithErr",
+      "TIFFGetTagListCount",
+      "TIFFGetTagListEntry",
+      "TIFFGetUnmapFileProc",
+      "TIFFGetVersion",
+      "TIFFGetWriteProc",
+      "TIFFIsBigEndian",
+      "TIFFIsBigTIFF",
+      "TIFFIsByteSwapped",
+      "TIFFIsCODECConfigured",
+      "TIFFIsMSB2LSB",
+      "TIFFIsTiled",
+      "TIFFIsUpSampled",
+      "TIFFLastDirectory",
+      "TIFFMergeFieldInfo",
+      "TIFFNumberOfDirectories",
+      "TIFFNumberOfStrips",
+      "TIFFNumberOfTiles",
+      "TIFFOpen",
+      "TIFFOpenExt",
+      "TIFFOpenOptionsAlloc",
+      "TIFFOpenOptionsFree",
+      "TIFFOpenOptionsSetErrorHandlerExtR",
+      "TIFFOpenOptionsSetMaxCumulatedMemAlloc",
+      "TIFFOpenOptionsSetMaxSingleMemAlloc",
+      "TIFFOpenOptionsSetWarnAboutUnknownTags",
+      "TIFFOpenOptionsSetWarningHandlerExtR",
+      "TIFFOpenW",
+      "TIFFOpenWExt",
+      "TIFFPrintDirectory",
+      "TIFFRGBAImageBegin",
+      "TIFFRGBAImageEnd",
+      "TIFFRGBAImageGet",
+      "TIFFRGBAImageOK",
+      "TIFFRasterScanlineSize",
+      "TIFFRasterScanlineSize64",
+      "TIFFRawStripSize",
+      "TIFFRawStripSize64",
+      "TIFFReadBufferSetup",
+      "TIFFReadCustomDirectory",
+      "TIFFReadDirectory",
+      "TIFFReadEXIFDirectory",
+      "TIFFReadEncodedStrip",
+      "TIFFReadEncodedTile",
+      "TIFFReadFromUserBuffer",
+      "TIFFReadGPSDirectory",
+      "TIFFReadRGBAImage",
+      "TIFFReadRGBAImageOriented",
+      "TIFFReadRGBAStrip",
+      "TIFFReadRGBAStripExt",
+      "TIFFReadRGBATile",
+      "TIFFReadRGBATileExt",
+      "TIFFReadRawStrip",
+      "TIFFReadRawTile",
+      "TIFFReadScanline",
+      "TIFFReadTile",
+      "TIFFRegisterCODEC",
+      "TIFFReverseBits",
+      "TIFFRewriteDirectory",
+      "TIFFScanlineSize",
+      "TIFFScanlineSize64",
+      "TIFFSetClientInfo",
+      "TIFFSetClientdata",
+      "TIFFSetCompressionScheme",
+      "TIFFSetDirectory",
+      "TIFFSetErrorHandler",
+      "TIFFSetErrorHandlerExt",
+      "TIFFSetField",
+      "TIFFSetFileName",
+      "TIFFSetFileno",
+      "TIFFSetMode",
+      "TIFFSetSubDirectory",
+      "TIFFSetTagExtender",
+      "TIFFSetWarningHandler",
+      "TIFFSetWarningHandlerExt",
+      "TIFFSetWriteOffset",
+      "TIFFSetupStrips",
+      "TIFFStripSize",
+      "TIFFStripSize64",
+      "TIFFSwabArrayOfDouble",
+      "TIFFSwabArrayOfFloat",
+      "TIFFSwabArrayOfLong",
+      "TIFFSwabArrayOfLong8",
+      "TIFFSwabArrayOfShort",
+      "TIFFSwabArrayOfTriples",
+      "TIFFSwabDouble",
+      "TIFFSwabFloat",
+      "TIFFSwabLong",
+      "TIFFSwabLong8",
+      "TIFFSwabShort",
+      "TIFFTileRowSize",
+      "TIFFTileRowSize64",
+      "TIFFTileSize",
+      "TIFFTileSize64",
+      "TIFFUnRegisterCODEC",
+      "TIFFUnlinkDirectory",
+      "TIFFUnsetField",
+      "TIFFVGetField",
+      "TIFFVGetFieldDefaulted",
+      "TIFFVSetField",
+      "TIFFVStripSize",
+      "TIFFVStripSize64",
+      "TIFFVTileSize",
+      "TIFFVTileSize64",
+      "TIFFWarning",
+      "TIFFWarningExt",
+      "TIFFWarningExtR",
+      "TIFFWriteBufferSetup",
+      "TIFFWriteCheck",
+      "TIFFWriteCustomDirectory",
+      "TIFFWriteDirectory",
+      "TIFFWriteEncodedStrip",
+      "TIFFWriteEncodedTile",
+      "TIFFWriteRawStrip",
+      "TIFFWriteRawTile",
+      "TIFFWriteScanline",
+      "TIFFWriteTile",
+      "TIFFXYZToRGB",
+      "TIFFYCbCrToRGBInit",
+      "TIFFYCbCrtoRGB",
+      "_TIFFAdd64",
+      "_TIFFAddSSize",
+      "_TIFFCastUInt64ToSSize",
+      "_TIFFCastUInt64ToUInt32",
+      "_TIFFCheckMalloc",
+      "_TIFFCheckRealloc",
+      "_TIFFClampDoubleToUInt32",
+      "_TIFFComputeBitOffset",
+      "_TIFFComputeRowOffset",
+      "_TIFFComputeRowSize64",
+      "_TIFFGetExifFields",
+      "_TIFFGetGpsFields",
+      "_TIFFMultiply32",
+      "_TIFFMultiply64",
+      "_TIFFMultiplySSize",
+      "_TIFFRewriteField",
+      "_TIFFfree",
+      "_TIFFmalloc",
+      "_TIFFmemcmp",
+      "_TIFFmemcpy",
+      "_TIFFmemset",
+      "_TIFFrealloc"
+    ],
+    "license_expression": "LicenseRef-PWS-LibTIFF-4.7.2-Notice",
+    "license_file": {
+      "path": "tiff-4.7.2/LICENSE.md",
+      "size_bytes": 2416,
+      "sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade"
+    },
+    "distribution_note": "The rebuilt library contains no JBIG implementation or libjbig import. Build tools are external build inputs only and are not part of the application payload; applicable MinGW/GCC runtime exceptions and startup-code notices remain inventoried separately.",
+    "coff_time_date_stamp": 1786579200
+  },
+  "verification_scope": {
+    "upstream_ctest": "All 18 configured upstream C API tests must pass.",
+    "native_api": "All 206 original export names retained; expected imports frozen; direct codec query proves JBIG disabled.",
+    "runtime_probe": "38-file/29-provider selective Tesseract closure: version, English availability, synthetic PNG OCR to text/hOCR, invalid-image rejection and immutable input/runtime checks.",
+    "limits": "No installer, Authenticode, full-worker isolation, performance, hardware or OCR-accuracy claim."
+  },
+  "primary_source_references": [
+    "https://raw.githubusercontent.com/msys2/MINGW-packages/14b74f53a76a732b920ecac30667cd0b91d3e7cd/mingw-w64-libtiff/PKGBUILD",
+    "https://gitlab.com/libtiff/libtiff/-/raw/v4.7.2/cmake/JBIGCodec.cmake",
+    "https://gitlab.com/libtiff/libtiff/-/raw/v4.7.2/cmake/WindowsSupport.cmake",
+    "https://gitlab.com/libtiff/libtiff/-/raw/v4.7.2/libtiff/CMakeLists.txt"
+  ],
+  "license_refs": [
+    {
+      "identifier": "LicenseRef-PWS-LibTIFF-4.7.2-Notice",
+      "name": "LibTIFF4.7.2 source LICENSE.md, including separate Berkeley LZW acknowledgement",
+      "text_source_url": "https://gitlab.com/libtiff/libtiff/-/raw/v4.7.2/LICENSE.md",
+      "size_bytes": 2416,
+      "sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade",
+      "text": "# LibTIFF license\n\nCopyright © 1988-1997 Sam Leffler\\\nCopyright © 1991-1997 Silicon Graphics, Inc.\n\nPermission to use, copy, modify, distribute, and sell this software and \nits documentation for any purpose is hereby granted without fee, provided\nthat (i) the above copyright notices and this permission notice appear in\nall copies of the software and related documentation, and (ii) the names of\nSam Leffler and Silicon Graphics may not be used in any advertising or\npublicity relating to the software without the specific, prior written\npermission of Sam Leffler and Silicon Graphics.\n\nTHE SOFTWARE IS PROVIDED \"AS-IS\" AND WITHOUT WARRANTY OF ANY KIND, \nEXPRESS, IMPLIED OR OTHERWISE, INCLUDING WITHOUT LIMITATION, ANY \nWARRANTY OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.  \n\nIN NO EVENT SHALL SAM LEFFLER OR SILICON GRAPHICS BE LIABLE FOR\nANY SPECIAL, INCIDENTAL, INDIRECT OR CONSEQUENTIAL DAMAGES OF ANY KIND,\nOR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,\nWHETHER OR NOT ADVISED OF THE POSSIBILITY OF DAMAGE, AND ON ANY THEORY OF \nLIABILITY, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE \nOF THIS SOFTWARE.\n\n# Lempel-Ziv & Welch Compression (tif_lzw.c) license\nThe code of tif_lzw.c is derived from the compress program whose code is\nderived from software contributed to Berkeley by James A. Woods,\nderived from original work by Spencer Thomas and Joseph Orost.\n\nThe original Berkeley copyright notice appears below in its entirety:\n\nCopyright (c) 1985, 1986 The Regents of the University of California.\nAll rights reserved.\n\nThis code is derived from software contributed to Berkeley by\nJames A. Woods, derived from original work by Spencer Thomas\nand Joseph Orost.\n\nRedistribution and use in source and binary forms are permitted\nprovided that the above copyright notice and this paragraph are\nduplicated in all such forms and that any documentation,\nadvertising materials, and other materials related to such\ndistribution and use acknowledge that the software was developed\nby the University of California, Berkeley.  The name of the\nUniversity may not be used to endorse or promote products derived\nfrom this software without specific prior written permission.\nTHIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR\nIMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED\nWARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.\n"
+    }
+  ]
+}

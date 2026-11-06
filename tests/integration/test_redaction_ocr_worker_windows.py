@@ -519,7 +519,7 @@ def test_native_regeneration_excludes_canaries_and_preserves_searchable_visible_
         expected.close()
         actual.close()
     assert list(scratch.iterdir()) == []
-    assert PERMANENT_REDACTION_ENABLED is False
+    assert PERMANENT_REDACTION_ENABLED is True
     case.assert_unchanged()
 
 

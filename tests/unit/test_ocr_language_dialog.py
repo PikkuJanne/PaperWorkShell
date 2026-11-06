@@ -181,7 +181,7 @@ def test_refresh_retains_missing_selection_and_focuses_remediation() -> None:
         assert _button(dialog, "ocrLanguageSaveButton").isEnabled()
 
 
-def test_failure_rejects_stale_result_and_focuses_safe_message() -> None:
+def test_failure_rejects_stale_result_and_focuses_refresh_recovery() -> None:
     failures: list[int] = []
     with _dialog() as dialog:
         dialog.refresh_requested.connect(failures.append)
@@ -194,7 +194,7 @@ def test_failure_rejects_stale_result_and_focuses_safe_message() -> None:
         error = dialog.findChild(QLabel, "ocrLanguageError")
         assert error is not None
         assert error.isVisible()
-        assert error.hasFocus()
+        assert _button(dialog, "ocrLanguageRefreshButton").hasFocus()
         assert error.text() == "OCR_INTERNAL_ERROR: Safe recovery message."
         assert _button(dialog, "ocrLanguageRefreshButton").isEnabled()
         assert not _button(dialog, "ocrLanguageSaveButton").isEnabled()

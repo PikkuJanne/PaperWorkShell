@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from enum import StrEnum
 
@@ -9,6 +10,7 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEvent,
     QEventLoop,
+    QLocale,
     Qt,
     QThread,
     QTimer,
@@ -16,6 +18,12 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QApplication
 
 from paperworkshell.domain.resource_policy import ResourcePolicy
+from paperworkshell.localization.catalog import (
+    LocalizationError,
+    configure_locale,
+    current_locale,
+    is_rtl,
+)
 from paperworkshell.ui.backend import (
     OrganizerBackendCommands,
     OrganizerBackendFactory,
@@ -24,6 +32,30 @@ from paperworkshell.ui.backend import (
 from paperworkshell.ui.window import PaperWorkShellWindow
 
 _FALLBACK_SHUTDOWN_WAIT_MS = 10_000
+
+
+def configure_ui_locale(application: QApplication, locale: str | None = None) -> str:
+    """Select packaged text and native widget direction once, before construction.
+
+    The optional environment override is also the developer entry point for the
+    two test locales. It never changes template identity or persisted numbers.
+    """
+    requested = locale if locale is not None else os.environ.get("PWS_UI_LOCALE")
+    try:
+        configure_locale(requested or QLocale.system().name())
+    except LocalizationError:
+        # An invalid override or the platform's special "C" locale cannot
+        # prevent startup or become a resource path.
+        configure_locale("en")
+    selected = current_locale()
+    native_locale = QLocale(
+        "ar" if selected == "ar-XB" else "en" if selected == "en-XA" else selected
+    )
+    QLocale.setDefault(native_locale)
+    application.setLayoutDirection(
+        Qt.LayoutDirection.RightToLeft if is_rtl() else Qt.LayoutDirection.LeftToRight
+    )
+    return selected
 
 
 class _ShutdownWaitOutcome(StrEnum):
@@ -85,6 +117,7 @@ def run_desktop_application(
 
     arguments = list(argv) if argv is not None else []
     application = QApplication(arguments)
+    configure_ui_locale(application)
     application.setApplicationDisplayName("PaperWorkShell")
     application.setApplicationName("PaperWorkShell")
     application.setOrganizationName("PaperWorkShell")

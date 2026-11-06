@@ -131,7 +131,7 @@ def test_window_exposes_distinct_action_and_excludes_overlapping_mutations_until
         _open(window, commands, worker, editor)
         button = window.findChild(QPushButton, "redactionToolsButton")
         assert button is not None
-        assert button.text() == "Permanently remove information…"
+        assert " ".join(button.text().split()) == "Permanently remove information…"
         assert button.accessibleName() == "Permanently remove information"
         assert "Save marks only" in button.accessibleDescription()
         assert not window._core_overlay_tools_button.isEnabled()

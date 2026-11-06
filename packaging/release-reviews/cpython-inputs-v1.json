@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-cpython-windows-x64",
+  "reviewed_on": "2026-11-03",
+  "artifacts": [
+    {
+      "name": "python-3.14.6-embed-amd64.zip",
+      "url": "https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip",
+      "size_bytes": 12570832,
+      "sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c"
+    },
+    {
+      "name": "Python-3.14.6.tar.xz",
+      "url": "https://www.python.org/ftp/python/3.14.6/Python-3.14.6.tar.xz",
+      "size_bytes": 23921184,
+      "sha256": "143b1dddefaec3bd2e21e3b839b34a2b7fb9842272883c576420d605e9f30c63"
+    }
+  ],
+  "upstream_sbom": {
+    "name": "python-3.14.6-embed-amd64.zip.spdx.json",
+    "url": "https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip.spdx.json",
+    "size_bytes": 15273,
+    "sha256": "dcf31bf28606b89b911f8031e5d83557d335a9256289831582673b164931e19c"
+  }
+}

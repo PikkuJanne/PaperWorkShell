@@ -13,6 +13,10 @@
 *.png binary
 *.tif binary
 *.tiff binary
+# Release notice hashes bind original upstream bytes, including encoding/newlines.
+packaging/licenses/release-*/** -text
 .gitignore text eol=lf
 .python-version text eol=lf
 uv.lock text eol=lf
+tests/fixtures/diagnostics/v1/allowlist.txt text eol=lf
+tests/fixtures/diagnostics/v1/support-sample.zip binary

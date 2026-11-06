@@ -18,8 +18,11 @@ silently omitting a component from the inventory.
   [`distribution-decision-bypass.json`](../../tests/fixtures/dependencies/v1/invalid/distribution-decision-bypass.json).
 - Direct Python requirements and their resolution are recorded in `pyproject.toml` and
   `uv.lock`. The inventory does not replace either file.
-- A Windows packaged-file inventory is required for a release. It is not yet produced by
-  `PWS-0005`; final reconciliation and SBOM generation belong to `PWS-0801`.
+- The separate
+  [`resolved-dependency-inventory-v1` contract](../../schemas/resolved-dependency-inventory-v1.schema.json)
+  records the exact Windows stage, consumed inputs, component/file owners and obligations.
+  [ADR 0017](../adr/0017-release-dependency-staging.md) defines its PWS-0801 scope;
+  [the task result](pws0801-result.md) records current verification and candidate provenance.
 
 The JSON Schema proves the bounded shape of an inventory. Repository validation additionally
 checks policy that JSON Schema cannot express safely, including unique component IDs, valid task
@@ -66,8 +69,8 @@ documents a possible or deferred edge; it is never permission to install or invo
 ### Resolved build or release inventory
 
 A resolved inventory describes one actual target build. The v1 contract identifies itself as a
-`policy-baseline`; it is not silently repurposed as a release schema. `PWS-0801` must define the
-versioned resolved-inventory or generated-evidence contract it needs. Before a release candidate is
+`policy-baseline`; it is not silently repurposed as a release schema. PWS-0801 uses the separate
+resolved-inventory v1 contract. Before a release candidate is
 accepted, that evidence resolves every baseline range, minor-line selection, minimum version,
 environment probe, null package URL, and representative hash that applies to the build to the exact
 consumed artifact. It records:
@@ -86,8 +89,12 @@ inventory supplies the files actually staged for Windows. Upstream release manif
 embedded components, but cannot substitute for inspection of the chosen artifacts. A release
 fails if these sources disagree or if a packaged file has no reviewed owner.
 
-PWS-0005 establishes the baseline format and rules. `PWS-0801` must generate the resolved release
-inventory, compare it with the package contents, and produce the final license and SBOM outputs.
+PWS-0005 establishes the baseline format and rules. The PWS-0801 assembly and freeze tools generate
+the resolved inventory, compare it with the actual stage and reopened package, and produce
+CycloneDX 1.6, SPDX 2.3 and notice sidecars. They fail closed on changed inputs or contents. The
+internal `0.0.0` dependency candidate is not a supported portable installation or public release.
+Installer identity, signing, final product terms and clean prerequisite installation remain
+PWS-0802 work; later candidates must regenerate evidence for their actual files.
 
 ## Admission states and packaging state
 
@@ -165,8 +172,9 @@ An upgrade repeats the admission review; a version bump is not a clerical lockfi
   immutable release evidence.
 
 Emergency security work may shorten scheduling but may not bypass source, hash, license,
-distribution, worker-boundary, or regression review. The formal emergency release process is a
-`PWS-0801` deliverable.
+distribution, worker-boundary, or regression review. Follow the
+[emergency dependency security-update policy](emergency-security-updates.md), established by
+PWS-0801. The policy does not claim that signing or authenticated updates are implemented.
 
 ## Pinning, sources, and hashes
 
@@ -325,13 +333,26 @@ pikepdf/qpdf load and process untrusted PDFs only in the worker. Application and
 receive third-party objects or raw exceptions. Structural checking through an executable uses a
 fixed reviewed path and argument array, never ambient discovery or a shell string.
 
-These components are admitted for development and worker integration, but pikepdf, Pillow, lxml,
-and packaging remain `planned` release inputs. The selected lxml wheel contains
-`RNG2Schtrn.xsl` and `XSD2Schtrn.xsl`, which its own license inventory labels unlicensed. That does
-not block PWS-0105 development, but unresolved redistribution rights are a PWS-0801 release
-blocker: lxml and therefore pikepdf must not be marked `bundled` or `shipped` until maintainer or
-legal review closes the issue. PWS-0801 must also reconcile every qpdf/Pillow codec and runtime
-file, stage all licenses and notices, and generate the final SBOM and packaged-file inventory.
+The policy baseline retains its historical `planned` shipment facts. The current resolved stage
+uses an explicitly reviewed subset. On 2026-11-03 the maintainer approved omission of exactly
+`RNG2Schtrn.xsl` and `XSD2Schtrn.xsl`, which the selected lxml wheel labels unlicensed; the
+[approval record](../../packaging/release-reviews/lxml-exclusions-v1.json) binds their exact paths
+and hashes. This grants no rights to those resources. The
+[corresponding-source review](../../packaging/release-reviews/lxml-source-subset-v1.json) and
+`tools/stage_lxml_source.py` omit the same two contents from the redistributed source artifact,
+preserve all remaining source-file bytes, and distinguish source LF from wheel CRLF hashes.
+The original sdist remains an audited input outside the distributed source subset. A future wheel,
+broader omission or change of use requires a fresh review.
+
+Canonical Microsoft VC runtime DLLs are omitted from the stage and supplied by a separately
+Microsoft-installed external runtime. Its end-user agreement is not a redistribution grant.
+The exact hash-renamed C++ runtime DLL in pikepdf is retained under pikepdf's explicit downstream
+distribution route with the full applicable Microsoft terms; that route does not authorize copying
+canonical Qt/CPython runtime files. The
+[native review](../../packaging/release-reviews/native-components-v1.json) records both routes.
+Protective distributor/end-user terms and clean prerequisite installation remain PWS-0802
+qualifications. Every qpdf/Pillow codec, runtime object, notice and source obligation still belongs
+in the resolved inventory, independently of a top-level wheel licence label.
 
 ### Overlay PDF and font stack
 
@@ -394,12 +415,27 @@ Acquisition must validate the signature with the reviewed MSYS2 keyring and expe
 fingerprint `5F944B027F7FE2091985AA2EFA11531AA0AA7F57` before extraction. A digest alone does not
 substitute for that signature verification.
 
-PaperWorkShell does not install or stage the complete repository packages. The machine-readable
+PaperWorkShell does not install or stage the complete repository packages. The historical
 [`packaging/tesseract-runtime-closure-v1.json`](../../packaging/tesseract-runtime-closure-v1.json)
 records the recursive PE import closure selected from 30 exact signed packages: one executable,
 34 DLLs, three output configs, and the English model, 39 files and 27,588,734 bytes in total. Each
-entry binds its safe relative path, byte size, SHA-256, and owning package. Before granting access
-or launching Tesseract, packaging/runtime validation must reject missing files, extra files,
+entry binds its safe relative path, byte size, SHA-256, and owning package. It remains unchanged
+for accepted PWS-0204 evidence and the historical redistribution audit; production no longer admits
+that JBIG-dependent profile.
+
+Production uses the separately fingerprinted
+[`tesseract-runtime-closure-v2.json`](../../packaging/tesseract-runtime-closure-v2.json): 38 files
+from 28 signed vendor packages and one source-built provider. PWS-0801 rebuilds libtiff 4.7.2 with
+JBIG disabled, preserving the other selected codec imports and Windows I/O. The
+[frozen recipe](../../packaging/libtiff-no-jbig-build-v1.json) binds the exact source and 19 build
+inputs; the new DLL is not MSYS2-signed. The
+[selected static-support review](../../packaging/release-reviews/libtiff-build-support-v1.json)
+records the actual GCC exception and MinGW startup objects, full terms and corresponding source.
+The [external build-tool review](../../packaging/release-reviews/native-build-tool-components-v1.json)
+records the unshipped compiler/CMake/Ninja inputs separately. Private use of those build tools
+does not transfer their aggregate archive licence labels to the application.
+
+Before granting access or launching Tesseract, packaging/runtime validation rejects missing files, extra files,
 reparse points, case-colliding names, and any size or digest mismatch. The executable is exactly
 `bin/tesseract.exe`; `TESSDATA_PREFIX` is exactly `share/tessdata`. Training tools, headers,
 libraries not reached by the selected executable, and all other package files are excluded.
@@ -411,12 +447,14 @@ in 2023; a 2026 timestamp made with that expired signer does not establish a val
 signature. A locally installed executable or any alternative distribution remains only capability
 evidence, not an approved runtime input.
 
-The native file identity and launch closure are admitted for PWS-0204 integration. Shipment remains
-`planned`: PWS-0801 must reconcile the exact licenses and notices for all 30 native packages,
-provide applicable corresponding source/relinking material, and map every staged file into the
-release inventory and SBOM. The Python closure has the same shipment gate, including OCRmyPDF's
-embedded fonts/ICC profile and pi-heif's native MinGW/libheif/libde265 notice closure. These are
-release-package obligations, not permission to weaken the closed worker runtime.
+The historical baseline shipment state remains `planned`; the resolved stage supplies its own
+current file, licence, source/replacement and SBOM evidence. OCRmyPDF's fonts and ICC profile are
+separate components. The complete unused `pi-heif` package and its native HEIF closure are excluded
+under the [runtime-omissions review](../../packaging/release-reviews/runtime-omissions-v1.json).
+The lock retains the upstream resolution; OCRmyPDF's existing optional-import fallback supports
+the selected PDF/JPEG/PNG path without modifying its source. A partial HEIF installation is not
+allowed. None of these staging choices weakens the closed worker runtime or grants runtime
+network access.
 
 ### OCR language data
 
@@ -516,12 +554,30 @@ SBOM, a declared shipped component absent from the package without explanation, 
 an unresolved license route, or an unapproved distribution-changing component. SBOM generation
 does not authorize a dependency; it reports components already admitted through this policy.
 
+The [PWS-0801 result](pws0801-result.md) retains the original JBIG/lxml audit and records the
+replacement closure and approved omission. The old audit still correctly rejects runtime v1;
+it is not a validator for the new stage. `tools.build_dependency_stage` assembles authenticated
+explicit inputs, and `tools.release_evidence validate` reconciles current review fingerprints,
+input identities, obligations and actual files before `freeze` writes matching sidecars and a
+deterministic reopened ZIP. The [packaging guide](../../packaging/README.md#reproduce-the-internal-dependency-stage)
+gives the exact commands. A dirty worktree is identified by its exact application source snapshot
+and reviewed tooling/input hashes; HEAD alone is not complete provenance. Final candidate hashes
+belong in the release evidence index only after this verification passes.
+
+The original upstream notice bytes include public author and licence contacts. Their exact
+reviewed hashes and provenance are retained in
+`packaging/release-reviews/upstream-attribution-privacy-v1.json`. Repository privacy validation
+recognizes only those immutable blobs for email attribution; document fixtures, altered notices,
+other personal-data patterns and unapproved document identities retain their strict checks.
+See the [quality boundary](quality-gates.md#synthetic-fixture-validation).
+
 ## Verification
 
 Run the repository-defined commands rather than one-off validators:
 
 ```powershell
 py -3.14 tools/dev.py validate-dependencies
+py -3.14 tools/dev.py validate-release-inventory
 py -3.14 tools/dev.py validate-schemas
 py -3.14 tools/dev.py validate-docs
 py -3.14 tools/dev.py check

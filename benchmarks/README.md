@@ -136,6 +136,11 @@ Durations are observations, not heterogeneous-machine performance gates.
 and exact pypdfium2/PDFium and Qt PDF identities. It is a record-only selection workload, not a
 product latency target.
 
+PWS-0601 refreshed only the current workload's fixture-index hash after adding redaction sources.
+Its selected fixtures, goldens, policies, and expected pixel outputs are unchanged. Historical
+benchmark evidence remains tied to the workload and index hashes recorded for its original run;
+this binding update adds no performance measurements or claims and does not rerun the comparison.
+
 Validate every workload, fixture, golden, artifact, and outcome binding without loading
 either native renderer:
 

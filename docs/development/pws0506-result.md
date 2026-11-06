@@ -1,7 +1,7 @@
 # Task result — PWS-0506: conservative portal profile and compatibility matrix
 
-**Status:** review. Implementation and automated verification are complete; the
-required exact-output desktop and Android reader observations are pending.
+**Status:** done, 2026-10-16. Implementation, automated verification and the required
+exact-output desktop and Android human reader observations are complete.
 
 [Windows CI run 36979077905](https://github.com/PikkuJanne/PaperWorkShell/actions/runs/36979077905)
 passed at `480053ba3d116c9ebde5b97d21466f6d88d8e136`: 5,557 unit, 733 security,
@@ -149,6 +149,40 @@ The 22 local constraint tests include actual size/file/page boundaries, invalid
 mode/extension/encryption observations, safe filenames, CRC and exact members.
 No real portal was contacted or accepted an upload.
 
+### Human reader acceptance and closure verification — 2026-10-16
+
+The maintainer confirmed human testing complete. All five saved version-1 attempts
+identify a human operator and pass all six required closed observation groups.
+The [tracked matrix](../compatibility/pws-0506-portal-matrix.md) records exact viewer
+and OS versions, UTC timestamps and attempt hashes for Adobe Reader/free mode,
+Edge, Chrome, Firefox and Adobe Acrobat Reader for Android. Each attempt binds
+the unchanged evidence SHA-256 above and the same seven pinned artifacts.
+
+`uv run --locked --no-sync python -m tools.pws0506_portal_compatibility status`
+validated current implementation provenance, artifact hashes, all 22 local
+constraint checks and all five latest human attempts. It reported five `PASS`
+results and `MATRIX READY FOR REVIEW`. The initial `NOT RUN` preparation snapshot
+and every artifact remain unchanged; the separate attempts record completion.
+
+For this documentation/task-state closure, commands below use
+`uv run --locked --no-sync`:
+
+| Command | Observed result |
+|---|---|
+| `python tools/dev.py format-check` | Passed; 664 files already formatted. |
+| `python tools/dev.py lint` | Passed. |
+| `python tools/dev.py typecheck` | Passed; 664 source files. |
+| `python -m pytest -q tests/unit/test_pws0506_portal_compatibility.py --tb=short` | 16 passed in 4.54 seconds, including artifact tampering, stale bindings, forged records and latest-failure rejection. |
+| `python tools/dev.py validate-schemas` | Passed; all registered schema/instance validators. |
+| `python tools/dev.py validate-task-graph` | Passed; 82 tasks, 243 dependencies, nine milestones and 42 decisions. |
+| `python tools/dev.py validate-docs` | Passed; local links, references and security traceability. |
+| `python tools/dev.py validate-portfolio-boundary` | Passed; 37 canonical bundle files and the updated readiness summary. |
+| `git diff --check` | Passed. |
+
+The successful full Windows CI remains the implementation acceptance evidence.
+Closure changes documentation, task state and bundle metadata only; product code,
+tests, locked engines and accepted artifacts are unchanged.
+
 ## Security/privacy/accessibility notes
 
 Untrusted PDF parsing remains worker-owned; new policy checks use bounded traversal
@@ -164,24 +198,22 @@ documents retain their unproved `TBD` facts and make no new compatibility claim.
 
 ## Residual risks or deferrals
 
-All five manual reader slots remain NOT RUN. Adobe Reader launched but showed a
-Windows Font Capture application error before any corpus PDF was opened. Permission
-to inspect that system dialog and a later Chrome launch timed out. No reader pass
-was inferred. Edge/Firefox and Android observations remain pending; no Android device
-or permitted remote test portal was supplied during implementation.
+No required reader observation remains pending. Earlier Adobe launch and Chrome
+inspection problems during implementation did not produce qualifying results;
+the completed human attempts now provide the required observations.
 
-The single guided command in the compatibility matrix prepares or resumes the
-same exact artifacts and records only unfinished slots. No repeat of accepted
-PWS-0307 evidence is requested. Source-font substitution, unsupported static
-features and recipient-specific rules remain explicit limitations. Native policy
-failures keep the existing sanitized worker error; recovery guidance is documented.
+No permitted remote test portal was established; remote upload remains optional
+and NOT RUN. Local constraint checks and reader observations do not establish portal
+acceptance. Source-font substitution, unsupported static features and
+recipient-specific rules remain explicit limitations. Native policy failures keep
+the existing sanitized worker error; recovery guidance is documented. No repeat of
+accepted PWS-0307 evidence is requested.
 
 ## Task graph
 
-PWS-0506 is in review because the named reader observations remain pending despite
-successful automated acceptance. PWS-0507 remains planned. There is no
-dependency-ready task in the current milestone while PWS-0506 awaits acceptance.
-After its reader evidence is accepted, the next task is PWS-0507.
+PWS-0506 is done after acceptance of the complete exact-output human reader matrix.
+All PWS-0507 dependencies are done; PWS-0507 is marked ready and is the next task.
+The M5 gate itself remains unperformed.
 
 ## Changed files
 

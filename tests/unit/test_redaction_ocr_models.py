@@ -40,7 +40,7 @@ def test_current_roundtrip_and_legacy_reconstruction_are_independent() -> None:
         RedactionOcrRequest.from_record(value.reconstruction.to_record())
     with pytest.raises(PdfExportError):
         RedactionOcrReport.from_record(result.reconstruction.to_record())
-    assert not PERMANENT_REDACTION_ENABLED
+    assert PERMANENT_REDACTION_ENABLED is True
 
 
 @pytest.mark.parametrize("version", [0, 2, True, "1"])

@@ -1,0 +1,15 @@
+Rust standard-library source attribution for Windows MSVC
+Exact Rust source commit: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+This notice records the applicable in-tree copyright declarations. It does not claim every source object is linked into the parent extension.
+The Rust Project Developers (see https://thanks.rust-lang.org): MIT OR Apache-2.0
+library/backtrace
+Apache-2.0 OR MIT
+2014 Alex Crichton
+The Rust Project Developers (see https://thanks.rust-lang.org)
+library/core/src/unicode/unicode_data.rs
+Unicode-3.0
+1991-2024 Unicode, Inc
+library/std/src/sync/mpmc
+Apache-2.0 OR MIT
+2019 The Crossbeam Project Developers
+The Rust Project Developers (see https://thanks.rust-lang.org)

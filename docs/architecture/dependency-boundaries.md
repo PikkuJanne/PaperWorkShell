@@ -10,7 +10,8 @@
   PWS-0202 non-destructive image transformations; PWS-0204 bounded local OCR; PWS-0206
   verified searchable mixed-document output; PWS-0301 normalized page coordinates; PWS-0302
   visual overlay intent; PWS-0303 deterministic overlay-page rendering; PWS-0401 safe
-  declarative template loading; and PWS-0407 verified combined, multi-PDF, and ZIP package export
+  declarative template loading; PWS-0407 verified combined, multi-PDF, and ZIP package export;
+  and PWS-0704 offline presentation localization
 - Decisions: PWS-D002, PWS-D010, PWS-D011, PWS-D012, PWS-D013, PWS-D014, PWS-D015, PWS-D016, PWS-D017, PWS-D018, PWS-D027, PWS-D028, PWS-D036, PWS-D038, PWS-D039
 
 ## Purpose
@@ -45,12 +46,13 @@ worker host -> domain
 | `templates` | Path-free, standard-library-only declarative template decoding, exact version/schema/semantic/lifecycle validation, immutable snapshots, and user-ready provenance/trust presentation; see the [safe declarative template-loading contract](template-loading.md) |
 | `storage` | Authenticated case workspaces, local lifecycle, bounded external/committed-source and local-template leases, immutable ingest/integrity, disposable thumbnail caching, no-replace derivative/package staging and publication, and atomic persistence; implemented contracts are documented in [Secure case-workspace contract](case-workspace.md), [Local case-lifecycle contract](case-lifecycle.md), [Bounded import-precheck contract](import-prechecks.md), [Immutable source-ingest contract](immutable-ingest.md), [Atomic manifest repository and autosave contract](manifest-repository.md), [Bounded PDF-thumbnail contract](pdf-thumbnails.md), [Deterministic verified PDF-export contract](pdf-export.md), [Verified package export](package-export.md), and [Safe declarative template-loading contract](template-loading.md) |
 | `diagnostics` | Closed, content-free records, canonical structured logging, and deterministic safe summary rendering; PWS-0805 owns later preview/confirmation/bundle writing |
+| `localization` | Standard-library-only packaged language resources, validated named interpolation, and deterministic number/date/IEC-size presentation. No document, storage, UI, worker, or other product-layer imports |
 
 ## Enforced import rules
 
 `tools/check_import_boundaries.py` parses source files without importing them and applies these rules:
 
-1. `domain` may import only Python standard-library modules, the root identity package, and `paperworkshell.domain` modules. All other first- and third-party imports are rejected.
+1. `domain` may import only Python standard-library modules, the root identity package, and `paperworkshell.domain` modules, plus the exact `paperworkshell.localization.catalog` module for deferred text marking and existing display-only renderers. That exception does not permit sibling localization modules, UI, document engines, or any change to canonical model values. All other first- and third-party imports are rejected.
 2. UI direction is `paperworkshell.__main__` → `ui` → `app`; `app` cannot import either higher tier, and `ui` cannot import the composition entrypoint. All three must not directly import `paperworkshell.pdf`, `paperworkshell.imaging`, or `paperworkshell.ocr`. They may import the passive `worker` namespace and explicit `worker.client` or `worker.protocol` modules, but not worker-host modules. One exact worker-composition exception permits only `paperworkshell.__main__` to import `paperworkshell.worker.desktop_composition`; that GUI-loaded client composition may not import document adapters transitively. Exact publication/presentation exceptions permit that same root to import `paperworkshell.export.pdf_destination`, `paperworkshell.export.package_service`, and `paperworkshell.export.package_summary`; these exceptions never grant application or UI modules general implementation access or admit descendants of those exact module names.
 3. Worker, adapter, and service packages must not import `paperworkshell.app` or `paperworkshell.ui`; dependency direction never points back toward UI-facing code. GUI-safe `worker.client` and `worker.protocol` modules cannot import worker-host, document-adapter, or export-implementation modules. PDF, imaging, and OCR adapters must not import any part of the worker package.
 4. Only the declared package layers are accepted. Adding another top-level layer requires updating this document, the checker, and positive/negative tests in the task that introduces it.
@@ -86,6 +88,21 @@ worker host -> domain
    networking, subprocess control, filesystem path APIs, or Python's general-purpose logging
    framework. Application composition may emit already validated diagnostic records through a
    structural sink; that does not reverse the dependency direction.
+9. `localization` may import only the standard library, the root identity package, and its own
+   modules. Its fixed packaged JSON resource reader cannot select a user path or process a case,
+   PDF, image, OCR result, or template document. Catalog locale/direction/formatting metadata and
+   source-to-translation strings have a versioned, bounded admission contract. Package
+   initializers remain passive; callers import `localization.catalog` explicitly. The checker
+   rejects outgoing edges to domain, UI, storage, and every other product layer, as well as Qt
+   and document-engine imports.
+
+PWS-0704 changes presentation only: `mark` keeps deferred backend vocabulary canonical, `tr`
+resolves approved application text at display time, and numeric/date/size formatters do not
+rewrite persisted values. Locale selection happens before desktop widgets and the backend
+thread start. Template identities, locale/version fields, schema checks, checksums, constraints,
+manifest values, worker RPC, document coordinates, filenames and user-entered content retain
+their existing contracts. The [localization contract](../development/localization.md) describes
+translation resources, fallback, pseudo-localization, and RTL preparation.
 
 Imports inside `TYPE_CHECKING`, conditional blocks, or exception handlers still count: a prohibited dependency is an architectural violation even when a particular execution path does not currently load it. Relative and absolute imports are normalized before comparison.
 
@@ -328,5 +345,16 @@ metadata and SHA-256 computation; it imports no native engine. Concrete stage cr
 handle reduction, worker-private source copying, rendering, and publication stay behind their
 existing private/platform boundaries. The full split is specified in the
 [bounded PDF-thumbnail service contract](pdf-thumbnails.md).
+
+PWS-0608 adds the exact `__main__` → `worker.redaction_export_composition` client
+composition seam for the explicitly reviewed removal-export action. This module
+constructs a restricted `WorkerClient`, admitted runtime resources and an opaque
+candidate broker; it does not parse documents. Application/UI modules still
+cannot import it, its submodules, worker hosts, or document adapters. Both named
+desktop client composition modules are now explicitly forbidden from importing
+PDF/image/OCR adapters or export implementations. Positive factory-import and
+negative app/UI/submodule/adapter tests enforce the exact edge. Runtime method
+and release-qualification scopes are documented in
+[ADR 0015](../adr/0015-redaction-runtime-and-release-qualification.md).
 
 If a future task needs a new cross-package edge, that task must show why the edge preserves the frozen architecture, update this document and the executable policy together, and add a positive and negative boundary test. It must not suppress an individual import violation.

@@ -166,10 +166,10 @@ def test_each_review_state_has_closed_content_free_text(state: RedactionMarkStat
 
 
 @pytest.mark.parametrize("target", list(RedactionMarkState))
-def test_unapplied_state_can_never_be_promoted_while_gate_is_closed(
+def test_unapplied_state_can_never_be_promoted_even_in_approved_build(
     target: RedactionMarkState,
 ) -> None:
-    assert PERMANENT_REDACTION_ENABLED is False
+    assert PERMANENT_REDACTION_ENABLED is True
     if target is RedactionMarkState.UNAPPLIED:
         assert transition_redaction_state(RedactionMarkState.UNAPPLIED, target) is target
     else:

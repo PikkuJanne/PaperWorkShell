@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Register version | 0.3.0 |
+| Register version | 0.4.0 |
 | Status | **Frozen** |
 | Effective date | 2026-07-14 |
-| Last amended | 2026-08-14 |
+| Last amended | 2026-11-04 |
 | Applies to | Product scope, architecture, security, release gates, and terminology |
 
 A frozen decision is binding on implementation and planning until the maintainer explicitly approves a replacement. A technical obstacle is not permission to bypass a decision. Changes use the procedure at the end of this file and must update `ROADMAP.md`, `TASKS.yaml`, and affected prompts or schemas in the same change.
@@ -25,7 +25,7 @@ Status vocabulary:
 | PWS-D001 | Product name is PaperWorkShell |
 | PWS-D002 | Product is a guided packet builder, not a general PDF editor |
 | PWS-D003 | Roadmap is dependency-based and gate-driven |
-| PWS-D004 | Windows-first desktop delivery |
+| PWS-D004 | Windows-first desktop delivery — historical, superseded by PWS-D043 |
 | PWS-D005 | Offline-first, no account, no required service |
 | PWS-D006 | Generic portal application is the first workflow |
 | PWS-D007 | v0.1 inputs are PDF, JPEG, and PNG |
@@ -64,6 +64,7 @@ Status vocabulary:
 | PWS-D040 | v0.1 ends at M4; v1.0 requires all release gates |
 | PWS-D041 | Low-resource compatibility is enforced through bounded architecture and automated resource budgets |
 | PWS-D042 | PaperWorkShell remains standalone and ThirdLife portfolio assembly is late-bound |
+| PWS-D043 | Windows 11 x64-only product and release scope |
 
 ---
 
@@ -95,11 +96,13 @@ Status vocabulary:
 
 ## PWS-D004 — Windows-first desktop delivery
 
-**Status:** FROZEN (low-resource evidence consequence amended by `PWS-D041`)
+**Status:** SUPERSEDED for current platform scope by `PWS-D043` on 2026-11-04. The original Windows-first decision and its `PWS-D041` low-resource amendment remain below as historical records.
 
 **Decision:** The first supported distribution target is a Windows desktop application. Architecture remains portable, but macOS and Linux packaging do not block v0.1.
 
 **Consequences:** Windows path behavior, signing, installer behavior, NVDA, display scaling, and low-resource behavior are first-class engineering targets. Platform-specific code stays behind adapters. `PWS-D041` replaces only the former mandatory physical-hardware interpretation of low-resource evidence; Windows-first delivery itself is unchanged.
+
+**Supersession:** The retained wording above is not a current commitment to other operating systems or architectures. The explicit maintainer-approved replacement is `PWS-D043`, documented in [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md). No historical platform plan or missing test is relabeled as a pass.
 
 ## PWS-D005 — Offline-first, no account, no required service
 
@@ -408,6 +411,18 @@ Future ThirdLife Deployment and Suite Assembly work may consume only an exact fr
 PaperWorkShell publishes a versioned human-readable `docs/release/RELEASE_INTERFACE.md` and a matching `docs/release/RELEASE_EVIDENCE.md` for preview and stable candidates. These documents describe an exact release and are not a shared runtime schema or an application API. PaperWorkShell owns its case migrations and rollback behavior. A future ThirdLife release may keep catalogue, installation, compatibility, and its own support metadata, but it does not read or index PaperWorkShell documents, OCR text, overlays, signatures, redaction state, private manifests, or case records. Removing or disabling a future adapter must leave the complete normal PaperWorkShell path available.
 
 **Consequences:** The PaperWorkShell task graph remains project-local, and composite portfolio journeys or future adapter ideas are non-gating observations rather than dependencies. PaperWorkShell versions and releases independently and does not wait for ThirdLife adoption. No ThirdLife compatibility claim exists until a future B4 compatibility cut tests an exact frozen release. Release documents keep unknown facts as `TBD` or state “not supported” with a reason until real packaged-build evidence exists. A change to the PaperWorkShell **Owns** or **Does not own** boundary requires an explicit maintainer-approved portfolio-alignment decision rather than an incidental task edit. Existing decisions PWS-D001–PWS-D041 remain in force; this decision specializes PWS-D003, PWS-D005, PWS-D008, PWS-D010, PWS-D027, PWS-D028, PWS-D033, PWS-D036, PWS-D039, and PWS-D040 for the late-binding portfolio boundary. The accepted rationale and source mapping are recorded in `docs/adr/0008-thirdlife-late-binding-portfolio.md`.
+
+---
+
+## PWS-D043 — Windows 11 x64-only product and release scope
+
+**Status:** FROZEN; explicitly approved by the maintainer on 2026-11-04. Replaces `PWS-D004` for current platform scope.
+
+**Decision:** PaperWorkShell's application, packaging, update and required project-qualification target is **Windows 11 on x86-64 (x64)**. Native ARM64 and x64 emulation on ARM64 are outside project scope. An ARM64 build, test environment, qualification result or future ARM task is not a prerequisite for `PWS-0802`, `PWS-0803`, an M8 gate or public release. Other operating systems are outside the current supported application target; portable internal boundaries create no additional platform commitment.
+
+**Consequences:** Exact supported editions and builds within Windows 11 x64 still require release-grade evidence. Scope selection does not grant a test pass, trusted signature, public-release approval or universal accessibility claim. Earlier ARM plans, unrun cells and immutable R7 artifacts remain historical records, not completed or deferred requirements. There is no new mandatory ARM task. Accepted exported-document reader observations remain evidence about those files, not another supported PaperWorkShell application platform.
+
+Security, privacy, accessibility, licensing, bounded-resource behavior under `PWS-D041`, case ownership and independent standalone operation under `PWS-D042` remain unchanged. No case, template or RPC schema migration is introduced. The rationale, supersession, affected surfaces and rollback procedure are recorded in [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md).
 
 ---
 

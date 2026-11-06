@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -31,6 +31,7 @@ from tools.dev import (
     _SecretScanEnumerationBudget,
     _trusted_gitleaks_config,
     _uncovered_index_scan_inputs,
+    inspect_repository_contents,
     scan_repository,
 )
 from tools.quality_self_test import _secret_violation
@@ -556,6 +557,384 @@ class SecretScanningSecurityTests(unittest.TestCase):
         )
         self.assertEqual([("c" * 40, 11), ("d" * 40, 30)], uncovered_blobs)
 
+    def test_identical_index_work_fits_item_limit_and_keeps_full_coverage_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _initialize_repository(root)
+            # Two committed files: 2 refs + 2 historical paths + 2 blobs +
+            # 1 commit + 2 working files = 9 distinct scan items. Counting the
+            # identical index paths again made this bounded repository need 11.
+            with patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 10):
+                inspected: list[bytes] = []
+                summary = inspect_repository_contents(root, inspected.append)
+                self.assertEqual(2, summary.index_blob_count)
+                self.assertEqual(2, summary.tracked_count)
+                self.assertIn(b"baseline.txt", inspected)
+                self.assertIn(b"synthetic baseline\n", inspected)
+                self.assertEqual(2, inspected.count(b"baseline.txt"))
+                self.assertEqual(2, inspected.count(b"synthetic baseline\n"))
+                with (
+                    patch("tools.dev._gitleaks_executable", return_value="synthetic-scanner"),
+                    patch("tools.dev._scan_mirror"),
+                    patch("tools.dev._SecretScanBatcher.flush"),
+                    redirect_stdout(io.StringIO()),
+                    redirect_stderr(io.StringIO()),
+                ):
+                    self.assertEqual(0, scan_repository(root))
+
+            # Unique work still fails against the same limit, before a scanner
+            # can start. No input or budget category is exempted.
+            with (
+                patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 8),
+                self.assertRaises(SecretScanError) as overflow,
+            ):
+                inspect_repository_contents(root, lambda _content: None)
+            self.assertEqual("SECRET_SCAN_INPUT_TOO_LARGE", overflow.exception.code)
+
+    def test_index_reuse_retains_staged_rename_aliases_and_dirty_working_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = _initialize_repository(root)
+            renamed = Path("node_modules/renamed.tf")
+            (root / renamed.parent).mkdir()
+            moved = subprocess.run(
+                (git, "mv", "baseline.txt", renamed.as_posix()),
+                cwd=root,
+                check=False,
+                shell=False,
+                capture_output=True,
+            )
+            self.assertEqual(0, moved.returncode)
+            dirty = b"synthetic dirty working bytes\n"
+            (root / renamed).write_bytes(dirty)
+            mirrors: list[tuple[str, bytes]] = []
+
+            def observe(
+                _gitleaks: str,
+                _trusted_ignore: Path,
+                mirror_root: Path,
+                _target: Path,
+                _source_label: str,
+                _budget: _SecretScanEnumerationBudget,
+            ) -> None:
+                mirrors.extend(
+                    (target.name, target.read_bytes())
+                    for target in mirror_root.rglob("*")
+                    if target.is_file()
+                )
+
+            with (
+                patch("tools.dev._gitleaks_executable", return_value="synthetic-scanner"),
+                patch("tools.dev._scan_mirror", side_effect=observe),
+                patch("tools.dev._SecretScanBatcher.flush"),
+                redirect_stdout(io.StringIO()),
+                redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(0, scan_repository(root))
+            for payload in (b"synthetic baseline\n", dirty):
+                self.assertIn(("pws-rule.tf", dev_tools.RAW_SCAN_SENTINEL + payload), mirrors)
+            inspected: list[bytes] = []
+            summary = inspect_repository_contents(root, inspected.append)
+            self.assertEqual(2, summary.index_blob_count)
+            self.assertIn(renamed.as_posix().encode(), inspected)
+            self.assertIn(dirty, inspected)
+
+    def test_exact_index_reuse_does_not_hide_working_mutation(self) -> None:
+        for mode in ("callback", "scanner"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _initialize_repository(root)
+                mutated = False
+
+                def mutate(_root: Path = root) -> None:
+                    nonlocal mutated
+                    if not mutated:
+                        mutated = True
+                        (_root / "baseline.txt").write_bytes(b"synthetic changed after snapshot\n")
+
+                def inspect(_content: bytes) -> None:
+                    mutate()
+
+                with patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 10):
+                    if mode == "callback":
+                        with self.assertRaises(SecretScanError) as changed:
+                            inspect_repository_contents(root, inspect)
+                        self.assertEqual("SECRET_SCAN_INPUT_INVALID", changed.exception.code)
+                    else:
+                        stderr = io.StringIO()
+                        with (
+                            patch(
+                                "tools.dev._gitleaks_executable", return_value="synthetic-scanner"
+                            ),
+                            patch("tools.dev._scan_mirror", side_effect=lambda *_args: mutate()),
+                            patch("tools.dev._SecretScanBatcher.flush"),
+                            redirect_stdout(io.StringIO()),
+                            redirect_stderr(stderr),
+                        ):
+                            self.assertEqual(1, scan_repository(root))
+                        self.assertIn("SECRET_SCAN_INPUT_INVALID", stderr.getvalue())
+                self.assertTrue(mutated)
+
+    def test_completed_mirror_reuse_fits_lower_budget_and_preserves_all_source_reads(self) -> None:
+        for relative_path in (Path("unchanged.bin"), Path("node_modules/gitleaks.toml.tf")):
+            with self.subTest(path=relative_path), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                git = _initialize_repository(root)
+                payload = b"synthetic clean bytes\n".ljust(32 * 1024, b"x")
+                source = root / relative_path
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(payload)
+                _commit_all(git, root, "add unchanged bounded synthetic input")
+                # Raw scanning now shares the already-required Git path read.
+                # Keep this mirror-specific proof tight after removing that read.
+                work_limit = (7 if relative_path.suffix == ".tf" else 6) * len(payload) + 16384
+                budget = _SecretScanEnumerationBudget()
+                working_mirrors: list[str] = []
+                source_reads = 0
+                original_batch = dev_tools._scan_working_path_batch
+
+                def observe_mirror(
+                    gitleaks: str,
+                    trusted_ignore: Path,
+                    items: Sequence[tuple[Path, bytes, str]],
+                    *,
+                    category: str,
+                    batch_number: int,
+                    budget: _SecretScanEnumerationBudget,
+                    _working_mirrors: list[str] = working_mirrors,
+                    _batch_runner: Callable[..., None] = original_batch,
+                ) -> None:
+                    if items:
+                        _working_mirrors.extend(item[0].as_posix() for item in items)
+                    _batch_runner(
+                        gitleaks,
+                        trusted_ignore,
+                        items,
+                        category=category,
+                        batch_number=batch_number,
+                        budget=budget,
+                    )
+
+                def observe_read(
+                    repository_root: Path,
+                    source_path: Path,
+                    *,
+                    allow_missing: bool,
+                    source_label: str,
+                    work_budget: _SecretScanEnumerationBudget | None = None,
+                    _expected_location: tuple[Path, Path] = (root, relative_path),
+                ) -> bytes | None:
+                    nonlocal source_reads
+                    if (repository_root, source_path) == _expected_location:
+                        source_reads += 1
+                    return _read_scan_input(
+                        repository_root,
+                        source_path,
+                        allow_missing=allow_missing,
+                        source_label=source_label,
+                        work_budget=work_budget,
+                    )
+
+                captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
+                with (
+                    patch("tools.dev.MAX_SECRET_SCAN_WORK_BYTES", work_limit),
+                    patch("tools.dev._SecretScanEnumerationBudget", return_value=budget),
+                    patch("tools.dev._scan_working_path_batch", new=observe_mirror),
+                    patch("tools.dev._read_scan_input", new=observe_read),
+                    redirect_stdout(captured_stdout),
+                    redirect_stderr(captured_stderr),
+                ):
+                    result = scan_repository(root)
+                output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
+                self.assertEqual(0, result, output)
+                self.assertNotIn(relative_path.as_posix(), working_mirrors)
+                self.assertEqual(3, source_reads)
+                saved_work = (len(payload) + len(dev_tools.RAW_SCAN_SENTINEL)) * (
+                    2 if relative_path.suffix == ".tf" else 1
+                )
+                self.assertLessEqual(budget.work_bytes, work_limit)
+                self.assertGreater(budget.work_bytes + saved_work, work_limit)
+
+    def test_working_mirror_reuse_requires_exact_case_sensitive_path_and_content(self) -> None:
+        original = b"synthetic original bytes\n"
+        for association in ("exact", "case", "path", "changed"):
+            with self.subTest(association=association), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                relative_path = Path("config.tf")
+                content = b"synthetic changed bytes\n" if association == "changed" else original
+                (root / relative_path).write_bytes(content)
+                prior_path = {
+                    "case": "CONFIG.tf",
+                    "path": "renamed.tf",
+                }.get(association, relative_path.as_posix())
+                coverage = frozenset({(prior_path, hashlib.sha256(original).digest())})
+                budget = _SecretScanEnumerationBudget()
+                batcher = _SecretScanBatcher("synthetic-scanner", root, root / "ignore", budget)
+                with patch("tools.dev._scan_mirror") as scan_mirror:
+                    count = dev_tools._scan_working_paths(
+                        "synthetic-scanner",
+                        root,
+                        root / "ignore",
+                        (relative_path,),
+                        category="tracked working-tree",
+                        allow_missing=False,
+                        batcher=batcher,
+                        expected_state=((relative_path, hashlib.sha256(content).digest()),),
+                        budget=budget,
+                        covered_path_inputs=coverage,
+                    )
+                self.assertEqual(1, count)
+                self.assertEqual(0 if association == "exact" else 2, scan_mirror.call_count)
+                # The original path bytes and complete raw content remain inputs,
+                # even when the already completed mirror itself is reused.
+                self.assertEqual(
+                    {relative_path.as_posix().encode(), content},
+                    {item[1] for item in batcher._items},
+                )
+
+    def test_mirror_coverage_is_published_only_after_original_and_alias_scans_pass(self) -> None:
+        payload = b"synthetic completed mirror\n"
+        entry = _PathBlobEntry(Path("node_modules/config.tf"), "a" * 40, len(payload))
+        for fails in (None, 0, 1):
+            with self.subTest(fails=fails), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                outcomes = (
+                    [None, None]
+                    if fails is None
+                    else [
+                        SecretScanError("SECRET_SCAN_FINDING", "synthetic failure")
+                        if index == fails
+                        else None
+                        for index in range(2)
+                    ]
+                )
+                with (
+                    patch("tools.dev._read_git_blob", return_value=payload),
+                    patch("tools.dev._scan_mirror", side_effect=outcomes) as scan,
+                ):
+                    if fails is not None:
+                        with self.assertRaises(SecretScanError):
+                            dev_tools._scan_path_aware_blobs(
+                                "synthetic-scanner",
+                                "synthetic-git",
+                                root,
+                                root / "ignore",
+                                (entry,),
+                                category="synthetic",
+                                budget=_SecretScanEnumerationBudget(),
+                            )
+                    else:
+                        coverage = dev_tools._scan_path_aware_blobs(
+                            "synthetic-scanner",
+                            "synthetic-git",
+                            root,
+                            root / "ignore",
+                            (entry,),
+                            category="synthetic",
+                            budget=_SecretScanEnumerationBudget(),
+                        )
+                        self.assertEqual(
+                            frozenset(
+                                {(entry.relative_path.as_posix(), hashlib.sha256(payload).digest())}
+                            ),
+                            coverage,
+                        )
+                    self.assertEqual(2 if fails is None else fails + 1, scan.call_count)
+
+    def test_completed_coverage_does_not_hide_changed_working_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            relative_path = Path("changed.tf")
+            expected_digest = hashlib.sha256(b"synthetic original\n").digest()
+            (root / relative_path).write_bytes(b"synthetic changed\n")
+            budget = _SecretScanEnumerationBudget()
+            batcher = _SecretScanBatcher("synthetic-scanner", root, root / "ignore", budget)
+            with (
+                patch("tools.dev._scan_working_path_batch") as mirror,
+                self.assertRaises(SecretScanError) as changed,
+            ):
+                dev_tools._scan_working_paths(
+                    "synthetic-scanner",
+                    root,
+                    root / "ignore",
+                    (relative_path,),
+                    category="tracked working-tree",
+                    allow_missing=False,
+                    batcher=batcher,
+                    expected_state=((relative_path, expected_digest),),
+                    budget=budget,
+                    covered_path_inputs=frozenset({(relative_path.as_posix(), expected_digest)}),
+                )
+            self.assertEqual("SECRET_SCAN_INPUT_INVALID", changed.exception.code)
+            mirror.assert_not_called()
+
+    def test_historical_path_recreated_as_untracked_still_gets_its_own_mirror(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = _initialize_repository(root)
+            relative_path = Path("recreated.tf")
+            source = root / relative_path
+            payload = b"synthetic unchanged historical bytes\n"
+            source.write_bytes(payload)
+            _commit_all(git, root, "add synthetic path before recreation")
+            source.unlink()
+            _commit_all(git, root, "remove synthetic path before recreation")
+            source.write_bytes(payload)
+            original_batch = dev_tools._scan_working_path_batch
+            untracked_inputs: list[tuple[Path, bytes, str]] = []
+
+            def observe(
+                gitleaks: str,
+                trusted_ignore: Path,
+                items: Sequence[tuple[Path, bytes, str]],
+                *,
+                category: str,
+                batch_number: int,
+                budget: _SecretScanEnumerationBudget,
+            ) -> None:
+                if category == "untracked source":
+                    untracked_inputs.extend(items)
+                original_batch(
+                    gitleaks,
+                    trusted_ignore,
+                    items,
+                    category=category,
+                    batch_number=batch_number,
+                    budget=budget,
+                )
+
+            captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
+            with (
+                patch("tools.dev._scan_working_path_batch", new=observe),
+                redirect_stdout(captured_stdout),
+                redirect_stderr(captured_stderr),
+            ):
+                result = scan_repository(root)
+            output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
+            self.assertEqual(0, result, output)
+            self.assertEqual(
+                [(relative_path, payload, "untracked source item 1")], untracked_inputs
+            )
+
+    def test_completed_path_coverage_respects_existing_item_limit(self) -> None:
+        with (
+            patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 1),
+            self.assertRaises(SecretScanError) as overflow,
+        ):
+            dev_tools._scan_path_aware_blobs(
+                "synthetic-scanner",
+                "synthetic-git",
+                Path("."),
+                Path("ignore"),
+                (
+                    _PathBlobEntry(Path("one.bin"), "a" * 40, 1),
+                    _PathBlobEntry(Path("two.bin"), "b" * 40, 1),
+                ),
+                category="synthetic",
+                budget=_SecretScanEnumerationBudget(),
+            )
+        self.assertEqual("SECRET_SCAN_INPUT_TOO_LARGE", overflow.exception.code)
+
     def test_aggregate_historical_work_fails_before_gitleaks_starts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -694,9 +1073,187 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 budget=budget,
             )
 
-        # Both empty associations retain framing; the shared blob is read for each
-        # association, and both filename-rule aliases receive their own mirror.
-        self.assertEqual(5 * len(payload) + 6 * len(dev_tools.RAW_SCAN_SENTINEL), budget.work_bytes)
+        # Both empty associations retain framing; the shared blob is read once
+        # in this bounded batch, and both aliases retain their own mirror.
+        self.assertEqual(4 * len(payload) + 6 * len(dev_tools.RAW_SCAN_SENTINEL), budget.work_bytes)
+
+    def test_complete_scan_reuses_path_read_for_raw_objects_without_losing_associations(
+        self,
+    ) -> None:
+        payload = b"synthetic shared complete blob\n"
+        direct_payload = b"synthetic blob reachable only through its direct ref\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = _initialize_repository(root)
+            for name in ("shared.bin", "shared.tf"):
+                (root / name).write_bytes(payload)
+            _commit_all(git, root, "synthetic shared path associations")
+            direct = subprocess.run(
+                (git, "hash-object", "-w", "--stdin"),
+                cwd=root,
+                input=direct_payload,
+                check=False,
+                shell=False,
+                capture_output=True,
+            )
+            self.assertEqual(0, direct.returncode)
+            direct_id = direct.stdout.decode("ascii").strip()
+            referenced = subprocess.run(
+                (git, "update-ref", "refs/pws/direct-blob", direct_id),
+                cwd=root,
+                check=False,
+                shell=False,
+                capture_output=True,
+            )
+            self.assertEqual(0, referenced.returncode)
+            shared_id = hashlib.sha1(
+                b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload,
+                usedforsecurity=False,
+            ).hexdigest()
+            mirror_paths: list[str] = []
+            original_mirror = dev_tools._scan_mirror
+
+            def observe_mirror(
+                gitleaks: str,
+                trusted_ignore: Path,
+                mirror_root: Path,
+                target: Path,
+                source_label: str,
+                budget: _SecretScanEnumerationBudget,
+            ) -> None:
+                for path in mirror_root.rglob("*"):
+                    if (
+                        path.is_file()
+                        and path.read_bytes() == dev_tools.RAW_SCAN_SENTINEL + payload
+                    ):
+                        mirror_paths.append(path.relative_to(mirror_root).as_posix())
+                original_mirror(gitleaks, trusted_ignore, mirror_root, target, source_label, budget)
+
+            captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
+            with (
+                patch("tools.dev._read_git_blob", wraps=dev_tools._read_git_blob) as reads,
+                patch("tools.dev._capture_bytes", wraps=dev_tools._capture_bytes) as captures,
+                patch("tools.dev._scan_mirror", new=observe_mirror),
+                redirect_stdout(captured_stdout),
+                redirect_stderr(captured_stderr),
+            ):
+                result = scan_repository(root)
+            output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
+            self.assertEqual(0, result, output)
+            read_ids = [call.args[2] for call in reads.call_args_list]
+            # Every original path and the .tf alias still get their own completed
+            # mirror. Their existing read supplies the complete raw input too.
+            self.assertEqual(1, read_ids.count(shared_id))
+            self.assertEqual(1, read_ids.count(direct_id))
+            raw_payloads = [
+                call.kwargs["input_bytes"]
+                for call in captures.call_args_list
+                if "stdin" in call.args[0]
+            ]
+            self.assertEqual(1, sum(content.count(payload) for content in raw_payloads))
+            self.assertEqual(1, sum(content.count(direct_payload) for content in raw_payloads))
+            self.assertEqual(3, len(mirror_paths))
+            self.assertEqual(
+                {"shared.bin", "shared.tf", "pws-rule.tf"},
+                {Path(path).name for path in mirror_paths},
+            )
+
+    def test_shared_path_reads_stay_batch_bounded_and_charge_all_mirrors(self) -> None:
+        payload = b"synthetic batch-bounded shared bytes\n".ljust(4096, b"x")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git = _initialize_repository(root)
+            for name in ("shared.bin", "shared.tf"):
+                (root / name).write_bytes(payload)
+            _commit_all(git, root, "synthetic bounded same-object path reads")
+            entries = [
+                entry
+                for entry in dev_tools._index_entries(git, root, _SecretScanEnumerationBudget())
+                if entry.relative_path.name in {"shared.bin", "shared.tf"}
+            ]
+            sentinel_bytes = len(dev_tools.RAW_SCAN_SENTINEL)
+            for single_batch in (True, False):
+                expected_reads = 1 if single_batch else 2
+                batch_limit = (sentinel_bytes + len(payload)) * (2 if single_batch else 1)
+                # Actual reads, every original/alias write, and the one deduplicated
+                # raw frame all count. The unchanged batcher retains the raw bytes.
+                expected_work = (expected_reads + 4) * len(payload) + 4 * sentinel_bytes + 1
+                for work_limit in (expected_work, expected_work - 1):
+                    with self.subTest(single_batch=single_batch, work_limit=work_limit):
+                        budget = _SecretScanEnumerationBudget()
+                        batcher = _SecretScanBatcher(
+                            "synthetic-scanner", root, root / "ignore", budget
+                        )
+                        mirrored: list[tuple[str, bytes]] = []
+
+                        def observe(
+                            _gitleaks: str,
+                            _ignore: Path,
+                            mirror_root: Path,
+                            _target: Path,
+                            _label: str,
+                            _budget: _SecretScanEnumerationBudget,
+                            _mirrored: list[tuple[str, bytes]] = mirrored,
+                        ) -> None:
+                            _mirrored.extend(
+                                (path.name, path.read_bytes())
+                                for path in mirror_root.rglob("*")
+                                if path.is_file()
+                            )
+
+                        with (
+                            patch("tools.dev.MAX_SECRET_SCAN_BATCH_BYTES", batch_limit),
+                            patch("tools.dev.MAX_SECRET_SCAN_WORK_BYTES", work_limit),
+                            patch(
+                                "tools.dev._read_git_blob", wraps=dev_tools._read_git_blob
+                            ) as reads,
+                            patch("tools.dev._scan_mirror", new=observe),
+                        ):
+                            self.assertEqual(
+                                expected_reads * len(payload),
+                                dev_tools._path_blob_read_work(entries),
+                            )
+                            if work_limit < expected_work:
+                                with self.assertRaises(SecretScanError) as overflow:
+                                    dev_tools._scan_path_aware_blobs(
+                                        "synthetic-scanner",
+                                        git,
+                                        root,
+                                        root / "ignore",
+                                        entries,
+                                        category="synthetic",
+                                        budget=budget,
+                                        raw_batcher=batcher,
+                                    )
+                                self.assertEqual(
+                                    "SECRET_SCAN_INPUT_TOO_LARGE", overflow.exception.code
+                                )
+                                continue
+                            coverage = dev_tools._scan_path_aware_blobs(
+                                "synthetic-scanner",
+                                git,
+                                root,
+                                root / "ignore",
+                                entries,
+                                category="synthetic",
+                                budget=budget,
+                                raw_batcher=batcher,
+                            )
+                        self.assertEqual(expected_reads, reads.call_count)
+                        self.assertEqual(expected_work, budget.work_bytes)
+                        self.assertEqual(2, len(coverage))
+                        self.assertEqual(
+                            {"shared.bin", "shared.tf", "pws-rule.tf"},
+                            {name for name, _ in mirrored},
+                        )
+                        self.assertEqual(3, len(mirrored))
+                        self.assertTrue(
+                            all(
+                                content == dev_tools.RAW_SCAN_SENTINEL + payload
+                                for _, content in mirrored
+                            )
+                        )
+                        self.assertEqual([payload], [content for _, content in batcher._items])
 
     def test_combined_preflight_and_git_work_fails_before_gitleaks_starts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

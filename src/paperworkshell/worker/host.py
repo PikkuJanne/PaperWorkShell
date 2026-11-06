@@ -82,6 +82,18 @@ def _build_operation_registry(
     if type(operation_scope) is not WorkerOperationScope:
         raise WorkerProcessCreationDenied from None
     handlers: list[OperationHandler] = [NoopOperationHandler()]
+    if operation_scope is WorkerOperationScope.REDACTION_EXPORT:
+        try:
+            from paperworkshell.worker.redaction_export_operation import (
+                build_redaction_export_operation_handler,
+            )
+
+            removal_handler = build_redaction_export_operation_handler()
+            if removal_handler is not None:
+                handlers.append(removal_handler)
+        except Exception:
+            pass
+        return RuntimeOperationRegistry(tuple(handlers))
     if operation_scope is WorkerOperationScope.REDACTION_SANITIZATION:
         try:
             from paperworkshell.worker.redaction_sanitization_operation import (
@@ -117,6 +129,14 @@ def _build_operation_registry(
     if operation_scope is WorkerOperationScope.QUALITY_OCR_REVIEW:
         _append_quality_ocr_review_handler(handlers)
         return RuntimeOperationRegistry(tuple(handlers))
+    try:
+        from paperworkshell.worker.text_companion_operation import (
+            build_text_companion_operation_handler,
+        )
+
+        handlers.append(build_text_companion_operation_handler())
+    except Exception:
+        pass
     try:
         from paperworkshell.worker.image_normalize_operation import (
             build_image_normalize_operation_handler,

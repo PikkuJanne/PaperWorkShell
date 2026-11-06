@@ -36,6 +36,7 @@ EXPECTED_PACKAGES = (
     "templates",
     "storage",
     "diagnostics",
+    "localization",
 )
 
 
@@ -87,6 +88,42 @@ def test_repository_respects_import_boundaries() -> None:
 @pytest.mark.parametrize(
     ("module", "package", "source", "expected_code"),
     [
+        (
+            "paperworkshell.localization.example",
+            "paperworkshell.localization",
+            "from paperworkshell.ui import window\n",
+            "ARCH_LOCALIZATION_OUTBOUND",
+        ),
+        (
+            "paperworkshell.localization.example",
+            "paperworkshell.localization",
+            "from paperworkshell.storage import workspace\n",
+            "ARCH_LOCALIZATION_OUTBOUND",
+        ),
+        (
+            "paperworkshell.localization.example",
+            "paperworkshell.localization",
+            "from paperworkshell.domain import package_summary\n",
+            "ARCH_LOCALIZATION_OUTBOUND",
+        ),
+        (
+            "paperworkshell.localization.example",
+            "paperworkshell.localization",
+            "from paperworkshell.pdf import inspection\n",
+            "ARCH_LOCALIZATION_OUTBOUND",
+        ),
+        (
+            "paperworkshell.domain.example",
+            "paperworkshell.domain",
+            "import paperworkshell.localization.unreviewed\n",
+            "ARCH_DOMAIN_OUTBOUND",
+        ),
+        (
+            "paperworkshell.localization.example",
+            "paperworkshell.localization",
+            "import PySide6.QtCore\n",
+            "ARCH_EXTERNAL_IMPORT",
+        ),
         (
             "paperworkshell.domain.example",
             "paperworkshell.domain",
@@ -406,6 +443,9 @@ def test_desktop_entrypoint_and_worker_client_imports_are_allowed() -> None:
             "from paperworkshell import app\n"
             "import paperworkshell.worker.client\n"
             "import paperworkshell.worker.desktop_composition\n"
+            "import paperworkshell.worker.redaction_export_composition\n"
+            "from paperworkshell.worker.redaction_export_composition import "
+            "create_redaction_export_worker_composition\n"
             "from paperworkshell.worker import desktop_composition\n"
             "from paperworkshell.worker.desktop_composition import "
             "QualityOcrReviewWorkerComposition, "
@@ -487,6 +527,21 @@ def test_package_export_composition_exceptions_are_exact(surface: str, owner: st
             "paperworkshell",
             "import paperworkshell.worker.quality_ocr_review_composition\n",
         ),
+        (
+            "paperworkshell.app.example",
+            "paperworkshell.app",
+            "import paperworkshell.worker.redaction_export_composition\n",
+        ),
+        (
+            "paperworkshell.ui.example",
+            "paperworkshell.ui",
+            "import paperworkshell.worker.redaction_export_composition\n",
+        ),
+        (
+            "paperworkshell.__main__",
+            "paperworkshell",
+            "import paperworkshell.worker.redaction_export_composition.internal\n",
+        ),
     ],
 )
 def test_desktop_worker_composition_exception_is_exact(
@@ -505,15 +560,29 @@ def test_desktop_worker_composition_exception_is_exact(
 
 
 @pytest.mark.parametrize("adapter", ("pdf", "imaging", "ocr"))
-def test_desktop_worker_composition_cannot_import_document_adapters(adapter: str) -> None:
+@pytest.mark.parametrize("composition", ("desktop_composition", "redaction_export_composition"))
+def test_desktop_worker_composition_cannot_import_document_adapters(
+    adapter: str, composition: str
+) -> None:
     violations = inspect_source(
         f"import paperworkshell.{adapter}.example\n",
-        module="paperworkshell.worker.desktop_composition",
+        module=f"paperworkshell.worker.{composition}",
         package="paperworkshell.worker",
         path="desktop_composition_adapter_violation.py",
     )
 
     assert {violation.code for violation in violations} == {"ARCH_DESKTOP_COMPOSITION_ADAPTER"}
+
+
+@pytest.mark.parametrize("composition", ("desktop_composition", "redaction_export_composition"))
+def test_desktop_client_compositions_cannot_import_export_parsers(composition: str) -> None:
+    violations = inspect_source(
+        "import paperworkshell.export.writer\n",
+        module=f"paperworkshell.worker.{composition}",
+        package="paperworkshell.worker",
+        path="composition_export_violation.py",
+    )
+    assert {violation.code for violation in violations} == {"ARCH_GUI_EXPORT_IMPLEMENTATION"}
 
 
 @pytest.mark.parametrize(

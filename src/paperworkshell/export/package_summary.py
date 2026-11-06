@@ -36,6 +36,7 @@ from paperworkshell.export.package_export import (
     PackageConstraintCheckCode,
     PackageExportOutcome,
 )
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.preflight.core_rules import core_preflight_rules
 from paperworkshell.preflight.engine import PreflightEvaluation
 from paperworkshell.preflight.models import (
@@ -68,15 +69,19 @@ _PORTAL_DEFINITIONS: Final = {
     definition.code: definition for definition in PORTAL_CONSTRAINT_FINDING_DEFINITIONS
 }
 _CONSTRAINT_CHECK_NAMES: Final = {
-    PackageConstraintCheckCode.MODE_ALLOWED: "Output organization allowed by saved constraints",
-    PackageConstraintCheckCode.ORGANIZATION_VALID: "Output grouping and page inventory",
-    PackageConstraintCheckCode.FILENAMES_VALID: "Output filename and path-length rules",
-    PackageConstraintCheckCode.FILE_COUNT_WITHIN_LIMIT: "Maximum file count",
-    PackageConstraintCheckCode.TOTAL_SIZE_WITHIN_LIMIT: "Maximum total file size",
-    PackageConstraintCheckCode.FILE_SIZE_WITHIN_LIMIT: "Maximum individual file size",
-    PackageConstraintCheckCode.PAGE_COUNT_WITHIN_LIMIT: "Maximum pages per PDF",
-    PackageConstraintCheckCode.ENCRYPTION_POLICY_SATISFIED: "Output encryption policy",
-    PackageConstraintCheckCode.ZIP_ARCHIVE_VERIFIED: "Safe ZIP layout, names, order, and member contents",
+    PackageConstraintCheckCode.MODE_ALLOWED: mark(
+        "Output organization allowed by saved constraints"
+    ),
+    PackageConstraintCheckCode.ORGANIZATION_VALID: mark("Output grouping and page inventory"),
+    PackageConstraintCheckCode.FILENAMES_VALID: mark("Output filename and path-length rules"),
+    PackageConstraintCheckCode.FILE_COUNT_WITHIN_LIMIT: mark("Maximum file count"),
+    PackageConstraintCheckCode.TOTAL_SIZE_WITHIN_LIMIT: mark("Maximum total file size"),
+    PackageConstraintCheckCode.FILE_SIZE_WITHIN_LIMIT: mark("Maximum individual file size"),
+    PackageConstraintCheckCode.PAGE_COUNT_WITHIN_LIMIT: mark("Maximum pages per PDF"),
+    PackageConstraintCheckCode.ENCRYPTION_POLICY_SATISFIED: mark("Output encryption policy"),
+    PackageConstraintCheckCode.ZIP_ARCHIVE_VERIFIED: mark(
+        "Safe ZIP layout, names, order, and member contents"
+    ),
 }
 _OUTPUT_STATES: Final = {
     ExportCommitState.COMMITTED: PackageSummaryOutputState.COMMITTED,
@@ -133,17 +138,21 @@ def build_package_summary_recovery(outcome: PackageExportOutcome) -> PackageSumm
         active_page_count=sum(len(item.page_ids) for item in plan.pdfs),
         checklist_available=False,
         checks=tuple(
-            ("Check complete: " if item.passed else "Constraint not met: ")
-            + _CONSTRAINT_CHECK_NAMES[item.code]
+            (tr("Check complete: ") if item.passed else tr("Constraint not met: "))
+            + tr(_CONSTRAINT_CHECK_NAMES[item.code])
             + "."
             for item in outcome.report.constraint_checks
         ),
         review_items=(
             PackageSummaryReviewItem(
                 PackageSummaryReviewKind.WARNING,
-                "Detailed package summary unavailable",
-                "File save results are listed, but the detailed checklist and preflight review could not be prepared.",
-                "Check the destination inventory before retrying. Reopen the case and review all warnings and checklist details before sharing files.",
+                tr("Detailed package summary unavailable"),
+                tr(
+                    "File save results are listed, but the detailed checklist and preflight review could not be prepared."
+                ),
+                tr(
+                    "Check the destination inventory before retrying. Reopen the case and review all warnings and checklist details before sharing files."
+                ),
             ),
         ),
     )
@@ -236,7 +245,7 @@ def _build_package_summary(
             continue
         scope_text = _scope_text(finding.scope, labels, plan)
         if finding.related_scope is not None:
-            scope_text += "; related " + _scope_text(finding.related_scope, labels, plan)
+            scope_text += tr("; related ") + _scope_text(finding.related_scope, labels, plan)
         reviews.append(_review(finding.severity, scope_text, known))
     reviews.extend(_template_reviews(template, labels))
     if outcome is not None:
@@ -250,19 +259,23 @@ def _build_package_summary(
                 )
             )
     checks = [
-        f"Preflight evaluated {len(preflight.report.rule_ids)} local rule groups. "
-        "Their findings and human review needs are listed below."
+        tr(
+            "Preflight evaluated {value_0} local rule groups. Their findings and human review needs are listed below.",
+            value_0=len(preflight.report.rule_ids),
+        )
     ]
     if outcome is not None:
         checks.extend(
-            ("Check complete: " if item.passed else "Constraint not met: ")
-            + _CONSTRAINT_CHECK_NAMES[item.code]
+            (tr("Check complete: ") if item.passed else tr("Constraint not met: "))
+            + tr(_CONSTRAINT_CHECK_NAMES[item.code])
             + "."
             for item in outcome.report.constraint_checks
         )
     else:
         checks.append(
-            "Final file sizes, PDF verification, and destination save checks have not been completed."
+            tr(
+                "Final file sizes, PDF verification, and destination save checks have not been completed."
+            )
         )
     status = (
         (
@@ -323,7 +336,7 @@ def _template_labels(template: TemplateSnapshot, definition: ChecklistDefinition
             "maximum": rule.maximum_count,
         }:
             reject_package_summary(PackageSummaryErrorCode.AUTHORITY_MISMATCH)
-        labels[rule.requirement_id] = require_summary_line(value.get("title"))
+        labels[rule.requirement_id] = tr(require_summary_line(value.get("title")))
     return labels
 
 
@@ -362,23 +375,25 @@ def _template_reviews(
             if key == "warnings" and raw.get("severity") == "information":
                 continue
             scope = raw["scope"]
-            scope_text = "Template guidance for package"
+            scope_text = tr("Template guidance for package")
             if scope.get("kind") == "requirement":
                 requirement_id = scope.get("requirement_id")
                 if type(requirement_id) is not str or requirement_id not in labels:
                     reject_package_summary(PackageSummaryErrorCode.AUTHORITY_MISMATCH)
-                scope_text = "Template guidance for category " + labels[requirement_id]
+                scope_text = tr("Template guidance for category ") + labels[requirement_id]
             elif scope.get("kind") != "package":
                 reject_package_summary(PackageSummaryErrorCode.MODEL_INVALID)
-            message = require_summary_line(raw.get(message_key))
+            message = tr(require_summary_line(raw.get(message_key)))
             result.append(
                 PackageSummaryReviewItem(
                     PackageSummaryReviewKind.WARNING
                     if key == "warnings"
                     else PackageSummaryReviewKind.CONFIRMATION_REQUIRED,
                     scope_text,
-                    "Template statement to review: " + message,
-                    "Review this statement against the pages and the recipient's current instructions.",
+                    tr("Template statement to review: ") + message,
+                    tr(
+                        "Review this statement against the pages and the recipient's current instructions."
+                    ),
                 )
             )
     return tuple(result)
@@ -388,27 +403,27 @@ def _scope_text(
     scope: PreflightScope, labels: dict[str, str], plan: PackageExportPlan | None
 ) -> str:
     if scope.kind is PreflightScopeKind.CASE:
-        return "Package"
+        return tr("Package")
     if scope.kind is PreflightScopeKind.REQUIREMENT:
         label = labels.get(str(scope.item_id))
         if label is None:
             reject_package_summary(PackageSummaryErrorCode.AUTHORITY_MISMATCH)
-        return "Category " + label
+        return tr("Category ") + label
     if scope.kind is PreflightScopeKind.OUTPUT and plan is not None:
         if plan.archive is not None and scope.item_id == plan.archive.output_key:
-            return "ZIP file " + plan.archive.filename
+            return tr("ZIP file ") + plan.archive.filename
         for pdf in plan.pdfs:
             if pdf.output_key == scope.item_id:
-                return "PDF " + pdf.filename
+                return tr("PDF ") + pdf.filename
         reject_package_summary(PackageSummaryErrorCode.AUTHORITY_MISMATCH)
     label = {
-        PreflightScopeKind.SOURCE: "Imported document",
-        PreflightScopeKind.ASSIGNMENT: "Checklist document",
-        PreflightScopeKind.PAGE: "Page",
-        PreflightScopeKind.OUTPUT: "Output",
+        PreflightScopeKind.SOURCE: tr("Imported document"),
+        PreflightScopeKind.ASSIGNMENT: tr("Checklist document"),
+        PreflightScopeKind.PAGE: tr("Page"),
+        PreflightScopeKind.OUTPUT: tr("Output"),
     }[scope.kind]
     return label + (
-        " " + str(scope.position) if scope.position is not None else " requiring review"
+        " " + str(scope.position) if scope.position is not None else tr(" requiring review")
     )
 
 
@@ -418,10 +433,12 @@ def _review(
     return PackageSummaryReviewItem(
         _REVIEW_KINDS[severity],
         scope,
-        "An additional local check requires review." if definition is None else definition.message,
-        "Return to Check and review the finding before export."
+        tr("An additional local check requires review.")
         if definition is None
-        else definition.remediation,
+        else tr(definition.message),
+        tr("Return to Check and review the finding before export.")
+        if definition is None
+        else tr(definition.remediation),
     )
 
 
@@ -496,9 +513,11 @@ def _outputs(
                 checks=()
                 if archive is None
                 else (
-                    "The ZIP reopened with the planned PDF member order and safe leaf names.",
-                    "Every member's size and content matched its verified PDF candidate.",
-                    "The archive layout and fixed metadata passed the supported ZIP profile checks.",
+                    tr("The ZIP reopened with the planned PDF member order and safe leaf names."),
+                    tr("Every member's size and content matched its verified PDF candidate."),
+                    tr(
+                        "The archive layout and fixed metadata passed the supported ZIP profile checks."
+                    ),
                 ),
             )
         )
@@ -512,14 +531,14 @@ def _outputs(
                 if check.code is PdfExportCheckCode.UNSIGNED_DERIVATIVE:
                     checks.append(check.claim)
                 else:
-                    checks.append("Before saving: " + check.claim)
+                    checks.append(tr("Before saving: ") + tr(check.claim))
             if report.base_report.optimization is not None:
-                checks.append("Before saving: " + report.base_report.optimization.claim)
+                checks.append(tr("Before saving: ") + tr(report.base_report.optimization.claim))
             if state is PackageSummaryOutputState.COMMITTED:
                 checks.append(
-                    "The saved file was reopened and matched the verified bytes."
+                    tr("The saved file was reopened and matched the verified bytes.")
                     if plan.archive is None
-                    else "This PDF's bytes were verified in the reopened ZIP."
+                    else tr("This PDF's bytes were verified in the reopened ZIP.")
                 )
         assigned = set(pdf.assignment_ids)
         pdf_labels = tuple(

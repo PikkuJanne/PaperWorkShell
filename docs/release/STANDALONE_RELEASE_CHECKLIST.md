@@ -13,6 +13,22 @@ failure. The checklist must not force a portable project format, operating-syste
 contract, association, CLI, repair mode, rollback mode, or silent installer into PaperWorkShell
 solely for future ThirdLife convenience.
 
+Current application and release scope is **Windows 11 x64 only**, selected by
+[PWS-D043 / ADR 0019](../adr/0019-windows-11-x64-only-scope.md). Native ARM64
+and x64 emulation on ARM64 are outside project scope, with no release/update
+prerequisite or mandatory future task. Use the
+[support boundary](WINDOWS11_X64_SUPPORT.md),
+[current continuation](../development/pws0802-x64-continuation-20261104.md) and
+[finite x64 qualification matrix](../development/pws0802-x64-qualification-20261104.md)
+to distinguish selected scope, accepted engineering evidence and missing checks.
+Scope selection does not check any scenario below or approve a public release.
+
+The retained R7 installer remains 512,713,704 bytes, SHA-256
+`a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,
+**NotSigned**. New source-policy wording does not rebuild it or replace its
+embedded build metadata. R6 clean and R7 instrumented-guest evidence retain their
+original scopes; exact public version, signed artifact and signer remain unproved.
+
 ## 1. Product boundary and independence
 
 - [ ] The primary document-package journey works without ThirdLife, sibling applications, a mandatory account, or a project-controlled server.
@@ -36,7 +52,7 @@ solely for future ThirdLife convenience.
 
 ## 3. Install, update, repair, and removal
 
-- [ ] A clean supported Windows environment installs and launches PaperWorkShell without development tools.
+- [ ] A clean supported Windows 11 x64 environment installs and launches PaperWorkShell without development tools, within the exact edition/build evidence boundary.
 - [ ] Package identity, version, source, size, hash, signature/verification, and privileges are recorded.
 - [ ] Elevation occurs only for the selected install/update/repair/remove operation.
 - [ ] Silent options are tested and documented or explicitly unsupported.
@@ -99,7 +115,7 @@ solely for future ThirdLife convenience.
 ## 9. Release interface and evidence package
 
 - [ ] [The release interface](RELEASE_INTERFACE.md) is complete for the exact candidate with no unexplained `TBD`.
-- [ ] Stable identity, publisher, licence, supported OS/architectures, and release channel are recorded.
+- [ ] Stable identity, publisher, licence, Windows 11 x64-only scope, evidenced editions/builds, and release channel are recorded.
 - [ ] Installer, launch, inputs/outputs, data, offline/resource behavior, privilege/security, support, samples, limits, and contacts are complete.
 - [ ] [The evidence index](RELEASE_EVIDENCE.md) points to current packaged results and hashes.
 - [ ] Public synthetic sample inputs, expected outputs, behavior notes, and hashes are frozen.

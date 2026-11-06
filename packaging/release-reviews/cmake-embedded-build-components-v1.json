@@ -1,0 +1,1195 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-cmake-embedded-build-components",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+  "scope": "Actual used cmake.exe/ctest.exe plus conservatively labelled supplier-source-declared utility/header closure; external build only, not shipped with PaperWorkShell.",
+  "artifacts": [
+    {
+      "name": "cmake-4.4.5.tar.gz",
+      "size_bytes": 13289246,
+      "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+      "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+      "expected_sha256_sources": [
+        "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+        "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+      ],
+      "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_executed": false,
+      "scope": "review"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "cmake-build-bzip2",
+      "name": "bzip2 bundled with CMake build tools",
+      "version": "1.0.8",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Julian R Seward",
+      "purl": "pkg:generic/cmake-embedded/bzip2@1.0.8",
+      "license_expression": "bzip2-1.0.8",
+      "license_texts": [
+        {
+          "path": "notices/cmake-build/cmake-build-bzip2/LICENSE",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-bzip2/LICENSE",
+          "size_bytes": 1896,
+          "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmbzip2/LICENSE",
+            "source_member_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+            "scope": "Original licence file bytes."
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmbzip2",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-bzip2.bash",
+          "sha256": "4845876eb1f070044ab1da983adac53c3333647162e9cf6459d406544a918f75",
+          "declared_upstream_repository": "https://sourceware.org/git/bzip2.git",
+          "declared_update_ref": "bzip2-1.0.8",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-cppdap",
+      "name": "cppdap bundled with CMake build tools",
+      "version": "git-c69444ed76f7468b232ac4f989cb8f2bdc100185",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Google LLC",
+      "purl": "pkg:generic/cmake-embedded/cppdap@git-c69444ed76f7468b232ac4f989cb8f2bdc100185",
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmcppdap/LICENSE",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmcppdap/LICENSE",
+          "size_bytes": 11358,
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "encoding": "utf-8",
+          "origin": {
+            "url": "https://api.github.com/repos/Kitware/CMake/git/blobs/d645695673349e3947e8e5ae42332d0ac3164cd7",
+            "source_ref": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+            "git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+          }
+        },
+        {
+          "path": "notices/native-build-tools/cmake/cmcppdap/NOTICE",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmcppdap/NOTICE",
+          "size_bytes": 178,
+          "sha256": "47bc4ee3ca11c006ac8b38d90d97455d18c0a0c3eafdf7f98c3623e4dada1f19",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmcppdap/NOTICE"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmcppdap",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-cppdap.bash",
+          "sha256": "0b1792ba1212ef0f2ecdf440ae3aa221f54227bfa2f8a8e4ad3a64ba90374aa3",
+          "declared_upstream_repository": "https://github.com/google/cppdap.git",
+          "declared_update_ref": "c69444ed76f7468b232ac4f989cb8f2bdc100185",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-curl",
+      "name": "curl bundled with CMake build tools",
+      "version": "8.20.0",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "curl project contributors",
+      "purl": "pkg:generic/cmake-embedded/curl@8.20.0",
+      "license_expression": "curl",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmcurl/COPYING",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmcurl/COPYING",
+          "size_bytes": 1110,
+          "sha256": "2eb469aebc37f20dda0960d9a5b03bfb8c0bb8a9d3fa5be0a356aa02fd0a8673",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmcurl/COPYING"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmcurl",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [
+        "cmake-build-nghttp2",
+        "cmake-build-zlib"
+      ],
+      "vendor_role": "binary-observed-and-source-declared",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-curl.bash",
+          "sha256": "406a5c4e735cb1cbeef605d5bf704320ea64b02693d8683b2b4d683fbbd3167b",
+          "declared_upstream_repository": "https://github.com/curl/curl.git",
+          "declared_update_ref": "curl-8_20_0",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced.",
+      "binary_observations": {
+        "cmake.exe": {
+          "sha256": "84935c0b7cb09c140de0d3b042d4e93e5fac4e6371e75bf28eae3d841f79dfb3",
+          "size_bytes": 13465672,
+          "ascii_markers": [
+            "libcurl/8.20.0",
+            "libarchive 3.8.6"
+          ]
+        },
+        "ctest.exe": {
+          "sha256": "51208ced9da6ba0c6b7a3b94cc49dc0930f9346dd1bb3c750afda9d8dd9aea20",
+          "size_bytes": 14445128,
+          "ascii_markers": [
+            "libcurl/8.20.0",
+            "libarchive 3.8.6"
+          ]
+        }
+      }
+    },
+    {
+      "component_id": "cmake-build-expat",
+      "name": "expat bundled with CMake build tools",
+      "version": "2.7.3",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Expat maintainers",
+      "purl": "pkg:generic/cmake-embedded/expat@2.7.3",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/cmake-build/cmake-build-expat/COPYING",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-expat/COPYING",
+          "size_bytes": 1144,
+          "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmexpat/COPYING",
+            "source_member_sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+            "scope": "Original licence file bytes."
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmexpat",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-expat.bash",
+          "sha256": "93b17374f5574df7c9569c8a8aeec5e8c90a5ff23f66037be399389f58703d81",
+          "declared_upstream_repository": "https://github.com/libexpat/libexpat.git",
+          "declared_update_ref": "R_2_7_3",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-jsoncpp",
+      "name": "jsoncpp bundled with CMake build tools",
+      "version": "1.9.6",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Baptiste Lepilleur and JsonCpp Authors",
+      "purl": "pkg:generic/cmake-embedded/jsoncpp@1.9.6",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/cmake-build/cmake-build-jsoncpp/LICENSE",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-jsoncpp/LICENSE",
+          "size_bytes": 2714,
+          "sha256": "cec0db5f6d7ed6b3a72647bd50aed02e13c3377fd44382b96dc2915534c042ad",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmjsoncpp/LICENSE",
+            "source_member_sha256": "cec0db5f6d7ed6b3a72647bd50aed02e13c3377fd44382b96dc2915534c042ad",
+            "scope": "Original licence file bytes."
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmjsoncpp",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-jsoncpp.bash",
+          "sha256": "817086e7bea004c902369338e0e4c01f01eec4abc3c54c4cfe39702fb18f310e",
+          "declared_upstream_repository": "https://github.com/open-source-parsers/jsoncpp.git",
+          "declared_update_ref": "1.9.6",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-kwiml",
+      "name": "kwiml bundled with CMake build tools",
+      "version": "1.0.0",
+      "type": "data",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Kitware, Inc.",
+      "purl": "pkg:generic/cmake-embedded/kwiml@1.0.0",
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/cmake-build/cmake-build-kwiml/Copyright.txt",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-kwiml/Copyright.txt",
+          "size_bytes": 1518,
+          "sha256": "2c1b4faf0e1f1a23a56c657959eb138add74e175b8c8949275f9f54d3a376365",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/KWIML/Copyright.txt",
+            "source_member_sha256": "2c1b4faf0e1f1a23a56c657959eb138add74e175b8c8949275f9f54d3a376365",
+            "scope": "Original licence file bytes."
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/KWIML",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-kwiml.bash",
+          "sha256": "1589fc347e342bc3d3051973c6e4da0c0775aef767257c7a4ba5a67e787c534b",
+          "declared_upstream_repository": "https://gitlab.kitware.com/utils/kwiml.git",
+          "declared_update_ref": "master",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        },
+        {
+          "path": "Utilities/KWIML/include/kwiml/version.h",
+          "sha256": "ed162466a2fd822794a1840ca772f341d5f1b784b5bc481647e56c21589b4c6f",
+          "declared_version": "1.0.0"
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-kwsys",
+      "name": "kwsys bundled with CMake build tools",
+      "version": "source-snapshot-5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Kitware, Inc. and contributors",
+      "purl": "pkg:generic/cmake-embedded/kwsys@source-snapshot-5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmsys/Copyright.txt",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmsys/Copyright.txt",
+          "size_bytes": 1851,
+          "sha256": "0998690e8dc877e5d9d79d852f85630ba42b4061962baefc9651675ecf972082",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmsys/Copyright.txt"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Source/kwsys",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-kwsys.bash",
+          "sha256": "3dbbd61a1c53217deb71dd7f341fe1e2566c83281d1fd4485fb4badeb086bcbf",
+          "declared_upstream_repository": "https://gitlab.kitware.com/utils/kwsys.git",
+          "declared_update_ref": "master",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-libarchive",
+      "name": "libarchive bundled with CMake build tools",
+      "version": "3.8.6",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Libarchive contributors",
+      "purl": "pkg:generic/cmake-embedded/libarchive@3.8.6",
+      "license_expression": "LicenseRef-PWS-CMake-Libarchive-Aggregate",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmlibarchive/COPYING",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmlibarchive/COPYING",
+          "size_bytes": 3154,
+          "sha256": "7ed079693e6fcd4d9535360a65e8c3832d6302a2cb9d936efc00bf7f9fa16909",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibarchive/COPYING"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmlibarchive",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [
+        "cmake-build-bzip2",
+        "cmake-build-liblzma",
+        "cmake-build-zlib",
+        "cmake-build-zstd"
+      ],
+      "vendor_role": "binary-observed-and-source-declared",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-libarchive.bash",
+          "sha256": "2fa853ef555748160e87ce3bb6d5aecdcd65a6ef275af9530a5e6922795ffba3",
+          "declared_upstream_repository": "https://github.com/libarchive/libarchive.git",
+          "declared_update_ref": "v3.8.6",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced.",
+      "binary_observations": {
+        "cmake.exe": {
+          "sha256": "84935c0b7cb09c140de0d3b042d4e93e5fac4e6371e75bf28eae3d841f79dfb3",
+          "size_bytes": 13465672,
+          "ascii_markers": [
+            "libcurl/8.20.0",
+            "libarchive 3.8.6"
+          ]
+        },
+        "ctest.exe": {
+          "sha256": "51208ced9da6ba0c6b7a3b94cc49dc0930f9346dd1bb3c750afda9d8dd9aea20",
+          "size_bytes": 14445128,
+          "ascii_markers": [
+            "libcurl/8.20.0",
+            "libarchive 3.8.6"
+          ]
+        }
+      }
+    },
+    {
+      "component_id": "cmake-build-liblzma",
+      "name": "liblzma bundled with CMake build tools",
+      "version": "5.6.3",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "XZ Utils authors and contributors",
+      "purl": "pkg:generic/cmake-embedded/liblzma@5.6.3",
+      "license_expression": "0BSD",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmliblzma/COPYING",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmliblzma/COPYING",
+          "size_bytes": 3968,
+          "sha256": "37d1b090446045d3e87418631a6c0ac08a5e49c84a666d8be089f552b0c48e49",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmliblzma/COPYING"
+          }
+        },
+        {
+          "path": "notices/cmake-build/cmake-build-liblzma/COPYING.0BSD",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-liblzma/COPYING.0BSD",
+          "size_bytes": 607,
+          "sha256": "0b01625d853911cd0e2e088dcfb743261034a091bb379246cb25a14cc4c74bf1",
+          "encoding": "utf-8",
+          "origin": {
+            "url": "https://raw.githubusercontent.com/tukaani-project/xz/v5.6.3/COPYING.0BSD",
+            "meaning": "Full upstream licence named by exact CMake liblzma COPYING; selected library code is 0BSD."
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmliblzma",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-liblzma.bash",
+          "sha256": "9efbfeea67e71772adeeb13e419c1c06166628e3e929ffe22023880c22b6ac95",
+          "declared_upstream_repository": "https://git.tukaani.org/xz.git",
+          "declared_update_ref": "v5.6.3",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-librhash",
+      "name": "librhash bundled with CMake build tools",
+      "version": "1.4.4",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Aleksey Kravchenko",
+      "purl": "pkg:generic/cmake-embedded/librhash@1.4.4",
+      "license_expression": "0BSD",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmlibrhash/COPYING",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmlibrhash/COPYING",
+          "size_bytes": 751,
+          "sha256": "62fd8327a27a4170361e097fbbfafaf68cdacadfdcad993ca251238112947a8f",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibrhash/COPYING"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmlibrhash",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-librhash.bash",
+          "sha256": "219f5ab9457cccfe81be48ab123337546c32d0f4d690ea0515b22557f8f4dff4",
+          "declared_upstream_repository": "https://github.com/rhash/rhash.git",
+          "declared_update_ref": "v1.4.4",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-libuv",
+      "name": "libuv bundled with CMake build tools",
+      "version": "1.52.0",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "libuv project contributors",
+      "purl": "pkg:generic/cmake-embedded/libuv@1.52.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmlibuv/LICENSE",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmlibuv/LICENSE",
+          "size_bytes": 1098,
+          "sha256": "7aab26dd7e0e6661accc1fd9fc19410e01b466aa0ac36ea668b2013152a8ca23",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibuv/LICENSE"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmlibuv",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-libuv.bash",
+          "sha256": "01866b96d1ab0e62755ccd553d977217213aecadaaea8560519f26069f835bd3",
+          "declared_upstream_repository": "https://github.com/libuv/libuv.git",
+          "declared_update_ref": "v1.52.0",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-llpkgc",
+      "name": "llpkgc bundled with CMake build tools",
+      "version": "git-7958a1de42b9eec04676d547f6fcf5daa425fbcc",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Kitware, Inc. and contributors",
+      "purl": "pkg:generic/cmake-embedded/llpkgc@git-7958a1de42b9eec04676d547f6fcf5daa425fbcc",
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/LICENSE.rst",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/LICENSE.rst",
+          "size_bytes": 1526,
+          "sha256": "cd944d878806fee998ef3f88ca41ec060ae198bd8ba615e284f7d8d90c25593e",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/LICENSE.rst"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmllpkgc",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-llpkgc.bash",
+          "sha256": "fc8591f7dbd4c48b33186b7e46b38e30eb7f1cbb32a265f7bf32a1da189dcfb9",
+          "declared_upstream_repository": "https://gitlab.kitware.com/utils/llpkgc.git",
+          "declared_update_ref": "7958a1de42b9eec04676d547f6fcf5daa425fbcc",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-nghttp2",
+      "name": "nghttp2 bundled with CMake build tools",
+      "version": "1.68.0",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "nghttp2 contributors",
+      "purl": "pkg:generic/cmake-embedded/nghttp2@1.68.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmnghttp2/COPYING",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmnghttp2/COPYING",
+          "size_bytes": 1179,
+          "sha256": "296913fdae167d19f8c463622b7d4ce4012781b9a13d9dcf21a2c7541a96dc39",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmnghttp2/COPYING"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmnghttp2",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-nghttp2.bash",
+          "sha256": "52e83f983959976194af8f5e353200f66ba04044e86bbcda191a34104127b3ed",
+          "declared_upstream_repository": "https://github.com/nghttp2/nghttp2.git",
+          "declared_update_ref": "v1.68.0",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-zlib",
+      "name": "zlib bundled with CMake build tools",
+      "version": "1.3.1",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Jean-loup Gailly and Mark Adler",
+      "purl": "pkg:generic/cmake-embedded/zlib@1.3.1",
+      "license_expression": "Zlib",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmzlib/Copyright.txt",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmzlib/Copyright.txt",
+          "size_bytes": 1063,
+          "sha256": "d5bbd7748a19e3fed6ea31242e8de9814e69a0125ae7758a7491057d5fe76f34",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmzlib/Copyright.txt"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmzlib",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-zlib.bash",
+          "sha256": "49ad6a2042b91fcf80859eb71a378fd4144126e04db96dc4e54ae47614d8077f",
+          "declared_upstream_repository": "https://github.com/madler/zlib.git",
+          "declared_update_ref": "v1.3.1",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-zstd",
+      "name": "zstd bundled with CMake build tools",
+      "version": "1.5.7",
+      "type": "library",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Meta Platforms, Inc. and affiliates",
+      "purl": "pkg:generic/cmake-embedded/zstd@1.5.7",
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/native-build-tools/cmake/cmzstd/LICENSE",
+          "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmzstd/LICENSE",
+          "size_bytes": 1579,
+          "sha256": "d3baadc2e1dd7a7e0b483633e6b39743c16a16f28d696baff507fcd451f3d4ad",
+          "encoding": "utf-8",
+          "origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmzstd/LICENSE"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmzstd",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-zstd.bash",
+          "sha256": "ea4e9c7daf86ca5fecb0c2f9fdcfc278b8221010cddf52e0662e55e8ddea3263",
+          "declared_upstream_repository": "https://github.com/facebook/zstd.git",
+          "declared_update_ref": "v1.5.7",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-freebsd-elf",
+      "name": "freebsd-elf bundled with CMake build tools",
+      "version": "source-snapshot-5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "type": "data",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "FreeBSD contributors",
+      "purl": "pkg:generic/cmake-embedded/freebsd-elf@source-snapshot-5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "license_expression": "BSD-2-Clause-FreeBSD",
+      "license_texts": [
+        {
+          "path": "notices/cmake-build/cmake-build-freebsd-elf/elf32.h.LICENSE.txt",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-freebsd-elf/elf32.h.LICENSE.txt",
+          "size_bytes": 1430,
+          "sha256": "8a21abd8b918985796b8178eba348a1b55a33f020e8626f845fc1ec447d1b9e8",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmelf/elf32.h",
+            "source_member_sha256": "b36c187f47509d757456967fbc865c14415007f13889a5b89a70887c272416a3",
+            "scope": "Original leading licence comment only; no executable code."
+          }
+        },
+        {
+          "path": "notices/cmake-build/cmake-build-freebsd-elf/elf64.h.LICENSE.txt",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-freebsd-elf/elf64.h.LICENSE.txt",
+          "size_bytes": 1430,
+          "sha256": "8a21abd8b918985796b8178eba348a1b55a33f020e8626f845fc1ec447d1b9e8",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmelf/elf64.h",
+            "source_member_sha256": "a5e90f96fdaa751eb35f05f1416d9957f782afa52df3d28ec20abcda9bf8daa2",
+            "scope": "Original leading licence comment only; no executable code."
+          }
+        },
+        {
+          "path": "notices/cmake-build/cmake-build-freebsd-elf/elf_common.h.LICENSE.txt",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-freebsd-elf/elf_common.h.LICENSE.txt",
+          "size_bytes": 1520,
+          "sha256": "0a72af1f9bbbbbfb66588c4116b6f640b847fb430731c4b0df79a7610e31ef0b",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmelf/elf_common.h",
+            "source_member_sha256": "6cbd1cf32c3d3a0b39a3328cafca69f021e5ccd4f1dfa8fd7ded84d5a6e7fd09",
+            "scope": "Original leading licence comment only; no executable code."
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmelf",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/Scripts/update-elf.bash",
+          "sha256": "55868d5f326a6aa5bbe52e89d3328be73cf4400cf2fb14005cea4c4092da5049",
+          "declared_upstream_repository": "https://github.com/freebsd/freebsd-src.git",
+          "declared_update_ref": "main",
+          "meaning": "Historical vendor update declaration inside the exact source archive; moving branch names are not used as identity."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    },
+    {
+      "component_id": "cmake-build-vs-setup",
+      "name": "vs-setup bundled with CMake build tools",
+      "version": "source-snapshot-5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "type": "data",
+      "scope": "build",
+      "relationship": "external",
+      "parent_component_id": "cmake",
+      "supplier": "Microsoft Corporation",
+      "purl": "pkg:generic/cmake-embedded/vs-setup@source-snapshot-5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/cmake-build/cmake-build-vs-setup/Setup.Configuration.LICENSE-DECLARATION.txt",
+          "asset_path": "packaging/licenses/release-cmake-build/cmake-build-vs-setup/Setup.Configuration.LICENSE-DECLARATION.txt",
+          "size_bytes": 403,
+          "sha256": "ee412a2f87512071c0cf6d4d97e91937424ccf4246fb91d42a9463b83fda84a6",
+          "encoding": "utf-8",
+          "origin": {
+            "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+            "member": "cmake-4.4.5/Utilities/cmvssetup/Setup.Configuration.h",
+            "source_member_sha256": "491a6657c5370fc650193a04f339c1b350580823ced084c36ba950d307e6d9bc",
+            "meaning": "Exact leading Microsoft copyright and MIT declaration; no header code copied."
+          }
+        },
+        {
+          "path": "notices/native-build-tools/mingw-w64-ucrt-x86-64-isl/LICENSE",
+          "asset_path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-isl/LICENSE",
+          "size_bytes": 1042,
+          "sha256": "3a2c398103f6bca0f50a9a9465deca9230b370b0212af5fdf31ed88a36215c30",
+          "encoding": "utf-8",
+          "origin": {
+            "source_artifact_sha256": "889246cdeb8b3f731010b2c63edc16ee75a7a0e7336d267fa071710d11751b05",
+            "nested_archive": "mingw-w64-isl/isl-0.28.tar.xz",
+            "nested_archive_sha256": "3dc31b8e1b18329e42d5dfbf84dd55e15c59b61569a2ab246f61497d9592f727",
+            "member": "isl-0.28/LICENSE"
+          }
+        }
+      ],
+      "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmvssetup",
+      "artifact_url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+      "artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+      "dependencies": [],
+      "vendor_role": "vendor-source-declared-bundled-build-input",
+      "source_revision": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+      "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+      "source_artifacts": [
+        {
+          "name": "cmake-4.4.5.tar.gz",
+          "size_bytes": 13289246,
+          "sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz",
+          "local_path": "output/pws0801/native-rebuild/cmake-build-closure/cmake-4.4.5.tar.gz",
+          "expected_sha256_sources": [
+            "https://api.github.com/repos/Kitware/CMake/releases/tags/v4.4.5",
+            "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-SHA-256.txt"
+          ],
+          "source_commit": "5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "source_executed": false,
+          "scope": "review"
+        }
+      ],
+      "version_evidence": [
+        {
+          "path": "Utilities/cmvssetup/Setup.Configuration.h",
+          "sha256": "491a6657c5370fc650193a04f339c1b350580823ced084c36ba950d307e6d9bc",
+          "meaning": "Version is the exact frozen vendor header snapshot, not an invented Visual Studio runtime release."
+        }
+      ],
+      "distribution_note": "Unshipped build-tool closure, bound to the enclosing authenticated CMake Windows ZIP and exact supplier source archive. Source-declared entries conservatively identify bundled utility/header code; the specific Windows compile flags, linked-object map and every component presence in each executable are not claimed. No runtime product component or compiler ancestry is introduced."
+    }
+  ],
+  "component_overrides": [
+    {
+      "component_id": "cmake",
+      "dependencies_add": [
+        "cmake-build-bzip2",
+        "cmake-build-cppdap",
+        "cmake-build-curl",
+        "cmake-build-expat",
+        "cmake-build-jsoncpp",
+        "cmake-build-kwiml",
+        "cmake-build-kwsys",
+        "cmake-build-libarchive",
+        "cmake-build-liblzma",
+        "cmake-build-librhash",
+        "cmake-build-libuv",
+        "cmake-build-llpkgc",
+        "cmake-build-nghttp2",
+        "cmake-build-zlib",
+        "cmake-build-zstd",
+        "cmake-build-freebsd-elf",
+        "cmake-build-vs-setup"
+      ]
+    }
+  ],
+  "license_refs": [
+    {
+      "license_id": "LicenseRef-PWS-CMake-Libarchive-Aggregate",
+      "name": "Exact CMake libarchive aggregate notice; per-file and alternative grants preserved",
+      "asset_path": "packaging/licenses/release-native-build-tools/cmake/cmlibarchive/COPYING",
+      "sha256": "7ed079693e6fcd4d9535360a65e8c3832d6302a2cb9d936efc00bf7f9fa16909"
+    }
+  ],
+  "declaration_evidence": {
+    "source_path": "Source/Modules/CMakeBuildUtilities.cmake",
+    "sha256": "a4ae1e86933a4fd079ac7ae5a48f805d988f6659f20a5f8d72b2b54a7eee15dd",
+    "source_url": "https://github.com/Kitware/CMake/blob/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Source/Modules/CMakeBuildUtilities.cmake"
+  },
+  "evidence_limits": [
+    "No vendor SBOM is present in the exact Windows ZIP or official release asset list. The official files-v1.json is an archive catalogue, not a component SBOM.",
+    "curl8.20.0 and libarchive3.8.6 are directly observed as version strings in both actually used binaries. Other identities are exact source-supplier declarations; no fabricated Windows compile claim.",
+    "The unexecuted cmake-gui/Qt payload and absent ccmake/PDCurses target are outside the used CLI/CTest scope. GitSetup maintenance helpers and cmredbg tests are not native third-party libraries consumed by this build.",
+    "Moving upstream update branch names for KWSys/ELF/KWIML are documentary only; exact CMake source snapshot and archive SHA bind every source identity.",
+    "Existing licence assets retain exact original ZIP bytes, including CRLF. Source-archive licence forms may use LF; no raw source/executable/update scripts are copied into notice assets."
+  ],
+  "binary_observations": {
+    "cmake.exe": {
+      "sha256": "84935c0b7cb09c140de0d3b042d4e93e5fac4e6371e75bf28eae3d841f79dfb3",
+      "size_bytes": 13465672,
+      "ascii_markers": [
+        "libcurl/8.20.0",
+        "libarchive 3.8.6"
+      ]
+    },
+    "ctest.exe": {
+      "sha256": "51208ced9da6ba0c6b7a3b94cc49dc0930f9346dd1bb3c750afda9d8dd9aea20",
+      "size_bytes": 14445128,
+      "ascii_markers": [
+        "libcurl/8.20.0",
+        "libarchive 3.8.6"
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "task_id": "PWS-0805",
+  "synthetic_only": true,
+  "source": "closed fixed DiagnosticSummary recipe; no documents, host data, clock, environment, network, random or user inputs",
+  "recipe": "tests/helpers/diagnostic_bundle.py:sample_preview",
+  "artifact": "support-sample.zip",
+  "size_bytes": 1626,
+  "sha256": "4f5bb7b36f1b58f36901f31c18b721a6875a44bc731fb8da3779e39b77662304",
+  "members": [
+    {
+      "name": "summary.txt",
+      "size_bytes": 342,
+      "sha256": "ee68fa8dadcfbc64cfb62d4866fd9ab85f301360c4ef21fce4ae88adc1a4aea3"
+    },
+    {
+      "name": "allowlist.txt",
+      "size_bytes": 1062,
+      "sha256": "580ebbe3b63f8dc8ee3732043c01523216df39310c1a1e2d22d70e3edbd0b248"
+    }
+  ]
+}

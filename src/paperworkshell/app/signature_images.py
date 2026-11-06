@@ -29,6 +29,7 @@ from paperworkshell.domain.signature_images import (
     SignatureImageRasterRequest,
     reject_signature_image,
 )
+from paperworkshell.localization.catalog import tr
 from paperworkshell.overlays.models import (
     OverlayAssetKind,
     OverlayAssetMediaType,
@@ -185,18 +186,18 @@ class SignatureImagePlacementDraft:
     @property
     def background_review(self) -> str:
         if self.preview.source_has_alpha:
-            return (
+            return tr(
                 "Transparent pixels are preserved. Review the checkerboard preview; any opaque "
                 "background shown in the image will remain."
             )
-        return (
+        return tr(
             "This image has no transparent pixels. Any visible background is part of the image "
             "and will remain."
         )
 
     @property
     def crop_review(self) -> str:
-        return "The entire oriented image is used. No additional crop is applied."
+        return tr("The entire oriented image is used. No additional crop is applied.")
 
     def __repr__(self) -> str:
         return "SignatureImagePlacementDraft(details_hidden=True)"
@@ -251,10 +252,15 @@ class SignatureImagePlacementChoice:
 
     @property
     def accessible_summary(self) -> str:
-        return (
-            f"Signature image {self.position} of {self.total}; "
-            f"left {_percent(self.box.x)}; top {_percent(self.box.y)}; "
-            f"width {_percent(self.box.width)}; height {_percent(self.box.height)}."
+        return tr(
+            "Signature image {position} of {total}; left {left}; top {top}; "
+            "width {width}; height {height}.",
+            position=self.position,
+            total=self.total,
+            left=_percent(self.box.x),
+            top=_percent(self.box.y),
+            width=_percent(self.box.width),
+            height=_percent(self.box.height),
         )
 
     def __repr__(self) -> str:
@@ -683,5 +689,4 @@ def _abort_no_raise(lease: PreparedSignatureImageLease) -> None:
 
 
 def _percent(value: int) -> str:
-    whole, fraction = divmod(value, 10_000)
-    return f"{whole}.{fraction:04d} percent"
+    return tr("{value:.4f} percent", value=value / 10_000)

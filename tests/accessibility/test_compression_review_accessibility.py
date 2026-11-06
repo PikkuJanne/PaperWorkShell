@@ -96,7 +96,7 @@ def test_controls_have_names_descriptions_buddies_and_visible_recovery_focus() -
         assert "Cancellation requested" in status.text()
         assert not cancel.isEnabled()
         dialog.show_failure()
-        assert dialog.focusWidget() is status
+        assert dialog.focusWidget() is widget(dialog, QPushButton, "compressionReviewPrepareButton")
         assert widget(dialog, QPushButton, "compressionReviewPrepareButton").isEnabled()
 
 

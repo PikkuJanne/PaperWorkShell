@@ -1418,6 +1418,7 @@ class WindowsLaunchConfig:
     tesseract_executable: Path | None = None
     tessdata_root: Path | None = None
     operation_scope: WorkerOperationScope = WorkerOperationScope.ALL
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _tesseract_runtime_root: Path | None = field(
         default=None,
         init=False,
@@ -1426,6 +1427,15 @@ class WindowsLaunchConfig:
     )
 
     def __post_init__(self) -> None:
+        if (
+            type(self.recovery_authority_roots) is not tuple
+            or len(self.recovery_authority_roots) > MAX_ACL_RECOVERY_GRANT_ROOTS
+        ):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.recovery_authority",
+                "Worker recovery requires a bounded tuple of fixed resource roots.",
+            )
         venv_paths = () if self.venv_launcher is None else (self.venv_launcher,)
         qpdf_paths = () if self.qpdf_executable is None else (self.qpdf_executable,)
         tesseract_paths = () if self.tesseract_executable is None else (self.tesseract_executable,)
@@ -1452,6 +1462,7 @@ class WindowsLaunchConfig:
             *qpdf_paths,
             *tesseract_paths,
             *tessdata_paths,
+            *self.recovery_authority_roots,
         )
         if (
             not self.runtime_roots
@@ -1488,7 +1499,14 @@ class WindowsLaunchConfig:
                 self.python_executable.is_file()
                 and self.bootstrap_script.is_file()
                 and self.working_directory.is_dir()
-                and all(path.is_dir() for path in (*self.runtime_roots, *self.code_roots))
+                and all(
+                    path.is_dir()
+                    for path in (
+                        *self.runtime_roots,
+                        *self.code_roots,
+                        *self.recovery_authority_roots,
+                    )
+                )
                 and all(path.is_file() for path in venv_paths)
                 and (self.qpdf_executable is None or self.qpdf_executable.is_file())
                 and (self.tesseract_executable is None or self.tesseract_executable.is_file())
@@ -1547,6 +1565,9 @@ class WindowsLaunchConfig:
                     "The configured OCR runtime does not match the approved fixed closure.",
                 )
             object.__setattr__(self, "_tesseract_runtime_root", admission.root)
+        if self.recovery_authority_roots:
+            # Validate the complete recovery boundary before any launch or ACL work.
+            _ = self.approved_recovery_roots
 
     @property
     def access_roots(self) -> tuple[Path, ...]:
@@ -1558,6 +1579,25 @@ class WindowsLaunchConfig:
             if optional_root is not None and optional_root not in candidates:
                 candidates.append(optional_root)
         return tuple(candidates)
+
+    @property
+    def approved_recovery_roots(self) -> tuple[Path, ...]:
+        """Recovery-only authority from trusted configuration, never journal paths.
+
+        Explicit trusted engine configurations remain valid alongside the shared
+        installed closure. This union does not change the operation's grants.
+        """
+
+        if not self.recovery_authority_roots:
+            return self.access_roots
+        candidates: list[Path] = []
+        seen: set[str] = set()
+        for path in (*self.access_roots, *self.recovery_authority_roots):
+            key = _normalized_path(path)
+            if key not in seen:
+                candidates.append(path)
+                seen.add(key)
+        return _normalized_unique_roots(tuple(candidates))
 
     @property
     def qpdf_access_resources(self) -> tuple[Path, ...]:
@@ -5983,11 +6023,11 @@ class WindowsProcessLauncher:
                 "launch.quarantine",
                 "A previous worker launch still requires deterministic cleanup.",
             )
-        recover_worker_acl_access(self._config.access_roots)
+        recover_worker_acl_access(self._config.approved_recovery_roots)
         process = _OwnedHandle.empty()
         thread = _OwnedHandle.empty()
         information = _ProcessInformation()
-        profile = _AppContainerProfile.create(self._config.access_roots)
+        profile = _AppContainerProfile.create(self._config.approved_recovery_roots)
         job: _Job | None = None
         job_assigned = False
         process_created = False

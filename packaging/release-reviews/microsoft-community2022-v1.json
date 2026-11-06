@@ -1,0 +1,135 @@
+{
+  "agreement_docx_sha256": "41a207b10c8ab91d0d2f10a854715f73dca54509581692d2fe179aa3ffcb8540",
+  "agreement_eulaid": "VS_Comm_2022_ENU.1033",
+  "agreement_url": "https://visualstudio.microsoft.com/wp-content/uploads/2021/11/Visual-Studio-2022-Community-License-EN.docx",
+  "alias_interpretation": "Destination filename only; exact newly acquired canonical MSVCP bytes and signature unchanged. REDIST/EULA contains no filename-retention condition; this is reviewed interpretation, not express Microsoft filename approval.",
+  "all_oss_grants_and_qt_lgpl_rights_preserved": true,
+  "architecture": "AMD64",
+  "authentic_copy_review_sha256": "081fbb12b2e50056f25f87809cea0d2a4654f401ffd22344162dcec417ee4bfa",
+  "channel": "VisualStudio.17.Release",
+  "community_copy_receipt_sha256": "4d8fe112c3e7b6a2e8b6103c6c9b6c1baf2431d89d28cc33f8686d29344a6c8d",
+  "component_id": "microsoft-vc14-x64-community2022",
+  "first_party_license": "MIT",
+  "fresh_member_authenticode_receipt_sha256": "6aacab517f20f2a22b36446efdd882bfba6abe408a516386d2306330d156eeaa",
+  "historical_notices": [
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/VS-2019-FULL-TERMS.txt",
+      "retain_unchanged": true,
+      "scope": "historical-upstream-provenance",
+      "sha256": "c9458742c2eca6a711529d5f6b77b1b3d83179214ce14681992eff1e0e3b432e"
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/VC-RUNTIME-2015-2022-END-USER-TERMS.txt",
+      "retain_unchanged": true,
+      "scope": "historical-upstream-provenance",
+      "sha256": "135674334c46beb3f2a6fba1a2c488aee9b9d521802e4d69b15d887040e662f6"
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/PIKEPDF-UPSTREAM-DOWNSTREAM-NOTICE.txt",
+      "retain_unchanged": true,
+      "scope": "historical-upstream-provenance",
+      "sha256": "b8b687007a444c5b7102b1a1ba0a41be1cf3cdfb6bfc1099184d12b3cd818527"
+    }
+  ],
+  "license_basis": "Visual Studio Community2022 individual licence section4 plus current VS2022 REDIST list",
+  "local_recipient_agreement_required": true,
+  "members": [
+    {
+      "cabinet_member": "msvcp140.dll_amd64",
+      "path": "runtime/msvcp140.dll",
+      "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
+      "size_bytes": 557728
+    },
+    {
+      "cabinet_member": "msvcp140_1.dll_amd64",
+      "path": "runtime/msvcp140_1.dll",
+      "sha256": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
+      "size_bytes": 35952
+    },
+    {
+      "cabinet_member": "msvcp140_2.dll_amd64",
+      "path": "runtime/msvcp140_2.dll",
+      "sha256": "3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9",
+      "size_bytes": 280200
+    },
+    {
+      "cabinet_member": "vcruntime140.dll_amd64",
+      "path": "runtime/vcruntime140.dll",
+      "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "size_bytes": 124544
+    },
+    {
+      "cabinet_member": "vcruntime140_1.dll_amd64",
+      "path": "runtime/vcruntime140_1.dll",
+      "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+      "size_bytes": 49792
+    },
+    {
+      "cabinet_member": "msvcp140.dll_amd64",
+      "canonical_member": "msvcp140.dll",
+      "filename_alias_only": true,
+      "path": "runtime/Lib/site-packages/pikepdf.libs/msvcp140-0f885b509a685d2bbfa652fed26b5fb3.dll",
+      "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
+      "size_bytes": 557728
+    },
+    {
+      "cabinet_member": "msvcp140.dll_amd64",
+      "canonical_member": "msvcp140.dll",
+      "path": "runtime/engines/qpdf/bin/msvcp140.dll",
+      "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
+      "size_bytes": 557728
+    },
+    {
+      "cabinet_member": "vcruntime140.dll_amd64",
+      "canonical_member": "vcruntime140.dll",
+      "path": "runtime/engines/qpdf/bin/vcruntime140.dll",
+      "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "size_bytes": 124544
+    },
+    {
+      "cabinet_member": "vcruntime140_1.dll_amd64",
+      "canonical_member": "vcruntime140_1.dll",
+      "path": "runtime/engines/qpdf/bin/vcruntime140_1.dll",
+      "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+      "size_bytes": 49792
+    }
+  ],
+  "new_extraction_receipt_sha256": "72bad1d23f71b5ac41532b4053305dfe5d11bdcf325f8de341cd00870476bae3",
+  "no_2019_grant_amendment_or_indemnity_acceptance_inferred": true,
+  "notice_assets": [
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-FULL-TERMS.txt",
+      "sha256": "cbfa92f37dc9cc11735952457c4c68df6f6aec0dfdb895e31c15c1adc0ed7963",
+      "size_bytes": 19035
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt",
+      "sha256": "a5cdf1136b18611fc5235c657b7ad113a9ac338abe6c1af3c299205d9492c718",
+      "size_bytes": 5466
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-ROUTE.txt",
+      "sha256": "9dc5d40efc8acc857711535c16a88a894c38a48cf3d7176dda14093346ff86ce",
+      "size_bytes": 2499
+    }
+  ],
+  "official_layout_verification_exit_code": 0,
+  "official_verification_receipt_sha256": "1cb688d1177a2db96c57f89fd3319922f29f48bb4720535f13c7aee859f88617",
+  "overlay_receipt_sha256": "f6d04e0bf003343c2edfead916a4010e9f3ba26238cd90fcbf95d6cbcec3066f",
+  "owner_acceptance_receipt_sha256": "ae3ae03507863bb9d6b4cea2d404e81f8e91e3f7031557023d880a83eeb201ac",
+  "product_build_version": "17.14.37827.9",
+  "product_copy_basis": "Actual complete selected official local product/CoreEditor+CRT layout under accepted eligible individual terms; no installedIDE/activation prerequisite is stated for section4.",
+  "product_copy_bytes": 1390324709,
+  "product_copy_files": 155,
+  "product_display_version": "17.14.44",
+  "product_id": "Microsoft.VisualStudio.Product.Community",
+  "public_signing_or_clean_qualification_claim": false,
+  "recipient_review_sha256": "489c05293f59625bfc69b6b0a99577d11a6cab6b4b89c0740dfebeea7677b36d",
+  "redist_url": "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+  "review_scope": "New candidate only; acquired independent Community2022 source route, nine unmodified destinations, five unique objects. Historical0801/wheel/notice evidence unchanged.",
+  "runtime_version": "14.44.35211.0",
+  "schema_version": 1,
+  "status": "acquisition-and-recipient-review-approved-candidate-integration-required",
+  "system_installation_performed": false,
+  "task_id": "PWS-0802"
+}

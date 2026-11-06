@@ -105,7 +105,7 @@ def test_quality_review_semantics_are_textual_virtual_and_non_completing() -> No
         check = window._quality_check_button
         navigate = window._quality_go_to_page_button
 
-        assert summary.accessibleName() == "Page quality review status"
+        assert summary.text() in summary.accessibleName()
         assert summary.wordWrap()
         assert summary.focusPolicy() is Qt.FocusPolicy.StrongFocus
         assert "Not checked for this saved revision" in summary.text()

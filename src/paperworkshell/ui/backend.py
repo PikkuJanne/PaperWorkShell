@@ -25,6 +25,7 @@ from paperworkshell.app.organizer import (
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
 )
+from paperworkshell.app.package_pdf_export import PackagePdfCandidateError
 from paperworkshell.app.package_workflow import PackageReviewState, PackageWorkflowError
 from paperworkshell.app.page_previews import (
     PagePreviewError,
@@ -43,6 +44,7 @@ from paperworkshell.app.quality_analysis import (
     QualityReviewSnapshot,
 )
 from paperworkshell.app.redaction_tools import RedactionToolsState
+from paperworkshell.app.removal_export_review import RemovalExportReview
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewError,
@@ -53,6 +55,12 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementChoice,
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
+)
+from paperworkshell.domain.assisted_use import (
+    AssistedUseError,
+    AssistedUseErrorCode,
+    AssistedUseSnapshot,
+    AssistedUseStatus,
 )
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseLifecycleError
 from paperworkshell.domain.checklist import ChecklistError
@@ -65,6 +73,7 @@ from paperworkshell.domain.ocr_languages import (
     resolve_ocr_language_set,
     select_ocr_language_set,
 )
+from paperworkshell.domain.package_export_errors import PackageExportError
 from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
 from paperworkshell.domain.page_operations import PageOperationError
 from paperworkshell.domain.pdf_export import (
@@ -77,19 +86,29 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
     PdfThumbnailErrorCode,
 )
+from paperworkshell.domain.post_export_deletion import (
+    PostExportDeletionError,
+    PostExportDeletionErrorCode,
+    reject_post_export_deletion,
+)
 from paperworkshell.domain.recovery import RecoveryError
-from paperworkshell.domain.redaction import RedactionError
+from paperworkshell.domain.redaction import RedactionError, RedactionErrorCode
+from paperworkshell.domain.redaction_export import RedactionExportReport
+from paperworkshell.domain.redaction_verification import runtime_release_qualified
 from paperworkshell.domain.signature_images import (
     SignatureImageError,
     SignatureImageErrorCode,
     SignatureImageProgress,
 )
+from paperworkshell.domain.signed_source_policy import SignedSourcePolicyError
 from paperworkshell.domain.source_ingest import (
     SourceImportProgress,
     SourceIngestError,
     SourceIngestErrorCode,
 )
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
+from paperworkshell.domain.text_companion import TextCompanionError
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
 from paperworkshell.preflight.models import PreflightError
@@ -160,6 +179,8 @@ class OperationCancellation:
 
 
 _KNOWN_FAILURES: Final = (
+    PostExportDeletionError,
+    AssistedUseError,
     CaseLifecycleError,
     ChecklistError,
     ConstraintEditorError,
@@ -169,12 +190,15 @@ _KNOWN_FAILURES: Final = (
     PagePreviewError,
     PageOperationError,
     OverlayError,
+    PackageExportError,
+    PackagePdfCandidateError,
     PackageWorkflowError,
     PdfExportError,
     PdfThumbnailError,
     PreflightError,
     RecoveryError,
     RedactionError,
+    SignedSourcePolicyError,
     ScanReviewError,
     SignatureImageError,
     SourceIngestError,
@@ -188,6 +212,26 @@ def sanitize_ui_failure(
     operation_id: int | None = None,
 ) -> UiFailure:
     """Map only known typed failures; never stringify an unknown exception."""
+
+    if type(error) is TextCompanionError:
+        rebuilt_text = TextCompanionError(error.code)
+        return UiFailure(rebuilt_text.code.value, rebuilt_text.safe_message, True, operation_id)
+
+    if (
+        type(error) is RedactionError
+        and error.code is RedactionErrorCode.PIPELINE_DISABLED
+        and runtime_release_qualified()
+    ):
+        return UiFailure(
+            code=error.code.value,
+            message=(
+                tr(
+                    "Saved removal marks require Export removal derivative. Ordinary export cannot apply or verify these marks."
+                )
+            ),
+            retryable=False,
+            operation_id=operation_id,
+        )
 
     if type(error) is PackageWorkflowError:
         rebuilt_package = PackageWorkflowError(error.code)
@@ -233,8 +277,9 @@ def sanitize_ui_failure(
             return UiFailure(
                 code="PWS_UI_UNEXPECTED",
                 message=(
-                    "PaperWorkShell could not complete that action. "
-                    "Try again or restart the application."
+                    tr(
+                        "PaperWorkShell could not complete that action. Try again or restart the application."
+                    )
                 ),
                 retryable=True,
                 operation_id=operation_id,
@@ -247,6 +292,8 @@ def sanitize_ui_failure(
                 ImagePageError,
                 ManifestRepositoryError,
                 PagePreviewError,
+                PackageExportError,
+                PackagePdfCandidateError,
                 PdfExportError,
                 PdfThumbnailError,
                 SignatureImageError,
@@ -255,7 +302,9 @@ def sanitize_ui_failure(
         )
     return UiFailure(
         code="PWS_UI_UNEXPECTED",
-        message="PaperWorkShell could not complete that action. Try again or restart the application.",
+        message=tr(
+            "PaperWorkShell could not complete that action. Try again or restart the application."
+        ),
         retryable=True,
         operation_id=operation_id,
     )
@@ -364,6 +413,8 @@ class OrganizerBackendWorker(QObject):
     redaction_tools_save_failed = Signal(int, object)
     redaction_tools_cancelled = Signal(int)
     redaction_tools_cancel_failed = Signal(int, object)
+    removal_export_review_ready = Signal(int, object)
+    removal_export_ready = Signal(int, object)
     checklist_started = Signal(int, object)
     checklist_start_failed = Signal(int, object)
     checklist_applied = Signal(int, object)
@@ -380,6 +431,10 @@ class OrganizerBackendWorker(QObject):
     package_export_ready = Signal(int, object)
     package_review_cancelled = Signal(int)
     package_summary_saved = Signal(int)
+    text_companion_saved = Signal(int)
+    post_export_deletion_review_ready = Signal(int, object)
+    post_export_deletion_finished = Signal(int, object)
+    post_export_failed = Signal(int, str, object)
     package_failed = Signal(int, str, object)
     package_progress = Signal(int, int, int)
     compression_ready = Signal(int, object)
@@ -405,6 +460,13 @@ class OrganizerBackendWorker(QObject):
     failed = Signal(object)
     shutdown_complete = Signal()
     shutdown_refused = Signal(object)
+    assisted_use_changed = Signal(object)
+    assisted_check_finished = Signal()
+    case_close_finished = Signal()
+    assisted_unlock_failed = Signal(int, object)
+    assisted_unlock_finished = Signal(int)
+    assisted_unlocked = Signal(int, object)
+    assisted_handover = Signal(object)
 
     def __init__(self, factory: OrganizerBackendFactory) -> None:
         super().__init__()
@@ -467,7 +529,7 @@ class OrganizerBackendWorker(QObject):
             state = backend.create_case()
             self.state_changed.emit(state)
             self.status_changed.emit(
-                "New case created. Import a document to begin organizing pages."
+                tr("New case created. Import a document to begin organizing pages.")
             )
 
         self._with_backend(action)
@@ -479,29 +541,158 @@ class OrganizerBackendWorker(QObject):
         def action(backend: OrganizerBackend) -> None:
             if type(case_id) is not UUID:
                 raise TypeError
+            service = backend.assisted_use
+            if service is not None:
+                snapshot = service.inspect(case_id)
+                if snapshot.status is not AssistedUseStatus.ORDINARY:
+                    self.assisted_use_changed.emit(snapshot)
+                    if snapshot.status is not AssistedUseStatus.UNLOCKED:
+                        return
             state = backend.open_case(case_id)
             self.state_changed.emit(state)
             if state.recovery_review_required:
                 self.review_required.emit(
-                    "Case recovered from the validated save journal. "
-                    "Review the page organizer before continuing."
+                    tr(
+                        "Case recovered from the validated save journal. Review the page organizer before continuing."
+                    )
                 )
             else:
-                self.status_changed.emit(f"Case opened with {len(state.pages)} active pages.")
+                self.status_changed.emit(
+                    tr("Case opened with {value1} active pages.", value1=len(state.pages))
+                )
 
         self._with_backend(action)
+
+    @Slot(int, str, bool)
+    def create_assisted_case(self, retention_days: int, passphrase: str, consent: bool) -> None:
+        """Record consent before emitting an import-capable organizer."""
+
+        def action(backend: OrganizerBackend) -> None:
+            state = backend.create_assisted_case(retention_days, passphrase, consent=consent)
+            assert backend.assisted_use is not None
+            self.assisted_use_changed.emit(backend.assisted_use.snapshot)
+            self.cases_changed.emit(CaseIndex())
+            self.state_changed.emit(state)
+            self.status_changed.emit(
+                tr("Assisted case created. Consent and expiry recorded locally.")
+            )
+
+        self._with_backend(action)
+
+    @Slot(int, object, str, object)
+    def unlock_assisted_case(
+        self, request_id: int, case_id: object, passphrase: str, cancellation: object
+    ) -> None:
+        """Honor revocation before queued authentication and every exposure boundary.
+
+        Only this request's closed failure or completion crosses back to the
+        controller. A stale authentication error must not become a generic error
+        announcement in a later unlocked case.
+        """
+
+        service = None
+        try:
+            backend = self._backend
+            if backend is None or backend.assisted_use is None:
+                raise TypeError
+            service = backend.assisted_use
+            if (
+                type(request_id) is not int
+                or request_id <= 0
+                or type(case_id) is not UUID
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            if cancellation.cancelled():
+                return
+            snapshot = service.unlock(case_id, passphrase)
+            if cancellation.cancelled():
+                service.lock()
+                return
+            state = backend.open_case(case_id)
+            if cancellation.cancelled():
+                service.lock()
+                return
+            self.assisted_unlocked.emit(request_id, snapshot)
+            self.cases_changed.emit(CaseIndex())
+            self.state_changed.emit(state)
+        except BaseException as error:
+            if service is not None:
+                service.lock()
+            self.assisted_unlock_failed.emit(
+                request_id,
+                error.code
+                if type(error) is AssistedUseError and type(error.code) is AssistedUseErrorCode
+                else None,
+            )
+        finally:
+            self.assisted_unlock_finished.emit(request_id)
+
+    def lock_assisted_immediately(self) -> None:
+        """Close the thread-safe memory gate without waiting for the worker event loop."""
+
+        backend = self._backend
+        if backend is not None and backend.assisted_use is not None:
+            backend.assisted_use.lock()
+
+    def current_assisted_snapshot(self) -> AssistedUseSnapshot | None:
+        """Read only the immediate memory gate, never storage or a thread-affine worker."""
+
+        backend = self._backend
+        return (
+            None
+            if backend is None or backend.assisted_use is None
+            else backend.assisted_use.snapshot
+        )
+
+    def assisted_activity(self) -> None:
+        """Record local user input without filesystem access or queued work."""
+
+        backend = self._backend
+        if backend is not None and backend.assisted_use is not None:
+            try:
+                backend.assisted_use.activity()
+            except AssistedUseError:
+                pass
+
+    @Slot(object)
+    def check_assisted_use(self, case_id: object = None) -> None:
+        """Persist bounded clock checkpoints and enforce expiry away from the GUI."""
+
+        try:
+            backend = self._backend
+            if backend is None or backend.assisted_use is None:
+                self.assisted_use_changed.emit(None)
+                return
+            try:
+                if case_id is not None and type(case_id) is not UUID:
+                    raise TypeError
+                self.assisted_use_changed.emit(backend.assisted_use.check(case_id))
+            except BaseException as error:
+                backend.assisted_use.lock()
+                self.assisted_use_changed.emit(backend.assisted_use.snapshot)
+                self.failed.emit(sanitize_ui_failure(error))
+        finally:
+            self.assisted_check_finished.emit()
 
     @Slot()
     def close_case(self) -> None:
         """Flush and close the active case before returning to case selection."""
 
         def action(backend: OrganizerBackend) -> None:
+            handover = backend.assisted_use.snapshot if backend.assisted_use is not None else None
             state = backend.close_case()
+            self.assisted_use_changed.emit(None)
             self.state_changed.emit(state)
             self._emit_cases()
-            self.status_changed.emit("Case closed. All queued changes were saved.")
+            if handover is not None:
+                self.assisted_handover.emit(handover)
+            self.status_changed.emit(tr("Case closed. All queued changes were saved."))
 
-        self._with_backend(action)
+        try:
+            self._with_backend(action)
+        finally:
+            self.case_close_finished.emit()
 
     @Slot(int, object, str, object)
     def import_source(
@@ -529,7 +720,10 @@ class OrganizerBackendWorker(QObject):
             else:
                 self.operation_status_changed.emit(
                     operation_id,
-                    f"Import complete. The case now has {len(state.pages)} active pages.",
+                    tr(
+                        "Import complete. The case now has {value1} active pages.",
+                        value1=len(state.pages),
+                    ),
                 )
 
         self._run_long(operation_id, "Import", action)
@@ -557,12 +751,74 @@ class OrganizerBackendWorker(QObject):
             else:
                 self.operation_status_changed.emit(operation_id, outcome.safe_message)
 
-        self._run_long(operation_id, "PDF export", action)
+        self._run_long(operation_id, tr("PDF export"), action)
 
-    def _pdf_export_progress(self, operation_id: int, progress: PdfExportProgress) -> None:
+    @Slot(int)
+    def begin_removal_export(self, operation_id: int) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            review = backend.begin_removal_export()
+            if type(review) is not RemovalExportReview:
+                raise TypeError
+            review.__post_init__()
+            self.state_changed.emit(backend.state)
+            self.removal_export_review_ready.emit(operation_id, review)
+
+        self._run_long(operation_id, tr("Removal review"), action)
+
+    @Slot(int, object, object, bool, object)
+    def export_removal_pdf(
+        self,
+        operation_id: int,
+        review: object,
+        destination: object,
+        signed_source_confirmed: bool,
+        cancellation: object,
+    ) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                type(review) is not RemovalExportReview
+                or not isinstance(destination, Path)
+                or type(signed_source_confirmed) is not bool
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            report = backend.export_removal_pdf(
+                review,
+                destination,
+                signed_source_confirmed=signed_source_confirmed,
+                cancellation=cancellation.cancelled,
+                progress=lambda value: self._pdf_export_progress(
+                    operation_id, value, operation_name=tr("Removal export")
+                ),
+                state_changed=self.state_changed.emit,
+            )
+            if type(report) is not RedactionExportReport:
+                raise TypeError
+            report.__post_init__()
+            expected_revision = review.manifest_revision + int(
+                review.signed_source_confirmation_required
+            )
+            if (
+                report.case_id != review.case_id
+                or report.manifest_revision != expected_revision
+                or report.affected_page_ids != review.affected_page_ids
+            ):
+                raise TypeError
+            self.removal_export_ready.emit(operation_id, report)
+            self.operation_status_changed.emit(operation_id, report.safe_message)
+
+        self._run_long(operation_id, tr("Removal export"), action)
+
+    def _pdf_export_progress(
+        self,
+        operation_id: int,
+        progress: PdfExportProgress,
+        *,
+        operation_name: str = mark("PDF export"),
+    ) -> None:
         self.progress_changed.emit(
             UiProgress(
-                operation="PDF export",
+                operation=operation_name,
                 phase=progress.phase.value.replace("_", " "),
                 completed=progress.completed_pages,
                 total=progress.total_pages,
@@ -604,7 +860,7 @@ class OrganizerBackendWorker(QObject):
             self.thumbnails_ready.emit(operation_id, generation, results)
             self.operation_status_changed.emit(
                 operation_id,
-                f"Preview update complete for {len(results)} pages.",
+                tr("Preview update complete for {value1} pages.", value1=len(results)),
             )
 
         self._run_long(operation_id, "Preview", action)
@@ -661,21 +917,22 @@ class OrganizerBackendWorker(QObject):
             finding_count = len(snapshot.findings)
             affected_page_count = len({finding.page_id for finding in snapshot.findings})
             if finding_count:
-                finding_noun = "signal" if finding_count == 1 else "signals"
-                page_noun = "page" if affected_page_count == 1 else "pages"
-                message = (
-                    f"Page quality check finished. {finding_count} review {finding_noun} on "
-                    f"{affected_page_count} {page_noun}. These automatic suggestions need your "
-                    "review."
+                finding_noun = tr("signal") if finding_count == 1 else tr("signals")
+                page_noun = tr("page") if affected_page_count == 1 else tr("pages")
+                message = tr(
+                    "Page quality check finished. {value1} review {value2} on {value3} {value4}. These automatic suggestions need your review.",
+                    value1=finding_count,
+                    value2=finding_noun,
+                    value3=affected_page_count,
+                    value4=page_noun,
                 )
             else:
-                message = (
-                    "Page quality check finished. No review signals were found by these limited "
-                    "checks. Review the pages yourself before export."
+                message = tr(
+                    "Page quality check finished. No review signals were found by these limited checks. Review the pages yourself before export."
                 )
             self.operation_status_changed.emit(operation_id, message)
 
-        self._run_long(operation_id, "Page quality check", action)
+        self._run_long(operation_id, tr("Page quality check"), action)
 
     @Slot(int, object, object)
     def begin_scan_review(
@@ -698,7 +955,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id if type(operation_id) is int else 0,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid scan-review request.",
+                    message=tr("PaperWorkShell rejected an invalid scan-review request."),
                     retryable=True,
                     operation_id=operation_id if type(operation_id) is int else None,
                 ),
@@ -726,7 +983,9 @@ class OrganizerBackendWorker(QObject):
                     operation_id,
                     UiFailure(
                         code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                        message="PaperWorkShell could not verify the scan-review request safely.",
+                        message=tr(
+                            "PaperWorkShell could not verify the scan-review request safely."
+                        ),
                         retryable=True,
                         operation_id=operation_id,
                     ),
@@ -771,7 +1030,7 @@ class OrganizerBackendWorker(QObject):
                 generation if type(generation) is int else 0,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid scan-review preview request.",
+                    message=tr("PaperWorkShell rejected an invalid scan-review preview request."),
                     retryable=True,
                     operation_id=operation_id if type(operation_id) is int else None,
                 ),
@@ -801,7 +1060,7 @@ class OrganizerBackendWorker(QObject):
                 self.scan_review_preview_cancelled.emit(
                     operation_id,
                     generation,
-                    "Preview cancelled. Adjustments were not applied.",
+                    tr("Preview cancelled. Adjustments were not applied."),
                 )
             else:
                 self.scan_review_preview_failed.emit(
@@ -833,7 +1092,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id if type(operation_id) is int else 0,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid scan-review apply request.",
+                    message=tr("PaperWorkShell rejected an invalid scan-review apply request."),
                     retryable=True,
                     operation_id=operation_id if type(operation_id) is int else None,
                 ),
@@ -847,7 +1106,9 @@ class OrganizerBackendWorker(QObject):
                     operation_id,
                     UiFailure(
                         code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                        message="PaperWorkShell could not verify the scan-review result safely.",
+                        message=tr(
+                            "PaperWorkShell could not verify the scan-review result safely."
+                        ),
                         retryable=True,
                         operation_id=operation_id,
                     ),
@@ -876,7 +1137,7 @@ class OrganizerBackendWorker(QObject):
             self.scan_review_discard_failed.emit(
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell could not discard the scan review safely.",
+                    message=tr("PaperWorkShell could not discard the scan review safely."),
                     retryable=True,
                 )
             )
@@ -895,7 +1156,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid visual form-mark request.",
+                    message=tr("PaperWorkShell rejected an invalid visual form-mark request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -909,7 +1170,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -947,7 +1208,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected invalid visual form-mark changes.",
+                    message=tr("PaperWorkShell rejected invalid visual form-mark changes."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -961,7 +1222,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -999,7 +1260,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid visual form-mark cancellation.",
+                    message=tr("PaperWorkShell rejected an invalid visual form-mark cancellation."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1013,7 +1274,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1038,7 +1299,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid visual overlay abort request.",
+                    message=tr("PaperWorkShell rejected an invalid visual overlay abort request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1052,7 +1313,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1077,7 +1338,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid redaction mark request.",
+                    message=tr("PaperWorkShell rejected an invalid redaction mark request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1091,7 +1352,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1141,7 +1402,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected invalid redaction mark changes.",
+                    message=tr("PaperWorkShell rejected invalid redaction mark changes."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1155,7 +1416,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1193,7 +1454,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid redaction mark cancellation.",
+                    message=tr("PaperWorkShell rejected an invalid redaction mark cancellation."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1207,7 +1468,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1232,7 +1493,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid visual overlay abort request.",
+                    message=tr("PaperWorkShell rejected an invalid visual overlay abort request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1246,7 +1507,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1271,7 +1532,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid checklist request.",
+                    message=tr("PaperWorkShell rejected an invalid checklist request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1285,7 +1546,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1326,7 +1587,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected invalid checklist changes.",
+                    message=tr("PaperWorkShell rejected invalid checklist changes."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1340,7 +1601,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1378,7 +1639,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid checklist cancellation.",
+                    message=tr("PaperWorkShell rejected an invalid checklist cancellation."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1392,7 +1653,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1417,7 +1678,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid checklist abort request.",
+                    message=tr("PaperWorkShell rejected an invalid checklist abort request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1431,7 +1692,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1527,6 +1788,7 @@ class OrganizerBackendWorker(QObject):
             }:
                 raise TypeError
             summary.to_plain_text()
+            self.state_changed.emit(backend.state)
             self.package_export_ready.emit(operation_id, summary)
 
         self._run_package_action(operation_id, "export", action)
@@ -1634,6 +1896,7 @@ class OrganizerBackendWorker(QObject):
             if type(summary) is not PackageSummary:
                 raise TypeError
             summary.to_plain_text()
+            self.state_changed.emit(backend.state)
             self.package_export_ready.emit(operation_id, summary)
 
         self._run_package_action(operation_id, "compression_export", action)
@@ -1659,6 +1922,87 @@ class OrganizerBackendWorker(QObject):
             self.package_summary_saved.emit(operation_id)
 
         self._run_package_action(operation_id, "save", action)
+
+    @Slot(int, object, bool, object)
+    def save_text_companion(
+        self,
+        operation_id: int,
+        destination: object,
+        privacy_confirmed: bool,
+        cancellation: object,
+    ) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if (
+                not isinstance(destination, Path)
+                or type(privacy_confirmed) is not bool
+                or type(cancellation) is not OperationCancellation
+            ):
+                raise TypeError
+            backend.save_package_text_companion(
+                destination,
+                privacy_confirmed=privacy_confirmed,
+                cancellation=cancellation.cancelled,
+            )
+            self.text_companion_saved.emit(operation_id)
+
+        self._run_post_export_action(operation_id, "text", action)
+
+    @Slot(int, object)
+    def begin_post_export_deletion(self, operation_id: int, cancellation: object) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if type(cancellation) is not OperationCancellation:
+                raise TypeError
+            if cancellation.cancelled():
+                reject_post_export_deletion(
+                    PostExportDeletionErrorCode.CANCELLED, "post_export.cancelled"
+                )
+            review = backend.begin_post_export_deletion(cancellation=cancellation.cancelled)
+            if cancellation.cancelled():
+                backend.cancel_post_export_deletion()
+                reject_post_export_deletion(
+                    PostExportDeletionErrorCode.CANCELLED, "post_export.cancelled"
+                )
+            self.post_export_deletion_review_ready.emit(operation_id, review)
+
+        self._run_post_export_action(operation_id, "inventory", action)
+
+    @Slot(int, object)
+    def confirm_post_export_deletion(self, operation_id: int, review_id: object) -> None:
+        def action(backend: OrganizerBackend) -> None:
+            if type(review_id) is not UUID or review_id.version != 4:
+                raise TypeError
+            try:
+                result = backend.confirm_post_export_deletion(review_id)
+            finally:
+                # Close can succeed before removal fails. Publish the actual session
+                # state so the UI never presents a closed/partial case as editable.
+                self.state_changed.emit(backend.state)
+                if backend.state.case_id is None:
+                    self.assisted_use_changed.emit(None)
+                self._emit_cases()
+            self.post_export_deletion_finished.emit(operation_id, result)
+
+        self._run_post_export_action(operation_id, "delete", action)
+
+    @Slot()
+    def cancel_post_export_deletion(self) -> None:
+        if self._backend is not None:
+            self._backend.cancel_post_export_deletion()
+
+    def _run_post_export_action(
+        self,
+        operation_id: int,
+        phase: str,
+        action: Callable[[OrganizerBackend], None],
+    ) -> None:
+        try:
+            if type(operation_id) is not int or operation_id <= 0 or self._backend is None:
+                raise TypeError
+            action(self._backend)
+        except BaseException as error:
+            self.post_export_failed.emit(
+                operation_id, phase, sanitize_ui_failure(error, operation_id=operation_id)
+            )
 
     def _package_progress(self, operation_id: int, completed: int, total: int) -> None:
         if (
@@ -1697,7 +2041,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid constraint editor request.",
+                    message=tr("PaperWorkShell rejected an invalid constraint editor request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1711,7 +2055,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1750,7 +2094,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected invalid constraint changes.",
+                    message=tr("PaperWorkShell rejected invalid constraint changes."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1764,7 +2108,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1802,7 +2146,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid constraint cancellation.",
+                    message=tr("PaperWorkShell rejected an invalid constraint cancellation."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1816,7 +2160,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1841,7 +2185,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid constraint abort request.",
+                    message=tr("PaperWorkShell rejected an invalid constraint abort request."),
                     retryable=True,
                     operation_id=(
                         operation_id if type(operation_id) is int and operation_id > 0 else None
@@ -1855,7 +2199,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -1915,7 +2259,7 @@ class OrganizerBackendWorker(QObject):
             self.state_changed.emit(state)
             self.signature_image_prepared.emit(operation_id, draft)
 
-        self._run_long(operation_id, "Signature image preview", action)
+        self._run_long(operation_id, tr("Signature image preview"), action)
 
     @Slot(int, object, object)
     def place_signature_image(
@@ -1955,7 +2299,7 @@ class OrganizerBackendWorker(QObject):
                 self.operation_status_changed.emit(operation_id, outcome.safe_message)
             self.signature_image_placed.emit(operation_id, outcome)
 
-        self._run_long(operation_id, "Place signature image", action)
+        self._run_long(operation_id, tr("Place signature image"), action)
 
     @Slot(int, object)
     def cancel_signature_image(self, operation_id: int, draft_id: object) -> None:
@@ -1972,7 +2316,7 @@ class OrganizerBackendWorker(QObject):
                 operation_id if type(operation_id) is int else 0,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell could not discard the signature image safely.",
+                    message=tr("PaperWorkShell could not discard the signature image safely."),
                     retryable=True,
                     operation_id=(operation_id if type(operation_id) is int else None),
                 ),
@@ -2003,7 +2347,7 @@ class OrganizerBackendWorker(QObject):
                 request_id if type(request_id) is int else 0,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell could not list signature-image placements safely.",
+                    message=tr("PaperWorkShell could not list signature-image placements safely."),
                     retryable=True,
                     operation_id=(request_id if type(request_id) is int else None),
                 ),
@@ -2068,7 +2412,7 @@ class OrganizerBackendWorker(QObject):
             self.operation_status_changed.emit(operation_id, outcome.safe_message)
             self.signature_image_deleted.emit(operation_id, outcome)
 
-        self._run_long(operation_id, "Remove signature image", action)
+        self._run_long(operation_id, tr("Remove signature image"), action)
 
     @Slot(object)
     def rotate_clockwise(self, page_id: object) -> None:
@@ -2101,7 +2445,7 @@ class OrganizerBackendWorker(QObject):
                 raise TypeError
             state = backend.reorder_pages(page_ids)
             self.state_changed.emit(state)
-            self.status_changed.emit("Page order changed. Saving changes.")
+            self.status_changed.emit(tr("Page order changed. Saving changes."))
 
         self._with_backend(action)
 
@@ -2109,13 +2453,13 @@ class OrganizerBackendWorker(QObject):
     def undo(self) -> None:
         """Undo exactly one session organizer operation."""
 
-        self._state_action(lambda backend: backend.undo(), "Last organizer action undone.")
+        self._state_action(lambda backend: backend.undo(), tr("Last organizer action undone."))
 
     @Slot()
     def redo(self) -> None:
         """Redo exactly one previously undone session operation."""
 
-        self._state_action(lambda backend: backend.redo(), "Organizer action redone.")
+        self._state_action(lambda backend: backend.redo(), tr("Organizer action redone."))
 
     @Slot()
     def flush_autosave(self) -> None:
@@ -2123,7 +2467,7 @@ class OrganizerBackendWorker(QObject):
 
         self._state_action(
             lambda backend: backend.flush_autosave(),
-            "All organizer changes saved.",
+            tr("All organizer changes saved."),
         )
 
     @Slot()
@@ -2132,7 +2476,7 @@ class OrganizerBackendWorker(QObject):
 
         self._state_action(
             lambda backend: backend.retry_autosave(),
-            "All organizer changes saved after retry.",
+            tr("All organizer changes saved after retry."),
         )
 
     @Slot()
@@ -2170,7 +2514,7 @@ class OrganizerBackendWorker(QObject):
                 raise TypeError
             state = callback(backend, page_id)
             self.state_changed.emit(state)
-            self.status_changed.emit("Organizer change queued. Saving changes.")
+            self.status_changed.emit(tr("Organizer change queued. Saving changes."))
 
         self._with_backend(action)
 
@@ -2203,7 +2547,7 @@ class OrganizerBackendWorker(QObject):
                 request_id,
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid OCR language request.",
+                    message=tr("PaperWorkShell rejected an invalid OCR language request."),
                     retryable=True,
                     operation_id=(
                         request_id if type(request_id) is int and request_id > 0 else None
@@ -2217,7 +2561,7 @@ class OrganizerBackendWorker(QObject):
                 request_id,
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=request_id,
                 ),
@@ -2263,7 +2607,7 @@ class OrganizerBackendWorker(QObject):
     def _quality_progress(self, operation_id: int, progress: QualityAnalysisProgress) -> None:
         self.progress_changed.emit(
             UiProgress(
-                operation="Page quality check",
+                operation=tr("Page quality check"),
                 phase=progress.phase.value.replace("_", " "),
                 completed=progress.completed_pages,
                 total=progress.total_pages,
@@ -2275,7 +2619,7 @@ class OrganizerBackendWorker(QObject):
     def _scan_review_progress(self, operation_id: int, progress: PagePreviewProgress) -> None:
         self.scan_review_progress_changed.emit(
             UiProgress(
-                operation="Scan review",
+                operation=tr("Scan review"),
                 phase=progress.phase.value,
                 completed=progress.completed_pages,
                 total=progress.total_pages,
@@ -2293,7 +2637,7 @@ class OrganizerBackendWorker(QObject):
             raise TypeError
         self.progress_changed.emit(
             UiProgress(
-                operation="Signature image",
+                operation=tr("Signature image"),
                 phase=progress.phase.value.replace("_", " "),
                 completed=progress.completed_units,
                 total=progress.total_units,
@@ -2312,7 +2656,7 @@ class OrganizerBackendWorker(QObject):
             self.failed.emit(
                 UiFailure(
                     code="PWS_UI_REQUEST_INVALID",
-                    message="PaperWorkShell rejected an invalid operation request.",
+                    message=tr("PaperWorkShell rejected an invalid operation request."),
                     retryable=True,
                 )
             )
@@ -2332,7 +2676,7 @@ class OrganizerBackendWorker(QObject):
             self.failed.emit(
                 UiFailure(
                     code="PWS_UI_NOT_READY",
-                    message="PaperWorkShell is still starting. Try the action again.",
+                    message=tr("PaperWorkShell is still starting. Try the action again."),
                     retryable=True,
                     operation_id=operation_id,
                 )
@@ -2348,10 +2692,17 @@ class OrganizerBackendWorker(QObject):
     ) -> None:
         try:
             callback()
+        except AssistedUseError as error:
+            backend = self._backend
+            if backend is not None and backend.assisted_use is not None:
+                snapshot = backend.assisted_use.snapshot
+                if snapshot is not None and snapshot.status is not AssistedUseStatus.UNLOCKED:
+                    self.assisted_use_changed.emit(snapshot)
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
         except PdfExportError as error:
             if error.code is PdfExportErrorCode.CANCELLED and operation_id is not None:
                 self.operation_cancelled.emit(
-                    operation_id, "PDF export cancelled before completion."
+                    operation_id, tr("PDF export cancelled before completion.")
                 )
                 return
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
@@ -2360,7 +2711,7 @@ class OrganizerBackendWorker(QObject):
                 if operation_id is not None:
                     self.operation_cancelled.emit(
                         operation_id,
-                        "Import cancelled. No source was committed.",
+                        tr("Import cancelled. No source was committed."),
                     )
                 else:
                     self.failed.emit(sanitize_ui_failure(error))
@@ -2369,7 +2720,7 @@ class OrganizerBackendWorker(QObject):
         except PdfThumbnailError as error:
             if error.code is PdfThumbnailErrorCode.CANCELLED:
                 if operation_id is not None:
-                    self.operation_cancelled.emit(operation_id, "Preview update cancelled.")
+                    self.operation_cancelled.emit(operation_id, tr("Preview update cancelled."))
                 else:
                     self.failed.emit(sanitize_ui_failure(error))
                 return
@@ -2377,7 +2728,7 @@ class OrganizerBackendWorker(QObject):
         except ImagePageError as error:
             if error.code is ImagePageErrorCode.CANCELLED:
                 if operation_id is not None:
-                    self.operation_cancelled.emit(operation_id, "Preview update cancelled.")
+                    self.operation_cancelled.emit(operation_id, tr("Preview update cancelled."))
                 else:
                     self.failed.emit(sanitize_ui_failure(error))
                 return
@@ -2385,7 +2736,7 @@ class OrganizerBackendWorker(QObject):
         except PagePreviewError as error:
             if error.code is PagePreviewErrorCode.CANCELLED:
                 if operation_id is not None:
-                    self.operation_cancelled.emit(operation_id, "Preview update cancelled.")
+                    self.operation_cancelled.emit(operation_id, tr("Preview update cancelled."))
                 else:
                     self.failed.emit(sanitize_ui_failure(error))
                 return
@@ -2395,7 +2746,7 @@ class OrganizerBackendWorker(QObject):
                 if operation_id is not None:
                     self.operation_cancelled.emit(
                         operation_id,
-                        "Page quality check cancelled. No review results were applied.",
+                        tr("Page quality check cancelled. No review results were applied."),
                     )
                 else:
                     self.failed.emit(sanitize_ui_failure(error))
@@ -2406,7 +2757,7 @@ class OrganizerBackendWorker(QObject):
                 if operation_id is not None:
                     self.operation_cancelled.emit(
                         operation_id,
-                        "Signature-image operation cancelled. No new placement was committed.",
+                        tr("Signature-image operation cancelled. No new placement was committed."),
                     )
                 else:
                     self.failed.emit(sanitize_ui_failure(error))
@@ -2505,6 +2856,9 @@ class OrganizerBackendCommands(QObject):
     ocr_languages_refresh_requested = Signal(int)
     ocr_languages_select_requested = Signal(int, object)
     create_case_requested = Signal()
+    create_assisted_case_requested = Signal(int, str, bool)
+    unlock_assisted_case_requested = Signal(int, object, str, object)
+    assisted_check_requested = Signal(object)
     open_case_requested = Signal(object)
     close_case_requested = Signal()
     import_requested = Signal(int, object, str, object)
@@ -2538,8 +2892,14 @@ class OrganizerBackendCommands(QObject):
     compression_export_requested = Signal(int, object, bool, object)
     compression_discard_requested = Signal(int)
     pages_pdf_export_requested = Signal(int, object, object)
+    removal_export_review_requested = Signal(int)
+    removal_pdf_export_requested = Signal(int, object, object, bool, object)
     package_review_cancel_requested = Signal(int)
     package_summary_save_requested = Signal(int, object, object)
+    text_companion_save_requested = Signal(int, object, bool, object)
+    post_export_deletion_review_requested = Signal(int, object)
+    post_export_deletion_confirm_requested = Signal(int, object)
+    post_export_deletion_cancel_requested = Signal()
     signature_image_prepare_requested = Signal(int, object, object, object)
     signature_image_place_requested = Signal(int, object, object)
     signature_image_cancel_requested = Signal(int, object)
@@ -2563,10 +2923,15 @@ class OrganizerBackendCommands(QObject):
         self.ocr_languages_refresh_requested.connect(worker.refresh_ocr_languages)
         self.ocr_languages_select_requested.connect(worker.select_ocr_language_codes)
         self.create_case_requested.connect(worker.create_case)
+        self.create_assisted_case_requested.connect(worker.create_assisted_case)
+        self.unlock_assisted_case_requested.connect(worker.unlock_assisted_case)
+        self.assisted_check_requested.connect(worker.check_assisted_use)
         self.open_case_requested.connect(worker.open_case)
         self.close_case_requested.connect(worker.close_case)
         self.import_requested.connect(worker.import_source)
         self.pages_pdf_export_requested.connect(worker.export_pages_pdf)
+        self.removal_export_review_requested.connect(worker.begin_removal_export)
+        self.removal_pdf_export_requested.connect(worker.export_removal_pdf)
         self.thumbnails_requested.connect(worker.get_thumbnails)
         self.quality_review_requested.connect(worker.analyze_quality)
         self.scan_review_begin_requested.connect(worker.begin_scan_review)
@@ -2598,6 +2963,10 @@ class OrganizerBackendCommands(QObject):
         self.compression_discard_requested.connect(worker.discard_compression)
         self.package_review_cancel_requested.connect(worker.cancel_package_review)
         self.package_summary_save_requested.connect(worker.save_package_summary)
+        self.text_companion_save_requested.connect(worker.save_text_companion)
+        self.post_export_deletion_review_requested.connect(worker.begin_post_export_deletion)
+        self.post_export_deletion_confirm_requested.connect(worker.confirm_post_export_deletion)
+        self.post_export_deletion_cancel_requested.connect(worker.cancel_post_export_deletion)
         self.signature_image_prepare_requested.connect(worker.prepare_signature_image)
         self.signature_image_place_requested.connect(worker.place_signature_image)
         self.signature_image_cancel_requested.connect(worker.cancel_signature_image)

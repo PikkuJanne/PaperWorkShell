@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "source_task_id": "PWS-0506",
+  "source_evidence_sha256": "b046984e5ddee6a30704932cf9220a884e8d1b2343ee599541b793b9ee0aef52",
+  "confirmed_at": "2026-10-17",
+  "basis": "maintainer_confirmed_unchanged_from_last_accepted_test",
+  "slots": {
+    "W1": {
+      "reader_version": "2026.002",
+      "os_version": "10.0.26300",
+      "source_attempt_sha256": "114b83241d83c0a5c836b2dfccd1631debb97dd3270cf8baba40e3b4bf024c9a",
+      "source_attempt": "output/pws0506-portal-compatibility/a3741d06357b/W1-attempt-01.json"
+    },
+    "W2": {
+      "reader_version": "155.0.4283.45",
+      "os_version": "10.0.26300",
+      "source_attempt_sha256": "81dd1e4e586dddc53fb8167d4935cb226262fa7af3e9fee33827852dd0785e79",
+      "source_attempt": "output/pws0506-portal-compatibility/a3741d06357b/W2-attempt-01.json"
+    },
+    "W3": {
+      "reader_version": "155.0.8059.80",
+      "os_version": "10.0.26300",
+      "source_attempt_sha256": "162f51048ef69e394e36e6aafb539a49f56bee7c9fd4d940cd6d259957bc4949",
+      "source_attempt": "output/pws0506-portal-compatibility/a3741d06357b/W3-attempt-01.json"
+    },
+    "W4": {
+      "reader_version": "157.0.1",
+      "os_version": "10.0.26300",
+      "source_attempt_sha256": "4066e1481f750f789029b8559276132c9b915ae1a02c950b86773818b3510c06",
+      "source_attempt": "output/pws0506-portal-compatibility/a3741d06357b/W4-attempt-01.json"
+    },
+    "A1": {
+      "reader_version": "26.9.2.50367",
+      "os_version": "16",
+      "source_attempt_sha256": "173c0986bbbcfd1f9c6da4cc4553b73453808dc402cb03b54313a8e77129ecab",
+      "source_attempt": "output/pws0506-portal-compatibility/a3741d06357b/A1-attempt-01.json"
+    }
+  }
+}

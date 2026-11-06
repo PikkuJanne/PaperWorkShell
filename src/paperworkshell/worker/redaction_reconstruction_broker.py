@@ -425,9 +425,18 @@ class BrokeredPageReconstructor:
                     reject_pdf_export(
                         PdfExportErrorCode.REPORT_INVALID, "reconstruction.result_binding"
                     )
-                if cancellation_sent and result.outcome is OperationOutcome.SUCCEEDED:
-                    reject_pdf_export(PdfExportErrorCode.CANCELLED, "reconstruction.cancelled")
-                return result
+                if cancellation_sent and snapshot.phase not in {
+                    WorkerLifecyclePhase.CANCELLING,
+                    WorkerLifecyclePhase.READY,
+                }:
+                    reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "reconstruction.cancel_ack")
+                if not cancellation_sent or snapshot.phase is WorkerLifecyclePhase.READY:
+                    if cancellation_sent and result.outcome is OperationOutcome.SUCCEEDED:
+                        reject_pdf_export(PdfExportErrorCode.CANCELLED, "reconstruction.cancelled")
+                    return result
+                # A terminal result may precede the cancel acknowledgement.
+                # Continue the existing bounded pump/deadline loop until the
+                # client consumes the pending acknowledgement or faults.
             active = snapshot.active_operation
             if active is not None:
                 if active.operation_id != operation_id:

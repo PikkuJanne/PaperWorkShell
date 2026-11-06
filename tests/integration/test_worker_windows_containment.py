@@ -3070,6 +3070,113 @@ _PYTHON_PROCESS_ENTRY_POINTS = frozenset(
 )
 
 
+def _proven_qlocale_system_attributes(tree: ast.Module) -> frozenset[int]:
+    """Recognize only an unshadowed, direct, zero-argument Qt locale query."""
+    nodes = tuple(ast.walk(tree))
+    bindings: list[tuple[ast.Import | ast.ImportFrom, ast.alias]] = []
+    for node in nodes:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                if (alias.asname or alias.name.partition(".")[0]) == "QLocale":
+                    bindings.append((node, alias))
+    if len(bindings) != 1:
+        return frozenset()
+    statement, alias = bindings[0]
+    if (
+        not isinstance(statement, ast.ImportFrom)
+        or statement.level != 0
+        or statement not in tree.body
+        or statement.module != "PySide6.QtCore"
+        or alias.name != "QLocale"
+        or alias.asname is not None
+    ):
+        return frozenset()
+    dynamic_names = {
+        "globals",
+        "locals",
+        "vars",
+        "exec",
+        "eval",
+        "setattr",
+        "delattr",
+        "__import__",
+        "__builtins__",
+    }
+    named_bindings = (
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.ExceptHandler,
+        ast.MatchAs,
+        ast.MatchStar,
+        ast.TypeVar,
+        ast.TypeVarTuple,
+        ast.ParamSpec,
+    )
+    parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
+    for node in nodes:
+        if isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
+            return frozenset()
+        if isinstance(node, ast.Import) and any(alias.name == "builtins" for alias in node.names):
+            return frozenset()
+        if isinstance(node, ast.ImportFrom) and node.module == "builtins":
+            return frozenset()
+        if isinstance(node, ast.Name) and (
+            (node.id == "QLocale" and isinstance(node.ctx, (ast.Store, ast.Del)))
+            or node.id in dynamic_names
+        ):
+            return frozenset()
+        if isinstance(node, ast.Name) and node.id == "QLocale" and isinstance(node.ctx, ast.Load):
+            parent = parents.get(node)
+            direct_constructor = isinstance(parent, ast.Call) and parent.func is node
+            direct_class_method = False
+            if isinstance(parent, ast.Attribute) and parent.value is node:
+                call = parents.get(parent)
+                if isinstance(call, ast.Call) and call.func is parent and not call.keywords:
+                    direct_class_method = (parent.attr == "system" and not call.args) or (
+                        parent.attr == "setDefault" and len(call.args) == 1
+                    )
+            if not (direct_constructor or direct_class_method):
+                return frozenset()
+        if isinstance(node, ast.arg) and node.arg == "QLocale":
+            return frozenset()
+        if isinstance(node, named_bindings) and node.name == "QLocale":
+            return frozenset()
+        if isinstance(node, ast.MatchMapping) and node.rest == "QLocale":
+            return frozenset()
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and "QLocale" in node.names:
+            return frozenset()
+        if isinstance(node, ast.Constant) and node.value == "QLocale":
+            return frozenset()
+        if isinstance(node, ast.Attribute) and node.attr in {
+            "__globals__",
+            "f_globals",
+            "__dict__",
+        }:
+            return frozenset()
+        if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
+            node.ctx, (ast.Store, ast.Del)
+        ):
+            if isinstance(node, ast.Attribute) and node.attr == "QLocale":
+                return frozenset()
+            if any(
+                isinstance(child, ast.Name) and child.id == "QLocale"
+                for child in ast.walk(node.value)
+            ):
+                return frozenset()
+    return frozenset(
+        id(node.func)
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and not node.args
+        and not node.keywords
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "system"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "QLocale"
+    )
+
+
 def _process_creation_guard_findings(
     source: str,
     *,
@@ -3081,6 +3188,7 @@ def _process_creation_guard_findings(
     broker_subprocess_calls: set[str] = set()
     admitted_subprocess_modules = {broker, *subprocess_authorities}
     tree = ast.parse(source, filename=os.fspath(path))
+    proven_locale_queries = _proven_qlocale_system_attributes(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -3107,7 +3215,8 @@ def _process_creation_guard_findings(
                 if path != broker or node.attr != "CreateProcessW":
                     findings.append(f"Windows process API {node.attr}")
             elif node.attr in _PYTHON_PROCESS_ENTRY_POINTS:
-                findings.append(f"Python process API {node.attr}")
+                if id(node) not in proven_locale_queries:
+                    findings.append(f"Python process API {node.attr}")
         elif (
             isinstance(node, ast.Constant)
             and isinstance(node.value, str)
@@ -3321,3 +3430,103 @@ def test_launch_config_rejects_reparse_indirection(
         )
     assert raised.value.code is WindowsLaunchErrorCode.CONFIGURATION_INVALID
     assert raised.value.context == "config.reparse"
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "from PySide6.QtCore import QLocale\nvalue = QLocale.system().name()\n",
+        "from PySide6.QtCore import QLocale\ndef current():\n    return QLocale.system()\n",
+    ),
+)
+def test_process_creation_guard_admits_proven_qlocale_query(source: str) -> None:
+    findings, _calls = _process_creation_guard_findings(
+        source, path=Path("synthetic_locale.py"), broker=Path("broker.py")
+    )
+    assert not findings
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import os as QLocale\nQLocale.system()\n",
+        "from untrusted import QLocale\nQLocale.system()\n",
+        "from .PySide6.QtCore import QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale as locale\nlocale.system()\n",
+        "from PySide6.QtCore import QLocale as QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nfrom other import QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nfrom other import *\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nfrom PySide6.QtCore import QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nimport QLocale.helpers\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nQLocale = other\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ndel QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ndef invoke(QLocale):\n    return QLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nclass QLocale:\n    pass\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ndef QLocale():\n    pass\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nfor QLocale in values:\n    QLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nvalues = [QLocale.system() for QLocale in items]\n",
+        "from PySide6.QtCore import QLocale\nwith context() as QLocale:\n    QLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ntry:\n    pass\nexcept Exception as QLocale:\n    QLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nmatch value:\n    case QLocale:\n        pass\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ndef invoke[QLocale]():\n    return QLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nQLocale.system = replacement\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nQLocale.other = replacement\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nQLocale.__dict__[key] = replacement\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nQLocale.system.__code__ = replacement\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nsetattr(QLocale, key, replacement)\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nglobals()['Q' + 'Locale'] = other\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nquery = QLocale.system\n",
+        "from PySide6.QtCore import QLocale\nQLocale.system(command)\n",
+        "from PySide6.QtCore import QLocale\nQLocale.system(*args)\n",
+        "from PySide6.QtCore import QLocale\nQLocale.system(**options)\n",
+        "from PySide6.QtCore import QLocale\nalias = QLocale\nalias.system()\n",
+        "from PySide6.QtCore import QLocale\ngetattr(QLocale, 'system')()\n",
+        "from PySide6.QtCore import QLocale\nfactory().system()\n",
+        "from PySide6.QtCore import QLocale\nimport os\nos.system(command)\n",
+        "from PySide6.QtCore import QLocale\ngetattr(os, 'system')(command)\n",
+    ),
+)
+def test_process_creation_guard_rejects_unproved_locale_receivers(source: str) -> None:
+    findings, _calls = _process_creation_guard_findings(
+        source, path=Path("synthetic_locale.py"), broker=Path("broker.py")
+    )
+    assert findings
+
+
+def test_process_creation_guard_admits_direct_locale_constructor_and_default() -> None:
+    source = (
+        "from PySide6.QtCore import QLocale\n"
+        "native = QLocale('en')\n"
+        "QLocale.setDefault(native)\n"
+        "value = QLocale.system().name()\n"
+    )
+    findings, _calls = _process_creation_guard_findings(
+        source, path=Path("synthetic_locale.py"), broker=Path("broker.py")
+    )
+    assert not findings
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "def bind():\n    from PySide6.QtCore import QLocale\nQLocale.system()\n",
+        "def current():\n    from PySide6.QtCore import QLocale\n    return QLocale.system()\n",
+        "class Binding:\n    from PySide6.QtCore import QLocale\nQLocale.system()\n",
+        "if condition:\n    from PySide6.QtCore import QLocale\nQLocale.system()\n",
+        "if True:\n    from PySide6.QtCore import QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nunknown_mutator(QLocale)\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nalias = QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ncontainer = [QLocale]\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ndef expose():\n    return QLocale\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\ngetattr(QLocale, key)\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\n__builtins__['globals']()['Q' + 'Locale'] = other\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nimport sys\nsys.modules[__name__].QLocale = other\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nimport sys\nsys.modules[__name__].__dict__[key] = other\nQLocale.system()\n",
+        "from PySide6.QtCore import QLocale\nimport sys\nsys.modules[__name__].__dict__['Q' + 'Locale'] = other\nQLocale.system()\n",
+    ),
+)
+def test_process_creation_guard_rejects_scope_and_value_escapes(source: str) -> None:
+    findings, _calls = _process_creation_guard_findings(
+        source, path=Path("synthetic_locale.py"), broker=Path("broker.py")
+    )
+    assert findings

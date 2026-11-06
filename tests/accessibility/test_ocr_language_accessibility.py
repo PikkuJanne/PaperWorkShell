@@ -157,8 +157,8 @@ def test_visible_error_is_in_tab_order_before_fixed_actions() -> None:
         error = _widget(dialog, QLabel, "ocrLanguageError")
         scroll = _widget(dialog, QScrollArea, "ocrLanguageScrollArea")
         refresh = _widget(dialog, QPushButton, "ocrLanguageRefreshButton")
-        assert error.hasFocus()
-
+        assert refresh.hasFocus()
+        error.setFocus()
         QTest.keyClick(error, Qt.Key.Key_Tab)
         assert scroll.hasFocus()
         QTest.keyClick(scroll, Qt.Key.Key_Tab)

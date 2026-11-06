@@ -1,0 +1,9 @@
+Authenticated MSYS2 binary package metadata excerpt.
+This records a vendor declaration and does not provide an upstream waiver.
+
+pkgname = mingw-w64-ucrt-x86_64-windows-default-manifest
+pkgver = 20260815-1
+license = custom:Public Domain
+
+Binary archive SHA-256: b39039f754a600cc0dec49df7d675a59a3cb2b63691d91b4ae60735ee7075eca
+.PKGINFO SHA-256: cdcb864b568dac1d05f99a102a8d22fae85bcaa8b9ef315681c133ca7011e618

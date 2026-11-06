@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pytest
 
+import paperworkshell.ui.backend as backend_module
 from paperworkshell.app.redaction_tools import RedactionToolsState
 from paperworkshell.domain.manifest_repository import (
     ManifestLoadResult,
@@ -47,9 +48,13 @@ def _current_snapshot(snapshot: ManifestSnapshot) -> ManifestSnapshot:
     )
 
 
+@pytest.mark.parametrize("qualified", [False, True])
 def test_pending_intent_blocks_export_before_broker_sources_capacity_or_logs(
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    qualified: bool,
 ) -> None:
+    monkeypatch.setattr(backend_module, "runtime_release_qualified", lambda: qualified)
     stack = _stack()
     snapshot = _current_snapshot(stack.manifests.load(CASE_ID).snapshot)
     editor = RedactionToolsState.from_snapshot(snapshot, PAGE_ID).create(id_factory=lambda: MARK_ID)
@@ -76,7 +81,15 @@ def test_pending_intent_blocks_export_before_broker_sources_capacity_or_logs(
     assert str(MARK_ID) not in rendered
     safe = sanitize_ui_failure(failure.value)
     assert safe.code == RedactionErrorCode.PIPELINE_DISABLED.value
-    assert "No information has been removed" in safe.message
+    assert not safe.retryable
+    if qualified:
+        assert safe.message == (
+            "Saved removal marks require Export removal derivative. "
+            "Ordinary export cannot apply or verify these marks."
+        )
+        assert "unavailable until" not in safe.message
+    else:
+        assert "No information has been removed" in safe.message
 
 
 def test_reflected_announcement_is_never_accepted_for_save_or_routine_status() -> None:

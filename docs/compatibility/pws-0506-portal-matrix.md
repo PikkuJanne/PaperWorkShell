@@ -2,8 +2,10 @@
 
 ## Scope and current result
 
-**Manual matrix: NOT RUN.** Each slot below requires new observations of the exact
-PWS-0506 outputs. The accepted [PWS-0307 matrix](pws-0307-overlay-reader-matrix.md)
+**Manual matrix: PASS, accepted 2026-10-16.** All five human-operated slots passed
+the complete procedure against the exact PWS-0506 outputs. Codex validated the
+saved attempts and their common artifact binding after the maintainer confirmed
+completion. The accepted [PWS-0307 matrix](pws-0307-overlay-reader-matrix.md)
 remains valid for its own frozen artifact; it is not repeated or relabelled here.
 
 The [conservative portal profile](../architecture/portal-export-profile.md) defines
@@ -108,13 +110,40 @@ version when prompted; no device serial, account or local path belongs in eviden
 
 ## Required matrix
 
-| Slot | Required configuration | Result | Exact version, artifact binding and observations |
-|---|---|---|---|
-| W1 | Adobe desktop in confirmed Reader/free/reduced mode | NOT RUN | Pending |
-| W2 | Microsoft Edge built-in PDF viewer | NOT RUN | Pending |
-| W3 | Google Chrome built-in PDF viewer | NOT RUN | Pending |
-| W4 | Mozilla Firefox built-in PDF viewer | NOT RUN | Pending |
-| A1 | Adobe Acrobat Reader for Android | NOT RUN | Pending |
+| Slot | Confirmed configuration | Reader version | OS version | Tested at UTC | Result |
+|---|---|---|---|---|---|
+| W1 | Adobe desktop in Reader/free/reduced mode | 2026.002 | Windows 10.0.26300 | 2026-10-16 12:09:08Z | PASS |
+| W2 | Microsoft Edge built-in PDF viewer | 155.0.4283.45 | Windows 10.0.26300 | 2026-10-16 12:10:33Z | PASS |
+| W3 | Google Chrome built-in PDF viewer | 155.0.8059.80 | Windows 10.0.26300 | 2026-10-16 12:11:50Z | PASS |
+| W4 | Mozilla Firefox built-in PDF viewer | 157.0.1 | Windows 10.0.26300 | 2026-10-16 12:17:43Z | PASS |
+| A1 | Adobe Acrobat Reader for Android | 26.9.2.50367 | Android 16 | 2026-10-16 12:22:21Z | PASS |
+
+Each slot has one saved version-1 attempt with operator `human`. Every attempt
+records all six closed checks as true: correct viewer, all pages and order, all
+visual targets and zooms, all three text searches, no document interactivity,
+and close/reopen. These checks cover the baseline and both changed scan variants
+according to the test card above; separate pages and ZIP members retain their
+automated exact-byte comparisons.
+
+All attempts bind evidence SHA-256
+`b046984e5ddee6a30704932cf9220a884e8d1b2343ee599541b793b9ee0aef52`
+and the seven pinned artifacts. The original `evidence.json` preparation
+snapshot keeps its initial `NOT RUN` fields; the separate attempts supply the
+observed results. Neither the snapshot nor the artifacts was rewritten.
+
+| Saved attempt | SHA-256 |
+|---|---|
+| `W1-attempt-01.json` | `114b83241d83c0a5c836b2dfccd1631debb97dd3270cf8baba40e3b4bf024c9a` |
+| `W2-attempt-01.json` | `81dd1e4e586dddc53fb8167d4935cb226262fa7af3e9fee33827852dd0785e79` |
+| `W3-attempt-01.json` | `162f51048ef69e394e36e6aafb539a49f56bee7c9fd4d940cd6d259957bc4949` |
+| `W4-attempt-01.json` | `4066e1481f750f789029b8559276132c9b915ae1a02c950b86773818b3510c06` |
+| `A1-attempt-01.json` | `173c0986bbbcfd1f9c6da4cc4553b73453808dc402cb03b54313a8e77129ecab` |
+
+`uv run --locked --no-sync python -m tools.pws0506_portal_compatibility status`
+verified current implementation provenance, all seven pinned artifacts, all
+22 local constraint checks, and the latest attempt for every slot on 2026-10-16.
+It reported five `PASS` results and `MATRIX READY FOR REVIEW`; this tracked report
+records acceptance of those human observations.
 
 W1 excludes paid Standard/Pro and mode-not-confirmed observations. W2-W4 exclude
 external reader extensions, downloads without display, and delegation. A1 names

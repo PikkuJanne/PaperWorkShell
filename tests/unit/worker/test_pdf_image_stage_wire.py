@@ -44,8 +44,9 @@ def test_plan_round_trip_preserves_explicit_intent_and_hides_authority(
     value = decode_pdf_image_stage_plan(payload)
     assert value.base.plan == plan and value.request == intent
     assert value.base.handle_for(plan.sources[0].source_id) == 900
-    assert plan.manifest_sha256 not in repr(value)
-    assert "900" not in repr(value)
+    # The opaque address can itself contain the handle digits, so require the
+    # exact field-free representation instead of searching a random address.
+    assert repr(value) == object.__repr__(value)
 
 
 def test_grayscale_evidence_round_trip_keeps_original_and_selected_color_distinct() -> None:

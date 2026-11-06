@@ -160,10 +160,18 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
         ("python", "-m", "tools.validate_schemas"),
         "Validate every registered repository schema and instance.",
     ),
+    "validate-localization": CommandSpec(
+        ("python", "-m", "tools.validate_localization"),
+        "Validate application text, translation placeholders, and missing UI markers.",
+    ),
     "validate-dependencies": CommandSpec(
         ("python", "-m", "tools.validate_dependencies"),
         "Validate dependency, license, provenance, and redistribution policy.",
         include_in_check=False,
+    ),
+    "validate-release-inventory": CommandSpec(
+        ("python", "-m", "tools.release_evidence", "schemas"),
+        "Validate the resolved dependency-stage contract and synthetic rejection fixtures offline.",
     ),
     "validate-task-graph": CommandSpec(
         ("python", "tools/validate_tasks.py"),
@@ -231,6 +239,11 @@ COMMANDS: Final[dict[str, CommandSpec]] = {
     "pws0506-compatibility-test": CommandSpec(
         ("python", "-m", "tools.pws0506_portal_compatibility"),
         "Prepare and record the synthetic PWS-0506 reader and upload-constraint matrix.",
+        include_in_check=False,
+    ),
+    "pws0606-redaction-test": CommandSpec(
+        ("python", "-m", "tools.pws0606_viewer_resave"),
+        "Inspect retained human observations and verify exact synthetic viewer saves.",
         include_in_check=False,
     ),
     "pws0408-pilot": CommandSpec(
@@ -1142,8 +1155,11 @@ def _scan_git_blobs(
     category: str,
     batcher: _SecretScanBatcher,
     budget: _SecretScanEnumerationBudget,
+    covered_inputs: frozenset[tuple[str, int]] = frozenset(),
 ) -> int:
     for index, (object_id, object_size) in enumerate(blobs, start=1):
+        if (object_id, object_size) in covered_inputs:
+            continue
         source_label = f"{category} item {index}"
         content = _read_git_blob(git, root, object_id, object_size, source_label, budget)
         batcher.add(source_label, content)
@@ -1156,7 +1172,11 @@ def _uncovered_index_scan_inputs(
     historical_blobs: Sequence[tuple[str, int]],
     index_blobs: Sequence[tuple[str, int]],
 ) -> tuple[list[_PathBlobEntry], list[tuple[str, int]]]:
-    """Return index inputs whose physical scan is not identical to historical coverage."""
+    """Return index inputs whose physical scan is not identical to historical coverage.
+
+    Full index enumeration and final snapshot comparisons remain independent of
+    this work reduction. A new path or changed object always retains its scan.
+    """
 
     historical_path_inputs = set(historical_path_entries)
     historical_raw_inputs = set(historical_blobs)
@@ -1865,16 +1885,17 @@ def _scan_mirror(
         raise SecretScanError("SECRET_SCAN_TOOL_FAILED", f"Scanner failed for {source_label}.")
 
 
-def _scan_path_aware_blobs(
-    gitleaks: str,
-    git: str,
-    repository_root: Path,
-    trusted_ignore: Path,
+def _path_blob_batches(
     entries: Sequence[_PathBlobEntry],
     *,
     category: str,
-    budget: _SecretScanEnumerationBudget,
-) -> None:
+) -> list[list[tuple[int, _PathBlobEntry]]]:
+    """Preserve the path scanner's existing framed-byte batch boundaries."""
+    if len(entries) > MAX_SECRET_SCAN_ITEMS:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE",
+            "path-aware coverage exceeds the repository scanner item limit.",
+        )
     batches: list[list[tuple[int, _PathBlobEntry]]] = []
     batch_sizes: list[int] = []
     for entry_number, entry in enumerate(entries, start=1):
@@ -1890,20 +1911,57 @@ def _scan_path_aware_blobs(
         else:
             batches.append([(entry_number, entry)])
             batch_sizes.append(item_size)
+    return batches
 
+
+def _path_blob_groups(
+    batch: Sequence[tuple[int, _PathBlobEntry]],
+) -> list[list[tuple[int, _PathBlobEntry]]]:
+    """Group only metadata for equal immutable objects within one bounded batch."""
+    groups: dict[tuple[str, int], list[tuple[int, _PathBlobEntry]]] = {}
+    for entry_number, entry in batch:
+        groups.setdefault((entry.object_id, entry.object_size), []).append((entry_number, entry))
+    return list(groups.values())
+
+
+def _path_blob_read_work(entries: Sequence[_PathBlobEntry]) -> int:
+    """Predict the same physical object reads the bounded path scanner performs."""
+    return sum(
+        group[0][1].object_size
+        for batch in _path_blob_batches(entries, category="Git path/blob")
+        for group in _path_blob_groups(batch)
+    )
+
+
+def _scan_path_aware_blobs(
+    gitleaks: str,
+    git: str,
+    repository_root: Path,
+    trusted_ignore: Path,
+    entries: Sequence[_PathBlobEntry],
+    *,
+    category: str,
+    budget: _SecretScanEnumerationBudget,
+    raw_batcher: _SecretScanBatcher | None = None,
+) -> frozenset[tuple[str, bytes]]:
+    """Scan every path association and optionally share its read with raw scanning.
+
+    Only the existing bounded raw batcher retains content. The caller may reuse
+    exact object IDs for raw coverage after this function returns successfully;
+    final success still requires that batcher to flush without a finding.
+    """
+
+    covered: set[tuple[str, bytes]] = set()
+    batches = _path_blob_batches(entries, category=category)
     for batch_number, batch in enumerate(batches, start=1):
         with tempfile.TemporaryDirectory(prefix="pws-secret-blob-path-") as temporary:
             temporary_root = Path(temporary).resolve()
             mirror_root = temporary_root / "source"
             shadow_root = temporary_root / "path-rule-shadow"
             shadow_written = False
-            for entry_number, entry in batch:
+            for group in _path_blob_groups(batch):
+                entry_number, entry = group[0]
                 source_label = f"{category} item {batch_number}.{entry_number}"
-                mirror_target = _safe_mirror_target(
-                    mirror_root,
-                    Path(f"item-{entry_number:08d}") / entry.relative_path,
-                    source_label,
-                )
                 content = _read_git_blob(
                     git,
                     repository_root,
@@ -1912,16 +1970,30 @@ def _scan_path_aware_blobs(
                     source_label,
                     budget,
                 )
-                _write_mirror_input(mirror_target, content, source_label, budget)
-                rule_alias = _path_rule_alias(entry.relative_path)
-                if rule_alias is not None:
-                    shadow_target = _safe_mirror_target(
-                        shadow_root,
-                        Path(f"item-{entry_number:08d}") / rule_alias,
+                if raw_batcher is not None:
+                    raw_batcher.add(f"{source_label} raw blob", content)
+                digest = hashlib.sha256(content).digest()
+                # Reuse this one read immediately for all its mapped paths.
+                # No content cache crosses groups or existing batch boundaries;
+                # every original and filename-rule mirror is still written.
+                for entry_number, entry in group:
+                    source_label = f"{category} item {batch_number}.{entry_number}"
+                    mirror_target = _safe_mirror_target(
+                        mirror_root,
+                        Path(f"item-{entry_number:08d}") / entry.relative_path,
                         source_label,
                     )
-                    _write_mirror_input(shadow_target, content, source_label, budget)
-                    shadow_written = True
+                    covered.add((entry.relative_path.as_posix(), digest))
+                    _write_mirror_input(mirror_target, content, source_label, budget)
+                    rule_alias = _path_rule_alias(entry.relative_path)
+                    if rule_alias is not None:
+                        shadow_target = _safe_mirror_target(
+                            shadow_root,
+                            Path(f"item-{entry_number:08d}") / rule_alias,
+                            source_label,
+                        )
+                        _write_mirror_input(shadow_target, content, source_label, budget)
+                        shadow_written = True
             _scan_mirror(
                 gitleaks,
                 trusted_ignore,
@@ -1939,6 +2011,7 @@ def _scan_path_aware_blobs(
                     f"{category} shadow batch {batch_number}",
                     budget,
                 )
+    return frozenset(covered)
 
 
 def _scan_working_path_batch(
@@ -2078,6 +2151,7 @@ def _scan_working_paths(
     batcher: _SecretScanBatcher,
     expected_state: Sequence[tuple[Path, bytes | None]],
     budget: _SecretScanEnumerationBudget,
+    covered_path_inputs: frozenset[tuple[str, bytes]] = frozenset(),
 ) -> int:
     if len(paths) != len(expected_state):
         raise SecretScanError(
@@ -2113,6 +2187,12 @@ def _scan_working_paths(
         if content is None:
             continue
         batcher.add(source_label, content)
+        # The immutable Git input has already passed both its original-path
+        # mirror and any required alias. Keep every working-byte/state check and
+        # raw/path input, but avoid repeating that identical completed scan.
+        if (relative_path.as_posix(), actual_digest) in covered_path_inputs:
+            scanned += 1
+            continue
         item_size = len(RAW_SCAN_SENTINEL) + len(content)
         if batch_items and batch_size + item_size > MAX_SECRET_SCAN_BATCH_BYTES:
             _scan_working_path_batch(
@@ -2237,6 +2317,12 @@ def inspect_repository_contents(
         budget,
     )
     index_blobs = sorted({(entry.object_id, entry.object_size) for entry in index_entries})
+    uncovered_index_entries, uncovered_index_blobs = _uncovered_index_scan_inputs(
+        historical_path_entries,
+        index_entries,
+        historical_blobs,
+        index_blobs,
+    )
     bounded_sizes = (
         *(object_size for _, object_size in historical_blobs),
         *(object_size for _, _, object_size in historical_message_objects),
@@ -2258,7 +2344,7 @@ def inspect_repository_contents(
         (
             len(history_roots.ref_names),
             len(historical_path_entries),
-            len(index_entries),
+            len(uncovered_index_entries),
             len(historical_blobs),
             len(historical_message_objects),
             len(tracked_paths),
@@ -2291,7 +2377,7 @@ def inspect_repository_contents(
     for entry in historical_path_entries:
         budget.checkpoint()
         inspector(os.fsencode(entry.relative_path.as_posix()))
-    for entry in index_entries:
+    for entry in uncovered_index_entries:
         budget.checkpoint()
         inspector(os.fsencode(entry.relative_path.as_posix()))
     for item_number, (object_id, object_size) in enumerate(historical_blobs, start=1):
@@ -2323,7 +2409,7 @@ def inspect_repository_contents(
         # Custom headers, continuations, and message bodies remain untrusted. Gitleaks separately
         # scans every complete raw object, including the provenance lines omitted by this callback.
         _inspect_git_message_content(object_content, object_type, source_label, inspector)
-    for item_number, (object_id, object_size) in enumerate(index_blobs, start=1):
+    for item_number, (object_id, object_size) in enumerate(uncovered_index_blobs, start=1):
         inspector(
             _read_git_blob(
                 git,
@@ -2493,16 +2579,17 @@ def _scan_repository_checked(
         )
         + sum(
             raw_item_overhead + len(os.fsencode(entry.relative_path.as_posix()))
-            for entry in index_entries
+            for entry in uncovered_index_entries
         )
     )
     anticipated_git_work = (
         anticipated_source_byte_work
+        + _path_blob_read_work(historical_path_entries)
+        + _path_blob_read_work(uncovered_index_entries)
         + sum(
-            # One Git-object read and one framed mirror write, plus an alias write
-            # when needed. The raw-object scan is accounted for separately below.
-            entry.object_size
-            + (entry.object_size + len(RAW_SCAN_SENTINEL))
+            # Every mapped path keeps its own framed mirror and required alias.
+            # Shared object reads are planned per existing bounded batch above.
+            (entry.object_size + len(RAW_SCAN_SENTINEL))
             * (2 if _path_rule_alias(entry.relative_path) is not None else 1)
             for entry in (*historical_path_entries, *uncovered_index_entries)
         )
@@ -2517,6 +2604,23 @@ def _scan_repository_checked(
                 *(object_size + raw_item_overhead for _, object_size in uncovered_index_blobs),
             )
         )
+    )
+    if len(historical_path_entries) + len(uncovered_index_entries) > MAX_SECRET_SCAN_ITEMS:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE",
+            "path-aware coverage exceeds the repository scanner item limit.",
+        )
+    path_blob_inputs = frozenset(
+        (entry.object_id, entry.object_size)
+        for entry in (*historical_path_entries, *uncovered_index_entries)
+    )
+    # Complete raw bytes are submitted from the path-aware read. No second Git
+    # read occurs for these immutable objects; all mirror and raw writes remain
+    # charged above, and direct blob refs without path associations are retained.
+    anticipated_git_work -= sum(
+        object_size
+        for object_id, object_size in (*historical_blobs, *uncovered_index_blobs)
+        if (object_id, object_size) in path_blob_inputs
     )
     enumeration_budget.ensure_work_capacity(anticipated_git_work)
 
@@ -2536,7 +2640,7 @@ def _scan_repository_checked(
         (
             len(history_roots.ref_names),
             len(historical_path_entries),
-            len(index_entries),
+            len(uncovered_index_entries),
             len(historical_blobs),
             len(historical_message_objects),
             len(tracked_paths),
@@ -2580,11 +2684,11 @@ def _scan_repository_checked(
         batcher=batcher,
     )
     _scan_path_bytes(
-        [entry.relative_path for entry in index_entries],
+        [entry.relative_path for entry in uncovered_index_entries],
         category="index source",
         batcher=batcher,
     )
-    _scan_path_aware_blobs(
+    covered_path_inputs = _scan_path_aware_blobs(
         gitleaks,
         git,
         root,
@@ -2592,8 +2696,9 @@ def _scan_repository_checked(
         historical_path_entries,
         category="historical path/blob",
         budget=enumeration_budget,
+        raw_batcher=batcher,
     )
-    _scan_path_aware_blobs(
+    covered_path_inputs |= _scan_path_aware_blobs(
         gitleaks,
         git,
         root,
@@ -2601,7 +2706,13 @@ def _scan_repository_checked(
         uncovered_index_entries,
         category="index path/blob",
         budget=enumeration_budget,
+        raw_batcher=batcher,
     )
+    if len(covered_path_inputs) > MAX_SECRET_SCAN_ITEMS:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE",
+            "path-aware coverage exceeds the repository scanner item limit.",
+        )
 
     history_blob_count = _scan_git_blobs(
         git,
@@ -2610,6 +2721,7 @@ def _scan_repository_checked(
         category="historical blob",
         batcher=batcher,
         budget=enumeration_budget,
+        covered_inputs=path_blob_inputs,
     )
     history_message_object_count = _scan_git_message_objects(
         git,
@@ -2625,6 +2737,7 @@ def _scan_repository_checked(
         category="index blob",
         batcher=batcher,
         budget=enumeration_budget,
+        covered_inputs=path_blob_inputs,
     )
     index_count = len(index_blobs)
 
@@ -2638,6 +2751,7 @@ def _scan_repository_checked(
         batcher=batcher,
         expected_state=tracked_state,
         budget=enumeration_budget,
+        covered_path_inputs=covered_path_inputs,
     )
     untracked_count = _scan_working_paths(
         gitleaks,

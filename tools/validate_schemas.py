@@ -17,6 +17,7 @@ from tools.m1_vertical_slice_benchmark import (
     REPORT_SCHEMA_PATH as M1_BENCHMARK_REPORT_SCHEMA_PATH,
 )
 from tools.m1_vertical_slice_benchmark import validate_report_schema
+from tools.release_evidence import schema_messages as release_inventory_schema_messages
 from tools.validate_dependencies import (
     INVENTORY_SCHEMA_PATH,
     validate_dependency_fixture_set,
@@ -61,6 +62,7 @@ def validation_messages(root: Path = PROJECT_ROOT) -> list[str]:
         + [issue.render() for issue in dependency_issues]
         + [issue.render() for issue in m1_benchmark_issues]
         + _validate_export_history_schema(root)
+        + release_inventory_schema_messages(root)
     )
 
 
@@ -95,6 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"{M1_BENCHMARK_REPORT_SCHEMA_PATH.as_posix()}."
     )
     print(f"OK: validated export-history v1 with {EXPORT_HISTORY_SCHEMA_PATH.as_posix()}.")
+    print("OK: validated resolved dependency-stage inventory v1 and current/rejected fixtures.")
     return 0
 
 

@@ -1,0 +1,4 @@
+This software is based in part on the work of the Independent JPEG Group.
+Portions of this software are copyright (c) 2006 The FreeType Project (https://freetype.org). All rights reserved.
+This software includes code from XZ Utils (https://tukaani.org/xz/).
+This software includes code developed by the University of California, Berkeley.

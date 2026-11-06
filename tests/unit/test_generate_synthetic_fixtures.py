@@ -76,7 +76,7 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
         self.assertEqual(self.fixtures, second)
         self.assertEqual(canonical_index_bytes(self.fixtures), canonical_index_bytes(second))
-        self.assertEqual(46, len(self.fixtures))
+        self.assertEqual(60, len(self.fixtures))
         for fixture in self.fixtures:
             with self.subTest(fixture=fixture.fixture_id):
                 self.assertIn(SYNTHETIC_MARKER.encode("ascii"), fixture.content)
@@ -157,10 +157,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
 
     def test_classic_pdfs_have_correct_xref_offsets_and_stream_lengths(self) -> None:
         for fixture in self.fixtures:
-            if fixture.media_type != "application/pdf" or fixture.fixture_id in {
-                "pdf-incremental",
-                "pdf-malformed",
-            }:
+            if fixture.media_type != "application/pdf" or {
+                "incremental",
+                "malformed",
+            }.intersection(fixture.categories):
                 continue
             with self.subTest(fixture=fixture.fixture_id):
                 content = fixture.content
@@ -218,8 +218,8 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 raw = zlib.decompress(chunks[2][1])
                 if bit_depth == 1 and color_type == 0:
                     row_bytes = (width + 7) // 8
-                elif bit_depth == 8 and color_type in {2, 6}:
-                    row_bytes = width * (4 if color_type == 6 else 3)
+                elif bit_depth == 8 and color_type in {0, 2, 6}:
+                    row_bytes = width * {0: 1, 2: 3, 6: 4}[color_type]
                 else:
                     self.fail("fixture PNG must use a reviewed pixel layout")
                 self.assertEqual(height * (1 + row_bytes), len(raw))
@@ -624,10 +624,10 @@ class SyntheticFixtureGeneratorTests(unittest.TestCase):
                 if path.is_file()
             }
 
-        self.assertEqual(46, count)
+        self.assertEqual(60, count)
         self.assertEqual(count, second_count)
         self.assertEqual(first, second)
-        self.assertEqual(47, len(first))
+        self.assertEqual(61, len(first))
         loaded = json.loads(first[Path("index.json")])
         self.assertEqual("public-synthetic-only", loaded["policy"]["classification"])
 

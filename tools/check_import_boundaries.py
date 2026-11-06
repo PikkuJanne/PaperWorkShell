@@ -30,10 +30,17 @@ REQUIRED_PACKAGES: Final = (
     "templates",
     "storage",
     "diagnostics",
+    "localization",
 )
 KNOWN_LAYERS: Final = frozenset(REQUIRED_PACKAGES)
 DESKTOP_ENTRYPOINT: Final = f"{PROJECT_PACKAGE}.__main__"
 DESKTOP_WORKER_COMPOSITION_MODULE: Final = f"{PROJECT_PACKAGE}.worker.desktop_composition"
+DESKTOP_WORKER_COMPOSITION_MODULES: Final = frozenset(
+    {
+        DESKTOP_WORKER_COMPOSITION_MODULE,
+        f"{PROJECT_PACKAGE}.worker.redaction_export_composition",
+    }
+)
 DESKTOP_EXPORT_DESTINATION_MODULE: Final = f"{PROJECT_PACKAGE}.export.pdf_destination"
 DESKTOP_PACKAGE_EXPORT_MODULES: Final = frozenset(
     {
@@ -234,12 +241,24 @@ def _target_violation(
                 f"the root package must not import layer {target!r}",
             )
 
-        if owner == "domain" and target_layer not in (None, "domain"):
+        if (
+            owner == "domain"
+            and target_layer not in (None, "domain")
+            and target != (f"{PROJECT_PACKAGE}.localization.catalog")
+        ):
             return BoundaryViolation(
                 path,
                 line,
                 "ARCH_DOMAIN_OUTBOUND",
                 f"domain code must not import {target!r}",
+            )
+
+        if owner == "localization" and target_layer not in (None, "localization"):
+            return BoundaryViolation(
+                path,
+                line,
+                "ARCH_LOCALIZATION_OUTBOUND",
+                f"localization resources must not import product layer {target!r}",
             )
 
         if owner == "diagnostics" and target_layer not in (None, "diagnostics"):
@@ -277,7 +296,7 @@ def _target_violation(
         is_gui_safe_worker_module = any(
             _is_within(importer, prefix) for prefix in GUI_SAFE_WORKER_PREFIXES
         )
-        is_desktop_worker_composition = importer == DESKTOP_WORKER_COMPOSITION_MODULE
+        is_desktop_worker_composition = importer in DESKTOP_WORKER_COMPOSITION_MODULES
         is_desktop_export_destination = importer == DESKTOP_ENTRYPOINT and (
             target == DESKTOP_EXPORT_DESTINATION_MODULE or target in DESKTOP_PACKAGE_EXPORT_MODULES
         )
@@ -291,7 +310,11 @@ def _target_violation(
             )
 
         if (
-            (owner in UI_FACING_LAYERS or is_gui_safe_worker_module)
+            (
+                owner in UI_FACING_LAYERS
+                or is_gui_safe_worker_module
+                or is_desktop_worker_composition
+            )
             and _is_within(target, EXPORT_PACKAGE)
             and target != EXPORT_PACKAGE
             and not is_desktop_export_destination
@@ -312,7 +335,7 @@ def _target_violation(
             )
 
         is_desktop_worker_composition_import = (
-            importer == DESKTOP_ENTRYPOINT and target == DESKTOP_WORKER_COMPOSITION_MODULE
+            importer == DESKTOP_ENTRYPOINT and target in DESKTOP_WORKER_COMPOSITION_MODULES
         )
 
         if (

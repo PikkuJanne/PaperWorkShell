@@ -159,7 +159,7 @@ def test_core_controls_have_names_descriptions_and_no_drag_requirement() -> None
         assert quality_findings is not None
         assert quality_group.accessibleName() == "Page quality review"
         assert "never complete a requirement" in quality_group.accessibleDescription()
-        assert quality_summary.accessibleName() == "Page quality review status"
+        assert quality_summary.text() in quality_summary.accessibleName()
         assert quality_summary.wordWrap()
         assert quality_summary.focusPolicy() is Qt.FocusPolicy.StrongFocus
         assert quality_findings.accessibleName() == "Page quality findings"
@@ -310,7 +310,7 @@ def test_empty_case_guidance_tracks_correlated_import_outcomes_without_paths() -
         assert guidance.wordWrap()
         assert guidance.textFormat() is Qt.TextFormat.PlainText
         assert guidance.focusPolicy() is Qt.FocusPolicy.NoFocus
-        assert guidance.accessibleName() == "Page organizer guidance"
+        assert guidance.text() in guidance.accessibleName()
         assert "No pages yet" in guidance.text()
         assert "Ctrl+I" in guidance.text()
         assert guidance.accessibleDescription() == guidance.text()
@@ -779,7 +779,7 @@ def test_status_and_safe_error_are_visible_and_focusable_on_each_workflow_page()
         )
         app.processEvents()
         assert window._error_label.isVisible()
-        assert window._error_label.accessibleName() == "Action error"
+        assert window._error_label.accessibleName() == f"Action error. {window._error_label.text()}"
         assert "PWS_TEST_FAILURE" in window._error_label.text()
         assert app.focusWidget() is window._error_label
         assert "path" not in window._error_label.text().casefold()

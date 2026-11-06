@@ -41,6 +41,7 @@ from paperworkshell.domain.target_size_search import (
 from paperworkshell.export.package_export import (
     PackageExportError,
     PackageExportErrorCode,
+    PackageExportOutcome,
     PackageExportProgress,
     PackagePdfPipeline,
     reject_package_export,
@@ -101,6 +102,7 @@ class _Review:
     definition: ChecklistDefinition
     preflight: PreflightEvaluation
     prepared: PreparedTargetSizePackage
+    destination_parent: Path
 
 
 class WindowsCompressionReviewService:
@@ -112,6 +114,9 @@ class WindowsCompressionReviewService:
         destination: WindowsExportDestination,
         policy: ResourcePolicy,
         renderer: CompressionPreviewRenderer,
+        *,
+        verified_export_observer: Callable[[ManifestSnapshot, PackageExportOutcome, Path], None]
+        | None = None,
     ) -> None:
         if (
             not callable(producer_factory)
@@ -130,6 +135,7 @@ class WindowsCompressionReviewService:
         self._renderer = renderer
         self._active: _Review | None = None
         self._pending_cleanup: PreparedTargetSizePackage | None = None
+        self._verified_export_observer = verified_export_observer
 
     def prepare(
         self,
@@ -224,7 +230,9 @@ class WindowsCompressionReviewService:
                     reject_package_export(
                         PackageExportErrorCode.LIMIT_EXCEEDED, "compression_review.evidence"
                     )
-            self._active = _Review(state, snapshot, template, definition, preflight, prepared)
+            self._active = _Review(
+                state, snapshot, template, definition, preflight, prepared, destination_parent
+            )
             self._pending_cleanup = None
             return state
         except BaseException:
@@ -354,6 +362,8 @@ class WindowsCompressionReviewService:
             _sanitize_failure("compression_review.commit")
         try:
             self.discard()
+            if outcome.successful and self._verified_export_observer is not None:
+                self._verified_export_observer(review.snapshot, outcome, review.destination_parent)
             return build_package_summary(
                 review.snapshot,
                 review.template,

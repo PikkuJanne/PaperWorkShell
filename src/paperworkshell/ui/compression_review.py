@@ -7,7 +7,7 @@ from typing import Final
 from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QCloseEvent, QImage, QShowEvent
+from PySide6.QtGui import QCloseEvent, QImage, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,12 +27,16 @@ from PySide6.QtWidgets import (
 from paperworkshell.domain.compression_review import CompressionPageChange, CompressionReviewState
 from paperworkshell.domain.resource_policy import ResourcePolicy
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
+from paperworkshell.localization.catalog import format_file_size, format_number, mark, tr
+from paperworkshell.ui.announcements import ScreenReaderAnnouncer
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import set_static_busy
 from paperworkshell.ui.preview_comparison import PreviewComparisonWidget
 
 _PHASE_TEXT: Final = {
-    "preparing": "Preparing and verifying a private candidate",
-    "preview": "Loading the selected page comparison",
-    "export": "Publishing the reviewed candidate",
+    "preparing": mark("Preparing and verifying a private candidate"),
+    "preview": mark("Loading the selected page comparison"),
+    "export": mark("Publishing the reviewed candidate"),
 }
 
 
@@ -48,6 +52,7 @@ class CompressionReviewDialog(QDialog):
         if type(resource_policy) is not ResourcePolicy:
             raise ValueError("Compression review requires the central resource policy.")
         super().__init__(parent)
+        self._announcer = ScreenReaderAnnouncer(self)
         self._review: CompressionReviewState | None = None
         self._busy = False
         self._cancelable = False
@@ -58,11 +63,12 @@ class CompressionReviewDialog(QDialog):
         self._has_preview_proof = False
         self._maximum_preview_pixels = resource_policy.maximum_preview_pixels_per_page
         self.setObjectName("compressionReviewDialog")
-        self.setWindowTitle("Review size reduction")
-        self.setAccessibleName("Review size reduction")
+        self.setWindowTitle(tr("Review size reduction"))
+        self.setAccessibleName(tr("Review size reduction"))
         self.setAccessibleDescription(
-            "Review actual sizes and affected pages before exporting a privately prepared "
-            "candidate. Color removal requires an explicit choice. Close is the safe default."
+            tr(
+                "Review actual sizes and affected pages before exporting a privately prepared candidate. Color removal requires an explicit choice. Close is the safe default."
+            )
         )
         self.setModal(True)
         content = QWidget()
@@ -70,24 +76,25 @@ class CompressionReviewDialog(QDialog):
         body = QVBoxLayout(content)
         body.addWidget(
             self._label(
-                "Inspect the proposed changes before export. Review small text, stamps, handwriting, "
-                "and meaning carried by color. A size limit and a preview do not prove readability "
-                "or portal acceptance. Original source files remain unchanged.",
+                tr(
+                    "Inspect the proposed changes before export. Review small text, stamps, handwriting, and meaning carried by color. A size limit and a preview do not prove readability or portal acceptance. Original source files remain unchanged."
+                ),
                 "compressionReviewGuidance",
-                "Compression review guidance",
+                tr("Compression review guidance"),
             )
         )
         self._grayscale = QCheckBox()
         self._grayscale.setObjectName("compressionReviewGrayscaleCheck")
-        self._grayscale.setAccessibleName("Allow grayscale for eligible images")
+        self._grayscale.setAccessibleName(tr("Allow grayscale for eligible images"))
         self._grayscale.setAccessibleDescription(
-            "Unchecked preserves color. Checking permits color removal from eligible images. "
-            "Changing this choice discards the current preview and requires preparation again."
+            tr(
+                "Unchecked preserves color. Checking permits color removal from eligible images. Changing this choice discards the current preview and requires preparation again."
+            )
         )
         color_label = self._label(
-            "Allow grayscale for eligible images; color information may be lost",
+            tr("Allow grayscale for eligible images; color information may be lost"),
             "compressionReviewGrayscaleLabel",
-            "Explicit grayscale choice",
+            tr("Explicit grayscale choice"),
         )
         color_label.setBuddy(self._grayscale)
         color_row = QHBoxLayout()
@@ -95,45 +102,53 @@ class CompressionReviewDialog(QDialog):
         color_row.addWidget(color_label, 1)
         body.addLayout(color_row)
         self._prepare = self._button(
-            "Prepare",
+            tr("Prepare"),
             "compressionReviewPrepareButton",
-            "Prepare a new private candidate with the selected color policy. This does not publish files.",
+            tr(
+                "Prepare a new private candidate with the selected color policy. This does not publish files."
+            ),
         )
-        self._prepare.setAccessibleName("Prepare compression preview")
+        self._prepare.setAccessibleName(tr("Prepare compression preview"))
         self._prepare.clicked.connect(self._request_prepare)
         body.addWidget(self._prepare)
         self._floor = self._label(
-            "Automatic reduction stops at 200 dpi and JPEG quality 80. Images already below the "
-            "resolution floor remain unchanged. There is no override below this floor. Human "
-            "review is still required.",
+            tr(
+                "Automatic reduction stops at 200 dpi and JPEG quality 80. Images already below the resolution floor remain unchanged. There is no override below this floor. Human review is still required."
+            ),
             "compressionReviewFloor",
-            "Automatic legibility floor",
+            tr("Automatic legibility floor"),
         )
         body.addWidget(self._floor)
-        summary_label = QLabel("Sizes and &changes")
+        summary_label = QLabel(tr("Sizes and &changes"))
         summary_label.setWordWrap(True)
         self._summary = QPlainTextEdit()
         self._summary.setObjectName("compressionReviewSummaryText")
-        self._summary.setAccessibleName("Actual sizes and proposed image changes")
+        self._summary.setAccessibleName(tr("Actual sizes and proposed image changes"))
         self._summary.setAccessibleDescription(
-            "Selectable plain text lists measured current and proposed sizes, required limits, "
-            "and every affected page. Tab moves to the next control."
+            tr(
+                "Selectable plain text lists measured current and proposed sizes, required limits, and every affected page. Control+Home and Control+End move to the start and end. Tab moves to the next control."
+            )
         )
         self._summary.setReadOnly(True)
+        self._summary.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         self._summary.setTabChangesFocus(True)
         self._summary.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._summary.setMinimumHeight(220)
         summary_label.setBuddy(self._summary)
         body.addWidget(summary_label)
         body.addWidget(self._summary)
-        page_label = QLabel("Affected &page")
+        page_label = QLabel(tr("Affected &page"))
         page_label.setWordWrap(True)
         self._pages = QComboBox()
         self._pages.setObjectName("compressionReviewPageCombo")
-        self._pages.setAccessibleName("Affected page to inspect")
+        self._pages.setAccessibleName(tr("Affected page to inspect"))
         self._pages.setAccessibleDescription(
-            "Choose an affected page using the arrow keys, then choose Show page. Only one "
-            "before and proposed pair is retained at a time."
+            tr(
+                "Choose an affected page using the arrow keys, then choose Show page. Only one before and proposed pair is retained at a time."
+            )
         )
         self._pages.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
@@ -144,9 +159,9 @@ class CompressionReviewDialog(QDialog):
         body.addWidget(page_label)
         body.addWidget(self._pages)
         self._load = self._button(
-            "Show page",
+            tr("Show page"),
             "compressionReviewShowPageButton",
-            "Load before and proposed pixels for the selected affected page.",
+            tr("Load before and proposed pixels for the selected affected page."),
         )
         self._load.clicked.connect(self._request_preview)
         body.addWidget(self._load)
@@ -154,15 +169,16 @@ class CompressionReviewDialog(QDialog):
         body.addWidget(self._comparison)
         self._ack = QCheckBox()
         self._ack.setObjectName("compressionReviewAcknowledgementCheck")
-        self._ack.setAccessibleName("Confirm review of displayed changes and legibility risks")
+        self._ack.setAccessibleName(tr("Confirm review of displayed changes and legibility risks"))
         self._ack.setAccessibleDescription(
-            "Confirm only after reviewing the displayed changes and any page previews you need. "
-            "This does not claim every affected page was inspected or establish readability."
+            tr(
+                "Confirm only after reviewing the displayed changes and any page previews you need. This does not claim every affected page was inspected or establish readability."
+            )
         )
         ack_label = self._label(
-            "I reviewed the displayed changes and legibility risks",
+            tr("I reviewed the displayed changes and legibility risks"),
             "compressionReviewAcknowledgementLabel",
-            "Compression review confirmation",
+            tr("Compression review confirmation"),
         )
         ack_label.setBuddy(self._ack)
         ack_row = QHBoxLayout()
@@ -170,17 +186,22 @@ class CompressionReviewDialog(QDialog):
         ack_row.addWidget(ack_label, 1)
         body.addLayout(ack_row)
         self._export = self._button(
-            "Export",
+            tr("Export"),
             "compressionReviewExportButton",
-            "Publish the exact verified candidate associated with this review and selected destination.",
+            tr(
+                "Publish the exact verified candidate associated with this review and selected destination."
+            ),
         )
-        self._export.setAccessibleName("Export reviewed candidate")
+        self._export.setAccessibleName(tr("Export reviewed candidate"))
         self._export.clicked.connect(self._request_export)
         body.addWidget(self._export)
         self._status = self._label(
-            "Choose the color policy, then prepare a preview.",
+            tr("Choose the color policy, then prepare a preview."),
             "compressionReviewStatus",
-            "Compression review status and recovery",
+            tr("Compression review status and recovery"),
+        )
+        self._status.setAccessibleName(
+            tr("Compression review status: {value1}", value1=self._status.text())
         )
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._status.setFrameShape(QFrame.Shape.StyledPanel)
@@ -190,31 +211,36 @@ class CompressionReviewDialog(QDialog):
         body.addWidget(self._status)
         self._progress = QProgressBar()
         self._progress.setObjectName("compressionReviewProgress")
-        self._progress.setAccessibleName("Compression operation progress")
-        self._progress.setAccessibleDescription("No compression operation is active.")
+        self._progress.setAccessibleName(tr("Compression operation progress"))
+        self._progress.setAccessibleDescription(tr("No compression operation is active."))
         self._progress.hide()
         body.addWidget(self._progress)
         self._scroll = QScrollArea()
         self._scroll.setObjectName("compressionReviewScrollArea")
-        self._scroll.setAccessibleName("Compression review controls")
+        self._scroll.setAccessibleName(tr("Compression review controls"))
         self._scroll.setAccessibleDescription(
-            "Scrollable sizes, page comparison, color choice, and review confirmation."
+            tr("Scrollable sizes, page comparison, color choice, and review confirmation.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._scroll.setWidget(content)
+        adapt_localized_content(self._scroll)
         self._cancel = self._button(
-            "Cancel",
+            tr("Cancel"),
             "compressionReviewCancelButton",
-            "Request cancellation and keep the dialog open until the operation finishes safely.",
+            tr(
+                "Request cancellation and keep the dialog open until the operation finishes safely."
+            ),
         )
-        self._cancel.setAccessibleName("Cancel compression operation")
+        self._cancel.setAccessibleName(tr("Cancel compression operation"))
         self._cancel.clicked.connect(self._request_cancel)
         self._close = self._button(
-            "Close",
+            tr("Close"),
             "compressionReviewCloseButton",
-            "Discard this private review. During work, Escape requests cancellation and waits for the result.",
+            tr(
+                "Discard this private review. During work, Escape requests cancellation and waits for the result."
+            ),
         )
         self._close.setDefault(True)
         self._close.setAutoDefault(True)
@@ -285,19 +311,30 @@ class CompressionReviewDialog(QDialog):
         try:
             self._grayscale.setChecked(review.color_choice is TargetSizeColorChoice.ALLOW_GRAYSCALE)
             for page in review.affected_pages:
-                self._pages.addItem(f"Output {page.output_position}, page {page.page_index + 1}")
+                self._pages.addItem(
+                    tr(
+                        "Output {value1}, page {value2}",
+                        value1=page.output_position,
+                        value2=page.page_index + 1,
+                    )
+                )
         finally:
             self._updating = False
         self._summary.setPlainText(self._review_text(review))
         self.finish_operation()
         message = (
-            "Candidate prepared privately. Review the changes and load a page comparison before "
-            "confirming and exporting."
+            tr(
+                "Candidate prepared privately. Review the changes and load a page comparison before confirming and exporting."
+            )
             if review.export_allowed and review.affected_pages
-            else "Candidate prepared privately. No image changes were selected. Review the sizes before confirming export."
+            else tr(
+                "Candidate prepared privately. No image changes were selected. Review the sizes before confirming export."
+            )
             if review.export_allowed
-            else f"{review.decision.message} Close to adjust the case or permitted size limits, "
-            "or prepare again with an explicit color choice. Automatic reduction will not go below the floor."
+            else tr(
+                "{value1} Close to adjust the case or permitted size limits, or prepare again with an explicit color choice. Automatic reduction will not go below the floor.",
+                value1=tr(review.decision.message),
+            )
         )
         self._set_status(message, assertive=not review.export_allowed)
         self._focus(self._summary)
@@ -330,10 +367,13 @@ class CompressionReviewDialog(QDialog):
         self._has_preview_proof = True
         self.finish_operation()
         self._set_status(
-            "Page comparison ready. Inspect the proposed result and confirm the displayed changes when ready."
+            tr(
+                "Page comparison ready. Inspect the proposed result and confirm the displayed changes when ready."
+            )
             if self._review.export_allowed
-            else "Page comparison ready. The target remains blocked. Close to adjust the case or "
-            "permitted size limits, or prepare again with an explicit color choice."
+            else tr(
+                "Page comparison ready. The target remains blocked. Close to adjust the case or permitted size limits, or prepare again with an explicit color choice."
+            )
         )
         self._focus(self._comparison.focus_controls[2])
         return True
@@ -342,15 +382,19 @@ class CompressionReviewDialog(QDialog):
         if type(phase) is not str or type(cancelable) is not bool:
             raise ValueError("Compression progress requires a phase and cancellation state.")
         self._busy = True
+        self._announcer.reset_progress()
         self._phase = phase if phase in _PHASE_TEXT else "preparing"
         self._cancelable = cancelable
         self._cancellation_requested = False
-        self._progress.setRange(0, 0)
+        set_static_busy(self._progress)
         self._progress.show()
-        self._progress.setAccessibleDescription(_PHASE_TEXT[self._phase])
+        self._progress.setAccessibleDescription(tr(_PHASE_TEXT[self._phase]))
         self._update_actions()
         self._set_status(
-            f"{_PHASE_TEXT[self._phase]}. Keep this dialog open until the result is known."
+            tr(
+                "{value1}. Keep this dialog open until the result is known.",
+                value1=tr(_PHASE_TEXT[self._phase]),
+            )
         )
         self._focus(self._cancel if cancelable else self._status)
 
@@ -365,12 +409,18 @@ class CompressionReviewDialog(QDialog):
             or not 0 <= completed <= total
         ):
             return False
-        text = _PHASE_TEXT.get(phase, "Working on the private candidate")
+        text = _PHASE_TEXT.get(phase, mark("Working on the private candidate"))
         self._progress.setRange(0, total)
         self._progress.setValue(completed)
-        self._progress.setFormat("%v of %m")
-        self._progress.setAccessibleDescription(f"{text}: {completed} of {total}.")
-        self._set_status(f"{text}: {completed} of {total}.")
+        self._progress.setFormat(tr("%v of %m"))
+        self._progress.setAccessibleDescription(
+            tr("{value1}: {value2} of {value3}.", value1=tr(text), value2=completed, value3=total)
+        )
+        message = tr(
+            "{value1}: {value2} of {value3}.", value1=tr(text), value2=completed, value3=total
+        )
+        self._set_status(message, announce=False)
+        self._announcer.progress(message, key=text, completed=completed, total=total)
         return True
 
     def finish_operation(self) -> None:
@@ -384,17 +434,29 @@ class CompressionReviewDialog(QDialog):
     def show_failure(self, _code: str = "", *, phase: str = "preparing") -> None:
         if phase == "preview":
             self._comparison.clear()
-            message = "The page comparison did not finish. Choose Show page to retry, or close this private review."
+            message = tr(
+                "The page comparison did not finish. Choose Show page to retry, or close this private review."
+            )
         else:
             self._invalidate()
             message = (
-                "Publication did not finish. Review the package result and destination inventory before retrying."
+                tr(
+                    "Publication did not finish. Review the package result and destination inventory before retrying."
+                )
                 if phase == "export"
-                else "The private candidate could not be prepared. Prepare again, or close to review the case and permitted size limits."
+                else tr(
+                    "The private candidate could not be prepared. Prepare again, or close to review the case and permitted size limits."
+                )
             )
         self.finish_operation()
         self._set_status(message, assertive=True)
-        self._focus(self._load if phase == "preview" else self._status)
+        self._focus(
+            self._load
+            if phase == "preview"
+            else self._close
+            if phase == "export"
+            else self._prepare
+        )
 
     def reject(self) -> None:
         if self._busy:
@@ -423,7 +485,7 @@ class CompressionReviewDialog(QDialog):
         self._invalidate()
         self._update_actions()
         self._set_status(
-            "Color choice changed. Prepare a new preview before reviewing and exporting."
+            tr("Color choice changed. Prepare a new preview before reviewing and exporting.")
         )
 
     def _page_changed(self, _index: int) -> None:
@@ -441,7 +503,9 @@ class CompressionReviewDialog(QDialog):
         self._comparison.clear()
         self._ack.setChecked(False)
         self._pages.clear()
-        self._summary.setPlainText("Prepare a candidate to see actual sizes and proposed changes.")
+        self._summary.setPlainText(
+            tr("Prepare a candidate to see actual sizes and proposed changes.")
+        )
 
     def _request_prepare(self) -> None:
         if not self._prepare.isEnabled():
@@ -474,7 +538,8 @@ class CompressionReviewDialog(QDialog):
         self._cancellation_requested = True
         self._update_actions()
         self._set_status(
-            "Cancellation requested. Waiting for the operation to finish safely.", assertive=True
+            tr("Cancellation requested. Waiting for the operation to finish safely."),
+            assertive=True,
         )
         self.cancel_requested.emit()
 
@@ -501,9 +566,17 @@ class CompressionReviewDialog(QDialog):
     @staticmethod
     def _review_text(review: CompressionReviewState) -> str:
         lines = [
-            f"Current verified total: {review.current_total_bytes:,} bytes",
-            f"Proposed verified total: {review.proposed_total_bytes:,} bytes",
-            f"Required total limit: {_limit(review.required_total_bytes)}",
+            tr(
+                "Current verified total: {value1} bytes ({display_size})",
+                value1=format_number(review.current_total_bytes),
+                display_size=format_file_size(review.current_total_bytes),
+            ),
+            tr(
+                "Proposed verified total: {value1} bytes ({display_size})",
+                value1=format_number(review.proposed_total_bytes),
+                display_size=format_file_size(review.proposed_total_bytes),
+            ),
+            tr("Required total limit: {value1}", value1=_limit(review.required_total_bytes)),
         ]
         for position, (before, proposed, limit) in enumerate(
             zip(
@@ -515,30 +588,48 @@ class CompressionReviewDialog(QDialog):
             start=1,
         ):
             lines.append(
-                f"PDF {position}: {before:,} → {proposed:,} bytes; file limit: {_limit(limit)}"
+                tr(
+                    "PDF {value1}: {value2} → {value3} bytes; file limit: {value4}",
+                    value1=position,
+                    value2=format_number(before),
+                    value3=format_number(proposed),
+                    value4=_limit(limit),
+                )
             )
         if review.current_archive_byte_size is not None:
             lines.append(
-                f"ZIP: {review.current_archive_byte_size:,} → {review.proposed_archive_byte_size:,} bytes; archive limit: {_limit(review.required_archive_bytes)}"
+                tr(
+                    "ZIP: {value1} → {value2} bytes; archive limit: {value3}",
+                    value1=format_number(review.current_archive_byte_size),
+                    value2=format_number(review.proposed_archive_byte_size)
+                    if review.proposed_archive_byte_size is not None
+                    else tr("not specified"),
+                    value3=_limit(review.required_archive_bytes),
+                )
             )
-        lines.extend(("", review.decision.message, "", "Affected pages and actual image changes:"))
+        lines.extend(
+            ("", tr(review.decision.message), "", tr("Affected pages and actual image changes:"))
+        )
         for page in review.affected_pages:
-            lines.append(f"Output {page.output_position}, page {page.page_index + 1}")
+            lines.append(
+                tr(
+                    "Output {value1}, page {value2}",
+                    value1=page.output_position,
+                    value2=page.page_index + 1,
+                )
+            )
             lines.append(_page_changes(page))
         if not review.affected_pages:
-            lines.append("No image changes selected.")
+            lines.append(tr("No image changes selected."))
         return "\n".join(lines)
 
-    def _set_status(self, message: str, *, assertive: bool = False) -> None:
+    def _set_status(self, message: str, *, assertive: bool = False, announce: bool = True) -> None:
+        message = tr(message)
         self._status.setText(message)
+        self._status.setAccessibleName(tr("Compression review status: {value1}", value1=message))
         self._status.setAccessibleDescription(message)
-        announcement = QAccessibleAnnouncementEvent(self._status, message)
-        announcement.setPoliteness(
-            QAccessible.AnnouncementPoliteness.Assertive
-            if assertive
-            else QAccessible.AnnouncementPoliteness.Polite
-        )
-        QAccessible.updateAccessibility(announcement)
+        if announce:
+            self._announcer.announce(message, assertive=assertive)
 
     def _focus(self, widget: QWidget) -> None:
         widget.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -547,31 +638,33 @@ class CompressionReviewDialog(QDialog):
 
     @staticmethod
     def _label(text: str, name: str, accessible_name: str) -> QLabel:
-        label = QLabel(text)
+        label = QLabel(tr(text))
         label.setObjectName(name)
-        label.setAccessibleName(accessible_name)
-        label.setAccessibleDescription(text)
+        label.setAccessibleName(f"{accessible_name}: {text}")
+        label.setAccessibleDescription(tr(text))
         label.setTextFormat(Qt.TextFormat.PlainText)
         label.setWordWrap(True)
         return label
 
     @staticmethod
     def _button(text: str, name: str, description: str) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         button.setAutoDefault(False)
         button.setDefault(False)
         return button
 
 
 def _limit(value: int | None) -> str:
-    return "not specified" if value is None else f"{value:,} bytes"
+    return (
+        tr("not specified") if value is None else tr("{value1} bytes", value1=format_number(value))
+    )
 
 
 def _dpi(value: int) -> str:
-    return f"{value / 1000:g}"
+    return tr("{value:g}", value=value / 1000)
 
 
 def _page_changes(page: CompressionPageChange) -> str:
@@ -580,10 +673,11 @@ def _page_changes(page: CompressionPageChange) -> str:
     def limits(attribute: str, *, dpi: bool = False) -> str:
         lower = min(getattr(image, attribute) for image in page.images)
         upper = max(getattr(image, attribute) for image in page.images)
-        text = _dpi(lower) if dpi else str(lower)
         if lower != upper:
-            text += f"–{_dpi(upper) if dpi else upper}"
-        return text
+            if dpi:
+                return tr("{lower:g}–{upper:g}", lower=lower / 1000, upper=upper / 1000)
+            return tr("{lower}–{upper}", lower=lower, upper=upper)
+        return _dpi(lower) if dpi else tr("{value}", value=lower)
 
     colors = sorted(
         {
@@ -591,15 +685,19 @@ def _page_changes(page: CompressionPageChange) -> str:
             for image in page.images
         }
     )
-    return (
-        f"  {len(page.images)} changed image(s); width × height ranges "
-        f"{limits('original_width_pixels')} × {limits('original_height_pixels')} → "
-        f"{limits('proposed_width_pixels')} × {limits('proposed_height_pixels')} pixels; "
-        f"DPI {limits('original_effective_dpi_x_milli', dpi=True)} × "
-        f"{limits('original_effective_dpi_y_milli', dpi=True)} → "
-        f"{limits('proposed_effective_dpi_x_milli', dpi=True)} × "
-        f"{limits('proposed_effective_dpi_y_milli', dpi=True)}; "
-        f"color {', '.join(colors)}; JPEG quality {limits('jpeg_quality')}."
+    return tr(
+        "  {value1} changed image(s); width × height ranges {value2} × {value3} → {value4} × {value5} pixels; DPI {value6} × {value7} → {value8} × {value9}; color {value10}; JPEG quality {value11}.",
+        value1=len(page.images),
+        value2=limits("original_width_pixels"),
+        value3=limits("original_height_pixels"),
+        value4=limits("proposed_width_pixels"),
+        value5=limits("proposed_height_pixels"),
+        value6=limits("original_effective_dpi_x_milli", dpi=True),
+        value7=limits("original_effective_dpi_y_milli", dpi=True),
+        value8=limits("proposed_effective_dpi_x_milli", dpi=True),
+        value9=limits("proposed_effective_dpi_y_milli", dpi=True),
+        value10=", ".join(colors),
+        value11=limits("jpeg_quality"),
     )
 
 

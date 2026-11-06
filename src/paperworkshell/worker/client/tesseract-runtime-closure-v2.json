@@ -1,0 +1,747 @@
+{
+  "schema_version": 2,
+  "manifest_id": "paperworkshell-tesseract-runtime-windows-x86_64",
+  "reviewed_on": "2026-11-03",
+  "task_id": "PWS-0801",
+  "target": {
+    "os": "Windows",
+    "architecture": "x86_64",
+    "abi": "MSYS2 UCRT64"
+  },
+  "layout": {
+    "entrypoint": "bin/tesseract.exe",
+    "tessdata_directory": "share/tessdata",
+    "allow_unlisted_files": false,
+    "allow_reparse_points": false
+  },
+  "engine": {
+    "name": "Tesseract OCR",
+    "version": "5.5.3",
+    "distribution_package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+    "distribution_package_version": "5.5.3-1",
+    "upstream_release": "https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3",
+    "msys2_build_recipe_commit": "14b74f53a76a732b920ecac30667cd0b91d3e7cd"
+  },
+  "language_data": {
+    "language": "eng",
+    "model_family": "tessdata_fast",
+    "model_version": "4.1.0",
+    "distribution_package_id": "mingw-w64-ucrt-x86_64-tesseract-data-eng",
+    "distribution_package_version": "4.1.0-3"
+  },
+  "trust": {
+    "distribution": "MSYS2 UCRT64 signed repository",
+    "required_key_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+    "keyring_artifact": "msys2-keyring-1~20260214-1-any.pkg.tar.zst",
+    "keyring_url": "https://mirror.msys2.org/msys/x86_64/msys2-keyring-1~20260214-1-any.pkg.tar.zst",
+    "keyring_size_bytes": 42159,
+    "keyring_sha256": "c93044188c49f6f75e6f75709017ffa9234c2bdd8fe7c6a4c47d62a9cd8bfb1f",
+    "audit_signature_result": "The28 retained vendor archive/signature identities come from accepted PWS-0204 provenance. Release packaging revalidates their signatures against the pinned key. The independently source-built LibTIFF file is authenticated by exact reviewed recipe, source and output hashes; it is not MSYS2-signed.",
+    "signature_verification_requirement": "Every detached package signature must validate against a pinned, reviewed MSYS2 keyring before extraction; the recorded digest does not replace signature verification.",
+    "upstream_installer_status": "rejected",
+    "upstream_installer_sha256": "bee9e3434bd94fd65387d9be28cd467a41f61b1275383b55b0f59a1331270ae4",
+    "upstream_installer_rejection": "Authenticode signer certificate expired in 2023; the 2026 timestamp does not make the signature valid.",
+    "source_build_authority": "PWS-0801 reviewed source-build recipe and exact source/output hashes; no runtime builds, downloads or fallback discovery."
+  },
+  "closure_evidence": {
+    "method": "Recursive PE normal-import and delay-import traversal from bin/tesseract.exe;28 exact signed MSYS2 vendor packages plus one exact source-built no-JBIG LibTIFF provider. Windows system DLLs remain external.",
+    "smoke_test": "PWS-0801 exact final38-file closure returned Tesseract5.5.3 and libtiff4.7.2, listed only eng, produced nonempty text and hOCR from the cleared synthetic PNG, rejected an invalid synthetic image, and retained original/runtime file hashes. This is not an OCR-accuracy, full-worker, installer or hardware claim.",
+    "selected_file_count": 38,
+    "selected_file_bytes": 27460946,
+    "package_count": 28,
+    "license_notice_status": "requires-final-PWS-0801-resolved-inventory-and-notice-reconciliation",
+    "license_notice_note": "The v2 runtime excludes GPL-only JBIG. The independent source-built LibTIFF provider is not a signed MSYS2 binary. Its recipe/source/output/notice hashes are explicit; final release inventory and notices cover every retained vendor and build component.",
+    "source_build_count": 1,
+    "provider_count": 29
+  },
+  "packages": [
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-brotli",
+      "version": "1.2.0-1",
+      "artifact": "mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "size_bytes": 453708,
+      "sha256": "9cc89665496ea504751476eafba15c71c554aaf3004babc2004f7c07ffd60514",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-brotli-1.2.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "7240b29d455849753ee40a1922c46150737ae423e889296a00e8fc3a89fbec5b",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-bzip2",
+      "version": "1.0.8-3",
+      "artifact": "mingw-w64-ucrt-x86_64-bzip2-1.0.8-3-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-bzip2-1.0.8-3-any.pkg.tar.zst",
+      "size_bytes": 78369,
+      "sha256": "932da2c63b23e6a4448757eb36fb198a9e51121874408270afe2c91bada513c7",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-bzip2-1.0.8-3-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-bzip2-1.0.8-3-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "0c5389c78ae37d6b0617c248e0c37953723b7dad6f2e79b00c8bf482870c7d52",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-curl-winssl",
+      "version": "8.21.0-2",
+      "artifact": "mingw-w64-ucrt-x86_64-curl-winssl-8.21.0-2-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-curl-winssl-8.21.0-2-any.pkg.tar.zst",
+      "size_bytes": 1641133,
+      "sha256": "f0b793202b72b784cb7c0ac90371114fc6d84e1048568a703694b58f28f016fc",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-curl-winssl-8.21.0-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-curl-winssl-8.21.0-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "66a686ceb884dcbd075a5a920fb1932afda7ab7d872ab0e08d98147e31259267",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-expat",
+      "version": "2.8.3-1",
+      "artifact": "mingw-w64-ucrt-x86_64-expat-2.8.3-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-expat-2.8.3-1-any.pkg.tar.zst",
+      "size_bytes": 193668,
+      "sha256": "42de5478073c2ac3c3293d4d15e5136e8978d958f3f2bd6ae462e81f4ade0118",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-expat-2.8.3-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-expat-2.8.3-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "ea8339da66cffd77a29a15bee3ae3d7c220f2ad2d86cffe908852ba9378fa4fd",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-gcc-libs",
+      "version": "16.2.0-3",
+      "artifact": "mingw-w64-ucrt-x86_64-gcc-libs-16.2.0-3-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-libs-16.2.0-3-any.pkg.tar.zst",
+      "size_bytes": 1147919,
+      "sha256": "5763fabf86fa13a4449ee765006d3446384ed66af7bf827459710eb777e0b11c",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-gcc-libs-16.2.0-3-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gcc-libs-16.2.0-3-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "1126ddc1848e2b6b878abd1902fcb6bb01e2b869d475e30ba0bb78c96be49392",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-gettext-runtime",
+      "version": "1.0-1",
+      "artifact": "mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+      "size_bytes": 417977,
+      "sha256": "ba693dda4ac375af76ce481ff3a6e7481286546cc7dc6d56c7021dae34084157",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "4754e870d55cacb5e7e3707313b68edb29d2598cc7a1ee399c74715007f38c4d",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-giflib",
+      "version": "6.1.3-1",
+      "artifact": "mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst",
+      "size_bytes": 120903,
+      "sha256": "9e7ac8feb0e2af6e0fce3c8ead1bd7bcaf018661d08033858c1e2657a04f6f1a",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-giflib-6.1.3-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "fa9e92ba91f364a1c0f51dd0c34fd9b8f180196806986371b56ed4aef7a3ac4e",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-leptonica",
+      "version": "1.87.0-1",
+      "artifact": "mingw-w64-ucrt-x86_64-leptonica-1.87.0-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-leptonica-1.87.0-1-any.pkg.tar.zst",
+      "size_bytes": 1330564,
+      "sha256": "51e148b6b3c867f02f5058564ad508257d4c9675758efbdda234bf462c1385c5",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-leptonica-1.87.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-leptonica-1.87.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "bad9c058fb539961b0a0057e340a6164cb974dc753de40568c1187b6794eac78",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-lerc",
+      "version": "4.1.1-1",
+      "artifact": "mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst",
+      "size_bytes": 312118,
+      "sha256": "c0afbf4832488d67030c6f313349cd814946c9a7bc3ae9fd54524825c9ca055d",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lerc-4.1.1-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "17858084c0705229216468aabad2a2d906c0087f75b0c79b72d672f665045e31",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libarchive",
+      "version": "3.8.9-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libarchive-3.8.9-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libarchive-3.8.9-1-any.pkg.tar.zst",
+      "size_bytes": 2188201,
+      "sha256": "b2f3333cbcf1fd9e7bd189980cd1ee554b6c4f07860aad87a62e7e219ddb7c46",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libarchive-3.8.9-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libarchive-3.8.9-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "4560d1ccc59babf42ba7ccabccf1d09cd65ea5b1746b0136cf00aadbd074ba7a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libb2",
+      "version": "0.98.1-3",
+      "artifact": "mingw-w64-ucrt-x86_64-libb2-0.98.1-3-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libb2-0.98.1-3-any.pkg.tar.zst",
+      "size_bytes": 24592,
+      "sha256": "dfb554635119d3c46adb00c9d0c589bb38d1cb0781b10ecf31de07ce388bd0c0",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libb2-0.98.1-3-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libb2-0.98.1-3-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "fc45f4e1186cc9be0f83faa6310e6f22424e5eb68da8f38247d8c978b0818790",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libdeflate",
+      "version": "1.25-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst",
+      "size_bytes": 93623,
+      "sha256": "47115edd02f6139a0b62ebb6a73aec9d893664905f72b98e87af5befdb7dc69d",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libdeflate-1.25-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "b98e4c8021b7a9a1ad270dc3f61422ddc3e9861008789c831afd753f5cbb576a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libiconv",
+      "version": "1.19-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "size_bytes": 744750,
+      "sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libiconv-1.19-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "e18abd753c47dbed046cf619f0855c2bc05ae17a7f3eabba8a2e841478a4f6b2",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libidn2",
+      "version": "2.3.8-4",
+      "artifact": "mingw-w64-ucrt-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst",
+      "size_bytes": 175129,
+      "sha256": "d5f4b5e9d99ff7b2a986d1dc0c73da2bcd93ba68462be7b1debbd6ef76371f57",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "46c5d4192a6494ea11a347d3e2ec265e7ff9024d309c8fe860820cb79708fd76",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+      "version": "3.2.0-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst",
+      "size_bytes": 791232,
+      "sha256": "7c001d00df557cfee969ad43d37b9c31ae22869e8aac4091a89dc3ae6d95e11d",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "aed8e731a0e62326023ebebe6e3830936298289d1d9e08d584b328c657aa0b44",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libpng",
+      "version": "1.6.58-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libpng-1.6.58-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libpng-1.6.58-1-any.pkg.tar.zst",
+      "size_bytes": 406891,
+      "sha256": "bbfb6eb6246b01df90d82d6cff84f0a4e98dad029a4a2753898c96fcaadb66c7",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libpng-1.6.58-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libpng-1.6.58-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "aeb489876e586c1fd82951f94b6a33149372dedf28ebb2b3b9965408a9a2beb8",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libpsl",
+      "version": "0.21.5-3",
+      "artifact": "mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst",
+      "size_bytes": 95717,
+      "sha256": "d96e0bb50ac3f8b6e44a39ea8de8d186f7b08f6938b0676eb69a7ba1f127bcf4",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "96c1b37b792714e6d4b3a8981b49c851b1f0a47227603eca1e63c7d3e971241b",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libssh2-wincng",
+      "version": "1.11.1-2",
+      "artifact": "mingw-w64-ucrt-x86_64-libssh2-wincng-1.11.1-2-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libssh2-wincng-1.11.1-2-any.pkg.tar.zst",
+      "size_bytes": 298349,
+      "sha256": "26710b6978533c38b60a33762e99128bd74f8520896bb9486656e4aa741bbe5b",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libssh2-wincng-1.11.1-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libssh2-wincng-1.11.1-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "3241f4c62307a037f7dfba4598743e531a5644ca712c951873c03989e93f655a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libunistring",
+      "version": "1.4.2-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst",
+      "size_bytes": 867265,
+      "sha256": "e784273da19bbdcc91cbb510b5e27c3ac021b026140734eefcce5ccbd878bd97",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "3c900f4bbd203f5cc3af9e910e1848bfcb3680ea04b89f223bbab7fb4414c38a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libwebp",
+      "version": "1.6.0-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst",
+      "size_bytes": 623411,
+      "sha256": "34ff8396c403d484c8777ad49ad0fc06dfb94fadf6f14bcf84d50c45bc6fd17e",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwebp-1.6.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "7669ea161adb081e9f3b4ff15a613dd22e6c05010287b21a0cd14ad7c68a548b",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-libwinpthread",
+      "version": "14.0.0.r262.g5ea8e9fac-1",
+      "artifact": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r262.g5ea8e9fac-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r262.g5ea8e9fac-1-any.pkg.tar.zst",
+      "size_bytes": 30158,
+      "sha256": "320c204dc7d91988037c61cac93b513ce65504ab9d6f8a841e9f8782997a5c7a",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r262.g5ea8e9fac-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r262.g5ea8e9fac-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "d84a2a4fb40a988691e40d97d5d1eb4ee8943b34b5f02f7ae26eb3ed2aea5e50",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-lz4",
+      "version": "1.10.0-1",
+      "artifact": "mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst",
+      "size_bytes": 171358,
+      "sha256": "00a807df81a4b7e82445178b8625962ed592cf1f0a08a8e04c8b9338c4362638",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "12939cdb6f8d40a4da7c8d76fd2360459335eeffcca516b9c803f11784d91d53",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-openjpeg2",
+      "version": "2.5.4-2",
+      "artifact": "mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst",
+      "size_bytes": 454223,
+      "sha256": "2a4c148052b6f8e47abe5e98b29fd8942e2e3c17722ff00f172b1630897a10b9",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-openjpeg2-2.5.4-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "799c917eccb657a46507a230057709509483e7db0ac41f431234749b57b1610e",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-data-eng",
+      "version": "4.1.0-3",
+      "artifact": "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst",
+      "size_bytes": 1815579,
+      "sha256": "543111e842aeebe248839902945b3883f9bf79b58787a1696d6ac211c13f7029",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-data-eng-4.1.0-3-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "380afbdc4fccc03ddac5944d63d8b8a86b1ad87623b39818207bfed6ab7d9d87",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+      "version": "5.5.3-1",
+      "artifact": "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst",
+      "size_bytes": 6509584,
+      "sha256": "7e797396b34e2f0c78c9b9ff4b90d66c068c053d60bded81fc5232892b2b1caf",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.3-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "039fb4d142caa2471f74ed4205b5b7925f4d80f7e05806b558a32ee2c62557bf",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-xz",
+      "version": "5.8.3-1",
+      "artifact": "mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst",
+      "size_bytes": 952999,
+      "sha256": "840af0192f4b67be09238e783249c78cc1672981e7d0acc5c67a6bd0b4bca0cb",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-xz-5.8.3-1-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "d29ba7425155f3ee135d3e399d9e45033b02c0a3e0c2e1aeca864a89e75b621a",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-zlib-ng-compat",
+      "version": "2.3.3-2",
+      "artifact": "mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst",
+      "size_bytes": 155061,
+      "sha256": "b3ca6b437fb154a0fa26652002cdda591498ee4a0e08d91cc653c3702d090f25",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zlib-ng-compat-2.3.3-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "b8a36462b351869f52a1517c891cef6466115d06bd50b2fce4ba904a7a1bdc50",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    },
+    {
+      "package_id": "mingw-w64-ucrt-x86_64-zstd",
+      "version": "1.5.7-2",
+      "artifact": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+      "size_bytes": 668277,
+      "sha256": "dbdb8427280046a2b41697780aa4c52983b708082b0da4755951dc3bea96ca89",
+      "signature_artifact": "mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst.sig",
+      "signature_url": "https://mirror.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-zstd-1.5.7-2-any.pkg.tar.zst.sig",
+      "signature_size_bytes": 566,
+      "signature_sha256": "97b4fe48e37ed32bc8a952c01737b6263dceb5a9c2c6f6b3a2def8e22f4e8b35",
+      "expected_signer_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
+    }
+  ],
+  "files": [
+    {
+      "path": "bin/libarchive-13.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libarchive",
+      "size_bytes": 977825,
+      "sha256": "ceaa88d6036033719f5b7902e571459cca868c57202958981a6d7c0f7c35628b"
+    },
+    {
+      "path": "bin/libb2-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libb2",
+      "size_bytes": 35323,
+      "sha256": "01bbf64090367d511f41d9fc8f34c557f61d4a227b7c9e47ce04052cbfdc3e7d"
+    },
+    {
+      "path": "bin/libbrotlicommon.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-brotli",
+      "size_bytes": 144565,
+      "sha256": "c62c08223e450dfc2fff33c752cc228505ffd9d755201958ba800d5d30481a2c"
+    },
+    {
+      "path": "bin/libbrotlidec.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-brotli",
+      "size_bytes": 62619,
+      "sha256": "e270b6e576594ee8ee6e33ccc54e34a54304616dd6225652e11e49d6f17ef896"
+    },
+    {
+      "path": "bin/libbz2-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-bzip2",
+      "size_bytes": 78774,
+      "sha256": "669a4bf9266d5f020e843aa5fd75b93ce8ebde27014d5ac466a8b3cf39d8aba7"
+    },
+    {
+      "path": "bin/libcurl-4.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-curl-winssl",
+      "size_bytes": 1223140,
+      "sha256": "a7a99b4696998835debd8a7c45e351e65692facd7624b0eea74f687884ecdf94"
+    },
+    {
+      "path": "bin/libdeflate.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libdeflate",
+      "size_bytes": 99898,
+      "sha256": "fb54be03668f41fae3f5d8bbabeedbc24e71b37e637e3cd34acd54f89f128ac1"
+    },
+    {
+      "path": "bin/libexpat-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-expat",
+      "size_bytes": 236721,
+      "sha256": "fc7b969c07c4a5b7e0426bdee4ac247a8840eac34a217fbe3303a5b21f25280a"
+    },
+    {
+      "path": "bin/libgcc_s_seh-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-gcc-libs",
+      "size_bytes": 151654,
+      "sha256": "80940372431cc76224dfda06e2d33f01e49af3b4e7c499c535be856ebcadd273"
+    },
+    {
+      "path": "bin/libgif-7.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-giflib",
+      "size_bytes": 46093,
+      "sha256": "547f069546e3233430d3cbf106b403fbdc9c5cf1518e525c462533d58843b31e"
+    },
+    {
+      "path": "bin/libgomp-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-gcc-libs",
+      "size_bytes": 328614,
+      "sha256": "c13023e6a4f686b2a48aa966b1afbbeea488b196be00bfa19aa7f0d39204b87d"
+    },
+    {
+      "path": "bin/libiconv-2.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libiconv",
+      "size_bytes": 1141951,
+      "sha256": "94ec68fb8d342b6c91b6b48a8d95092819cdcd006a7166e0b68062f946afd08a"
+    },
+    {
+      "path": "bin/libidn2-0.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libidn2",
+      "size_bytes": 246525,
+      "sha256": "a054a6bb69aaf4666157f968740412e9697085cbc1e48a78f8dd9622169c5aaf"
+    },
+    {
+      "path": "bin/libintl-8.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-gettext-runtime",
+      "size_bytes": 298164,
+      "sha256": "0e5a178731e6be6d115442a6ade3df7f03265cd1fc4338f8b6f86a8001cbf582"
+    },
+    {
+      "path": "bin/libjpeg-8.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libjpeg-turbo",
+      "size_bytes": 967184,
+      "sha256": "c63acd5a3231725aa96aa35444b74cd8d607a6fbdab1dd18b0e0ada7e39476d4"
+    },
+    {
+      "path": "bin/libleptonica-6.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-leptonica",
+      "size_bytes": 2845164,
+      "sha256": "839efebe42a270b15a9a1b64ceb9272389bc3ada7eb84508672e7334dd7f4804"
+    },
+    {
+      "path": "bin/libLerc.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-lerc",
+      "size_bytes": 803103,
+      "sha256": "1ffee78579c25b073267bcac8d0a6045d9bd446e010c7953b569b2629ca8a58a"
+    },
+    {
+      "path": "bin/liblz4.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-lz4",
+      "size_bytes": 161286,
+      "sha256": "5e83fd34144fa033c12e22718317ec2123f8a3460903932b0bfddb8aad379cfd"
+    },
+    {
+      "path": "bin/liblzma-5.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-xz",
+      "size_bytes": 192506,
+      "sha256": "ad9656bf86fb3673fa6af18fa357531096af3d76eccb4a56c4cd6a6171da1554"
+    },
+    {
+      "path": "bin/libopenjp2-7.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-openjpeg2",
+      "size_bytes": 517286,
+      "sha256": "94f9507828d391cf96d700d34918114f1c1e03f91dd1243a19275e0435690925"
+    },
+    {
+      "path": "bin/libpng16-16.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libpng",
+      "size_bytes": 258972,
+      "sha256": "5c1dd5410af563f4a3c4aee10d1f749aa71e0d7fb3b4fac240eb9e96cadebd26"
+    },
+    {
+      "path": "bin/libpsl-5.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libpsl",
+      "size_bytes": 105846,
+      "sha256": "a531e72de3c64d43fb83cbfb6fa63e5ee982a970292ec51314e29d0acabf1dd5"
+    },
+    {
+      "path": "bin/libsharpyuv-0.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libwebp",
+      "size_bytes": 48938,
+      "sha256": "d29380c7056383f3e7a80bf9e150f0b8c425c1cf2568d1336e88979ddc2307af"
+    },
+    {
+      "path": "bin/libssh2-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libssh2-wincng",
+      "size_bytes": 270863,
+      "sha256": "a0e7eea75814708ce5c9b2a83998b14ac1268b70cccc2c22686f4ab585a3aac1"
+    },
+    {
+      "path": "bin/libstdc++-6.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-gcc-libs",
+      "size_bytes": 2661272,
+      "sha256": "69200d6d96b903dac4c873031813485a0455828be8101479efc56008862420cc"
+    },
+    {
+      "path": "bin/libtesseract-5.5.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+      "size_bytes": 4224021,
+      "sha256": "f5cd59119469ab090088cca82ca4ca5f52ae09f2f52918e432e338bd603f0d3e"
+    },
+    {
+      "path": "bin/libtiff-6.dll",
+      "role": "runtime-library",
+      "size_bytes": 557070,
+      "sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+      "source_build_id": "paperworkshell-libtiff-no-jbig"
+    },
+    {
+      "path": "bin/libunistring-5.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libunistring",
+      "size_bytes": 2256134,
+      "sha256": "ee39258fa1086269674a8179d3cfaf7c4e380ada14441b5dd9ed53d82d15c4e3"
+    },
+    {
+      "path": "bin/libwebp-7.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libwebp",
+      "size_bytes": 746378,
+      "sha256": "8dfe40c4e0abc90ddf18f080898987e01253d099b2b2d6daf7db521e55c00446"
+    },
+    {
+      "path": "bin/libwebpmux-3.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libwebp",
+      "size_bytes": 78875,
+      "sha256": "9bd85116a22923d648d6b0ad09f21d08df7bd3d8860b24a5b4a6d4ac788b7340"
+    },
+    {
+      "path": "bin/libwinpthread-1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-libwinpthread",
+      "size_bytes": 64191,
+      "sha256": "ed858c25be05f072fe6dc08bd9b9fc799afe8201b3575bb572b670b9c551184c"
+    },
+    {
+      "path": "bin/libzstd.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-zstd",
+      "size_bytes": 1217412,
+      "sha256": "48368ab0ca622d0ec12f41ce85d91f22866bf5da92c77a69a06483564c93816c"
+    },
+    {
+      "path": "bin/tesseract.exe",
+      "role": "entrypoint",
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+      "size_bytes": 90021,
+      "sha256": "da07f581278e934f8728c406ce426e0664e3be8e90116685823cb301ba4fd6db"
+    },
+    {
+      "path": "bin/zlib1.dll",
+      "role": "runtime-library",
+      "package_id": "mingw-w64-ucrt-x86_64-zlib-ng-compat",
+      "size_bytes": 209242,
+      "sha256": "aa830bc48588d8bf15da816887d75eee707ba0d03f2dd78a65550b00623af7fc"
+    },
+    {
+      "path": "share/tessdata/configs/hocr",
+      "role": "output-config",
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+      "size_bytes": 40,
+      "sha256": "d6a7ec7c5143317a59fce2393054f6b7a8261824b934e7426fdd24febc929ad6"
+    },
+    {
+      "path": "share/tessdata/configs/pdf",
+      "role": "output-config",
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+      "size_bytes": 22,
+      "sha256": "54d56e81dfefe289b0d2e4c7bc9bbe662711f5b8255c128b73bcd66efb6bba1a"
+    },
+    {
+      "path": "share/tessdata/configs/txt",
+      "role": "output-config",
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-ocr",
+      "size_bytes": 166,
+      "sha256": "9bcbdbe285fd3a024be563cb237751ceb3435d86610e231f08894023321af5d7"
+    },
+    {
+      "path": "share/tessdata/eng.traineddata",
+      "role": "language-data",
+      "package_id": "mingw-w64-ucrt-x86_64-tesseract-data-eng",
+      "size_bytes": 4113088,
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+    }
+  ],
+  "source_builds": [
+    {
+      "source_build_id": "paperworkshell-libtiff-no-jbig",
+      "name": "LibTIFF without optional JBIG codec",
+      "version": "4.7.2-pws-no-jbig1",
+      "artifact": "libtiff-6.dll",
+      "size_bytes": 557070,
+      "sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+      "recipe": "packaging/libtiff-no-jbig-build-v1.json",
+      "recipe_sha256": "af49ae37ab7b0f4e8c9db71a6ae5b46002ef30cf0b4d9beb9de8513ace873550",
+      "source_artifact": "tiff-4.7.2.tar.gz",
+      "source_url": "https://download.osgeo.org/libtiff/tiff-4.7.2.tar.gz",
+      "source_size_bytes": 4083368,
+      "source_sha256": "672bd7d10aee4606171afb864f3570b83340f6a33e2c186dc0512f7145ffdf6a",
+      "license_expression": "LicenseRef-PWS-LibTIFF-4.7.2-Notice",
+      "notice_path": "tiff-4.7.2/LICENSE.md",
+      "notice_sha256": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade",
+      "signature_status": "source-built-not-MSYS2-signed",
+      "configuration": {
+        "jbig": false,
+        "win32_io": true,
+        "source_patches": [],
+        "codecs_retained": [
+          "jpeg",
+          "zlib",
+          "libdeflate",
+          "lerc",
+          "lzma",
+          "webp",
+          "zstd"
+        ]
+      },
+      "normal_imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-private-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "kernel32.dll",
+        "libdeflate.dll",
+        "libjpeg-8.dll",
+        "liblerc.dll",
+        "liblzma-5.dll",
+        "libwebp-7.dll",
+        "libzstd.dll",
+        "zlib1.dll"
+      ],
+      "delay_imports": [],
+      "export_count": 206
+    }
+  ]
+}

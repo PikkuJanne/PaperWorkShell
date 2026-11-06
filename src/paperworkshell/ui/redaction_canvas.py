@@ -30,13 +30,15 @@ from paperworkshell.domain.page_coordinates import (
     ScreenViewport,
 )
 from paperworkshell.domain.redaction import MAX_REDACTION_MARKS, RedactionMark
+from paperworkshell.localization.catalog import mark, tr
 
 _CONTRAST_OUTLINE_WIDTH = 6
-_DENSE_DESCRIPTION = "Dense preview: only the visible part of the selected region is shown; all regions remain in the list."
-_SELECT_FROM_LIST = "Select a region in the list to show its outline."
-_PREVIEW_DESCRIPTION = (
-    "Dashed crossed outlines show intent only. Information is still present. "
-    "Use the region list and numeric fields for all actions without a pointer."
+_DENSE_DESCRIPTION = mark(
+    "Dense preview: only the visible part of the selected region is shown; all regions remain in the list."
+)
+_SELECT_FROM_LIST = mark("Select a region in the list to show its outline.")
+_PREVIEW_DESCRIPTION = mark(
+    "Dashed crossed outlines show intent only. Information is still present. Use the region list and numeric fields for all actions without a pointer."
 )
 
 
@@ -77,8 +79,10 @@ class RedactionIntentCanvas(QLabel):
         self._projected_rects: dict[UUID, QRectF] = {}
         self._dense_preview = False
         self.setObjectName("redactionIntentCanvas")
-        self.setAccessibleName("Unapplied removal regions preview")
-        self.setAccessibleDescription(_PREVIEW_DESCRIPTION)
+        # Mirror surrounding controls, never the source-page coordinate system.
+        self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.setAccessibleName(tr("Unapplied removal regions preview"))
+        self.setAccessibleDescription(tr(_PREVIEW_DESCRIPTION))
         marker = QPixmap(1, 1)
         marker.fill(Qt.GlobalColor.transparent)
         self.setPixmap(marker)
@@ -114,22 +118,22 @@ class RedactionIntentCanvas(QLabel):
         self._projected_rects.clear()
 
     def _legend_text(self) -> str:
-        text = "UNAPPLIED — information remains."
+        text = tr("UNAPPLIED — information remains.")
         if self._dense_preview:
-            text += f"\n{_DENSE_DESCRIPTION}"
+            text += f"\n{tr(_DENSE_DESCRIPTION)}"
         if self._selected_position is not None:
-            text += f"\nSelected region {self._selected_position}: UNAPPLIED."
+            text += tr("\nSelected region {value1}: UNAPPLIED.", value1=self._selected_position)
         elif self._dense_preview:
-            text += f"\n{_SELECT_FROM_LIST}"
+            text += f"\n{tr(_SELECT_FROM_LIST)}"
         return text
 
     def _legend_height(self) -> int:
         # Reserve the largest legend before projection. Density/selection changes
         # cannot move the page or change the pointer mapping between frames.
-        base = f"UNAPPLIED — information remains.\n{_DENSE_DESCRIPTION}\n"
+        base = tr("UNAPPLIED — information remains.\n{value1}\n", value1=tr(_DENSE_DESCRIPTION))
         candidates = (
-            base + f"Selected region {MAX_REDACTION_MARKS}: UNAPPLIED.",
-            base + _SELECT_FROM_LIST,
+            base + tr("Selected region {value1}: UNAPPLIED.", value1=MAX_REDACTION_MARKS),
+            base + tr(_SELECT_FROM_LIST),
         )
         metrics = self.fontMetrics()
         text_height = max(
@@ -143,13 +147,13 @@ class RedactionIntentCanvas(QLabel):
         return text_height + 8
 
     def _update_accessible_description(self) -> None:
-        description = _PREVIEW_DESCRIPTION
+        description = tr(_PREVIEW_DESCRIPTION)
         if self._dense_preview:
-            description += f" {_DENSE_DESCRIPTION}"
+            description += f" {tr(_DENSE_DESCRIPTION)}"
             if self._selected_position is None:
-                description += f" {_SELECT_FROM_LIST}"
+                description += f" {tr(_SELECT_FROM_LIST)}"
         if description != self.accessibleDescription():
-            self.setAccessibleDescription(description)
+            self.setAccessibleDescription(tr(description))
             QAccessible.updateAccessibility(
                 QAccessibleEvent(self, QAccessible.Event.DescriptionChanged)
             )
@@ -248,7 +252,7 @@ class RedactionIntentCanvas(QLabel):
         self._ensure_projection()
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.palette().window())
-        painter.setPen(Qt.GlobalColor.black)
+        painter.setPen(self.palette().windowText().color())
         painter.drawText(
             QRectF(4, 0, max(1, self.width() - 8), self._legend_height()),
             int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap),
@@ -263,9 +267,9 @@ class RedactionIntentCanvas(QLabel):
             painter.drawText(
                 page.adjusted(8, 8, -8, -8),
                 int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap),
-                "Deskewed page schematic. Use exact fields; pointer selection is off."
+                tr("Deskewed page schematic. Use exact fields; pointer selection is off.")
                 if not self._pointer_mapping_enabled
-                else "Preview unavailable. Use exact full-page fields and review the source.",
+                else tr("Preview unavailable. Use exact full-page fields and review the source."),
             )
         painter.setBrush(Qt.BrushStyle.NoBrush)
         selected_rect = self._projected_rects.get(self._selected) if self._selected else None

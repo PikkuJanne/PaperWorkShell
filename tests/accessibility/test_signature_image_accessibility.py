@@ -242,9 +242,17 @@ def test_delete_dialog_has_keyboard_selection_and_explicit_accessible_policy() -
         assert placements.accessibleDescription()
         assert not placements.dragEnabled()
         assert not placements.acceptDrops()
-        assert keep.text() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
+        keep_label = dialog.findChild(QLabel, "keepSignatureImageAssetRadioLabel")
+        assert keep_label is not None and keep_label.buddy() is keep
+        assert keep_label.wordWrap() and keep_label.text() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
+        assert keep.accessibleName() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
         assert keep.accessibleDescription() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
-        assert remove_unused.text() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
+        remove_label = dialog.findChild(QLabel, "removeUnusedSignatureImageAssetRadioLabel")
+        assert remove_label is not None and remove_label.buddy() is remove_unused
+        assert (
+            remove_label.wordWrap() and remove_label.text() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
+        )
+        assert remove_unused.accessibleName() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
         assert remove_unused.accessibleDescription() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
         assert remove.accessibleDescription()
         assert cancel.accessibleDescription()

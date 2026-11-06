@@ -22,7 +22,7 @@ from paperworkshell.domain.page_coordinates import NormalizedPageBox, PageCoordi
 
 REDACTION_MARK_VERSION: Final = 1
 MAX_REDACTION_MARKS: Final = 4096
-PERMANENT_REDACTION_ENABLED: Final = False
+PERMANENT_REDACTION_ENABLED: Final = True
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
 _MARK_MEMBERS: Final = frozenset({"mark_id", "mark_version", "page_id", "box", "state"})
 

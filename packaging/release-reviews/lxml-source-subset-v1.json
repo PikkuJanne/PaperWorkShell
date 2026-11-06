@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-lxml-source-subset-corollary",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "authority": "Faithful source-copy corollary of the approved omission of these same two unlicensed resources; no added resource exception or redistribution right.",
+  "approval_record": "packaging/release-reviews/lxml-exclusions-v1.json",
+  "approval_sha256": "cc20dddf92d55f9062ef4d47d96e481904ad4c9d38b49a1c5d6178f0af66ec15",
+  "input_source": {
+    "name": "lxml-6.1.1.tar.gz",
+    "sha256": "ba96ae44888e0185281e937633a743ea90d5a196c6000f82565ebb0580012d40",
+    "size_bytes": 4197430,
+    "url": "https://files.pythonhosted.org/packages/05/3b/aab6728cae887456f409b4d75e8a01856e4f04bd510de38052a47768b680/lxml-6.1.1.tar.gz"
+  },
+  "input_wheel_sha256": "b2d444f2e66624d68e9c6b211e28a76e22fff5fcabcfff4deac18b529b7d4137",
+  "source_exclusions": [
+    {
+      "approved_wheel_path": "lxml/isoschematron/resources/xsl/RNG2Schtrn.xsl",
+      "approved_wheel_sha256": "832f84eb1476a77e522bdc1715386b68f24423d35da084cd1dde319aacbba316",
+      "approved_wheel_size_bytes": 3247,
+      "lf_normalized_bytes_equal": true,
+      "raw_bytes_equal": false,
+      "source_path": "lxml-6.1.1/src/lxml/isoschematron/resources/xsl/RNG2Schtrn.xsl",
+      "source_sha256": "39b79bb01f16b7e777b8803f539354f394e99d0dcfc4f5f7f1374e02aa2c31a7",
+      "source_size_bytes": 3172
+    },
+    {
+      "approved_wheel_path": "lxml/isoschematron/resources/xsl/XSD2Schtrn.xsl",
+      "approved_wheel_sha256": "430791ac820cfb315c820f7c19703609a59f21b8151345ca11e6127efbfaec0d",
+      "approved_wheel_size_bytes": 4563,
+      "lf_normalized_bytes_equal": true,
+      "raw_bytes_equal": true,
+      "source_path": "lxml-6.1.1/src/lxml/isoschematron/resources/xsl/XSD2Schtrn.xsl",
+      "source_sha256": "430791ac820cfb315c820f7c19703609a59f21b8151345ca11e6127efbfaec0d",
+      "source_size_bytes": 4563
+    }
+  ],
+  "scope": "The same two resource contents are omitted from the corresponding source bundle. RNG2Schtrn.xsl differs only by LF versus CRLF representation, as verified against the approved exact wheel bytes; XSD2Schtrn.xsl is byte-identical. Raw source and wheel hashes are recorded separately.",
+  "output_artifact": {
+    "name": "lxml-6.1.1-approved-subset.tar.xz",
+    "local_path": "output/pws0801/native-license-work/lxml-6.1.1-approved-subset.tar.xz",
+    "stage_path": "sources/python/lxml-6.1.1-approved-subset.tar.xz",
+    "size_bytes": 2458616,
+    "sha256": "318f02f3379f03ebc9675ededb4e81372a83e343a77fafd27672b5619502afbe"
+  },
+  "recipe": {
+    "path": "tools/stage_lxml_source.py",
+    "sha256": "332b1f723834063755b6a08a6a609c751ff0087b1369fb2825b1bd1557f4e003",
+    "normalization": "Sorted paths; zero uid/gid/mtime; empty owner names; executable intent preserved with modes0644/0755; XZ preset6.",
+    "source_executed": false,
+    "network_used": false,
+    "original_source_or_wheel_changed": false
+  },
+  "verification": {
+    "included_file_count": 465,
+    "all_remaining_source_file_bytes_preserved": true,
+    "reopened_archive_all_member_hashes_match_receipt": true,
+    "independent_repeat_archive_byte_identical": true,
+    "receipt": "output/pws0801/native-license-work/lxml-source-subset-receipt.json",
+    "receipt_sha256": "28a3a9366b072b38ab4a58e1bb0c84fe236cc77769b8c396c288cee44226e310",
+    "repeat_receipt": "output/pws0801/native-license-work/lxml-source-subset-repeat-receipt.json",
+    "repeat_receipt_sha256": "8145dc205c11f5d53ffa4e4aefd7d4e5cf80bbdfb4afa7c753d2d24dd597d86d"
+  },
+  "rights": "No license waiver or source code relicensing. The original sdist remains an ignored audited input and is not the redistributed source artifact."
+}

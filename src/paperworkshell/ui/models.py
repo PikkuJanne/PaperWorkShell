@@ -18,26 +18,30 @@ from PySide6.QtGui import QPixmap
 
 from paperworkshell.app.organizer import OrganizerPageView, OrganizerViewState
 from paperworkshell.app.quality_analysis import QualityReviewSnapshot
+from paperworkshell.domain.image_transforms import IDENTITY_CONTRAST_FACTOR_MILLIONTHS
+from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.quality_analysis import QualityFinding
 from paperworkshell.domain.resource_policy import NORMAL_RESOURCE_POLICY_V1
+from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.overlays.models import OverlayKind, OverlayVisibility
 
 
 class PreviewState(StrEnum):
     """Visible and accessible state of a disposable page preview."""
 
-    NOT_LOADED = "not loaded"
-    LOADING = "loading"
-    READY = "ready"
-    FAILED = "failed"
-    UNAVAILABLE = "unavailable"
+    NOT_LOADED = mark("not loaded")
+    LOADING = mark("loading")
+    READY = mark("ready")
+    FAILED = mark("failed")
+    UNAVAILABLE = mark("unavailable")
 
 
 class QualityReviewState(StrEnum):
     """Visible advisory state for one page in an exact saved revision."""
 
-    NOT_CHECKED = "not checked"
-    NO_SIGNALS = "no review signals from limited checks"
-    NEEDS_REVIEW = "needs review"
+    NOT_CHECKED = mark("not checked")
+    NO_SIGNALS = mark("no review signals from limited checks")
+    NEEDS_REVIEW = mark("needs review")
 
 
 _PAGE_ID_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 1
@@ -48,6 +52,16 @@ _QUALITY_FINDING_PAGE_ID_ROLE: Final = _QUALITY_FINDING_COUNT_ROLE + 1
 _QUALITY_FINDING_CODE_ROLE: Final = _QUALITY_FINDING_PAGE_ID_ROLE + 1
 _QUALITY_FINDING_RELATED_PAGE_ID_ROLE: Final = _QUALITY_FINDING_CODE_ROLE + 1
 _INVALID_INDEX: Final = QModelIndex()
+_OVERLAY_KIND_TEXT: Final = {
+    OverlayKind.TEXT: mark("text"),
+    OverlayKind.DATE: mark("date"),
+    OverlayKind.CHECKMARK: mark("checkmark"),
+    OverlayKind.CROSS: mark("cross"),
+    OverlayKind.INITIALS: mark("initials"),
+    OverlayKind.SIGNATURE_IMAGE: mark("signature image"),
+    OverlayKind.HIGHLIGHT: mark("highlight"),
+    OverlayKind.SHAPE: mark("shape"),
+}
 
 
 class OrganizerPageListModel(QAbstractListModel):
@@ -104,27 +118,86 @@ class OrganizerPageListModel(QAbstractListModel):
         )
         findings = self._quality_findings_by_page.get(page.page_id, ())
         quality_state = self._quality_state(page.page_id)
-        page_text = f"Page {page.position} of {len(self._pages)}"
-        rotation_text = f"rotated {page.rotation_degrees} degrees"
+        page_text = tr("Page {value1} of {value2}", value1=page.position, value2=len(self._pages))
+        rotation_text = tr("rotated {value1} degrees", value1=page.rotation_degrees)
         quality_text = _page_quality_text(quality_state, len(findings))
+        source_text = (
+            ""
+            if page.document_number is None
+            else tr(
+                "Document {value1}, source page {value2}",
+                value1=page.document_number,
+                value2=page.source_page_number,
+            )
+        )
+        overlay_count = sum(summary.count for summary in page.overlay_summaries)
+        overlay_text = (
+            tr(
+                "; {count} visual overlay" if overlay_count == 1 else "; {count} visual overlays",
+                count=overlay_count,
+            )
+            if overlay_count or source_text
+            else ""
+        )
+        removal_text = (
+            tr(
+                "; {count} unapplied removal mark"
+                if page.removal_mark_count == 1
+                else "; {count} unapplied removal marks",
+                count=page.removal_mark_count,
+            )
+            if page.removal_mark_count
+            else ""
+        )
         if role == int(Qt.ItemDataRole.DisplayRole):
             return (
-                f"{page_text}\n{page.rotation_degrees}\N{DEGREE SIGN} rotation\n"
-                f"Preview {preview.value}\n{quality_text}"
+                f"{page_text}\n"
+                + (f"{source_text}\n" if source_text else "")
+                + tr(
+                    "{value1}° rotation\nPreview {value2}\n{value3}",
+                    value1=page.rotation_degrees,
+                    value2=tr(preview.value),
+                    value3=quality_text,
+                )
             )
         if role == int(Qt.ItemDataRole.AccessibleTextRole):
             return (
-                f"{page_text}; {rotation_text}; preview {preview.value}; {quality_text.casefold()}"
+                f"{page_text}"
+                + (f"; {source_text.lower()}" if source_text else "")
+                + tr(
+                    "; {value1}; preview {value2}; {value3}",
+                    value1=rotation_text,
+                    value2=tr(preview.value),
+                    value3=quality_text.casefold(),
+                )
+                + overlay_text
+                + removal_text
             )
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
             return (
-                "Use the organizer action buttons or keyboard shortcuts to change this page. "
-                "Automatic quality signals are suggestions and do not complete a requirement."
+                (
+                    tr(
+                        "Unsaved organizer changes; saved revision {value1}. ",
+                        value1=self._revision,
+                    )
+                    if self._autosave_pending
+                    else tr("Saved revision {value1}. ", value1=self._revision)
+                )
+                + _page_edit_description(page)
+                + tr(
+                    " Use the organizer action buttons or keyboard shortcuts to change this page. Automatic quality signals are suggestions and do not complete a requirement."
+                )
             )
         if role == int(Qt.ItemDataRole.DecorationRole):
             return self._previews.get(page.page_id)
         if role == int(Qt.ItemDataRole.ToolTipRole):
-            return f"{page_text}; {rotation_text}; preview {preview.value}; {quality_text}."
+            return tr(
+                "{value1}; {value2}; preview {value3}; {value4}.",
+                value1=page_text,
+                value2=rotation_text,
+                value3=tr(preview.value),
+                value4=quality_text,
+            )
         if role == self.PageIdRole:
             return page.page_id
         if role == self.PreviewStateRole:
@@ -467,7 +540,12 @@ class QualityFindingListModel(QAbstractListModel):
             return None
         finding = self._findings[index.row()]
         page_text = _finding_page_text(finding)
-        message = f"{page_text} — Needs review: {finding.title}. {finding.message}"
+        message = tr(
+            "{value1} — Needs review: {value2}. {value3}",
+            value1=page_text,
+            value2=tr(finding.title),
+            value3=tr(finding.message),
+        )
         if role in {
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
@@ -475,9 +553,9 @@ class QualityFindingListModel(QAbstractListModel):
         }:
             return message
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
-            return (
-                f"Activate to go to page {finding.page_position} in the organizer. "
-                "This automatic suggestion does not complete a requirement."
+            return tr(
+                "Activate to go to page {value1} in the organizer. This automatic suggestion does not complete a requirement.",
+                value1=finding.page_position,
             )
         if role == self.PageIdRole:
             return finding.page_id
@@ -516,17 +594,107 @@ class QualityFindingListModel(QAbstractListModel):
 
 def _page_quality_text(state: QualityReviewState, finding_count: int) -> str:
     if state is QualityReviewState.NOT_CHECKED:
-        return "Quality review not checked for this saved revision"
+        return tr("Quality review not checked for this saved revision")
     if state is QualityReviewState.NO_SIGNALS:
-        return "Limited quality checks found no review signals"
-    noun = "signal" if finding_count == 1 else "signals"
-    return f"Needs review: {finding_count} quality {noun}"
+        return tr("Limited quality checks found no review signals")
+    noun = tr("signal") if finding_count == 1 else tr("signals")
+    return tr("Needs review: {value1} quality {value2}", value1=finding_count, value2=noun)
+
+
+def _page_edit_description(page: OrganizerPageView) -> str:
+    """Describe non-destructive intent using closed facts, without reading page content."""
+
+    intent = page.scan_review_intent
+    crop = page.crop
+    if crop is None and intent is not None:
+        image_crop = intent.crop
+        crop = NormalizedPageBox(image_crop.x, image_crop.y, image_crop.width, image_crop.height)
+    descriptions = [
+        tr("Full page; no crop.")
+        if crop is None or crop == NormalizedPageBox.full_page()
+        else (
+            tr(
+                "Cropped page: left {value1:g} percent, top {value2:g} percent, width {value3:g} percent, height {value4:g} percent.",
+                value1=crop.x / 10000,
+                value2=crop.y / 10000,
+                value3=crop.width / 10000,
+                value4=crop.height / 10000,
+            )
+        )
+    ]
+    if intent is not None:
+        adjustments: list[str] = []
+        if intent.deskew_angle_millidegrees_clockwise:
+            adjustments.append(
+                tr(
+                    "deskew {value1:g} degrees clockwise",
+                    value1=intent.deskew_angle_millidegrees_clockwise / 1000,
+                )
+            )
+        if intent.contrast_factor_millionths != IDENTITY_CONTRAST_FACTOR_MILLIONTHS:
+            adjustments.append(
+                tr(
+                    "contrast {value1:g} percent",
+                    value1=intent.contrast_factor_millionths / 10000,
+                )
+            )
+        if intent.background_cleanup_strength_millionths:
+            adjustments.append(
+                tr(
+                    "background cleanup {value1:g} percent",
+                    value1=intent.background_cleanup_strength_millionths / 10000,
+                )
+            )
+        descriptions.append(
+            tr("Scan adjustments: ") + ", ".join(adjustments) + "."
+            if adjustments
+            else tr("No scan cleanup adjustments.")
+        )
+    visibility_labels = {
+        OverlayVisibility.VISIBLE: tr("visible"),
+        OverlayVisibility.PARTIALLY_VISIBLE: tr("partially outside the crop; needs review"),
+        OverlayVisibility.OUTSIDE_ACTIVE_CROP: tr("outside the crop; not visible"),
+    }
+    if page.overlay_summaries:
+        descriptions.append(
+            tr("Visual overlays: ")
+            + "; ".join(
+                tr(
+                    "{count} {kind} overlay, {visibility}"
+                    if summary.count == 1
+                    else "{count} {kind} overlays, {visibility}",
+                    count=summary.count,
+                    kind=tr(_OVERLAY_KIND_TEXT[summary.kind]),
+                    visibility=visibility_labels[summary.visibility],
+                )
+                for summary in page.overlay_summaries
+            )
+            + "."
+        )
+    kinds = {summary.kind for summary in page.overlay_summaries}
+    if OverlayKind.SIGNATURE_IMAGE in kinds:
+        descriptions.append(
+            tr("Signature images are visual marks and do not create digital signatures.")
+        )
+    if kinds & {OverlayKind.SHAPE, OverlayKind.HIGHLIGHT}:
+        descriptions.append(tr("Shapes and highlights do not permanently remove information."))
+    if page.removal_mark_count:
+        descriptions.append(
+            tr(
+                "Removal marks are unapplied intent. Information remains in the case; a separately verified removal derivative is required."
+            )
+        )
+    return " ".join(descriptions)
 
 
 def _finding_page_text(finding: QualityFinding) -> str:
     if finding.related_page_position is None:
-        return f"Page {finding.page_position}"
-    return f"Pages {finding.page_position} and {finding.related_page_position}"
+        return tr("Page {value1}", value1=finding.page_position)
+    return tr(
+        "Pages {value1} and {value2}",
+        value1=finding.page_position,
+        value2=finding.related_page_position,
+    )
 
 
 def _preview_byte_cost(preview: QPixmap) -> int:

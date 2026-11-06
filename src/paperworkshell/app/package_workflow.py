@@ -12,7 +12,7 @@ from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from time import monotonic
-from typing import Never, Protocol, cast
+from typing import Never, Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
 from paperworkshell.app.checklist import checklist_definition_from_template
@@ -29,7 +29,7 @@ from paperworkshell.domain.checklist import ChecklistCommandHistory, ChecklistDe
 from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import ManifestRepository, ManifestSnapshot
-from paperworkshell.domain.package_summary import PackageSummary
+from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
 from paperworkshell.domain.pdf_inspection import (
     PdfInspectionError,
     PdfInspectionErrorCode,
@@ -44,6 +44,7 @@ from paperworkshell.domain.signed_source_policy import (
 )
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
+from paperworkshell.domain.text_companion import TextCompanionErrorCode, reject_text_companion
 from paperworkshell.preflight.core_rules import core_preflight_rules
 from paperworkshell.preflight.engine import PreflightEngine, PreflightEvaluation
 from paperworkshell.preflight.facts import (
@@ -246,6 +247,24 @@ class PackageExportPort(Protocol):
     ) -> str: ...
 
 
+@runtime_checkable
+class VerifiedExportResetPort(Protocol):
+    def clear_verified_export(self) -> None: ...
+
+
+@runtime_checkable
+class TextCompanionExportPort(Protocol):
+    def save_text_companion(
+        self,
+        destination: Path,
+        *,
+        privacy_confirmed: bool,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        expected_snapshot: ManifestSnapshot | None = None,
+    ) -> str: ...
+
+
 class CompressionReviewPort(Protocol):
     """Keep verified private bytes across an untimed, explicit user review."""
 
@@ -352,6 +371,7 @@ class PackageWorkflowService:
     ) -> PackageReviewState:
         if self.active:
             reject_package_workflow(PackageWorkflowErrorCode.ACTIVE)
+        self._clear_export_receipt()
         self._summary = None
         self._active = self._review(snapshot, mode, cancellation=cancellation, progress=progress)
         return self._active.state
@@ -367,6 +387,7 @@ class PackageWorkflowService:
         if snapshot is None:
             reject_package_workflow(PackageWorkflowErrorCode.REVIEW_REQUIRED)
         self._require_snapshot_current(snapshot)
+        self._clear_export_receipt()
         self.discard_compression()
         # Retain only saved authority for retry. A failed refresh discards the old
         # results and export permission instead of retaining a stale review.
@@ -380,6 +401,7 @@ class PackageWorkflowService:
         return replacement.state
 
     def cancel(self) -> None:
+        self._clear_export_receipt()
         self.discard_compression()
         self._active = None
         self._refresh_snapshot = None
@@ -398,6 +420,7 @@ class PackageWorkflowService:
         snapshot_changed: Callable[[ManifestSnapshot], None] | None = None,
     ) -> CompressionReviewState:
         service = self._require_compression_service()
+        self._clear_export_receipt()
         self.discard_compression()
         review = self._require_current()
         require_redaction_export_allowed(review.snapshot.document)
@@ -550,6 +573,7 @@ class PackageWorkflowService:
         if probe():
             reject_package_workflow(PackageWorkflowErrorCode.CANCELLED)
         expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        self._clear_export_receipt()
         try:
             summary = self._require_compression_service().commit(
                 review_id,
@@ -657,6 +681,7 @@ class PackageWorkflowService:
         if not review.state.export_allowed:
             reject_package_workflow(PackageWorkflowErrorCode.BLOCKED)
         expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        self._clear_export_receipt()
         summary = self._exporter.export(
             review.snapshot,
             review.template,
@@ -691,6 +716,38 @@ class PackageWorkflowService:
         )
         if result != "committed":
             reject_package_workflow(PackageWorkflowErrorCode.SAVE_FAILED)
+
+    def save_text_companion(
+        self,
+        destination: Path,
+        *,
+        privacy_confirmed: bool,
+        cancellation: CancellationProbe | None = None,
+    ) -> None:
+        if privacy_confirmed is not True:
+            reject_text_companion(TextCompanionErrorCode.CONSENT_REQUIRED)
+        if (
+            self._active is None
+            or self._summary is None
+            or self._summary.status is not PackageSummaryStatus.COMMITTED
+            or not isinstance(self._exporter, TextCompanionExportPort)
+        ):
+            reject_text_companion(TextCompanionErrorCode.EXPORT_REQUIRED)
+        self._require_snapshot_current(self._active.snapshot)
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        result = self._exporter.save_text_companion(
+            destination,
+            privacy_confirmed=True,
+            deadline=lambda: monotonic() >= expires,
+            cancellation=cancellation if cancellation is not None else lambda: False,
+            expected_snapshot=self._active.snapshot,
+        )
+        if result != "committed":
+            reject_text_companion(TextCompanionErrorCode.SAVE_FAILED)
+
+    def _clear_export_receipt(self) -> None:
+        if isinstance(self._exporter, VerifiedExportResetPort):
+            self._exporter.clear_verified_export()
 
     def _plan(self, review: _Review, parent: Path) -> PackageExportPlan:
         return build_package_export_plan(

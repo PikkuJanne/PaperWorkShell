@@ -246,7 +246,7 @@ def test_raw_failure_and_progress_strings_are_never_displayed() -> None:
         text = " ".join(label.text() for label in dialog.findChildren(QLabel))
         assert private not in text
         assert "not established" in text
-        assert dialog.focusWidget() is _widget(dialog, QLabel, "packageExportStatus")
+        assert dialog.focusWidget() is _widget(dialog, QPushButton, "packageExportCloseButton")
 
 
 def test_cancel_summary_save_waits_and_retains_known_package_inventory() -> None:

@@ -54,6 +54,7 @@ from paperworkshell.worker.protocol.models import (
     CapabilityDescriptor,
     ResourceLimits,
 )
+from paperworkshell.worker.protocol.text_companion import TEXT_COMPANION_CAPABILITY
 from paperworkshell.worker.signature_image_raster_broker import (
     CommittedSignatureImageAssetStore,
 )
@@ -238,6 +239,7 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
         PDF_INSPECT_CAPABILITY,
         PDF_THUMBNAIL_CAPABILITY,
         SIGNATURE_IMAGE_RASTER_CAPABILITY,
+        TEXT_COMPANION_CAPABILITY,
     )
     assert cast(Any, source_port)._worker is worker
     assert cast(Any, thumbnail_port)._worker is worker

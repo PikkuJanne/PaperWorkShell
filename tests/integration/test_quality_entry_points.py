@@ -22,6 +22,7 @@ class QualityEntryPointIntegrationTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn("test-integration", completed.stdout)
         self.assertIn("validate-docs", completed.stdout)
+        self.assertIn("validate-localization", completed.stdout)
         self.assertIn("validate-portfolio-boundary", completed.stdout)
         self.assertIn("validate-dependencies", completed.stdout)
         self.assertIn("generate-fixtures", completed.stdout)

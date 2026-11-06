@@ -1,5 +1,18 @@
 # Scan-quality findings evaluation
 
+PWS-0605 rebound the unchanged evaluator after its additive private sanitizer
+registration at source checkpoint `9d382b2b2a8ae5cfb70dbf6fb466e7ec8873040d`. The recorder and JSON
+comparison again preserve every measurement, corpus/profile digest and resource
+field; only `revision` changes. This does not add quality or hardware evidence.
+
+PWS-0604 replayed the unchanged recorder and validator at source checkpoint
+`298d2de0eb48f29710244ef0eecc784257985f75` after the additive private OCR
+worker registration. JSON comparison proved that only `revision` changed;
+all quality measurements, corpus/profile digests and resource-policy fields
+are identical. Recording used the owned accepted-file checkout because the
+original working location retains its preexisting ownership/sharing behavior.
+This is an implementation binding refresh, not new quality or hardware evidence.
+
 - Status: PWS-0207 implementation evidence
 - Task: PWS-0207
 - Decisions: PWS-D026, PWS-D032, PWS-D035, PWS-D037, PWS-D041
@@ -272,6 +285,21 @@ destination and can be retried:
 ```text
 python tools/pws0207_quality_evaluation.py record --revision <40-lowercase-hex> --output benchmarks/pws0207-quality-findings-v1.json
 ```
+
+## PWS-0603 implementation binding
+
+The unchanged evaluator and exact-revision recorder were replayed at local PWS-0603
+checkpoint `4ac4db5feb3fd7e1b03cd72f4d9e6a903c4ae9a0`. The private reconstruction capability changes the shared worker
+registry surfaces covered by the provenance guard. It changes no quality rule, corpus,
+profile, evaluator or ResourcePolicy. JSON comparison of a separately recorded candidate
+proved that only `revision` changed; all eight metric rows and every corpus/profile/
+resource field remain identical. No golden or quality threshold was refreshed.
+
+Commands: `python -m tools.pws0207_quality_evaluation record --revision
+4ac4db5feb3fd7e1b03cd72f4d9e6a903c4ae9a0 --output output/pws0603/quality-rebound.json`,
+then validation of the candidate and the canonical baseline. The complete PWS-0603
+verification and checkpoint identity are recorded in
+[the task report](pws0603-result.md).
 
 ## Known limitations
 

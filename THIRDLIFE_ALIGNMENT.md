@@ -40,6 +40,16 @@ samples, and release documentation tied to exact frozen artifacts.
 This is not an app-to-app API specification. It does not claim that a ThirdLife compatibility cut
 exists, and it does not authorize PaperWorkShell-specific work in another repository.
 
+The current PaperWorkShell application target is **Windows 11 x64 only**, selected
+locally by [PWS-D043 / ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md).
+Native ARM64 and x64 emulation on ARM64 are outside project scope and are not
+PWS-0802, PWS-0803 or public-release prerequisites. No future mandatory ARM task
+or sibling-platform dependency follows from portfolio assembly. The
+[support boundary](docs/release/WINDOWS11_X64_SUPPORT.md),
+[current continuation](docs/development/pws0802-x64-continuation-20261104.md) and
+[finite x64 matrix](docs/development/pws0802-x64-qualification-20261104.md) keep
+edition/build and scenario evidence separate from this settled scope choice.
+
 ## Boundary charter
 
 ### Product goal
@@ -114,8 +124,8 @@ suite until B4 tests that exact version or range.
 
 An M8 packaged preview or stable candidate publishes, from real evidence:
 
-- Stable product identity, application identifier, version, channel, publisher, licence, supported
-  Windows environments, and architectures.
+- Stable product identity, application identifier, version, channel, publisher, licence, Windows 11
+  x64-only scope, and evidenced editions/builds.
 - Installer/package identity, size, hash, signature or verification method, install/update/repair/
   removal behavior, privilege and restart behavior, and exact uninstall residue.
 - Documented locations, retention, permissions, migration, and deletion behavior for configuration,
@@ -184,7 +194,20 @@ separate user-data choices explicit.
 ## Unresolved PaperWorkShell choices
 
 Portfolio steering does not choose PaperWorkShell's reverse-domain application ID, publisher,
-final product licence, supported Windows editions/builds/architectures, installer technology,
+final product licence, supported Windows editions/builds, installer technology,
 signing/update channel, exact packaged data paths and retention defaults, file-association policy,
 independently useful CLI options, project export format, hardware claims, release contact, or
-supported-version policy. These remain `TBD` until their owning local tasks produce evidence.
+supported-version policy. The maintainer has now selected Janne Vuorela, scoped MIT/free
+distribution and the stable application/upgrade IDs in
+[ADR 0018](docs/adr/0018-windows-installer-and-release-identity.md), and Windows 11
+x64-only scope in ADR 0019. Other release facts remain `TBD` until their owning
+local tasks produce evidence; an unsigned engineering installer is not a trusted
+public release or a ThirdLife compatibility cut.
+
+The immutable R7 engineering installer is 512,713,704 bytes, SHA-256
+`a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,
+actual signature status **NotSigned**. The newer scope documents do not replace
+its embedded build metadata or original R6/R7 evidence. Actual engineering guest
+evidence names Enterprise 26100.9711 x64/genuine standard user; Pro 26300.9711 is
+host-only. Neither a broader supported-build matrix nor public signed release
+approval is inferred, and no ThirdLife compatibility claim is created.

@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -47,14 +46,19 @@ from paperworkshell.domain.page_coordinates import (
     RenderedImageSize,
 )
 from paperworkshell.domain.redaction import RedactionError, RedactionErrorCode
+from paperworkshell.domain.redaction_verification import runtime_release_qualified
+from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import adapt_dialog_button_box
 from paperworkshell.ui.redaction_canvas import RedactionIntentCanvas
 
-_NOT_APPLIED = "Unapplied — information is still present. No removal has been verified."
-_EDIT_LIMIT_STATUS = (
-    "The edit limit has been reached. Save the current marks, Undo an edit to continue, "
-    "or Cancel this draft. Information is still present."
+_NOT_APPLIED = mark("Unapplied — information is still present. No removal has been verified.")
+_EDIT_LIMIT_STATUS = mark(
+    "The edit limit has been reached. Save the current marks, Undo an edit to continue, or Cancel this draft. Information is still present."
 )
-_SAVE_FAILURE = "Removal marks could not be saved. Information is still present. Changes are retained for retry."
+_SAVE_FAILURE = mark(
+    "Removal marks could not be saved. Information is still present. Changes are retained for retry."
+)
 _SAFE_FAILURE_CODES = frozenset(
     {code.value for code in RedactionErrorCode}
     | {code.value for code in ManifestRepositoryErrorCode}
@@ -67,7 +71,7 @@ def safe_redaction_failure(code: object, message: object) -> tuple[str, str]:
     """Do not reflect backend exception text, paths, or content into UI announcements."""
     del message
     selected = code if type(code) is str and code in _SAFE_FAILURE_CODES else "PWS_UI_UNEXPECTED"
-    return selected, _SAVE_FAILURE
+    return selected, tr(_SAVE_FAILURE)
 
 
 class RedactionToolsDialog(QDialog):
@@ -100,12 +104,18 @@ class RedactionToolsDialog(QDialog):
         self._listed_rows: dict[UUID, int] = {}
         self._shortcuts: list[QShortcut] = []
         self._transform = page_transform or PageCoordinateTransform()
+        qualified = runtime_release_qualified()
         self.setObjectName("redactionToolsDialog")
-        self.setWindowTitle("Permanently remove information — mark regions")
-        self.setAccessibleName("Permanently remove information: unapplied region review")
+        self.setWindowTitle(tr("Permanently remove information — mark regions"))
+        self.setAccessibleName(tr("Permanently remove information: unapplied region review"))
         self.setAccessibleDescription(
-            "Save removal intent using the region list and numeric fields. Information remains "
-            "present. Permanent removal is disabled pending independent security approval."
+            tr(
+                "Save removal intent using the region list and numeric fields. Information remains present. Use Export removal derivative for a separately verified output."
+            )
+            if qualified
+            else tr(
+                "Save removal intent using the region list and numeric fields. Information remains present. Permanent removal is disabled pending independent security approval."
+            )
         )
         self.setModal(True)
         available = self.screen().availableGeometry()
@@ -117,35 +127,42 @@ class RedactionToolsDialog(QDialog):
         for name, text in (
             (
                 "redactionIntentWarning",
-                _NOT_APPLIED + " Save marks only; permanent removal is not enabled.",
+                tr(_NOT_APPLIED)
+                + (
+                    tr(" Save marks only; use Export removal derivative to create a checked copy.")
+                    if qualified
+                    else tr(" Save marks only; permanent removal is not enabled.")
+                ),
             ),
             (
                 "redactionDerivativeWarning",
-                "Applying removal later creates a new derivative. Affected pages "
-                "may be rasterized; interactive forms and accessibility structure may be lost. "
-                "A modified digitally signed source produces an unsigned derivative. Originals stay unchanged.",
+                tr(
+                    "Applying removal later creates a new derivative. Affected pages may be rasterized; interactive forms and accessibility structure may be lost. A modified digitally signed source produces an unsigned derivative. Originals stay unchanged."
+                ),
             ),
             (
                 "redactionInstructions",
-                "Add a region, enter left, top, width and height in full-page millionths "
-                "before crop or rotation, then update it. 1000000 equals 100 percent. Select any region "
-                "with the arrow keys. Dashed crossed outlines mean unapplied intent. Ordinary shapes "
-                "remain separate visual marks. Review every occurrence on every affected page.",
+                tr(
+                    "Add a region, enter left, top, width and height in full-page millionths before crop or rotation, then update it. 1000000 equals 100 percent. Select any region with the arrow keys. Dashed crossed outlines mean unapplied intent. Ordinary shapes remain separate visual marks. Review every occurrence on every affected page."
+                ),
             ),
             (
                 "redactionStateLegend",
-                "Status meanings: Unapplied: information is still present. "
-                "Applied: candidate created, removal unverified. Verified: required checks passed for "
-                "the exact derivative. Failed: checks failed; export blocked. Applied and verified "
-                "states are unavailable while the security gate is closed.",
+                tr(
+                    "Status meanings: Unapplied: information is still present. Applied: candidate created, removal unverified. Verified: required checks passed for the exact derivative. Failed: checks failed; export blocked. Applied and verified states describe derivative results; saved marks always remain unapplied."
+                )
+                if qualified
+                else tr(
+                    "Status meanings: Unapplied: information is still present. Applied: candidate created, removal unverified. Verified: required checks passed for the exact derivative. Failed: checks failed; export blocked. Applied and verified states are unavailable while the security gate is closed."
+                ),
             ),
         ):
-            label = QLabel(text)
+            label = QLabel(tr(text))
             label.setObjectName(name)
             label.setTextFormat(Qt.TextFormat.PlainText)
             label.setWordWrap(True)
-            label.setAccessibleName(text)
-            label.setAccessibleDescription(text)
+            label.setAccessibleName(tr(text))
+            label.setAccessibleDescription(tr(text))
             content.addWidget(label)
 
         self._canvas = RedactionIntentCanvas(
@@ -158,78 +175,93 @@ class RedactionToolsDialog(QDialog):
         self._canvas.region_requested.connect(self._add_pointer_region)
         self._list = QListWidget()
         self._list.setObjectName("redactionRegionList")
-        self._list.setAccessibleName("Unapplied removal regions")
+        self._list.setAccessibleName(tr("Unapplied removal regions"))
         self._list.setAccessibleDescription(
-            "Select a region using Up and Down, then edit exact geometry. "
-            "Every region is unapplied; information is still present."
+            tr(
+                "Select a region using Up and Down, then edit exact geometry. Every region is unapplied; information is still present."
+            )
         )
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setMinimumHeight(100)
         self._list.currentRowChanged.connect(self._selection_changed)
         content.addWidget(self._list)
 
-        self._properties = QGroupBox("Exact full-page region geometry")
-        self._properties.setAccessibleName("Exact full-page region geometry")
+        self._properties = QGroupBox(tr("Exact full-page region geometry"))
+        self._properties.setAccessibleName(tr("Exact full-page region geometry"))
         grid = QGridLayout(self._properties)
         self._fields: list[QSpinBox] = []
         for row, (label_text, key) in enumerate(
-            (("Left", "x"), ("Top", "y"), ("Width", "width"), ("Height", "height"))
+            ((tr("Left"), "x"), (tr("Top"), "y"), (tr("Width"), "width"), (tr("Height"), "height"))
         ):
             field = QSpinBox()
-            field.setObjectName(f"redaction{label_text}Spin")
+            field.setObjectName(
+                {
+                    "x": "redactionLeftSpin",
+                    "y": "redactionTopSpin",
+                    "width": "redactionWidthSpin",
+                    "height": "redactionHeightSpin",
+                }[key]
+            )
             field.setRange(1 if key in {"width", "height"} else 0, 1_000_000)
             field.setSingleStep(1_000)
-            field.setAccessibleName(f"Removal region {label_text.lower()} in millionths")
+            field.setAccessibleName(
+                tr("Removal region {value1} in millionths", value1=label_text.lower())
+            )
             field.setAccessibleDescription(
-                "Full-page units before crop and rotation. "
-                "1000000 equals 100 percent. Use Update region to save the geometry in this draft."
+                tr(
+                    "Full-page units before crop and rotation. 1000000 equals 100 percent. Use Update region to save the geometry in this draft."
+                )
             )
             field.setKeyboardTracking(False)
             field.valueChanged.connect(self._field_changed)
-            label = QLabel(label_text)
+            label = QLabel(tr(label_text))
             label.setBuddy(field)
             grid.addWidget(label, row, 0)
             grid.addWidget(field, row, 1)
             self._fields.append(field)
         self._update_button = self._button(
-            "Update region",
+            tr("Update region"),
             "updateRedactionRegionButton",
-            "Update selected region from all four numeric fields.",
+            tr("Update selected region from all four numeric fields."),
             self._update_region,
         )
         grid.addWidget(self._update_button, 4, 0, 1, 2)
         content.addWidget(self._properties)
-        actions = QHBoxLayout()
+        actions = QVBoxLayout()
         self._add_button = self._button(
-            "Add region",
+            tr("Add region"),
             "addRedactionRegionButton",
-            "Add an unapplied region with editable position and size. No information is removed. Alt+A.",
+            tr(
+                "Add an unapplied region with editable position and size. No information is removed. Alt+A."
+            ),
             lambda: self._transition(lambda state: state.create()),
         )
         self._remove_button = self._button(
-            "Remove mark",
+            tr("Remove mark"),
             "removeRedactionRegionButton",
-            "Remove only the selected removal intent. Source information stays present.",
+            tr("Remove only the selected removal intent. Source information stays present."),
             lambda: self._transition(lambda state: state.delete_selected()),
         )
         self._undo_button = self._button(
-            "Undo",
+            tr("Undo"),
             "undoRedactionRegionButton",
-            "Undo last region edit. Ctrl+Z.",
+            tr("Undo last region edit. Ctrl+Z."),
             lambda: self._transition(lambda state: state.undo()),
         )
         self._redo_button = self._button(
-            "Redo",
+            tr("Redo"),
             "redoRedactionRegionButton",
-            "Redo region edit. Ctrl+Y.",
+            tr("Redo region edit. Ctrl+Y."),
             lambda: self._transition(lambda state: state.redo()),
         )
         for button in (self._add_button, self._remove_button, self._undo_button, self._redo_button):
             actions.addWidget(button)
         content.addLayout(actions)
-        self._status = QLabel(_NOT_APPLIED)
+        self._status = QLabel(tr(_NOT_APPLIED))
         self._status.setObjectName("redactionToolsStatus")
-        self._status.setAccessibleName("Removal review status")
+        self._status.setAccessibleName(
+            tr("Removal review status. {value1}", value1=tr(_NOT_APPLIED))
+        )
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -241,31 +273,33 @@ class RedactionToolsDialog(QDialog):
         content.addStretch(1)
         self._scroll = QScrollArea()
         self._scroll.setObjectName("redactionToolsScroll")
-        self._scroll.setAccessibleName("Removal review controls")
+        self._scroll.setAccessibleName(tr("Removal review controls"))
         self._scroll.setAccessibleDescription(
-            "Scrollable instructions, preview, region list and exact controls."
+            tr("Scrollable instructions, preview, region list and exact controls.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._scroll.setWidget(self._content)
+        adapt_localized_content(self._scroll)
         buttons = QDialogButtonBox()
         self._save_button = buttons.addButton(
-            "Save unapplied marks", QDialogButtonBox.ButtonRole.AcceptRole
+            tr("Save unapplied marks"), QDialogButtonBox.ButtonRole.AcceptRole
         )
         self._save_button.setObjectName("saveRedactionMarksButton")
-        self._save_button.setAccessibleName("Save unapplied removal marks")
+        self._save_button.setAccessibleName(tr("Save unapplied removal marks"))
         self._save_button.setAccessibleDescription(
-            "Save intent only. Information is still present; no removal is applied or verified."
+            tr("Save intent only. Information is still present; no removal is applied or verified.")
         )
         self._save_button.setDefault(True)
         self._save_button.clicked.connect(self._request_save)
         self._cancel_button = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         self._cancel_button.setObjectName("cancelRedactionMarksButton")
-        self._cancel_button.setAccessibleName("Cancel removal mark changes")
+        self._cancel_button.setAccessibleName(tr("Cancel removal mark changes"))
         self._cancel_button.setAccessibleDescription(
-            "Discard this local draft and return to the organizer. Escape."
+            tr("Discard this local draft and return to the organizer. Escape.")
         )
         self._cancel_button.clicked.connect(self.reject)
+        adapt_dialog_button_box(buttons)
         layout = QVBoxLayout(self)
         layout.addWidget(self._scroll, 1)
         layout.addWidget(buttons)
@@ -293,17 +327,17 @@ class RedactionToolsDialog(QDialog):
             self._shortcuts.append(shortcut)
         self._refresh()
         if self._edit_limit_reached():
-            self._set_status(_EDIT_LIMIT_STATUS)
+            self._set_status(tr(_EDIT_LIMIT_STATUS))
         QTimer.singleShot(0, self._initial_focus)
 
     @staticmethod
     def _button(
         text: str, name: str, description: str, callback: Callable[[], object]
     ) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         button.clicked.connect(callback)
         return button
 
@@ -340,19 +374,16 @@ class RedactionToolsDialog(QDialog):
     def _capacity_status(self) -> str:
         if self._edit_limit_reached():
             if self._commit_started:
-                return (
-                    "The edit limit has been reached. Retry saving the current marks, "
-                    "or Undo an edit to continue. Information is still present."
+                return tr(
+                    "The edit limit has been reached. Retry saving the current marks, or Undo an edit to continue. Information is still present."
                 )
-            return _EDIT_LIMIT_STATUS
+            return tr(_EDIT_LIMIT_STATUS)
         if self._commit_started:
-            return (
-                "The case has reached the supported removal-mark limit. "
-                "Remove a mark or retry saving the current marks. Information is still present."
+            return tr(
+                "The case has reached the supported removal-mark limit. Remove a mark or retry saving the current marks. Information is still present."
             )
-        return (
-            "The case has reached the supported removal-mark limit. "
-            "Remove a mark, save the current marks, or cancel. Information is still present."
+        return tr(
+            "The case has reached the supported removal-mark limit. Remove a mark, save the current marks, or cancel. Information is still present."
         )
 
     def _update_region(self) -> bool:
@@ -364,7 +395,7 @@ class RedactionToolsDialog(QDialog):
         # including when shutdown collects a draft without moving focus first.
         for field in self._fields:
             if not field.hasAcceptableInput():
-                self._set_status("Enter a complete numeric value for this region field.", True)
+                self._set_status(tr("Enter a complete numeric value for this region field."), True)
                 field.setFocus(Qt.FocusReason.OtherFocusReason)
                 self._scroll.ensureWidgetVisible(field)
                 return False
@@ -377,7 +408,9 @@ class RedactionToolsDialog(QDialog):
             state = self._state.replace_selected_box(box)
         except PageCoordinateError:
             self._set_status(
-                "Region must have a positive width and height and fit inside the full page. Correct the numeric fields.",
+                tr(
+                    "Region must have a positive width and height and fit inside the full page. Correct the numeric fields."
+                ),
                 True,
             )
             self._fields[0].setFocus(Qt.FocusReason.OtherFocusReason)
@@ -394,8 +427,9 @@ class RedactionToolsDialog(QDialog):
                 self._scroll.ensureWidgetVisible(self._undo_button)
             else:
                 self._set_status(
-                    "The removal mark edit was rejected. Information is still present. "
-                    "Review the selected region and try again.",
+                    tr(
+                        "The removal mark edit was rejected. Information is still present. Review the selected region and try again."
+                    ),
                     True,
                 )
                 self._status.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -412,13 +446,17 @@ class RedactionToolsDialog(QDialog):
             self._set_status(
                 self._capacity_status()
                 if error.code is RedactionErrorCode.CAPACITY_EXCEEDED
-                else "The removal mark change was rejected. Information is still present. Review the selected region.",
+                else tr(
+                    "The removal mark change was rejected. Information is still present. Review the selected region."
+                ),
                 True,
             )
             return
         except PageCoordinateError:
             self._set_status(
-                "Region must have a positive width and height and fit inside the full page. Correct the numeric fields.",
+                tr(
+                    "Region must have a positive width and height and fit inside the full page. Correct the numeric fields."
+                ),
                 True,
             )
             return
@@ -429,7 +467,8 @@ class RedactionToolsDialog(QDialog):
             state.announcement
         ):
             self._set_status(
-                "The removal editor returned an invalid state. Information is still present.", True
+                tr("The removal editor returned an invalid state. Information is still present."),
+                True,
             )
             return
         previously_limited = self._edit_limit_reached()
@@ -441,7 +480,9 @@ class RedactionToolsDialog(QDialog):
         self._set_status(
             self._capacity_status()
             if limited
-            else state.announcement + " Information is still present."
+            else tr(
+                "{announcement} Information is still present.", announcement=tr(state.announcement)
+            )
         )
         if limited and not previously_limited:
             self._undo_button.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -488,26 +529,32 @@ class RedactionToolsDialog(QDialog):
                         box = record.box
                         visible = self._transform.visible_part(box)
                         visibility = (
-                            "outside active crop"
+                            tr("outside active crop")
                             if visible is None
                             else (
-                                "fully shown in active crop"
+                                tr("fully shown in active crop")
                                 if visible == box
-                                else "partly shown in active crop"
+                                else tr("partly shown in active crop")
                             )
                         )
-                        summary = (
-                            f"Unapplied removal region {position} of {len(records)}; "
-                            f"left {box.x / 10000:g} percent; top {box.y / 10000:g} percent; "
-                            f"width {box.width / 10000:g} percent; height {box.height / 10000:g} percent; "
-                            f"{visibility}. Information is still present."
+                        summary = tr(
+                            "Unapplied removal region {value1} of {value2}; left {value3:g} percent; top {value4:g} percent; width {value5:g} percent; height {value6:g} percent; {value7}. Information is still present.",
+                            value1=position,
+                            value2=len(records),
+                            value3=box.x / 10000,
+                            value4=box.y / 10000,
+                            value5=box.width / 10000,
+                            value6=box.height / 10000,
+                            value7=visibility,
                         )
                         item = QListWidgetItem(summary)
                         item.setData(Qt.ItemDataRole.UserRole, record.mark_id)
                         item.setData(Qt.ItemDataRole.AccessibleTextRole, summary)
                         item.setData(
                             Qt.ItemDataRole.AccessibleDescriptionRole,
-                            "Unapplied intent. Select and edit numeric fields; no removal verified.",
+                            tr(
+                                "Unapplied intent. Select and edit numeric fields; no removal verified."
+                            ),
                         )
                         self._list.addItem(item)
                         self._listed_rows[record.mark_id] = position - 1
@@ -534,8 +581,10 @@ class RedactionToolsDialog(QDialog):
             self._loading = False
 
     def _set_status(self, text: str, assertive: bool = False) -> None:
+        text = tr(text)
         self._status.setText(text)
-        self._status.setAccessibleDescription(text)
+        self._status.setAccessibleName(tr("Removal mark editor status. {value1}", value1=text))
+        self._status.setAccessibleDescription(tr(text))
         self._scroll.ensureWidgetVisible(self._status)
         # The native dialog is a stable, visible UIA source even when scrolling
         # has just exposed the child status. Keep the user's keyboard focus.
@@ -552,16 +601,27 @@ class RedactionToolsDialog(QDialog):
 
     def set_save_pending(self) -> None:
         self._save_pending = self._commit_started = True
-        self._content.setEnabled(False)
+        for control in (
+            self._canvas,
+            self._list,
+            self._properties,
+            self._add_button,
+            self._remove_button,
+            self._undo_button,
+            self._redo_button,
+        ):
+            control.setEnabled(False)
         self._cancel_button.setEnabled(False)
         self._save_button.setEnabled(False)
-        self._set_status("Saving unapplied removal marks. Information is still present.")
+        self._set_status(tr("Saving unapplied removal marks. Information is still present."))
+        self._status.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def save_failed(self, code: object, message: object) -> bool:
         if not self._save_pending:
             return False
         self._save_pending = False
-        self._content.setEnabled(True)
+        self._list.setEnabled(True)
+        self._refresh()
         self._cancel_button.setEnabled(not self._commit_started)
         self._save_button.setEnabled(True)
         safe_code, safe_message = safe_redaction_failure(code, message)
@@ -569,7 +629,8 @@ class RedactionToolsDialog(QDialog):
         if self._edit_limit_reached():
             message_text += f" {self._capacity_status()}"
         self._set_status(message_text, True)
-        self._status.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._save_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._save_button, 8, 8)
         return True
 
     def finish_saved(self) -> bool:
@@ -585,8 +646,9 @@ class RedactionToolsDialog(QDialog):
     def reject(self) -> None:
         if self._commit_started:
             self._set_status(
-                "Removal mark changes are retained for retry and cannot be discarded "
-                "after saving has started. Retry saving. Information is still present.",
+                tr(
+                    "Removal mark changes are retained for retry and cannot be discarded after saving has started. Retry saving. Information is still present."
+                ),
                 True,
             )
             if not self._save_pending:

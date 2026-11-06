@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -44,22 +43,25 @@ from paperworkshell.app.portal_constraints import (
     reject_constraint_editor,
 )
 from paperworkshell.domain.manifest_validation import MAX_OUTPUT_NAME_UTF16_CODE_UNITS
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.preflight.portal_constraints import (
     PortalEncryptionPolicy,
     PortalOutputMode,
 )
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import WrappingActionLayout, adapt_dialog_button_box
 
 _FOCUS_VISIBLE_TEXT_STYLE: Final = (
     "QLabel:focus { border: 2px solid palette(highlight); padding: 3px; }"
 )
 _MODE_TEXT: Final[dict[PortalOutputMode, str]] = {
-    PortalOutputMode.COMBINED_PDF: "One combined PDF",
-    PortalOutputMode.SEPARATE_PDFS: "Several separate PDFs",
-    PortalOutputMode.ZIP: "ZIP package",
+    PortalOutputMode.COMBINED_PDF: mark("One combined PDF"),
+    PortalOutputMode.SEPARATE_PDFS: mark("Several separate PDFs"),
+    PortalOutputMode.ZIP: mark("ZIP package"),
 }
 _ENCRYPTION_TEXT: Final[dict[PortalEncryptionPolicy, str]] = {
-    PortalEncryptionPolicy.MUST_BE_UNENCRYPTED: "Outputs must be unencrypted",
-    PortalEncryptionPolicy.ALLOWED: "Encrypted outputs are allowed",
+    PortalEncryptionPolicy.MUST_BE_UNENCRYPTED: mark("Outputs must be unencrypted"),
+    PortalEncryptionPolicy.ALLOWED: mark("Encrypted outputs are allowed"),
 }
 
 
@@ -81,21 +83,21 @@ class ConstraintEditorDialog(QDialog):
 
         self.setObjectName("portalConstraintEditorDialog")
         self.setModal(True)
-        self.setWindowTitle("Review portal packaging constraints")
-        self.setAccessibleName("Review portal packaging constraints")
+        self.setWindowTitle(tr("Review portal packaging constraints"))
+        self.setAccessibleName(tr("Review portal packaging constraints"))
         self.setAccessibleDescription(
-            "Review allowed packaging formats, encryption policy, optional numeric limits, and "
-            "safe requested names. These local checks do not guarantee portal acceptance. "
-            "Cancel is the safe default."
+            tr(
+                "Review allowed packaging formats, encryption policy, optional numeric limits, and safe requested names. These local checks do not guarantee portal acceptance. Cancel is the safe default."
+            )
         )
 
         content = QWidget()
         content.setObjectName("constraintEditorContent")
         content_layout = QVBoxLayout(content)
 
-        heading = QLabel("Review portal packaging constraints")
+        heading = QLabel(tr("Review portal packaging constraints"))
         heading.setObjectName("constraintEditorHeading")
-        heading.setAccessibleName("Review portal packaging constraints")
+        heading.setAccessibleName(tr("Review portal packaging constraints"))
         heading.setTextFormat(Qt.TextFormat.PlainText)
         heading.setWordWrap(True)
         heading_font = QFont(heading.font())
@@ -105,30 +107,30 @@ class ConstraintEditorDialog(QDialog):
         content_layout.addWidget(heading)
 
         guidance = QLabel(
-            "These values control packaging checks performed by PaperWorkShell. Compare them "
-            "with the current application instructions. Passing these checks does not confirm "
-            "eligibility, legal sufficiency, submission, or acceptance by a portal."
+            tr(
+                "These values control packaging checks performed by PaperWorkShell. Compare them with the current application instructions. Passing these checks does not confirm eligibility, legal sufficiency, submission, or acceptance by a portal."
+            )
         )
         guidance.setObjectName("constraintEditorGuidance")
-        guidance.setAccessibleName("Constraint review guidance")
+        guidance.setAccessibleName(tr("Constraint review guidance"))
         guidance.setAccessibleDescription(guidance.text())
         guidance.setTextFormat(Qt.TextFormat.PlainText)
         guidance.setWordWrap(True)
         content_layout.addWidget(guidance)
 
-        source_group = QGroupBox("Constraint source")
+        source_group = QGroupBox(tr("Constraint source"))
         source_group.setObjectName("constraintSourceGroup")
-        source_group.setAccessibleName("Constraint source and provenance")
+        source_group.setAccessibleName(tr("Constraint source and provenance"))
         source_layout = QVBoxLayout(source_group)
         self._template_title = QLabel()
         self._template_title.setObjectName("constraintTemplateTitle")
-        self._template_title.setAccessibleName("Generic template title")
+        self._template_title.setAccessibleName(tr("Generic template title"))
         self._template_title.setTextFormat(Qt.TextFormat.PlainText)
         self._template_title.setWordWrap(True)
         source_layout.addWidget(self._template_title)
         self._source_status = QLabel()
         self._source_status.setObjectName("constraintSourceStatus")
-        self._source_status.setAccessibleName("Current constraint source")
+        self._source_status.setAccessibleName(tr("Current constraint source"))
         self._source_status.setTextFormat(Qt.TextFormat.PlainText)
         self._source_status.setWordWrap(True)
         self._source_status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -136,26 +138,28 @@ class ConstraintEditorDialog(QDialog):
         self._source_status.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         source_layout.addWidget(self._source_status)
         self._restore_button = self._button(
-            "Restore generic template defaults",
+            tr("Restore generic template defaults"),
             "constraintRestoreDefaultsButton",
-            "Copy the configured generic template's packaging defaults into this local draft. "
-            "They still require review and are not saved until Apply succeeds.",
+            tr(
+                "Copy the configured generic template's packaging defaults into this local draft. They still require review and are not saved until Apply succeeds."
+            ),
         )
         self._restore_button.clicked.connect(self._restore_defaults)
         source_layout.addWidget(self._restore_button)
         content_layout.addWidget(source_group)
 
-        mode_group = QGroupBox("Allowed output formats")
+        mode_group = QGroupBox(tr("Allowed output formats"))
         mode_group.setObjectName("constraintOutputModesGroup")
-        mode_group.setAccessibleName("Allowed output formats")
+        mode_group.setAccessibleName(tr("Allowed output formats"))
         mode_group.setAccessibleDescription(
-            "Select one or more formats that a later export plan may use. This editor does not "
-            "select the actual export organization."
+            tr(
+                "Select one or more formats that a later export plan may use. This editor does not select the actual export organization."
+            )
         )
         mode_layout = QVBoxLayout(mode_group)
         self._mode_checks: dict[PortalOutputMode, QCheckBox] = {}
         for mode, label in _MODE_TEXT.items():
-            check = QCheckBox(label)
+            check = QCheckBox(tr(label))
             check.setObjectName(
                 {
                     PortalOutputMode.COMBINED_PDF: "constraintCombinedPdfCheck",
@@ -163,77 +167,84 @@ class ConstraintEditorDialog(QDialog):
                     PortalOutputMode.ZIP: "constraintZipCheck",
                 }[mode]
             )
-            check.setAccessibleName(label)
+            check.setAccessibleName(tr(label))
             check.setAccessibleDescription(
-                f"Allow {label.casefold()} as a future export organization."
+                tr("Allow {value1} as a future export organization.", value1=tr(label).casefold())
             )
             check.toggled.connect(self._allowed_modes_changed)
             self._mode_checks[mode] = check
             mode_layout.addWidget(check)
         content_layout.addWidget(mode_group)
 
-        encryption_group = QGroupBox("Encryption policy")
+        encryption_group = QGroupBox(tr("Encryption policy"))
         encryption_group.setObjectName("constraintEncryptionGroup")
         encryption_layout = QVBoxLayout(encryption_group)
-        encryption_label = QLabel("Output &encryption policy")
+        encryption_label = QLabel(tr("Output &encryption policy"))
         self._encryption = QComboBox()
         self._encryption.setObjectName("constraintEncryptionCombo")
-        self._encryption.setAccessibleName("Output encryption policy")
+        self._encryption.setAccessibleName(tr("Output encryption policy"))
         self._encryption.setAccessibleDescription(
-            "Choose whether planned outputs must be unencrypted or may be encrypted."
+            tr("Choose whether planned outputs must be unencrypted or may be encrypted.")
         )
         for policy, label in _ENCRYPTION_TEXT.items():
-            self._encryption.addItem(label, policy.value)
+            self._encryption.addItem(tr(label), policy.value)
         encryption_label.setBuddy(self._encryption)
         encryption_layout.addWidget(encryption_label)
         encryption_layout.addWidget(self._encryption)
         content_layout.addWidget(encryption_group)
 
-        limit_group = QGroupBox("Optional limits")
+        limit_group = QGroupBox(tr("Optional limits"))
         limit_group.setObjectName("constraintLimitsGroup")
-        limit_group.setAccessibleName("Optional packaging limits")
+        limit_group.setAccessibleName(tr("Optional packaging limits"))
         limit_group.setAccessibleDescription(
-            "Each limit has an explicit Set checkbox. Unchecked means no configured limit; zero "
-            "is never used as a substitute for no limit. Byte values are exact integers."
+            tr(
+                "Each limit has an explicit Set checkbox. Unchecked means no configured limit; zero is never used as a substitute for no limit. Byte values are exact integers."
+            )
         )
         limit_layout = QVBoxLayout(limit_group)
         self._limit_controls: dict[ConstraintValidationField, tuple[QCheckBox, QLineEdit]] = {}
         for validation_field, label, object_token, description in (
             (
                 ConstraintValidationField.MAXIMUM_FILE_COUNT,
-                "Maximum file count",
+                tr("Maximum file count"),
                 "FileCount",
-                "Maximum number of files. Leave Set unchecked for no configured limit.",
+                tr("Maximum number of files. Leave Set unchecked for no configured limit."),
             ),
             (
                 ConstraintValidationField.MAXIMUM_TOTAL_BYTES,
-                "Maximum total bytes",
+                tr("Maximum total bytes"),
                 "TotalBytes",
-                "Maximum total output size in exact bytes. Leave Set unchecked for no configured limit.",
+                tr(
+                    "Maximum total output size in exact bytes. Leave Set unchecked for no configured limit."
+                ),
             ),
             (
                 ConstraintValidationField.MAXIMUM_FILE_BYTES,
-                "Maximum bytes per file",
+                tr("Maximum bytes per file"),
                 "FileBytes",
-                "Maximum size of each output file in exact bytes. Leave Set unchecked for no configured limit.",
+                tr(
+                    "Maximum size of each output file in exact bytes. Leave Set unchecked for no configured limit."
+                ),
             ),
             (
                 ConstraintValidationField.MAXIMUM_PAGES_PER_FILE,
-                "Maximum pages per file",
+                tr("Maximum pages per file"),
                 "PagesPerFile",
-                "Maximum pages in each output file. Leave Set unchecked for no configured limit.",
+                tr(
+                    "Maximum pages in each output file. Leave Set unchecked for no configured limit."
+                ),
             ),
         ):
-            row = QHBoxLayout()
-            enabled = QCheckBox(f"Set {label.casefold()}")
+            row = QVBoxLayout()
+            enabled = QCheckBox(tr("Set {value1}", value1=tr(label).casefold()))
             enabled.setObjectName(f"constraint{object_token}Enabled")
-            enabled.setAccessibleName(f"Set {label.casefold()}")
-            enabled.setAccessibleDescription(description)
+            enabled.setAccessibleName(tr("Set {value1}", value1=tr(label).casefold()))
+            enabled.setAccessibleDescription(tr(description))
             value_label = QLabel(f"&{label}")
             value = QLineEdit()
             value.setObjectName(f"constraint{object_token}Input")
-            value.setAccessibleName(label)
-            value.setAccessibleDescription(description)
+            value.setAccessibleName(tr(label))
+            value.setAccessibleDescription(tr(description))
             value.setInputMethodHints(Qt.InputMethodHint.ImhDigitsOnly)
             value.setMaxLength(16)
             value_label.setBuddy(value)
@@ -245,53 +256,53 @@ class ConstraintEditorDialog(QDialog):
             self._limit_controls[validation_field] = (enabled, value)
         content_layout.addWidget(limit_group)
 
-        name_group = QGroupBox("Requested output names")
+        name_group = QGroupBox(tr("Requested output names"))
         name_group.setObjectName("constraintNamesGroup")
-        name_group.setAccessibleName("Requested output names")
+        name_group.setAccessibleName(tr("Requested output names"))
         name_group.setAccessibleDescription(
-            "Names are safe final filename components only, never paths. Enter a stem; the PDF "
-            "or ZIP extension is derived and read-only. Actual output organization is selected "
-            "later in the export workflow."
+            tr(
+                "Names are safe final filename components only, never paths. Enter a stem; the PDF or ZIP extension is derived and read-only. Actual output organization is selected later in the export workflow."
+            )
         )
         name_layout = QVBoxLayout(name_group)
         name_guidance = QLabel(
-            "Enter filename stems only. PaperWorkShell derives the displayed extension and adds "
-            "understandable counters for collisions. Folder paths, archive paths, device names, "
-            "and unsafe characters are rejected."
+            tr(
+                "Enter filename stems only. PaperWorkShell derives the displayed extension and adds understandable counters for collisions. Folder paths, archive paths, device names, and unsafe characters are rejected."
+            )
         )
         name_guidance.setObjectName("constraintNameGuidance")
-        name_guidance.setAccessibleName("Requested filename instructions")
+        name_guidance.setAccessibleName(tr("Requested filename instructions"))
         name_guidance.setAccessibleDescription(name_guidance.text())
         name_guidance.setTextFormat(Qt.TextFormat.PlainText)
         name_guidance.setWordWrap(True)
         name_layout.addWidget(name_guidance)
-        list_label = QLabel("Requested &names")
+        list_label = QLabel(tr("Requested &names"))
         self._name_list = QListWidget()
         self._name_list.setObjectName("constraintNameList")
-        self._name_list.setAccessibleName("Ordered requested output names")
+        self._name_list.setAccessibleName(tr("Ordered requested output names"))
         self._name_list.setAccessibleDescription(
-            "Select one safe resolved filename to update, remove, or move using named buttons."
+            tr("Select one safe resolved filename to update, remove, or move using named buttons.")
         )
         self._name_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         list_label.setBuddy(self._name_list)
         name_layout.addWidget(list_label)
         name_layout.addWidget(self._name_list)
-        editor_row = QHBoxLayout()
-        stem_label = QLabel("Filename &stem")
+        editor_row = QVBoxLayout()
+        stem_label = QLabel(tr("Filename &stem"))
         self._name_stem = QLineEdit()
         self._name_stem.setObjectName("constraintNameStemInput")
-        self._name_stem.setAccessibleName("Requested filename stem")
+        self._name_stem.setAccessibleName(tr("Requested filename stem"))
         self._name_stem.setAccessibleDescription(
-            "Enter one filename stem without a path or extension."
+            tr("Enter one filename stem without a path or extension.")
         )
         self._name_stem.setMaxLength(MAX_OUTPUT_NAME_UTF16_CODE_UNITS)
         stem_label.setBuddy(self._name_stem)
-        extension_label = QLabel("Derived &extension")
+        extension_label = QLabel(tr("Derived &extension"))
         self._name_extension = QLineEdit()
         self._name_extension.setObjectName("constraintNameExtension")
-        self._name_extension.setAccessibleName("Derived read-only filename extension")
+        self._name_extension.setAccessibleName(tr("Derived read-only filename extension"))
         self._name_extension.setAccessibleDescription(
-            "Read-only extension preview. It does not select the future export organization."
+            tr("Read-only extension preview. It does not select the future export organization.")
         )
         self._name_extension.setReadOnly(True)
         extension_label.setBuddy(self._name_extension)
@@ -300,31 +311,31 @@ class ConstraintEditorDialog(QDialog):
         editor_row.addWidget(extension_label)
         editor_row.addWidget(self._name_extension)
         name_layout.addLayout(editor_row)
-        name_actions = QHBoxLayout()
+        name_actions = WrappingActionLayout()
         self._name_add = self._button(
-            "Add requested name",
+            tr("Add requested name"),
             "constraintNameAddButton",
-            "Validate and add the entered stem to the local ordered name form.",
+            tr("Validate and add the entered stem to the local ordered name form."),
         )
         self._name_update = self._button(
-            "Update selected name",
+            tr("Update selected name"),
             "constraintNameUpdateButton",
-            "Validate the entered stem and replace the selected local name.",
+            tr("Validate the entered stem and replace the selected local name."),
         )
         self._name_remove = self._button(
-            "Remove selected name",
+            tr("Remove selected name"),
             "constraintNameRemoveButton",
-            "Remove the selected requested name from the local form.",
+            tr("Remove the selected requested name from the local form."),
         )
         self._name_earlier = self._button(
-            "Move name earlier",
+            tr("Move name earlier"),
             "constraintNameEarlierButton",
-            "Move the selected requested name one position earlier.",
+            tr("Move the selected requested name one position earlier."),
         )
         self._name_later = self._button(
-            "Move name later",
+            tr("Move name later"),
             "constraintNameLaterButton",
-            "Move the selected requested name one position later.",
+            tr("Move the selected requested name one position later."),
         )
         self._name_add.clicked.connect(self._add_name)
         self._name_update.clicked.connect(self._update_name)
@@ -339,14 +350,13 @@ class ConstraintEditorDialog(QDialog):
             self._name_later,
         ):
             name_actions.addWidget(button)
-        name_actions.addStretch(1)
         name_layout.addLayout(name_actions)
         content_layout.addWidget(name_group)
 
-        self._status = QLabel(state.announcement)
+        self._status = QLabel(tr(state.announcement))
         self._status.setObjectName("constraintEditorStatus")
-        self._status.setAccessibleName("Constraint editor status")
-        self._status.setAccessibleDescription(state.announcement)
+        self._status.setAccessibleName(tr("Constraint editor status"))
+        self._status.setAccessibleDescription(tr(state.announcement))
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -357,28 +367,33 @@ class ConstraintEditorDialog(QDialog):
 
         self._scroll = QScrollArea()
         self._scroll.setObjectName("constraintEditorScrollArea")
-        self._scroll.setAccessibleName("Portal constraint controls")
+        self._scroll.setAccessibleName(tr("Portal constraint controls"))
         self._scroll.setAccessibleDescription(
-            "Scrollable source, format, encryption, optional limit, and requested-name controls."
+            tr(
+                "Scrollable source, format, encryption, optional limit, and requested-name controls."
+            )
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._scroll.setWidget(content)
+        adapt_localized_content(self._scroll)
         self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         buttons = QDialogButtonBox()
         buttons.setObjectName("constraintEditorButtons")
-        buttons.setAccessibleName("Apply or cancel constraint changes")
+        buttons.setAccessibleName(tr("Apply or cancel constraint changes"))
         buttons.setAccessibleDescription(
-            "Cancel is the safe default. Apply validates the complete detached draft and requests "
-            "one revision-bound save."
+            tr(
+                "Cancel is the safe default. Apply validates the complete detached draft and requests one revision-bound save."
+            )
         )
         self._apply_button = self._button(
-            "Apply constraint changes",
+            tr("Apply constraint changes"),
             "constraintApplyButton",
-            "Validate every field and request saving the complete detached draft. The dialog "
-            "stays open until saving succeeds or fails safely.",
+            tr(
+                "Validate every field and request saving the complete detached draft. The dialog stays open until saving succeeds or fails safely."
+            ),
         )
         self._apply_button.setDefault(False)
         self._apply_button.setAutoDefault(False)
@@ -388,14 +403,15 @@ class ConstraintEditorDialog(QDialog):
             raise RuntimeError("Qt did not create the required Cancel button")
         self._cancel_button = cancel
         self._cancel_button.setObjectName("constraintCancelButton")
-        self._cancel_button.setAccessibleName("Cancel constraint changes")
+        self._cancel_button.setAccessibleName(tr("Cancel constraint changes"))
         self._cancel_button.setAccessibleDescription(
-            "Discard this local draft without changing the case. Escape."
+            tr("Discard this local draft without changing the case. Escape.")
         )
         self._cancel_button.setDefault(True)
         self._cancel_button.setAutoDefault(True)
         self._apply_button.clicked.connect(self._request_apply)
         self._cancel_button.clicked.connect(self.reject)
+        adapt_dialog_button_box(buttons)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._scroll, 1)
@@ -490,15 +506,15 @@ class ConstraintEditorDialog(QDialog):
         self._apply_pending = False
         self._set_editor_enabled(True)
         self._apply_button.setAccessibleDescription(
-            "Retry saving the complete retained constraint draft."
+            tr("Retry saving the complete retained constraint draft.")
         )
         self._set_status(
             ConstraintAnnouncement.APPLY_FAILED,
             announce=True,
             assertive=True,
         )
-        self._status.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(self._status, 8, 8)
+        self._apply_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._apply_button, 8, 8)
         return True
 
     def reject(self) -> None:
@@ -507,8 +523,9 @@ class ConstraintEditorDialog(QDialog):
         if self._commit_started:
             QApplication.beep()
             self._set_status(
-                "These validated constraint changes are retained for retry and cannot be "
-                "discarded from this dialog after Apply was requested.",
+                tr(
+                    "These validated constraint changes are retained for retry and cannot be discarded from this dialog after Apply was requested."
+                ),
                 announce=True,
                 assertive=True,
             )
@@ -529,19 +546,23 @@ class ConstraintEditorDialog(QDialog):
         super().showEvent(event)
 
     def _button(self, text: str, object_name: str, description: str) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(object_name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         return button
 
     def _populate_from_state(self) -> None:
         self._refreshing = True
         try:
             source = self._state.source
-            self._template_title.setText(f"Configured generic template: {source.template_title}")
+            self._template_title.setText(
+                tr("Configured generic template: {value1}", value1=tr(source.template_title))
+            )
             self._template_title.setAccessibleDescription(self._template_title.text())
-            source_text = f"{source.heading}. {source.detail}"
+            source_text = tr(
+                "{heading}. {detail}", heading=tr(source.heading), detail=tr(source.detail)
+            )
             self._source_status.setText(source_text)
             self._source_status.setAccessibleDescription(source_text)
             self._restore_button.setEnabled(source.can_restore_generic_defaults)
@@ -602,12 +623,15 @@ class ConstraintEditorDialog(QDialog):
         self._name_list.clear()
         for row in rows:
             item = QListWidgetItem(row.filename)
-            item.setToolTip("Safe resolved filename component")
+            item.setToolTip(tr("Safe resolved filename component"))
             self._name_list.addItem(item)
         extension = ".zip" if self._preview_mode() is PortalOutputMode.ZIP else ".pdf"
         self._name_extension.setText(extension)
         self._name_extension.setAccessibleDescription(
-            f"Read-only {extension} preview. This does not select the future export organization."
+            tr(
+                "Read-only {value1} preview. This does not select the future export organization.",
+                value1=extension,
+            )
         )
         if self._name_list.count() > 0:
             self._name_list.setCurrentRow(min(max(previous, 0), self._name_list.count() - 1))
@@ -636,7 +660,7 @@ class ConstraintEditorDialog(QDialog):
         self._refresh_name_list(selected_row=len(candidate) - 1)
         self._name_stem.clear()
         self._set_status(
-            "Requested name added to the local form. Apply validates the complete draft.",
+            tr("Requested name added to the local form. Apply validates the complete draft."),
             announce=True,
         )
         self._name_stem.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -655,9 +679,10 @@ class ConstraintEditorDialog(QDialog):
         self._name_stems = candidate
         self._refresh_name_list(selected_row=row)
         self._set_status(
-            "Selected requested name updated in the local form.",
+            tr("Selected requested name updated in the local form."),
             announce=True,
         )
+        self._name_list.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _remove_name(self) -> None:
         row = self._name_list.currentRow()
@@ -667,9 +692,11 @@ class ConstraintEditorDialog(QDialog):
         self._refresh_name_list(selected_row=min(row, len(self._name_stems) - 1))
         self._name_stem.clear()
         self._set_status(
-            "Selected requested name removed from the local form.",
+            tr("Selected requested name removed from the local form."),
             announce=True,
         )
+        target = self._name_list if self._name_stems else self._name_stem
+        target.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _move_name(self, direction: int) -> None:
         row = self._name_list.currentRow()
@@ -681,7 +708,8 @@ class ConstraintEditorDialog(QDialog):
             self._name_stems[row],
         )
         self._refresh_name_list(selected_row=target)
-        self._set_status("Requested name order updated.", announce=True)
+        self._set_status(tr("Requested name order updated."), announce=True)
+        self._name_list.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _update_name_actions(self, *_ignored: object) -> None:
         if self._apply_pending:
@@ -775,7 +803,7 @@ class ConstraintEditorDialog(QDialog):
 
     def _show_validation_error(self, error: ConstraintEditorError) -> None:
         self._set_status(
-            f"{error.code.value}: {error.safe_message}",
+            f"{error.code.value}: {tr(error.safe_message)}",
             announce=True,
             assertive=True,
         )
@@ -801,7 +829,7 @@ class ConstraintEditorDialog(QDialog):
         self._cancel_button.setEnabled(enabled and not self._commit_started)
         if self._commit_started:
             self._cancel_button.setAccessibleDescription(
-                "Unavailable after Apply because the validated draft is retained for retry."
+                tr("Unavailable after Apply because the validated draft is retained for retry.")
             )
         if enabled:
             for checkbox, editor in self._limit_controls.values():
@@ -816,7 +844,11 @@ class ConstraintEditorDialog(QDialog):
         announce: bool,
         assertive: bool = False,
     ) -> None:
+        message = tr(message)
         self._status.setText(message)
+        self._status.setAccessibleName(
+            tr("Package constraint editor status. {value1}", value1=message)
+        )
         self._status.setAccessibleDescription(message)
         if not announce:
             return

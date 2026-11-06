@@ -130,7 +130,11 @@ def test_place_requires_both_exact_confirmations_and_emits_typed_request() -> No
 
         assert disclaimer.text() == SIGNATURE_IMAGE_DISCLAIMER
         assert disclaimer.accessibleDescription() == SIGNATURE_IMAGE_DISCLAIMER
-        assert whole_image.text() == SIGNATURE_IMAGE_WHOLE_IMAGE_CONFIRMATION
+        whole_image_label = dialog.findChild(QLabel, "signatureImageBackgroundConfirmationLabel")
+        assert whole_image_label is not None and whole_image_label.buddy() is whole_image
+        assert whole_image_label.wordWrap()
+        assert whole_image_label.text() == SIGNATURE_IMAGE_WHOLE_IMAGE_CONFIRMATION
+        assert whole_image.accessibleName() == SIGNATURE_IMAGE_WHOLE_IMAGE_CONFIRMATION
         assert preview.pixmap() is not None
         assert not preview.pixmap().isNull()
         assert preview.pixmap().width() == 4
@@ -231,9 +235,17 @@ def test_delete_policy_wording_and_signal_use_typed_enum(
         assert keep is not None
         assert remove is not None
 
-        assert keep.text() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
+        keep_label = dialog.findChild(QLabel, "keepSignatureImageAssetRadioLabel")
+        assert keep_label is not None and keep_label.buddy() is keep
+        assert keep_label.wordWrap() and keep_label.text() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
+        assert keep.accessibleName() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
         assert keep.accessibleDescription() == SIGNATURE_IMAGE_DELETE_KEEP_WORDING
-        assert remove.text() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
+        remove_label = dialog.findChild(QLabel, "removeUnusedSignatureImageAssetRadioLabel")
+        assert remove_label is not None and remove_label.buddy() is remove
+        assert (
+            remove_label.wordWrap() and remove_label.text() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
+        )
+        assert remove.accessibleName() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
         assert remove.accessibleDescription() == SIGNATURE_IMAGE_DELETE_UNUSED_WORDING
         assert placements.count() == 1
         assert placements.item(0).text() == _choice().accessible_summary

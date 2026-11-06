@@ -627,6 +627,39 @@ crosses the report boundary. Unknown fields, versions and forged results fail
 closed. See the [sanitization profile](../architecture/redaction-sanitization.md)
 for supported structures and the remaining verification/publication gates.
 
+## Optional text companion operation
+
+PWS-0706 adds `pdf.text_companion` version 1 under the unchanged generic v1
+envelope. It is known to the codec but excluded from default capability requests.
+The desktop explicitly requests it; older clients keep their existing default
+capability set. No unrequested companion capability is negotiated.
+
+The start has one `source_read` reference with expected byte count and SHA-256.
+Its content kind is `verified-export-pdf-v1` or `verified-export-zip-v1`. Exactly
+four parameters are required: distinct positive `source_handle` and
+`output_handle` integers, a fresh `output_object_id` UUID and bounded `page_count`.
+The source is a pinned read-only current-case export resource; the output is a
+broker-owned bounded section. No filename, path, document text or source-cache
+reference crosses RPC. The ZIP variant also requires a zero-based bounded
+`member_position`, exact `member_byte_size` and `sha256-` digest token named
+`member_sha256`. Only stored members from the verified package are accepted;
+archive and member bytes are independently authenticated.
+
+The worker streams the authenticated PDF, checks page count and extracts text
+incrementally. Glyphs outside the final visible page box are omitted. Invalid
+geometry and malformed Unicode fail closed; valid surrogate pairs, script
+joiners and expanded ligatures are preserved. This operation does not run OCR or
+fall back to originals, metadata, attachments or cached source text.
+
+A successful result has exactly one `operation_staging` reference named
+`export-text-companion-utf8-v1`, bound to the request's operation and output UUID,
+byte count and SHA-256. Unsuccessful results have no outputs. Existing public
+failure categories, resource limits, cancellation, timeout and termination rules
+apply. The client validates correlation, area, content kind, bounds, hash and UTF-8
+after worker termination before trusting text. Text stays outside routine logs
+and error parameters. Publication remains a separate explicit, no-replace local
+action after the privacy acknowledgement.
+
 ## Evolution
 
 Protocol and message version 1 meanings are immutable once released. Unknown future versions and

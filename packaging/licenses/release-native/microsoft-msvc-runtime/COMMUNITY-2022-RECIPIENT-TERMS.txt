@@ -1,0 +1,100 @@
+PaperWorkShell: Microsoft runtime component terms
+
+Scope and agreement
+
+These terms apply ONLY to the Microsoft object-code files listed below. The
+local installer asks you to agree to these terms before installing those files.
+If you do not agree, cancel installation. No account, activation, licence key,
+subscription, payment, network connection or upload is required for agreement
+or normal PaperWorkShell use, including commercial use.
+
+PaperWorkShell's first-party code remains MIT-licensed. Every other open-source
+component keeps its own licence and notices. These Microsoft-only terms do not
+restrict rights granted by MIT or other open-source licences, including the
+Qt/LGPL rights to replace or relink LGPL components and reverse engineer the
+combined application to debug those modifications. They do not grant rights to
+modify Microsoft's proprietary object code beyond applicable law or applicable
+third-party licensing requirements.
+
+Microsoft component rights and conditions
+
+The listed components are licensed, not sold. You may use and copy them as
+needed to run PaperWorkShell, including for commercial purposes, without buying
+Visual Studio. Microsoft and its suppliers reserve other rights in these files.
+
+You may redistribute these components, unmodified in object-code form, as part
+of PaperWorkShell or derivative applications that provide significant primary
+functionality beyond the runtime. Require downstream distributors and external
+end users to agree to protections for these Microsoft components at least as
+protective as these terms. Do not offer the runtime separately under this grant.
+
+Preserve notices of Microsoft and its suppliers. Do not modify these Microsoft
+binaries, work around their technical limitations, reverse engineer, decompile,
+disassemble or otherwise attempt to derive their source, except to the extent
+applicable law gives you rights despite these limitations or applicable
+third-party licensing terms require it. Use the components lawfully and comply
+with applicable domestic and international export laws, including restrictions
+on destinations, end users and end use.
+
+Do not distribute Microsoft components or runtimes marked Preview, Pre-release
+or Beta. Do not use Microsoft's trademarks in your application's name or imply
+Microsoft endorsement. Do not modify or distribute Microsoft code so that any
+part becomes subject to conditions requiring disclosure in source form or
+giving others the right to modify that Microsoft code. This condition applies
+only to Microsoft's code and does not limit separate open-source components.
+
+Microsoft and its suppliers provide these components as-is, without express
+warranties, guarantees or conditions. To the extent local law permits, implied
+warranties of merchantability, fitness for a particular purpose and
+non-infringement are excluded. To that extent, recovery from Microsoft and its
+suppliers is limited to direct damages up to US $5; consequential damages,
+lost profits, special, indirect and incidental damages are excluded, including
+where the possibility of such damages was known. These protections concern
+Microsoft and its suppliers; they do not impose an indemnity obligation on you.
+
+Applicable-law and open-source exceptions
+
+Mandatory local law, consumer rights and statutory guarantees prevail over any
+inconsistent restriction or exclusion above. No exclusion or liability limit
+applies where law prohibits it, including mandatory protections concerning
+death, personal injury, intentional conduct, gross negligence, product liability
+or material contractual obligations. The Australian statutory consumer
+guarantees and applicable German/Austrian statutory protections are preserved.
+Nothing here overrides rights provided by applicable open-source licences.
+
+Exact Microsoft files
+
+All listed files are unmodified AMD64 object code, version 14.44.35211.0. Nine
+installed paths contain five distinct objects. The pikepdf filename below is
+only the loader-required filename alias for the same msvcp140.dll bytes. The
+qpdf-adjacent copies provide its executable's local dependencies.
+
+SHA-256 0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9
+  runtime/msvcp140.dll
+  runtime/Lib/site-packages/pikepdf.libs/msvcp140-0f885b509a685d2bbfa652fed26b5fb3.dll
+  runtime/engines/qpdf/bin/msvcp140.dll
+
+SHA-256 bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d
+  runtime/msvcp140_1.dll
+
+SHA-256 3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9
+  runtime/msvcp140_2.dll
+
+SHA-256 d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066
+  runtime/vcruntime140.dll
+  runtime/engines/qpdf/bin/vcruntime140.dll
+
+SHA-256 1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f
+  runtime/vcruntime140_1.dll
+  runtime/engines/qpdf/bin/vcruntime140_1.dll
+
+Distribution basis
+
+The distributor uses the independently acquired Visual Studio Community 2022
+individual-developer route, EULAID VS_Comm_2022_ENU.1033, section 4 and the
+Visual Studio 2022 REDIST list. The full Community terms are supplied separately
+for provenance. You do not need to acquire or accept a development-product
+licence to run PaperWorkShell; the component-only protections above are the
+recipient agreement. Historical upstream pikepdf/VS2019 notices are retained
+for provenance and do not change the separately acquired 2022 source route of
+these nine Microsoft copies or the licences of pikepdf and other components.

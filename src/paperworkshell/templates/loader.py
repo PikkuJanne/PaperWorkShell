@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from datetime import date
 from typing import cast
 
+from paperworkshell.localization.catalog import format_date, tr
 from paperworkshell.templates.codec import decode_template_bytes
 from paperworkshell.templates.models import (
     TemplateByteSnapshot,
@@ -107,56 +108,56 @@ def _build_presentation(
     source_url = cast(str | None, provenance["source_url"])
     source_document_sha256 = cast(str | None, provenance["source_document_sha256"])
     fields = [
-        TemplateDisplayField("Publisher (template claim)", cast(str, provenance["publisher"])),
+        TemplateDisplayField(tr("Publisher (template claim)"), cast(str, provenance["publisher"])),
         TemplateDisplayField(
-            "Source reference (template claim)",
+            tr("Source reference (template claim)"),
             cast(str, provenance["source_reference"]),
         ),
         TemplateDisplayField(
-            "Source kind (template claim)",
+            tr("Source kind (template claim)"),
             cast(str, provenance["source_kind"]),
         ),
         TemplateDisplayField(
-            "Template checksum",
-            f"Verified SHA-256 {sha256}",
+            tr("Template checksum"),
+            tr("Verified SHA-256 {sha256}", sha256=sha256),
         ),
         TemplateDisplayField(
-            "External signature",
+            tr("External signature"),
             _signature_status_text(signature_status),
         ),
         TemplateDisplayField(
-            "Catalog checksum verified on",
-            catalog_verified_on.isoformat(),
+            tr("Catalog checksum verified on"),
+            format_date(catalog_verified_on),
         ),
         TemplateDisplayField(
-            "Guidance verified on (template claim)",
-            lifecycle.verified_on.isoformat(),
+            tr("Guidance verified on (template claim)"),
+            format_date(lifecycle.verified_on),
         ),
         TemplateDisplayField(
-            "Review due on (template claim)",
-            lifecycle.review_due_on.isoformat(),
+            tr("Review due on (template claim)"),
+            format_date(lifecycle.review_due_on),
         ),
         TemplateDisplayField(
-            "Expires on (template claim)",
-            lifecycle.expires_on.isoformat(),
+            tr("Expires on (template claim)"),
+            format_date(lifecycle.expires_on),
         ),
     ]
     if source_url is not None:
-        fields.append(TemplateDisplayField("Source URL (inert template claim)", source_url))
+        fields.append(TemplateDisplayField(tr("Source URL (inert template claim)"), source_url))
     if source_document_sha256 is not None:
         fields.append(
             TemplateDisplayField(
-                "Source document checksum (template claim)",
+                tr("Source document checksum (template claim)"),
                 source_document_sha256,
             )
         )
     status_message = (
-        "Review is due. Confirm that the procedural guidance is still current before using it."
+        tr("Review is due. Confirm that the procedural guidance is still current before using it.")
         if lifecycle.freshness is TemplateFreshness.REVIEW_DUE
-        else "The template's stated lifecycle dates are current for the selected review date."
+        else tr("The template's stated lifecycle dates are current for the selected review date.")
     )
     return TemplatePresentation(
-        title=cast(str, document["title"]),
+        title=tr(cast(str, document["title"])),
         locale=cast(str, document["locale"]),
         freshness=lifecycle.freshness,
         signature_status=signature_status,
@@ -167,7 +168,7 @@ def _build_presentation(
 
 def _signature_status_text(status: TemplateSignatureStatus) -> str:
     if status is TemplateSignatureStatus.VERIFIED:
-        return "Verified by an external trusted catalog verifier"
+        return tr("Verified by an external trusted catalog verifier")
     if status is TemplateSignatureStatus.NOT_PROVIDED:
-        return "Not provided; exact checksum verification passed"
+        return tr("Not provided; exact checksum verification passed")
     reject_template(TemplateLoadErrorCode.SIGNATURE_INVALID, "template.signature")

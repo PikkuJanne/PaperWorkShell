@@ -6,16 +6,20 @@ from decimal import Decimal
 from itertools import pairwise
 from typing import Final
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRect, QSize, Qt, Signal
 from PySide6.QtGui import (
-    QAccessible,
-    QAccessibleAnnouncementEvent,
+    QFocusEvent,
     QFont,
     QImage,
+    QPainter,
+    QPaintEvent,
+    QPen,
     QPixmap,
+    QResizeEvent,
     QShowEvent,
 )
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -23,7 +27,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QProgressBar,
     QPushButton,
@@ -44,6 +47,14 @@ from paperworkshell.domain.image_transforms import (
     ImageNormalizedCrop,
     ImageTransformIntent,
 )
+from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.ui.announcements import ScreenReaderAnnouncer
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import (
+    WrappingActionLayout,
+    adapt_dialog_button_box,
+    set_static_busy,
+)
 
 _FOCUS_VISIBLE_TEXT_STYLE: Final = (
     "QLabel:focus { border: 2px solid palette(highlight); padding: 2px; }"
@@ -51,11 +62,50 @@ _FOCUS_VISIBLE_TEXT_STYLE: Final = (
 _PERCENT_SCALE: Final = Decimal("10000")
 _DEGREE_SCALE: Final = Decimal("1000")
 _KNOWN_PROGRESS_PHASES: Final[dict[str, str]] = {
-    "lookup": "preparing",
-    "generating": "building preview",
-    "validating": "checking preview",
-    "complete": "finishing",
+    "lookup": mark("preparing"),
+    "generating": mark("building preview"),
+    "validating": mark("checking preview"),
+    "complete": mark("finishing"),
 }
+
+
+class _FitPreviewLabel(QLabel):
+    """Fit the existing bounded raster without retaining another scaled bitmap."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        return QSize(300, 340)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        return QSize(120, 120)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 - Qt override
+        pixmap = self.pixmap()
+        if pixmap.isNull():
+            super().paintEvent(event)
+            return
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self.palette().base())
+        bounds = self.rect().adjusted(4, 4, -4, -4)
+        target_size = pixmap.size().scaled(bounds.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        target = QRect(0, 0, target_size.width(), target_size.height())
+        target.moveCenter(bounds.center())
+        painter.drawPixmap(target, pixmap)
+        pen = QPen(
+            self.palette().highlight().color() if self.hasFocus() else self.palette().mid().color()
+        )
+        pen.setWidth(2 if self.hasFocus() else 1)
+        if self.hasFocus():
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.drawRect(self.rect().adjusted(1, 1, -2, -2))
+
+    def focusInEvent(self, event: QFocusEvent) -> None:  # noqa: N802 - Qt override
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # noqa: N802 - Qt override
+        super().focusOutEvent(event)
+        self.update()
 
 
 class ScanReviewDialog(QDialog):
@@ -73,6 +123,7 @@ class ScanReviewDialog(QDialog):
         if type(draft) is not ScanReviewDraft:
             raise ValueError("draft must be a ScanReviewDraft")
         super().__init__(parent)
+        self._announcer = ScreenReaderAnnouncer(self)
         self._draft = draft
         self._loading_draft: ScanReviewDraft | None = None
         self._adjusted_preview_draft: ScanReviewDraft | None = None
@@ -86,21 +137,21 @@ class ScanReviewDialog(QDialog):
 
         self.setObjectName("scanReviewDialog")
         self.setModal(True)
-        self.setWindowTitle("Review scan adjustments")
-        self.setAccessibleName("Review scan adjustments")
+        self.setWindowTitle(tr("Review scan adjustments"))
+        self.setAccessibleName(tr("Review scan adjustments"))
         self.setAccessibleDescription(
-            "Compare the unchanged original with provisional scan adjustments. "
-            "Apply is available only after the current adjustments are previewed. "
-            "Cancel is the safe default."
+            tr(
+                "Compare the unchanged original with provisional scan adjustments. Apply is available only after the current adjustments are previewed. Cancel is the safe default."
+            )
         )
 
         content = QWidget()
         content.setObjectName("scanReviewContent")
         content_layout = QVBoxLayout(content)
 
-        heading = QLabel("Review scan adjustments")
+        heading = QLabel(tr("Review scan adjustments"))
         heading.setObjectName("scanReviewHeading")
-        heading.setAccessibleName("Review scan adjustments")
+        heading.setAccessibleName(tr("Review scan adjustments"))
         heading.setWordWrap(True)
         heading_font = QFont(heading.font())
         heading_font.setBold(True)
@@ -109,48 +160,51 @@ class ScanReviewDialog(QDialog):
         content_layout.addWidget(heading)
 
         self._guidance = QLabel(
-            "Preview changes before applying them. The original is never changed; once its "
-            "preview is ready, it stays available for comparison."
+            tr(
+                "Preview changes before applying them. The original is never changed; once its preview is ready, it stays available for comparison."
+            )
         )
         self._guidance.setObjectName("scanReviewGuidance")
-        self._guidance.setAccessibleName("Scan review guidance")
+        self._guidance.setAccessibleName(
+            tr("Scan review guidance: {value1}", value1=self._guidance.text())
+        )
         self._guidance.setAccessibleDescription(self._guidance.text())
         self._guidance.setWordWrap(True)
         content_layout.addWidget(self._guidance)
 
         self._suggestion_notice = QLabel(
-            "Suggested adjustments — needs review. Nothing has been applied."
+            tr("Suggested adjustments — needs review. Nothing has been applied.")
         )
         self._suggestion_notice.setObjectName("scanReviewSuggestionNotice")
-        self._suggestion_notice.setAccessibleName("Suggested adjustments need review")
+        self._suggestion_notice.setAccessibleName(self._suggestion_notice.text())
         self._suggestion_notice.setAccessibleDescription(self._suggestion_notice.text())
         self._suggestion_notice.setWordWrap(True)
         self._suggestion_notice.setFrameShape(QFrame.Shape.StyledPanel)
         self._suggestion_notice.setVisible(draft.suggestion_present)
         content_layout.addWidget(self._suggestion_notice)
 
-        compare_group = QGroupBox("Compare previews")
+        compare_group = QGroupBox(tr("Compare previews"))
         compare_group.setObjectName("scanReviewCompareGroup")
-        compare_group.setAccessibleName("Compare original and adjusted previews")
+        compare_group.setAccessibleName(tr("Compare original and adjusted previews"))
         compare_group.setAccessibleDescription(
-            "Choose whether the original, adjusted, or both preview panels are shown."
+            tr("Choose whether the original, adjusted, or both preview panels are shown.")
         )
         compare_layout = QVBoxLayout(compare_group)
-        compare_choices = QHBoxLayout()
+        compare_choices = WrappingActionLayout()
         self._show_original = self._compare_choice(
-            "Original",
+            tr("Original"),
             "scanReviewShowOriginalRadio",
-            "Show only the unchanged original preview.",
+            tr("Show only the unchanged original preview."),
         )
         self._show_adjusted = self._compare_choice(
-            "Adjusted",
+            tr("Adjusted"),
             "scanReviewShowAdjustedRadio",
-            "Show only the provisional adjusted preview.",
+            tr("Show only the provisional adjusted preview."),
         )
         self._show_side_by_side = self._compare_choice(
-            "Side by side",
+            tr("Side by side"),
             "scanReviewShowSideBySideRadio",
-            "Show the unchanged original and provisional adjusted previews together.",
+            tr("Show the unchanged original and provisional adjusted previews together."),
         )
         self._show_side_by_side.setChecked(True)
         for choice in (
@@ -160,62 +214,69 @@ class ScanReviewDialog(QDialog):
         ):
             choice.toggled.connect(self._update_compare_visibility)
             compare_choices.addWidget(choice)
-        compare_choices.addStretch(1)
         compare_layout.addLayout(compare_choices)
 
-        preview_layout = QHBoxLayout()
+        self._preview_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom)
         self._original_group, self._original_preview, self._original_status = self._preview_panel(
-            title="Original",
+            title=tr("Original"),
             group_name="scanReviewOriginalGroup",
             preview_name="scanReviewOriginalPreview",
             status_name="scanReviewOriginalPreviewStatus",
-            initial_status="Original preview not loaded.",
+            initial_status=tr("Original preview not loaded."),
         )
         self._adjusted_group, self._adjusted_preview, self._adjusted_status = self._preview_panel(
-            title="Adjusted",
+            title=tr("Adjusted"),
             group_name="scanReviewAdjustedGroup",
             preview_name="scanReviewAdjustedPreview",
             status_name="scanReviewAdjustedPreviewStatus",
-            initial_status="Adjusted preview not loaded.",
+            initial_status=tr("Adjusted preview not loaded."),
         )
-        preview_layout.addWidget(self._original_group, 1)
-        preview_layout.addWidget(self._adjusted_group, 1)
-        compare_layout.addLayout(preview_layout)
+        self._preview_layout.addWidget(self._original_group, 1)
+        self._preview_layout.addWidget(self._adjusted_group, 1)
+        compare_layout.addLayout(self._preview_layout)
         content_layout.addWidget(compare_group)
 
-        adjustment_group = QGroupBox("Provisional adjustments")
+        adjustment_group = QGroupBox(tr("Adjustments"))
         adjustment_group.setObjectName("scanReviewAdjustmentGroup")
-        adjustment_group.setAccessibleName("Provisional scan adjustments")
+        adjustment_group.setAccessibleName(tr("Provisional scan adjustments"))
         adjustment_group.setAccessibleDescription(
-            "These values remain provisional until Apply adjustments is activated."
+            tr("These values remain provisional until Apply adjustments is activated.")
         )
         adjustment_layout = QGridLayout(adjustment_group)
 
         self._crop_left = self._percent_spin(
             "scanReviewCropLeftSpin",
-            "Crop left edge",
-            "Position of the retained page's left edge as a percentage. Use arrow keys to adjust.",
+            tr("Crop left edge"),
+            tr(
+                "Position of the retained page's left edge as a percentage. Use arrow keys to adjust."
+            ),
         )
         self._crop_top = self._percent_spin(
             "scanReviewCropTopSpin",
-            "Crop top edge",
-            "Position of the retained page's top edge as a percentage. Use arrow keys to adjust.",
+            tr("Crop top edge"),
+            tr(
+                "Position of the retained page's top edge as a percentage. Use arrow keys to adjust."
+            ),
         )
         self._crop_right = self._percent_spin(
             "scanReviewCropRightSpin",
-            "Crop right edge",
-            "Position of the retained page's right edge as a percentage. Use arrow keys to adjust.",
+            tr("Crop right edge"),
+            tr(
+                "Position of the retained page's right edge as a percentage. Use arrow keys to adjust."
+            ),
         )
         self._crop_bottom = self._percent_spin(
             "scanReviewCropBottomSpin",
-            "Crop bottom edge",
-            "Position of the retained page's bottom edge as a percentage. Use arrow keys to adjust.",
+            tr("Crop bottom edge"),
+            tr(
+                "Position of the retained page's bottom edge as a percentage. Use arrow keys to adjust."
+            ),
         )
         self._add_labeled_control(
             adjustment_layout,
             0,
             0,
-            "Left edge",
+            tr("Left edge"),
             "scanReviewCropLeftLabel",
             self._crop_left,
         )
@@ -223,7 +284,7 @@ class ScanReviewDialog(QDialog):
             adjustment_layout,
             0,
             2,
-            "Top edge",
+            tr("Top edge"),
             "scanReviewCropTopLabel",
             self._crop_top,
         )
@@ -231,7 +292,7 @@ class ScanReviewDialog(QDialog):
             adjustment_layout,
             1,
             0,
-            "Right edge",
+            tr("Right edge"),
             "scanReviewCropRightLabel",
             self._crop_right,
         )
@@ -239,35 +300,40 @@ class ScanReviewDialog(QDialog):
             adjustment_layout,
             1,
             2,
-            "Bottom edge",
+            tr("Bottom edge"),
             "scanReviewCropBottomLabel",
             self._crop_bottom,
         )
 
         self._rotation = QComboBox()
         self._rotation.setObjectName("scanReviewRotationCombo")
-        self._rotation.setAccessibleName("Clockwise page rotation")
+        self._rotation.setAccessibleName(tr("Clockwise page rotation"))
         self._rotation.setAccessibleDescription(
-            "Choose no rotation or a clockwise quarter-turn using the keyboard."
+            tr("Choose no rotation or a clockwise quarter-turn using the keyboard.")
         )
         for turn in ImageQuarterTurn:
-            label = "No rotation" if int(turn) == 0 else f"{int(turn)} degrees clockwise"
+            label = (
+                tr("No rotation")
+                if int(turn) == 0
+                else tr("{value1} degrees clockwise", value1=int(turn))
+            )
             self._rotation.addItem(label, int(turn))
         self._add_labeled_control(
             adjustment_layout,
             2,
             0,
-            "Rotation",
+            tr("Rotation"),
             "scanReviewRotationLabel",
             self._rotation,
         )
 
         self._deskew = QDoubleSpinBox()
         self._deskew.setObjectName("scanReviewDeskewSpin")
-        self._deskew.setAccessibleName("Fine deskew angle")
+        self._deskew.setAccessibleName(tr("Fine deskew angle"))
         self._deskew.setAccessibleDescription(
-            "Fine clockwise deskew angle in degrees. Negative values turn counterclockwise. "
-            "Use arrow keys to adjust."
+            tr(
+                "Fine clockwise deskew angle in degrees. Negative values turn counterclockwise. Use arrow keys to adjust."
+            )
         )
         self._deskew.setDecimals(3)
         self._deskew.setRange(
@@ -275,33 +341,33 @@ class ScanReviewDialog(QDialog):
             MAX_DESKEW_ANGLE_MILLIDEGREES / 1000,
         )
         self._deskew.setSingleStep(0.1)
-        self._deskew.setSuffix(" degrees")
+        self._deskew.setSuffix(tr(" degrees"))
         self._add_labeled_control(
             adjustment_layout,
             2,
             2,
-            "Deskew",
+            tr("Deskew"),
             "scanReviewDeskewLabel",
             self._deskew,
         )
 
         self._contrast = self._factor_spin(
             "scanReviewContrastSpin",
-            "Contrast",
-            "Contrast percentage. One hundred percent is unchanged. Use arrow keys to adjust.",
+            tr("Contrast"),
+            tr("Contrast percentage. One hundred percent is unchanged. Use arrow keys to adjust."),
             MAX_CONTRAST_FACTOR_MILLIONTHS,
         )
         self._cleanup = self._factor_spin(
             "scanReviewCleanupSpin",
-            "Background cleanup",
-            "Background cleanup strength. Zero percent is unchanged. Use arrow keys to adjust.",
+            tr("Background cleanup"),
+            tr("Background cleanup strength. Zero percent is unchanged. Use arrow keys to adjust."),
             MAX_BACKGROUND_CLEANUP_STRENGTH_MILLIONTHS,
         )
         self._add_labeled_control(
             adjustment_layout,
             3,
             0,
-            "Contrast",
+            tr("Contrast"),
             "scanReviewContrastLabel",
             self._contrast,
         )
@@ -309,37 +375,42 @@ class ScanReviewDialog(QDialog):
             adjustment_layout,
             3,
             2,
-            "Background cleanup",
+            tr("Background cleanup"),
             "scanReviewCleanupLabel",
             self._cleanup,
         )
         content_layout.addWidget(adjustment_group)
 
-        action_layout = QHBoxLayout()
-        self._update_preview_button = QPushButton("Update preview")
+        action_layout = WrappingActionLayout()
+        self._update_preview_button = QPushButton(tr("Update preview"))
         self._update_preview_button.setObjectName("scanReviewUpdatePreviewButton")
-        self._update_preview_button.setAccessibleName("Update adjusted preview")
+        self._update_preview_button.setAccessibleName(tr("Update adjusted preview"))
         self._update_preview_button.setAccessibleDescription(
-            "Generate the current provisional adjusted preview. The unchanged original is "
-            "generated first only when it is not already available."
+            tr(
+                "Generate the current provisional adjusted preview. The unchanged original is generated first only when it is not already available."
+            )
         )
         self._update_preview_button.clicked.connect(self._request_preview)
-        self._reset_button = QPushButton("Reset to original")
+        self._reset_button = QPushButton(tr("Reset to original"))
         self._reset_button.setObjectName("scanReviewResetOriginalButton")
-        self._reset_button.setAccessibleName("Reset adjustments to original")
+        self._reset_button.setAccessibleName(tr("Reset adjustments to original"))
         self._reset_button.setAccessibleDescription(
-            "Reset the provisional crop, rotation, deskew, contrast, and cleanup to the "
-            "unchanged imported page. This does not change the case until Apply adjustments."
+            tr(
+                "Reset the provisional crop, rotation, deskew, contrast, and cleanup to the unchanged imported page. This does not change the case until Apply adjustments."
+            )
         )
         self._reset_button.clicked.connect(self._reset_to_original)
         action_layout.addWidget(self._update_preview_button)
         action_layout.addWidget(self._reset_button)
-        action_layout.addStretch(1)
         content_layout.addLayout(action_layout)
 
-        self._status = QLabel("Choose Update preview to compare the original and adjusted page.")
+        self._status = QLabel(
+            tr("Choose Update preview to compare the original and adjusted page.")
+        )
         self._status.setObjectName("scanReviewStatus")
-        self._status.setAccessibleName("Scan review status")
+        self._status.setAccessibleName(
+            tr("Scan review status: {value1}", value1=self._status.text())
+        )
         self._status.setAccessibleDescription(self._status.text())
         self._status.setWordWrap(True)
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -348,9 +419,9 @@ class ScanReviewDialog(QDialog):
 
         self._error = QLabel()
         self._error.setObjectName("scanReviewError")
-        self._error.setAccessibleName("Scan review error")
+        self._error.setAccessibleName(tr("Scan review error"))
         self._error.setAccessibleDescription(
-            "A safe error code and recovery message for the current scan review."
+            tr("A safe error code and recovery message for the current scan review.")
         )
         self._error.setWordWrap(True)
         self._error.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -360,19 +431,19 @@ class ScanReviewDialog(QDialog):
 
         self._progress = QProgressBar()
         self._progress.setObjectName("scanReviewProgress")
-        self._progress.setAccessibleName("Scan review preview progress")
+        self._progress.setAccessibleName(tr("Scan review preview progress"))
         self._progress.setAccessibleDescription(
-            "Progress while PaperWorkShell builds and checks the provisional preview."
+            tr("Progress while PaperWorkShell builds and checks the provisional preview.")
         )
         self._progress.setTextVisible(True)
         self._progress.setVisible(False)
         content_layout.addWidget(self._progress)
 
-        self._cancel_preview_button = QPushButton("Cancel preview")
+        self._cancel_preview_button = QPushButton(tr("Cancel preview"))
         self._cancel_preview_button.setObjectName("scanReviewCancelPreviewButton")
-        self._cancel_preview_button.setAccessibleName("Cancel scan review preview")
+        self._cancel_preview_button.setAccessibleName(tr("Cancel scan review preview"))
         self._cancel_preview_button.setAccessibleDescription(
-            "Cancel the running preview without applying adjustments. Escape."
+            tr("Cancel the running preview without applying adjustments. Escape.")
         )
         self._cancel_preview_button.clicked.connect(self._request_preview_cancel)
         self._cancel_preview_button.setVisible(False)
@@ -380,29 +451,33 @@ class ScanReviewDialog(QDialog):
 
         self._scroll = QScrollArea()
         self._scroll.setObjectName("scanReviewScrollArea")
-        self._scroll.setAccessibleName("Scan review content")
+        self._scroll.setAccessibleName(tr("Scan review content"))
         self._scroll.setAccessibleDescription(
-            "Scrollable before-and-after previews and keyboard-adjustable scan controls."
+            tr("Scrollable before-and-after previews and keyboard-adjustable scan controls.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._scroll.setWidget(content)
+        adapt_localized_content(self._scroll)
         self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         button_box = QDialogButtonBox()
+        adapt_dialog_button_box(button_box)
         button_box.setObjectName("scanReviewButtons")
-        button_box.setAccessibleName("Apply scan adjustments or cancel")
+        button_box.setAccessibleName(tr("Apply scan adjustments or cancel"))
         button_box.setAccessibleDescription(
-            "Cancel is selected by default. Apply remains unavailable until the exact current "
-            "adjustments have a successful original and adjusted preview."
+            tr(
+                "Cancel is selected by default. Apply remains unavailable until the exact current adjustments have a successful original and adjusted preview."
+            )
         )
-        self._apply_button = QPushButton("Apply adjustments")
+        self._apply_button = QPushButton(tr("Apply adjustments"))
         self._apply_button.setObjectName("scanReviewApplyAdjustmentsButton")
-        self._apply_button.setAccessibleName("Apply scan adjustments")
+        self._apply_button.setAccessibleName(tr("Apply scan adjustments"))
         self._apply_button.setAccessibleDescription(
-            "Confirm the successfully previewed adjustments for this case without changing the "
-            "original."
+            tr(
+                "Confirm the successfully previewed adjustments for this case without changing the original."
+            )
         )
         self._apply_button.setDefault(False)
         self._apply_button.setAutoDefault(False)
@@ -414,10 +489,11 @@ class ScanReviewDialog(QDialog):
             raise RuntimeError("Qt did not create the required Cancel button")
         self._cancel_button = cancel
         self._cancel_button.setObjectName("scanReviewCancelButton")
-        self._cancel_button.setAccessibleName("Cancel scan review")
+        self._cancel_button.setAccessibleName(tr("Cancel scan review"))
         self._cancel_button.setAccessibleDescription(
-            "Stop an active preview first. When preview work is idle, close scan review without "
-            "applying provisional adjustments."
+            tr(
+                "Stop an active preview first. When preview work is idle, close scan review without applying provisional adjustments."
+            )
         )
         self._cancel_button.setDefault(True)
         self._cancel_button.setAutoDefault(True)
@@ -486,22 +562,23 @@ class ScanReviewDialog(QDialog):
         if not self._matches_current_candidate(draft) or self._preview_active or self._apply_active:
             return False
         self._loading_draft = draft
+        self._announcer.reset_progress()
         self._preview_active = True
         self._adjusted_preview_draft = None
         self._adjusted_pixmap = None
         self._adjusted_preview.clear()
-        self._adjusted_preview.setText("Adjusted preview loading.")
-        self._set_preview_status(self._adjusted_status, "Adjusted preview loading.")
+        self._adjusted_preview.setText(tr("Adjusted preview loading."))
+        self._set_preview_status(self._adjusted_status, tr("Adjusted preview loading."))
         original_required = self._original_pixmap is None
         if original_required:
             self._original_preview.clear()
-            self._original_preview.setText("Original preview loading.")
-            self._set_preview_status(self._original_status, "Original preview loading.")
-        self._progress.setRange(0, 0)
-        self._progress.setFormat("Preview starting")
-        self._progress.setAccessibleName("Scan review preview progress")
+            self._original_preview.setText(tr("Original preview loading."))
+            self._set_preview_status(self._original_status, tr("Original preview loading."))
+        set_static_busy(self._progress)
+        self._progress.setFormat(tr("Preview starting"))
+        self._progress.setAccessibleName(tr("Scan review preview progress"))
         self._progress.setAccessibleDescription(
-            "Progress while PaperWorkShell builds and checks the provisional preview."
+            tr("Progress while PaperWorkShell builds and checks the provisional preview.")
         )
         self._progress.setVisible(True)
         self._cancel_preview_button.setVisible(True)
@@ -509,10 +586,13 @@ class ScanReviewDialog(QDialog):
         self._set_busy_controls()
         self._hide_error()
         self._set_status(
-            "Building original and adjusted previews. Adjustments are not applied."
+            tr("Building original and adjusted previews. Adjustments are not applied.")
             if original_required
-            else "Building adjusted preview. The original remains available. Adjustments are not applied."
+            else tr(
+                "Building adjusted preview. The original remains available. Adjustments are not applied."
+            )
         )
+        self._announce(self._status.text())
         self._update_apply_availability()
         return True
 
@@ -527,7 +607,7 @@ class ScanReviewDialog(QDialog):
         self._original_pixmap = pixmap
         self._original_preview.setText("")
         self._original_preview.setPixmap(pixmap)
-        self._set_preview_status(self._original_status, "Original preview ready.")
+        self._set_preview_status(self._original_status, tr("Original preview ready."))
         self._update_apply_availability()
         return True
 
@@ -543,15 +623,17 @@ class ScanReviewDialog(QDialog):
         self._adjusted_preview_draft = draft
         self._adjusted_preview.setText("")
         self._adjusted_preview.setPixmap(pixmap)
-        self._set_preview_status(self._adjusted_status, "Adjusted preview ready.")
+        self._set_preview_status(self._adjusted_status, tr("Adjusted preview ready."))
         self._finish_preview_state()
         if self._original_pixmap is None:
-            self._set_status("Adjusted preview ready. The original preview is still required.")
+            self._set_status(tr("Adjusted preview ready. The original preview is still required."))
         else:
             self._set_status(
-                "Original and adjusted previews are ready. Review them before applying adjustments."
+                tr(
+                    "Original and adjusted previews are ready. Review them before applying adjustments."
+                )
             )
-            self._announce("Original and adjusted previews are ready.")
+            self._announce(tr("Original and adjusted previews are ready."))
         self._update_apply_availability()
         return True
 
@@ -566,6 +648,7 @@ class ScanReviewDialog(QDialog):
 
         if (
             not self._preview_active
+            or not self._cancel_preview_button.isEnabled()
             or not self._matches_loading_draft(draft)
             or type(phase) is not str
             or type(completed) is not int
@@ -574,15 +657,37 @@ class ScanReviewDialog(QDialog):
             or not 0 <= completed <= total
         ):
             return False
-        label = _KNOWN_PROGRESS_PHASES.get(phase, "working")
+        label = tr(_KNOWN_PROGRESS_PHASES.get(phase, mark("working")))
         self._progress.setRange(0, total)
         self._progress.setValue(completed)
-        self._progress.setFormat(f"Preview: {label} — %v of %m")
+        self._progress.setFormat(tr("Preview: {value1} — %v of %m", value1=label))
         self._progress.setAccessibleDescription(
-            f"Scan review preview {label}, {completed} of {total}."
+            tr(
+                "Scan review preview {value1}, {value2} of {value3}.",
+                value1=label,
+                value2=completed,
+                value3=total,
+            )
         )
-        self._set_status(f"Preview {label}: {completed} of {total}. Adjustments are not applied.")
-        self._announce(f"Preview {label}: {completed} of {total}.")
+        self._set_status(
+            tr(
+                "Preview {value1}: {value2} of {value3}. Adjustments are not applied.",
+                value1=label,
+                value2=completed,
+                value3=total,
+            )
+        )
+        self._announcer.progress(
+            tr(
+                "Preview {value1}: {value2} of {value3}.",
+                value1=label,
+                value2=completed,
+                value3=total,
+            ),
+            key=label,
+            completed=completed,
+            total=total,
+        )
         return True
 
     def set_failure(
@@ -598,27 +703,46 @@ class ScanReviewDialog(QDialog):
         if not self._matches_current_candidate(draft):
             return False
         safe_code, safe_message = self._safe_failure_text(code, message)
+        failed_apply = self._apply_active
         if self._apply_active:
             self._apply_active = False
             self._progress.setVisible(False)
             self._set_busy_controls()
-            self._set_status("Applying adjustments did not finish. Review the error and try again.")
+            self._set_status(
+                tr("Applying adjustments did not finish. Review the error and try again.")
+            )
         elif self._preview_active:
             if type(variant) is not ScanReviewPreviewVariant:
                 return False
             self._set_preview_terminal_state(variant, "failed")
             self._finish_preview_state()
-            self._set_status("Preview did not finish. Adjustments were not applied.")
+            self._set_status(tr("Preview did not finish. Adjustments were not applied."))
         else:
             return False
         self._error.setText(f"{safe_code}: {safe_message}")
-        self._error.setAccessibleDescription(self._error.text())
+        self._error.setAccessibleName(tr("Scan review error: {value1}", value1=self._error.text()))
+        recovery = (
+            tr(
+                "Choose Apply adjustments to retry saving the reviewed adjustments, or Cancel scan review to leave."
+            )
+            if failed_apply
+            else tr(
+                "Choose Update preview to rebuild the current comparison, or Cancel scan review to leave."
+            )
+        )
+        self._error.setAccessibleDescription(f"{self._error.text()} {recovery}")
         self._error.setVisible(True)
         self._control_error_visible = False
         self._update_apply_availability()
-        self._announce("Scan review action failed. Review the error and try again.", assertive=True)
-        self._error.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(self._error, 8, 8)
+        self._announce(
+            tr(
+                "Scan review action failed. {value1} {value2}", value1=safe_message, value2=recovery
+            ),
+            assertive=True,
+        )
+        target = self._apply_button if failed_apply else self._update_preview_button
+        target.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(target, 8, 8)
         return True
 
     def set_preview_cancelled(
@@ -636,8 +760,8 @@ class ScanReviewDialog(QDialog):
             return False
         self._set_preview_terminal_state(variant, "cancelled")
         self._finish_preview_state()
-        self._set_status("Preview cancelled. Adjustments were not applied.")
-        self._announce("Preview cancelled. Adjustments were not applied.", assertive=True)
+        self._set_status(tr("Preview cancelled. Adjustments were not applied."))
+        self._announce(tr("Preview cancelled. Adjustments were not applied."), assertive=True)
         self._update_preview_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._scroll.ensureWidgetVisible(self._update_preview_button, 8, 8)
         return True
@@ -659,14 +783,14 @@ class ScanReviewDialog(QDialog):
         self._apply_active = False
         if changes_applied:
             self._set_status(
-                "Scan adjustments applied to this case. The original remains unchanged."
+                tr("Scan adjustments applied to this case. The original remains unchanged.")
             )
-            self._announce("Scan adjustments applied.")
+            self._announce(tr("Scan adjustments applied."))
         else:
             self._set_status(
-                "Scan review complete. No changes were applied. The original remains unchanged."
+                tr("Scan review complete. No changes were applied. The original remains unchanged.")
             )
-            self._announce("Scan review complete. No changes were applied.")
+            self._announce(tr("Scan review complete. No changes were applied."))
         super().accept()
         return True
 
@@ -674,7 +798,7 @@ class ScanReviewDialog(QDialog):
         """Cancel active preview first; otherwise close without applying."""
 
         if self._apply_active:
-            self._announce("Wait for the apply action to finish.", assertive=True)
+            self._announce(tr("Wait for the apply action to finish."), assertive=True)
             return
         if self._preview_active:
             self._request_preview_cancel()
@@ -690,6 +814,14 @@ class ScanReviewDialog(QDialog):
         self._adjusted_preview.clear()
         super().done(result)
 
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override name
+        super().resizeEvent(event)
+        self._preview_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 1000
+            else QBoxLayout.Direction.LeftToRight
+        )
+
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt override name
         """Restore the safe default focus target whenever the dialog is shown."""
 
@@ -697,10 +829,10 @@ class ScanReviewDialog(QDialog):
         self._cancel_button.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def _compare_choice(self, text: str, object_name: str, description: str) -> QRadioButton:
-        choice = QRadioButton(text)
+        choice = QRadioButton(tr(text))
         choice.setObjectName(object_name)
-        choice.setAccessibleName(text)
-        choice.setAccessibleDescription(description)
+        choice.setAccessibleName(tr(text))
+        choice.setAccessibleDescription(tr(description))
         return choice
 
     def _preview_panel(
@@ -714,25 +846,29 @@ class ScanReviewDialog(QDialog):
     ) -> tuple[QGroupBox, QLabel, QLabel]:
         group = QGroupBox(title)
         group.setObjectName(group_name)
-        group.setAccessibleName(f"{title} scan preview panel")
+        group.setAccessibleName(tr("{value1} scan preview panel", value1=title))
         group.setAccessibleDescription(
-            f"{title} preview pixels and a truthful textual availability state."
+            tr("{value1} preview pixels and a truthful textual availability state.", value1=title)
         )
         layout = QVBoxLayout(group)
-        preview = QLabel(initial_status)
+        preview = _FitPreviewLabel(initial_status)
         preview.setObjectName(preview_name)
-        preview.setAccessibleName(f"{title} scan preview")
-        preview.setAccessibleDescription(initial_status)
+        preview.setAccessibleName(
+            tr("{value1} scan preview: {value2}", value1=title, value2=initial_status)
+        )
+        preview.setAccessibleDescription(tr(initial_status))
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview.setFrameShape(QFrame.Shape.StyledPanel)
         preview.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         preview.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         preview.setWordWrap(True)
         preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        status = QLabel(initial_status)
+        status = QLabel(tr(initial_status))
         status.setObjectName(status_name)
-        status.setAccessibleName(f"{title} preview status")
-        status.setAccessibleDescription(initial_status)
+        status.setAccessibleName(
+            tr("{value1} preview status: {value2}", value1=title, value2=initial_status)
+        )
+        status.setAccessibleDescription(tr(initial_status))
         status.setWordWrap(True)
         layout.addWidget(preview, 1)
         layout.addWidget(status)
@@ -746,8 +882,8 @@ class ScanReviewDialog(QDialog):
     ) -> QDoubleSpinBox:
         spin = QDoubleSpinBox()
         spin.setObjectName(object_name)
-        spin.setAccessibleName(accessible_name)
-        spin.setAccessibleDescription(description)
+        spin.setAccessibleName(tr(accessible_name))
+        spin.setAccessibleDescription(tr(description))
         spin.setDecimals(4)
         spin.setRange(0.0, 100.0)
         spin.setSingleStep(0.1)
@@ -775,12 +911,16 @@ class ScanReviewDialog(QDialog):
         object_name: str,
         control: QWidget,
     ) -> None:
-        label = QLabel(text)
+        label = QLabel(tr(text))
         label.setObjectName(object_name)
-        label.setAccessibleName(text)
+        label.setAccessibleName(tr(text))
         label.setBuddy(control)
-        layout.addWidget(label, row, column)
-        layout.addWidget(control, row, column + 1)
+        label.setWordWrap(True)
+        # Keep one labelled control per row so the long cleanup/rotation
+        # choices cannot force a four-column form beyond the viewport.
+        position = (row * 2 + column // 2) * 2
+        layout.addWidget(label, position, 0)
+        layout.addWidget(control, position + 1, 0)
 
     def _load_controls(self, intent: ImageTransformIntent) -> None:
         self._updating_controls = True
@@ -807,9 +947,13 @@ class ScanReviewDialog(QDialog):
         if candidate is None:
             self._controls_valid = False
             self._adjusted_preview_draft = None
-            self._clear_adjusted_preview("Adjusted preview unavailable until crop edges are valid.")
+            self._clear_adjusted_preview(
+                tr("Adjusted preview unavailable until crop edges are valid.")
+            )
             self._show_control_error(
-                "Crop edges must retain a positive page area: left before right and top before bottom."
+                tr(
+                    "Crop edges must retain a positive page area: left before right and top before bottom."
+                )
             )
             self._set_busy_controls()
             self._update_apply_availability()
@@ -819,8 +963,8 @@ class ScanReviewDialog(QDialog):
         self._draft = self._draft.with_candidate(candidate, suggestion_present=False)
         self._suggestion_notice.setVisible(False)
         self._adjusted_preview_draft = None
-        self._clear_adjusted_preview("Adjusted preview out of date; choose Update preview.")
-        self._set_status("Adjustments changed. Update preview before applying them.")
+        self._clear_adjusted_preview(tr("Adjusted preview out of date; choose Update preview."))
+        self._set_status(tr("Adjustments changed. Update preview before applying them."))
         self._set_busy_controls()
         self._update_apply_availability()
 
@@ -871,8 +1015,10 @@ class ScanReviewDialog(QDialog):
         if not self._preview_active or not self._cancel_preview_button.isEnabled():
             return
         self._cancel_preview_button.setEnabled(False)
-        self._set_status("Cancellation requested. Adjustments have not been applied.")
-        self._announce("Cancellation requested. Waiting for preview work to stop.", assertive=True)
+        self._set_status(tr("Cancellation requested. Adjustments have not been applied."))
+        self._announce(
+            tr("Cancellation requested. Waiting for preview work to stop."), assertive=True
+        )
         self.cancel_preview_requested.emit()
 
     def _request_apply(self) -> None:
@@ -883,15 +1029,15 @@ class ScanReviewDialog(QDialog):
         self._apply_button.setEnabled(False)
         self._cancel_button.setEnabled(False)
         self._hide_error()
-        self._progress.setRange(0, 0)
-        self._progress.setFormat("Applying adjustments")
-        self._progress.setAccessibleName("Scan review apply progress")
+        set_static_busy(self._progress)
+        self._progress.setFormat(tr("Applying adjustments"))
+        self._progress.setAccessibleName(tr("Scan review apply progress"))
         self._progress.setAccessibleDescription(
-            "Progress while PaperWorkShell applies reviewed adjustments as case intent."
+            tr("Progress while PaperWorkShell applies reviewed adjustments as case intent.")
         )
         self._progress.setVisible(True)
-        self._set_status("Applying the reviewed adjustments as case intent.")
-        self._announce("Applying reviewed scan adjustments.")
+        self._set_status(tr("Applying the reviewed adjustments as case intent."))
+        self._announce(tr("Applying reviewed scan adjustments."))
         self.apply_requested.emit(self._draft)
 
     def _reset_to_original(self) -> None:
@@ -903,9 +1049,11 @@ class ScanReviewDialog(QDialog):
         self._hide_control_error()
         self._suggestion_notice.setVisible(False)
         self._adjusted_preview_draft = None
-        self._clear_adjusted_preview("Adjusted preview reset; choose Update preview.")
-        self._set_status("Adjustments reset to the original page. Update preview before applying.")
-        self._announce("Provisional adjustments reset to the original page.")
+        self._clear_adjusted_preview(tr("Adjusted preview reset; choose Update preview."))
+        self._set_status(
+            tr("Adjustments reset to the original page. Update preview before applying.")
+        )
+        self._announce(tr("Provisional adjustments reset to the original page."))
         self._update_apply_availability()
 
     def _update_compare_visibility(self, _checked: bool = False) -> None:
@@ -945,11 +1093,11 @@ class ScanReviewDialog(QDialog):
         self._preview_active = False
         self._loading_draft = None
         self._progress.setVisible(False)
+        self._set_busy_controls()
         if self._cancel_preview_button.hasFocus():
             self._update_preview_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._cancel_preview_button.setVisible(False)
         self._cancel_preview_button.setEnabled(False)
-        self._set_busy_controls()
 
     def _clear_adjusted_preview(self, message: str) -> None:
         self._adjusted_pixmap = None
@@ -959,9 +1107,16 @@ class ScanReviewDialog(QDialog):
 
     def _set_preview_status(self, label: QLabel, message: str) -> None:
         label.setText(message)
+        title = tr("Original") if label is self._original_status else tr("Adjusted")
+        label.setAccessibleName(
+            tr("{value1} preview status: {value2}", value1=title, value2=message)
+        )
         label.setAccessibleDescription(message)
         preview = (
             self._original_preview if label is self._original_status else self._adjusted_preview
+        )
+        preview.setAccessibleName(
+            tr("{value1} scan preview: {value2}", value1=title, value2=message)
         )
         preview.setAccessibleDescription(message)
 
@@ -973,36 +1128,39 @@ class ScanReviewDialog(QDialog):
         if variant is ScanReviewPreviewVariant.ORIGINAL:
             self._original_pixmap = None
             self._original_preview.clear()
-            original_message = f"Original preview {outcome}."
+            original_message = tr("Original preview {value1}.", value1=outcome)
             self._original_preview.setText(original_message)
             self._set_preview_status(self._original_status, original_message)
             self._adjusted_preview_draft = None
             self._adjusted_pixmap = None
             self._adjusted_preview.clear()
-            adjusted_message = "Adjusted preview not produced."
+            adjusted_message = tr("Adjusted preview not produced.")
             self._adjusted_preview.setText(adjusted_message)
             self._set_preview_status(self._adjusted_status, adjusted_message)
             return
         self._adjusted_preview_draft = None
         self._adjusted_pixmap = None
         self._adjusted_preview.clear()
-        adjusted_message = f"Adjusted preview {outcome}."
+        adjusted_message = tr("Adjusted preview {value1}.", value1=outcome)
         self._adjusted_preview.setText(adjusted_message)
         self._set_preview_status(self._adjusted_status, adjusted_message)
 
     def _set_status(self, message: str) -> None:
+        message = tr(message)
         self._status.setText(message)
+        self._status.setAccessibleName(tr("Scan review status: {value1}", value1=message))
         self._status.setAccessibleDescription(message)
 
     def _show_control_error(self, message: str) -> None:
         announce = not self._control_error_visible
         self._control_error_visible = True
         self._error.setText(message)
+        self._error.setAccessibleName(tr("Scan review error: {value1}", value1=message))
         self._error.setAccessibleDescription(message)
         self._error.setVisible(True)
-        self._set_status("Adjust the crop edges before updating the preview.")
+        self._set_status(tr("Adjust the crop edges before updating the preview."))
         if announce:
-            self._announce("Crop edges are invalid. Adjust the crop controls.", assertive=True)
+            self._announce(tr("Crop edges are invalid. Adjust the crop controls."), assertive=True)
 
     def _hide_control_error(self) -> None:
         if self._control_error_visible:
@@ -1059,7 +1217,7 @@ class ScanReviewDialog(QDialog):
         ):
             return (
                 "PWS_UI_UNEXPECTED",
-                "PaperWorkShell could not complete scan review. Try again.",
+                tr("PaperWorkShell could not complete scan review. Try again."),
             )
         if (
             type(message) is not str
@@ -1069,15 +1227,10 @@ class ScanReviewDialog(QDialog):
         ):
             return (
                 "PWS_UI_UNEXPECTED",
-                "PaperWorkShell could not complete scan review. Try again.",
+                tr("PaperWorkShell could not complete scan review. Try again."),
             )
-        return code, message
+        return code, tr(message)
 
     def _announce(self, message: str, *, assertive: bool = False) -> None:
-        announcement = QAccessibleAnnouncementEvent(self._status, message)
-        announcement.setPoliteness(
-            QAccessible.AnnouncementPoliteness.Assertive
-            if assertive
-            else QAccessible.AnnouncementPoliteness.Polite
-        )
-        QAccessible.updateAccessibility(announcement)
+        message = tr(message)
+        self._announcer.announce(message, assertive=assertive)

@@ -2,6 +2,25 @@
 
 These prompts are designed for a Codex session operating in the PaperWorkShell repository. Paste one prompt at a time. The repository files remain authoritative; the prompt does not grant permission to override frozen decisions.
 
+All prompts use the current `PWS-D043` platform boundary: **Windows 11 x64 only**.
+Native ARM64 and x64 emulation on ARM64 are outside project scope, including PWS-0802,
+PWS-0803 and public-release prerequisites. Retain superseded plans and unrun evidence
+as history; do not create a mandatory ARM task or describe that history as a pass.
+The approved rationale is [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md).
+This does not waive any in-scope signing, security, privacy, accessibility or resource gate.
+
+**Current maintainer sequence (2026-11-04):** Execute PWS-0810 through a usable
+unsigned internal-build handoff. Start with verified R9 and the ordinary installed
+GUI; reuse accepted evidence within its recorded scope and repair concrete
+functional defects. Preserve current local work and R9. Public signing,
+SignPath onboarding/contact, publication and remaining release-only environmental
+qualification are deferred; PWS-0802's signed requirements remain pending and
+PWS-0803 is not current work. No further external contact or installer upload is
+authorized. The real system-volume disk-full test is not performed and deferred
+to later release qualification; do not request its unavailable VM again or fill a
+real working volume. Deliver concise launch/first-use instructions and stop this
+phase when the internal handoff is supported by evidence.
+
 ---
 
 ## 1. First repository session
@@ -26,7 +45,7 @@ Before editing:
 - Inspect the existing repository and preserve any unrelated maintainer work.
 - Confirm the current task dependencies and decision references.
 - State the exact files you plan to add or change.
-- Select and document a supported CPython minor and dependency workflow suitable for a Windows-first PySide6 application; record the evidence and choice in an ADR.
+- Select and document a supported CPython minor and dependency workflow suitable for the Windows 11 x64 PySide6 application under PWS-D043; record the evidence and choice in an ADR.
 
 Implementation expectations:
 - Establish project metadata and the internal Python package identifier `paperworkshell` without changing the user-facing name PaperWorkShell.

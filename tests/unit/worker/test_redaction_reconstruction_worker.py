@@ -8,13 +8,20 @@ from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 from typing import cast
+from uuid import UUID
 
 import pytest
 
-from paperworkshell.domain.pdf_export import PdfExportError
+from paperworkshell.domain.pdf_export import PdfExportError, PdfExportErrorCode
 from paperworkshell.worker import redaction_reconstruction_composition as composition
 from paperworkshell.worker.client._windows import WindowsProcessLauncher
 from paperworkshell.worker.client.client import WorkerClient
+from paperworkshell.worker.client.models import (
+    WorkerClientSnapshot,
+    WorkerLifecyclePhase,
+    WorkerOperationResultSnapshot,
+    WorkerOperationSnapshot,
+)
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.host import _build_operation_registry
 from paperworkshell.worker.operations import OperationContext
@@ -32,6 +39,7 @@ from paperworkshell.worker.protocol.models import (
     REDACTION_RECONSTRUCTION_CAPABILITY,
     REDACTION_RECONSTRUCTION_OUTPUT_CONTENT_KIND,
     REDACTION_RECONSTRUCTION_PLAN_CONTENT_KIND,
+    CancelReason,
     CaseObjectReference,
     ErrorCategory,
     OperationOutcome,
@@ -472,3 +480,178 @@ def test_broker_authenticates_candidate_and_closes_all_failed_attempts(failure: 
             assert retry.report == candidate.report
         assert output.close_calls == 2
         assert events.index("worker.terminate") < events.index("output.iter.1")
+
+
+# Result and cancellation-acknowledgement messages may arrive in either order.
+# These are pure fake-client transitions; no native process is started.
+_ORDER_OPERATION = _id(980)
+_ORDER_REQUEST = _id(981)
+_ORDER_CASE = _id(982)
+
+
+class _ResultBeforeAckClient:
+    def __init__(
+        self, outcome: OperationOutcome, *, ack_first: bool = False, missing: bool = False
+    ) -> None:
+        self.outcome, self.ack_first, self.missing = outcome, ack_first, missing
+        self.phase = WorkerLifecyclePhase.BUSY
+        self.active = True
+        self.cancel_sent = False
+        self.ack_ms: int | None = None
+        self.result: WorkerOperationResultSnapshot | None = None
+        self.pumps = self.queries = self.cancels = 0
+        self.terminated = self.pending_ack_discarded = False
+
+    def query(self) -> WorkerClientSnapshot:
+        self.queries += 1
+        active = (
+            WorkerOperationSnapshot(
+                _ORDER_OPERATION,
+                _ORDER_REQUEST,
+                REDACTION_RECONSTRUCTION_CAPABILITY.capability_id,
+                1,
+                True,
+                self.cancel_sent,
+                None,
+            )
+            if self.active
+            else None
+        )
+        return WorkerClientSnapshot(
+            generation=1,
+            phase=self.phase,
+            case_id=_ORDER_CASE,
+            session_id=_ORDER_REQUEST,
+            worker_instance_id=_ORDER_CASE,
+            pid=12345,
+            capabilities=(REDACTION_RECONSTRUCTION_CAPABILITY,),
+            active_operation=active,
+            last_result=self.result,
+            last_failure=None,
+            last_cancellation_acknowledgement_ms=self.ack_ms,
+        )
+
+    def cancel(self, reason: CancelReason) -> UUID:
+        assert reason is CancelReason.USER_REQUESTED
+        self.cancel_sent = True
+        self.cancels += 1
+        self.phase = WorkerLifecyclePhase.CANCELLING
+        return _ORDER_REQUEST
+
+    def terminal(self) -> None:
+        output = CaseObjectReference(
+            ReferenceArea.OPERATION_STAGING,
+            _ORDER_CASE,
+            _ORDER_OPERATION,
+            REDACTION_RECONSTRUCTION_OUTPUT_CONTENT_KIND,
+            1,
+            "a" * 64,
+        )
+        self.result = WorkerOperationResultSnapshot(
+            1,
+            _ORDER_OPERATION,
+            self.outcome,
+            (output,) if self.outcome is OperationOutcome.SUCCEEDED else (),
+            None,
+        )
+        self.active = False
+
+    def pump(self, interval: float) -> None:
+        assert interval == _policy().pump_interval_seconds
+        assert not self.terminated
+        self.pumps += 1
+        if self.pumps == 1:
+            if self.cancel_sent and self.ack_first:
+                self.ack_ms = 1
+            else:
+                self.terminal()
+                self.phase = (
+                    WorkerLifecyclePhase.CANCELLING
+                    if self.cancel_sent
+                    else WorkerLifecyclePhase.READY
+                )
+        elif self.pumps == 2:
+            if self.missing:
+                # Mirrors the client's existing cancellation-grace fault.
+                self.phase = WorkerLifecyclePhase.FAULTED
+            else:
+                self.ack_ms = 1
+                self.terminal()
+                self.phase = WorkerLifecyclePhase.READY
+        else:
+            pytest.fail("UNBOUNDED_FAKE_WAIT")
+
+    def terminate(self) -> None:
+        # Models only client bookkeeping; never touches a native process.
+        self.pending_ack_discarded = self.cancel_sent and self.ack_ms is None
+        self.terminated = True
+        self.phase = WorkerLifecyclePhase.STOPPED
+        self.active = False
+
+
+def _wait_result_order(
+    client: _ResultBeforeAckClient, *, cancel: bool = True, deadline_after_result: bool = False
+) -> WorkerOperationResultSnapshot:
+    broker = BrokeredPageReconstructor(
+        cast(PdfExportWorkerCoordinator, client),
+        _policy(),
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
+    try:
+        return broker._wait_result(
+            _ORDER_OPERATION,
+            1,
+            deadline=lambda: deadline_after_result and client.result is not None,
+            cancellation=lambda: cancel,
+            progress=lambda _value: None,
+        )
+    finally:
+        client.terminate()
+
+
+@pytest.mark.parametrize("outcome", [OperationOutcome.CANCELLED, OperationOutcome.SUCCEEDED])
+def test_terminal_result_before_ack_does_not_discard_ack(outcome: OperationOutcome) -> None:
+    client = _ResultBeforeAckClient(outcome)
+    if outcome is OperationOutcome.SUCCEEDED:
+        with pytest.raises(PdfExportError) as raised:
+            _wait_result_order(client)
+        assert raised.value.code is PdfExportErrorCode.CANCELLED
+    else:
+        assert _wait_result_order(client).outcome is OperationOutcome.CANCELLED
+    assert client.ack_ms == 1, "BROKER_RETURNED_BEFORE_CANCELLATION_ACK"
+    assert client.pumps == 2 and client.cancels == 1
+    assert not client.pending_ack_discarded, "FINAL_TERMINATE_DISCARDED_PENDING_ACK"
+
+
+@pytest.mark.parametrize("outcome", [OperationOutcome.CANCELLED, OperationOutcome.SUCCEEDED])
+def test_ack_before_result_remains_supported(outcome: OperationOutcome) -> None:
+    client = _ResultBeforeAckClient(outcome, ack_first=True)
+    if outcome is OperationOutcome.SUCCEEDED:
+        with pytest.raises(PdfExportError) as raised:
+            _wait_result_order(client)
+        assert raised.value.code is PdfExportErrorCode.CANCELLED
+    else:
+        assert _wait_result_order(client).outcome is OperationOutcome.CANCELLED
+    assert client.ack_ms == 1 and client.pumps == 2
+
+
+def test_missing_ack_uses_existing_client_grace_fault() -> None:
+    client = _ResultBeforeAckClient(OperationOutcome.CANCELLED, missing=True)
+    with pytest.raises(PdfExportError) as raised:
+        _wait_result_order(client)
+    assert raised.value.code is PdfExportErrorCode.WORKER_FAILED
+    assert client.pumps == 2 and client.ack_ms is None
+
+
+def test_application_deadline_is_checked_while_waiting_for_ack() -> None:
+    client = _ResultBeforeAckClient(OperationOutcome.CANCELLED)
+    with pytest.raises(PdfExportError) as raised:
+        _wait_result_order(client, deadline_after_result=True)
+    assert raised.value.code is PdfExportErrorCode.TIMED_OUT
+    assert client.pumps == 1 and client.cancels == 1
+
+
+def test_without_cancel_a_terminal_result_does_not_require_ack() -> None:
+    client = _ResultBeforeAckClient(OperationOutcome.SUCCEEDED)
+    assert _wait_result_order(client, cancel=False).outcome is OperationOutcome.SUCCEEDED
+    assert client.pumps == 1 and client.cancels == 0 and client.ack_ms is None

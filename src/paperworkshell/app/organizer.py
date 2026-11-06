@@ -18,6 +18,7 @@ from time import monotonic
 from typing import Final, Protocol, cast
 from uuid import UUID
 
+from paperworkshell.app.assisted_use import AssistedUseService
 from paperworkshell.app.checklist import ChecklistEditorState, ChecklistWorkflowService
 from paperworkshell.app.core_overlay_tools import (
     CoreOverlayToolsState,
@@ -47,7 +48,7 @@ from paperworkshell.app.page_previews import (
 from paperworkshell.app.page_previews import (
     CancellationProbe as PreviewCancellationProbe,
 )
-from paperworkshell.app.pdf_export import PdfExportProgressSink
+from paperworkshell.app.pdf_export import PdfExportProgressSink, _require_active
 from paperworkshell.app.portal_constraints import (
     ConstraintEditorErrorCode,
     ConstraintEditorState,
@@ -55,6 +56,7 @@ from paperworkshell.app.portal_constraints import (
     is_constraint_announcement_safe,
     reject_constraint_editor,
 )
+from paperworkshell.app.post_export_deletion import PostExportDeletionService
 from paperworkshell.app.quality_analysis import (
     QualityAnalysisCancellationProbe,
     QualityAnalysisError,
@@ -67,7 +69,9 @@ from paperworkshell.app.quality_analysis import (
     QualityReviewSnapshot,
     reject_quality_analysis,
 )
+from paperworkshell.app.redaction_export import ReviewedRedactionExport
 from paperworkshell.app.redaction_tools import RedactionToolsState, _mark_facts
+from paperworkshell.app.removal_export_review import RemovalExportReview
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewErrorCode,
@@ -82,6 +86,10 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementRequest,
     SignatureImageWorkflowPort,
 )
+from paperworkshell.app.signed_source_policy import (
+    SignedSourceConfirmationChoice,
+    SignedSourceConfirmationService,
+)
 from paperworkshell.app.source_ingest import (
     DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS,
 )
@@ -91,7 +99,9 @@ from paperworkshell.app.source_ingest import (
 from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
+from paperworkshell.domain.assisted_use import AssistedUseErrorCode, reject_assisted_use
 from paperworkshell.domain.case_lifecycle import (
+    CaseDeletionResult,
     CaseIndex,
     CaseLifecycleErrorCode,
     CaseSummary,
@@ -150,16 +160,24 @@ from paperworkshell.domain.pdf_export import (
 )
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
+from paperworkshell.domain.post_export_deletion import (
+    PostExportDeletionConfirmation,
+    PostExportDeletionErrorCode,
+    PostExportDeletionInventory,
+    reject_post_export_deletion,
+)
 from paperworkshell.domain.recovery import (
     RecoveryErrorCode,
     StartupRecoveryResult,
     reject_recovery,
 )
 from paperworkshell.domain.redaction import (
+    MAX_REDACTION_MARKS,
     RedactionErrorCode,
     reject_redaction,
     require_redaction_export_allowed,
 )
+from paperworkshell.domain.redaction_export import RedactionExportReport
 from paperworkshell.domain.signature_images import (
     SignatureImageCleanupResult,
     SignatureImageCleanupStatus,
@@ -169,12 +187,21 @@ from paperworkshell.domain.signature_images import (
     SignatureImageProgress,
     reject_signature_image,
 )
+from paperworkshell.domain.signed_source_policy import (
+    SignedSourcePolicyErrorCode,
+    reject_signed_source_policy,
+)
 from paperworkshell.domain.source_ingest import SourceImportResult
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
+from paperworkshell.localization.catalog import tr
 from paperworkshell.overlays.commands import OverlayCommandHistory
 from paperworkshell.overlays.models import (
+    MAX_OVERLAYS,
     OverlayCollection,
     OverlayErrorCode,
+    OverlayKind,
+    OverlayRecord,
+    OverlayVisibility,
     SignatureImageOverlayPayload,
     reject_overlay,
 )
@@ -227,6 +254,18 @@ class _PagesPdfExportPort(Protocol):
     ) -> PdfExportOutcome: ...
 
 
+class _RemovalPdfExportPort(Protocol):
+    def export(
+        self,
+        review: ReviewedRedactionExport,
+        destination: Path,
+        *,
+        deadline: Callable[[], bool],
+        cancellation: Callable[[], bool],
+        progress: PdfExportProgressSink,
+    ) -> RedactionExportReport: ...
+
+
 class _PagePreviewServicePort(Protocol):
     def get_previews(
         self,
@@ -259,6 +298,25 @@ def _close_nothing() -> None:
 
 
 @dataclass(frozen=True, slots=True)
+class OrganizerOverlaySummary:
+    """Bounded visual-overlay counts without values, asset details, or identifiers."""
+
+    kind: OverlayKind
+    visibility: OverlayVisibility
+    count: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.kind) is not OverlayKind
+            or type(self.visibility) is not OverlayVisibility
+            or self.visibility is OverlayVisibility.PAGE_INACTIVE
+            or type(self.count) is not int
+            or not 1 <= self.count <= MAX_OVERLAYS
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.overlays")
+
+
+@dataclass(frozen=True, slots=True)
 class OrganizerPageView:
     """Path-free presentation facts for one active organizer page."""
 
@@ -267,6 +325,11 @@ class OrganizerPageView:
     rotation_degrees: int
     preview_supported: bool
     scan_review_intent: ImageTransformIntent | None = None
+    document_number: int | None = None
+    source_page_number: int | None = None
+    crop: NormalizedPageBox | None = None
+    overlay_summaries: tuple[OrganizerOverlaySummary, ...] = ()
+    removal_mark_count: int = 0
 
     def __post_init__(self) -> None:
         if type(self.page_id) is not UUID or self.page_id.version != 4:
@@ -290,6 +353,30 @@ class OrganizerPageView:
                 PageOperationErrorCode.MODEL_INVALID,
                 "organizer.scan_review_intent",
             )
+        if (self.document_number is None) != (self.source_page_number is None) or any(
+            value is not None and (type(value) is not int or not 1 <= value <= MAX_PAGE_COUNT)
+            for value in (self.document_number, self.source_page_number)
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.page_origin")
+        if self.crop is not None and type(self.crop) is not NormalizedPageBox:
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.crop")
+        if (
+            type(self.overlay_summaries) is not tuple
+            or len(self.overlay_summaries) > len(OverlayKind) * (len(OverlayVisibility) - 1)
+            or any(type(value) is not OrganizerOverlaySummary for value in self.overlay_summaries)
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.overlays")
+        keys = tuple((value.kind, value.visibility) for value in self.overlay_summaries)
+        if (
+            len(set(keys)) != len(keys)
+            or sum(value.count for value in self.overlay_summaries) > MAX_OVERLAYS
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.overlays")
+        if (
+            type(self.removal_mark_count) is not int
+            or not 0 <= self.removal_mark_count <= MAX_REDACTION_MARKS
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.removal_marks")
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +390,7 @@ class OrganizerViewState:
     can_redo: bool
     autosave_pending: bool
     recovery_review_required: bool = False
+    removal_page_ids: tuple[UUID, ...] = ()
 
     def __post_init__(self) -> None:
         flags = (
@@ -311,12 +399,17 @@ class OrganizerViewState:
             self.autosave_pending,
             self.recovery_review_required,
         )
-        if any(type(value) is not bool for value in flags) or type(self.pages) is not tuple:
+        if (
+            any(type(value) is not bool for value in flags)
+            or type(self.pages) is not tuple
+            or type(self.removal_page_ids) is not tuple
+            or len(self.removal_page_ids) > len(self.pages)
+        ):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.state")
         if any(type(page) is not OrganizerPageView for page in self.pages):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.pages")
         if self.case_id is None:
-            if self.revision is not None or self.pages or any(flags):
+            if self.revision is not None or self.pages or self.removal_page_ids or any(flags):
                 reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.empty_state")
             return
         if type(self.case_id) is not UUID or self.case_id.version != 4:
@@ -335,6 +428,14 @@ class OrganizerViewState:
             or tuple(page.position for page in self.pages) != tuple(range(1, len(self.pages) + 1))
         ):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.pages")
+        if any(type(value) is not UUID for value in self.removal_page_ids):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.removal_pages")
+        removal_ids = set(self.removal_page_ids)
+        if len(removal_ids) != len(self.removal_page_ids) or (
+            tuple(page_id for page_id in page_ids if page_id in removal_ids)
+            != self.removal_page_ids
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.removal_pages")
 
     @classmethod
     def empty(cls) -> OrganizerViewState:
@@ -389,11 +490,11 @@ class OrganizerImportOutcome:
         """Describe the durable outcome without paths, content, or adapter details."""
 
         if self.refresh_required:
-            return (
+            return tr(
                 "Import committed. Close and reopen the case before continuing "
                 "so the organizer can refresh."
             )
-        return "Import committed and the organizer was refreshed."
+        return tr("Import committed and the organizer was refreshed.")
 
 
 class OrganizerSignatureImageRefreshStatus(StrEnum):
@@ -425,7 +526,9 @@ class OrganizerPagesPdfExportOutcome:
     def safe_message(self) -> str:
         message = self.committed_export.safe_message
         if self.refresh_required:
-            message += " Close and reopen the case before continuing so the organizer can refresh."
+            message += tr(
+                " Close and reopen the case before continuing so the organizer can refresh."
+            )
         return message
 
 
@@ -453,11 +556,11 @@ class OrganizerSignatureImagePlacementOutcome:
     @property
     def safe_message(self) -> str:
         if self.refresh_required:
-            return (
+            return tr(
                 "Signature image placed. Close and reopen the case before continuing so the "
                 "organizer can refresh."
             )
-        return "Signature image placed as a visual image only."
+        return tr("Signature image placed as a visual image only.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,12 +590,12 @@ class OrganizerSignatureImageDeleteOutcome:
         if self.cleanup_warning is not None:
             return self.cleanup_warning
         if self.cleanup_result is None:
-            return "Signature-image placement removed. The case copy was retained."
+            return tr("Signature-image placement removed. The case copy was retained.")
         if self.cleanup_result.status is SignatureImageCleanupStatus.REMOVED:
-            return "Signature-image placement removed. The unused case copy was cleaned up."
+            return tr("Signature-image placement removed. The unused case copy was cleaned up.")
         if self.cleanup_result.status is SignatureImageCleanupStatus.ALREADY_ABSENT:
-            return "Signature-image placement removed. The unused case copy was already absent."
-        return "Signature-image placement removed. The case copy was retained."
+            return tr("Signature-image placement removed. The unused case copy was already absent.")
+        return tr("Signature-image placement removed. The case copy was retained.")
 
 
 @dataclass(slots=True)
@@ -544,6 +647,7 @@ class OrganizerBackend:
 
     __slots__ = (
         "_active_checklist",
+        "_assisted_use",
         "_active_core_overlay_tools",
         "_active_redaction_tools",
         "_active_portal_constraints",
@@ -556,7 +660,9 @@ class OrganizerBackend:
         "_pending_committed_import",
         "_portal_constraints",
         "_package_workflow",
+        "_post_export_deletion",
         "_pages_pdf_export",
+        "_removal_pdf_export",
         "_export_reopen_required",
         "_quality_analysis",
         "_quality_profile_id",
@@ -587,6 +693,9 @@ class OrganizerBackend:
         portal_constraints: PortalConstraintWorkflowService | None = None,
         package_workflow: PackageWorkflowService | None = None,
         pages_pdf_export: _PagesPdfExportPort | None = None,
+        removal_pdf_export: _RemovalPdfExportPort | None = None,
+        assisted_use: AssistedUseService | None = None,
+        post_export_deletion: PostExportDeletionService | None = None,
     ) -> None:
         if not callable(close_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -649,6 +758,7 @@ class OrganizerBackend:
                 "constraints.organizer",
             )
         self._lifecycle = lifecycle
+        self._assisted_use = assisted_use
         self._repository = repository
         self._source_ingest = source_ingest
         self._thumbnails = thumbnails
@@ -662,7 +772,9 @@ class OrganizerBackend:
         self._checklist = checklist
         self._portal_constraints = portal_constraints
         self._package_workflow = package_workflow
+        self._post_export_deletion = post_export_deletion
         self._pages_pdf_export = pages_pdf_export
+        self._removal_pdf_export = removal_pdf_export
         self._export_reopen_required = False
         self._utc_now = checklist.utc_now if checklist is not None else lambda: datetime.now(UTC)
         self._active_checklist: ChecklistEditorState | None = None
@@ -719,12 +831,39 @@ class OrganizerBackend:
     def list_cases(self) -> CaseIndex:
         """Return the lifecycle service's deterministic path-free case index."""
 
+        if self._assisted_use is not None and self._assisted_use.snapshot is not None:
+            return CaseIndex()
         return self._lifecycle.list_cases()
+
+    @property
+    def assisted_use(self) -> AssistedUseService | None:
+        """Expose the thread-safe local privacy gate to the desktop bridge."""
+
+        return self._assisted_use
+
+    def create_assisted_case(
+        self, retention_days: int, passphrase: str, *, consent: bool
+    ) -> OrganizerViewState:
+        """Publish no organizer content until the consent record is durable."""
+
+        if self._assisted_use is None:
+            raise RuntimeError("assisted use is unavailable")
+        state = self.create_case()
+        assert state.case_id is not None
+        try:
+            self._assisted_use.enroll(state.case_id, retention_days, passphrase, consent=consent)
+        except BaseException:
+            # The newly created empty case has never accepted an import.
+            self.close_case()
+            raise
+        return state
 
     def create_case(self) -> OrganizerViewState:
         """Create, load, and activate one empty case."""
 
         self._require_not_shutdown()
+        if self._assisted_use is not None and self._assisted_use.snapshot is not None:
+            reject_assisted_use(AssistedUseErrorCode.CASE_CONFLICT, "assisted.create_active")
         self._active_scan_review = None
         if self._session is not None:
             reject_case_lifecycle(
@@ -743,6 +882,8 @@ class OrganizerBackend:
         """Open and reconstruct one organizer from its authoritative manifest."""
 
         self._require_not_shutdown()
+        if self._assisted_use is not None:
+            self._assisted_use.require_access(case_id)
         current = self._session
         if current is not None:
             if current.snapshot.case_id == case_id:
@@ -788,6 +929,8 @@ class OrganizerBackend:
         if session is None:
             self._lifecycle.close_case()
             self._pending_committed_import = None
+            if self._assisted_use is not None:
+                self._assisted_use.release()
             return OrganizerViewState.empty()
         result = session.autosave.close()
         if result.snapshot is not None:
@@ -805,8 +948,12 @@ class OrganizerBackend:
             )
             raise
         self._session = None
+        if self._post_export_deletion is not None:
+            self._post_export_deletion.clear()
         self._pending_committed_import = None
         self._export_reopen_required = False
+        if self._assisted_use is not None:
+            self._assisted_use.release()
         return OrganizerViewState.empty()
 
     def import_source(
@@ -853,6 +1000,79 @@ class OrganizerBackend:
         # later exception can make the caller retry the ingest itself.
         self._pending_committed_import = result
         return self._reconcile_committed_import(session, result)
+
+    def begin_removal_export(self) -> RemovalExportReview:
+        """Review saved intent without granting permission to publish."""
+
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        if self._active_scan_review is not None:
+            reject_pdf_export(PdfExportErrorCode.PLAN_STALE, "removal.desktop_active_review")
+        self.flush_autosave()
+        return RemovalExportReview.from_snapshot(session.snapshot)
+
+    def export_removal_pdf(
+        self,
+        review: RemovalExportReview,
+        destination: Path,
+        *,
+        signed_source_confirmed: bool,
+        deadline: Callable[[], bool] = lambda: False,
+        cancellation: Callable[[], bool] = lambda: False,
+        progress: PdfExportProgressSink = lambda _value: None,
+        state_changed: Callable[[OrganizerViewState], None] | None = None,
+    ) -> RedactionExportReport:
+        """Invoke the separately gated service on the permanent backend thread."""
+
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        exporter = self._removal_pdf_export
+        if exporter is None:
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "removal.desktop_unavailable")
+        if (
+            type(review) is not RemovalExportReview
+            or type(signed_source_confirmed) is not bool
+            or (state_changed is not None and not callable(state_changed))
+        ):
+            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "removal.desktop_request")
+        review.__post_init__()
+        _require_active(deadline, cancellation)
+        self.flush_autosave()
+        current = _require_load_result(
+            self._repository.load(review.case_id), review.case_id
+        ).snapshot
+        if current != review.snapshot or session.snapshot != review.snapshot:
+            reject_pdf_export(PdfExportErrorCode.PLAN_STALE, "removal.desktop_review_stale")
+        snapshot = current
+        _require_active(deadline, cancellation)
+        if review.signed_source_confirmation_required:
+            if not signed_source_confirmed:
+                reject_signed_source_policy(
+                    SignedSourcePolicyErrorCode.CONFIRMATION_REQUIRED,
+                    "removal.desktop_signed_source",
+                )
+            _outcome, snapshot = SignedSourceConfirmationService(
+                self._repository
+            ).decide_with_snapshot(
+                review.signature_review,
+                SignedSourceConfirmationChoice.CREATE_UNSIGNED_DERIVATIVE,
+            )
+            replacement = _session_from_load(
+                self._repository,
+                ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot),
+                utc_now=self._utc_now,
+            )
+            session.autosave.close()
+            self._session = replacement
+            if state_changed is not None:
+                state_changed(_view_state(replacement))
+        return exporter.export(
+            ReviewedRedactionExport.from_snapshot(snapshot),
+            destination,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
 
     def export_pages_pdf(
         self,
@@ -1164,7 +1384,63 @@ class OrganizerBackend:
         *,
         cancellation: SourceCancellationProbe | None = None,
     ) -> None:
+        self._require_session()
         self._require_package_workflow().save_summary(destination, cancellation=cancellation)
+
+    def save_package_text_companion(
+        self,
+        destination: Path,
+        *,
+        privacy_confirmed: bool,
+        cancellation: SourceCancellationProbe | None = None,
+    ) -> None:
+        self._require_session()
+        self._require_package_workflow().save_text_companion(
+            destination, privacy_confirmed=privacy_confirmed, cancellation=cancellation
+        )
+
+    def begin_post_export_deletion(
+        self,
+        *,
+        cancellation: SourceCancellationProbe | None = None,
+    ) -> PostExportDeletionInventory:
+        session = self._require_session()
+        service = self._post_export_deletion
+        if service is None:
+            reject_post_export_deletion(
+                PostExportDeletionErrorCode.VERIFIED_EXPORT_REQUIRED, "post_export.unavailable"
+            )
+        if session.autosave.pending:
+            reject_post_export_deletion(
+                PostExportDeletionErrorCode.REVIEW_STALE, "post_export.unsaved_changes"
+            )
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        return service.prepare(
+            session.snapshot, cancellation=cancellation, deadline=lambda: monotonic() >= expires
+        )
+
+    def confirm_post_export_deletion(self, review_id: UUID) -> CaseDeletionResult:
+        session = self._require_session()
+        service = self._post_export_deletion
+        if service is None:
+            reject_post_export_deletion(
+                PostExportDeletionErrorCode.VERIFIED_EXPORT_REQUIRED, "post_export.unavailable"
+            )
+        if session.autosave.pending:
+            reject_post_export_deletion(
+                PostExportDeletionErrorCode.REVIEW_STALE, "post_export.unsaved_changes"
+            )
+        expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
+        return service.confirm(
+            review_id,
+            session.snapshot,
+            PostExportDeletionConfirmation.REMOVE_AFTER_VERIFIED_EXPORT,
+            deadline=lambda: monotonic() >= expires,
+        )
+
+    def cancel_post_export_deletion(self) -> None:
+        if self._post_export_deletion is not None:
+            self._post_export_deletion.cancel()
 
     def prepare_compression(
         self,
@@ -1605,14 +1881,14 @@ class OrganizerBackend:
     def flush_autosave(self) -> OrganizerViewState:
         """Persist every queued edit, retaining pending state after a failure."""
 
-        self._require_session()
+        self._require_session(allow_locked=True)
         self._require_core_overlay_tools_inactive()
         return self._flush_autosave_unchecked()
 
     def _flush_autosave_unchecked(self) -> OrganizerViewState:
         """Drain autosave after the caller has established its exclusive phase."""
 
-        session = self._require_session()
+        session = self._require_session(allow_locked=True)
         result = session.autosave.flush()
         if result.snapshot is not None:
             session.snapshot = result.snapshot
@@ -2088,7 +2364,7 @@ class OrganizerBackend:
         loaded = _require_load_result(self._repository.load(case_id), case_id)
         return _session_from_load(self._repository, loaded, utc_now=self._utc_now)
 
-    def _require_session(self) -> _OrganizerSession:
+    def _require_session(self, *, allow_locked: bool = False) -> _OrganizerSession:
         if self._export_reopen_required:
             reject_pdf_export(
                 PdfExportErrorCode.HISTORY_RECOVERY_REQUIRED, "export.organizer_refresh"
@@ -2106,6 +2382,8 @@ class OrganizerBackend:
                 CaseLifecycleErrorCode.ACTIVE_CASE_MISMATCH,
                 "organizer.active_case",
             )
+        if self._assisted_use is not None and not allow_locked:
+            self._assisted_use.require_access(session.snapshot.case_id)
         return session
 
     def _require_not_shutdown(self) -> None:
@@ -2286,9 +2564,42 @@ def _require_committed_signature_image(
 def _view_state(session: _OrganizerSession) -> OrganizerViewState:
     projection = session.history.projection
     media_by_source = _preview_media_by_source(session.snapshot)
+    # Catalogue order remains stable when packet pages are moved or removed.
+    document_numbers = {source_id: number for number, source_id in enumerate(media_by_source, 1)}
+    document = session.snapshot.document
+    removal_counts: dict[UUID, int] = {}
+    for mark in cast(list[dict[str, object]], document.get("redaction_marks", [])):
+        mark_page_id = UUID(cast(str, mark["page_id"]))
+        removal_counts[mark_page_id] = removal_counts.get(mark_page_id, 0) + 1
+    overlay_counts: dict[UUID, dict[tuple[OverlayKind, OverlayVisibility], int]] = {}
+    # Decode only bounded overlay records from the already detached, validated
+    # snapshot. Re-copying the complete manifest for each UI refresh is unnecessary.
+    raw_overlays = document.get("overlays")
+    if type(raw_overlays) is not list or len(raw_overlays) > MAX_OVERLAYS:
+        reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "organizer.overlays")
+    page_states = {page_state.page_id: page_state for page_state in projection.pages}
+    for raw_overlay in raw_overlays:
+        overlay = OverlayRecord.from_manifest(raw_overlay)
+        page_state = page_states.get(overlay.page_id)
+        if page_state is None:
+            reject_page_operation(PageOperationErrorCode.PAGE_UNKNOWN, "organizer.overlay_page")
+        if not page_state.active:
+            continue
+        crop = page_state.crop or NormalizedPageBox.full_page()
+        visible_box = crop.intersection(overlay.box)
+        visibility = (
+            OverlayVisibility.OUTSIDE_ACTIVE_CROP
+            if visible_box is None
+            else OverlayVisibility.VISIBLE
+            if visible_box == overlay.box
+            else OverlayVisibility.PARTIALLY_VISIBLE
+        )
+        counts = overlay_counts.setdefault(overlay.page_id, {})
+        key = (overlay.kind, visibility)
+        counts[key] = counts.get(key, 0) + 1
     pages: list[OrganizerPageView] = []
     for position, page_id in enumerate(projection.page_sequence, start=1):
-        page = projection.state_for(page_id)
+        page = page_states[page_id]
         media_type = media_by_source.get(page.page.source_id)
         if media_type is None:
             reject_page_operation(
@@ -2306,6 +2617,17 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
                     if media_type in {DetectedMediaType.JPEG, DetectedMediaType.PNG}
                     else None
                 ),
+                document_number=document_numbers[page.page.source_id],
+                source_page_number=page.page.source_page_index + 1,
+                crop=page.crop,
+                overlay_summaries=tuple(
+                    OrganizerOverlaySummary(kind, visibility, count)
+                    for (kind, visibility), count in sorted(
+                        overlay_counts.get(page_id, {}).items(),
+                        key=lambda item: (item[0][0].value, item[0][1].value),
+                    )
+                ),
+                removal_mark_count=removal_counts.get(page_id, 0),
             )
         )
     return OrganizerViewState(
@@ -2320,6 +2642,9 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
             ManifestLoadStatus.RECOVERED,
             ManifestLoadStatus.RECOVERED_MIGRATED,
         },
+        removal_page_ids=tuple(
+            page_id for page_id in projection.page_sequence if page_id in removal_counts
+        ),
     )
 
 

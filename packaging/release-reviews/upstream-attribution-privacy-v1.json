@@ -1,0 +1,2152 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-public-upstream-attribution-privacy",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "scope": "Metadata-only classification of exact public upstream attribution/author/provenance contact blobs. This approves no fixture, document, additional user content or distribution-rights waiver.",
+  "evidence_basis": {
+    "frozen_inventory_path": "output/pws0801/resume-20261103/frozen-candidate-r2/resolved-inventory.json",
+    "frozen_inventory_sha256": "d22b48edb33a0ac72a4a2b2f6401ae4b828cd04ee031368de48a063d4ebf0518",
+    "meaning": "Exact asset references and supplier artifacts are bound by the already authenticated r2 review/input inventory. Classification does not relabel or regenerate its candidate result.",
+    "current_byte_hashes_match_frozen_review_bindings": true,
+    "unrelated_portfolio_document_read": false,
+    "matched_values_disclosed": false
+  },
+  "policy_limits": [
+    "Only exact whole-blob SHA256 values in the static data module are eligible; no dynamic path/review trust or directory exclusion.",
+    "Only explicit repository-source email context may use the data. Core-fixture privacy checking remains strict by default.",
+    "SSN, PAN including candidate guard, IBAN, MRZ and unapproved-document detection remain active. None occur in these exact reviewed blobs.",
+    "LF/CRLF forms are admitted only by their exact observed whole-blob digests; normalization does not expand the set.",
+    "Contacts are public upstream licence/author/contributor/vendor-source/schema attributions, not applicant or user-document information."
+  ],
+  "matched_file_count": 78,
+  "unique_blob_count": 60,
+  "all_categories": [
+    "email"
+  ],
+  "other_privacy_categories_present": false,
+  "unapproved_document_signature_present": false,
+  "static_module": {
+    "path": "tools/_reviewed_upstream_notices.py",
+    "constant": "REVIEWED_UPSTREAM_NOTICE_EMAIL_DIGESTS",
+    "sha256": "e5bbf9a2e81c88a44791e88cbb54622de2e62a065c05dc0bc2c207a7a96db159"
+  },
+  "eligible_blob_sha256": [
+    "03018f1893ab6446dfb220b9b953de78929ad63e9a4606591b05af142ce91cdd",
+    "08c135755dd589039470f1fdbb400daaabaaa50d0b366d19cebff4d22986baa1",
+    "0db603a5f4499f690c4425477ff664c166da325d3acc3b5a8d4de3db072443d0",
+    "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+    "20b0f1b17ccd1bd5e8d763b1cdca4b095b8f0c037644b5ee18154536b7d8425e",
+    "2b1f5d615382a151af3eb71462ad17d89e2efee8fa7664058d35d3d9237ebb19",
+    "2eb469aebc37f20dda0960d9a5b03bfb8c0bb8a9d3fa5be0a356aa02fd0a8673",
+    "31204ebba071716f2cc06f798e6682e386c311218182e80cfae7e6f07cbaf63b",
+    "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe",
+    "34bda63a2fcc23c83f2e5364ccd394553b4baa505b1f79ded9cc2161c56a9b4c",
+    "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4",
+    "4d434596c0576fd1454e2de88f826d91518688fa2c3c46fff75c1f31471c4b01",
+    "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+    "50b19507434ddb48ec9301755e7742e87807e04f56ab1886a3287861b0abe8e4",
+    "53cab2c771f7f7ffbf6a58ff759e5846b746e91d98dfe467d5145edf8cd7d306",
+    "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+    "5e9f9325fd702bc4bcda27d7a78fea88a2a09fa39b4b15ac7b9b205e0863dc7e",
+    "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+    "60b84ef09459007776c094984fd2559187e5adbc6e7b58696fa91077ff8654da",
+    "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7",
+    "62fd8327a27a4170361e097fbbfafaf68cdacadfdcad993ca251238112947a8f",
+    "642f29d7e28a211ccd2858e42b262fdc1c42e182d2682cf5d03429554fcdb2bc",
+    "65d86b8ec6b1cd8b8f6e64fd8710274ba00d6a3c520e00dfdcd1c3d2071f3305",
+    "68c5d236785edf75344cebe8b9bec36568bd35c96eb72cc67ffecd66c17dbd74",
+    "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3",
+    "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
+    "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+    "7c693ea746d879a27c3db8ae26131090d0cd89c36f79550ea6674b97e2da9a03",
+    "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681",
+    "8614947dfc0ca1d21aad2f88b4400598262ab8c08aa87c4f7acc0c2de6e5619e",
+    "8b4e95f5cf0dc40269c99f7b787203ffe04ded245ca2427422c196efa2b2f42a",
+    "8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae",
+    "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+    "8f9651ba1fd4e35aa8b652958191d9df7a188a7264f547d577a8e82b4a9cda54",
+    "9283c7aad0a510531987c71302a8e3b1f0d9d1f1698f2c9bd00eb6b1679a91e2",
+    "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+    "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+    "9a64a12138a2513b088b066a6b0c7cc33d87d48933f42638dd6e8203166882ed",
+    "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+    "b082a5f86775b2641f01bccb8b9c82908481de5f502bb254b1e13bfc2a9f303d",
+    "b2c560e0764523e0d3c2e7615c9379c71c25a9bfa1cc4d2f306ba433f037a7a4",
+    "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579",
+    "bab552307bdd03ed9a4cf7f8f1397c3d18d4dbee19ee576033284104785245be",
+    "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1",
+    "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+    "c42285aa32440c3b5358fd4805b817cd8d6e1795111d2e4c547530be41896b2d",
+    "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+    "c760d1f2e4614d58f2b91cd41b9826457989c09041be0219158b8f7f6d3f8763",
+    "cdbbd4ef3942363117366823fa89cd468fbed08d3e2ee5f7df8c38f2ba41fe2e",
+    "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+    "d317c0b65f09d88bd4c4b268b76faab39368a8904fd86c39669c666b1c51d4a7",
+    "d5bbd7748a19e3fed6ea31242e8de9814e69a0125ae7758a7491057d5fe76f34",
+    "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+    "d89e31fed70f2cad9c6e91b787bf4c0fb680c631196b2a7215c81745aaf7fb7e",
+    "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704",
+    "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+    "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+    "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8",
+    "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe",
+    "fc9c745d1883ff9f296a5b169f22eb2ee879f59a4608f20f5cb29d668f4e26f4"
+  ],
+  "files": [
+    {
+      "path": "packaging/licenses/release-build-support/gcc-runtime/SELECTED-SOURCE-NOTICES.txt",
+      "sha256": "9a64a12138a2513b088b066a6b0c7cc33d87d48933f42638dd6e8203166882ed",
+      "categories": [
+        "email"
+      ],
+      "email_count": 3,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/libtiff-build-support-v1.json",
+          "review_sha256": "c9dd1742ee390d59896f26ca6b25a284cc4e08fb0dd10ac8fe4b6da8969b3b59",
+          "asset_sha256": "9a64a12138a2513b088b066a6b0c7cc33d87d48933f42638dd6e8203166882ed",
+          "component_id": "libtiff-build-gcc-runtime",
+          "enclosing_artifact_sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gcc-16.2.0-6.src.tar.zst"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-build-support/mingw-crt/SELECTED-PUBLIC-DOMAIN-NOTICES.txt",
+      "sha256": "8f9651ba1fd4e35aa8b652958191d9df7a188a7264f547d577a8e82b4a9cda54",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/libtiff-build-support-v1.json",
+          "review_sha256": "c9dd1742ee390d59896f26ca6b25a284cc4e08fb0dd10ac8fe4b6da8969b3b59",
+          "asset_sha256": "8f9651ba1fd4e35aa8b652958191d9df7a188a7264f547d577a8e82b4a9cda54",
+          "component_id": "libtiff-build-mingw-crt",
+          "enclosing_artifact_sha256": "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/libtiff-build-support-v1.json",
+          "review_sha256": "c9dd1742ee390d59896f26ca6b25a284cc4e08fb0dd10ac8fe4b6da8969b3b59",
+          "asset_sha256": "8f9651ba1fd4e35aa8b652958191d9df7a188a7264f547d577a8e82b4a9cda54"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-cmake-build/cmake-build-bzip2/LICENSE",
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/cmake-embedded-build-components-v1.json",
+          "review_sha256": "45703137ce7b9e34fc4702cbe2bde7fab98fd94c8322aaebf11b175a910c9850",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "component_id": "cmake-build-bzip2",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmbzip2",
+          "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "asset_origin": {
+            "member": "cmake-4.4.5/Utilities/cmbzip2/LICENSE"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-gpg-build/gpg-build-bzip2/LICENSE.txt",
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/gpg-build-components-v1.json",
+          "review_sha256": "0b04f84e419412e18322f28b9a9add69a21b57bffcc2cd833d8ddf768bb965a9",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "component_id": "gpg-build-bzip2",
+          "enclosing_artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+          "source_url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/gpg-build-components-v1.json",
+          "review_sha256": "0b04f84e419412e18322f28b9a9add69a21b57bffcc2cd833d8ddf768bb965a9",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-gpg-build/gpg-build-zlib/LICENSE.txt",
+      "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/gpg-build-components-v1.json",
+          "review_sha256": "0b04f84e419412e18322f28b9a9add69a21b57bffcc2cd833d8ddf768bb965a9",
+          "asset_sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "component_id": "gpg-build-zlib",
+          "enclosing_artifact_sha256": "0dae059764ba7c447c9604eb6cb0f4afaf2d90b003ecf1c8cf2dbe5a13e4442c",
+          "source_url": "https://zlib.net/fossils/zlib-1.3.2.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/gpg-build-components-v1.json",
+          "review_sha256": "0b04f84e419412e18322f28b9a9add69a21b57bffcc2cd833d8ddf768bb965a9",
+          "asset_sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/cmake/NOTICE-COLLECTION.txt",
+      "sha256": "d317c0b65f09d88bd4c4b268b76faab39368a8904fd86c39669c666b1c51d4a7",
+      "categories": [
+        "email"
+      ],
+      "email_count": 4,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "d317c0b65f09d88bd4c4b268b76faab39368a8904fd86c39669c666b1c51d4a7",
+          "component_id": "cmake",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "asset_origin": {}
+        },
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "d317c0b65f09d88bd4c4b268b76faab39368a8904fd86c39669c666b1c51d4a7"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/cmake/cmcurl/COPYING",
+      "sha256": "2eb469aebc37f20dda0960d9a5b03bfb8c0bb8a9d3fa5be0a356aa02fd0a8673",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/cmake-embedded-build-components-v1.json",
+          "review_sha256": "45703137ce7b9e34fc4702cbe2bde7fab98fd94c8322aaebf11b175a910c9850",
+          "asset_sha256": "2eb469aebc37f20dda0960d9a5b03bfb8c0bb8a9d3fa5be0a356aa02fd0a8673",
+          "component_id": "cmake-build-curl",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmcurl",
+          "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "asset_origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmcurl/COPYING"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "2eb469aebc37f20dda0960d9a5b03bfb8c0bb8a9d3fa5be0a356aa02fd0a8673",
+          "component_id": "cmake",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "asset_origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmcurl/COPYING"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/cmake/cmlibrhash/COPYING",
+      "sha256": "62fd8327a27a4170361e097fbbfafaf68cdacadfdcad993ca251238112947a8f",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/cmake-embedded-build-components-v1.json",
+          "review_sha256": "45703137ce7b9e34fc4702cbe2bde7fab98fd94c8322aaebf11b175a910c9850",
+          "asset_sha256": "62fd8327a27a4170361e097fbbfafaf68cdacadfdcad993ca251238112947a8f",
+          "component_id": "cmake-build-librhash",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmlibrhash",
+          "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "asset_origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibrhash/COPYING"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "62fd8327a27a4170361e097fbbfafaf68cdacadfdcad993ca251238112947a8f",
+          "component_id": "cmake",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "asset_origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmlibrhash/COPYING"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/cmake/cmzlib/Copyright.txt",
+      "sha256": "d5bbd7748a19e3fed6ea31242e8de9814e69a0125ae7758a7491057d5fe76f34",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/cmake-embedded-build-components-v1.json",
+          "review_sha256": "45703137ce7b9e34fc4702cbe2bde7fab98fd94c8322aaebf11b175a910c9850",
+          "asset_sha256": "d5bbd7748a19e3fed6ea31242e8de9814e69a0125ae7758a7491057d5fe76f34",
+          "component_id": "cmake-build-zlib",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b/Utilities/cmzlib",
+          "source_archive_sha256": "a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2",
+          "asset_origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmzlib/Copyright.txt"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "d5bbd7748a19e3fed6ea31242e8de9814e69a0125ae7758a7491057d5fe76f34",
+          "component_id": "cmake",
+          "enclosing_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "source_url": "https://github.com/Kitware/CMake/tree/5a8c9fc93b4f5ae5399703b400ba8abb9e1c711b",
+          "asset_origin": {
+            "input_artifact_sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+            "member": "cmake-4.4.5-windows-x86_64/doc/cmake/cmzlib/Copyright.txt"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-crt/COPYING.MinGW-w64-runtime.txt",
+      "sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+          "component_id": "mingw-w64-ucrt-x86-64-crt",
+          "enclosing_artifact_sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "asset_origin": {
+            "input_artifact_sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
+            "member": "ucrt64/share/licenses/crt/COPYING.MinGW-w64-runtime.txt"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-crt/NOTICE-COLLECTION.txt",
+      "sha256": "b2c560e0764523e0d3c2e7615c9379c71c25a9bfa1cc4d2f306ba433f037a7a4",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "b2c560e0764523e0d3c2e7615c9379c71c25a9bfa1cc4d2f306ba433f037a7a4",
+          "component_id": "mingw-w64-ucrt-x86-64-crt",
+          "enclosing_artifact_sha256": "386c478f65b30e151f2f4d7f625893bb70daadc301d68683397dc846d4797647",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-crt-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "asset_origin": {}
+        },
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "b2c560e0764523e0d3c2e7615c9379c71c25a9bfa1cc4d2f306ba433f037a7a4"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-gmp/README",
+      "sha256": "5e9f9325fd702bc4bcda27d7a78fea88a2a09fa39b4b15ac7b9b205e0863dc7e",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "5e9f9325fd702bc4bcda27d7a78fea88a2a09fa39b4b15ac7b9b205e0863dc7e",
+          "component_id": "mingw-w64-ucrt-x86-64-gmp",
+          "enclosing_artifact_sha256": "e82a75968a556484a50084578238a84eb60fb93e34986fd6695c537975bd39ea",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-gmp-6.3.0-2.src.tar.zst",
+          "asset_origin": {
+            "source_artifact_sha256": "f288f944fd9609db220bcf6a8dd0703a5674eeb906ef35eb8485bb8192135994",
+            "nested_archive_sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898",
+            "member": "gmp-6.3.0/README"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-headers/COPYING.MinGW-w64-runtime.txt",
+      "sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "1db8da07b436c68833c0673ffee3d9fcb2526047f3820b81661865dfedc79a1f",
+          "component_id": "mingw-w64-ucrt-x86-64-headers",
+          "enclosing_artifact_sha256": "1dfbdb987964e5ec9eecd2653ef365767ca7970abf9c7de1b05c066f18e3eb21",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-headers-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "asset_origin": {
+            "input_artifact_sha256": "1dfbdb987964e5ec9eecd2653ef365767ca7970abf9c7de1b05c066f18e3eb21",
+            "member": "ucrt64/share/licenses/headers/COPYING.MinGW-w64-runtime.txt"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-headers/NOTICE-COLLECTION.txt",
+      "sha256": "642f29d7e28a211ccd2858e42b262fdc1c42e182d2682cf5d03429554fcdb2bc",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "642f29d7e28a211ccd2858e42b262fdc1c42e182d2682cf5d03429554fcdb2bc",
+          "component_id": "mingw-w64-ucrt-x86-64-headers",
+          "enclosing_artifact_sha256": "1dfbdb987964e5ec9eecd2653ef365767ca7970abf9c7de1b05c066f18e3eb21",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-headers-14.0.0.r569.g34eeafb7d-1.src.tar.zst",
+          "asset_origin": {}
+        },
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "642f29d7e28a211ccd2858e42b262fdc1c42e182d2682cf5d03429554fcdb2bc"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-libiconv/README",
+      "sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4",
+          "component_id": "mingw-w64-ucrt-x86-64-libiconv",
+          "enclosing_artifact_sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libiconv-1.19-1.src.tar.zst",
+          "asset_origin": {
+            "input_artifact_sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+            "member": "ucrt64/share/licenses/libiconv/README"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-mpc/README",
+      "sha256": "cdbbd4ef3942363117366823fa89cd468fbed08d3e2ee5f7df8c38f2ba41fe2e",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "cdbbd4ef3942363117366823fa89cd468fbed08d3e2ee5f7df8c38f2ba41fe2e",
+          "component_id": "mingw-w64-ucrt-x86-64-mpc",
+          "enclosing_artifact_sha256": "f06556e811c711ce91609484e31d358e4f495811ba29813bf2284a3b236d82ce",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-mpc-1.4.1-1.src.tar.zst",
+          "asset_origin": {
+            "source_artifact_sha256": "655ed4227108f08f129a0900850ab16330c2e2ad45105900d4327f036ace3a5f",
+            "nested_archive_sha256": "91204cd32f164bd3b7c992d4a6a8ce6519511aadab30f78b6982d0bf8d73e931",
+            "member": "mpc-1.4.1/README"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native-build-tools/mingw-w64-ucrt-x86-64-zlib/LICENSE",
+      "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-build-tool-components-v1.json",
+          "review_sha256": "f24b2ee0c405f6334c2e816329be35f8c63da6b113320d6991bb19064f17ee6c",
+          "asset_sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "component_id": "mingw-w64-ucrt-x86-64-zlib",
+          "enclosing_artifact_sha256": "130e6ef04c654fc2150a177600aa5ed0035087665a893479d2c85ba7485d5704",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-3.src.tar.zst",
+          "asset_origin": {
+            "input_artifact_sha256": "130e6ef04c654fc2150a177600aa5ed0035087665a893479d2c85ba7485d5704",
+            "member": "ucrt64/share/licenses/zlib/LICENSE"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/lxml-embedded-zlib/LICENSE",
+      "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "component_id": "lxml-embedded-zlib",
+          "enclosing_artifact_sha256": "b2d444f2e66624d68e9c6b211e28a76e22fff5fcabcfff4deac18b529b7d4137",
+          "source_url": "https://codeload.github.com/winlibs/zlib/tar.gz/0089522e62e6b5d4950e62bd20f0cb06a9288413"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-bzip2/LICENSE",
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "component_id": "msys2-bzip2",
+          "enclosing_artifact_sha256": "932da2c63b23e6a4448757eb36fb198a9e51121874408270afe2c91bada513c7",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-bzip2-1.0.8-3.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-curl-winssl/LICENSE",
+      "sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681",
+          "component_id": "msys2-curl-winssl",
+          "enclosing_artifact_sha256": "f0b793202b72b784cb7c0ac90371114fc6d84e1048568a703694b58f28f016fc",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-curl-8.21.0-2.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "82f2f4427d6545ee5aaac4f0b80428da6cc8ba41c2cf5da3a03680ec327b9681"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-libiconv/README",
+      "sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4",
+          "component_id": "msys2-libiconv",
+          "enclosing_artifact_sha256": "9a500f38c2b91808741c62fae746b3e9110b33a1ecf5c30fa0c66dbedddf7e16",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libiconv-1.19-1.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-libjpeg-turbo/LICENSE.md.txt",
+      "sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579",
+          "component_id": "msys2-libjpeg-turbo",
+          "enclosing_artifact_sha256": "7c001d00df557cfee969ad43d37b9c31ae22869e8aac4091a89dc3ae6d95e11d",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libjpeg-turbo-3.2.0-1.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "ba6bceebcba0fdd35488477c2cca8c4632ce82c74dbfbc87d886ce6fc4433579"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-libjpeg-turbo/README.ijg",
+      "sha256": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6",
+          "component_id": "msys2-libjpeg-turbo",
+          "enclosing_artifact_sha256": "7c001d00df557cfee969ad43d37b9c31ae22869e8aac4091a89dc3ae6d95e11d",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libjpeg-turbo-3.2.0-1.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-libjpeg-turbo/simd/jsimdext.inc",
+      "sha256": "68c5d236785edf75344cebe8b9bec36568bd35c96eb72cc67ffecd66c17dbd74",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "68c5d236785edf75344cebe8b9bec36568bd35c96eb72cc67ffecd66c17dbd74",
+          "component_id": "msys2-libjpeg-turbo",
+          "enclosing_artifact_sha256": "7c001d00df557cfee969ad43d37b9c31ae22869e8aac4091a89dc3ae6d95e11d",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libjpeg-turbo-3.2.0-1.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "68c5d236785edf75344cebe8b9bec36568bd35c96eb72cc67ffecd66c17dbd74"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-native/msys2-libssh2-wincng/LICENSE",
+      "sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe",
+      "categories": [
+        "email"
+      ],
+      "email_count": 3,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe",
+          "component_id": "msys2-libssh2-wincng",
+          "enclosing_artifact_sha256": "26710b6978533c38b60a33762e99128bd74f8520896bb9486656e4aa741bbe5b",
+          "source_url": "https://mirror.msys2.org/mingw/sources/mingw-w64-libssh2-1.11.1-2.src.tar.zst"
+        },
+        {
+          "review_path": "packaging/release-reviews/native-components-v1.json",
+          "review_sha256": "197983cafdd1875240c4feebd3c3c84b3e3d01ea051ccac00c21c6df37926f59",
+          "asset_sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/cpython-bzip2/LICENSE",
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "component_id": "cpython-bzip2",
+          "enclosing_artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+          "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/bzip2-1.0.8.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "asset_origin": {
+            "member": "cpython-source-deps-bzip2-1.0.8/LICENSE"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/cpython/LICENSE.txt",
+      "sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+          "component_id": "cpython-macholib",
+          "enclosing_artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+          "source_url": "https://files.pythonhosted.org/packages/ec/57/f0a712efc3ed982cf4038a3cee172057303b9be914c32c93b2fbec27f785/macholib-1.0.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+          "asset_origin": {
+            "member": "LICENSE.txt"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+      "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "pikepdf-embedded-qpdf",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "pikepdf-qpdf-libjpeg",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "pikepdf-qpdf-openssl",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.0/openssl-3.6.0.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "pikepdf-qpdf-zlib",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "asset_origin": {
+            "member": "pikepdf-10.10.0.dist-info/licenses/licenses-for-wheels.txt"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/qpdf-cli-v1.json",
+          "review_sha256": "7ca36709e4d39d8753dd0d1b6b0e0f35d48587681420c90462ea7be09b50ecf0",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "qpdf-cli",
+          "enclosing_artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+          "source_url": "https://github.com/qpdf/qpdf/tree/v12.3.2"
+        },
+        {
+          "review_path": "packaging/release-reviews/qpdf-cli-v1.json",
+          "review_sha256": "7ca36709e4d39d8753dd0d1b6b0e0f35d48587681420c90462ea7be09b50ecf0",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "qpdf-cli-openssl",
+          "enclosing_artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+          "source_url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.0/openssl-3.6.0.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qpdf-cli-v1.json",
+          "review_sha256": "7ca36709e4d39d8753dd0d1b6b0e0f35d48587681420c90462ea7be09b50ecf0",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "qpdf-cli-zlib",
+          "enclosing_artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+          "source_url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qpdf-cli-v1.json",
+          "review_sha256": "7ca36709e4d39d8753dd0d1b6b0e0f35d48587681420c90462ea7be09b50ecf0",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "qpdf-cli-libjpeg",
+          "enclosing_artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+          "source_url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/README",
+      "sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+          "component_id": "pikepdf-qpdf-libjpeg",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+          "asset_origin": {
+            "member": "jpeg-9f/README"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/qpdf-cli-v1.json",
+          "review_sha256": "7ca36709e4d39d8753dd0d1b6b0e0f35d48587681420c90462ea7be09b50ecf0",
+          "asset_sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+          "component_id": "qpdf-cli-libjpeg",
+          "enclosing_artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+          "source_url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/pikepdf-qpdf-zlib/README",
+      "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+      "categories": [
+        "email"
+      ],
+      "email_count": 9,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+          "component_id": "pikepdf-qpdf-zlib",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+          "asset_origin": {
+            "member": "zlib-1.3.1/README"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/qpdf-cli-v1.json",
+          "review_sha256": "7ca36709e4d39d8753dd0d1b6b0e0f35d48587681420c90462ea7be09b50ecf0",
+          "asset_sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+          "component_id": "qpdf-cli-zlib",
+          "enclosing_artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+          "source_url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/pillow-embedded-raqm/COPYRIGHT-MIT.txt",
+      "sha256": "60b84ef09459007776c094984fd2559187e5adbc6e7b58696fa91077ff8654da",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "60b84ef09459007776c094984fd2559187e5adbc6e7b58696fa91077ff8654da",
+          "component_id": "pillow-embedded-raqm",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/HOST-Oman/libraqm"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "60b84ef09459007776c094984fd2559187e5adbc6e7b58696fa91077ff8654da",
+          "asset_origin": {
+            "member": "pillow-12.3.0/src/thirdparty/raqm/raqm.c"
+          }
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+      "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-brotli",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/google/brotli"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-dav1d",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://code.videolan.org/videolan/dav1d"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-freetype",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://gitlab.freedesktop.org/freetype/freetype"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-harfbuzz",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/harfbuzz/harfbuzz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libaom",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://aomedia.googlesource.com/aom"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libavif",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/AOMediaCodec/libavif"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libjpeg-turbo",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/libjpeg-turbo/libjpeg-turbo"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libpng",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/pnggroup/libpng"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libsharpyuv",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://chromium.googlesource.com/webm/libwebp"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libtiff",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://gitlab.com/libtiff/libtiff"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libwebp",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://chromium.googlesource.com/webm/libwebp"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-libyuv",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://chromium.googlesource.com/libyuv/libyuv"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-littlecms",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/mm2/Little-CMS"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-openjpeg",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/uclouvain/openjpeg"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-raqm",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/HOST-Oman/libraqm"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-xz-liblzma",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/tukaani-project/xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow-embedded-zlib-ng",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/zlib-ng/zlib-ng"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "asset_origin": {
+            "member": "pillow-12.3.0.dist-info/licenses/LICENSE"
+          }
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857"
+        },
+        {
+          "review_path": "packaging/release-reviews/python-native-components-v1.json",
+          "review_sha256": "93a96792668401b1f4274f4cb78b3fbab95d5ac552791c0e24e088fc29ea2745",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-rust/pydantic-core-rust-python3-dll-a-0.2.14/LICENSE",
+      "sha256": "c760d1f2e4614d58f2b91cd41b9826457989c09041be0219158b8f7f6d3f8763",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-rust-components-v1.json",
+          "review_sha256": "cc1ba0477978bf827d7a07ac556d44fab91f141815bc51e270af2a744973629c",
+          "asset_sha256": "c760d1f2e4614d58f2b91cd41b9826457989c09041be0219158b8f7f6d3f8763",
+          "component_id": "pydantic-core-rust-python3-dll-a-0.2.14",
+          "enclosing_artifact_sha256": "d381ef313ae70b4da5f95f8a4de773c6aa5cd28f73adec4b4a31df70b66780d8",
+          "source_url": "https://crates.io/crates/python3-dll-a/0.2.14"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-rust/pydantic-core-rust-r-efi-5.2.0/AUTHORS",
+      "sha256": "c42285aa32440c3b5358fd4805b817cd8d6e1795111d2e4c547530be41896b2d",
+      "categories": [
+        "email"
+      ],
+      "email_count": 16,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-rust-components-v1.json",
+          "review_sha256": "cc1ba0477978bf827d7a07ac556d44fab91f141815bc51e270af2a744973629c",
+          "asset_sha256": "c42285aa32440c3b5358fd4805b817cd8d6e1795111d2e4c547530be41896b2d",
+          "component_id": "pydantic-core-rust-r-efi-5.2.0",
+          "enclosing_artifact_sha256": "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5",
+          "source_url": "https://crates.io/crates/r-efi/5.2.0"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python-rust/pydantic-core-rust-tap-1.0.1/LICENSE.txt",
+      "sha256": "8b4e95f5cf0dc40269c99f7b787203ffe04ded245ca2427422c196efa2b2f42a",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-rust-components-v1.json",
+          "review_sha256": "cc1ba0477978bf827d7a07ac556d44fab91f141815bc51e270af2a744973629c",
+          "asset_sha256": "8b4e95f5cf0dc40269c99f7b787203ffe04ded245ca2427422c196efa2b2f42a",
+          "component_id": "pydantic-core-rust-tap-1.0.1",
+          "enclosing_artifact_sha256": "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369",
+          "source_url": "https://crates.io/crates/tap/1.0.1"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/fonttools/licenses--LICENSE.external",
+      "sha256": "b082a5f86775b2641f01bccb8b9c82908481de5f502bb254b1e13bfc2a9f303d",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "b082a5f86775b2641f01bccb8b9c82908481de5f502bb254b1e13bfc2a9f303d",
+          "component_id": "fonttools",
+          "enclosing_artifact_sha256": "7d782fac32985914c351556f68ac0855391572bcd87de50e05970d3cd4c96fc5",
+          "source_url": "https://github.com/fonttools/fonttools"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/packaging/licenses--__init__.source.txt",
+      "sha256": "fc9c745d1883ff9f296a5b169f22eb2ee879f59a4608f20f5cb29d668f4e26f4",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "fc9c745d1883ff9f296a5b169f22eb2ee879f59a4608f20f5cb29d668f4e26f4",
+          "component_id": "packaging",
+          "enclosing_artifact_sha256": "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+          "source_url": "https://github.com/pypa/packaging"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pikepdf/licenses--licenses-for-wheels.txt",
+      "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "component_id": "pikepdf",
+          "enclosing_artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+          "source_url": "https://github.com/pikepdf/pikepdf"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pillow/licenses--LICENSE",
+      "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "component_id": "pillow",
+          "enclosing_artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+          "source_url": "https://github.com/python-pillow/Pillow"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pygments/licenses--AUTHORS",
+      "sha256": "0db603a5f4499f690c4425477ff664c166da325d3acc3b5a8d4de3db072443d0",
+      "categories": [
+        "email"
+      ],
+      "email_count": 3,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "0db603a5f4499f690c4425477ff664c166da325d3acc3b5a8d4de3db072443d0",
+          "component_id": "pygments",
+          "enclosing_artifact_sha256": "81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176",
+          "source_url": "https://github.com/pygments/pygments"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--agg23.txt",
+      "sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+          "component_id": "pypdfium2",
+          "enclosing_artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+          "source_url": "https://github.com/pypdfium2-team/pypdfium2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--freetype.txt",
+      "sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8",
+          "component_id": "pypdfium2",
+          "enclosing_artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+          "source_url": "https://github.com/pypdfium2-team/pypdfium2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--icu.txt",
+      "sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+      "categories": [
+        "email"
+      ],
+      "email_count": 3,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+          "component_id": "pypdfium2",
+          "enclosing_artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+          "source_url": "https://github.com/pypdfium2-team/pypdfium2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libjpeg_turbo.ijg",
+      "sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704",
+          "component_id": "pypdfium2",
+          "enclosing_artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+          "source_url": "https://github.com/pypdfium2-team/pypdfium2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--zlib.txt",
+      "sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/python-components-v1.json",
+          "review_sha256": "d1b0ef83c3f9e0098a07a3ad739287cb16d399358c0d58dc99ecefd96d28af51",
+          "asset_sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe",
+          "component_id": "pypdfium2",
+          "enclosing_artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+          "source_url": "https://github.com/pypdfium2-team/pypdfium2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/evidence/pdfium/DEPS.txt",
+      "sha256": "9283c7aad0a510531987c71302a8e3b1f0d9d1f1698f2c9bd00eb6b1679a91e2",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "9283c7aad0a510531987c71302a8e3b1f0d9d1f1698f2c9bd00eb6b1679a91e2"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/agg23.txt",
+      "sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+          "component_id": "pdfium-agg23",
+          "enclosing_artifact_sha256": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f",
+          "source_url": "https://pdfium.googlesource.com/pdfium/+/d3e62278db7489af9e0b686835d1c8aca218c3d7/third_party/agg23"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/freetype.txt",
+      "sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8",
+          "component_id": "pdfium-freetype",
+          "enclosing_artifact_sha256": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f",
+          "source_url": "https://chromium.googlesource.com/chromium/src/third_party/freetype2.git/+/12f5eb32aedb3e27d47c22b0447dc4363703ed94"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/icu.txt",
+      "sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+      "categories": [
+        "email"
+      ],
+      "email_count": 3,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+          "component_id": "pdfium-icu",
+          "enclosing_artifact_sha256": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f",
+          "source_url": "https://chromium.googlesource.com/chromium/deps/icu.git/+/d578f2e8b7bd5938e21cfb6bf15c079e0aa5b738"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/libjpeg_turbo.ijg",
+      "sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704",
+          "component_id": "pdfium-libjpeg-turbo",
+          "enclosing_artifact_sha256": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f",
+          "source_url": "https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git/+/640f254ad0fa03f6b1f29f89b7dd9366f2f6e533"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/zlib.txt",
+      "sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe",
+          "component_id": "pdfium-zlib",
+          "enclosing_artifact_sha256": "75df6802fc090ad7c76ccc29ed80c3fcb1a375c775bbf8e522189174647b101f",
+          "source_url": "https://chromium.googlesource.com/chromium/src/third_party/zlib.git/+/3246f1b60849cc505e231c5d19d0cbf358093555"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/LICENSES/FTL.txt",
+      "sha256": "08c135755dd589039470f1fdbb400daaabaaa50d0b366d19cebff4d22986baa1",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "08c135755dd589039470f1fdbb400daaabaaa50d0b366d19cebff4d22986baa1",
+          "component_id": "qt-freetype",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "08c135755dd589039470f1fdbb400daaabaaa50d0b366d19cebff4d22986baa1",
+          "component_id": "qt-grayraster",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "08c135755dd589039470f1fdbb400daaabaaa50d0b366d19cebff4d22986baa1"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/LICENSES/LicenseRef-SHA1-Public-Domain.txt",
+      "sha256": "65d86b8ec6b1cd8b8f6e64fd8710274ba00d6a3c520e00dfdcd1c3d2071f3305",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "65d86b8ec6b1cd8b8f6e64fd8710274ba00d6a3c520e00dfdcd1c3d2071f3305",
+          "component_id": "qt-sha1",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "65d86b8ec6b1cd8b8f6e64fd8710274ba00d6a3c520e00dfdcd1c3d2071f3305"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/LICENSES/Zlib.txt",
+      "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+          "component_id": "qt-freetype-zlib",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+          "component_id": "qt-zlib",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/blake2/qt_attribution.json.txt",
+      "sha256": "bab552307bdd03ed9a4cf7f8f1397c3d18d4dbee19ee576033284104785245be",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "bab552307bdd03ed9a4cf7f8f1397c3d18d4dbee19ee576033284104785245be",
+          "component_id": "qt-blake2",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "bab552307bdd03ed9a4cf7f8f1397c3d18d4dbee19ee576033284104785245be"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/freetype/LICENSE.txt",
+      "sha256": "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1",
+          "component_id": "qt-freetype",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1",
+          "component_id": "qt-grayraster",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/freetype/ZLIB-LICENSE.txt",
+      "sha256": "2b1f5d615382a151af3eb71462ad17d89e2efee8fa7664058d35d3d9237ebb19",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "2b1f5d615382a151af3eb71462ad17d89e2efee8fa7664058d35d3d9237ebb19",
+          "component_id": "qt-freetype-zlib",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "2b1f5d615382a151af3eb71462ad17d89e2efee8fa7664058d35d3d9237ebb19"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/freetype/docs/FTL.TXT.txt",
+      "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
+          "component_id": "qt-freetype",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/freetype/qt_attribution.json.txt",
+      "sha256": "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7",
+          "component_id": "qt-freetype",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7",
+          "component_id": "qt-freetype-bdf",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7",
+          "component_id": "qt-freetype-pcf",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7",
+          "component_id": "qt-freetype-zlib",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "628b68bf60eb3bc1616342bc3545b63be2392e78bbebbc4c19f49675dd2ac8a7"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/md4/qt_attribution.json.txt",
+      "sha256": "34bda63a2fcc23c83f2e5364ccd394553b4baa505b1f79ded9cc2161c56a9b4c",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "34bda63a2fcc23c83f2e5364ccd394553b4baa505b1f79ded9cc2161c56a9b4c",
+          "component_id": "qt-md4",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "34bda63a2fcc23c83f2e5364ccd394553b4baa505b1f79ded9cc2161c56a9b4c"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/md5/qt_attribution.json.txt",
+      "sha256": "20b0f1b17ccd1bd5e8d763b1cdca4b095b8f0c037644b5ee18154536b7d8425e",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "20b0f1b17ccd1bd5e8d763b1cdca4b095b8f0c037644b5ee18154536b7d8425e",
+          "component_id": "qt-md5",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "20b0f1b17ccd1bd5e8d763b1cdca4b095b8f0c037644b5ee18154536b7d8425e"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/pcre2/LICENSE-SLJIT.txt",
+      "sha256": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+          "component_id": "qt-pcre2-sljit",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/sha1/qt_attribution.json.txt",
+      "sha256": "53cab2c771f7f7ffbf6a58ff759e5846b746e91d98dfe467d5145edf8cd7d306",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "53cab2c771f7f7ffbf6a58ff759e5846b746e91d98dfe467d5145edf8cd7d306",
+          "component_id": "qt-sha1",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "53cab2c771f7f7ffbf6a58ff759e5846b746e91d98dfe467d5145edf8cd7d306"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/siphash/qt_attribution.json.txt",
+      "sha256": "8614947dfc0ca1d21aad2f88b4400598262ab8c08aa87c4f7acc0c2de6e5619e",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "8614947dfc0ca1d21aad2f88b4400598262ab8c08aa87c4f7acc0c2de6e5619e",
+          "component_id": "qt-siphash",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "8614947dfc0ca1d21aad2f88b4400598262ab8c08aa87c4f7acc0c2de6e5619e"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/3rdparty/zlib/LICENSE.txt",
+      "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+          "component_id": "qt-zlib",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-qt-pdfium/qtbase/src/gui/painting/qt_attribution.json.txt",
+      "sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+          "component_id": "qt-grayraster",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+          "component_id": "qt-smooth-scaling-algorithm",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+          "component_id": "qt-xserverhelper",
+          "enclosing_artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+          "source_url": "https://download.qt.io/official_releases/qt/6.11/6.11.1/submodules/qtbase-everywhere-src-6.11.1.tar.xz"
+        },
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "asset_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rpds-py/pyproject.toml.txt",
+      "sha256": "31204ebba071716f2cc06f798e6682e386c311218182e80cfae7e6f07cbaf63b",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "31204ebba071716f2cc06f798e6682e386c311218182e80cfae7e6f07cbaf63b"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-59807616e1fa/REUSE.toml.txt",
+      "sha256": "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-59807616e1fa/library--compiler-builtins--compiler-builtins--Cargo.toml.txt",
+      "sha256": "4d434596c0576fd1454e2de88f826d91518688fa2c3c46fff75c1f31471c4b01",
+      "categories": [
+        "email"
+      ],
+      "email_count": 4,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "4d434596c0576fd1454e2de88f826d91518688fa2c3c46fff75c1f31471c4b01"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-59807616e1fa/license-metadata.json.txt",
+      "sha256": "7c693ea746d879a27c3db8ae26131090d0cd89c36f79550ea6674b97e2da9a03",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "7c693ea746d879a27c3db8ae26131090d0cd89c36f79550ea6674b97e2da9a03"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-8bab26f4f68e/REUSE.toml.txt",
+      "sha256": "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-8bab26f4f68e/library--compiler-builtins--compiler-builtins--Cargo.toml.txt",
+      "sha256": "d89e31fed70f2cad9c6e91b787bf4c0fb680c631196b2a7215c81745aaf7fb7e",
+      "categories": [
+        "email"
+      ],
+      "email_count": 4,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "d89e31fed70f2cad9c6e91b787bf4c0fb680c631196b2a7215c81745aaf7fb7e"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-8bab26f4f68e/license-metadata.json.txt",
+      "sha256": "03018f1893ab6446dfb220b9b953de78929ad63e9a4606591b05af142ce91cdd",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "03018f1893ab6446dfb220b9b953de78929ad63e9a4606591b05af142ce91cdd"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-ac68faa20c58/REUSE.toml.txt",
+      "sha256": "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3",
+      "categories": [
+        "email"
+      ],
+      "email_count": 2,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "6d9f80349a29388841413ecb3d20473b6440768c2fdfa06d0456eb56d516daf3"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-ac68faa20c58/library--compiler-builtins--compiler-builtins--Cargo.toml.txt",
+      "sha256": "50b19507434ddb48ec9301755e7742e87807e04f56ab1886a3287861b0abe8e4",
+      "categories": [
+        "email"
+      ],
+      "email_count": 4,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "50b19507434ddb48ec9301755e7742e87807e04f56ab1886a3287861b0abe8e4"
+        }
+      ]
+    },
+    {
+      "path": "packaging/licenses/release-validation-tools/evidence/rust-ac68faa20c58/license-metadata.json.txt",
+      "sha256": "03018f1893ab6446dfb220b9b953de78929ad63e9a4606591b05af142ce91cdd",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Exact public upstream licence, author attribution or vendor provenance contact bytes",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/validation-build-components-v1.json",
+          "review_sha256": "b10aa6f9fe2a17da60224ec9edde0db4f968d6671a9e3d5fee1f490f32974a63",
+          "asset_sha256": "03018f1893ab6446dfb220b9b953de78929ad63e9a4606591b05af142ce91cdd"
+        }
+      ]
+    },
+    {
+      "path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+      "sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+      "categories": [
+        "email"
+      ],
+      "email_count": 6,
+      "classification": "Inline full LicenseRef notices equal to authenticated public upstream notice files",
+      "provenance_bindings": [
+        {
+          "review_path": "packaging/release-reviews/qt-pdfium-components-v1.json",
+          "review_sha256": "de76bf802d4c0d06c13c2c7418d2f591bb878c4b011bb5648508d2b6b480f3c8",
+          "qt_normalized_notice_sources": [
+            {
+              "review_json_field": "$.license_refs[3].text",
+              "notice_path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/agg23.txt",
+              "notice_sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+              "normalized_full_text_equal": true
+            },
+            {
+              "review_json_field": "$.license_refs[4].text",
+              "notice_path": "packaging/licenses/release-qt-pdfium/pdfium/BUILD_LICENSES/icu.txt",
+              "notice_sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+              "normalized_full_text_equal": true
+            },
+            {
+              "review_json_field": "$.license_refs[5].text",
+              "notice_path": "packaging/licenses/release-qt-pdfium/qtbase/LICENSES/LicenseRef-SHA1-Public-Domain.txt",
+              "notice_sha256": "65d86b8ec6b1cd8b8f6e64fd8710274ba00d6a3c520e00dfdcd1c3d2071f3305",
+              "normalized_full_text_equal": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "tests/fixtures/release-sbom/schema/cyclonedx-jsf-0.82.schema.json",
+      "sha256": "8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae",
+      "categories": [
+        "email"
+      ],
+      "email_count": 1,
+      "classification": "Original public upstream schema author/contact attribution in $comment",
+      "provenance_bindings": [
+        {
+          "provenance_path": "tests/fixtures/release-sbom/schema/PROVENANCE.json",
+          "provenance_sha256": "002b33512f65c03f2a8db8deb7ca06d6367827e8f15a7e11a81e6532b1f587fd",
+          "source_url": "https://raw.githubusercontent.com/CycloneDX/specification/1.6/schema/jsf-0.82.schema.json",
+          "source_size_bytes": 8058,
+          "source_sha256": "8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae",
+          "json_field": "$.$comment"
+        }
+      ]
+    }
+  ]
+}

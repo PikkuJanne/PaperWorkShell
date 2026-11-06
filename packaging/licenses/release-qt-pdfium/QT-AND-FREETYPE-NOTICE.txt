@@ -1,0 +1,6 @@
+This dependency stage includes Qt, PySide6, and shiboken6 6.11.1.
+Copyright remains with The Qt Company Ltd. and the respective contributors.
+The selected community route for the reviewed Qt runtime subset is LGPL-3.0-only.
+The original licence texts and exact corresponding source archives accompany the stage.
+This software is based in part on the work of the FreeType Team (https://freetype.org/).
+The FreeType Project contributors retain their respective copyrights.

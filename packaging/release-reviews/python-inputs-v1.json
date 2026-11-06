@@ -1,0 +1,544 @@
+{
+  "components": [
+    {
+      "component_id": "annotated-types",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "annotated_types-0.8.0.tar.gz",
+        "sha256": "13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7",
+        "size_bytes": 15893,
+        "url": "https://files.pythonhosted.org/packages/5f/56/a8120250d128bed162cd73c76d45f6ef9991f3e068f62a8ee060afa3104a/annotated_types-0.8.0.tar.gz"
+      },
+      "version": "0.8.0",
+      "wheel": {
+        "name": "annotated_types-0.8.0-py3-none-any.whl",
+        "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+        "size_bytes": 13427,
+        "url": "https://files.pythonhosted.org/packages/99/91/8acff4f5e50511b911bbccb72b8628a49c68ce14148cd9f6431094859a90/annotated_types-0.8.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "cffi",
+      "scope": "runtime",
+      "selected_license_route": "MIT-0",
+      "source": {
+        "name": "cffi-2.1.1.tar.gz",
+        "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+        "size_bytes": 530807,
+        "url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz"
+      },
+      "version": "2.1.1",
+      "wheel": {
+        "name": "cffi-2.1.1-cp314-cp314-win_amd64.whl",
+        "sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48",
+        "size_bytes": 187949,
+        "url": "https://files.pythonhosted.org/packages/a7/06/1c3e01e3ba14c39f6d10bfbac52753b7e22259e38088e5cfe1d704918690/cffi-2.1.1-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "charset-normalizer",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "charset_normalizer-3.5.0.tar.gz",
+        "sha256": "49bd5feb59b0bf3cbf6ebcf4352e371c95b9da9bacd4449f8b64d0ad2c10a26e",
+        "size_bytes": 169295,
+        "url": "https://files.pythonhosted.org/packages/cb/31/4971872b3ed8715346231fb6eb4da8fcba65a4143c189db151ee28a2812b/charset_normalizer-3.5.0.tar.gz"
+      },
+      "version": "3.5.0",
+      "wheel": {
+        "name": "charset_normalizer-3.5.0-cp314-cp314-win_amd64.whl",
+        "sha256": "ec6c464cf45867f66a2273e2214d9199a8fbad5cb95ca0fd45f6a2fe1d9d2cf4",
+        "size_bytes": 203723,
+        "url": "https://files.pythonhosted.org/packages/01/51/f94dcf34fa8eba48c1fb89b6490a5f1426e19488fe5f38aac6c648c99057/charset_normalizer-3.5.0-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "cryptography",
+      "scope": "runtime",
+      "selected_license_route": "Apache-2.0",
+      "source": {
+        "name": "cryptography-50.0.0.tar.gz",
+        "sha256": "eeac2acb5a20ed25e0ad6d1df9891a520b78b404266b6d11778f25d5d691a6c9",
+        "size_bytes": 880201,
+        "url": "https://files.pythonhosted.org/packages/de/41/6cbdcf9142d00fe82836fbb51e503e58088575cf7a0fe1dbff6695bf0840/cryptography-50.0.0.tar.gz"
+      },
+      "version": "50.0.0",
+      "wheel": {
+        "name": "cryptography-50.0.0-cp311-abi3-win_amd64.whl",
+        "sha256": "bd1c592e4d5974f0d08d4888e432157adba757c66da0246918e43677fafa2d30",
+        "size_bytes": 3840395,
+        "url": "https://files.pythonhosted.org/packages/32/2e/c9db68a0c4bfa28e310707527c0ee3a2bd254104d2e02e68f368e197aa4c/cryptography-50.0.0-cp311-abi3-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "defusedxml",
+      "scope": "runtime",
+      "selected_license_route": "PSF-2.0",
+      "source": {
+        "name": "defusedxml-0.7.1.tar.gz",
+        "sha256": "1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69",
+        "size_bytes": 75520,
+        "url": "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz"
+      },
+      "version": "0.7.1",
+      "wheel": {
+        "name": "defusedxml-0.7.1-py2.py3-none-any.whl",
+        "sha256": "a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61",
+        "size_bytes": 25604,
+        "url": "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "fonttools",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "fonttools-4.63.0.tar.gz",
+        "sha256": "caeb583deeb5168e694b65cda8b4ee62abedfa66cf88488734466f2366b9c4e0",
+        "size_bytes": 3597189,
+        "url": "https://files.pythonhosted.org/packages/84/69/c97f2c18e0db87d2c7b15da1974dace76ae938f1cfa22e2727a648b7ed43/fonttools-4.63.0.tar.gz"
+      },
+      "version": "4.63.0",
+      "wheel": {
+        "name": "fonttools-4.63.0-cp314-cp314-win_amd64.whl",
+        "sha256": "7d782fac32985914c351556f68ac0855391572bcd87de50e05970d3cd4c96fc5",
+        "size_bytes": 2347454,
+        "url": "https://files.pythonhosted.org/packages/c3/d4/98078064ccc76b45cb0f6c002452011e93c4bd26f6850344f0951cc1fe89/fonttools-4.63.0-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "fpdf2",
+      "scope": "runtime",
+      "selected_license_route": "LGPL-3.0-only AND LicenseRef-ICC-Profile",
+      "source": {
+        "name": "fpdf2-2.8.8.tar.gz",
+        "sha256": "9e94e155e85e8053329a9a1fce8b566fd7a7c5bb79e98a1a3952d379b947c5b9",
+        "size_bytes": 374689,
+        "url": "https://files.pythonhosted.org/packages/1e/bc/8fd4321aed40cadadddc8f311c65b6082346b252bca048f7b476d8f35d72/fpdf2-2.8.8.tar.gz"
+      },
+      "version": "2.8.8",
+      "wheel": {
+        "name": "fpdf2-2.8.8-py3-none-any.whl",
+        "sha256": "3557a478fc577a929c94aace9666aed4dcc432b5ab6764232e6a59f1ccd75f17",
+        "size_bytes": 337000,
+        "url": "https://files.pythonhosted.org/packages/f5/be/af012eda9507494f28b99b077423806c43a11573eb6225dd46f19ae2d263/fpdf2-2.8.8-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "img2pdf",
+      "scope": "runtime",
+      "selected_license_route": "LGPL-3.0-only",
+      "source": {
+        "name": "img2pdf-0.6.3.tar.gz",
+        "sha256": "219518020f5bd242bdc46493941ea3f756f664c2e86f2454721e74353f58cd95",
+        "size_bytes": 120350,
+        "url": "https://files.pythonhosted.org/packages/8e/97/ca44c467131b93fda82d2a2f21b738c8bcf63b5259e3b8250e928b8dd52a/img2pdf-0.6.3.tar.gz"
+      },
+      "version": "0.6.3",
+      "wheel": {
+        "name": "img2pdf-0.6.3-py3-none-any.whl",
+        "sha256": "44d12d235752edd17c43c04ff39952cdc5dd4c6aba90569c4902bd445085266b",
+        "size_bytes": 49701,
+        "url": "https://files.pythonhosted.org/packages/4d/dc/91e3a4a11c25ae183bd5a71b84ecb298db76405ff70013f76b10877bdfe3/img2pdf-0.6.3-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "lxml",
+      "scope": "runtime",
+      "selected_license_route": "BSD-3-Clause",
+      "source": {
+        "name": "lxml-6.1.1.tar.gz",
+        "sha256": "ba96ae44888e0185281e937633a743ea90d5a196c6000f82565ebb0580012d40",
+        "size_bytes": 4197430,
+        "url": "https://files.pythonhosted.org/packages/05/3b/aab6728cae887456f409b4d75e8a01856e4f04bd510de38052a47768b680/lxml-6.1.1.tar.gz"
+      },
+      "version": "6.1.1",
+      "wheel": {
+        "name": "lxml-6.1.1-cp314-cp314-win_amd64.whl",
+        "sha256": "b2d444f2e66624d68e9c6b211e28a76e22fff5fcabcfff4deac18b529b7d4137",
+        "size_bytes": 4064497,
+        "url": "https://files.pythonhosted.org/packages/b8/ce/3cf9a827342269f54d405a6202397de63f07c69cbd6ce7d183a3f0cba1e9/lxml-6.1.1-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "markdown-it-py",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "markdown_it_py-4.2.0.tar.gz",
+        "sha256": "04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49",
+        "size_bytes": 82454,
+        "url": "https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz"
+      },
+      "version": "4.2.0",
+      "wheel": {
+        "name": "markdown_it_py-4.2.0-py3-none-any.whl",
+        "sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a",
+        "size_bytes": 91687,
+        "url": "https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "mdurl",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "mdurl-0.1.2.tar.gz",
+        "sha256": "bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba",
+        "size_bytes": 8729,
+        "url": "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz"
+      },
+      "version": "0.1.2",
+      "wheel": {
+        "name": "mdurl-0.1.2-py3-none-any.whl",
+        "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
+        "size_bytes": 9979,
+        "url": "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "ocrmypdf",
+      "scope": "runtime",
+      "selected_license_route": "MPL-2.0 AND Apache-2.0 AND OFL-1.1 AND Zlib",
+      "source": {
+        "name": "ocrmypdf-17.10.0.tar.gz",
+        "sha256": "3e80a22e7ca9a746034e990414c9f18791f168800f3ede92101504f45be6129c",
+        "size_bytes": 7499394,
+        "url": "https://files.pythonhosted.org/packages/20/2e/96c9912ad50fe3e186f0d3580d06d27ac2300fcc178d7457794f4bcaf3b8/ocrmypdf-17.10.0.tar.gz"
+      },
+      "version": "17.10.0",
+      "wheel": {
+        "name": "ocrmypdf-17.10.0-py3-none-any.whl",
+        "sha256": "34ba1b595ecacc94b6dc3c9d4fa51953de63082cd16cf8595251bd72120b930a",
+        "size_bytes": 523170,
+        "url": "https://files.pythonhosted.org/packages/39/6b/29a4c5f4e67d16bff32f706bf338d443761fe4933b9be4067e958db04aaa/ocrmypdf-17.10.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "packaging",
+      "scope": "runtime",
+      "selected_license_route": "Apache-2.0",
+      "source": {
+        "name": "packaging-26.2.tar.gz",
+        "sha256": "ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661",
+        "size_bytes": 228134,
+        "url": "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626c03e4e99c87f241ba9e350cd9e6d75123f992427270/packaging-26.2.tar.gz"
+      },
+      "version": "26.2",
+      "wheel": {
+        "name": "packaging-26.2-py3-none-any.whl",
+        "sha256": "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+        "size_bytes": 100195,
+        "url": "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "pdfminer-six",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "pdfminer_six-20260107.tar.gz",
+        "sha256": "96bfd431e3577a55a0efd25676968ca4ce8fd5b53f14565f85716ff363889602",
+        "size_bytes": 8512094,
+        "url": "https://files.pythonhosted.org/packages/34/a4/5cec1112009f0439a5ca6afa8ace321f0ab2f48da3255b7a1c8953014670/pdfminer_six-20260107.tar.gz"
+      },
+      "version": "20260107",
+      "wheel": {
+        "name": "pdfminer_six-20260107-py3-none-any.whl",
+        "sha256": "366585ba97e80dffa8f00cebe303d2f381884d8637af4ce422f1df3ef38111a9",
+        "size_bytes": 6592252,
+        "url": "https://files.pythonhosted.org/packages/20/8b/28c4eaec9d6b036a52cb44720408f26b1a143ca9bce76cc19e8f5de00ab4/pdfminer_six-20260107-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "pi-heif",
+      "scope": "runtime",
+      "selected_license_route": "BSD-3-Clause AND LGPL-3.0-only AND LicenseRef-Pi-Heif-Native-Closure",
+      "source": {
+        "name": "pi_heif-1.4.0.tar.gz",
+        "sha256": "e1199d9d41d9ecc877cf3ae7322ff099f6404574f2e62da47590cd4ecb9ec554",
+        "size_bytes": 17125614,
+        "url": "https://files.pythonhosted.org/packages/6a/a2/70168b601b41bdf5726dfc8dc110eb4052a2e851fed9c9bdae95910e401d/pi_heif-1.4.0.tar.gz"
+      },
+      "staging_disposition": "omit-unused-unsupported-heif-decoder",
+      "version": "1.4.0",
+      "wheel": {
+        "name": "pi_heif-1.4.0-cp314-cp314-win_amd64.whl",
+        "sha256": "743b971b9c0d35be8435702443596e3e9280084e68fc8d5c4de4b31fb12a1417",
+        "size_bytes": 2471355,
+        "url": "https://files.pythonhosted.org/packages/a6/67/1373582c4bfa3ca2092befd5555fc52d581fc34ad4a5cb0d8401d7f847b4/pi_heif-1.4.0-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "pikepdf",
+      "scope": "runtime",
+      "selected_license_route": "MPL-2.0",
+      "source": {
+        "name": "pikepdf-10.10.0.tar.gz",
+        "sha256": "9f134806b2fe608ccb21379a664ddcefeac3f6944100d343b350299d3c69754e",
+        "size_bytes": 23886210,
+        "url": "https://files.pythonhosted.org/packages/95/e7/45265a52196e7b1e4d1fdee57159d25670275784f5eeb3651327cf68e137/pikepdf-10.10.0.tar.gz"
+      },
+      "version": "10.10.0",
+      "wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+        "size_bytes": 3414578,
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "pillow",
+      "scope": "runtime",
+      "selected_license_route": "MIT-CMU",
+      "source": {
+        "name": "pillow-12.3.0.tar.gz",
+        "sha256": "3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce",
+        "size_bytes": 47025035,
+        "url": "https://files.pythonhosted.org/packages/1c/3d/bb7fca845737cf9d7dbde16ed1843984665ff2e0a518f5db43e77ec540b9/pillow-12.3.0.tar.gz"
+      },
+      "version": "12.3.0",
+      "wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+        "size_bytes": 7237707,
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "pluggy",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "pluggy-1.6.0.tar.gz",
+        "sha256": "7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3",
+        "size_bytes": 69412,
+        "url": "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz"
+      },
+      "version": "1.6.0",
+      "wheel": {
+        "name": "pluggy-1.6.0-py3-none-any.whl",
+        "sha256": "e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746",
+        "size_bytes": 20538,
+        "url": "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "pycparser",
+      "scope": "runtime",
+      "selected_license_route": "BSD-3-Clause",
+      "source": {
+        "name": "pycparser-3.0.tar.gz",
+        "sha256": "600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29",
+        "size_bytes": 103492,
+        "url": "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz"
+      },
+      "version": "3.0",
+      "wheel": {
+        "name": "pycparser-3.0-py3-none-any.whl",
+        "sha256": "b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992",
+        "size_bytes": 48172,
+        "url": "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "pydantic",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "pydantic-2.13.4.tar.gz",
+        "sha256": "c40756b57adaa8b1efeeced5c196f3f3b7c435f90e84ea7f443901bec8099ef6",
+        "size_bytes": 844775,
+        "url": "https://files.pythonhosted.org/packages/18/a5/b60d21ac674192f8ab0ba4e9fd860690f9b4a6e51ca5df118733b487d8d6/pydantic-2.13.4.tar.gz"
+      },
+      "version": "2.13.4",
+      "wheel": {
+        "name": "pydantic-2.13.4-py3-none-any.whl",
+        "sha256": "45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba",
+        "size_bytes": 472262,
+        "url": "https://files.pythonhosted.org/packages/fd/7b/122376b1fd3c62c1ed9dc80c931ace4844b3c55407b6fb2d199377c9736f/pydantic-2.13.4-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "pydantic-core",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "pydantic_core-2.46.4.tar.gz",
+        "sha256": "62f875393d7f270851f20523dd2e29f082bcc82292d66db2b64ea71f64b6e1c1",
+        "size_bytes": 471464,
+        "url": "https://files.pythonhosted.org/packages/9d/56/921726b776ace8d8f5db44c4ef961006580d91dc52b803c489fafd1aa249/pydantic_core-2.46.4.tar.gz"
+      },
+      "version": "2.46.4",
+      "wheel": {
+        "name": "pydantic_core-2.46.4-cp314-cp314-win_amd64.whl",
+        "sha256": "811ff8e9c313ab425368bcbb36e5c4ebd7108c2bbf4e4089cfbb0b01eff63fac",
+        "size_bytes": 2072238,
+        "url": "https://files.pythonhosted.org/packages/fc/b6/6b8de4c0a7d7ab3004c439c80c5c1e0a3e8d78bbae19379b01960383d9e5/pydantic_core-2.46.4-cp314-cp314-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "pygments",
+      "scope": "runtime",
+      "selected_license_route": "BSD-2-Clause",
+      "source": {
+        "name": "pygments-2.20.0.tar.gz",
+        "sha256": "6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f",
+        "size_bytes": 4955991,
+        "url": "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz"
+      },
+      "version": "2.20.0",
+      "wheel": {
+        "name": "pygments-2.20.0-py3-none-any.whl",
+        "sha256": "81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176",
+        "size_bytes": 1231151,
+        "url": "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "pypdfium2",
+      "scope": "runtime",
+      "selected_license_route": "Apache-2.0",
+      "source": {
+        "name": "pypdfium2-5.12.1.tar.gz",
+        "sha256": "d0e0648fb2e28f50efcd1ec0a5a18ced9f4d66b2c227fae9b603f0a883b2d13f",
+        "size_bytes": 274428,
+        "url": "https://files.pythonhosted.org/packages/db/42/0b51bdf50ccf13f3deb3209ca996179a49761dc191748469cf0de55b0055/pypdfium2-5.12.1.tar.gz"
+      },
+      "version": "5.12.1",
+      "wheel": {
+        "name": "pypdfium2-5.12.1-py3-none-win_amd64.whl",
+        "sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+        "size_bytes": 3859845,
+        "url": "https://files.pythonhosted.org/packages/a9/c3/08b62718faf2f6b6aa49207626e3113ff3ec1b3cd076c0ef8fd852f0e57c/pypdfium2-5.12.1-py3-none-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "pyside6-essentials",
+      "scope": "runtime",
+      "selected_license_route": "LGPL-3.0-only",
+      "source": null,
+      "version": "6.11.1",
+      "wheel": {
+        "name": "pyside6_essentials-6.11.1-cp310-abi3-win_amd64.whl",
+        "sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+        "size_bytes": 77549267,
+        "url": "https://files.pythonhosted.org/packages/64/0e/b663ecc96ca57b5c91b83b6615d6b174380b0faf30338125c26e053d6aa7/pyside6_essentials-6.11.1-cp310-abi3-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "rich",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "rich-15.0.0.tar.gz",
+        "sha256": "edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36",
+        "size_bytes": 230680,
+        "url": "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz"
+      },
+      "version": "15.0.0",
+      "wheel": {
+        "name": "rich-15.0.0-py3-none-any.whl",
+        "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb",
+        "size_bytes": 310654,
+        "url": "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "shiboken6",
+      "scope": "runtime",
+      "selected_license_route": "LGPL-3.0-only",
+      "source": null,
+      "version": "6.11.1",
+      "wheel": {
+        "name": "shiboken6-6.11.1-cp310-abi3-win_amd64.whl",
+        "sha256": "c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7",
+        "size_bytes": 1223647,
+        "url": "https://files.pythonhosted.org/packages/52/b5/3f6fb2ee65b534193fb4ef713dd619dc31dadff5d12c16979a7699ad58be/shiboken6-6.11.1-cp310-abi3-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "typing-extensions",
+      "scope": "runtime",
+      "selected_license_route": "PSF-2.0",
+      "source": {
+        "name": "typing_extensions-4.16.0.tar.gz",
+        "sha256": "dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5",
+        "size_bytes": 113555,
+        "url": "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz"
+      },
+      "version": "4.16.0",
+      "wheel": {
+        "name": "typing_extensions-4.16.0-py3-none-any.whl",
+        "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+        "size_bytes": 45571,
+        "url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "typing-inspection",
+      "scope": "runtime",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "typing_inspection-0.4.4.tar.gz",
+        "sha256": "547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47",
+        "size_bytes": 76928,
+        "url": "https://files.pythonhosted.org/packages/a3/26/b09b8010994eccc3c09092e6b34058f36a460eea2d4c3e8b910c695975a0/typing_inspection-0.4.4.tar.gz"
+      },
+      "version": "0.4.4",
+      "wheel": {
+        "name": "typing_inspection-0.4.4-py3-none-any.whl",
+        "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+        "size_bytes": 14750,
+        "url": "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl"
+      }
+    },
+    {
+      "component_id": "uharfbuzz",
+      "scope": "runtime",
+      "selected_license_route": "Apache-2.0",
+      "source": {
+        "name": "uharfbuzz-0.56.0.tar.gz",
+        "sha256": "77f4ad1c9f32f44cc6f0c0c4f98fab54587719c96c810a043d01669f704d3e0c",
+        "size_bytes": 38643044,
+        "url": "https://files.pythonhosted.org/packages/58/85/c7545959fdf6b9377b926c826f6d80bddf034ac361b09306d430a0f556a5/uharfbuzz-0.56.0.tar.gz"
+      },
+      "version": "0.56.0",
+      "wheel": {
+        "name": "uharfbuzz-0.56.0-cp310-abi3-win_amd64.whl",
+        "sha256": "0e7c628f327ce862a8606de93766f001704a5201e97d598686730ef2c1605c03",
+        "size_bytes": 1410443,
+        "url": "https://files.pythonhosted.org/packages/96/84/6c63afa111bcaed79ac011fc112c4a8d8cb60904ff5999f2e435bb79db4a/uharfbuzz-0.56.0-cp310-abi3-win_amd64.whl"
+      }
+    },
+    {
+      "component_id": "uv-build",
+      "scope": "build",
+      "selected_license_route": "MIT",
+      "source": {
+        "name": "uv_build-0.11.32.tar.gz",
+        "sha256": "906542262cf0e1f507d3e9bcf0a73afa9c9269daf261fbd5357a541b533b3c72",
+        "size_bytes": 413653,
+        "url": "https://files.pythonhosted.org/packages/fc/ec/cfdffca7572cd62ba148da5de8a2b85e04fa9324393a58699ae80e769ef4/uv_build-0.11.32.tar.gz"
+      },
+      "version": "0.11.32",
+      "wheel": {
+        "name": "uv_build-0.11.32-py3-none-win_amd64.whl",
+        "sha256": "5a6b897f41ca88f9f7b3ccd2db4a16a55aa7e7a65e0c44710987631e5a0b5dad",
+        "size_bytes": 1533447,
+        "url": "https://files.pythonhosted.org/packages/67/e9/7538523af51e692d0d9d65a112fd2cdfdd6cb8c3a9fb88178d22ca50601a/uv_build-0.11.32-py3-none-win_amd64.whl"
+      }
+    }
+  ],
+  "lock_sha256": "6b378cfc5ecf4d71d0191fc8e23d3ce01652ad5c06195d23bc86a196aafa7a3a",
+  "review_id": "pws0801-python-windows-x64",
+  "reviewed_on": "2026-11-03",
+  "schema_version": 1,
+  "target": {
+    "architecture": "x86_64",
+    "os": "Windows",
+    "python_version": "3.14.6"
+  }
+}

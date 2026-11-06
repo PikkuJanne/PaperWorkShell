@@ -6,6 +6,7 @@ import copy
 import io
 import json
 import re
+import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -196,6 +197,127 @@ class TaskValidationTests(unittest.TestCase):
         milestone = _milestone(self.data, "M0")
 
         self.assertEqual("PWS-0010", milestone["gate_task"])
+
+
+class X64ReleaseScopeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.data = _load_mapping(ROOT / "TASKS.yaml", yaml_input=True)
+        self.schema = _load_mapping(ROOT / "TASKS.schema.json", yaml_input=False)
+        decisions = (ROOT / "DECISIONS.md").read_text(encoding="utf-8")
+        self.decisions = re.sub(r"(?ms)^## PWS-D043\b.*?(?=^## PWS-D|\Z)", "", decisions)
+        self.decisions += "\n## PWS-D043 — Windows x64 only\n\n**Status:** FROZEN\n"
+        for task_id in ("PWS-0802", "PWS-0803", "PWS-0808"):
+            task = _task(self.data, task_id)
+            task["decision_refs"] = sorted(set(task["decision_refs"]) | {"PWS-D043"})
+            task["objective"] = "Qualify the Windows 11 x64-only product."
+            for field in ("deliverables", "acceptance_criteria", "verification"):
+                task[field] = ["Windows 11 x64-only release evidence."]
+            if task["blocker"] is not None:
+                task["blocker"]["reason"] = "Approved public signing remains unavailable."
+                task["blocker"]["requested_action"] = "Supply approved signing authority."
+
+    def codes(self) -> set[str]:
+        return {issue.code for issue in validate_data(self.data, self.schema, self.decisions)}
+
+    def test_explicit_out_of_scope_statement_is_allowed(self) -> None:
+        _task(self.data, "PWS-0802")["acceptance_criteria"].append(
+            "ARM64 native support and x64 emulation are outside project scope."
+        )
+        self.assertEqual(set(), self.codes())
+
+    def test_arm_prerequisites_are_rejected_in_each_current_requirement_field(self) -> None:
+        for task_id in ("PWS-0802", "PWS-0803", "PWS-0808"):
+            for field in ("objective", "deliverables", "acceptance_criteria", "verification"):
+                with self.subTest(task=task_id, field=field):
+                    task = _task(self.data, task_id)
+                    old = task[field]
+                    requirement = "ARM64 qualification must pass before public release."
+                    task[field] = requirement if field == "objective" else [requirement]
+                    self.assertIn("TASK_ARCHITECTURE_SCOPE", self.codes())
+                    task[field] = old
+
+    def test_current_blocker_cannot_reintroduce_an_arm_prerequisite(self) -> None:
+        blocker = _task(self.data, "PWS-0802")["blocker"]
+        for field in ("reason", "requested_action"):
+            with self.subTest(field=field):
+                old = blocker[field]
+                blocker[field] = "Acquire an ARM64 environment before PWS-0803 can proceed."
+                self.assertIn("TASK_ARCHITECTURE_SCOPE", self.codes())
+                blocker[field] = old
+
+    def test_out_of_scope_until_qualified_is_not_an_exclusion(self) -> None:
+        _task(self.data, "PWS-0802")["verification"].append(
+            "ARM is outside scope until it is qualified."
+        )
+        self.assertIn("TASK_ARCHITECTURE_SCOPE", self.codes())
+
+    def test_negative_clause_cannot_hide_positive_arm_support(self) -> None:
+        for statement in (
+            "ARM64 is outside scope, but support is required before release.",
+            "ARM64 is not supported; ARM64 qualification must pass.",
+        ):
+            with self.subTest(statement=statement):
+                _task(self.data, "PWS-0803")["acceptance_criteria"] = [statement]
+                self.assertIn("TASK_ARCHITECTURE_SCOPE", self.codes())
+
+    def test_historical_evidence_and_upstream_architecture_facts_remain_allowed(self) -> None:
+        task = _task(self.data, "PWS-0802")
+        task["evidence"]["notes"].append("Historical ARM64 emulation plan was not qualified.")
+        task["blocker"]["evidence"].append("Upstream Inno Setup includes ARM64 examples.")
+        self.assertEqual(set(), self.codes())
+
+    def test_scope_decision_reference_is_required(self) -> None:
+        for task_id in ("PWS-0802", "PWS-0803", "PWS-0808"):
+            with self.subTest(task=task_id):
+                task = _task(self.data, task_id)
+                task["decision_refs"].remove("PWS-D043")
+                self.assertIn("TASK_ARCHITECTURE_DECISION", self.codes())
+                task["decision_refs"].append("PWS-D043")
+
+    def test_historical_graph_before_adoption_keeps_its_original_contract(self) -> None:
+        self.decisions = re.sub(r"(?ms)^## PWS-D043\b.*?(?=^## PWS-D|\Z)", "", self.decisions)
+        for task in self.data["tasks"]:
+            task["decision_refs"] = [d for d in task["decision_refs"] if d != "PWS-D043"]
+        _task(self.data, "PWS-0802")["verification"].append("Qualify ARM64 emulation.")
+        self.assertEqual(set(), self.codes())
+
+    def test_repository_checks_current_product_and_packaging_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "TASKS.yaml").write_text(yaml.safe_dump(self.data), encoding="utf-8")
+            (root / "TASKS.schema.json").write_text(json.dumps(self.schema), encoding="utf-8")
+            (root / "DECISIONS.md").write_text(self.decisions, encoding="utf-8")
+            names = (
+                "packaging/windows/product-v1.json",
+                "packaging/windows/paperworkshell.iss",
+                "schemas/dependency-inventory-v1.schema.json",
+                "schemas/resolved-dependency-inventory-v1.schema.json",
+            )
+            for name in names:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / name, root / name)
+            product_path = root / names[0]
+            product = json.loads(product_path.read_bytes())
+            product["arm64_route"] = (
+                "not supported; native ARM64 and x64 emulation are outside project scope"
+            )
+            product_path.write_text(json.dumps(product), encoding="utf-8")
+            _, issues = validate_repository(root)
+            self.assertEqual([], issues)
+            for name, old, new in (
+                (names[0], '"architecture": "x64"', '"architecture": "ARM64"'),
+                (names[1], "ArchitecturesAllowed=x64os", "ArchitecturesAllowed=x64compatible"),
+                (names[2], '"const": "x86_64"', '"const": "ARM64"'),
+                (names[3], '"const": "x86_64"', '"const": "ARM64"'),
+            ):
+                with self.subTest(name=name):
+                    target = root / name
+                    original = target.read_text(encoding="utf-8")
+                    self.assertIn(old, original)
+                    target.write_text(original.replace(old, new), encoding="utf-8")
+                    _, issues = validate_repository(root)
+                    self.assertIn("REPOSITORY_ARCHITECTURE_SCOPE", {i.code for i in issues})
+                    target.write_text(original, encoding="utf-8")
 
 
 if __name__ == "__main__":

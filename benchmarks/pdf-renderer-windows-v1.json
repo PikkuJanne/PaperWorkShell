@@ -15,7 +15,7 @@
     "id": "paperworkshell-public-synthetic-v1",
     "fixture_index": {
       "path": "tests/fixtures/synthetic/v1/index.json",
-      "sha256": "87603f6f08b55c932fe64015f7477e1078e76a2858987359e7fc0ec393f2bad7"
+      "sha256": "5a0efff7e38468dc75d44351c31935446587bb981f550b09419fcf6f6d087ad9"
     },
     "golden_index": {
       "path": "tests/golden/renderer-v1/index.json",

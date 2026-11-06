@@ -150,7 +150,7 @@ def _run(
     assert report.output_byte_size == len(candidate)
     assert report.unsigned_derivative is True
     assert report.status == "awaiting_verification"
-    assert PERMANENT_REDACTION_ENABLED is False
+    assert PERMANENT_REDACTION_ENABLED is True
     return candidate, report
 
 

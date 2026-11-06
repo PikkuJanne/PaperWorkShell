@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from paperworkshell.localization.catalog import tr
+
 
 class _ImagePanel(QWidget):
     """Draw at the available scale without retaining an extra scaled image."""
@@ -23,8 +25,10 @@ class _ImagePanel(QWidget):
         super().__init__()
         self.image: QImage | None = None
         self.setObjectName(name)
-        self.setAccessibleName(f"{title} page preview")
-        self.setAccessibleDescription(f"{title} page preview has not been loaded.")
+        self.setAccessibleName(tr("{value1} page preview", value1=title))
+        self.setAccessibleDescription(
+            tr("{value1} page preview has not been loaded.", value1=title)
+        )
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(200)
@@ -47,7 +51,7 @@ class _ImagePanel(QWidget):
             painter.drawText(
                 self.rect().adjusted(8, 8, -8, -8),
                 Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
-                "Page preview not loaded",
+                tr("Page preview not loaded"),
             )
         pen = QPen(
             self.palette().highlight().color() if self.hasFocus() else self.palette().mid().color()
@@ -79,24 +83,27 @@ class PreviewComparisonWidget(QWidget):
         super().__init__(parent)
         self._maximum_pair_bytes = maximum_pair_bytes
         self.setObjectName("previewComparisonWidget")
-        self.setAccessibleName("Before and proposed page comparison")
+        self.setAccessibleName(tr("Before and proposed page comparison"))
         self.setAccessibleDescription(
-            "Choose one view or compare both views at the same scale. On narrow windows the "
-            "two views are stacked. Preview pixels do not establish document readability."
+            tr(
+                "Choose one view or compare both views at the same scale. On narrow windows the two views are stacked. Preview pixels do not establish document readability."
+            )
         )
         layout = QVBoxLayout(self)
         self._choice_group = QButtonGroup(self)
         self._choices: list[QRadioButton] = []
         for text, name in (
-            ("Before", "previewComparisonBeforeChoice"),
-            ("Proposed", "previewComparisonProposedChoice"),
-            ("Side by side", "previewComparisonBothChoice"),
+            (tr("Before"), "previewComparisonBeforeChoice"),
+            (tr("Proposed"), "previewComparisonProposedChoice"),
+            (tr("Side by side"), "previewComparisonBothChoice"),
         ):
-            choice = QRadioButton(text)
+            choice = QRadioButton(tr(text))
             choice.setObjectName(name)
-            choice.setAccessibleName(f"Show {text.lower()} preview")
+            choice.setAccessibleName(tr("Show {value1} preview", value1=text.lower()))
             choice.setAccessibleDescription(
-                "Use arrow keys to change the comparison view. Both views use matching page geometry."
+                tr(
+                    "Use arrow keys to change the comparison view. Both views use matching page geometry."
+                )
             )
             self._choice_group.addButton(choice)
             choice.toggled.connect(self._update_visibility)
@@ -105,11 +112,13 @@ class PreviewComparisonWidget(QWidget):
         self._panels = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._groups: list[QGroupBox] = []
         self._images: list[_ImagePanel] = []
-        for title, name in (("Before", "Before"), ("Proposed", "Proposed")):
+        for title, name in ((tr("Before"), "Before"), (tr("Proposed"), "Proposed")):
             group = QGroupBox(title)
             group.setObjectName(f"previewComparison{name}Group")
-            group.setAccessibleName(f"{title} page")
-            group.setAccessibleDescription(f"{title} page pixels and availability.")
+            group.setAccessibleName(tr("{value1} page", value1=title))
+            group.setAccessibleDescription(
+                tr("{value1} page pixels and availability.", value1=title)
+            )
             group.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
             panel = _ImagePanel(title, f"previewComparison{name}Image")
             panel_layout = QVBoxLayout(group)
@@ -118,11 +127,13 @@ class PreviewComparisonWidget(QWidget):
             self._groups.append(group)
             self._images.append(panel)
         layout.addLayout(self._panels)
-        self._status = QLabel("Choose an affected page and load its before and proposed previews.")
+        self._status = QLabel(
+            tr("Choose an affected page and load its before and proposed previews.")
+        )
         self._status.setObjectName("previewComparisonStatus")
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
-        self._status.setAccessibleName("Page comparison availability")
+        self._status.setAccessibleName(tr("Page comparison availability"))
         layout.addWidget(self._status)
         self._choices[2].setChecked(True)
         self.clear()
@@ -159,13 +170,18 @@ class PreviewComparisonWidget(QWidget):
         for panel, image in zip(self._images, copies, strict=True):
             panel.image = image
             panel.setAccessibleDescription(
-                f"{panel.accessibleName()} loaded: {image.width()} by {image.height()} pixels. "
-                "The view scales to fit. Inspect text, stamps, handwriting, and color meaning."
+                tr(
+                    "{value1} loaded: {value2} by {value3} pixels. The view scales to fit. Inspect text, stamps, handwriting, and color meaning.",
+                    value1=panel.accessibleName(),
+                    value2=image.width(),
+                    value3=image.height(),
+                )
             )
             panel.update()
         self._status.setText(
-            "Before and proposed previews loaded at matching dimensions. Inspect small text, "
-            "stamps, handwriting, and any meaning carried by color."
+            tr(
+                "Before and proposed previews loaded at matching dimensions. Inspect small text, stamps, handwriting, and any meaning carried by color."
+            )
         )
         self._status.setAccessibleDescription(self._status.text())
         return True
@@ -173,9 +189,13 @@ class PreviewComparisonWidget(QWidget):
     def clear(self) -> None:
         for panel in self._images:
             panel.image = None
-            panel.setAccessibleDescription(f"{panel.accessibleName()} has not been loaded.")
+            panel.setAccessibleDescription(
+                tr("{value1} has not been loaded.", value1=panel.accessibleName())
+            )
             panel.update()
-        self._status.setText("Choose an affected page and load its before and proposed previews.")
+        self._status.setText(
+            tr("Choose an affected page and load its before and proposed previews.")
+        )
         self._status.setAccessibleDescription(self._status.text())
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override name

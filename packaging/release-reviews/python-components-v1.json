@@ -1,0 +1,1298 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-python-package-notices",
+  "reviewed_on": "2026-11-03",
+  "components": [
+    {
+      "component_id": "annotated-types",
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "annotated-types contributors",
+      "purl": "pkg:pypi/annotated-types@0.8.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/annotated-types/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/annotated-types/licenses--LICENSE",
+          "sha256": "fe1049884b1a0d9342901e88e07f32925d24b3121d9972b6a6805fb9824b095d",
+          "size_bytes": 1083,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/annotated-types/annotated-types",
+      "artifact_sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+      "artifact_url": "https://files.pythonhosted.org/packages/99/91/8acff4f5e50511b911bbccb72b8628a49c68ce14148cd9f6431094859a90/annotated_types-0.8.0-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "annotated_types-0.8.0.tar.gz",
+          "sha256": "13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7",
+          "size_bytes": 15893,
+          "url": "https://files.pythonhosted.org/packages/5f/56/a8120250d128bed162cd73c76d45f6ef9991f3e068f62a8ee060afa3104a/annotated_types-0.8.0.tar.gz",
+          "stage_path": "sources/python/annotated_types-0.8.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/annotated_types-0.8.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "cffi",
+      "name": "cffi",
+      "version": "2.1.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "cffi contributors",
+      "purl": "pkg:pypi/cffi@2.1.1",
+      "license_expression": "MIT-0",
+      "license_texts": [
+        {
+          "path": "notices/python/cffi/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/cffi/licenses--LICENSE",
+          "sha256": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63",
+          "size_bytes": 1123,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/python-cffi/cffi",
+      "artifact_sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48",
+      "artifact_url": "https://files.pythonhosted.org/packages/a7/06/1c3e01e3ba14c39f6d10bfbac52753b7e22259e38088e5cfe1d704918690/cffi-2.1.1-cp314-cp314-win_amd64.whl",
+      "dependencies": [
+        "pycparser"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "cffi-2.1.1.tar.gz",
+          "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+          "size_bytes": 530807,
+          "url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz",
+          "stage_path": "sources/python/cffi-2.1.1.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/cffi-2.1.1.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "charset-normalizer",
+      "name": "charset-normalizer",
+      "version": "3.5.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "charset-normalizer contributors",
+      "purl": "pkg:pypi/charset-normalizer@3.5.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/charset-normalizer/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/charset-normalizer/licenses--LICENSE",
+          "sha256": "18577485d3704f1a479ded8e573c0976cfed315fd2fd17983fa988da4c2f70d1",
+          "size_bytes": 1092,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/jawah/charset_normalizer",
+      "artifact_sha256": "ec6c464cf45867f66a2273e2214d9199a8fbad5cb95ca0fd45f6a2fe1d9d2cf4",
+      "artifact_url": "https://files.pythonhosted.org/packages/01/51/f94dcf34fa8eba48c1fb89b6490a5f1426e19488fe5f38aac6c648c99057/charset_normalizer-3.5.0-cp314-cp314-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "charset_normalizer-3.5.0.tar.gz",
+          "sha256": "49bd5feb59b0bf3cbf6ebcf4352e371c95b9da9bacd4449f8b64d0ad2c10a26e",
+          "size_bytes": 169295,
+          "url": "https://files.pythonhosted.org/packages/cb/31/4971872b3ed8715346231fb6eb4da8fcba65a4143c189db151ee28a2812b/charset_normalizer-3.5.0.tar.gz",
+          "stage_path": "sources/python/charset_normalizer-3.5.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/charset_normalizer-3.5.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "cryptography",
+      "name": "cryptography",
+      "version": "50.0.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Python Cryptographic Authority",
+      "purl": "pkg:pypi/cryptography@50.0.0",
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python/cryptography/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/cryptography/licenses--LICENSE",
+          "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb",
+          "size_bytes": 197,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/cryptography/licenses--LICENSE.APACHE",
+          "asset_path": "packaging/licenses/release-python/cryptography/licenses--LICENSE.APACHE",
+          "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe",
+          "size_bytes": 11360,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/cryptography/licenses--LICENSE.BSD",
+          "asset_path": "packaging/licenses/release-python/cryptography/licenses--LICENSE.BSD",
+          "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb",
+          "size_bytes": 1532,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pyca/cryptography",
+      "artifact_sha256": "bd1c592e4d5974f0d08d4888e432157adba757c66da0246918e43677fafa2d30",
+      "artifact_url": "https://files.pythonhosted.org/packages/32/2e/c9db68a0c4bfa28e310707527c0ee3a2bd254104d2e02e68f368e197aa4c/cryptography-50.0.0-cp311-abi3-win_amd64.whl",
+      "dependencies": [
+        "cffi"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "cryptography-50.0.0.tar.gz",
+          "sha256": "eeac2acb5a20ed25e0ad6d1df9891a520b78b404266b6d11778f25d5d691a6c9",
+          "size_bytes": 880201,
+          "url": "https://files.pythonhosted.org/packages/de/41/6cbdcf9142d00fe82836fbb51e503e58088575cf7a0fe1dbff6695bf0840/cryptography-50.0.0.tar.gz",
+          "stage_path": "sources/python/cryptography-50.0.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/cryptography-50.0.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "defusedxml",
+      "name": "defusedxml",
+      "version": "0.7.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "defusedxml contributors",
+      "purl": "pkg:pypi/defusedxml@0.7.1",
+      "license_expression": "PSF-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python/defusedxml/LICENSE",
+          "asset_path": "packaging/licenses/release-python/defusedxml/LICENSE",
+          "sha256": "b80ce9da8c42a1f91079627fbbe2bf27210ae108a0ffe5f077d5b08e076c24c8",
+          "size_bytes": 2409,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/tiran/defusedxml",
+      "artifact_sha256": "a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61",
+      "artifact_url": "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "defusedxml-0.7.1.tar.gz",
+          "sha256": "1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69",
+          "size_bytes": 75520,
+          "url": "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz",
+          "stage_path": "sources/python/defusedxml-0.7.1.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/defusedxml-0.7.1.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "fonttools",
+      "name": "fonttools",
+      "version": "4.63.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "fonttools contributors",
+      "purl": "pkg:pypi/fonttools@4.63.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/fonttools/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/fonttools/licenses--LICENSE",
+          "sha256": "22bef80697ecfaa17f97e62b9a26dfa12820be05583e8dd12ad169b241274c99",
+          "size_bytes": 1093,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/fonttools/licenses--LICENSE.external",
+          "asset_path": "packaging/licenses/release-python/fonttools/licenses--LICENSE.external",
+          "sha256": "b082a5f86775b2641f01bccb8b9c82908481de5f502bb254b1e13bfc2a9f303d",
+          "size_bytes": 20410,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/fonttools/fonttools",
+      "artifact_sha256": "7d782fac32985914c351556f68ac0855391572bcd87de50e05970d3cd4c96fc5",
+      "artifact_url": "https://files.pythonhosted.org/packages/c3/d4/98078064ccc76b45cb0f6c002452011e93c4bd26f6850344f0951cc1fe89/fonttools-4.63.0-cp314-cp314-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "fonttools-4.63.0.tar.gz",
+          "sha256": "caeb583deeb5168e694b65cda8b4ee62abedfa66cf88488734466f2366b9c4e0",
+          "size_bytes": 3597189,
+          "url": "https://files.pythonhosted.org/packages/84/69/c97f2c18e0db87d2c7b15da1974dace76ae938f1cfa22e2727a648b7ed43/fonttools-4.63.0.tar.gz",
+          "stage_path": "sources/python/fonttools-4.63.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/fonttools-4.63.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "fpdf2",
+      "name": "fpdf2",
+      "version": "2.8.8",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "fpdf2 contributors",
+      "purl": "pkg:pypi/fpdf2@2.8.8",
+      "license_expression": "LGPL-3.0-only AND LicenseRef-ICC-Profile",
+      "license_texts": [
+        {
+          "path": "notices/python/fpdf2/data--color_profiles--sRGB2014.icc.LICENSE",
+          "asset_path": "packaging/licenses/release-python/fpdf2/data--color_profiles--sRGB2014.icc.LICENSE",
+          "sha256": "5ed7fe3efa59b84b47fa22f5c67c9e9934ab9f07961a0d795812282347b88196",
+          "size_bytes": 801,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/fpdf2/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/fpdf2/licenses--LICENSE",
+          "sha256": "f97bc4bb9b7ae8a653941073678b5c7775e8de44a01c3bcc21e7cdc148b90e61",
+          "size_bytes": 7632,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/py-pdf/fpdf2",
+      "artifact_sha256": "3557a478fc577a929c94aace9666aed4dcc432b5ab6764232e6a59f1ccd75f17",
+      "artifact_url": "https://files.pythonhosted.org/packages/f5/be/af012eda9507494f28b99b077423806c43a11573eb6225dd46f19ae2d263/fpdf2-2.8.8-py3-none-any.whl",
+      "dependencies": [
+        "defusedxml",
+        "fonttools",
+        "pillow"
+      ],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "fpdf2-2.8.8.tar.gz",
+          "sha256": "9e94e155e85e8053329a9a1fce8b566fd7a7c5bb79e98a1a3952d379b947c5b9",
+          "size_bytes": 374689,
+          "url": "https://files.pythonhosted.org/packages/1e/bc/8fd4321aed40cadadddc8f311c65b6082346b252bca048f7b476d8f35d72/fpdf2-2.8.8.tar.gz",
+          "stage_path": "sources/python/fpdf2-2.8.8.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/fpdf2-2.8.8.tar.gz",
+          "required_for_corresponding_source": true
+        }
+      ]
+    },
+    {
+      "component_id": "img2pdf",
+      "name": "img2pdf",
+      "version": "0.6.3",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "img2pdf contributors",
+      "purl": "pkg:pypi/img2pdf@0.6.3",
+      "license_expression": "LGPL-3.0-only",
+      "license_texts": [
+        {
+          "path": "notices/python/img2pdf/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/img2pdf/licenses--LICENSE",
+          "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+          "size_bytes": 7652,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://gitlab.mister-muffin.de/josch/img2pdf",
+      "artifact_sha256": "44d12d235752edd17c43c04ff39952cdc5dd4c6aba90569c4902bd445085266b",
+      "artifact_url": "https://files.pythonhosted.org/packages/4d/dc/91e3a4a11c25ae183bd5a71b84ecb298db76405ff70013f76b10877bdfe3/img2pdf-0.6.3-py3-none-any.whl",
+      "dependencies": [
+        "pikepdf",
+        "pillow"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "img2pdf-0.6.3.tar.gz",
+          "sha256": "219518020f5bd242bdc46493941ea3f756f664c2e86f2454721e74353f58cd95",
+          "size_bytes": 120350,
+          "url": "https://files.pythonhosted.org/packages/8e/97/ca44c467131b93fda82d2a2f21b738c8bcf63b5259e3b8250e928b8dd52a/img2pdf-0.6.3.tar.gz",
+          "stage_path": "sources/python/img2pdf-0.6.3.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/img2pdf-0.6.3.tar.gz",
+          "required_for_corresponding_source": true
+        }
+      ]
+    },
+    {
+      "component_id": "lxml",
+      "name": "lxml",
+      "version": "6.1.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "lxml contributors",
+      "purl": "pkg:pypi/lxml@6.1.1",
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python/lxml/licenses--LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python/lxml/licenses--LICENSE.txt",
+          "sha256": "e7c3ce8d76331b0101cc46790ab43958ea90a364bcf962ed8763d5a818340e69",
+          "size_bytes": 1538,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/lxml/licenses--LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python/lxml/licenses--LICENSES.txt",
+          "sha256": "ce53f508d0cb88bdb4621e236ca34881a3fa1805f97dfccf38960128a4e2ead9",
+          "size_bytes": 1543,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/lxml/lxml",
+      "artifact_sha256": "b2d444f2e66624d68e9c6b211e28a76e22fff5fcabcfff4deac18b529b7d4137",
+      "artifact_url": "https://files.pythonhosted.org/packages/b8/ce/3cf9a827342269f54d405a6202397de63f07c69cbd6ce7d183a3f0cba1e9/lxml-6.1.1-cp314-cp314-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "lxml-6.1.1.tar.gz",
+          "sha256": "ba96ae44888e0185281e937633a743ea90d5a196c6000f82565ebb0580012d40",
+          "size_bytes": 4197430,
+          "url": "https://files.pythonhosted.org/packages/05/3b/aab6728cae887456f409b4d75e8a01856e4f04bd510de38052a47768b680/lxml-6.1.1.tar.gz",
+          "stage_path": "sources/python/lxml-6.1.1.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/lxml-6.1.1.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "markdown-it-py",
+      "name": "markdown-it-py",
+      "version": "4.2.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Executable Books contributors",
+      "purl": "pkg:pypi/markdown-it-py@4.2.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/markdown-it-py/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/markdown-it-py/licenses--LICENSE",
+          "sha256": "4a2260d6e2cd0f5a151a1e86dbfe7d3ed552b1e2beabf9941c1ba5c49cbce484",
+          "size_bytes": 1078,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/markdown-it-py/licenses--LICENSE.markdown-it",
+          "asset_path": "packaging/licenses/release-python/markdown-it-py/licenses--LICENSE.markdown-it",
+          "sha256": "792c48c5a849a15fdf9e37e8bcf9e6d1dd13b32b46c642a748a0a46a9919d473",
+          "size_bytes": 1073,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/executablebooks/markdown-it-py",
+      "artifact_sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a",
+      "artifact_url": "https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl",
+      "dependencies": [
+        "mdurl"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "markdown_it_py-4.2.0.tar.gz",
+          "sha256": "04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49",
+          "size_bytes": 82454,
+          "url": "https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz",
+          "stage_path": "sources/python/markdown_it_py-4.2.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/markdown_it_py-4.2.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "mdurl",
+      "name": "mdurl",
+      "version": "0.1.2",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Executable Books contributors",
+      "purl": "pkg:pypi/mdurl@0.1.2",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/mdurl/LICENSE",
+          "asset_path": "packaging/licenses/release-python/mdurl/LICENSE",
+          "sha256": "7c605df6e28667a9603118e98274f64a49ce3eed0d26fccce9534a345e0ef955",
+          "size_bytes": 2338,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/executablebooks/mdurl",
+      "artifact_sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
+      "artifact_url": "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "mdurl-0.1.2.tar.gz",
+          "sha256": "bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba",
+          "size_bytes": 8729,
+          "url": "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz",
+          "stage_path": "sources/python/mdurl-0.1.2.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/mdurl-0.1.2.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "ocrmypdf",
+      "name": "OCRmyPDF",
+      "version": "17.10.0",
+      "type": "application",
+      "scope": "runtime",
+      "supplier": "OCRmyPDF contributors",
+      "purl": "pkg:pypi/ocrmypdf@17.10.0",
+      "license_expression": "MPL-2.0 AND Apache-2.0 AND OFL-1.1 AND Zlib",
+      "license_texts": [
+        {
+          "path": "notices/python/ocrmypdf/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/ocrmypdf/licenses--LICENSE",
+          "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+          "size_bytes": 16725,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/ocrmypdf/OCRmyPDF",
+      "artifact_sha256": "34ba1b595ecacc94b6dc3c9d4fa51953de63082cd16cf8595251bd72120b930a",
+      "artifact_url": "https://files.pythonhosted.org/packages/39/6b/29a4c5f4e67d16bff32f706bf338d443761fe4933b9be4067e958db04aaa/ocrmypdf-17.10.0-py3-none-any.whl",
+      "dependencies": [
+        "fpdf2",
+        "img2pdf",
+        "packaging",
+        "pdfminer-six",
+        "pikepdf",
+        "pillow",
+        "pluggy",
+        "pydantic",
+        "pypdfium2",
+        "rich",
+        "uharfbuzz",
+        "noto-sans"
+      ],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "ocrmypdf-17.10.0.tar.gz",
+          "sha256": "3e80a22e7ca9a746034e990414c9f18791f168800f3ede92101504f45be6129c",
+          "size_bytes": 7499394,
+          "url": "https://files.pythonhosted.org/packages/20/2e/96c9912ad50fe3e186f0d3580d06d27ac2300fcc178d7457794f4bcaf3b8/ocrmypdf-17.10.0.tar.gz",
+          "stage_path": "sources/python/ocrmypdf-17.10.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/ocrmypdf-17.10.0.tar.gz",
+          "required_for_corresponding_source": true
+        }
+      ]
+    },
+    {
+      "component_id": "packaging",
+      "name": "packaging",
+      "version": "26.2",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Python Packaging Authority",
+      "purl": "pkg:pypi/packaging@26.2",
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python/packaging/licenses--__init__.source.txt",
+          "asset_path": "packaging/licenses/release-python/packaging/licenses--__init__.source.txt",
+          "sha256": "fc9c745d1883ff9f296a5b169f22eb2ee879f59a4608f20f5cb29d668f4e26f4",
+          "size_bytes": 7293,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/packaging/licenses--_spdx.source.txt",
+          "asset_path": "packaging/licenses/release-python/packaging/licenses--_spdx.source.txt",
+          "sha256": "596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314",
+          "size_bytes": 51122,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/packaging/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/packaging/licenses--LICENSE",
+          "sha256": "cad1ef5bd340d73e074ba614d26f7deaca5c7940c3d8c34852e65c4909686c48",
+          "size_bytes": 197,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/packaging/licenses--LICENSE.APACHE",
+          "asset_path": "packaging/licenses/release-python/packaging/licenses--LICENSE.APACHE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "size_bytes": 10174,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/packaging/licenses--LICENSE.BSD",
+          "asset_path": "packaging/licenses/release-python/packaging/licenses--LICENSE.BSD",
+          "sha256": "b70e7e9b742f1cc6f948b34c16aa39ffece94196364bc88ff0d2180f0028fac5",
+          "size_bytes": 1344,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pypa/packaging",
+      "artifact_sha256": "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+      "artifact_url": "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "packaging-26.2.tar.gz",
+          "sha256": "ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661",
+          "size_bytes": 228134,
+          "url": "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626c03e4e99c87f241ba9e350cd9e6d75123f992427270/packaging-26.2.tar.gz",
+          "stage_path": "sources/python/packaging-26.2.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/packaging-26.2.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pdfminer-six",
+      "name": "pdfminer.six",
+      "version": "20260107",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "pdfminer.six contributors",
+      "purl": "pkg:pypi/pdfminer-six@20260107",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/pdfminer-six/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pdfminer-six/licenses--LICENSE",
+          "sha256": "f01e5d699a33766b5caf4a5099f2856aba4f3f75ea1df05dc0572b34b4bea8f2",
+          "size_bytes": 1093,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pdfminer/pdfminer.six",
+      "artifact_sha256": "366585ba97e80dffa8f00cebe303d2f381884d8637af4ce422f1df3ef38111a9",
+      "artifact_url": "https://files.pythonhosted.org/packages/20/8b/28c4eaec9d6b036a52cb44720408f26b1a143ca9bce76cc19e8f5de00ab4/pdfminer_six-20260107-py3-none-any.whl",
+      "dependencies": [
+        "charset-normalizer",
+        "cryptography"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "pdfminer_six-20260107.tar.gz",
+          "sha256": "96bfd431e3577a55a0efd25676968ca4ce8fd5b53f14565f85716ff363889602",
+          "size_bytes": 8512094,
+          "url": "https://files.pythonhosted.org/packages/34/a4/5cec1112009f0439a5ca6afa8ace321f0ab2f48da3255b7a1c8953014670/pdfminer_six-20260107.tar.gz",
+          "stage_path": "sources/python/pdfminer_six-20260107.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pdfminer_six-20260107.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pikepdf",
+      "name": "pikepdf",
+      "version": "10.10.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "pikepdf contributors",
+      "purl": "pkg:pypi/pikepdf@10.10.0",
+      "license_expression": "MPL-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python/pikepdf/licenses--LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python/pikepdf/licenses--LICENSE.txt",
+          "sha256": "2684de17300e0a434686f1ec7f8af6045207a4b457a3fe04b2b9ce655e7c5d50",
+          "size_bytes": 17098,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pikepdf/licenses--licenses-for-wheels.txt",
+          "asset_path": "packaging/licenses/release-python/pikepdf/licenses--licenses-for-wheels.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pikepdf/pikepdf",
+      "artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+      "artifact_url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+      "dependencies": [
+        "lxml",
+        "packaging",
+        "pillow"
+      ],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "pikepdf-10.10.0.tar.gz",
+          "sha256": "9f134806b2fe608ccb21379a664ddcefeac3f6944100d343b350299d3c69754e",
+          "size_bytes": 23886210,
+          "url": "https://files.pythonhosted.org/packages/95/e7/45265a52196e7b1e4d1fdee57159d25670275784f5eeb3651327cf68e137/pikepdf-10.10.0.tar.gz",
+          "stage_path": "sources/python/pikepdf-10.10.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pikepdf-10.10.0.tar.gz",
+          "required_for_corresponding_source": true
+        }
+      ]
+    },
+    {
+      "component_id": "pillow",
+      "name": "Pillow",
+      "version": "12.3.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Pillow contributors",
+      "purl": "pkg:pypi/pillow@12.3.0",
+      "license_expression": "MIT-CMU",
+      "license_texts": [
+        {
+          "path": "notices/python/pillow/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pillow/licenses--LICENSE",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/python-pillow/Pillow",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "pillow-12.3.0.tar.gz",
+          "sha256": "3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce",
+          "size_bytes": 47025035,
+          "url": "https://files.pythonhosted.org/packages/1c/3d/bb7fca845737cf9d7dbde16ed1843984665ff2e0a518f5db43e77ec540b9/pillow-12.3.0.tar.gz",
+          "stage_path": "sources/python/pillow-12.3.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pillow-12.3.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pluggy",
+      "name": "pluggy",
+      "version": "1.6.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "pytest contributors",
+      "purl": "pkg:pypi/pluggy@1.6.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/pluggy/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pluggy/licenses--LICENSE",
+          "sha256": "d6b65e6c213a5d0b577911d34d6e5949b9f59d76c238c5071a2f3fc16cfb2606",
+          "size_bytes": 1110,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pytest-dev/pluggy",
+      "artifact_sha256": "e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746",
+      "artifact_url": "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "pluggy-1.6.0.tar.gz",
+          "sha256": "7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3",
+          "size_bytes": 69412,
+          "url": "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz",
+          "stage_path": "sources/python/pluggy-1.6.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pluggy-1.6.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pycparser",
+      "name": "pycparser",
+      "version": "3.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "pycparser contributors",
+      "purl": "pkg:pypi/pycparser@3.0",
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python/pycparser/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pycparser/licenses--LICENSE",
+          "sha256": "0c846399369ea76ddd7b5c44fe6d16497415fcf015f5cbb508c24bf98b81c5b1",
+          "size_bytes": 1543,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/eliben/pycparser",
+      "artifact_sha256": "b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992",
+      "artifact_url": "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "pycparser-3.0.tar.gz",
+          "sha256": "600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29",
+          "size_bytes": 103492,
+          "url": "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz",
+          "stage_path": "sources/python/pycparser-3.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pycparser-3.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pydantic",
+      "name": "pydantic",
+      "version": "2.13.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Pydantic Services Inc.",
+      "purl": "pkg:pypi/pydantic@2.13.4",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/pydantic/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pydantic/licenses--LICENSE",
+          "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
+          "size_bytes": 1129,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pydantic/pydantic",
+      "artifact_sha256": "45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba",
+      "artifact_url": "https://files.pythonhosted.org/packages/fd/7b/122376b1fd3c62c1ed9dc80c931ace4844b3c55407b6fb2d199377c9736f/pydantic-2.13.4-py3-none-any.whl",
+      "dependencies": [
+        "annotated-types",
+        "pydantic-core",
+        "typing-extensions",
+        "typing-inspection"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "pydantic-2.13.4.tar.gz",
+          "sha256": "c40756b57adaa8b1efeeced5c196f3f3b7c435f90e84ea7f443901bec8099ef6",
+          "size_bytes": 844775,
+          "url": "https://files.pythonhosted.org/packages/18/a5/b60d21ac674192f8ab0ba4e9fd860690f9b4a6e51ca5df118733b487d8d6/pydantic-2.13.4.tar.gz",
+          "stage_path": "sources/python/pydantic-2.13.4.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pydantic-2.13.4.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pydantic-core",
+      "name": "pydantic-core",
+      "version": "2.46.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Pydantic Services Inc.",
+      "purl": "pkg:pypi/pydantic-core@2.46.4",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/pydantic-core/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pydantic-core/licenses--LICENSE",
+          "sha256": "fbe7f615f18d135c07000e5a86325db27f42c7729699ef166ac1f7a3f4586bf4",
+          "size_bytes": 1101,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pydantic/pydantic",
+      "artifact_sha256": "811ff8e9c313ab425368bcbb36e5c4ebd7108c2bbf4e4089cfbb0b01eff63fac",
+      "artifact_url": "https://files.pythonhosted.org/packages/fc/b6/6b8de4c0a7d7ab3004c439c80c5c1e0a3e8d78bbae19379b01960383d9e5/pydantic_core-2.46.4-cp314-cp314-win_amd64.whl",
+      "dependencies": [
+        "typing-extensions"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "pydantic_core-2.46.4.tar.gz",
+          "sha256": "62f875393d7f270851f20523dd2e29f082bcc82292d66db2b64ea71f64b6e1c1",
+          "size_bytes": 471464,
+          "url": "https://files.pythonhosted.org/packages/9d/56/921726b776ace8d8f5db44c4ef961006580d91dc52b803c489fafd1aa249/pydantic_core-2.46.4.tar.gz",
+          "stage_path": "sources/python/pydantic_core-2.46.4.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pydantic_core-2.46.4.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pygments",
+      "name": "Pygments",
+      "version": "2.20.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Pygments contributors",
+      "purl": "pkg:pypi/pygments@2.20.0",
+      "license_expression": "BSD-2-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python/pygments/licenses--AUTHORS",
+          "asset_path": "packaging/licenses/release-python/pygments/licenses--AUTHORS",
+          "sha256": "0db603a5f4499f690c4425477ff664c166da325d3acc3b5a8d4de3db072443d0",
+          "size_bytes": 10873,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pygments/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/pygments/licenses--LICENSE",
+          "sha256": "a9d66f1d526df02e29dce73436d34e56e8632f46c275bbdffc70569e882f9f17",
+          "size_bytes": 1331,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pygments/pygments",
+      "artifact_sha256": "81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176",
+      "artifact_url": "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "pygments-2.20.0.tar.gz",
+          "sha256": "6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f",
+          "size_bytes": 4955991,
+          "url": "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz",
+          "stage_path": "sources/python/pygments-2.20.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pygments-2.20.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pypdfium2",
+      "name": "pypdfium2",
+      "version": "5.12.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "pypdfium2 contributors",
+      "purl": "pkg:pypi/pypdfium2@5.12.1",
+      "license_expression": "Apache-2.0 AND CC-BY-4.0",
+      "license_texts": [
+        {
+          "path": "notices/python/pypdfium2/licenses--LICENSES--Apache-2.0.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--LICENSES--Apache-2.0.txt",
+          "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+          "size_bytes": 11560,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--LICENSES--BSD-3-Clause.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--LICENSES--BSD-3-Clause.txt",
+          "sha256": "ad9a9e823df025f42389c1812eae28019f657d1ed7b3a4ebfd5010b0736a0da4",
+          "size_bytes": 1485,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--LICENSES--CC-BY-4.0.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--LICENSES--CC-BY-4.0.txt",
+          "sha256": "f1b1748301cd4274f46733c218d510929661b4990855de5fc645dacd69c4371c",
+          "size_bytes": 14844,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--abseil.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--abseil.txt",
+          "sha256": "f54fff0b905df5b3464527c652a30e903b172d6dcab4d89b5e6f105d5e4a4603",
+          "size_bytes": 11564,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--agg23.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--agg23.txt",
+          "sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5",
+          "size_bytes": 725,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--fast_float.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--fast_float.txt",
+          "sha256": "bf1b57355feca8fce77ee95f48002f8d4789fb71b30ec7599c06cda4901fbb2b",
+          "size_bytes": 1106,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--freetype.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--freetype.txt",
+          "sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8",
+          "size_bytes": 6741,
+          "encoding": "latin-1"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--icu.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--icu.txt",
+          "sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a",
+          "size_bytes": 28286,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--lcms.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--lcms.txt",
+          "sha256": "7312b68c5b25e9bf2b828706fb4e29588f22705112f411fd42e1f7d84c3d139a",
+          "size_bytes": 1353,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libjpeg_turbo.ijg",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libjpeg_turbo.ijg",
+          "sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704",
+          "size_bytes": 13059,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libjpeg_turbo.md.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libjpeg_turbo.md.txt",
+          "sha256": "be2b2b5ab168bce87bc3e31f2a5c5adba4b7f6e9e51d618e958d1d46972ebd95",
+          "size_bytes": 5755,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libopenjpeg.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libopenjpeg.txt",
+          "sha256": "c5ab0890a737c2dfa7ba675036554f6d17741d98629b0c2a145354d00617e6b2",
+          "size_bytes": 1794,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libpng.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libpng.txt",
+          "sha256": "452390433ba0f88aa3e2b122c647741b72a0c117cd6ed7a329b49785aecb5511",
+          "size_bytes": 5479,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libtiff.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--libtiff.txt",
+          "sha256": "92b72ba97e6c2749c2a94bc0ef646b47080217f1e772a482b33cf5a5f98a6506",
+          "size_bytes": 1139,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--llvm-libc.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--llvm-libc.txt",
+          "sha256": "3b6226c32e168c83b891d8d6f0d3c29c2116dc3ef93dc93c307b54f279ecf383",
+          "size_bytes": 15418,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--pdfium-binaries.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--pdfium-binaries.txt",
+          "sha256": "8854f4388f1ca13b3ad9baa42e95f5546b4c0b17109c159256d3eca7be39b09b",
+          "size_bytes": 1184,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--pdfium.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--pdfium.txt",
+          "sha256": "961eacd9633fff6d051db7208b755e9210e30efac7adec3e6a6d52798f0ccf0e",
+          "size_bytes": 12818,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--simdutf.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--simdutf.txt",
+          "sha256": "c172a0ba936ff31230febb5dad869e25cb7c1a07480c7a381be8cf011bb52719",
+          "size_bytes": 1077,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--zlib.txt",
+          "asset_path": "packaging/licenses/release-python/pypdfium2/licenses--data--windows_x64--BUILD_LICENSES--zlib.txt",
+          "sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe",
+          "size_bytes": 1332,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pypdfium2-team/pypdfium2",
+      "artifact_sha256": "9609be73a6701a68f29dffe0335f7a2e4b3ba581542ed65d35d49f761a4600ca",
+      "artifact_url": "https://files.pythonhosted.org/packages/a9/c3/08b62718faf2f6b6aa49207626e3113ff3ec1b3cd076c0ef8fd852f0e57c/pypdfium2-5.12.1-py3-none-win_amd64.whl",
+      "dependencies": [
+        "pdfium"
+      ],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "pypdfium2-5.12.1.tar.gz",
+          "sha256": "d0e0648fb2e28f50efcd1ec0a5a18ced9f4d66b2c227fae9b603f0a883b2d13f",
+          "size_bytes": 274428,
+          "url": "https://files.pythonhosted.org/packages/db/42/0b51bdf50ccf13f3deb3209ca996179a49761dc191748469cf0de55b0055/pypdfium2-5.12.1.tar.gz",
+          "stage_path": "sources/python/pypdfium2-5.12.1.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/pypdfium2-5.12.1.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "pyside6-essentials",
+      "name": "PySide6 Essentials",
+      "version": "6.11.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "The Qt Company and Qt Project contributors",
+      "purl": "pkg:pypi/pyside6-essentials@6.11.1",
+      "license_expression": "LGPL-3.0-only",
+      "license_texts": [],
+      "source_url": "https://doc.qt.io/qtforpython-6/",
+      "artifact_sha256": "63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40",
+      "artifact_url": "https://files.pythonhosted.org/packages/64/0e/b663ecc96ca57b5c91b83b6615d6b174380b0faf30338125c26e053d6aa7/pyside6_essentials-6.11.1-cp310-abi3-win_amd64.whl",
+      "dependencies": [
+        "shiboken6"
+      ],
+      "relationship": "direct",
+      "source_artifacts": []
+    },
+    {
+      "component_id": "rich",
+      "name": "Rich",
+      "version": "15.0.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Textualize contributors",
+      "purl": "pkg:pypi/rich@15.0.0",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/rich/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/rich/licenses--LICENSE",
+          "sha256": "deed7c17a4318158190a3ea239cc879a5a50271cebb98ae7025f48fbe58dca15",
+          "size_bytes": 1056,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/Textualize/rich",
+      "artifact_sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb",
+      "artifact_url": "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl",
+      "dependencies": [
+        "markdown-it-py",
+        "pygments"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "rich-15.0.0.tar.gz",
+          "sha256": "edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36",
+          "size_bytes": 230680,
+          "url": "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz",
+          "stage_path": "sources/python/rich-15.0.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/rich-15.0.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "shiboken6",
+      "name": "shiboken6",
+      "version": "6.11.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "The Qt Company and Qt Project contributors",
+      "purl": "pkg:pypi/shiboken6@6.11.1",
+      "license_expression": "LGPL-3.0-only",
+      "license_texts": [],
+      "source_url": "https://doc.qt.io/qtforpython-6/shiboken6/",
+      "artifact_sha256": "c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7",
+      "artifact_url": "https://files.pythonhosted.org/packages/52/b5/3f6fb2ee65b534193fb4ef713dd619dc31dadff5d12c16979a7699ad58be/shiboken6-6.11.1-cp310-abi3-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": []
+    },
+    {
+      "component_id": "typing-extensions",
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Python Software Foundation",
+      "purl": "pkg:pypi/typing-extensions@4.16.0",
+      "license_expression": "PSF-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python/typing-extensions/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/typing-extensions/licenses--LICENSE",
+          "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+          "size_bytes": 13936,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/python/typing_extensions",
+      "artifact_sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "artifact_url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+      "dependencies": [],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "typing_extensions-4.16.0.tar.gz",
+          "sha256": "dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5",
+          "size_bytes": 113555,
+          "url": "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz",
+          "stage_path": "sources/python/typing_extensions-4.16.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/typing_extensions-4.16.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "typing-inspection",
+      "name": "typing-inspection",
+      "version": "0.4.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Pydantic Services Inc.",
+      "purl": "pkg:pypi/typing-inspection@0.4.4",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/typing-inspection/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/typing-inspection/licenses--LICENSE",
+          "sha256": "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3",
+          "size_bytes": 1090,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/pydantic/typing-inspection",
+      "artifact_sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+      "artifact_url": "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl",
+      "dependencies": [
+        "typing-extensions"
+      ],
+      "relationship": "transitive",
+      "source_artifacts": [
+        {
+          "name": "typing_inspection-0.4.4.tar.gz",
+          "sha256": "547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47",
+          "size_bytes": 76928,
+          "url": "https://files.pythonhosted.org/packages/a3/26/b09b8010994eccc3c09092e6b34058f36a460eea2d4c3e8b910c695975a0/typing_inspection-0.4.4.tar.gz",
+          "stage_path": "sources/python/typing_inspection-0.4.4.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/typing_inspection-0.4.4.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "uharfbuzz",
+      "name": "uharfbuzz",
+      "version": "0.56.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "uharfbuzz contributors",
+      "purl": "pkg:pypi/uharfbuzz@0.56.0",
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python/uharfbuzz/licenses--LICENSE",
+          "asset_path": "packaging/licenses/release-python/uharfbuzz/licenses--LICENSE",
+          "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+          "size_bytes": 11558,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/harfbuzz/uharfbuzz",
+      "artifact_sha256": "0e7c628f327ce862a8606de93766f001704a5201e97d598686730ef2c1605c03",
+      "artifact_url": "https://files.pythonhosted.org/packages/96/84/6c63afa111bcaed79ac011fc112c4a8d8cb60904ff5999f2e435bb79db4a/uharfbuzz-0.56.0-cp310-abi3-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "uharfbuzz-0.56.0.tar.gz",
+          "sha256": "77f4ad1c9f32f44cc6f0c0c4f98fab54587719c96c810a043d01669f704d3e0c",
+          "size_bytes": 38643044,
+          "url": "https://files.pythonhosted.org/packages/58/85/c7545959fdf6b9377b926c826f6d80bddf034ac361b09306d430a0f556a5/uharfbuzz-0.56.0.tar.gz",
+          "stage_path": "sources/python/uharfbuzz-0.56.0.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/uharfbuzz-0.56.0.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "uv-build",
+      "name": "uv-build",
+      "version": "0.11.32",
+      "type": "library",
+      "scope": "build",
+      "supplier": "Astral Software Inc.",
+      "purl": "pkg:pypi/uv-build@0.11.32",
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python/uv-build/licenses--LICENSE-APACHE",
+          "asset_path": "packaging/licenses/release-python/uv-build/licenses--LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "size_bytes": 11357,
+          "encoding": "utf-8"
+        },
+        {
+          "path": "notices/python/uv-build/licenses--LICENSE-MIT",
+          "asset_path": "packaging/licenses/release-python/uv-build/licenses--LICENSE-MIT",
+          "sha256": "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c",
+          "size_bytes": 1077,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/astral-sh/uv",
+      "artifact_sha256": "5a6b897f41ca88f9f7b3ccd2db4a16a55aa7e7a65e0c44710987631e5a0b5dad",
+      "artifact_url": "https://files.pythonhosted.org/packages/67/e9/7538523af51e692d0d9d65a112fd2cdfdd6cb8c3a9fb88178d22ca50601a/uv_build-0.11.32-py3-none-win_amd64.whl",
+      "dependencies": [],
+      "relationship": "external",
+      "source_artifacts": [
+        {
+          "name": "uv_build-0.11.32.tar.gz",
+          "sha256": "906542262cf0e1f507d3e9bcf0a73afa9c9269daf261fbd5357a541b533b3c72",
+          "size_bytes": 413653,
+          "url": "https://files.pythonhosted.org/packages/fc/ec/cfdffca7572cd62ba148da5de8a2b85e04fa9324393a58699ae80e769ef4/uv_build-0.11.32.tar.gz",
+          "stage_path": "sources/python/uv_build-0.11.32.tar.gz",
+          "local_path": "output/pws0801/resume-20261103/artifacts/uv_build-0.11.32.tar.gz",
+          "required_for_corresponding_source": false
+        }
+      ]
+    },
+    {
+      "component_id": "noto-sans",
+      "name": "Noto Sans Regular",
+      "version": "2.007",
+      "type": "data",
+      "scope": "runtime",
+      "supplier": "Google LLC and Noto Project contributors",
+      "purl": "pkg:generic/noto-sans@2.007",
+      "license_expression": "OFL-1.1",
+      "license_texts": [
+        {
+          "path": "notices/fonts/NotoSans-Regular-OFL-1.1.txt",
+          "asset_path": "packaging/licenses/NotoSans-Regular-2.007-OFL-1.1.txt",
+          "sha256": "eb356e711f32d5f66fde9affead75328cd70e8d4ee913fb9d095ba787709cac9",
+          "size_bytes": 4754,
+          "encoding": "utf-8"
+        }
+      ],
+      "source_url": "https://github.com/notofonts/latin-greek-cyrillic",
+      "artifact_sha256": "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9",
+      "artifact_url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/a2fee443247bf43dab8ad77e14c98b0018a58d08/src/ocrmypdf/data/NotoSans-Regular.ttf",
+      "dependencies": [],
+      "relationship": "embedded",
+      "source_artifacts": []
+    }
+  ],
+  "license_refs": [
+    {
+      "id": "LicenseRef-ICC-Profile",
+      "name": "ICC sRGB2014 profile redistribution terms",
+      "text": "Licensing\n\nThe copyright owner and terms of use of an ICC profile are normally identified in the Creator field in the profile header and in the Copyright tag. Where ICC is the copyright owner, the following license terms apply:\n\n\"This profile is made available by the International Color Consortium, and may be copied, distributed, embedded, made, used, and sold without restriction. Altered versions of this profile shall have the original identification and copyright information removed and shall not be misrepresented as the original profile.\"\n\nICC recommends that other profile creators and copyright owners adopt a similar wording for profiles that are intended to be freely distributed. See the Profile Registration page for more details.\n\nSource: https://www.color.org/profiles2.xalter#license"
+    }
+  ],
+  "artifacts_add": [
+    {
+      "name": "NotoSans-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/ocrmypdf/OCRmyPDF/a2fee443247bf43dab8ad77e14c98b0018a58d08/src/ocrmypdf/data/NotoSans-Regular.ttf",
+      "size_bytes": 556216,
+      "sha256": "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9"
+    }
+  ],
+  "remaining_overrides": [
+    "PySide/shiboken full LGPL notices and source obligations are supplied by Qt review",
+    "lxml source subset replaces original source; original two unlicensed resources are not shipped in any form",
+    "Native and Rust embedded components are supplied by their separate exact-input reviews",
+    "MSVC file dispositions and exact native runtime ownership are reconciled during staging"
+  ]
+}

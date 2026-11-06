@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "product_name": "PaperWorkShell",
+  "application_id": "io.github.pikkujanne.paperworkshell",
+  "upgrade_identity": "{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}",
+  "publisher": "Janne Vuorela",
+  "first_party_license": "MIT",
+  "official_distribution_price": "free, including commercial use",
+  "version": "0.0.0",
+  "channel": "engineering",
+  "candidate_id": "pws0802-internal-20261104-r9",
+  "os": "Windows 11",
+  "minimum_os_build": 22000,
+  "architecture": "x64",
+  "arm64_route": "not supported; native ARM64 and x64 emulation are outside project scope",
+  "file_associations": false,
+  "user_accounts": false,
+  "activation": false,
+  "telemetry": false,
+  "document_uploads": false,
+  "automatic_crash_uploads": false
+}

@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -80,6 +79,7 @@ from paperworkshell.app.redaction_tools import (
     RedactionToolsState,
     is_redaction_announcement_safe,
 )
+from paperworkshell.app.removal_export_review import RemovalExportReview
 from paperworkshell.app.scan_review import (
     ScanReviewDraft,
     ScanReviewPreviewResult,
@@ -91,7 +91,8 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
 )
-from paperworkshell.domain.case_lifecycle import CaseIndex
+from paperworkshell.domain.assisted_use import AssistedUseError, AssistedUseErrorCode
+from paperworkshell.domain.case_lifecycle import CaseDeletionResult, CaseDeletionStatus, CaseIndex
 from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.image_pages import (
     ImagePagePreviewResult,
@@ -101,7 +102,7 @@ from paperworkshell.domain.image_transforms import (
     ImagePageTransformResult,
     ImagePageTransformSnapshot,
 )
-from paperworkshell.domain.package_summary import PackageSummary
+from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
 from paperworkshell.domain.page_coordinates import (
     ClockwiseRotation,
     NormalizedPageBox,
@@ -109,11 +110,24 @@ from paperworkshell.domain.page_coordinates import (
     RenderedImageSize,
 )
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult, PdfThumbnailSnapshot
+from paperworkshell.domain.post_export_deletion import (
+    PostExportDeletionError,
+    PostExportDeletionErrorCode,
+    PostExportDeletionInventory,
+)
 from paperworkshell.domain.recovery import (
     CaseRecoveryStatus,
     StartupRecoveryResult,
     StartupRecoveryStatus,
 )
+from paperworkshell.domain.redaction_export import (
+    REDACTION_EXPORT_REPORT_VERSION,
+    RUNTIME_EXPORT_REPORT_VERSION,
+    RedactionExportCode,
+    RedactionExportReport,
+    RedactionExportStatus,
+)
+from paperworkshell.domain.redaction_verification import runtime_release_qualified
 from paperworkshell.domain.resource_policy import (
     NORMAL_RESOURCE_POLICY_V1,
     ResourcePolicy,
@@ -121,7 +135,11 @@ from paperworkshell.domain.resource_policy import (
 )
 from paperworkshell.domain.signature_images import SignatureImageErrorCode
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
+from paperworkshell.domain.text_companion import TextCompanionError, TextCompanionErrorCode
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
+from paperworkshell.ui.announcements import ScreenReaderAnnouncer
+from paperworkshell.ui.assisted_session import AssistedSessionController
 from paperworkshell.ui.backend import (
     OperationCancellation,
     OrganizerBackendCommands,
@@ -134,6 +152,9 @@ from paperworkshell.ui.backend import (
 from paperworkshell.ui.checklist import ChecklistEditorDialog
 from paperworkshell.ui.compression_review import CompressionReviewDialog
 from paperworkshell.ui.constraints import ConstraintEditorDialog
+from paperworkshell.ui.diagnostic_bundle import DiagnosticBundleDialog, session_bundle_service
+from paperworkshell.ui.keyboard_help import KeyboardHelpDialog
+from paperworkshell.ui.localization_layout import adapt_localized_content
 from paperworkshell.ui.models import (
     OrganizerPageListModel,
     PreviewState,
@@ -145,7 +166,16 @@ from paperworkshell.ui.overlay_tools import (
     safe_core_overlay_failure,
 )
 from paperworkshell.ui.package_export import PackageExportDialog
+from paperworkshell.ui.post_export import PostExportDeletionDialog
+from paperworkshell.ui.presentation import (
+    WrappingActionLayout,
+    adapt_dialog_button_box,
+    install_presentation_policy,
+    set_static_busy,
+)
+from paperworkshell.ui.redaction_export import RedactionExportDialog
 from paperworkshell.ui.redaction_tools import RedactionToolsDialog, safe_redaction_failure
+from paperworkshell.ui.removal_export_review import RemovalExportReviewDialog
 from paperworkshell.ui.scan_review import ScanReviewDialog
 from paperworkshell.ui.signature_images import (
     SignatureImageDeleteDialog,
@@ -159,6 +189,17 @@ _PREVIEW_REFRESH_DEBOUNCE_MS: Final = 75
 _SCAN_REVIEW_PREVIEW_WIDTH: Final = 600
 _SCAN_REVIEW_PREVIEW_HEIGHT: Final = 800
 _MAX_OPERATION_ID: Final = 2_147_483_647
+_POST_EXPORT_FAILURE_TEXT: Final = {
+    **{
+        code.value: PostExportDeletionError(code, "post_export.ui").safe_message
+        for code in PostExportDeletionErrorCode
+    },
+    **{code.value: TextCompanionError(code).safe_message for code in TextCompanionErrorCode},
+    **{
+        code.value: AssistedUseError(code, "post_export.ui").safe_message
+        for code in AssistedUseErrorCode
+    },
+}
 _FOCUS_VISIBLE_TEXT_STYLE: Final = """
 QLabel {
     border: 2px solid transparent;
@@ -168,15 +209,32 @@ QLabel:focus {
     border-color: palette(highlight);
 }
 """
+_FOCUS_VISIBLE_WORKFLOW_STYLE: Final = """
+QPushButton {
+    min-width: 32px;
+    min-height: 32px;
+}
+QAbstractItemView {
+    border: 2px solid palette(mid);
+}
+QScrollArea {
+    border: 2px solid transparent;
+}
+QAbstractItemView:focus, QScrollArea[pwsKeyboardFocus="true"], QPushButton:focus {
+    border: 2px dashed palette(highlight);
+}
+"""
 
 
 class _LongOperationKind(StrEnum):
-    IMPORT = "Import"
-    PREVIEW = "Preview"
-    QUALITY = "Page quality check"
-    SIGNATURE_IMAGE = "Signature image"
-    PDF_EXPORT = "PDF export"
-    PACKAGE_REVIEW = "Package inspection"
+    IMPORT = mark("Import")
+    PREVIEW = mark("Preview")
+    QUALITY = mark("Page quality check")
+    SIGNATURE_IMAGE = mark("Signature image")
+    PDF_EXPORT = mark("PDF export")
+    REMOVAL_REVIEW = mark("Removal review")
+    REMOVAL_EXPORT = mark("Removal export")
+    PACKAGE_REVIEW = mark("Package inspection")
 
 
 class _ImportPresentationState(StrEnum):
@@ -278,30 +336,41 @@ def _startup_recovery_notice(
         for case in result.cases
     )
     removed_directories = sum(case.removed_temp_directories for case in result.cases)
-    checked_noun = "case" if checked == 1 else "cases"
-    review_verb = "needs" if needs_review == 1 else "need"
-    file_noun = "file" if removed_files == 1 else "files"
-    directory_noun = "directory" if removed_directories == 1 else "directories"
+    checked_noun = tr("case") if checked == 1 else tr("cases")
+    review_verb = tr("needs") if needs_review == 1 else tr("need")
+    file_noun = tr("file") if removed_files == 1 else tr("files")
+    directory_noun = tr("directory") if removed_directories == 1 else tr("directories")
     if result.status is StartupRecoveryStatus.ATTENTION_REQUIRED or additional_needs_review:
         return (
-            "Startup recovery needs attention. "
-            f"Checked {checked} local {checked_noun}; {needs_review} {review_verb} review. "
-            "Uncertain leftover work data was preserved.",
+            tr(
+                "Startup recovery needs attention. Checked {value1} local {value2}; {value3} {value4} review. Uncertain leftover work data was preserved.",
+                value1=checked,
+                value2=checked_noun,
+                value3=needs_review,
+                value4=review_verb,
+            ),
             True,
         )
     if recovered or removed_files or removed_directories:
         return (
-            "Startup recovery complete. "
-            f"Checked {checked} local {checked_noun}; recovered {recovered}, removed "
-            f"{removed_files} leftover work {file_noun} and "
-            f"{removed_directories} {directory_noun}. "
-            "Ready. Create a case or open an existing case.",
+            tr(
+                "Startup recovery complete. Checked {value1} local {value2}; recovered {value3}, removed {value4} leftover work {value5} and {value6} {value7}. Ready. Create a case or open an existing case.",
+                value1=checked,
+                value2=checked_noun,
+                value3=recovered,
+                value4=removed_files,
+                value5=file_noun,
+                value6=removed_directories,
+                value7=directory_noun,
+            ),
             False,
         )
     return (
-        "Startup recovery complete. "
-        f"Checked {checked} local {checked_noun}; no recovery action was needed. "
-        "Ready. Create a case or open an existing case.",
+        tr(
+            "Startup recovery complete. Checked {value1} local {value2}; no recovery action was needed. Ready. Create a case or open an existing case.",
+            value1=checked,
+            value2=checked_noun,
+        ),
         False,
     )
 
@@ -452,38 +521,41 @@ class PageOrderDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Change page order")
-        self.setAccessibleName("Change page order dialog")
+        self.setWindowTitle(tr("Change page order"))
+        self.setAccessibleName(tr("Change page order dialog"))
         self.setAccessibleDescription(
-            "Select a page and use Move earlier or Move later. Dragging is not required."
+            tr("Select a page and use Move earlier or Move later. Dragging is not required.")
         )
         self._page_list = QListWidget()
         self._page_list.setObjectName("pageOrderList")
-        self._page_list.setAccessibleName("Proposed page order")
+        self._page_list.setAccessibleName(tr("Proposed page order"))
         self._page_list.setAccessibleDescription(
-            "Pages in proposed order. Select one, then use the visible move buttons."
+            tr("Pages in proposed order. Select one, then use the visible move buttons.")
         )
         self._page_list.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
         for page_id, position in pages:
-            item = QListWidgetItem(f"Page {position}")
+            item = QListWidgetItem(tr("Page {value1}", value1=position))
             item.setData(Qt.ItemDataRole.UserRole, page_id)
             self._page_list.addItem(item)
         if self._page_list.count():
             self._page_list.setCurrentRow(0)
 
-        self._move_earlier = QPushButton("Move earlier")
+        self._move_earlier = QPushButton(tr("Move earlier"))
         self._move_earlier.setObjectName("orderMoveEarlierButton")
-        self._move_earlier.setAccessibleDescription("Move the selected page one position earlier.")
-        self._move_later = QPushButton("Move later")
+        self._move_earlier.setAccessibleDescription(
+            tr("Move the selected page one position earlier.")
+        )
+        self._move_later = QPushButton(tr("Move later"))
         self._move_later.setObjectName("orderMoveLaterButton")
-        self._move_later.setAccessibleDescription("Move the selected page one position later.")
+        self._move_later.setAccessibleDescription(tr("Move the selected page one position later."))
         self._move_earlier.clicked.connect(lambda: self._move(-1))
         self._move_later.clicked.connect(lambda: self._move(1))
         self._page_list.currentRowChanged.connect(self._update_move_actions)
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        button_box.setAccessibleName("Confirm or cancel page order")
+        adapt_dialog_button_box(button_box)
+        button_box.setAccessibleName(tr("Confirm or cancel page order"))
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
 
@@ -492,17 +564,18 @@ class PageOrderDialog(QDialog):
         move_layout.addWidget(self._move_later)
         layout = QVBoxLayout(self)
         instructions = QLabel(
-            "Select a page, then choose Move earlier or Move later. "
-            "Use Alt+Up and Alt+Down as keyboard shortcuts."
+            tr(
+                "Select a page, then choose Move earlier or Move later. Use Alt+Up and Alt+Down as keyboard shortcuts."
+            )
         )
         instructions.setWordWrap(True)
-        instructions.setAccessibleName("Page order instructions")
+        instructions.setAccessibleName(instructions.text())
         layout.addWidget(instructions)
         layout.addWidget(self._page_list)
         layout.addLayout(move_layout)
         self._move_status = QLabel()
         self._move_status.setObjectName("pageOrderStatus")
-        self._move_status.setAccessibleName("Page order change status")
+        self._move_status.setAccessibleName(tr("Page order change status"))
         self._move_status.setWordWrap(True)
         layout.addWidget(self._move_status)
         layout.addWidget(button_box)
@@ -528,6 +601,7 @@ class PageOrderDialog(QDialog):
         return tuple(values)
 
     def _move(self, offset: int) -> None:
+        focused_move = self._move_earlier.hasFocus() or self._move_later.hasFocus()
         row = self._page_list.currentRow()
         target = row + offset
         if row < 0 or not 0 <= target < self._page_list.count():
@@ -537,8 +611,18 @@ class PageOrderDialog(QDialog):
         self._page_list.insertItem(target, item)
         self._page_list.setCurrentRow(target)
         self._update_move_actions()
-        message = f"{item.text()} moved to position {target + 1} of {self._page_list.count()}."
+        if focused_move:
+            self._page_list.setFocus(Qt.FocusReason.OtherFocusReason)
+        message = tr(
+            "{value1} moved to position {value2} of {value3}.",
+            value1=item.text(),
+            value2=target + 1,
+            value3=self._page_list.count(),
+        )
         self._move_status.setText(message)
+        self._move_status.setAccessibleName(
+            tr("Page order change status. {value1}", value1=message)
+        )
         announcement = QAccessibleAnnouncementEvent(self._move_status, message)
         announcement.setPoliteness(QAccessible.AnnouncementPoliteness.Polite)
         QAccessible.updateAccessibility(announcement)
@@ -579,8 +663,14 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             raise ValueError("resource policy cannot retain both scan-review previews")
         self.setObjectName("paperWorkShellWindow")
-        self.setWindowTitle("PaperWorkShell")
-        self.setAccessibleName("PaperWorkShell guided packet builder")
+        self.setWindowTitle(tr("PaperWorkShell"))
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            install_presentation_policy(application)
+            current_style = application.styleSheet()
+            if _FOCUS_VISIBLE_WORKFLOW_STYLE not in current_style:
+                application.setStyleSheet(current_style + "\n" + _FOCUS_VISIBLE_WORKFLOW_STYLE)
+        self.setAccessibleName(tr("PaperWorkShell guided packet builder"))
         self._commands = commands
         self._worker = worker
         self._resource_policy = selected_policy
@@ -602,11 +692,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._quality_result_focus_requested = False
         self._quality_presentation = _QualityPresentationState.NOT_CHECKED
         self._case_reopen_required = False
+        self._case_close_pending = False
         self._controls_enabled = False
         self._closing_requested = False
         self._closing_import_cleanup = False
         self._allow_close = False
-        self._last_announced_progress: tuple[str, str, int] | None = None
         self._latest_import_progress: UiProgress | None = None
         self._import_presentation = _ImportPresentationState.IDLE
         self._pending_failure_focus: str | None = None
@@ -639,6 +729,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._redaction_tools_start_operation_id: int | None = None
         self._redaction_tools_save_operation_id: int | None = None
         self._redaction_tools_cancel_operation_id: int | None = None
+        self._redaction_export_dialog: RedactionExportDialog | None = None
+        self._pending_redaction_export_report: RedactionExportReport | None = None
+        self._pending_redaction_review: tuple[UUID, int, UUID] | None = None
+        self._pending_removal_review: RemovalExportReview | None = None
+        self._removal_review_dialog: RemovalExportReviewDialog | None = None
+        self._pending_removal_retry = False
         self._checklist_dialog: ChecklistEditorDialog | None = None
         self._checklist_start_operation_id: int | None = None
         self._checklist_apply_operation_id: int | None = None
@@ -654,6 +750,15 @@ class PaperWorkShellWindow(QMainWindow):
         self._package_export_operation_id: int | None = None
         self._package_cancel_operation_id: int | None = None
         self._package_summary_save_operation_id: int | None = None
+        self._post_export_review_operation_id: int | None = None
+        self._post_export_delete_operation_id: int | None = None
+        self._post_export_delete_case_id: UUID | None = None
+        self._text_companion_operation_id: int | None = None
+        self._post_export_binding: tuple[UUID, int, int] | None = None
+        self._post_export_deletion_dialog: PostExportDeletionDialog | None = None
+        self._post_export_pending_feedback: tuple[str, bool] | None = None
+        self._post_export_closed = False
+        self._post_export_private_summary_discarded = False
         self._package_cancellation: OperationCancellation | None = None
         self._package_release_failed = False
         self._compression_dialog: CompressionReviewDialog | None = None
@@ -676,15 +781,27 @@ class PaperWorkShellWindow(QMainWindow):
         self._signature_image_delete_dialog: SignatureImageDeleteDialog | None = None
         self._signature_image_retry_after_cancel = False
         self._signature_image_committed = False
+        self._keyboard_help_dialog: KeyboardHelpDialog | None = None
+        self._keyboard_help_return_focus: QWidget | None = None
+        self._diagnostic_bundle_dialog: DiagnosticBundleDialog | None = None
+        self._diagnostic_bundle_return_focus: QWidget | None = None
+        self._diagnostic_bundle_service = session_bundle_service(selected_policy)
+        self._diagnostic_bundle_shutdown_requested = False
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
         self._preview_refresh_timer.setInterval(_PREVIEW_REFRESH_DEBOUNCE_MS)
         self._preview_refresh_timer.timeout.connect(self._refresh_visible_previews)
 
+        self._focus_reveal_timer = QTimer(self)
+        self._focus_reveal_timer.setSingleShot(True)
+        self._focus_reveal_timer.setInterval(0)
+        self._focus_reveal_timer.timeout.connect(self._reveal_focused_control)
+
         self._stack = QStackedWidget()
         self._stack.setObjectName("workflowStack")
         self._status_surface = self._build_status_surface()
+        self._announcer = ScreenReaderAnnouncer(self._status_label)
         self._ocr_language_surface = self._build_ocr_language_surface()
         self._welcome_page = self._build_welcome_page()
         self._organizer_page = self._build_organizer_page()
@@ -700,25 +817,55 @@ class PaperWorkShellWindow(QMainWindow):
         central_layout.addWidget(self._status_surface)
         self._application_scroll = QScrollArea()
         self._application_scroll.setObjectName("applicationScrollArea")
-        self._application_scroll.setAccessibleName("PaperWorkShell workflow and operation status")
+        self._application_scroll.setAccessibleName(
+            tr("PaperWorkShell workflow and operation status")
+        )
         self._application_scroll.setWidgetResizable(True)
         self._application_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._application_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._application_scroll.setWidget(central)
+        adapt_localized_content(self._application_scroll)
         self.setCentralWidget(self._application_scroll)
-        file_menu = self.menuBar().addMenu("&File")
-        self._package_export_action = QAction("Review and &export package", self)
+        self._set_workflow_tab_order()
+        file_menu = self.menuBar().addMenu(tr("&File"))
+        self._package_export_action = QAction(tr("Review and &export package"), self)
         self._package_export_action.setObjectName("packageExportMenuAction")
         self._package_export_action.setShortcut(QKeySequence("Ctrl+E"))
-        self._package_export_action.setStatusTip("Review and export the current package. Ctrl+E.")
+        self._package_export_action.setStatusTip(
+            tr("Review and export the current package. Ctrl+E.")
+        )
         self._package_export_action.triggered.connect(self._request_package_export)
         file_menu.addAction(self._package_export_action)
-        self._pages_pdf_export_action = QAction("Export pages as &PDF", self)
+        self._pages_pdf_export_action = QAction(tr("Export pages as &PDF"), self)
         self._pages_pdf_export_action.setObjectName("pagesPdfExportMenuAction")
         self._pages_pdf_export_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
-        self._pages_pdf_export_action.setStatusTip("Export the saved pages as PDF. Ctrl+Shift+E.")
+        self._pages_pdf_export_action.setStatusTip(
+            tr("Export the saved pages as PDF. Ctrl+Shift+E.")
+        )
         self._pages_pdf_export_action.triggered.connect(self._choose_pages_pdf_export)
         file_menu.addAction(self._pages_pdf_export_action)
+        self._removal_export_action = QAction(tr("Export removal &derivative…"), self)
+        self._removal_export_action.setObjectName("removalExportMenuAction")
+        self._removal_export_action.setShortcut(QKeySequence("Ctrl+Alt+E"))
+        self._removal_export_action.setStatusTip(
+            tr("Review saved marks and export a verified removal derivative. Ctrl+Alt+E.")
+        )
+        self._removal_export_action.triggered.connect(self._request_removal_export)
+        file_menu.addAction(self._removal_export_action)
+        help_menu = self.menuBar().addMenu(tr("&Help"))
+        self._keyboard_help_action = QAction(tr("&Keyboard guide"), self)
+        self._keyboard_help_action.setObjectName("keyboardHelpAction")
+        self._keyboard_help_action.setShortcut(QKeySequence("F1"))
+        self._keyboard_help_action.setStatusTip(tr("Keyboard shortcuts and navigation. F1."))
+        self._keyboard_help_action.triggered.connect(self._show_keyboard_help)
+        help_menu.addAction(self._keyboard_help_action)
+        self._diagnostic_bundle_action = QAction(tr("Create &support bundle…"), self)
+        self._diagnostic_bundle_action.setObjectName("diagnosticBundleAction")
+        self._diagnostic_bundle_action.setStatusTip(
+            tr("Review exact sanitized support files before choosing a local save location.")
+        )
+        self._diagnostic_bundle_action.triggered.connect(self._show_diagnostic_bundle)
+        help_menu.addAction(self._diagnostic_bundle_action)
         self._build_shortcuts()
         self._connect_backend()
 
@@ -727,7 +874,100 @@ class PaperWorkShellWindow(QMainWindow):
         self._autosave_timer.setInterval(_AUTOSAVE_DEBOUNCE_MS)
         self._autosave_timer.timeout.connect(self._request_autosave_flush)
         self._set_controls_enabled(False)
-        self._stack.setCurrentWidget(self._welcome_page)
+        self._show_workflow_page(self._welcome_page)
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            application.focusChanged.connect(self._queue_focus_reveal)
+        self._assisted_session = AssistedSessionController(self)
+        available = self.screen().availableGeometry()
+        self.resize(
+            min(1000, max(1, available.width() - 48)),
+            min(720, max(1, available.height() - 48)),
+        )
+
+    def _show_workflow_page(self, page: QWidget) -> None:
+        """Keep the inactive workflow out of width-dependent layout sizing.
+
+        Removing a page from the stack layout hides it while preserving its
+        QObject parent, controls and tab links for the next case transition.
+        """
+        for inactive in (self._welcome_page, self._organizer_page):
+            if inactive is not page and self._stack.indexOf(inactive) >= 0:
+                self._stack.removeWidget(inactive)
+        if self._stack.indexOf(page) < 0:
+            self._stack.addWidget(page)
+        self._stack.setCurrentWidget(page)
+
+    @Slot(QWidget, QWidget)
+    def _queue_focus_reveal(self, previous: QWidget | None, current: QWidget | None) -> None:
+        """Coalesce focus changes until the current widget layout has settled."""
+        # QScrollArea's native frame style omits State_HasFocus, so its :focus
+        # selector cannot provide a cue for the deliberately focusable container.
+        for widget, focused in ((previous, False), (current, True)):
+            if isinstance(widget, QScrollArea) and self._owns_ui_widget(widget):
+                widget.setProperty("pwsKeyboardFocus", focused)
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+                widget.update()
+        if current is not None and self._owns_ui_widget(current):
+            self._focus_reveal_timer.start()
+        else:
+            self._focus_reveal_timer.stop()
+
+    @Slot()
+    def _reveal_focused_control(self) -> None:
+        """Keep keyboard and recovery focus visible inside owned scroll areas."""
+        if self._closing_requested:
+            return
+        focused = QApplication.focusWidget()
+        if not self._focus_widget_is_available(focused) or focused is None:
+            return
+        if not self._owns_ui_widget(focused):
+            return
+        owner = focused.window()
+        ancestor = focused.parentWidget()
+        # Do not scroll the underlying editor when a combo popup owns focus.
+        while ancestor is not None and ancestor.window() is owner:
+            if isinstance(ancestor, QScrollArea):
+                content = ancestor.widget()
+                if content is not None and (focused is content or content.isAncestorOf(focused)):
+                    self._reveal_control_in_scroll_area(ancestor, focused)
+            ancestor = ancestor.parentWidget()
+
+    @Slot(QModelIndex, QModelIndex)
+    def _queue_current_row_reveal(self, _current: QModelIndex, _previous: QModelIndex) -> None:
+        """Follow keyboard selection and a newly populated focused item view."""
+        focused = QApplication.focusWidget()
+        if isinstance(focused, QAbstractItemView) and self._owns_ui_widget(focused):
+            self._focus_reveal_timer.start()
+
+    def _reveal_control_in_scroll_area(self, area: QScrollArea, widget: QWidget) -> None:
+        """Reveal the current row instead of centering an oversized item view."""
+        if isinstance(widget, QAbstractItemView):
+            current = widget.currentIndex()
+            content = area.widget()
+            if current.isValid() and content is not None and content.isAncestorOf(widget):
+                widget.scrollTo(current, QAbstractItemView.ScrollHint.EnsureVisible)
+                row = widget.visualRect(current)
+                if not row.isEmpty():
+                    center = widget.viewport().mapTo(content, row.center())
+                    area.ensureVisible(
+                        center.x(),
+                        center.y(),
+                        (row.width() + 1) // 2 + 8,
+                        (row.height() + 1) // 2 + 8,
+                    )
+                    return
+        area.ensureWidgetVisible(widget, 8, 8)
+
+    def _owns_ui_widget(self, widget: QWidget) -> bool:
+        """Include owned top-level dialogs without treating unrelated windows as ours."""
+        candidate: QWidget | None = widget
+        while candidate is not None:
+            if candidate is self:
+                return True
+            candidate = candidate.parentWidget()
+        return False
 
     @property
     def resource_policy(self) -> ResourcePolicy:
@@ -736,27 +976,27 @@ class PaperWorkShellWindow(QMainWindow):
         return self._resource_policy
 
     def _build_status_surface(self) -> QGroupBox:
-        status_group = QGroupBox("Operation status")
+        status_group = QGroupBox(tr("Operation status"))
         status_group.setObjectName("operationStatusGroup")
-        status_group.setAccessibleName("Operation status")
+        status_group.setAccessibleName(tr("Operation status"))
         status_group.setAccessibleDescription(
-            "Current application status, progress, and any action error."
+            tr("Current application status, progress, and any action error.")
         )
         status_layout = QVBoxLayout(status_group)
-        self._status_label = QLabel("PaperWorkShell is starting.")
+        self._status_label = QLabel(tr("PaperWorkShell is starting."))
         self._status_label.setObjectName("statusLabel")
-        self._status_label.setAccessibleName("Current operation status")
+        self._status_label.setAccessibleName(tr("Current operation status"))
         self._status_label.setAccessibleDescription(
-            "Current PaperWorkShell status shown on every workflow page."
+            tr("Current PaperWorkShell status shown on every workflow page.")
         )
         self._status_label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._status_label.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         self._status_label.setWordWrap(True)
         self._error_label = QLabel()
         self._error_label.setObjectName("errorLabel")
-        self._error_label.setAccessibleName("Action error")
+        self._error_label.setAccessibleName(tr("Action error"))
         self._error_label.setAccessibleDescription(
-            "The latest safe error code and recovery message."
+            tr("The latest safe error code and recovery message.")
         )
         self._error_label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._error_label.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
@@ -764,36 +1004,37 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setVisible(False)
         self._progress = QProgressBar()
         self._progress.setObjectName("operationProgress")
-        self._progress.setAccessibleName("Document operation progress")
+        self._progress.setAccessibleName(tr("Document operation progress"))
         self._progress.setTextVisible(True)
         self._progress.setVisible(False)
-        status_actions = QHBoxLayout()
-        self._cancel_button = QPushButton("Cancel current operation")
+        status_actions = WrappingActionLayout()
+        self._cancel_button = QPushButton(tr("Cancel current operation"))
         self._cancel_button.setObjectName("cancelButton")
         self._cancel_button.setAccessibleDescription(
-            "Request cancellation of the running document operation, including import, preview, "
-            "or page-quality review. Escape."
+            tr(
+                "Request cancellation of the running document operation, including import, preview, or page-quality review. Escape."
+            )
         )
         self._cancel_button.clicked.connect(self._cancel_active_operation)
         self._cancel_button.setVisible(False)
-        self._retry_preview_button = QPushButton("Retry selected preview")
+        self._retry_preview_button = QPushButton(tr("Retry selected preview"))
         self._retry_preview_button.setObjectName("retryPreviewButton")
         self._retry_preview_button.setAccessibleDescription(
-            "Retry thumbnail rendering for the selected failed page. Ctrl+Shift+R."
+            tr("Retry thumbnail rendering for the selected failed page. Ctrl+Shift+R.")
         )
         self._retry_preview_button.clicked.connect(self._retry_failed_preview)
         self._retry_preview_button.setVisible(False)
-        self._retry_save_button = QPushButton("Retry saving changes")
+        self._retry_save_button = QPushButton(tr("Retry saving changes"))
         self._retry_save_button.setObjectName("retrySaveButton")
         self._retry_save_button.setAccessibleDescription(
-            "Retry the retained organizer autosave after a recoverable failure."
+            tr("Retry the retained organizer autosave after a recoverable failure.")
         )
         self._retry_save_button.clicked.connect(self._request_retry_save)
         self._retry_save_button.setVisible(False)
-        self._retry_close_button = QPushButton("Retry closing PaperWorkShell")
+        self._retry_close_button = QPushButton(tr("Retry closing PaperWorkShell"))
         self._retry_close_button.setObjectName("retryCloseButton")
         self._retry_close_button.setAccessibleDescription(
-            "Retry secure shutdown cleanup after PaperWorkShell remains open."
+            tr("Retry secure shutdown cleanup after PaperWorkShell remains open.")
         )
         self._retry_close_button.clicked.connect(self.request_shutdown)
         self._retry_close_button.setVisible(False)
@@ -801,7 +1042,6 @@ class PaperWorkShellWindow(QMainWindow):
         status_actions.addWidget(self._retry_preview_button)
         status_actions.addWidget(self._retry_save_button)
         status_actions.addWidget(self._retry_close_button)
-        status_actions.addStretch(1)
         status_layout.addWidget(self._status_label)
         status_layout.addWidget(self._error_label)
         status_layout.addWidget(self._progress)
@@ -809,27 +1049,29 @@ class PaperWorkShellWindow(QMainWindow):
         return status_group
 
     def _build_ocr_language_surface(self) -> QGroupBox:
-        surface = QGroupBox("OCR language settings")
+        surface = QGroupBox(tr("OCR language settings"))
         surface.setObjectName("ocrLanguageSettingsGroup")
-        surface.setAccessibleName("OCR language settings")
+        surface.setAccessibleName(tr("OCR language settings"))
         surface.setAccessibleDescription(
-            "Manage verified local OCR language packs from the case chooser or organizer."
+            tr("Manage verified local OCR language packs from the case chooser or organizer.")
         )
         layout = QVBoxLayout(surface)
         guidance = QLabel(
-            "Choose the verified local languages PaperWorkShell may use for OCR. "
-            "No language data is downloaded."
+            tr(
+                "Choose the verified local languages PaperWorkShell may use for OCR. No language data is downloaded."
+            )
         )
         guidance.setObjectName("ocrLanguageSettingsGuidance")
-        guidance.setAccessibleName("OCR language settings guidance")
+        guidance.setAccessibleName(tr("OCR language settings guidance"))
         guidance.setTextFormat(Qt.TextFormat.PlainText)
         guidance.setWordWrap(True)
-        self._ocr_language_button = QPushButton("Manage OCR languages…")
+        self._ocr_language_button = QPushButton(tr("Manage OCR languages…"))
         self._ocr_language_button.setObjectName("ocrLanguageSettingsButton")
-        self._ocr_language_button.setAccessibleName("Manage OCR languages")
+        self._ocr_language_button.setAccessibleName(tr("Manage OCR languages"))
         self._ocr_language_button.setAccessibleDescription(
-            "Review installed and verified offline OCR languages. "
-            "Shortcut Ctrl+Shift+L. No language data is downloaded."
+            tr(
+                "Review installed and verified offline OCR languages. Shortcut Ctrl+Shift+L. No language data is downloaded."
+            )
         )
         self._ocr_language_button.clicked.connect(self._open_ocr_languages)
         layout.addWidget(guidance)
@@ -840,41 +1082,57 @@ class PaperWorkShellWindow(QMainWindow):
         page = QWidget()
         page.setObjectName("caseChooserPage")
         layout = QVBoxLayout(page)
-        heading = QLabel("Choose a case")
+        heading = QLabel(tr("Choose a case"))
         heading.setObjectName("caseChooserHeading")
-        heading.setAccessibleName("Choose a case")
-        heading.setStyleSheet("font-size: 20pt; font-weight: 600;")
+        heading.setAccessibleName(tr("Choose a case"))
+        heading_font = heading.font()
+        heading_font.setPointSizeF(heading_font.pointSizeF() * 1.3)
+        heading_font.setBold(True)
+        heading.setFont(heading_font)
+        heading.setWordWrap(True)
         guidance = QLabel(
-            "Create a new local case or open an existing one. "
-            "Cases are identified by an internal identifier; source paths are not displayed here."
+            tr(
+                "Create a new local case or open an existing one. Cases are identified by an internal identifier; source paths are not displayed here."
+            )
         )
         guidance.setWordWrap(True)
-        guidance.setAccessibleName("Case chooser guidance")
+        guidance.setAccessibleName(tr("Case chooser guidance"))
         self._case_list = QListWidget()
         self._case_list.setObjectName("caseList")
-        self._case_list.setAccessibleName("Available cases")
-        self._case_list.setAccessibleDescription("Select one case, then choose Open selected case.")
+        self._case_list.setAccessibleName(tr("Available cases"))
+        self._case_list.setAccessibleDescription(
+            tr("Select one case, then choose Open selected case.")
+        )
         self._case_list.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
+        self._case_list.selectionModel().currentChanged.connect(self._queue_current_row_reveal)
         self._case_list.itemDoubleClicked.connect(lambda _item: self._open_selected_case())
 
-        self._create_case_button = QPushButton("Create new case")
+        self._create_case_button = QPushButton(tr("Create new case"))
         self._create_case_button.setObjectName("createCaseButton")
         self._create_case_button.setAccessibleDescription(
-            "Create an empty local case and open its page organizer. Shortcut Ctrl+N."
+            tr("Create an empty local case and open its page organizer. Shortcut Ctrl+N.")
         )
         self._create_case_button.clicked.connect(self._request_create_case)
-        self._open_case_button = QPushButton("Open selected case")
+        self._open_case_button = QPushButton(tr("Open selected case"))
         self._open_case_button.setObjectName("openCaseButton")
-        self._open_case_button.setAccessibleDescription("Open the selected case. Shortcut Ctrl+O.")
+        self._open_case_button.setAccessibleDescription(
+            tr("Open the selected case. Shortcut Ctrl+O.")
+        )
         self._open_case_button.clicked.connect(self._open_selected_case)
-        self._refresh_cases_button = QPushButton("Refresh case list")
+        self._refresh_cases_button = QPushButton(tr("Refresh case list"))
         self._refresh_cases_button.setObjectName("refreshCasesButton")
         self._refresh_cases_button.clicked.connect(self._commands.list_cases_requested.emit)
-        chooser_actions = QHBoxLayout()
+        chooser_actions = WrappingActionLayout()
         chooser_actions.addWidget(self._create_case_button)
         chooser_actions.addWidget(self._open_case_button)
         chooser_actions.addWidget(self._refresh_cases_button)
-        chooser_actions.addStretch(1)
+        self._assisted_create_button = QPushButton(tr("Start assisted case"))
+        self._assisted_create_button.setObjectName("assistedCreateButton")
+        self._assisted_create_button.setAccessibleDescription(
+            tr("Review consent, expiry, and a local passphrase before importing documents.")
+        )
+        self._assisted_create_button.clicked.connect(lambda: self._assisted_session.start())
+        chooser_actions.addWidget(self._assisted_create_button)
 
         layout.addWidget(heading)
         layout.addWidget(guidance)
@@ -890,39 +1148,50 @@ class PaperWorkShellWindow(QMainWindow):
         content.setObjectName("organizerPage")
         layout = QVBoxLayout(content)
 
-        header = QHBoxLayout()
-        self._case_heading = QLabel("Page organizer")
+        header = WrappingActionLayout()
+        self._case_heading = QLabel(tr("Page organizer"))
         self._case_heading.setObjectName("organizerHeading")
-        self._case_heading.setAccessibleName("Page organizer")
-        self._case_heading.setStyleSheet("font-size: 20pt; font-weight: 600;")
-        self._import_button = QPushButton("Import document")
+        self._case_heading.setAccessibleName(tr("Page organizer"))
+        heading_font = self._case_heading.font()
+        heading_font.setPointSizeF(heading_font.pointSizeF() * 1.3)
+        heading_font.setBold(True)
+        self._case_heading.setFont(heading_font)
+        self._case_heading.setWordWrap(True)
+        self._import_button = QPushButton(tr("Import document"))
         self._import_button.setObjectName("importButton")
         self._import_button.setAccessibleDescription(
-            "Choose a PDF, JPEG, or PNG to copy into this case. Shortcut Ctrl+I."
+            tr("Choose a PDF, JPEG, or PNG to copy into this case. Shortcut Ctrl+I.")
         )
         self._import_button.clicked.connect(self._choose_import)
-        self._close_case_button = QPushButton("Close case")
+        self._close_case_button = QPushButton(tr("Close case"))
         self._close_case_button.setObjectName("closeCaseButton")
         self._close_case_button.setAccessibleDescription(
-            "Save queued organizer changes and return to the case chooser."
+            tr("Save queued organizer changes and return to the case chooser.")
         )
         self._close_case_button.clicked.connect(self._request_close_case)
+        self._assisted_lock_button = QPushButton(tr("Lock assisted case"))
+        self._assisted_lock_button.setObjectName("assistedLockButton")
+        self._assisted_lock_button.setAccessibleDescription(
+            tr("Hide the assisted case and require its local passphrase to continue.")
+        )
+        self._assisted_lock_button.hide()
+        self._assisted_lock_button.clicked.connect(lambda: self._assisted_session.cover())
         header.addWidget(self._case_heading)
-        header.addStretch(1)
         header.addWidget(self._import_button)
+        header.addWidget(self._assisted_lock_button)
         header.addWidget(self._close_case_button)
         layout.addLayout(header)
 
-        organizer_group = QGroupBox("Active pages")
+        organizer_group = QGroupBox(tr("Active pages"))
         organizer_group.setObjectName("activePagesGroup")
         organizer_group.setAccessibleDescription(
-            "Keyboard-selectable active pages. Reordering never requires drag-and-drop."
+            tr("Keyboard-selectable active pages. Reordering never requires drag-and-drop.")
         )
         self._organizer_guidance = QLabel()
         self._organizer_guidance.setObjectName("organizerGuidance")
-        self._organizer_guidance.setAccessibleName("Page organizer guidance")
+        self._organizer_guidance.setAccessibleName(tr("Page organizer guidance"))
         self._organizer_guidance.setAccessibleDescription(
-            "Current page organizer state and the next available action."
+            tr("Current page organizer state and the next available action.")
         )
         self._organizer_guidance.setTextFormat(Qt.TextFormat.PlainText)
         self._organizer_guidance.setWordWrap(True)
@@ -939,9 +1208,9 @@ class PaperWorkShellWindow(QMainWindow):
         organizer_layout = QVBoxLayout(organizer_group)
         self._page_view = QListView()
         self._page_view.setObjectName("pageList")
-        self._page_view.setAccessibleName("Active pages")
+        self._page_view.setAccessibleName(tr("Active pages"))
         self._page_view.setAccessibleDescription(
-            "Select a page, then use the visible organizer actions or their shortcuts."
+            tr("Select a page, then use the visible organizer actions or their shortcuts.")
         )
         self._page_view.setModel(self._model)
         self._page_view.setViewMode(QListView.ViewMode.IconMode)
@@ -957,103 +1226,131 @@ class PaperWorkShellWindow(QMainWindow):
             QImage(_THUMBNAIL_WIDTH, _THUMBNAIL_HEIGHT, QImage.Format.Format_RGBA8888).size()
         )
         self._page_view.selectionModel().selectionChanged.connect(self._selection_changed)
+        self._page_view.selectionModel().currentChanged.connect(self._queue_current_row_reveal)
         self._page_view.verticalScrollBar().valueChanged.connect(self._schedule_preview_refresh)
         self._page_view.horizontalScrollBar().valueChanged.connect(self._schedule_preview_refresh)
         self._page_view.viewport().installEventFilter(self)
         organizer_layout.addWidget(self._page_view, 1)
 
-        action_layout = QGridLayout()
+        action_layout = WrappingActionLayout()
         self._move_earlier_button = self._action_button(
-            "Move earlier",
+            tr("Move earlier"),
             "moveEarlierButton",
-            "Move the selected page one position earlier. Alt+Up.",
+            tr("Move the selected page one position earlier. Alt+Up."),
         )
         self._move_later_button = self._action_button(
-            "Move later", "moveLaterButton", "Move the selected page one position later. Alt+Down."
+            tr("Move later"),
+            "moveLaterButton",
+            tr("Move the selected page one position later. Alt+Down."),
         )
         self._rotate_button = self._action_button(
-            "Rotate clockwise",
+            tr("Rotate clockwise"),
             "rotateButton",
-            "Rotate the selected page clockwise by 90 degrees. Ctrl+R.",
+            tr("Rotate the selected page clockwise by 90 degrees. Ctrl+R."),
         )
         self._remove_button = self._action_button(
-            "Remove from packet",
+            tr("Remove from packet"),
             "removeButton",
-            "Remove the selected page from the active packet. Delete.",
+            tr("Remove the selected page from the active packet. Delete."),
         )
         self._scan_review_button = self._action_button(
-            "Review scan adjustments",
+            tr("Review scan adjustments"),
             "scanReviewButton",
-            "Compare the unchanged original with provisional scan adjustments. "
-            "Nothing changes until Apply adjustments is chosen. Ctrl+Shift+A.",
+            tr(
+                "Compare the unchanged original with provisional scan adjustments. Nothing changes until Apply adjustments is chosen. Ctrl+Shift+A."
+            ),
         )
         self._change_order_button = self._action_button(
-            "Change full order",
+            tr("Change full order"),
             "changeOrderButton",
-            "Open the explicit keyboard page-order dialog. Ctrl+Shift+O.",
+            tr("Open the explicit keyboard page-order dialog. Ctrl+Shift+O."),
         )
         self._core_overlay_tools_button = self._action_button(
-            "Edit visual overlays…",
+            tr("Edit visual overlays…"),
             "editFormMarksButton",
-            "Open the full-page overlay editor. Create core visual marks and select, move, or "
-            "resize every overlay type without requiring a pointer. Ctrl+Shift+F.",
+            tr(
+                "Open the full-page overlay editor. Create core visual marks and select, move, or resize every overlay type without requiring a pointer. Ctrl+Shift+F."
+            ),
         )
-        self._core_overlay_tools_button.setAccessibleName("Edit visual overlays")
+        self._core_overlay_tools_button.setAccessibleName(tr("Edit visual overlays"))
         self._redaction_tools_button = self._action_button(
-            "Permanently remove information…",
+            tr("Permanently remove information…"),
             "redactionToolsButton",
-            "Mark areas on the selected page for future permanent removal. "
-            "Save marks only; removal and verification remain disabled. Ctrl+Shift+P.",
+            (
+                tr(
+                    "Mark areas on the selected page. Save marks only; use Export removal derivative for a separately checked output. Ctrl+Shift+P."
+                )
+                if runtime_release_qualified()
+                else tr(
+                    "Mark areas on the selected page for future permanent removal. Save marks only; removal and verification remain disabled. Ctrl+Shift+P."
+                )
+            ),
         )
-        self._redaction_tools_button.setAccessibleName("Permanently remove information")
+        self._redaction_tools_button.setAccessibleName(tr("Permanently remove information"))
         self._place_signature_image_button = self._action_button(
-            "Place signature image…",
+            tr("Place signature image…"),
             "placeSignatureImageButton",
-            f"Choose, preview, and place a local JPEG or PNG as a visual image. "
-            f"{SIGNATURE_IMAGE_DISCLAIMER} Ctrl+Shift+S.",
+            tr(
+                "Choose, preview, and place a local JPEG or PNG as a visual image. {value1} Ctrl+Shift+S.",
+                value1=tr(SIGNATURE_IMAGE_DISCLAIMER),
+            ),
         )
-        self._place_signature_image_button.setAccessibleName("Place signature image")
+        self._place_signature_image_button.setAccessibleName(tr("Place signature image"))
         self._remove_signature_image_button = self._action_button(
-            "Remove signature image…",
+            tr("Remove signature image…"),
             "removeSignatureImageButton",
-            "Select a visual signature-image placement and explicitly choose whether to keep "
-            "its case copy or remove it only when unused. Ctrl+Shift+D.",
+            tr(
+                "Select a visual signature-image placement and explicitly choose whether to keep its case copy or remove it only when unused. Ctrl+Shift+D."
+            ),
         )
-        self._remove_signature_image_button.setAccessibleName("Remove signature image")
+        self._remove_signature_image_button.setAccessibleName(tr("Remove signature image"))
         self._checklist_button = self._action_button(
-            "Review packet checklist…",
+            tr("Review packet checklist…"),
             "packetChecklistButton",
-            "Open the keyboard-complete packet checklist. Adding or dragging pages creates an "
-            "unconfirmed document; only a separate Confirm or Accept action can make a category "
-            "Ready. Ctrl+Shift+C.",
+            tr(
+                "Open the keyboard-complete packet checklist. Adding or dragging pages creates an unconfirmed document; only a separate Confirm or Accept action can make a category Ready. Ctrl+Shift+C."
+            ),
         )
-        self._checklist_button.setAccessibleName("Review packet checklist")
+        self._checklist_button.setAccessibleName(tr("Review packet checklist"))
         self._portal_constraints_button = self._action_button(
-            "Review package constraints…",
+            tr("Review package constraints…"),
             "portalConstraintsButton",
-            "Review allowed package formats, encryption policy, optional limits, and safe "
-            "requested names. These local checks do not guarantee portal acceptance.",
+            tr(
+                "Review allowed package formats, encryption policy, optional limits, and safe requested names. These local checks do not guarantee portal acceptance."
+            ),
         )
-        self._portal_constraints_button.setAccessibleName("Review package constraints")
+        self._portal_constraints_button.setAccessibleName(tr("Review package constraints"))
         self._package_export_button = self._action_button(
-            "Review and export package",
+            tr("Review and export package"),
             "packageExportButton",
-            "Review planned files, concrete checks, warnings, and human confirmations, then "
-            "export the package to a selected destination. Ctrl+E.",
+            tr(
+                "Review planned files, concrete checks, warnings, and human confirmations, then export the package to a selected destination. Ctrl+E."
+            ),
         )
         self._package_export_button.clicked.connect(self._request_package_export)
         self._pages_pdf_export_button = self._action_button(
-            "Export pages as PDF",
+            tr("Export pages as PDF"),
             "pagesPdfExportButton",
-            "Save the current PDF, JPEG, and PNG pages in order as one verified PDF. "
-            "Choose a new filename. Ctrl+Shift+E.",
+            tr(
+                "Save the current PDF, JPEG, and PNG pages in order as one verified PDF. Choose a new filename. Ctrl+Shift+E."
+            ),
         )
         self._pages_pdf_export_button.clicked.connect(self._choose_pages_pdf_export)
+        self._removal_export_button = self._action_button(
+            tr("Export removal derivative…"),
+            "removalExportButton",
+            tr(
+                "Review saved removal marks and choose a new PDF file. The supported profile has one active PDF page without overlays or scan cleanup. Required checks and independent release approval cannot be skipped. Ctrl+Alt+E."
+            ),
+        )
+        self._removal_export_button.clicked.connect(self._request_removal_export)
         self._undo_button = self._action_button(
-            "Undo", "undoButton", "Undo the last organizer action from this session. Ctrl+Z."
+            tr("Undo"),
+            "undoButton",
+            tr("Undo the last organizer action from this session. Ctrl+Z."),
         )
         self._redo_button = self._action_button(
-            "Redo", "redoButton", "Redo the next undone organizer action. Ctrl+Y."
+            tr("Redo"), "redoButton", tr("Redo the next undone organizer action. Ctrl+Y.")
         )
         self._move_earlier_button.clicked.connect(lambda: self._move_selected(-1))
         self._move_later_button.clicked.connect(lambda: self._move_selected(1))
@@ -1071,39 +1368,44 @@ class PaperWorkShellWindow(QMainWindow):
         self._portal_constraints_button.clicked.connect(self._request_portal_constraints)
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
-        action_layout.addWidget(self._move_earlier_button, 0, 0)
-        action_layout.addWidget(self._move_later_button, 0, 1)
-        action_layout.addWidget(self._rotate_button, 0, 2)
-        action_layout.addWidget(self._remove_button, 1, 0)
-        action_layout.addWidget(self._scan_review_button, 1, 1)
-        action_layout.addWidget(self._change_order_button, 1, 2)
-        action_layout.addWidget(self._undo_button, 2, 0)
-        action_layout.addWidget(self._redo_button, 2, 1)
-        action_layout.addWidget(self._core_overlay_tools_button, 2, 2)
-        action_layout.addWidget(self._place_signature_image_button, 3, 0)
-        action_layout.addWidget(self._remove_signature_image_button, 3, 1)
-        action_layout.addWidget(self._checklist_button, 3, 2)
-        action_layout.addWidget(self._redaction_tools_button, 4, 0, 1, 3)
-        action_layout.addWidget(self._portal_constraints_button, 5, 0, 1, 3)
-        action_layout.addWidget(self._package_export_button, 6, 0, 1, 3)
-        action_layout.addWidget(self._pages_pdf_export_button, 7, 0, 1, 3)
+        action_layout.addWidget(self._move_earlier_button)
+        action_layout.addWidget(self._move_later_button)
+        action_layout.addWidget(self._rotate_button)
+        action_layout.addWidget(self._remove_button)
+        action_layout.addWidget(self._scan_review_button)
+        action_layout.addWidget(self._change_order_button)
+        action_layout.addWidget(self._undo_button)
+        action_layout.addWidget(self._redo_button)
+        action_layout.addWidget(self._core_overlay_tools_button)
+        action_layout.addWidget(self._place_signature_image_button)
+        action_layout.addWidget(self._remove_signature_image_button)
+        action_layout.addWidget(self._checklist_button)
+        action_layout.addWidget(self._redaction_tools_button)
+        action_layout.addWidget(self._portal_constraints_button)
+        action_layout.addWidget(self._package_export_button)
+        action_layout.addWidget(self._pages_pdf_export_button)
+        action_layout.addWidget(self._removal_export_button)
         organizer_layout.addLayout(action_layout)
         layout.addWidget(organizer_group, 1)
 
-        quality_group = QGroupBox("Page quality review")
+        quality_group = QGroupBox(tr("Page quality review"))
         quality_group.setObjectName("qualityReviewGroup")
-        quality_group.setAccessibleName("Page quality review")
+        quality_group.setAccessibleName(tr("Page quality review"))
         quality_group.setAccessibleDescription(
-            "Limited automatic review signals for the exact saved case revision. "
-            "These suggestions never complete a requirement."
+            tr(
+                "Limited automatic review signals for the exact saved case revision. These suggestions never complete a requirement."
+            )
         )
         quality_layout = QVBoxLayout(quality_group)
         self._quality_summary = QLabel(
-            "Not checked for this saved revision. Automatic quality signals are suggestions; "
-            "review every page yourself."
+            tr(
+                "Not checked for this saved revision. Automatic quality signals are suggestions; review every page yourself."
+            )
         )
         self._quality_summary.setObjectName("qualityReviewSummary")
-        self._quality_summary.setAccessibleName("Page quality review status")
+        self._quality_summary.setAccessibleName(
+            tr("Page quality review status. {value1}", value1=self._quality_summary.text())
+        )
         self._quality_summary.setAccessibleDescription(self._quality_summary.text())
         self._quality_summary.setTextFormat(Qt.TextFormat.PlainText)
         self._quality_summary.setWordWrap(True)
@@ -1111,10 +1413,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._quality_summary.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         self._quality_findings_view = QListView()
         self._quality_findings_view.setObjectName("qualityFindingsList")
-        self._quality_findings_view.setAccessibleName("Page quality findings")
+        self._quality_findings_view.setAccessibleName(tr("Page quality findings"))
         self._quality_findings_view.setAccessibleDescription(
-            "Use the arrow keys to select a review signal. Press Enter or choose Go to selected "
-            "page to navigate without confirming or completing anything."
+            tr(
+                "Use the arrow keys to select a review signal. Press Enter or choose Go to selected page to navigate without confirming or completing anything."
+            )
         )
         self._quality_findings_view.setModel(self._quality_findings_model)
         self._quality_findings_view.setSelectionMode(
@@ -1131,29 +1434,39 @@ class PaperWorkShellWindow(QMainWindow):
             self._quality_finding_selection_changed
         )
         self._quality_check_button = self._action_button(
-            "Check page quality",
+            tr("Check page quality"),
             "qualityCheckButton",
-            "Run limited automatic checks for the exact saved revision. "
-            "Results need human review and never complete a requirement. Ctrl+Shift+Q.",
+            tr(
+                "Run limited automatic checks for the exact saved revision. Results need human review and never complete a requirement. Ctrl+Shift+Q."
+            ),
         )
         self._quality_check_button.clicked.connect(self._request_quality_review)
         self._quality_go_to_page_button = self._action_button(
-            "Go to selected page",
+            tr("Go to selected page"),
             "qualityGoToPageButton",
-            "Select and focus the organizer page referenced by the current review signal.",
+            tr("Select and focus the organizer page referenced by the current review signal."),
         )
         self._quality_go_to_page_button.clicked.connect(self._go_to_selected_quality_finding)
-        quality_actions = QHBoxLayout()
+        quality_actions = WrappingActionLayout()
         quality_actions.addWidget(self._quality_check_button)
         quality_actions.addWidget(self._quality_go_to_page_button)
-        quality_actions.addStretch(1)
         quality_layout.addWidget(self._quality_summary)
         quality_layout.addWidget(self._quality_findings_view)
         quality_layout.addLayout(quality_actions)
         layout.addWidget(quality_group)
+        return content
 
+    def _set_workflow_tab_order(self) -> None:
+        """Link the shared controls once every workflow has the same window."""
         tab_chain = (
+            self._ocr_language_button,
+            self._case_list,
+            self._create_case_button,
+            self._open_case_button,
+            self._refresh_cases_button,
+            self._assisted_create_button,
             self._import_button,
+            self._assisted_lock_button,
             self._close_case_button,
             self._page_view,
             self._move_earlier_button,
@@ -1172,10 +1485,12 @@ class PaperWorkShellWindow(QMainWindow):
             self._portal_constraints_button,
             self._package_export_button,
             self._pages_pdf_export_button,
+            self._removal_export_button,
             self._quality_summary,
             self._quality_check_button,
             self._quality_findings_view,
             self._quality_go_to_page_button,
+            self._error_label,
             self._cancel_button,
             self._retry_preview_button,
             self._retry_save_button,
@@ -1183,13 +1498,12 @@ class PaperWorkShellWindow(QMainWindow):
         )
         for current, following in pairwise(tab_chain):
             QWidget.setTabOrder(current, following)
-        return content
 
     def _action_button(self, text: str, object_name: str, description: str) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(object_name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         return button
 
@@ -1230,6 +1544,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.ocr_languages_changed.connect(self._ocr_languages_changed)
         self._worker.ocr_languages_failed.connect(self._ocr_languages_failed)
         self._worker.state_changed.connect(self._state_changed)
+        self._worker.case_close_finished.connect(self._case_close_finished)
         self._worker.thumbnails_ready.connect(self._thumbnails_ready)
         self._worker.quality_review_ready.connect(self._quality_review_ready)
         self._worker.scan_review_started.connect(self._scan_review_started)
@@ -1276,6 +1591,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.package_progress.connect(self._package_progress)
         self._worker.package_review_cancelled.connect(self._package_review_cancelled)
         self._worker.package_summary_saved.connect(self._package_summary_saved)
+        self._worker.post_export_deletion_review_ready.connect(self._post_export_deletion_ready)
+        self._worker.post_export_deletion_finished.connect(self._post_export_deletion_finished)
+        self._worker.text_companion_saved.connect(self._text_companion_saved)
+        self._worker.post_export_failed.connect(self._post_export_failed)
         self._worker.compression_ready.connect(self._compression_ready)
         self._worker.compression_preview_ready.connect(self._compression_preview_ready)
         self._worker.signature_image_prepared.connect(self._signature_image_prepared)
@@ -1293,6 +1612,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.signature_image_deleted.connect(self._signature_image_deleted)
         self._worker.signature_image_delete_failed.connect(self._signature_image_delete_failed)
         self._worker.progress_changed.connect(self._progress_changed)
+        self._worker.removal_export_review_ready.connect(self._removal_export_review_ready)
+        self._worker.removal_export_ready.connect(self._removal_export_ready)
         self._worker.status_changed.connect(self._status_changed)
         self._worker.operation_status_changed.connect(self._operation_status_changed)
         self._worker.case_reopen_required.connect(self._reopen_required)
@@ -1303,6 +1624,66 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.failed.connect(self._failed)
         self._worker.shutdown_complete.connect(self._shutdown_complete)
         self._worker.shutdown_refused.connect(self._shutdown_refused)
+
+    @Slot()
+    def _show_diagnostic_bundle(self) -> None:
+        if self._diagnostic_bundle_dialog is not None or self._closing_requested:
+            return
+        self._diagnostic_bundle_return_focus = QApplication.focusWidget()
+        dialog = DiagnosticBundleDialog(self._diagnostic_bundle_service, self)
+        self._diagnostic_bundle_dialog = dialog
+        dialog.finished.connect(self._diagnostic_bundle_finished)
+        dialog.open()
+
+    @Slot(int)
+    def _diagnostic_bundle_finished(self, _result: int) -> None:
+        dialog = self._diagnostic_bundle_dialog
+        self._diagnostic_bundle_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
+        previous = self._diagnostic_bundle_return_focus
+        self._diagnostic_bundle_return_focus = None
+        if self._diagnostic_bundle_shutdown_requested:
+            self._diagnostic_bundle_shutdown_requested = False
+            QTimer.singleShot(0, self.request_shutdown)
+            return
+        if not self._closing_requested:
+            self.activateWindow()
+            if self._focus_widget_is_available(previous) and previous is not None:
+                previous.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._ensure_widget_visible(previous)
+            else:
+                self._focus_safe_control()
+
+    @Slot()
+    def _show_keyboard_help(self) -> None:
+        if self._keyboard_help_dialog is not None or self._closing_requested:
+            return
+        self._keyboard_help_return_focus = QApplication.focusWidget()
+        dialog = KeyboardHelpDialog(self)
+        self._keyboard_help_dialog = dialog
+        dialog.finished.connect(self._keyboard_help_finished)
+        dialog.open()
+
+    @Slot(int)
+    def _keyboard_help_finished(self, _result: int) -> None:
+        dialog = self._keyboard_help_dialog
+        self._keyboard_help_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
+        QTimer.singleShot(0, self._restore_keyboard_help_focus)
+
+    def _restore_keyboard_help_focus(self) -> None:
+        previous = self._keyboard_help_return_focus
+        self._keyboard_help_return_focus = None
+        if self._closing_requested:
+            return
+        self.activateWindow()
+        if self._focus_widget_is_available(previous) and previous is not None:
+            previous.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(previous)
+        else:
+            self._focus_safe_control()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         """Refresh the on-demand preview window after viewport layout changes."""
@@ -1388,9 +1769,11 @@ class PaperWorkShellWindow(QMainWindow):
         # even though it does not mutate the case manifest.
         self._invalidate_quality_review()
         count = len(snapshot.selected_language_codes)
-        noun = "language" if count == 1 else "languages"
-        self._ocr_language_saved_message = (
-            f"OCR language selection saved for this application session: {count} {noun}."
+        noun = tr("language") if count == 1 else tr("languages")
+        self._ocr_language_saved_message = tr(
+            "OCR language selection saved for this application session: {value1} {value2}.",
+            value1=count,
+            value2=noun,
         )
 
     @Slot(int)
@@ -1417,16 +1800,24 @@ class PaperWorkShellWindow(QMainWindow):
 
     @Slot(object)
     def _cases_changed(self, case_index: object) -> None:
+        if self._assisted_session.active:
+            self._case_list.clear()
+            return
         if type(case_index) is not CaseIndex:
             return
         selected_id = self._selected_case_id()
         self._case_list.clear()
         for summary in case_index.cases:
             item = QListWidgetItem(
-                f"Case {summary.case_id}\nRevision {summary.revision}; updated {summary.updated_at.isoformat()}"
+                tr(
+                    "Case {value1}\nRevision {value2}; updated {value3}",
+                    value1=summary.case_id,
+                    value2=summary.revision,
+                    value3=summary.updated_at.isoformat(),
+                )
             )
             item.setData(Qt.ItemDataRole.UserRole, summary.case_id)
-            item.setToolTip("Internal case identifier and last saved revision.")
+            item.setToolTip(tr("Internal case identifier and last saved revision."))
             self._case_list.addItem(item)
             if summary.case_id == selected_id:
                 self._case_list.setCurrentItem(item)
@@ -1439,12 +1830,19 @@ class PaperWorkShellWindow(QMainWindow):
             )
         elif case_index.unavailable:
             self._announce(
-                f"{len(case_index.unavailable)} case entries need recovery review and are unavailable.",
+                tr(
+                    "{value1} case entries need recovery review and are unavailable.",
+                    value1=len(case_index.unavailable),
+                ),
                 assertive=True,
             )
+        if not case_index.cases and not case_index.unavailable and self._case_list.hasFocus():
+            self._create_case_button.setFocus(Qt.FocusReason.OtherFocusReason)
 
     @Slot(object)
     def _state_changed(self, state: object) -> None:
+        if self._assisted_session.locked:
+            return
         if type(state) is not OrganizerViewState:
             return
         compression = self._compression_review_state
@@ -1487,21 +1885,30 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_preview_retry_action()
         self._update_quality_actions()
         if state.case_id is None:
+            self.setAccessibleName(tr("PaperWorkShell guided packet builder"))
             self._preview_refresh_timer.stop()
             self._autosave_timer.stop()
             self._deferred_import = None
             self._deferred_preview_state = None
             self._cancel_active_operation_silently()
             self._hide_retry_save()
-            self._stack.setCurrentWidget(self._welcome_page)
+            self._show_workflow_page(self._welcome_page)
             self._case_list.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._case_list)
             return
-        self._stack.setCurrentWidget(self._organizer_page)
-        heading = f"Page organizer — revision {state.revision}"
+        self._show_workflow_page(self._organizer_page)
+        heading = tr("Page organizer — revision {value1}", value1=state.revision)
         if state.recovery_review_required:
-            heading = f"{heading} — recovered; review needed"
+            heading = tr("{value1} — recovered; review needed", value1=heading)
         self._case_heading.setText(heading)
+        case_description = tr(
+            "Case {value1}. {value2}. {value3} active pages.",
+            value1=state.case_id,
+            value2=heading,
+            value3=len(state.pages),
+        )
+        self._case_heading.setAccessibleName(case_description)
+        self.setAccessibleName(tr("PaperWorkShell. {value1}", value1=case_description))
         if state.autosave_pending:
             self._deferred_preview_state = None
             self._cancel_active_preview()
@@ -1616,7 +2023,7 @@ class PaperWorkShellWindow(QMainWindow):
                 self._update_quality_actions()
                 self._pending_failure_focus = "quality"
                 self._announce(
-                    "Page quality check cancelled. No review results were applied.",
+                    tr("Page quality check cancelled. No review results were applied."),
                     assertive=True,
                 )
             return
@@ -1627,6 +2034,7 @@ class PaperWorkShellWindow(QMainWindow):
             type(snapshot) is not QualityReviewSnapshot
             or state is None
             or state.case_id is None
+            or state.revision is None
             or state.autosave_pending
             or binding[:2] != (state.case_id, state.revision)
             or snapshot.case_id != state.case_id
@@ -1654,8 +2062,9 @@ class PaperWorkShellWindow(QMainWindow):
             UiFailure(
                 code="PWS_UI_QUALITY_RESULT_INVALID",
                 message=(
-                    "PaperWorkShell could not display page-quality review results safely. "
-                    "Run the check again."
+                    tr(
+                        "PaperWorkShell could not display page-quality review results safely. Run the check again."
+                    )
                 ),
                 retryable=True,
                 operation_id=operation_id,
@@ -1700,7 +2109,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._show_scan_review_failure(
                 UiFailure(
                     code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                    message="PaperWorkShell could not open scan review safely. Start the review again.",
+                    message=tr(
+                        "PaperWorkShell could not open scan review safely. Start the review again."
+                    ),
                     retryable=True,
                 )
             )
@@ -1740,7 +2151,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._show_scan_review_failure(
                 UiFailure(
                     code="PWS_UI_UNEXPECTED",
-                    message="PaperWorkShell could not open scan review. Try again.",
+                    message=tr("PaperWorkShell could not open scan review. Try again."),
                     retryable=True,
                 )
             )
@@ -1772,14 +2183,18 @@ class PaperWorkShellWindow(QMainWindow):
         if image is None:
             self._fail_active_scan_review_preview(
                 "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                "PaperWorkShell could not display that preview safely. Update the preview again.",
+                tr(
+                    "PaperWorkShell could not display that preview safely. Update the preview again."
+                ),
             )
             return
         byte_cost = image.width() * image.height() * 4
         if not self._reserve_scan_review_preview_bytes(active.variant, byte_cost):
             self._fail_active_scan_review_preview(
                 "PWS_UI_SCAN_REVIEW_LIMIT_EXCEEDED",
-                "The preview exceeds the configured memory limit. Close scan review and try again.",
+                tr(
+                    "The preview exceeds the configured memory limit. Close scan review and try again."
+                ),
             )
             return
         if active.variant is ScanReviewPreviewVariant.ORIGINAL:
@@ -1789,7 +2204,9 @@ class PaperWorkShellWindow(QMainWindow):
         if not accepted:
             self._fail_active_scan_review_preview(
                 "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                "PaperWorkShell rejected a stale scan-review preview. Update the preview again.",
+                tr(
+                    "PaperWorkShell rejected a stale scan-review preview. Update the preview again."
+                ),
             )
             return
         self._scan_review_preview_succeeded = True
@@ -1880,7 +2297,7 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.set_failure(
                 active.draft,
                 "PWS_UI_UNEXPECTED",
-                "PaperWorkShell could not complete scan review. Try again.",
+                tr("PaperWorkShell could not complete scan review. Try again."),
                 variant=active.variant,
             )
 
@@ -1912,7 +2329,7 @@ class PaperWorkShellWindow(QMainWindow):
                 dialog.set_failure(
                     active.draft,
                     "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                    "The preview did not finish safely. Update the preview again.",
+                    tr("The preview did not finish safely. Update the preview again."),
                     variant=active.variant,
                 )
             return
@@ -1927,7 +2344,7 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.set_failure(
                 active.draft,
                 "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                "The original preview did not finish safely. Update the preview again.",
+                tr("The original preview did not finish safely. Update the preview again."),
                 variant=active.variant,
             )
             return
@@ -1950,7 +2367,7 @@ class PaperWorkShellWindow(QMainWindow):
                 dialog.set_failure(
                     active.draft,
                     "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                    "The preview did not finish safely. Update the preview again.",
+                    tr("The preview did not finish safely. Update the preview again."),
                     variant=active.variant,
                 )
             return
@@ -1988,7 +2405,7 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.set_failure(
                 draft,
                 "PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                "PaperWorkShell could not verify the applied scan-review state safely.",
+                tr("PaperWorkShell could not verify the applied scan-review state safely."),
             )
             return
         self._scan_review_apply_completed = True
@@ -2000,7 +2417,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._show_scan_review_failure(
                 UiFailure(
                     code="PWS_UI_SCAN_REVIEW_RESULT_INVALID",
-                    message="PaperWorkShell applied the case change, but could not close scan review safely.",
+                    message=tr(
+                        "PaperWorkShell applied the case change, but could not close scan review safely."
+                    ),
                     retryable=False,
                 )
             )
@@ -2021,7 +2440,7 @@ class PaperWorkShellWindow(QMainWindow):
             dialog.set_failure(
                 draft,
                 "PWS_UI_UNEXPECTED",
-                "PaperWorkShell could not apply those adjustments. Try again.",
+                tr("PaperWorkShell could not apply those adjustments. Try again."),
             )
 
     @Slot(object)
@@ -2049,43 +2468,58 @@ class PaperWorkShellWindow(QMainWindow):
             }
         ):
             return
-        prior = self._last_announced_progress
-        phase_changed = prior is None or prior[:2] != (progress.operation, progress.phase)
-        announcement_step = max(1, progress.total // 4)
-        completed_enough = prior is None or progress.completed - prior[2] >= announcement_step
-        announce_checkpoint = (
-            phase_changed or completed_enough or progress.completed == progress.total
-        )
-        if active.kind is _LongOperationKind.IMPORT and announce_checkpoint:
+        if active.kind is _LongOperationKind.IMPORT:
             self._latest_import_progress = progress
             self._import_presentation = _ImportPresentationState.ACTIVE
             self._update_organizer_guidance()
         elif active.kind is _LongOperationKind.QUALITY:
-            quality_message = (
-                f"Checking this saved revision — {progress.phase}: "
-                f"{progress.completed} of {progress.total}. Results remain automatic suggestions."
+            quality_message = tr(
+                "Checking this saved revision — {value1}: {value2} of {value3}. Results remain automatic suggestions.",
+                value1=tr(progress.phase),
+                value2=progress.completed,
+                value3=progress.total,
             )
             self._quality_summary.setText(quality_message)
+            self._quality_summary.setAccessibleName(
+                tr("Page quality review status. {value1}", value1=quality_message)
+            )
             self._quality_summary.setAccessibleDescription(quality_message)
         self._progress.setVisible(True)
         self._progress.setRange(0, progress.total)
         self._progress.setValue(progress.completed)
-        self._progress.setFormat(f"{progress.operation}: {progress.phase} — %v of %m")
+        self._progress.setFormat(
+            tr(
+                "{value1}: {value2} — %v of %m",
+                value1=tr(progress.operation),
+                value2=tr(progress.phase),
+            )
+        )
         self._progress.setAccessibleDescription(
-            f"{progress.operation} {progress.phase}, {progress.completed} of {progress.total}."
+            tr(
+                "{value1} {value2}, {value3} of {value4}.",
+                value1=tr(progress.operation),
+                value2=tr(progress.phase),
+                value3=progress.completed,
+                value4=progress.total,
+            )
         )
         cancelable = progress.cancelable and not active.cancellation.cancelled()
         self._cancel_button.setVisible(progress.cancelable)
         self._cancel_button.setEnabled(cancelable)
-        if announce_checkpoint:
-            self._last_announced_progress = (
-                progress.operation,
-                progress.phase,
-                progress.completed,
-            )
-            self._announce(
-                f"{progress.operation} {progress.phase}: {progress.completed} of {progress.total}."
-            )
+        message = tr(
+            "{value1} {value2}: {value3} of {value4}.",
+            value1=tr(progress.operation),
+            value2=tr(progress.phase),
+            value3=progress.completed,
+            value4=progress.total,
+        )
+        self._set_status_text(message)
+        self._announcer.progress(
+            message,
+            key=f"{progress.operation}:{progress.phase}",
+            completed=progress.completed,
+            total=progress.total,
+        )
 
     @Slot(str)
     def _status_changed(self, message: str) -> None:
@@ -2137,7 +2571,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._failed(
             UiFailure(
                 code="PWS_UI_PREVIEW_RESULT_INVALID",
-                message="PaperWorkShell could not display the preview safely. Retry the selected preview.",
+                message=tr(
+                    "PaperWorkShell could not display the preview safely. Retry the selected preview."
+                ),
                 retryable=True,
                 operation_id=operation_id,
             )
@@ -2185,8 +2621,8 @@ class PaperWorkShellWindow(QMainWindow):
         if active is None or active.operation_id != operation_id:
             return
         self._progress.setVisible(True)
-        self._progress.setRange(0, 0)
-        self._progress.setFormat(f"{operation_name} starting")
+        set_static_busy(self._progress)
+        self._progress.setFormat(tr("{value1} starting", value1=tr(operation_name)))
 
     @Slot(int, str)
     def _operation_cancelled(self, operation_id: int, message: str) -> None:
@@ -2220,7 +2656,11 @@ class PaperWorkShellWindow(QMainWindow):
         if active is None or active.operation_id != operation_id:
             return
         finished_preview = active.kind is _LongOperationKind.PREVIEW
-        finished_export = active.kind is _LongOperationKind.PDF_EXPORT
+        finished_export = active.kind in {
+            _LongOperationKind.PDF_EXPORT,
+            _LongOperationKind.REMOVAL_REVIEW,
+            _LongOperationKind.REMOVAL_EXPORT,
+        }
         finished_quality = active.kind is _LongOperationKind.QUALITY
         quality_result_focus_requested = finished_quality and self._quality_result_focus_requested
         preview_batch_complete = self._preview_batch_complete
@@ -2240,6 +2680,15 @@ class PaperWorkShellWindow(QMainWindow):
         if finished_export:
             self._set_controls_enabled(True)
             self._pending_failure_focus = "pdf_export"
+        if active.kind is _LongOperationKind.REMOVAL_REVIEW and active.cancellation.cancelled():
+            self._pending_removal_review = None
+            self._announce(tr("Removal export review cancelled. No derivative was created."))
+        if self._show_pending_removal_review():
+            self._pending_failure_focus = None
+            return
+        if self._show_pending_redaction_export_report():
+            self._pending_failure_focus = None
+            return
         pending_scan_review = self._pending_scan_review_page_id
         pending_quality = self._pending_quality_request
         pending_signature_image = (
@@ -2254,8 +2703,9 @@ class PaperWorkShellWindow(QMainWindow):
             if self._selected_page_id() != self._signature_image_page_id:
                 self._clear_signature_image_source()
                 self._announce(
-                    "The selected page changed before the signature image could be prepared. "
-                    "Select a page and try again.",
+                    tr(
+                        "The selected page changed before the signature image could be prepared. Select a page and try again."
+                    ),
                     assertive=True,
                 )
                 return
@@ -2286,8 +2736,9 @@ class PaperWorkShellWindow(QMainWindow):
                     UiFailure(
                         code="PWS_UI_SCAN_REVIEW_SELECTION_CHANGED",
                         message=(
-                            "The selected page changed before scan review opened. "
-                            "Select a page and try again."
+                            tr(
+                                "The selected page changed before scan review opened. Select a page and try again."
+                            )
                         ),
                         retryable=True,
                     )
@@ -2337,6 +2788,12 @@ class PaperWorkShellWindow(QMainWindow):
         )
         if correlated_kind is _LongOperationKind.QUALITY and self._active_quality_binding is None:
             return
+        if failure.code == "REDACTION_PIPELINE_DISABLED" and (
+            correlated_kind is _LongOperationKind.PDF_EXPORT or active is None
+        ):
+            self._queue_redaction_export_report()
+            if self._show_pending_redaction_export_report():
+                return
         if correlated_kind is _LongOperationKind.PREVIEW:
             for page_id in self._active_preview_page_ids:
                 self._model.set_preview_failed(page_id)
@@ -2350,7 +2807,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._quality_findings_model.set_snapshot(None)
             self._quality_presentation = _QualityPresentationState.FAILED
             self._update_quality_summary()
-        self._error_label.setText(f"{failure.code}: {failure.message}")
+        self._set_error_text(f"{failure.code}: {tr(failure.message)}")
         self._error_label.setVisible(True)
         pending_save = self._state is not None and self._state.autosave_pending
         if failure.retryable and pending_save:
@@ -2368,7 +2825,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_preview_retry_action()
         self._update_quality_actions()
         self._update_organizer_guidance()
-        self._announce(f"Action failed. {failure.message}", assertive=True)
+        self._announce(tr("Action failed. {value1}", value1=tr(failure.message)), assertive=True)
         if self._retry_save_button.isVisible():
             self._retry_save_button.setFocus()
             self._ensure_widget_visible(self._retry_save_button)
@@ -2399,8 +2856,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._retry_close_button.setVisible(True)
             self._retry_close_button.setEnabled(True)
             self._announce(
-                "The application remains open because secure cleanup could not finish. "
-                "Retry closing PaperWorkShell.",
+                tr(
+                    "The application remains open because secure cleanup could not finish. Retry closing PaperWorkShell."
+                ),
                 assertive=True,
             )
             QTimer.singleShot(0, self._focus_retry_close_after_shutdown_refusal)
@@ -2408,7 +2866,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._set_controls_enabled(True)
         self._hide_retry_close()
         self._announce(
-            "The application remains open because queued changes could not be saved. Retry saving changes.",
+            tr(
+                "The application remains open because queued changes could not be saved. Retry saving changes."
+            ),
             assertive=True,
         )
         self._retry_save_button.setVisible(True)
@@ -2433,13 +2893,14 @@ class PaperWorkShellWindow(QMainWindow):
         """Keep the closing surface alive while a bounded backend call winds down."""
 
         self._announce(
-            "PaperWorkShell is still finishing the current operation before it can close.",
+            tr("PaperWorkShell is still finishing the current operation before it can close."),
             assertive=True,
         )
 
     def _request_previews(self, state: OrganizerViewState) -> None:
         if (
-            self._case_reopen_required
+            self._case_close_pending
+            or self._case_reopen_required
             or self._scan_review_is_opening_or_active()
             or self._core_overlay_tools_is_opening_or_active()
             or self._redaction_tools_is_opening_or_active()
@@ -2497,6 +2958,8 @@ class PaperWorkShellWindow(QMainWindow):
         )
 
     def _schedule_preview_refresh(self, _value: int | None = None) -> None:
+        if self._case_close_pending:
+            return
         if (
             self._active_operation is not None
             and self._active_operation.kind is _LongOperationKind.PDF_EXPORT
@@ -2524,7 +2987,8 @@ class PaperWorkShellWindow(QMainWindow):
     def _refresh_visible_previews(self) -> None:
         state = self._state
         if (
-            state is None
+            self._case_close_pending
+            or state is None
             or state.case_id is None
             or state.autosave_pending
             or self._closing_requested
@@ -2575,7 +3039,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._update_page_actions()
             self._update_quality_actions()
             self._announce(
-                "Stopping the current page preview before the page quality check starts."
+                tr("Stopping the current page preview before the page quality check starts.")
             )
             return
         self._quality_result_focus_requested = quality_action_had_focus
@@ -2635,7 +3099,7 @@ class PaperWorkShellWindow(QMainWindow):
         if row is None:
             self._invalidate_quality_review()
             self._announce(
-                "The page quality results no longer match this organizer. Run the check again.",
+                tr("The page quality results no longer match this organizer. Run the check again."),
                 assertive=True,
             )
             return
@@ -2648,7 +3112,13 @@ class PaperWorkShellWindow(QMainWindow):
         self._page_view.scrollTo(page_index, QAbstractItemView.ScrollHint.PositionAtCenter)
         self._page_view.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._page_view)
-        self._announce(f"Showing page {finding.page_position}. Needs review: {finding.title}.")
+        self._announce(
+            tr(
+                "Showing page {value1}. Needs review: {value2}.",
+                value1=finding.page_position,
+                value2=tr(finding.title),
+            )
+        )
 
     def _go_to_selected_quality_finding(self) -> None:
         self._go_to_quality_finding(self._quality_findings_view.currentIndex())
@@ -2679,6 +3149,14 @@ class PaperWorkShellWindow(QMainWindow):
         )
         return tuple(state.pages[row].page_id for row in rows if state.pages[row].preview_supported)
 
+    def _file_dialog_options(self, options: QFileDialog.Option | None = None) -> QFileDialog.Option:
+        """Keep assisted pickers inside Qt's foreground and privacy ownership."""
+
+        selected = QFileDialog.Option(0) if options is None else options
+        if self._assisted_session.active:
+            return selected | QFileDialog.Option.DontUseNativeDialog
+        return selected
+
     def _choose_import(self) -> None:
         if (
             not self._controls_enabled
@@ -2693,18 +3171,19 @@ class PaperWorkShellWindow(QMainWindow):
         if self._import_is_pending_or_running():
             QApplication.beep()
             self._announce(
-                "An import is already queued or running. Cancel it or wait for it to finish.",
+                tr("An import is already queued or running. Cancel it or wait for it to finish."),
                 assertive=True,
             )
             return
         selected, _filter = QFileDialog.getOpenFileName(
             self,
-            "Import document",
+            tr("Import document"),
             "",
-            "Supported documents (*.pdf *.png *.jpg *.jpeg);;All files (*)",
+            tr("Supported documents (*.pdf *.png *.jpg *.jpeg);;All files (*)"),
+            options=self._file_dialog_options(),
         )
         if not selected:
-            self._announce("Import selection cancelled.")
+            self._announce(tr("Import selection cancelled."))
             return
         source_path = Path(selected)
         self._queue_import(source_path, source_path.name)
@@ -2714,13 +3193,13 @@ class PaperWorkShellWindow(QMainWindow):
             return
         selected, _filter = QFileDialog.getSaveFileName(
             self,
-            "Export pages as PDF",
+            tr("Export pages as PDF"),
             "",
-            "PDF document (*.pdf)",
-            options=QFileDialog.Option.DontConfirmOverwrite,
+            tr("PDF document (*.pdf)"),
+            options=self._file_dialog_options(QFileDialog.Option.DontConfirmOverwrite),
         )
         if not selected:
-            self._announce("PDF export selection cancelled.")
+            self._announce(tr("PDF export selection cancelled."))
             return
         self._preview_refresh_timer.stop()
         self._autosave_timer.stop()
@@ -2729,7 +3208,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._set_controls_enabled(False)
         self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._cancel_button)
-        self._announce("PDF export started. You can cancel this operation.")
+        self._announce(tr("PDF export started. You can cancel this operation."))
         self._commands.pages_pdf_export_requested.emit(
             operation.operation_id,
             Path(selected),
@@ -2752,7 +3231,9 @@ class PaperWorkShellWindow(QMainWindow):
             if active.kind is not _LongOperationKind.PREVIEW:
                 QApplication.beep()
                 self._announce(
-                    "An import is already queued or running. Cancel it or wait for it to finish.",
+                    tr(
+                        "An import is already queued or running. Cancel it or wait for it to finish."
+                    ),
                     assertive=True,
                 )
                 return
@@ -2762,14 +3243,14 @@ class PaperWorkShellWindow(QMainWindow):
             self._update_organizer_guidance()
             self._update_import_availability()
             self._cancel_active_preview()
-            self._announce("Stopping the current preview before import starts.")
+            self._announce(tr("Stopping the current preview before import starts."))
             return
         self._start_import(source_path, display_name)
 
     def _start_import(self, source_path: Path, display_name: str) -> None:
         self._hide_error()
         operation = self._begin_long_operation(_LongOperationKind.IMPORT)
-        self._announce("Import started. You can cancel this operation.")
+        self._announce(tr("Import started. You can cancel this operation."))
         self._commands.import_requested.emit(
             operation.operation_id,
             source_path,
@@ -2787,7 +3268,7 @@ class PaperWorkShellWindow(QMainWindow):
         case_id = self._selected_case_id()
         if case_id is None:
             QApplication.beep()
-            self._announce("Select a case before choosing Open selected case.", assertive=True)
+            self._announce(tr("Select a case before choosing Open selected case."), assertive=True)
             self._case_list.setFocus()
             return
         self._commands.open_case_requested.emit(case_id)
@@ -2812,16 +3293,54 @@ class PaperWorkShellWindow(QMainWindow):
             or self._state.case_id is None
         ):
             return
+        self._case_close_pending = True
+        self._preview_refresh_timer.stop()
         self._autosave_timer.stop()
         self._deferred_import = None
         self._deferred_preview_state = None
         self._cancel_active_operation_silently()
+        self._set_controls_enabled(False)
+        if self._assisted_session.active:
+            self._assisted_lock_button.setEnabled(True)
+            self._assisted_lock_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._assisted_lock_button)
+        else:
+            self._status_label.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._status_label)
+        self._announce(tr("Waiting for the active operation to finish safely."))
         self._commands.close_case_requested.emit()
+
+    @Slot()
+    def _case_close_finished(self) -> None:
+        """Restore interaction only after the queued close has actually finished."""
+
+        if not self._case_close_pending:
+            return
+        self._case_close_pending = False
+        if not self._closing_requested:
+            self._set_controls_enabled(True)
+            if self._state is not None and self._state.autosave_pending:
+                self._autosave_timer.start()
+            modal = QApplication.activeModalWidget()
+            if modal is None or not modal.isVisible():
+                if (
+                    self._error_label.isVisible()
+                    and self._state is not None
+                    and (self._state.case_id is not None)
+                ):
+                    self._focus_error_recovery(
+                        self._retry_save_button
+                        if self._retry_save_button.isVisible()
+                        else self._close_case_button
+                    )
+                else:
+                    self._focus_safe_control()
 
     def _request_autosave_flush(self) -> None:
         state = self._state
         if (
-            self._case_reopen_required
+            self._case_close_pending
+            or self._case_reopen_required
             or state is None
             or state.case_id is None
             or not state.autosave_pending
@@ -2834,7 +3353,8 @@ class PaperWorkShellWindow(QMainWindow):
     def _request_retry_save(self) -> None:
         state = self._state
         if (
-            self._case_reopen_required
+            self._case_close_pending
+            or self._case_reopen_required
             or state is None
             or state.case_id is None
             or not state.autosave_pending
@@ -2959,9 +3479,9 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._package_export_button.setEnabled(package_enabled)
         self._package_export_button.setText(
-            "Retry closing package review"
+            tr("Retry closing package review")
             if self._package_release_failed
-            else "Review and export package"
+            else tr("Review and export package")
         )
         self._package_export_button.setAccessibleName(self._package_export_button.text())
         self._package_export_action.setEnabled(package_enabled)
@@ -2975,6 +3495,15 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._pages_pdf_export_button.setEnabled(pages_pdf_enabled)
         self._pages_pdf_export_action.setEnabled(pages_pdf_enabled)
+        removal_enabled = (
+            pages_pdf_enabled
+            and state is not None
+            and len(state.pages) == 1
+            and bool(state.removal_page_ids)
+            and not self._redaction_tools_is_opening_or_active()
+        )
+        self._removal_export_button.setEnabled(removal_enabled)
+        self._removal_export_action.setEnabled(removal_enabled)
         self._undo_button.setEnabled(editable and state is not None and state.can_undo)
         self._redo_button.setEnabled(editable and state is not None and state.can_redo)
 
@@ -3020,7 +3549,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._update_import_availability()
             self._update_page_actions()
             self._update_preview_retry_action()
-            self._announce("Stopping the current page preview before scan review opens.")
+            self._announce(tr("Stopping the current page preview before scan review opens."))
             return
         self._start_scan_review(page_id)
 
@@ -3039,7 +3568,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_preview_retry_action()
-        self._announce("Opening scan review. Nothing has been applied.")
+        self._announce(tr("Opening scan review. Nothing has been applied."))
         self._commands.scan_review_begin_requested.emit(operation_id, page_id, None)
 
     @Slot(object)
@@ -3314,7 +3843,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Opening visual form-mark editor. No changes have been applied.")
+        self._announce(tr("Opening visual form-mark editor. No changes have been applied."))
         self._commands.core_overlay_tools_begin_requested.emit(operation_id, page_id)
 
     @Slot(int, object)
@@ -3416,11 +3945,11 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             dialog.set_apply_failed(
                 "PWS_UI_RESPONSE_INVALID",
-                "PaperWorkShell received an invalid save confirmation. Try saving again.",
+                tr("PaperWorkShell received an invalid save confirmation. Try saving again."),
             )
             return
         if dialog.set_apply_succeeded():
-            self._announce("Visual overlay changes applied and saved.")
+            self._announce(tr("Visual overlay changes applied and saved."))
 
     @Slot(int, object)
     def _core_overlay_tools_apply_failed(self, operation_id: int, failure: object) -> None:
@@ -3435,7 +3964,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         dialog.set_apply_failed(
             "PWS_UI_RESPONSE_INVALID",
-            "PaperWorkShell received an invalid save failure. Try saving again.",
+            tr("PaperWorkShell received an invalid save failure. Try saving again."),
         )
 
     @Slot(int)
@@ -3474,7 +4003,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Visual overlay changes cancelled. Nothing was applied.")
+        self._announce(tr("Visual overlay changes cancelled. Nothing was applied."))
         if not self._closing_requested and self._core_overlay_tools_button.isEnabled():
             QTimer.singleShot(0, self._focus_core_overlay_tools_button_after_dialog)
 
@@ -3499,14 +4028,13 @@ class PaperWorkShellWindow(QMainWindow):
         code = failure.code if type(failure) is UiFailure else None
         message = failure.message if type(failure) is UiFailure else None
         safe_code, safe_message = safe_core_overlay_failure(code, message)
-        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._set_error_text(f"{safe_code}: {safe_message}")
         self._error_label.setVisible(True)
         self._announce(
-            f"Visual form-mark editor could not finish. {safe_message}",
+            tr("Visual form-mark editor could not finish. {value1}", value1=safe_message),
             assertive=True,
         )
-        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._ensure_widget_visible(self._error_label)
+        self._focus_error_recovery(self._core_overlay_tools_button)
 
     def _request_redaction_tools(self) -> None:
         """Open the separate redaction mark intent editor for the selected page."""
@@ -3532,8 +4060,282 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Opening redaction mark editor. No information has been removed.")
+        self._announce(tr("Opening redaction mark editor. No information has been removed."))
         self._commands.redaction_tools_begin_requested.emit(operation_id, page_id)
+
+    def _request_removal_export(self) -> None:
+        if not self._removal_export_button.isEnabled() or self._active_operation is not None:
+            return
+        self._autosave_timer.stop()
+        self._preview_refresh_timer.stop()
+        self._hide_error()
+        operation = self._begin_long_operation(_LongOperationKind.REMOVAL_REVIEW)
+        self._set_controls_enabled(False)
+        self._announce(
+            tr("Preparing review of the saved removal marks. No file has been exported.")
+        )
+        self._commands.removal_export_review_requested.emit(operation.operation_id)
+
+    @Slot(int, object)
+    def _removal_export_review_ready(self, operation_id: int, review: object) -> None:
+        active = self._active_operation
+        if (
+            self._closing_requested
+            or active is None
+            or active.operation_id != operation_id
+            or active.kind is not _LongOperationKind.REMOVAL_REVIEW
+            or type(review) is not RemovalExportReview
+            or active.cancellation.cancelled()
+        ):
+            return
+        try:
+            review.__post_init__()
+        except BaseException:
+            self._failed(
+                UiFailure(
+                    "PWS_UI_RESPONSE_INVALID",
+                    tr("Removal review could not be authenticated. Start a new review."),
+                    True,
+                    operation_id,
+                )
+            )
+            return
+        self._pending_removal_review = review
+
+    def _show_pending_removal_review(self) -> bool:
+        review = self._pending_removal_review
+        if review is None or self._active_operation is not None:
+            return False
+        self._pending_removal_review = None
+        state = self._state
+        if (
+            self._closing_requested
+            or state is None
+            or state.case_id != review.case_id
+            or state.revision != review.manifest_revision
+            or state.autosave_pending
+            or state.removal_page_ids != review.affected_page_ids
+            or self._removal_review_dialog is not None
+        ):
+            return False
+        dialog = RemovalExportReviewDialog(review, self)
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.destination_requested.connect(self._choose_removal_destination)
+        dialog.finished.connect(self._removal_review_finished)
+        self._removal_review_dialog = dialog
+        self._update_package_availability()
+        dialog.open()
+        return True
+
+    @Slot(bool)
+    def _choose_removal_destination(self, signed_source_confirmed: bool) -> None:
+        dialog = self._removal_review_dialog
+        if (
+            dialog is None
+            or not dialog.review_confirmed
+            or signed_source_confirmed is not dialog.signed_source_confirmed
+            or self._active_operation is not None
+            or self._closing_requested
+        ):
+            return
+        selected, _filter = QFileDialog.getSaveFileName(
+            self,
+            tr("Export removal derivative to a new PDF file"),
+            "",
+            tr("PDF document (*.pdf)"),
+            options=self._file_dialog_options(QFileDialog.Option.DontConfirmOverwrite),
+        )
+        if not selected:
+            self._announce(
+                tr("Removal export destination selection cancelled. No file was exported.")
+            )
+            return
+        review = dialog.review
+        dialog.accept()
+        self._preview_refresh_timer.stop()
+        self._autosave_timer.stop()
+        self._hide_error()
+        operation = self._begin_long_operation(_LongOperationKind.REMOVAL_EXPORT)
+        self._set_controls_enabled(False)
+        self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._ensure_widget_visible(self._cancel_button)
+        self._announce(tr("Removal export started. Required checks are running; you can cancel."))
+        self._commands.removal_pdf_export_requested.emit(
+            operation.operation_id,
+            review,
+            Path(selected),
+            signed_source_confirmed,
+            operation.cancellation,
+        )
+
+    def _removal_review_finished(self, _result: int) -> None:
+        dialog = self._removal_review_dialog
+        self._removal_review_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
+        self._update_package_availability()
+        if not self._closing_requested and self._active_operation is None:
+            self._removal_export_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(self._removal_export_button)
+
+    @Slot(int, object)
+    def _removal_export_ready(self, operation_id: int, report: object) -> None:
+        active = self._active_operation
+        if (
+            self._closing_requested
+            or active is None
+            or active.operation_id != operation_id
+            or active.kind is not _LongOperationKind.REMOVAL_EXPORT
+            or type(report) is not RedactionExportReport
+        ):
+            return
+        try:
+            report.__post_init__()
+        except BaseException:
+            self._failed(
+                UiFailure(
+                    "PWS_UI_RESPONSE_INVALID",
+                    tr(
+                        "Removal export result could not be authenticated. Review the destination before retrying."
+                    ),
+                    False,
+                    operation_id,
+                )
+            )
+            return
+        self._pending_redaction_export_report = report
+
+    def _queue_redaction_export_report(self) -> bool:
+        """Route unapplied marks to the separately verified removal workflow."""
+
+        state = self._state
+        if (
+            self._closing_requested
+            or state is None
+            or state.case_id is None
+            or state.revision is None
+            or not state.removal_page_ids
+        ):
+            return False
+        qualified = runtime_release_qualified()
+        self._pending_redaction_export_report = RedactionExportReport(
+            state.case_id,
+            state.revision,
+            state.removal_page_ids,
+            None,
+            RedactionExportStatus.BLOCKED,
+            RedactionExportCode.WORKFLOW_REQUIRED
+            if qualified
+            else RedactionExportCode.RELEASE_PENDING,
+            report_version=(
+                RUNTIME_EXPORT_REPORT_VERSION if qualified else REDACTION_EXPORT_REPORT_VERSION
+            ),
+        )
+        return True
+
+    def _show_pending_redaction_export_report(self) -> bool:
+        report = self._pending_redaction_export_report
+        state = self._state
+        if (
+            report is None
+            or self._closing_requested
+            or self._active_operation is not None
+            or self._package_export_is_opening_or_active()
+            or self._redaction_export_dialog is not None
+            or self._redaction_tools_dialog is not None
+            or self._core_overlay_tools_is_opening_or_active()
+            or self._scan_review_is_opening_or_active()
+            or self._checklist_is_opening_or_active()
+            or self._portal_constraints_is_opening_or_active()
+            or self._signature_image_is_opening_or_active()
+        ):
+            return False
+        self._pending_redaction_export_report = None
+        if (
+            state is None
+            or state.case_id != report.case_id
+            or state.revision != report.manifest_revision
+            or state.removal_page_ids != report.affected_page_ids
+        ):
+            return False
+        dialog = RedactionExportDialog(report, self)
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.review_marks_requested.connect(self._review_redaction_export_marks)
+        dialog.retry_requested.connect(self._retry_removal_export)
+        dialog.finished.connect(self._redaction_export_report_finished)
+        self._redaction_export_dialog = dialog
+        self._update_package_availability()
+        dialog.open()
+        return True
+
+    def _review_redaction_export_marks(self) -> None:
+        dialog = self._redaction_export_dialog
+        state = self._state
+        if (
+            dialog is None
+            or state is None
+            or state.case_id != dialog.report.case_id
+            or state.revision != dialog.report.manifest_revision
+        ):
+            return
+        page_id = next(
+            (value for value in dialog.report.affected_page_ids if value in state.removal_page_ids),
+            None,
+        )
+        self._pending_redaction_review = (
+            None
+            if page_id is None
+            else (dialog.report.case_id, dialog.report.manifest_revision, page_id)
+        )
+        dialog.accept()
+
+    def _redaction_export_report_finished(self, _result: int) -> None:
+        dialog = self._redaction_export_dialog
+        if dialog is None:
+            return
+        self._redaction_export_dialog = None
+        dialog.deleteLater()
+        self._update_package_availability()
+        if self._closing_requested:
+            self._pending_redaction_review = None
+            self._pending_removal_retry = False
+            return
+        if self._pending_removal_retry:
+            self._pending_removal_retry = False
+            QTimer.singleShot(0, self._request_removal_export)
+            return
+        if self._pending_redaction_review is not None:
+            QTimer.singleShot(0, self._open_redaction_report_marks)
+        else:
+            QTimer.singleShot(0, self._focus_redaction_tools_button_after_dialog)
+
+    def _retry_removal_export(self) -> None:
+        dialog = self._redaction_export_dialog
+        if dialog is not None and dialog.report.retry_allowed:
+            self._pending_removal_retry = True
+            dialog.accept()
+
+    def _open_redaction_report_marks(self) -> None:
+        pending = self._pending_redaction_review
+        self._pending_redaction_review = None
+        state = self._state
+        if (
+            self._closing_requested
+            or pending is None
+            or state is None
+            or state.case_id != pending[0]
+            or state.revision != pending[1]
+            or pending[2] not in state.removal_page_ids
+            or self._active_operation is not None
+            or self._package_export_is_opening_or_active()
+        ):
+            return
+        page_id = pending[2]
+        row = self._model.row_for_page(page_id)
+        if row is None:
+            return
+        self._page_view.setCurrentIndex(self._model.index(row, 0))
+        self._request_redaction_tools()
 
     @Slot(int, object)
     def _redaction_tools_started(self, operation_id: int, editor_state: object) -> None:
@@ -3636,11 +4438,11 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             dialog.save_failed(
                 "PWS_UI_RESPONSE_INVALID",
-                "PaperWorkShell received an invalid save confirmation. Try saving again.",
+                tr("PaperWorkShell received an invalid save confirmation. Try saving again."),
             )
             return
         dialog.finish_saved()
-        self._announce("Redaction marks saved. No information has been removed.")
+        self._announce(tr("Redaction marks saved. No information has been removed."))
 
     @Slot(int, object)
     def _redaction_tools_save_failed(self, operation_id: int, failure: object) -> None:
@@ -3655,7 +4457,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         dialog.save_failed(
             "PWS_UI_RESPONSE_INVALID",
-            "PaperWorkShell received an invalid save failure. Try saving again.",
+            tr("PaperWorkShell received an invalid save failure. Try saving again."),
         )
 
     @Slot(int)
@@ -3694,7 +4496,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Redaction mark changes cancelled. No information has been removed.")
+        self._announce(tr("Redaction mark changes cancelled. No information has been removed."))
         if not self._closing_requested and self._redaction_tools_button.isEnabled():
             QTimer.singleShot(0, self._focus_redaction_tools_button_after_dialog)
 
@@ -3719,18 +4521,16 @@ class PaperWorkShellWindow(QMainWindow):
         code = failure.code if type(failure) is UiFailure else None
         message = failure.message if type(failure) is UiFailure else None
         safe_code, _ = safe_redaction_failure(code, message)
-        safe_message = (
-            "PaperWorkShell could not finish the removal-mark editor. "
-            "Try again. No information has been removed."
+        safe_message = tr(
+            "PaperWorkShell could not finish the removal-mark editor. Try again. No information has been removed."
         )
-        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._set_error_text(f"{safe_code}: {safe_message}")
         self._error_label.setVisible(True)
         self._announce(
-            f"Redaction mark editor could not finish. {safe_message}",
+            tr("Redaction mark editor could not finish. {value1}", value1=safe_message),
             assertive=True,
         )
-        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._ensure_widget_visible(self._error_label)
+        self._focus_error_recovery(self._redaction_tools_button)
 
     def _request_checklist(self) -> None:
         """Open the exclusive, keyboard-complete packet checklist editor."""
@@ -3749,7 +4549,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_page_actions()
         self._update_quality_actions()
         self._announce(
-            "Opening packet checklist. Adding pages will still require separate confirmation."
+            tr("Opening packet checklist. Adding pages will still require separate confirmation.")
         )
         self._commands.checklist_begin_requested.emit(operation_id)
 
@@ -3802,6 +4602,15 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
+        if (
+            self._assisted_session.active
+            and type(failure) is UiFailure
+            and failure.code == AssistedUseErrorCode.LOCKED.value
+        ):
+            # Revocation can reject an already queued editor request. The lock
+            # surface explains that interruption; a delayed reply must not tell
+            # the newly unlocked case that it still needs to be unlocked.
+            return
         self._show_checklist_failure(failure)
 
     @Slot(object)
@@ -3833,11 +4642,11 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             dialog.mark_apply_failed(
                 "PWS_UI_RESPONSE_INVALID",
-                "PaperWorkShell received an invalid checklist save confirmation.",
+                tr("PaperWorkShell received an invalid checklist save confirmation."),
             )
             return
         if dialog.mark_applied():
-            self._announce("Checklist assignments applied and saved.")
+            self._announce(tr("Checklist assignments applied and saved."))
 
     @Slot(int, object)
     def _checklist_apply_failed(self, operation_id: int, failure: object) -> None:
@@ -3852,7 +4661,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         dialog.mark_apply_failed(
             "PWS_UI_RESPONSE_INVALID",
-            "PaperWorkShell received an invalid checklist save failure.",
+            tr("PaperWorkShell received an invalid checklist save failure."),
         )
 
     @Slot(int)
@@ -3887,7 +4696,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Checklist changes cancelled. Nothing was applied.")
+        self._announce(tr("Checklist changes cancelled. Nothing was applied."))
         if not self._closing_requested and self._checklist_button.isEnabled():
             QTimer.singleShot(0, self._focus_checklist_button_after_dialog)
 
@@ -3913,18 +4722,17 @@ class PaperWorkShellWindow(QMainWindow):
             failure.code if type(failure) is UiFailure else "PWS_UI_CHECKLIST_RESPONSE_INVALID"
         )
         safe_message = (
-            failure.message
+            tr(failure.message)
             if type(failure) is UiFailure
-            else "PaperWorkShell could not finish the checklist action safely. Try again."
+            else tr("PaperWorkShell could not finish the checklist action safely. Try again.")
         )
-        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._set_error_text(f"{safe_code}: {safe_message}")
         self._error_label.setVisible(True)
         self._announce(
-            f"Checklist editor could not finish. {safe_message}",
+            tr("Checklist editor could not finish. {value1}", value1=safe_message),
             assertive=True,
         )
-        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._ensure_widget_visible(self._error_label)
+        self._focus_error_recovery(self._checklist_button)
 
     def _request_package_export(self) -> None:
         """Open the saved-case package review through an ordinary keyboard action."""
@@ -3944,7 +4752,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._cancel_button.setEnabled(True)
             self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
             self._announce(
-                "Package inspection queued. Stopping the current preview first. You can cancel."
+                tr("Package inspection queued. Stopping the current preview first. You can cancel.")
             )
             return
         self._start_package_review()
@@ -3957,7 +4765,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._cancel_button)
         self._announce(
-            "Inspecting PDFs for package review. You can cancel. No package files are being saved."
+            tr(
+                "Inspecting PDFs for package review. You can cancel. No package files are being saved."
+            )
         )
         self._commands.package_review_begin_requested.emit(
             operation.operation_id, None, operation.cancellation
@@ -3973,7 +4783,7 @@ class PaperWorkShellWindow(QMainWindow):
                 "review",
                 UiFailure(
                     code="PACKAGE_REVIEW_CANCELLED",
-                    message="Package inspection was cancelled.",
+                    message=tr("Package inspection was cancelled."),
                     retryable=True,
                     operation_id=operation_id,
                 ),
@@ -3999,12 +4809,16 @@ class PaperWorkShellWindow(QMainWindow):
             dialog = PackageExportDialog(
                 review.allowed_modes, self, initial_mode=review.selected_mode
             )
+            self._post_export_closed = False
+            self._post_export_private_summary_discarded = False
             dialog.mode_requested.connect(self._refresh_package_mode)
             dialog.refresh_requested.connect(self._refresh_package_review)
             dialog.export_requested.connect(self._choose_package_destination)
             dialog.compression_requested.connect(self._choose_compression_destination)
             dialog.cancel_requested.connect(self._cancel_package_operation)
             dialog.summary_save_requested.connect(self._choose_package_summary_destination)
+            dialog.text_companion_requested.connect(self._choose_text_companion_destination)
+            dialog.deletion_requested.connect(self._request_post_export_deletion)
             dialog.finished.connect(self._package_dialog_finished)
             self._package_export_dialog = dialog
         elif dialog.selected_mode is not review.selected_mode:
@@ -4069,7 +4883,12 @@ class PaperWorkShellWindow(QMainWindow):
             if dialog is not None:
                 dialog.show_failure()
             return
-        selected = QFileDialog.getExistingDirectory(dialog, "Choose a folder for the package")
+        selected = QFileDialog.getExistingDirectory(
+            dialog,
+            tr("Choose a folder for the package"),
+            "",
+            self._file_dialog_options(QFileDialog.Option.ShowDirsOnly),
+        )
         if not selected:
             dialog.show_review(
                 review.summary,
@@ -4136,7 +4955,10 @@ class PaperWorkShellWindow(QMainWindow):
                 parent.show_failure()
             return
         selected = QFileDialog.getExistingDirectory(
-            parent, "Choose a folder for the reviewed package"
+            parent,
+            tr("Choose a folder for the reviewed package"),
+            "",
+            self._file_dialog_options(QFileDialog.Option.ShowDirsOnly),
         )
         if not selected:
             parent.show_review(
@@ -4420,7 +5242,12 @@ class PaperWorkShellWindow(QMainWindow):
             else:
                 self._progress_changed(
                     UiProgress(
-                        "Package inspection", "PDFs processed", completed, total, True, operation_id
+                        tr("Package inspection"),
+                        tr("PDFs processed"),
+                        completed,
+                        total,
+                        True,
+                        operation_id,
                     )
                 )
             return
@@ -4441,13 +5268,310 @@ class PaperWorkShellWindow(QMainWindow):
         if cancellation is not None:
             cancellation.cancel()
 
+    def _post_export_context(self) -> tuple[UUID, int, int] | None:
+        state = self._state
+        dialog = self._package_export_dialog
+        controller = self._assisted_session
+        if (
+            self._closing_requested
+            or self._case_close_pending
+            or self._post_export_closed
+            or controller.locked
+            or state is None
+            or state.case_id is None
+            or state.revision is None
+            or dialog is None
+            or dialog.summary is None
+            or dialog.summary.status is not PackageSummaryStatus.COMMITTED
+        ):
+            return None
+        return state.case_id, state.revision, controller._privacy_epoch
+
+    def _post_export_operation_pending(self) -> bool:
+        return (
+            any(
+                operation is not None
+                for operation in (
+                    self._post_export_review_operation_id,
+                    self._post_export_delete_operation_id,
+                    self._text_companion_operation_id,
+                    self._package_summary_save_operation_id,
+                    self._package_export_operation_id,
+                    self._package_review_operation_id,
+                )
+            )
+            or self._post_export_deletion_dialog is not None
+        )
+
+    @Slot()
+    def _request_post_export_deletion(self) -> None:
+        if self._post_export_operation_pending():
+            return
+        binding = self._post_export_context()
+        if binding is None:
+            self._post_export_feedback(
+                tr("Case deletion was not requested. Review the current case again."), failed=True
+            )
+            return
+        self._post_export_binding = binding
+        self._post_export_review_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        self._commands.post_export_deletion_review_requested.emit(
+            self._post_export_review_operation_id, self._package_cancellation
+        )
+
+    @Slot(int, object)
+    def _post_export_deletion_ready(self, operation_id: int, review: object) -> None:
+        if operation_id != self._post_export_review_operation_id:
+            return
+        cancelled = (
+            self._package_cancellation is not None and self._package_cancellation.cancelled()
+        )
+        self._post_export_review_operation_id = None
+        self._package_cancellation = None
+        binding = self._post_export_binding
+        if (
+            cancelled
+            or binding is None
+            or binding != self._post_export_context()
+            or type(review) is not PostExportDeletionInventory
+            or (review.case_id, review.revision) != binding[:2]
+        ):
+            self._post_export_binding = None
+            self._commands.post_export_deletion_cancel_requested.emit()
+            self._post_export_feedback(
+                tr("Case deletion review cancelled. No deletion was requested.")
+            )
+            return
+        parent = self._package_export_dialog
+        if parent is None:
+            return
+        parent.complete_post_export(
+            tr("Review the case inventory before deciding whether to delete it.")
+        )
+        dialog = PostExportDeletionDialog(review, parent)
+        self._post_export_deletion_dialog = dialog
+        dialog.finished.connect(self._post_export_deletion_dialog_finished)
+        dialog.open()
+
+    @Slot(int)
+    def _post_export_deletion_dialog_finished(self, result: int) -> None:
+        dialog = self._post_export_deletion_dialog
+        if dialog is None:
+            return
+        self._post_export_deletion_dialog = None
+        binding = self._post_export_binding
+        self._post_export_binding = None
+        confirmed = (
+            result == QDialog.DialogCode.Accepted
+            and dialog.confirmed
+            and binding is not None
+            and binding == self._post_export_context()
+        )
+        review_id = dialog.review_id
+        dialog.deleteLater()
+        parent = self._package_export_dialog
+        if not confirmed or parent is None or binding is None:
+            self._commands.post_export_deletion_cancel_requested.emit()
+            self._post_export_feedback(tr("Case kept. No deletion was requested."))
+            return
+        self._post_export_delete_operation_id = self._allocate_operation_id()
+        self._post_export_delete_case_id = binding[0]
+        parent.set_busy("preparing", cancelable=False)
+        self._commands.post_export_deletion_confirm_requested.emit(
+            self._post_export_delete_operation_id, review_id
+        )
+
+    @Slot()
+    def _choose_text_companion_destination(self) -> None:
+        if self._post_export_operation_pending():
+            return
+        parent = self._package_export_dialog
+        binding = self._post_export_context()
+        if parent is None or binding is None or not parent.text_privacy_confirmed:
+            self._post_export_feedback(
+                tr("Confirm the text companion privacy warning before saving."), failed=True
+            )
+            return
+        selected, _filter = QFileDialog.getSaveFileName(
+            parent,
+            tr("Save plain-text companion"),
+            "package-text.txt",
+            tr("Plain text (*.txt)"),
+            options=self._file_dialog_options(),
+        )
+        if binding != self._post_export_context() or not parent.text_privacy_confirmed:
+            self._post_export_feedback(
+                tr("Text companion request cancelled. Review its privacy warning again.")
+            )
+            return
+        if not selected:
+            self._post_export_feedback(
+                tr("Text companion was not saved. The verified exports remain unchanged.")
+            )
+            return
+        self._post_export_binding = binding
+        self._text_companion_operation_id = self._allocate_operation_id()
+        self._package_cancellation = OperationCancellation()
+        self._commands.text_companion_save_requested.emit(
+            self._text_companion_operation_id,
+            Path(selected),
+            True,
+            self._package_cancellation,
+        )
+
+    @Slot(int)
+    def _text_companion_saved(self, operation_id: int) -> None:
+        if operation_id != self._text_companion_operation_id:
+            return
+        self._text_companion_operation_id = None
+        self._package_cancellation = None
+        self._post_export_binding = None
+        self._post_export_feedback(
+            tr(
+                "Plain-text companion saved. Review its text for OCR errors and reading order before sharing. This separate file remains after case deletion."
+            )
+        )
+
+    @Slot(int, object)
+    def _post_export_deletion_finished(self, operation_id: int, result: object) -> None:
+        if operation_id != self._post_export_delete_operation_id:
+            return
+        self._post_export_delete_operation_id = None
+        expected_case, self._post_export_delete_case_id = self._post_export_delete_case_id, None
+        self._post_export_binding = None
+        self._post_export_closed = True
+        parent = self._package_export_dialog
+        if parent is not None:
+            parent.disable_post_export()
+        if type(result) is not CaseDeletionResult or result.case_id != expected_case:
+            self._post_export_deletion_feedback(
+                tr(
+                    "The case deletion result is unavailable. Check the case list before continuing. The saved exports remain separate."
+                ),
+                failed=True,
+            )
+            return
+        if result.status is CaseDeletionStatus.COMPLETE:
+            message = tr(
+                "Case removed from PaperWorkShell storage. The verified exports, separately saved summaries and text companions remain. External source files remain unchanged. Forensic erasure is not guaranteed."
+            )
+        else:
+            message = tr(
+                "Case removal is incomplete. Case reference: {case}. Some case files remain and the case may no longer reopen. Remaining application files may need support or later explicit cleanup. PaperWorkShell will not retry deletion automatically. The verified exports and separately saved companions remain. Forensic erasure is not guaranteed.",
+                case=str(result.case_id),
+            )
+        self._post_export_deletion_feedback(
+            message, failed=result.status is CaseDeletionStatus.PARTIAL
+        )
+        if (
+            parent is not None
+            and not self._closing_requested
+            and not self._assisted_session.locked
+            and not self._post_export_private_summary_discarded
+        ):
+            parent.show()
+
+    @Slot(int, str, object)
+    def _post_export_failed(self, operation_id: int, phase: str, failure: object) -> None:
+        if phase == "inventory" and operation_id == self._post_export_review_operation_id:
+            self._post_export_review_operation_id = None
+            self._commands.post_export_deletion_cancel_requested.emit()
+        elif phase == "delete" and operation_id == self._post_export_delete_operation_id:
+            self._post_export_delete_operation_id = None
+            self._post_export_delete_case_id = None
+            if self._state is None or self._state.case_id is None:
+                self._post_export_closed = True
+                if self._package_export_dialog is not None:
+                    self._package_export_dialog.disable_post_export()
+        elif phase == "text" and operation_id == self._text_companion_operation_id:
+            self._text_companion_operation_id = None
+        else:
+            return
+        self._package_cancellation = None
+        self._post_export_binding = None
+        message = tr(
+            "The optional post-export operation did not complete. The saved package remains separate; check the current case and destination before retrying."
+        )
+        if type(failure) is UiFailure:
+            message = tr(_POST_EXPORT_FAILURE_TEXT.get(failure.code, message))
+        if phase == "delete":
+            self._post_export_deletion_feedback(message, failed=True)
+        else:
+            self._post_export_feedback(message, failed=True)
+
+    def _post_export_deletion_feedback(self, message: str, *, failed: bool = False) -> None:
+        if self._post_export_private_summary_discarded:
+            # Closing a locked case does not authorize revealing its output names,
+            # categories, or old review. Only the content-free terminal fact remains.
+            self._post_export_pending_feedback = None
+            if not self._closing_requested:
+                self._announce(message, assertive=failed)
+                self._focus_safe_control()
+            return
+        self._post_export_feedback(message, failed=failed)
+
+    def _post_export_feedback(self, message: str, *, failed: bool = False) -> None:
+        if self._closing_requested or self._post_export_private_summary_discarded:
+            return
+        if self._assisted_session.locked:
+            self._post_export_pending_feedback = message, failed
+            return
+        parent = self._package_export_dialog
+        if parent is not None:
+            parent.complete_post_export(message, failed=failed)
+
+    def _resume_post_export_feedback(self) -> None:
+        pending, self._post_export_pending_feedback = self._post_export_pending_feedback, None
+        if pending is not None:
+            self._post_export_feedback(pending[0], failed=pending[1])
+
+    def _discard_post_export_content_for_closed_privacy(self) -> None:
+        """Case closure cannot substitute for unlocking a private export summary."""
+        self._post_export_private_summary_discarded = True
+        self._post_export_pending_feedback = None
+        self._post_export_binding = None
+        parent = self._package_export_dialog
+        if parent is not None:
+            self._assisted_session.discard_hidden_window(parent)
+            # Bypass reject(), which deliberately keeps a busy operation visible.
+            # The correlated removal result is retained only as a generic status.
+            parent.done(QDialog.DialogCode.Rejected)
+
+    def _discard_post_export_deletion_for_privacy(self) -> None:
+        """A restored window must never restore destructive consent from before a lock."""
+        parent = self._package_export_dialog
+        if parent is not None:
+            parent.clear_post_export_consent()
+        had_review = self._post_export_review_operation_id is not None
+        self._post_export_review_operation_id = None
+        dialog = self._post_export_deletion_dialog
+        if had_review or dialog is not None:
+            self._post_export_binding = None
+            if dialog is not None:
+                self._assisted_session.discard_hidden_window(dialog)
+                dialog.reject()
+            else:
+                self._commands.post_export_deletion_cancel_requested.emit()
+            if had_review:
+                self._package_cancellation = None
+            self._post_export_feedback(
+                tr(
+                    "Case deletion review cancelled when the case locked. Review it again after unlocking."
+                )
+            )
+
     @Slot()
     def _choose_package_summary_destination(self) -> None:
         dialog = self._package_export_dialog
         if dialog is None or self._package_summary_save_operation_id is not None:
             return
         selected, _filter = QFileDialog.getSaveFileName(
-            dialog, "Save displayed package summary", "package-summary.txt", "Plain text (*.txt)"
+            dialog,
+            tr("Save displayed package summary"),
+            "package-summary.txt",
+            tr("Plain text (*.txt)"),
+            options=self._file_dialog_options(),
         )
         if not selected:
             dialog.complete_summary_save(succeeded=False)
@@ -4489,6 +5613,8 @@ class PaperWorkShellWindow(QMainWindow):
             if expected_phase != "preview":
                 self._compression_review_state = None
                 self._compression_pair_review_id = None
+            if self._finish_package_redaction_failure(failure):
+                return
             if self._compression_dialog is not None:
                 self._compression_dialog.show_failure(
                     failure.code if type(failure) is UiFailure else "",
@@ -4508,8 +5634,9 @@ class PaperWorkShellWindow(QMainWindow):
             self._package_release_failed = True
             self._update_package_availability()
             self._announce(
-                "Package review could not be released safely. Choose Retry closing package "
-                "review before continuing.",
+                tr(
+                    "Package review could not be released safely. Choose Retry closing package review before continuing."
+                ),
                 assertive=True,
             )
             self._focus_package_export_button()
@@ -4529,22 +5656,25 @@ class PaperWorkShellWindow(QMainWindow):
             self._package_review_state = None
         else:
             return
+        if self._finish_package_redaction_failure(failure):
+            return
         if dialog is not None:
             dialog.show_failure(
                 phase=phase, code=failure.code if type(failure) is UiFailure else None
             )
         else:
-            message = (
-                "Package review could not be prepared. Check the checklist assignments and saved "
-                "constraints, then try again."
+            message = tr(
+                "Package review could not be prepared. Check the checklist assignments and saved constraints, then try again."
             )
             if type(failure) is UiFailure:
                 if failure.code == "PACKAGE_REVIEW_CANCELLED":
-                    message = (
+                    message = tr(
                         "Package inspection was cancelled. Choose Export package to try again."
                     )
                 elif failure.code == "PACKAGE_REVIEW_TIMED_OUT":
-                    message = "Package inspection exceeded its time limit. Choose Export package to try again."
+                    message = tr(
+                        "Package inspection exceeded its time limit. Choose Export package to try again."
+                    )
             self._announce(
                 message,
                 assertive=True,
@@ -4552,11 +5682,34 @@ class PaperWorkShellWindow(QMainWindow):
             self._release_package_review()
         self._update_package_availability()
 
+    def _finish_package_redaction_failure(self, failure: object) -> bool:
+        if (
+            type(failure) is not UiFailure
+            or failure.code != "REDACTION_PIPELINE_DISABLED"
+            or not self._queue_redaction_export_report()
+        ):
+            return False
+        dialog = self._package_export_dialog
+        if dialog is not None:
+            dialog.reject()
+        else:
+            self._release_package_review()
+        # The result is shown only after the backend confirms that the package
+        # lease was released, so Review marks cannot overlap its authority.
+        self._show_pending_redaction_export_report()
+        return True
+
     @Slot(int)
     def _package_dialog_finished(self, _result: int) -> None:
         dialog = self._package_export_dialog
         if dialog is None:
             return
+        inventory = self._post_export_deletion_dialog
+        if inventory is not None:
+            inventory.reject()
+        self._post_export_binding = None
+        self._post_export_pending_feedback = None
+        self._commands.post_export_deletion_cancel_requested.emit()
         self._dispose_compression_dialog()
         dialog.deleteLater()
         self._package_export_dialog = None
@@ -4577,6 +5730,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._package_cancel_operation_id = None
         self._package_release_failed = False
         self._update_package_availability()
+        if self._show_pending_redaction_export_report():
+            return
         if not self._closing_requested and self._package_export_button.isEnabled():
             QTimer.singleShot(0, self._focus_package_export_button)
 
@@ -4600,6 +5755,9 @@ class PaperWorkShellWindow(QMainWindow):
             or self._package_export_operation_id is not None
             or self._package_cancel_operation_id is not None
             or self._package_summary_save_operation_id is not None
+            or self._post_export_review_operation_id is not None
+            or self._post_export_delete_operation_id is not None
+            or self._text_companion_operation_id is not None
             or self._package_release_failed
         )
 
@@ -4620,7 +5778,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_page_actions()
         self._update_quality_actions()
         self._announce(
-            "Opening package constraints. These local checks do not guarantee portal acceptance."
+            tr(
+                "Opening package constraints. These local checks do not guarantee portal acceptance."
+            )
         )
         self._commands.portal_constraints_begin_requested.emit(operation_id)
 
@@ -4697,11 +5857,11 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             dialog.mark_apply_failed(
                 "PWS_UI_RESPONSE_INVALID",
-                "PaperWorkShell received an invalid constraint save confirmation.",
+                tr("PaperWorkShell received an invalid constraint save confirmation."),
             )
             return
         if dialog.mark_applied():
-            self._announce("Package constraints applied and saved.")
+            self._announce(tr("Package constraints applied and saved."))
 
     @Slot(int, object)
     def _portal_constraints_apply_failed(self, operation_id: int, failure: object) -> None:
@@ -4716,7 +5876,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         dialog.mark_apply_failed(
             "PWS_UI_RESPONSE_INVALID",
-            "PaperWorkShell received an invalid constraint save failure.",
+            tr("PaperWorkShell received an invalid constraint save failure."),
         )
 
     @Slot(int)
@@ -4755,7 +5915,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
-        self._announce("Package constraint changes cancelled. Nothing was applied.")
+        self._announce(tr("Package constraint changes cancelled. Nothing was applied."))
         if not self._closing_requested and self._portal_constraints_button.isEnabled():
             QTimer.singleShot(0, self._focus_portal_constraints_button_after_dialog)
 
@@ -4781,18 +5941,17 @@ class PaperWorkShellWindow(QMainWindow):
             failure.code if type(failure) is UiFailure else "PWS_UI_CONSTRAINT_RESPONSE_INVALID"
         )
         safe_message = (
-            failure.message
+            tr(failure.message)
             if type(failure) is UiFailure
-            else "PaperWorkShell could not finish the constraint action safely. Try again."
+            else tr("PaperWorkShell could not finish the constraint action safely. Try again.")
         )
-        self._error_label.setText(f"{safe_code}: {safe_message}")
+        self._set_error_text(f"{safe_code}: {safe_message}")
         self._error_label.setVisible(True)
         self._announce(
-            f"Package constraint editor could not finish. {safe_message}",
+            tr("Package constraint editor could not finish. {value1}", value1=safe_message),
             assertive=True,
         )
-        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._ensure_widget_visible(self._error_label)
+        self._focus_error_recovery(self._portal_constraints_button)
 
     def _choose_signature_image(self) -> None:
         """Choose one local JPEG/PNG without retaining or displaying its name."""
@@ -4804,12 +5963,13 @@ class PaperWorkShellWindow(QMainWindow):
             return
         selected, _selected_filter = QFileDialog.getOpenFileName(
             self,
-            "Place signature image",
+            tr("Place signature image"),
             "",
-            "Signature images (*.png *.jpg *.jpeg);;All files (*)",
+            tr("Signature images (*.png *.jpg *.jpeg);;All files (*)"),
+            options=self._file_dialog_options(),
         )
         if not selected:
-            self._announce("Signature-image selection cancelled.")
+            self._announce(tr("Signature-image selection cancelled."))
             return
         self._signature_image_source_path = Path(selected)
         self._signature_image_page_id = page_id
@@ -4822,7 +5982,9 @@ class PaperWorkShellWindow(QMainWindow):
                 return
             self._cancel_active_preview()
             self._update_page_actions()
-            self._announce("Stopping the current page preview before preparing the visual image.")
+            self._announce(
+                tr("Stopping the current page preview before preparing the visual image.")
+            )
             return
         self._start_signature_image_prepare()
 
@@ -4841,7 +6003,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._signature_image_prepare_operation_id = operation.operation_id
         self._hide_error()
         self._announce(
-            "Preparing a private signature-image preview. You can cancel this operation."
+            tr("Preparing a private signature-image preview. You can cancel this operation.")
         )
         self._commands.signature_image_prepare_requested.emit(
             operation.operation_id,
@@ -4927,7 +6089,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._signature_image_committed = True
         dialog.mark_placed()
         self._clear_signature_image_source()
-        self._announce(outcome.safe_message, assertive=outcome.refresh_required)
+        self._announce(tr(outcome.safe_message), assertive=outcome.refresh_required)
 
     @Slot(int, object)
     def _signature_image_place_failed(self, operation_id: int, failure: object) -> None:
@@ -4954,7 +6116,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._update_page_actions()
             self._update_quality_actions()
             self._announce(
-                "Signature-image placement cancelled. No placement was committed.",
+                tr("Signature-image placement cancelled. No placement was committed."),
                 assertive=True,
             )
             return
@@ -5014,7 +6176,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._start_signature_image_prepare()
         else:
             self._clear_signature_image_source()
-            self._announce("Signature-image placement cancelled. Nothing was applied.")
+            self._announce(tr("Signature-image placement cancelled. Nothing was applied."))
         self._update_page_actions()
         self._update_quality_actions()
         if (
@@ -5085,13 +6247,13 @@ class PaperWorkShellWindow(QMainWindow):
             )
         ):
             self._announce(
-                "PaperWorkShell could not verify the signature-image placement list safely.",
+                tr("PaperWorkShell could not verify the signature-image placement list safely."),
                 assertive=True,
             )
             self._clear_signature_image_source()
             return
         if not choices:
-            self._announce("There are no signature-image placements on the selected page.")
+            self._announce(tr("There are no signature-image placements on the selected page."))
             self._clear_signature_image_source()
             self._update_page_actions()
             self._place_signature_image_button.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -5145,7 +6307,7 @@ class PaperWorkShellWindow(QMainWindow):
                 dialog.show_failure("PWS_UI_RESPONSE_INVALID", None)
             return
         dialog.mark_deleted()
-        self._announce(outcome.safe_message, assertive=outcome.cleanup_warning is not None)
+        self._announce(tr(outcome.safe_message), assertive=outcome.cleanup_warning is not None)
 
     @Slot(int, object)
     def _signature_image_delete_failed(self, operation_id: int, failure: object) -> None:
@@ -5169,7 +6331,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._pending_failure_focus = "signature_image_delete"
             self._update_page_actions()
             self._announce(
-                "Signature-image removal cancelled. The placement was not removed.",
+                tr("Signature-image removal cancelled. The placement was not removed."),
                 assertive=True,
             )
             return
@@ -5193,11 +6355,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._signature_image_page_id = None
 
     def _show_scan_review_failure(self, failure: UiFailure) -> None:
-        self._error_label.setText(f"{failure.code}: {failure.message}")
+        self._set_error_text(f"{failure.code}: {tr(failure.message)}")
         self._error_label.setVisible(True)
-        self._announce(f"Scan review failed. {failure.message}", assertive=True)
-        self._error_label.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._ensure_widget_visible(self._error_label)
+        self._announce(
+            tr("Scan review failed. {value1}", value1=tr(failure.message)), assertive=True
+        )
+        self._focus_error_recovery(self._scan_review_button)
 
     def _change_full_order(self) -> None:
         if not self._change_order_button.isEnabled() or len(self._model.pages) < 2:
@@ -5234,7 +6397,7 @@ class PaperWorkShellWindow(QMainWindow):
         if self._import_is_pending_or_running():
             QApplication.beep()
             self._announce(
-                "Wait for the current import to finish, or cancel it, before changing pages.",
+                tr("Wait for the current import to finish, or cancel it, before changing pages."),
                 assertive=True,
             )
             return False
@@ -5256,7 +6419,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._cancel_button.setEnabled(False)
             self._update_package_availability()
             self._announce(
-                "Queued package inspection cancelled. No review results were applied.",
+                tr("Queued package inspection cancelled. No review results were applied."),
                 assertive=True,
             )
             return
@@ -5274,7 +6437,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._update_quality_summary()
             self._update_quality_actions()
             self._announce(
-                "Queued page quality check cancelled. No review results were applied.",
+                tr("Queued page quality check cancelled. No review results were applied."),
                 assertive=True,
             )
             return
@@ -5282,10 +6445,15 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setEnabled(False)
         if active.kind is _LongOperationKind.QUALITY:
             self._quality_summary.setText(
-                "Cancellation requested. Waiting for the page quality check to stop safely."
+                tr("Cancellation requested. Waiting for the page quality check to stop safely.")
             )
             self._quality_summary.setAccessibleDescription(self._quality_summary.text())
-        self._announce("Cancellation requested. Waiting for the operation to stop.", assertive=True)
+            self._quality_summary.setAccessibleName(
+                tr("Page quality review status. {value1}", value1=self._quality_summary.text())
+            )
+        self._announce(
+            tr("Cancellation requested. Waiting for the operation to stop."), assertive=True
+        )
 
     def _retry_failed_preview(self) -> None:
         if (
@@ -5302,7 +6470,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._page_view.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._page_view)
         self._update_preview_retry_action()
-        self._announce("Retrying the selected page preview.")
+        self._announce(tr("Retrying the selected page preview."))
         self._start_preview((page_id,))
 
     def _begin_long_operation(self, kind: _LongOperationKind) -> _LongOperation:
@@ -5311,13 +6479,14 @@ class PaperWorkShellWindow(QMainWindow):
         operation_id = self._allocate_operation_id()
         operation = _LongOperation(operation_id, kind, OperationCancellation())
         self._active_operation = operation
+        self._announcer.reset_progress()
         if kind is _LongOperationKind.IMPORT:
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.ACTIVE
             self._update_organizer_guidance()
         self._progress.setVisible(True)
-        self._progress.setRange(0, 0)
-        self._progress.setFormat(f"{kind.value} queued")
+        set_static_busy(self._progress)
+        self._progress.setFormat(tr("{value1} queued", value1=kind.value))
         self._cancel_button.setVisible(True)
         self._cancel_button.setEnabled(True)
         self._update_import_availability()
@@ -5366,7 +6535,6 @@ class PaperWorkShellWindow(QMainWindow):
                 self._import_presentation = _ImportPresentationState.IDLE
         self._active_preview_page_ids = ()
         self._preview_batch_complete = False
-        self._last_announced_progress = None
         self._update_import_availability()
         self._update_page_actions()
         self._update_preview_retry_action()
@@ -5400,6 +6568,8 @@ class PaperWorkShellWindow(QMainWindow):
             or self._redaction_tools_dialog is not None
             or self._redaction_tools_save_operation_id is not None
             or self._redaction_tools_cancel_operation_id is not None
+            or self._redaction_export_dialog is not None
+            or self._removal_review_dialog is not None
         )
 
     def _checklist_is_opening_or_active(self) -> bool:
@@ -5469,47 +6639,46 @@ class PaperWorkShellWindow(QMainWindow):
         presentation = self._quality_presentation
         snapshot = self._model.quality_review
         if presentation is _QualityPresentationState.QUEUED:
-            message = (
-                "Page quality check queued. PaperWorkShell is stopping the current preview first. "
-                "No review results are shown yet."
+            message = tr(
+                "Page quality check queued. PaperWorkShell is stopping the current preview first. No review results are shown yet."
             )
         elif presentation is _QualityPresentationState.ACTIVE:
-            message = (
-                "Checking this saved revision. Results are limited automatic suggestions and do "
-                "not complete a requirement."
+            message = tr(
+                "Checking this saved revision. Results are limited automatic suggestions and do not complete a requirement."
             )
         elif presentation is _QualityPresentationState.READY and snapshot is not None:
             finding_count = len(snapshot.findings)
             if finding_count:
                 affected_pages = len({finding.page_id for finding in snapshot.findings})
-                finding_noun = "signal" if finding_count == 1 else "signals"
-                page_noun = "page" if affected_pages == 1 else "pages"
-                message = (
-                    f"Needs review: {finding_count} automatic review {finding_noun} on "
-                    f"{affected_pages} {page_noun}. Select each signal and review the page; these "
-                    "suggestions do not complete a requirement."
+                finding_noun = tr("signal") if finding_count == 1 else tr("signals")
+                page_noun = tr("page") if affected_pages == 1 else tr("pages")
+                message = tr(
+                    "Needs review: {value1} automatic review {value2} on {value3} {value4}. Select each signal and review the page; these suggestions do not complete a requirement.",
+                    value1=finding_count,
+                    value2=finding_noun,
+                    value3=affected_pages,
+                    value4=page_noun,
                 )
             else:
-                message = (
-                    "No review signals were found by these limited checks. Review every page "
-                    "yourself before export."
+                message = tr(
+                    "No review signals were found by these limited checks. Review every page yourself before export."
                 )
         elif presentation is _QualityPresentationState.CANCELLED:
-            message = (
-                "Page quality check cancelled. No review results were applied. Run the check "
-                "again when ready."
+            message = tr(
+                "Page quality check cancelled. No review results were applied. Run the check again when ready."
             )
         elif presentation is _QualityPresentationState.FAILED:
-            message = (
-                "Page quality check did not finish. No review results are shown. Review the Action "
-                "error and run the check again."
+            message = tr(
+                "Page quality check did not finish. No review results are shown. Review the Action error and run the check again."
             )
         else:
-            message = (
-                "Not checked for this saved revision. Automatic quality signals are suggestions; "
-                "review every page yourself."
+            message = tr(
+                "Not checked for this saved revision. Automatic quality signals are suggestions; review every page yourself."
             )
         self._quality_summary.setText(message)
+        self._quality_summary.setAccessibleName(
+            tr("Page quality review status. {value1}", value1=message)
+        )
         self._quality_summary.setAccessibleDescription(message)
 
     def _update_quality_actions(self) -> None:
@@ -5561,61 +6730,86 @@ class PaperWorkShellWindow(QMainWindow):
             self._organizer_guidance.setVisible(False)
             return
         if self._closing_requested and self._closing_import_cleanup:
-            message = (
-                "Closing PaperWorkShell safely. Waiting for the current import to stop and secure "
-                "cleanup to finish."
+            message = tr(
+                "Closing PaperWorkShell safely. Waiting for the current import to stop and secure cleanup to finish."
             )
         elif self._case_reopen_required:
-            message = (
-                "The saved case must be reopened before continuing. "
-                "Choose Close case, then reopen this case."
+            message = tr(
+                "The saved case must be reopened before continuing. Choose Close case, then reopen this case."
             )
         elif self._import_presentation is _ImportPresentationState.FAILED:
             recovery = (
-                "Review Action error below, then choose"
+                tr("Review Action error below, then choose")
                 if self._error_label.isVisible()
-                else "Choose"
+                else tr("Choose")
             )
-            message = f"Import did not finish. {recovery} Import document (Ctrl+I) to try again."
+            message = tr(
+                "Import did not finish. {value1} Import document (Ctrl+I) to try again.",
+                value1=recovery,
+            )
         elif self._import_presentation is _ImportPresentationState.CANCELLED:
-            message = (
-                "Import cancelled. No source was committed. Choose Import document (Ctrl+I) "
-                "to try again."
+            message = tr(
+                "Import cancelled. No source was committed. Choose Import document (Ctrl+I) to try again."
             )
         elif self._import_presentation is _ImportPresentationState.QUEUED:
-            message = (
-                "Import queued. PaperWorkShell is stopping the current preview before import "
-                "starts. Keep PaperWorkShell open."
+            message = tr(
+                "Import queued. PaperWorkShell is stopping the current preview before import starts. Keep PaperWorkShell open."
             )
         elif self._import_is_pending_or_running():
             progress = self._latest_import_progress
             phase = (
                 ""
                 if progress is None
-                else f" — {progress.phase}: {progress.completed} of {progress.total}"
+                else tr(
+                    " — {value1}: {value2} of {value3}",
+                    value1=tr(progress.phase),
+                    value2=progress.completed,
+                    value3=progress.total,
+                )
             )
-            message = (
-                f"Importing document{phase}. PaperWorkShell copies and checks the file before new "
-                "pages appear. Keep PaperWorkShell open; press Escape to cancel safely."
+            message = tr(
+                "Importing document{value1}. PaperWorkShell copies and checks the file before new pages appear. Keep PaperWorkShell open; press Escape to cancel safely.",
+                value1=phase,
             )
         elif not state.pages:
-            message = "No pages yet. Choose Import document (Ctrl+I) to add a PDF, JPEG, or PNG."
+            message = tr(
+                "No pages yet. Choose Import document (Ctrl+I) to add a PDF, JPEG, or PNG."
+            )
         else:
             self._organizer_guidance.setVisible(False)
             return
         self._organizer_guidance.setText(message)
+        self._organizer_guidance.setAccessibleName(
+            tr("Page organizer guidance. {value1}", value1=message)
+        )
         self._organizer_guidance.setAccessibleDescription(message)
         self._organizer_guidance.setVisible(True)
 
-    def _announce(self, message: str, *, assertive: bool = False) -> None:
+    def _set_error_text(self, message: str) -> None:
+        message = tr(message)
+        self._error_label.setText(message)
+        self._error_label.setAccessibleName(tr("Action error. {value1}", value1=message))
+
+    def _focus_error_recovery(self, action: QWidget) -> None:
+        if self._focus_widget_is_available(action):
+            action.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._ensure_widget_visible(action)
+        else:
+            self._focus_safe_control()
+
+    def _set_status_text(self, message: str) -> None:
+        message = tr(message)
         self._status_label.setText(message)
-        announcement = QAccessibleAnnouncementEvent(self._status_label, message)
-        announcement.setPoliteness(
-            QAccessible.AnnouncementPoliteness.Assertive
-            if assertive
-            else QAccessible.AnnouncementPoliteness.Polite
+        self._status_label.setAccessibleName(
+            tr("Current operation status. {value1}", value1=message)
         )
-        QAccessible.updateAccessibility(announcement)
+
+    def _announce(self, message: str, *, assertive: bool = False) -> None:
+        message = tr(message)
+        if self._assisted_session.locked:
+            return
+        self._set_status_text(message)
+        self._announcer.announce(message, assertive=assertive)
 
     def _focus_widget_is_available(self, widget: QWidget | None) -> bool:
         return (
@@ -5654,7 +6848,7 @@ class PaperWorkShellWindow(QMainWindow):
                 return
 
     def _ensure_widget_visible(self, widget: QWidget) -> None:
-        self._application_scroll.ensureWidgetVisible(widget, 8, 8)
+        self._reveal_control_in_scroll_area(self._application_scroll, widget)
 
     def _hide_error(self) -> None:
         had_focus = self._error_label.hasFocus()
@@ -5803,9 +6997,11 @@ class PaperWorkShellWindow(QMainWindow):
         for widget in (
             self._case_list,
             self._create_case_button,
+            self._assisted_create_button,
             self._open_case_button,
             self._refresh_cases_button,
             self._close_case_button,
+            self._assisted_lock_button,
             self._page_view,
             self._move_earlier_button,
             self._move_later_button,
@@ -5815,6 +7011,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._change_order_button,
             self._core_overlay_tools_button,
             self._redaction_tools_button,
+            self._removal_export_button,
             self._place_signature_image_button,
             self._remove_signature_image_button,
             self._checklist_button,
@@ -5842,17 +7039,34 @@ class PaperWorkShellWindow(QMainWindow):
 
         if self._closing_requested:
             return
+        diagnostic_dialog = self._diagnostic_bundle_dialog
+        if diagnostic_dialog is not None:
+            pending = diagnostic_dialog.busy
+            self._diagnostic_bundle_shutdown_requested = pending
+            diagnostic_dialog.reject()
+            if pending:
+                self._announce(
+                    tr(
+                        "Waiting for support bundle publication or safe cancellation before closing."
+                    ),
+                    assertive=True,
+                )
+                return
         self._pending_package_review = False
         package_dialog = self._package_export_dialog
         if (
             self._package_review_operation_id is not None
             or self._package_export_operation_id is not None
             or self._package_summary_save_operation_id is not None
+            or self._post_export_review_operation_id is not None
+            or self._post_export_delete_operation_id is not None
+            or self._text_companion_operation_id is not None
         ):
             self._cancel_package_operation()
             self._announce(
-                "Wait for the package operation to finish and review its final result before "
-                "closing PaperWorkShell.",
+                tr(
+                    "Wait for the package operation to finish and review its final result before closing PaperWorkShell."
+                ),
                 assertive=True,
             )
             return
@@ -5868,7 +7082,7 @@ class PaperWorkShellWindow(QMainWindow):
             and overlay_dialog.latest_state_for_shutdown() is None
         ):
             self._announce(
-                "Resolve the visual overlay editor fields before closing PaperWorkShell.",
+                tr("Resolve the visual overlay editor fields before closing PaperWorkShell."),
                 assertive=True,
             )
             return
@@ -5879,7 +7093,7 @@ class PaperWorkShellWindow(QMainWindow):
             and redaction_dialog.latest_state_for_shutdown() is None
         ):
             self._announce(
-                "Resolve the redaction mark editor fields before closing PaperWorkShell.",
+                tr("Resolve the redaction mark editor fields before closing PaperWorkShell."),
                 assertive=True,
             )
             return
@@ -5890,7 +7104,7 @@ class PaperWorkShellWindow(QMainWindow):
             and constraint_dialog.latest_state_for_shutdown() is None
         ):
             self._announce(
-                "Resolve the package constraint editor fields before closing PaperWorkShell.",
+                tr("Resolve the package constraint editor fields before closing PaperWorkShell."),
                 assertive=True,
             )
             return
@@ -5899,6 +7113,14 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         active_import = active is not None and active.kind is _LongOperationKind.IMPORT
         self._closing_requested = True
+        self._pending_redaction_export_report = None
+        self._pending_redaction_review = None
+        self._pending_removal_review = None
+        self._pending_removal_retry = False
+        if self._removal_review_dialog is not None:
+            self._removal_review_dialog.reject()
+        if self._redaction_export_dialog is not None:
+            self._redaction_export_dialog.reject()
         self._closing_import_cleanup = queued_import or active_import
         self._hide_retry_close()
         self._autosave_timer.stop()
@@ -5920,9 +7142,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._update_organizer_guidance()
         self._set_controls_enabled(False)
         self._announce(
-            "Retrying secure cleanup before closing PaperWorkShell."
+            tr("Retrying secure cleanup before closing PaperWorkShell.")
             if retrying_cleanup
-            else "Closing PaperWorkShell after saving queued changes."
+            else tr("Closing PaperWorkShell after saving queued changes.")
         )
         self._commands.shutdown_requested.emit()
 

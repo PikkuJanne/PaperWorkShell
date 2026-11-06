@@ -1,0 +1,41 @@
+PaperWorkShell native library source and replacement information
+
+Component: gettext-runtime 1.0-1
+Selected runtime files: bin/libintl-8.dll
+Selected terms: LGPL-2.1-or-later
+
+The complete distribution source package is supplied at sources/native/mingw-w64-gettext-1.0-1.src.tar.zst.
+It contains the upstream source, MSYS2 patches, PKGBUILD and .SRCINFO used for
+this exact package revision. The PKGBUILD SHA-256 is 853ef80a50588f29355722a4513f24cf1a5f8de06e0b5ee326580464db539741;
+it matches the build recipe recorded by the exact binary package's .BUILDINFO.
+Individual original source and patch checksums are recorded in the dependency
+review. This is source availability and provenance, not a byte-reproducible
+compiler-build claim. Retain all upstream copyright and license notices when
+modifying or rebuilding the library.
+
+The reviewed stage keeps the library as a separate dynamic file under
+runtime/engines/tesseract/ using the archive-relative bin/ names above.
+Installer locations and final release terms are owned by PWS-0802 and remain
+unproved by this dependency review. No opaque one-file packaging, library
+encryption or hardware key is used in this staged layout.
+
+To inspect or change a library, unpack the source-only .src.tar.zst archive,
+inspect PKGBUILD and its patches, and unpack the included original source.
+Rebuild in an appropriate MSYS2 UCRT64 toolchain using that recipe and the
+recorded build environment. These instructions do not automatically execute
+a source script and do not require access to a case or document.
+
+Close PaperWorkShell and its worker before replacing a library. Preserve a
+working copy. Keep the public library interface and architecture compatible,
+place the rebuilt DLL in the same bin/ layout, and rebuild the recipient's
+PaperWorkShell source/helper manifest with the new expected file hashes and
+closure. The application source and manifest are available in the source
+package; exact-file checks are integrity controls, not a prohibition on a
+recipient modifying libraries or rebuilding their own application. Do not
+misrepresent a locally modified build as the project's signed candidate.
+
+Reverse engineering for debugging modifications to an LGPL-covered library
+and the modification/relinking rights granted by its included license are
+not prohibited by these instructions. The distribution must preserve those
+rights; final installer terms must not withdraw them. PaperWorkShell's own
+case data and externally selected originals remain under the user's control.

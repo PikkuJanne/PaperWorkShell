@@ -102,7 +102,7 @@ def test_fingerprint_binds_every_processing_and_intent_fact() -> None:
 def test_report_cannot_claim_release_verification(status: str) -> None:
     with pytest.raises(PdfExportError):
         replace(report(request()), status=status)
-    assert PERMANENT_REDACTION_ENABLED is False
+    assert PERMANENT_REDACTION_ENABLED is True
     with pytest.raises(RedactionError):
         transition_redaction_state(RedactionMarkState.UNAPPLIED, RedactionMarkState.APPLIED)
 

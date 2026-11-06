@@ -103,7 +103,29 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         "signed-marker.pdf",
     }
     assert len(unicode_names) == 1
-    assert names == expected_names | unicode_names
+    absent = PdfFeatureState.NOT_DETECTED
+    detected = PdfFeatureState.DETECTED
+    ordinary = (absent,) * 6
+    interactive = (absent, absent, detected, absent, absent, absent)
+    attached = (absent, detected, absent, absent, absent, absent)
+    redaction_expected: dict[
+        str, tuple[int | None, tuple[PdfFeatureState, ...], PdfFeatureState]
+    ] = {
+        "redaction-born-digital.pdf": (1, ordinary, absent),
+        "redaction-scan.pdf": (1, ordinary, absent),
+        "redaction-embedded-image.pdf": (1, ordinary, absent),
+        "redaction-annotation.pdf": (1, interactive, detected),
+        "redaction-form.pdf": (1, interactive, detected),
+        "redaction-metadata.pdf": (1, ordinary, absent),
+        "redaction-attachment.pdf": (1, attached, absent),
+        "redaction-hidden-layer.pdf": (1, ordinary, absent),
+        "redaction-incremental.pdf": (1, ordinary, absent),
+        "redaction-geometry.pdf": (4, ordinary, absent),
+        "redaction-hidden-ocr.pdf": (1, ordinary, absent),
+        "redaction-malformed.pdf": (None, (PdfFeatureState.UNKNOWN,) * 6, PdfFeatureState.UNKNOWN),
+        "redaction-visual-cover.pdf": (1, ordinary, absent),
+    }
+    assert names == expected_names | unicode_names | redaction_expected.keys()
 
     ordinary_names = {
         "blank.pdf",
@@ -133,7 +155,11 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
     for path in paths:
         result = _inspect(path)
         assert result.report_version == 2
-        if path.name in {"malformed-truncated.pdf", "render-malformed-page-tree.pdf"}:
+        if path.name in {
+            "malformed-truncated.pdf",
+            "render-malformed-page-tree.pdf",
+            "redaction-malformed.pdf",
+        }:
             assert result.open_state is PdfOpenState.MALFORMED
             assert result.encryption_state is PdfEncryptionState.UNKNOWN
             assert result.structural_state is PdfStructuralState.FAILED
@@ -149,6 +175,13 @@ def test_complete_synthetic_corpus_has_closed_distinct_outcomes() -> None:
         assert result.open_state is PdfOpenState.OPENED
         assert result.encryption_state is PdfEncryptionState.UNENCRYPTED
         assert result.structural_state is PdfStructuralState.CLEAN
+        if path.name in redaction_expected:
+            page_count, features, annotations = redaction_expected[path.name]
+            assert result.page_count == page_count
+            assert _feature_values(result.features) == features
+            assert result.features.annotations is annotations
+            assert result.object_count is not None and result.object_count > 0
+            continue
         assert result.page_count == (
             6
             if path.name == "render-geometry-matrix.pdf"

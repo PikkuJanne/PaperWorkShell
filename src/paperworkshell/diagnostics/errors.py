@@ -16,6 +16,11 @@ class DiagnosticErrorCode(StrEnum):
     ENCODING_FAILED = "DIAGNOSTIC_ENCODING_FAILED"
     SINK_FAILED = "DIAGNOSTIC_SINK_FAILED"
     SUMMARY_INVALID = "DIAGNOSTIC_SUMMARY_INVALID"
+    BUNDLE_INVALID = "DIAGNOSTIC_BUNDLE_INVALID"
+    CONSENT_REQUIRED = "DIAGNOSTIC_CONSENT_REQUIRED"
+    CANCELLED = "DIAGNOSTIC_CANCELLED"
+    EXPORT_FAILED = "DIAGNOSTIC_EXPORT_FAILED"
+    DESTINATION_EXISTS = "DIAGNOSTIC_DESTINATION_EXISTS"
     INTERNAL_ERROR = "DIAGNOSTIC_INTERNAL_ERROR"
 
 
@@ -27,6 +32,7 @@ class DiagnosticErrorContext(StrEnum):
     ENCODING = "diagnostic.encoding"
     SINK = "diagnostic.sink"
     SUMMARY = "diagnostic.summary"
+    BUNDLE = "diagnostic.bundle"
     INTERNAL = "diagnostic.internal"
 
 
@@ -47,6 +53,11 @@ _SAFE_MESSAGES: Final = MappingProxyType(
         DiagnosticErrorCode.SUMMARY_INVALID: (
             "The diagnostic summary is outside the documented safe field contract."
         ),
+        DiagnosticErrorCode.BUNDLE_INVALID: "The support bundle no longer matches its safe preview. Review a new preview.",
+        DiagnosticErrorCode.CONSENT_REQUIRED: "Review the support bundle and choose Save before creating it.",
+        DiagnosticErrorCode.CANCELLED: "Support bundle creation was cancelled before publication.",
+        DiagnosticErrorCode.EXPORT_FAILED: "The support bundle could not be saved safely. Choose another local folder and try again.",
+        DiagnosticErrorCode.DESTINATION_EXISTS: "A file already exists there. Choose a new support bundle filename.",
         DiagnosticErrorCode.INTERNAL_ERROR: (
             "PaperWorkShell could not complete the diagnostic operation safely."
         ),

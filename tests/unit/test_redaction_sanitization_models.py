@@ -81,7 +81,7 @@ def test_fingerprint_binds_every_input_processing_fact() -> None:
 def test_report_cannot_claim_release_verification(status: str) -> None:
     with pytest.raises(PdfExportError):
         replace(report(request()), status=status)
-    assert PERMANENT_REDACTION_ENABLED is False
+    assert PERMANENT_REDACTION_ENABLED is True
 
 
 @pytest.mark.parametrize("count", [True, -1, 1.0, "private value", 2**63])

@@ -1,4 +1,4 @@
-"""PWS-0204 exact Tesseract runtime-closure admission tests."""
+"""PWS-0204/PWS-0801 hash-addressed Tesseract runtime-closure admission tests."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from paperworkshell.worker.client.tesseract_runtime import (
     TESSERACT_RUNTIME_MANIFEST_SHA256,
     TesseractRuntimeAdmission,
     TesseractRuntimeAdmissionError,
+    admit_packaged_tesseract_runtime,
     admit_tesseract_runtime,
     packaged_tesseract_language_pack_catalog,
     packaged_tesseract_runtime_manifest,
@@ -89,7 +90,10 @@ def _runtime(tmp_path: Path) -> tuple[Path, Path, bytes, str]:
         "share/tessdata/eng.traineddata": b"synthetic reviewed language data",
     }
     payloads.update(
-        {f"bin/runtime-{index:02d}.dll": f"runtime-{index:02d}".encode() for index in range(37)}
+        {
+            f"bin/runtime-{index:02d}.dll": f"runtime-{index:02d}".encode()
+            for index in range(TESSERACT_RUNTIME_FILE_COUNT - 2)
+        }
     )
     files: list[dict[str, object]] = []
     for relative, payload in sorted(payloads.items()):
@@ -104,9 +108,9 @@ def _runtime(tmp_path: Path) -> tuple[Path, Path, bytes, str]:
             }
         )
     document: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "manifest_id": "paperworkshell-tesseract-runtime-windows-x86_64",
-        "task_id": "PWS-0204",
+        "task_id": "PWS-0801",
         "layout": {
             "entrypoint": "bin/tesseract.exe",
             "tessdata_directory": "share/tessdata",
@@ -227,9 +231,105 @@ def test_packaged_manifest_is_the_reviewed_hash_addressed_copy() -> None:
     assert (
         content
         == (
-            Path(__file__).parents[3] / "packaging" / "tesseract-runtime-closure-v1.json"
+            Path(__file__).parents[3] / "packaging" / "tesseract-runtime-closure-v2.json"
         ).read_bytes()
     )
+
+
+def test_current_manifest_distinguishes_vendor_and_source_build_providers() -> None:
+    content = packaged_tesseract_runtime_manifest().read_bytes()
+    document = _document(content)
+    files = runtime_module._parse_manifest(content)
+    assert len(files) == 38
+    assert document["schema_version"] == 2
+    assert len(document["packages"]) == 28
+    assert len(document["source_builds"]) == 1
+    assert document["closure_evidence"]["provider_count"] == 29
+    assert not any(file.path.as_posix() == "bin/libjbig-0.dll" for file in files)
+    source = document["source_builds"][0]
+    native_file = next(file for file in document["files"] if file["path"] == "bin/libtiff-6.dll")
+    assert "package_id" not in native_file
+    assert native_file["source_build_id"] == source["source_build_id"]
+    assert native_file["sha256"] == source["sha256"]
+    assert native_file["size_bytes"] == source["size_bytes"] == 557_070
+    assert source["sha256"] == "1f41506b92ab95df1511410122ee2eade01dacb49d2206242f1e460426faeae2"
+    assert source["signature_status"] == "source-built-not-MSYS2-signed"
+
+
+def test_historical_v1_is_preserved_and_rejected_by_current_parser() -> None:
+    path = Path(__file__).parents[3] / "packaging/tesseract-runtime-closure-v1.json"
+    historical = path.read_bytes()
+    assert hashlib.sha256(historical).hexdigest() == (
+        "1ffb85724770b4c30aa4d982564d548dadf466ebd5861cd827d2836198119c0a"
+    )
+    with pytest.raises(TesseractRuntimeAdmissionError, match="manifest_schema"):
+        runtime_module._parse_manifest(historical)
+
+
+@pytest.mark.parametrize("version", [1, 3, "2", None])
+def test_unknown_or_invalid_manifest_version_fails_without_runtime_mutation(
+    tmp_path: Path, version: object
+) -> None:
+    executable, tessdata, content, _digest = _runtime(tmp_path)
+    original = executable.read_bytes()
+    document = _document(content)
+    document["schema_version"] = version
+    changed, digest = _encode(document)
+    with pytest.raises(TesseractRuntimeAdmissionError, match="manifest_schema"):
+        _admit(executable, tessdata, changed, digest)
+    assert executable.read_bytes() == original
+
+
+@pytest.mark.parametrize("mutation", ["legacy", "source_digest", "recipe_digest", "source_missing"])
+def test_packaged_authority_rejects_replaced_or_tampered_source_build_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    executable, tessdata, _content, _digest = _runtime(tmp_path)
+    canonical = packaged_tesseract_runtime_manifest().read_bytes()
+    if mutation == "legacy":
+        changed = (
+            Path(__file__).parents[3] / "packaging/tesseract-runtime-closure-v1.json"
+        ).read_bytes()
+    else:
+        document = _document(canonical)
+        if mutation == "source_digest":
+            document["source_builds"][0]["sha256"] = "0" * 64
+        elif mutation == "recipe_digest":
+            document["source_builds"][0]["recipe_sha256"] = "0" * 64
+        else:
+            document["source_builds"] = []
+        changed, _changed_digest = _encode(document)
+    original_reader = runtime_module._read_packaged_resource
+
+    def substituted_reader(path: Path, context: str) -> bytes:
+        return changed if context == "manifest_resource" else original_reader(path, context)
+
+    monkeypatch.setattr(runtime_module, "_read_packaged_resource", substituted_reader)
+    with pytest.raises(TesseractRuntimeAdmissionError, match="manifest_hash"):
+        admit_packaged_tesseract_runtime(executable, tessdata)
+
+
+@pytest.mark.parametrize("mutation", ["size", "hash", "missing"])
+def test_declared_rebuilt_libtiff_file_fingerprint_is_enforced(
+    tmp_path: Path, mutation: str
+) -> None:
+    executable, tessdata, content, _digest = _runtime(tmp_path)
+    document = _document(content)
+    entry = next(file for file in document["files"] if file["path"] == "bin/runtime-00.dll")
+    old = executable.parent / "runtime-00.dll"
+    target = executable.parent / "libtiff-6.dll"
+    old.rename(target)
+    entry["path"] = "bin/libtiff-6.dll"
+    changed, digest = _encode(document)
+    _admit(executable, tessdata, changed, digest)
+    if mutation == "missing":
+        target.unlink()
+    elif mutation == "size":
+        target.write_bytes(target.read_bytes() + b"x")
+    else:
+        target.write_bytes(b"x" * target.stat().st_size)
+    with pytest.raises(TesseractRuntimeAdmissionError, match=mutation):
+        _admit(executable, tessdata, changed, digest)
 
 
 def test_packaged_language_catalog_is_hash_addressed_and_matches_canonical() -> None:

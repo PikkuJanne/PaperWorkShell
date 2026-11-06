@@ -7,6 +7,10 @@ name = "paperworkshell"
 version = "0.0.0"
 description = "A local-first guided document packet builder."
 readme = "README.md"
+authors = [{ name = "Janne Vuorela" }]
+maintainers = [{ name = "Janne Vuorela" }]
+license = "MIT"
+license-files = ["LICENSE", "LICENSING.md"]
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "fonttools==4.63.0",

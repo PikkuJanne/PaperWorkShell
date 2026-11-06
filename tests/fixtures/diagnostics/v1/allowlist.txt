@@ -1,0 +1,14 @@
+PaperWorkShell support bundle format 1
+Files: summary.txt; allowlist.txt. No other archive members are permitted.
+summary.txt: generated UTC; summary version; record/dropped/sink-failure counts;
+numeric application/engine/schema versions; internal operation UUIDs;
+closed diagnostic counts, failure codes and numeric resource measurements.
+allowlist.txt: this fixed description of the included fields and exclusions.
+No document, OCR or form text; names; addresses; original filenames; full paths;
+metadata values; thumbnails; signature images; document bytes; raw exceptions;
+environment variables; machine/user identity; arbitrary files or ordinary logs.
+Missing measurements are not collected or inferred. A zero-record summary is valid.
+This local export sends nothing. Share it separately only if you choose.
+Saved bundles remain in the chosen folder until you delete them; case cleanup
+and application removal do not remove them. Deletion does not promise secure erasure.
+PaperWorkShell support evidence is independent of any other product's support data.

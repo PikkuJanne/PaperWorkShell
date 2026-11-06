@@ -1,0 +1,74 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [50 70 590 750] /Rotate 0 /Resources << /Font << /F1 7 0 R >> >> /Contents 8 0 R >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [50 70 590 750] /Rotate 90 /Resources << /Font << /F1 7 0 R >> >> /Contents 9 0 R >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [50 70 590 750] /Rotate 180 /Resources << /Font << /F1 7 0 R >> >> /Contents 10 0 R >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [20 30 632 822] /CropBox [50 70 590 750] /Rotate 270 /Resources << /Font << /F1 7 0 R >> >> /Contents 11 0 R >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+8 0 obj
+<< /Length 90 >>
+stream
+BT /F1 20 Tf 82 400 Td (PWSREDGEOZERO) Tj ET
+BT /F1 14 Tf 82 690 Td (PWSKEEPGEOZERO) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Length 88 >>
+stream
+BT /F1 20 Tf 82 400 Td (PWSREDGEOONE) Tj ET
+BT /F1 14 Tf 82 690 Td (PWSKEEPGEOONE) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Length 88 >>
+stream
+BT /F1 20 Tf 82 400 Td (PWSREDGEOTWO) Tj ET
+BT /F1 14 Tf 82 690 Td (PWSKEEPGEOTWO) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Length 92 >>
+stream
+BT /F1 20 Tf 82 400 Td (PWSREDGEOTHREE) Tj ET
+BT /F1 14 Tf 82 690 Td (PWSKEEPGEOTHREE) Tj ET
+endstream
+endobj
+12 0 obj
+<< /Producer (PWS-SYNTHETIC-FIXTURE) >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000139 00000 n 
+0000000302 00000 n 
+0000000466 00000 n 
+0000000632 00000 n 
+0000000798 00000 n 
+0000000868 00000 n 
+0000001008 00000 n 
+0000001146 00000 n 
+0000001285 00000 n 
+0000001428 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R /Info 12 0 R >>
+startxref
+1484
+%%EOF

@@ -34,6 +34,7 @@ from paperworkshell.domain.pdf_optimization import (
     PdfOptimizationReport,
 )
 from paperworkshell.domain.redaction import require_redaction_export_allowed
+from paperworkshell.localization.catalog import tr
 
 PDF_EXPORT_PLAN_VERSION: Final = 1
 PDF_EXPORT_PROFILE_VERSION: Final = 1
@@ -608,28 +609,33 @@ class PdfExportCheck:
         """Return exact plain-language wording for this performed check."""
 
         if self.code is PdfExportCheckCode.PDF_REOPENED:
-            return "The exported PDF reopened successfully."
+            return tr("The exported PDF reopened successfully.")
         if self.code is PdfExportCheckCode.STRUCTURE_CLEAN:
-            return "The qpdf structural check completed without warnings."
+            return tr("The qpdf structural check completed without warnings.")
         if self.code is PdfExportCheckCode.PAGE_COUNT_MATCHED:
-            return f"The exported PDF contains the expected {self.page_count} pages."
+            return tr(
+                "The exported PDF contains the expected {value_0} pages.", value_0=self.page_count
+            )
         if self.code is PdfExportCheckCode.UNENCRYPTED:
-            return "The exported PDF is not encrypted."
+            return tr("The exported PDF is not encrypted.")
         if self.code is PdfExportCheckCode.ALL_PAGES_RENDERED:
-            return f"All {self.page_count} pages rendered with the verification profile."
+            return tr(
+                "All {value_0} pages rendered with the verification profile.",
+                value_0=self.page_count,
+            )
         if self.code is PdfExportCheckCode.ORDER_ROTATION_MATCHED:
-            return (
-                "Rendered page order and rotations match the export plan for "
-                f"all {self.page_count} pages."
+            return tr(
+                "Rendered page order and rotations match the export plan for all {value_0} pages.",
+                value_0=self.page_count,
             )
         if self.code is PdfExportCheckCode.OUTPUT_COMMIT_REOPENED:
-            return "PaperWorkShell reopened the committed output successfully."
+            return tr("PaperWorkShell reopened the committed output successfully.")
         if self.code is PdfExportCheckCode.PORTAL_PROFILE_VERIFIED:
-            return (
+            return tr(
                 "The exported PDF passed the conservative portal feature checks. "
                 "Portal acceptance still depends on the receiving service."
             )
-        return (
+        return tr(
             "The exported PDF is an unsigned derivative because at least one source "
             "contained digital-signature markers or its marker state could not be confirmed."
         )
@@ -839,14 +845,16 @@ class PdfExportOutcome:
 
     @property
     def safe_message(self) -> str:
-        prefix = "Unsigned derivative: " if self.report.unsigned_derivative else ""
+        prefix = tr("Unsigned derivative: ") if self.report.unsigned_derivative else ""
         if self.status is PdfExportOutcomeStatus.COMMITTED_RECORDED:
-            return f"{prefix}The verified PDF was saved and recorded in case history."
-        message = (
+            return tr(
+                "{value_0}The verified PDF was saved and recorded in case history.", value_0=prefix
+            )
+        message = tr(
             "The verified PDF was saved, but PaperWorkShell could not record it in case "
             "history. The output does not need to be exported again."
         )
-        return f"{prefix}{message}"
+        return tr("{value_0}{value_1}", value_0=prefix, value_1=message)
 
 
 @dataclass(frozen=True, slots=True)

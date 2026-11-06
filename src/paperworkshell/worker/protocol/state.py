@@ -26,6 +26,7 @@ from paperworkshell.worker.protocol.models import (
     PDF_THUMBNAIL_CAPABILITY,
     PORTAL_PDF_EXPORT_CAPABILITY,
     QUALITY_OCR_REVIEW_CAPABILITY,
+    REDACTION_EXPORT_CAPABILITY,
     REDACTION_RECONSTRUCTION_CAPABILITY,
     REDACTION_SANITIZATION_CAPABILITY,
     SEARCHABLE_PDF_EXPORT_CAPABILITY,
@@ -80,6 +81,10 @@ from paperworkshell.worker.protocol.models import (
     validate_signature_image_raster_result,
     validate_signature_image_raster_start,
 )
+from paperworkshell.worker.protocol.redaction_export import (
+    redaction_export_binding,
+    validate_redaction_export_result,
+)
 from paperworkshell.worker.protocol.redaction_reconstruction import (
     reconstruction_binding,
     validate_reconstruction_result,
@@ -87,6 +92,11 @@ from paperworkshell.worker.protocol.redaction_reconstruction import (
 from paperworkshell.worker.protocol.redaction_sanitization import (
     sanitization_binding,
     validate_sanitization_result,
+)
+from paperworkshell.worker.protocol.text_companion import (
+    TEXT_COMPANION_CAPABILITY,
+    text_companion_binding,
+    validate_text_companion_result,
 )
 
 MAX_TRACKED_MESSAGES: Final = 4_096
@@ -111,6 +121,7 @@ class _ActiveOperation:
     operation_kind: str
     operation_version: int
     requested_limits: ResourceLimits
+    text_companion_output_object_id: UUID | None = None
     image_normalize_output_object_id: UUID | None = None
     signature_image_raster_output_object_id: UUID | None = None
     image_transform_output_object_id: UUID | None = None
@@ -122,6 +133,7 @@ class _ActiveOperation:
     searchable_export_status_object_id: UUID | None = None
     searchable_export_status_capacity_bytes: int | None = None
     reconstruction_output_object_id: UUID | None = None
+    redaction_export_output_object_id: UUID | None = None
     sanitization_output_object_id: UUID | None = None
     image_stage_output_object_id: UUID | None = None
     image_stage_evidence_object_id: UUID | None = None
@@ -391,6 +403,17 @@ class ConversationState:
         searchable_export_output_object_id: UUID | None = None
         searchable_export_status_object_id: UUID | None = None
         searchable_export_status_capacity_bytes: int | None = None
+        text_companion_output_object_id = None
+        if descriptor == TEXT_COMPANION_CAPABILITY:
+            text_companion_output_object_id = text_companion_binding(payload)
+            companion_bound_ids = (
+                self.case_id,
+                message.operation_id,
+                payload.inputs[0].object_id,
+                text_companion_output_object_id,
+            )
+            if len(set(companion_bound_ids)) != len(companion_bound_ids):
+                reject("RPC_INVALID_OPERATION", "operation_id", "text companion scope is invalid")
         if descriptor == IMAGE_NORMALIZE_CAPABILITY:
             validate_image_normalize_start(payload)
             image_bound_object_ids = image_normalize_bound_object_ids(payload)
@@ -565,6 +588,17 @@ class ConversationState:
             )
             if len(set(bound_ids)) != len(bound_ids):
                 reject("RPC_INVALID_OPERATION", "operation_id", "reconstruction scope is invalid")
+        redaction_export_output_object_id = None
+        if descriptor == REDACTION_EXPORT_CAPABILITY:
+            redaction_export_output_object_id = redaction_export_binding(payload)
+            bound_ids = (
+                self.case_id,
+                message.operation_id,
+                *(item.object_id for item in payload.inputs),
+                redaction_export_output_object_id,
+            )
+            if len(set(bound_ids)) != len(bound_ids):
+                reject("RPC_INVALID_OPERATION", "operation_id", "redaction_export scope is invalid")
         sanitization_output_object_id = None
         if descriptor == REDACTION_SANITIZATION_CAPABILITY:
             sanitization_output_object_id = sanitization_binding(payload)
@@ -591,6 +625,7 @@ class ConversationState:
                 operation_kind=payload.operation_kind,
                 operation_version=payload.operation_version,
                 requested_limits=payload.requested_limits,
+                text_companion_output_object_id=text_companion_output_object_id,
                 image_normalize_output_object_id=image_normalize_output_object_id,
                 signature_image_raster_output_object_id=(signature_image_raster_output_object_id),
                 image_transform_output_object_id=image_transform_output_object_id,
@@ -602,6 +637,7 @@ class ConversationState:
                 searchable_export_status_object_id=(searchable_export_status_object_id),
                 searchable_export_status_capacity_bytes=(searchable_export_status_capacity_bytes),
                 reconstruction_output_object_id=reconstruction_output_object_id,
+                redaction_export_output_object_id=redaction_export_output_object_id,
                 sanitization_output_object_id=sanitization_output_object_id,
                 image_stage_output_object_id=image_stage_output_object_id,
                 image_stage_evidence_object_id=image_stage_evidence_object_id,
@@ -690,6 +726,10 @@ class ConversationState:
                 "payload",
                 "ocr.review progress must use one exact page",
             )
+        if active.operation_kind == REDACTION_EXPORT_CAPABILITY.capability_id and (
+            payload.unit is not ProgressUnit.STEPS or payload.total_units != 1
+        ):
+            reject("RPC_INVALID_PROGRESS", "payload", "redaction_export progress must use one step")
         if active.operation_kind == REDACTION_SANITIZATION_CAPABILITY.capability_id and (
             payload.unit is not ProgressUnit.STEPS or payload.total_units != 1
         ):
@@ -860,6 +900,19 @@ class ConversationState:
                 "payload.outputs",
                 "this operation cannot produce RPC object outputs",
             )
+        if active.operation_kind == TEXT_COMPANION_CAPABILITY.capability_id:
+            if active.text_companion_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "text companion result binding is unavailable",
+                )
+            validate_text_companion_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.text_companion_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
         if active.operation_kind == PDF_THUMBNAIL_CAPABILITY.capability_id:
             if active.thumbnail_cache_object_id is None:
                 reject(
@@ -1011,6 +1064,19 @@ class ConversationState:
                 payload,
                 operation_id=active.operation_id,
                 output_object_id=active.reconstruction_output_object_id,
+                maximum_output_bytes=active.requested_limits.output_bytes,
+            )
+        if active.operation_kind == REDACTION_EXPORT_CAPABILITY.capability_id:
+            if active.redaction_export_output_object_id is None:
+                reject(
+                    "RPC_INVALID_STATE",
+                    "payload.outputs",
+                    "redaction_export binding is unavailable",
+                )
+            validate_redaction_export_result(
+                payload,
+                operation_id=active.operation_id,
+                output_object_id=active.redaction_export_output_object_id,
                 maximum_output_bytes=active.requested_limits.output_bytes,
             )
         if active.operation_kind == REDACTION_SANITIZATION_CAPABILITY.capability_id:

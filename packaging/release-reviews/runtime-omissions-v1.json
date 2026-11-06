@@ -1,0 +1,167 @@
+{
+  "decision_refs": [
+    "PWS-D007",
+    "PWS-D013",
+    "PWS-D034"
+  ],
+  "metadata_rules": [
+    "Omit original wheel RECORD after explicit subset; exhaustive staged-file inventory replaces its purpose",
+    "Omit installer console entry-point scripts; product launch remains PWS-0802-owned",
+    "Relocate wheel .data/purelib and .data/platlib contents to site-packages; never omit required native libraries because of wheel layout",
+    "Retain raw upstream SBOMs as hash-bound review inputs, outside runtime payload; normalize away upstream absolute CI paths in published candidate evidence"
+  ],
+  "omitted_dependencies": [
+    {
+      "component_id": "pi-heif",
+      "omitted_package_files": [
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/_pi_heif.cp314-win_amd64.pyd",
+          "path": "_pi_heif.cp314-win_amd64.pyd",
+          "sha256": "02e822abcf11fcb14e0abe2647504562952195ddf63b6ae31c50be5f19c9550b",
+          "size_bytes": 50688
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/libde265-0-aa0625e0aec56a9d4310a2447674dd8a.dll",
+          "path": "pi_heif-1.4.0.data/platlib/libde265-0-aa0625e0aec56a9d4310a2447674dd8a.dll",
+          "sha256": "d7499c1efed7cdf5bb99ab535de4b2d853015df42f8ecc496e720fad1e29c5c1",
+          "size_bytes": 940544
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/libgcc_s_seh-1-70f48b1fbf7790872df2fde4b79a7c3b.dll",
+          "path": "pi_heif-1.4.0.data/platlib/libgcc_s_seh-1-70f48b1fbf7790872df2fde4b79a7c3b.dll",
+          "sha256": "df510fab08619449d9e57500f0e0a4d3284fd43aa60ce6301b372518f721665f",
+          "size_bytes": 150016
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/libheif-75127e764628a95f6db9f5070bfc87cb.dll",
+          "path": "pi_heif-1.4.0.data/platlib/libheif-75127e764628a95f6db9f5070bfc87cb.dll",
+          "sha256": "00eca3b84743121b1eff89a0538fb88b396ff10b452605782f2c31897d34b491",
+          "size_bytes": 2125312
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/libstdc++-6-110c9d51f08f0d1d0f38fa2f49cf7128.dll",
+          "path": "pi_heif-1.4.0.data/platlib/libstdc++-6-110c9d51f08f0d1d0f38fa2f49cf7128.dll",
+          "sha256": "4e9d25ae95db62d51804096544a1bd8fdc4a424990b706c3c4167fc8c5054f79",
+          "size_bytes": 2660352
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/libwinpthread-1-1be1ab2940d5d04137beed0ce27c7f8a.dll",
+          "path": "pi_heif-1.4.0.data/platlib/libwinpthread-1-1be1ab2940d5d04137beed0ce27c7f8a.dll",
+          "sha256": "1be1ab2940d5d04137beed0ce27c7f8a2461fb783453d3ed26720802a6249341",
+          "size_bytes": 62464
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/DELVEWHEEL",
+          "path": "pi_heif-1.4.0.dist-info/DELVEWHEEL",
+          "sha256": "656c1f18a79eb9095d5a9a35f06f7bca0514833afa8aa15baaa9cf59cf17e443",
+          "size_bytes": 451
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/METADATA",
+          "path": "pi_heif-1.4.0.dist-info/METADATA",
+          "sha256": "84638912e1f74faa9068bdf2af1ec150be2caab5fbb77dc1b4e6a157ccc76b4d",
+          "size_bytes": 6493
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/WHEEL",
+          "path": "pi_heif-1.4.0.dist-info/WHEEL",
+          "sha256": "8e1c6b44fded7447e6eeda01d57edd979c7a7f46eee93bded9c5b021d91b2fc5",
+          "size_bytes": 101
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/licenses/LICENSE.txt",
+          "path": "pi_heif-1.4.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "9e2635f155b00af5a46cb2f2c9b052072ec546d59837ee74efc9cba2cbb83f3d",
+          "size_bytes": 1546
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/licenses/LICENSES_bundled.txt",
+          "path": "pi_heif-1.4.0.dist-info/licenses/LICENSES_bundled.txt",
+          "sha256": "8155948291bc988b17fa600308e359be32111c1a22aef1dab7b330f17b8106d3",
+          "size_bytes": 572
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/top_level.txt",
+          "path": "pi_heif-1.4.0.dist-info/top_level.txt",
+          "sha256": "f126e694bf1f1a7629f73cbe62623e8e62f7645a9b963b0b1cc42c73627d07a9",
+          "size_bytes": 17
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif-1.4.0.dist-info/zip-safe",
+          "path": "pi_heif-1.4.0.dist-info/zip-safe",
+          "sha256": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+          "size_bytes": 2
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/HeifImagePlugin.py",
+          "path": "pi_heif/HeifImagePlugin.py",
+          "sha256": "91a6ae530634caad427289b3219a20c7650c553526fc59ba40c229d1b4084bcc",
+          "size_bytes": 135
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/__init__.py",
+          "path": "pi_heif/__init__.py",
+          "sha256": "50daaa01d932655f89205b18760f53a507790b61e9fa670bc0ee2a1dfb707aab",
+          "size_bytes": 935
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/_deffered_error.py",
+          "path": "pi_heif/_deffered_error.py",
+          "sha256": "7b4da9579c84f9319ba031b961360b120adf0f7a34167106a4ae56049529bff8",
+          "size_bytes": 325
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/_lib_info.py",
+          "path": "pi_heif/_lib_info.py",
+          "sha256": "445b1116f3d810e99ae8df24a9ba6e67beee9099921c9779acef5ac46a03086f",
+          "size_bytes": 1021
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/_version.py",
+          "path": "pi_heif/_version.py",
+          "sha256": "513260a9ae8f16d504c742cdc0da68fb97032433d648c6dd97f728c21c29fd09",
+          "size_bytes": 60
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/as_plugin.py",
+          "path": "pi_heif/as_plugin.py",
+          "sha256": "e3e6f9087c5a5c33dcb3d163fa60d7afd529edbd979f2fd3d2ec0af196403689",
+          "size_bytes": 8177
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/constants.py",
+          "path": "pi_heif/constants.py",
+          "sha256": "0111feab3afc75c32eb68794375cbb37c0637470f14d6b7b308f0666a803ba57",
+          "size_bytes": 5065
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/heif.py",
+          "path": "pi_heif/heif.py",
+          "sha256": "e9343aa0ffa565d8632492d0d9eb7e208e27aa92c44d8a992accaa1598660dcd",
+          "size_bytes": 24561
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/misc.py",
+          "path": "pi_heif/misc.py",
+          "sha256": "12218f20aaed2c9435e5afd64ea2a2ae181f3da4fc6e47100bed3065dc07e7ef",
+          "size_bytes": 22031
+        },
+        {
+          "installed_relative_path": "runtime/Lib/site-packages/pi_heif/options.py",
+          "path": "pi_heif/options.py",
+          "sha256": "cf0ad1b01c44cf7959ab3e33e454254e569bbd514d447a20713d02cd7b579d56",
+          "size_bytes": 2629
+        }
+      ],
+      "reason": "Complete HEIF decoder omitted: unsupported input format, upstream OCRmyPDF has explicit ImportError fallback, no project source patch; removes unused native parser and stale native notice closure",
+      "required_by_distribution": "ocrmypdf",
+      "technical_receipt_sha256": "0384e7533d6a3b86b61d0a0afedbb4a25b095f63efa8325a46f3f57fd28afccd",
+      "upstream_optional_import_member": "ocrmypdf/_pipeline.py",
+      "upstream_optional_import_sha256": "40a6d623cbd62fc05590b16018b59e2b9db25ce56762e502bcc8db11bd53ab92",
+      "wheel_sha256": "743b971b9c0d35be8435702443596e3e9280084e68fc8d5c4de4b31fb12a1417"
+    }
+  ],
+  "review_id": "pws0801-runtime-omissions",
+  "reviewed_on": "2026-11-03",
+  "schema_version": 1
+}

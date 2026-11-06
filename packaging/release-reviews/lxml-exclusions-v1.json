@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-lxml-resource-exclusions",
+  "approved_on": "2026-11-03",
+  "authority": "Explicit maintainer message in the PWS-0801 session: Proposal approved",
+  "scope": "Exclude only the two identified resources from the exact reviewed lxml wheel; no redistribution rights or license waiver for the excluded resources is asserted",
+  "artifact": {
+    "name": "lxml-6.1.1-cp314-cp314-win_amd64.whl",
+    "size_bytes": 4064497,
+    "sha256": "b2d444f2e66624d68e9c6b211e28a76e22fff5fcabcfff4deac18b529b7d4137"
+  },
+  "exclusions": [
+    {
+      "path": "lxml/isoschematron/resources/xsl/RNG2Schtrn.xsl",
+      "size_bytes": 3247,
+      "sha256": "832f84eb1476a77e522bdc1715386b68f24423d35da084cd1dde319aacbba316"
+    },
+    {
+      "path": "lxml/isoschematron/resources/xsl/XSD2Schtrn.xsl",
+      "size_bytes": 4563,
+      "sha256": "430791ac820cfb315c820f7c19703609a59f21b8151345ca11e6127efbfaec0d"
+    }
+  ],
+  "technical_evidence": {
+    "receipt_sha256": "abf43bc38bde143c34a6abd33544da111bc165812bd2c56fcb09d458e5b116bb",
+    "report": "docs/development/pws0801-result.md"
+  },
+  "remaining_requirements": [
+    "Verify the exact input wheel and excluded member identities before staging",
+    "Record every included file and all exclusions in the resolved staging inventory",
+    "Preserve truthful notices and create a subset-specific file inventory rather than treating the original wheel RECORD as the staged inventory",
+    "Retest affected PDF and OCR paths against the final staged candidate",
+    "Review any future version or different exclusion separately"
+  ]
+}

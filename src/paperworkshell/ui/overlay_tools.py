@@ -11,6 +11,7 @@ dedicated asset-cleanup workflow.
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal
 from itertools import pairwise
 from typing import Final
 from uuid import UUID
@@ -20,6 +21,7 @@ from PySide6.QtGui import (
     QAccessible,
     QAccessibleAnnouncementEvent,
     QCloseEvent,
+    QKeyEvent,
     QKeySequence,
     QPixmap,
     QShortcut,
@@ -34,7 +36,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -54,8 +55,6 @@ from paperworkshell.app.core_overlay_tools import (
     core_overlay_tool_descriptor,
     is_core_overlay_announcement_safe,
     overlay_editor_kind_accessible_name,
-    overlay_editor_record_accessible_name,
-    overlay_editor_record_summary,
 )
 from paperworkshell.domain.case_lifecycle import CaseLifecycleErrorCode
 from paperworkshell.domain.manifest_repository import ManifestRepositoryErrorCode
@@ -67,6 +66,7 @@ from paperworkshell.domain.page_coordinates import (
     RenderedImageSize,
 )
 from paperworkshell.domain.page_operations import PageOperationErrorCode
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.overlays.models import (
     MAX_FONT_SIZE_POINTS,
     MAX_OVERLAY_TEXT_CODE_POINTS,
@@ -79,12 +79,19 @@ from paperworkshell.overlays.models import (
     OverlayVisibility,
     TextualOverlayPayload,
 )
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.localized_messages import (
+    localized_overlay_announcement,
+    localized_overlay_record_name,
+    localized_overlay_record_summary,
+)
 from paperworkshell.ui.overlay_canvas import (
     DEFAULT_EDITOR_ZOOM_PERCENT,
     MAX_EDITOR_ZOOM_PERCENT,
     MIN_EDITOR_ZOOM_PERCENT,
     OverlayEditorCanvas,
 )
+from paperworkshell.ui.presentation import WrappingActionLayout, adapt_dialog_button_box
 
 _FOCUS_VISIBLE_TEXT_STYLE: Final = """
 QLabel {
@@ -108,32 +115,32 @@ _SAFE_CORE_FAILURE_CODES: Final = frozenset(
     | {code.value for code in PageOperationErrorCode}
 )
 _TEXT_INPUT_MAX_UTF16_UNITS: Final = (MAX_OVERLAY_TEXT_CODE_POINTS + 1) * 2
-_UNREPRESENTABLE_SAVED_VALUE: Final = (
-    "The selected saved value cannot be represented by this editor. Replace the value "
-    "explicitly before changing its other properties."
+_UNREPRESENTABLE_SAVED_VALUE: Final = mark(
+    "The selected saved value cannot be represented by this editor. Replace the value explicitly before changing its other properties."
 )
-_LIST_DESCRIPTION: Final = (
-    "Select a visual mark with the arrow keys, then use the property fields or keyboard "
-    "shortcuts. Dragging is not required. Each row identifies the available property path."
+_LIST_DESCRIPTION: Final = mark(
+    "Select a visual mark with the arrow keys, then use the property fields or keyboard shortcuts. Dragging is not required. Each row identifies the available property path."
 )
 _COLOR_CHOICES: Final = (
-    ("Black", "#000000ff"),
-    ("Dark blue", "#203080ff"),
-    ("Green", "#008040ff"),
-    ("Dark red", "#a02020ff"),
+    (mark("Black"), "#000000ff"),
+    (mark("Dark blue"), "#203080ff"),
+    (mark("Green"), "#008040ff"),
+    (mark("Dark red"), "#a02020ff"),
 )
 _TEXTUAL_KINDS: Final = frozenset({OverlayKind.TEXT, OverlayKind.DATE, OverlayKind.INITIALS})
 _ZOOM_CHOICES: Final = (25, 50, 75, 100, 125, 150, 200, 300, 400)
 _GUIDE_LABELS: Final = {
-    10_000: "1 percent",
-    25_000: "2.5 percent",
-    50_000: "5 percent",
-    100_000: "10 percent",
+    10_000: mark("1 percent"),
+    25_000: mark("2.5 percent"),
+    50_000: mark("5 percent"),
+    100_000: mark("10 percent"),
 }
 _SAFE_CANVAS_MESSAGES: Final = frozenset(
     {
-        "Pointer editing is unavailable for a deskewed preview. Use the exact fields or keyboard controls.",
-        "No visual mark is at that point. Select a mark from the list to edit it exactly.",
+        mark(
+            "Pointer editing is unavailable for a deskewed preview. Use the exact fields or keyboard controls."
+        ),
+        mark("No visual mark is at that point. Select a mark from the list to edit it exactly."),
     }
 )
 
@@ -178,12 +185,12 @@ class CoreOverlayToolsDialog(QDialog):
             raise ValueError("pointer_mapping_enabled must be a bool")
 
         self.setObjectName("coreOverlayToolsDialog")
-        self.setWindowTitle("Edit visual overlays")
-        self.setAccessibleName("Edit visual overlays for selected page")
+        self.setWindowTitle(tr("Edit visual overlays"))
+        self.setAccessibleName(tr("Edit visual overlays for selected page"))
         self.setAccessibleDescription(
-            "Create core visual marks and select, move, or resize every released overlay type "
-            "using a full-page preview plus a complete list, exact fields, buttons, and keyboard "
-            "shortcuts. No pointer is required."
+            tr(
+                "Create core visual marks and select, move, or resize every released overlay type using a full-page preview plus a complete list, exact fields, buttons, and keyboard shortcuts. No pointer is required."
+            )
         )
         self.setModal(True)
         self.resize(1180, 780)
@@ -192,20 +199,19 @@ class CoreOverlayToolsDialog(QDialog):
         self._content.setObjectName("coreOverlayToolsContent")
         content_layout = QVBoxLayout(self._content)
 
-        heading = QLabel("Edit visual overlays")
+        heading = QLabel(tr("Edit visual overlays"))
         heading.setObjectName("coreOverlayToolsHeading")
-        heading.setAccessibleName("Edit visual overlays")
+        heading.setAccessibleName(tr("Edit visual overlays"))
         heading.setStyleSheet("font-weight: 600;")
         content_layout.addWidget(heading)
 
         guidance = QLabel(
-            "Select any overlay in the native list, then use exact properties or named movement "
-            "controls. Add creates the five core mark types; signature-image removal stays in "
-            "its explicit organizer workflow. Positions and sizes use the full page before crop "
-            "or rotation. Alt+Arrow moves; Alt+Shift+Arrow resizes."
+            tr(
+                "Select any overlay in the native list, then use exact properties or named movement controls. Add creates the five core mark types; signature-image removal stays in its explicit organizer workflow. Positions and sizes use the full page before crop or rotation. Alt+Arrow moves; Alt+Shift+Arrow resizes."
+            )
         )
         guidance.setObjectName("coreOverlayToolsGuidance")
-        guidance.setAccessibleName("Visual overlay editor instructions")
+        guidance.setAccessibleName(tr("Visual overlay editor instructions"))
         guidance.setAccessibleDescription(guidance.text())
         guidance.setTextFormat(Qt.TextFormat.PlainText)
         guidance.setWordWrap(True)
@@ -224,10 +230,10 @@ class CoreOverlayToolsDialog(QDialog):
         content_layout.addWidget(self._build_properties_group())
         content_layout.addLayout(self._build_edit_actions())
 
-        self._status = QLabel(state.announcement)
+        self._status = QLabel(localized_overlay_announcement(state.announcement))
         self._status.setObjectName("coreOverlayToolsStatus")
-        self._status.setAccessibleName("Visual overlay editor status")
-        self._status.setAccessibleDescription(state.announcement)
+        self._status.setAccessibleName(tr("Visual overlay editor status"))
+        self._status.setAccessibleDescription(localized_overlay_announcement(state.announcement))
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -238,36 +244,38 @@ class CoreOverlayToolsDialog(QDialog):
 
         self._scroll = QScrollArea()
         self._scroll.setObjectName("coreOverlayToolsScrollArea")
-        self._scroll.setAccessibleName("Visual overlay controls")
+        self._scroll.setAccessibleName(tr("Visual overlay controls"))
         self._scroll.setAccessibleDescription(
-            "Scrollable visual overlay list, property fields, actions, and status."
+            tr("Scrollable visual overlay list, property fields, actions, and status.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._scroll.setWidget(self._content)
+        adapt_localized_content(self._scroll)
 
         self._buttons = QDialogButtonBox()
         self._buttons.setObjectName("coreOverlayToolsDialogButtons")
-        self._buttons.setAccessibleName("Apply or cancel visual overlay changes")
+        self._buttons.setAccessibleName(tr("Apply or cancel visual overlay changes"))
         self._apply_button = self._buttons.addButton(
-            "Apply overlay changes",
+            tr("Apply overlay changes"),
             QDialogButtonBox.ButtonRole.AcceptRole,
         )
         self._apply_button.setObjectName("applyFormMarksButton")
-        self._apply_button.setAccessibleName("Apply overlay changes")
+        self._apply_button.setAccessibleName(tr("Apply overlay changes"))
         self._apply_button.setAccessibleDescription(
-            "Request saving the complete local visual overlay draft."
+            tr("Request saving the complete local visual overlay draft.")
         )
         self._apply_button.setDefault(True)
         self._cancel_button = self._buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         self._cancel_button.setObjectName("cancelFormMarksButton")
-        self._cancel_button.setAccessibleName("Cancel visual overlay changes")
+        self._cancel_button.setAccessibleName(tr("Cancel visual overlay changes"))
         self._cancel_button.setAccessibleDescription(
-            "Discard this local draft without requesting a case change. Escape."
+            tr("Discard this local draft without requesting a case change. Escape.")
         )
         self._apply_button.clicked.connect(self._request_apply)
         self._cancel_button.clicked.connect(self.reject)
+        adapt_dialog_button_box(self._buttons)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._scroll, 1)
@@ -304,26 +312,28 @@ class CoreOverlayToolsDialog(QDialog):
         display_size: RenderedImageSize | None,
         pointer_mapping_enabled: bool,
     ) -> QGroupBox:
-        group = QGroupBox("Full-page overlay view")
+        group = QGroupBox(tr("Full-page overlay view"))
         group.setObjectName("overlayEditorCanvasGroup")
-        group.setAccessibleName("Full-page overlay view")
+        group.setAccessibleName(tr("Full-page overlay view"))
         group.setAccessibleDescription(
-            "A visual page projection with patterned guides and selection outlines. The native "
-            "visual-marks list and exact controls provide every editing action without a pointer. "
-            f"The active crop starts at left {_percent_text(transform.manifest_crop.x)} and top "
-            f"{_percent_text(transform.manifest_crop.y)}, with width "
-            f"{_percent_text(transform.manifest_crop.width)} and height "
-            f"{_percent_text(transform.manifest_crop.height)}."
+            tr(
+                "A visual page projection with patterned guides and selection outlines. The native visual-marks list and exact controls provide every editing action without a pointer. The active crop starts at left {value1} and top {value2}, with width {value3} and height {value4}.",
+                value1=_percent_text(transform.manifest_crop.x),
+                value2=_percent_text(transform.manifest_crop.y),
+                value3=_percent_text(transform.manifest_crop.width),
+                value4=_percent_text(transform.manifest_crop.height),
+            )
         )
         layout = QVBoxLayout(group)
 
         if not pointer_mapping_enabled:
             notice = QLabel(
-                "Deskewed page: the pixel preview is replaced by a schematic. Pointer editing "
-                "is off; the native list, exact fields, and keyboard controls remain complete."
+                tr(
+                    "Deskewed page: the pixel preview is replaced by a schematic. Pointer editing is off; the native list, exact fields, and keyboard controls remain complete."
+                )
             )
             notice.setObjectName("overlayEditorDeskewNotice")
-            notice.setAccessibleName("Deskewed overlay preview notice")
+            notice.setAccessibleName(tr("Deskewed overlay preview notice"))
             notice.setAccessibleDescription(notice.text())
             notice.setTextFormat(Qt.TextFormat.PlainText)
             notice.setWordWrap(True)
@@ -342,10 +352,11 @@ class CoreOverlayToolsDialog(QDialog):
 
         self._canvas_scroll = QScrollArea()
         self._canvas_scroll.setObjectName("overlayEditorCanvasScroll")
-        self._canvas_scroll.setAccessibleName("Scrollable full-page overlay preview")
+        self._canvas_scroll.setAccessibleName(tr("Scrollable full-page overlay preview"))
         self._canvas_scroll.setAccessibleDescription(
-            "Use the named pan buttons or scroll bars to inspect the page. Use the list and "
-            "property controls for a complete keyboard editing path."
+            tr(
+                "Use the named pan buttons or scroll bars to inspect the page. Use the list and property controls for a complete keyboard editing path."
+            )
         )
         self._canvas_scroll.setWidgetResizable(False)
         self._canvas_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -354,95 +365,105 @@ class CoreOverlayToolsDialog(QDialog):
         self._canvas_scroll.setWidget(self._canvas)
         layout.addWidget(self._canvas_scroll, 1)
 
-        display_controls = QGridLayout()
-        zoom_label = QLabel("Zoom")
+        display_controls = QVBoxLayout()
+        zoom_label = QLabel(tr("Zoom"))
         self._zoom_combo = QComboBox()
         self._zoom_combo.setObjectName("overlayEditorZoomCombo")
-        self._zoom_combo.setAccessibleName("Page preview zoom percentage")
+        self._zoom_combo.setAccessibleName(tr("Page preview zoom percentage"))
         self._zoom_combo.setAccessibleDescription(
-            "Change only the visual preview scale. Saved overlay coordinates never change."
+            tr(
+                "Change only the visual preview scale. Saved overlay coordinates never change. Alt+Down opens the choices."
+            )
         )
         for percent in _ZOOM_CHOICES:
-            self._zoom_combo.addItem(f"{percent} percent", percent)
+            self._zoom_combo.addItem(tr("{value1} percent", value1=percent), percent)
         self._zoom_combo.setCurrentIndex(self._zoom_combo.findData(DEFAULT_EDITOR_ZOOM_PERCENT))
         self._zoom_combo.currentIndexChanged.connect(self._zoom_changed)
         zoom_label.setBuddy(self._zoom_combo)
         self._zoom_out_button = self._display_button(
-            "Zoom out", "overlayEditorZoomOutButton", "Reduce preview zoom. Ctrl+Minus."
+            tr("Zoom out"), "overlayEditorZoomOutButton", tr("Reduce preview zoom. Ctrl+Minus.")
         )
         self._zoom_in_button = self._display_button(
-            "Zoom in", "overlayEditorZoomInButton", "Increase preview zoom. Ctrl+Plus."
+            tr("Zoom in"), "overlayEditorZoomInButton", tr("Increase preview zoom. Ctrl+Plus.")
         )
         self._zoom_100_button = self._display_button(
-            "100%", "overlayEditorZoom100Button", "Set preview zoom to 100 percent. Ctrl+0."
+            "100%", "overlayEditorZoom100Button", tr("Set preview zoom to 100 percent. Ctrl+0.")
         )
         self._fit_page_button = self._display_button(
-            "Fit page", "overlayEditorFitPageButton", "Fit the complete page in the preview."
+            tr("Fit page"),
+            "overlayEditorFitPageButton",
+            tr("Fit the complete page in the preview."),
         )
         self._zoom_out_button.clicked.connect(self._zoom_out)
         self._zoom_in_button.clicked.connect(self._zoom_in)
         self._zoom_100_button.clicked.connect(lambda: self._set_zoom(100))
         self._fit_page_button.clicked.connect(self._fit_page)
-        display_controls.addWidget(zoom_label, 0, 0)
-        display_controls.addWidget(self._zoom_combo, 0, 1)
-        display_controls.addWidget(self._zoom_out_button, 0, 2)
-        display_controls.addWidget(self._zoom_in_button, 0, 3)
-        display_controls.addWidget(self._zoom_100_button, 0, 4)
-        display_controls.addWidget(self._fit_page_button, 0, 5)
+        display_controls.addWidget(zoom_label)
+        display_controls.addWidget(self._zoom_combo)
+        display_controls.addWidget(self._zoom_out_button)
+        display_controls.addWidget(self._zoom_in_button)
+        display_controls.addWidget(self._zoom_100_button)
+        display_controls.addWidget(self._fit_page_button)
 
-        self._show_guides = QCheckBox("Show dashed guides")
+        self._show_guides = QCheckBox(tr("Show dashed guides"))
         self._show_guides.setObjectName("overlayEditorShowGuidesCheck")
-        self._show_guides.setAccessibleName("Show dashed alignment guides")
+        self._show_guides.setAccessibleName(tr("Show dashed alignment guides"))
         self._show_guides.setAccessibleDescription(
-            "Show a patterned grid and text label; guide state is never conveyed by color alone."
+            tr(
+                "Show a patterned grid and text label; guide state is never conveyed by color alone."
+            )
         )
         self._show_guides.setChecked(True)
-        self._snap_to_guides = QCheckBox("Snap pointer moves to guides")
+        self._snap_to_guides = QCheckBox(tr("Snap pointer moves to guides"))
         self._snap_to_guides.setObjectName("overlayEditorSnapCheck")
-        self._snap_to_guides.setAccessibleName("Snap pointer moves to guides")
+        self._snap_to_guides.setAccessibleName(tr("Snap pointer moves to guides"))
         self._snap_to_guides.setAccessibleDescription(
-            "When checked, pointer movement aligns the selected mark to the chosen normalized grid."
+            tr(
+                "When checked, pointer movement aligns the selected mark to the chosen normalized grid."
+            )
         )
-        guide_label = QLabel("Guide spacing")
+        guide_label = QLabel(tr("Guide spacing"))
         self._guide_spacing = QComboBox()
         self._guide_spacing.setObjectName("overlayEditorGuideSpacingCombo")
-        self._guide_spacing.setAccessibleName("Normalized guide spacing")
+        self._guide_spacing.setAccessibleName(tr("Normalized guide spacing"))
         self._guide_spacing.setAccessibleDescription(
-            "Choose guide spacing in full-page percentages, independent of preview zoom."
+            tr(
+                "Choose guide spacing in full-page percentages, independent of preview zoom. Alt+Down opens the choices."
+            )
         )
         for step in GUIDE_STEPS_MILLIONTHS:
-            self._guide_spacing.addItem(_GUIDE_LABELS[step], step)
+            self._guide_spacing.addItem(tr(_GUIDE_LABELS[step]), step)
         self._guide_spacing.setCurrentIndex(self._guide_spacing.findData(50_000))
         guide_label.setBuddy(self._guide_spacing)
         self._snap_selected_button = self._display_button(
-            "Snap selected now",
+            tr("Snap selected now"),
             "overlayEditorSnapSelectedButton",
-            "Move the selected mark origin to the nearest normalized guides.",
+            tr("Move the selected mark origin to the nearest normalized guides."),
         )
         self._snap_selected_button.clicked.connect(self._snap_selected)
         self._show_guides.toggled.connect(self._guide_options_changed)
         self._snap_to_guides.toggled.connect(self._guide_options_changed)
         self._guide_spacing.currentIndexChanged.connect(self._guide_options_changed)
-        display_controls.addWidget(self._show_guides, 1, 0, 1, 2)
-        display_controls.addWidget(self._snap_to_guides, 1, 2, 1, 2)
-        display_controls.addWidget(guide_label, 1, 4)
-        display_controls.addWidget(self._guide_spacing, 1, 5)
-        display_controls.addWidget(self._snap_selected_button, 1, 6)
+        display_controls.addWidget(self._show_guides)
+        display_controls.addWidget(self._snap_to_guides)
+        display_controls.addWidget(guide_label)
+        display_controls.addWidget(self._guide_spacing)
+        display_controls.addWidget(self._snap_selected_button)
 
         self._pan_left_button = self._display_button(
-            "Pan left", "overlayEditorPanLeftButton", "Move the preview viewport left."
+            tr("Pan left"), "overlayEditorPanLeftButton", tr("Move the preview viewport left.")
         )
         self._pan_right_button = self._display_button(
-            "Pan right", "overlayEditorPanRightButton", "Move the preview viewport right."
+            tr("Pan right"), "overlayEditorPanRightButton", tr("Move the preview viewport right.")
         )
         self._pan_up_button = self._display_button(
-            "Pan up", "overlayEditorPanUpButton", "Move the preview viewport up."
+            tr("Pan up"), "overlayEditorPanUpButton", tr("Move the preview viewport up.")
         )
         self._pan_down_button = self._display_button(
-            "Pan down", "overlayEditorPanDownButton", "Move the preview viewport down."
+            tr("Pan down"), "overlayEditorPanDownButton", tr("Move the preview viewport down.")
         )
         self._pan_center_button = self._display_button(
-            "Center", "overlayEditorPanCenterButton", "Center the preview viewport."
+            tr("Center"), "overlayEditorPanCenterButton", tr("Center the preview viewport.")
         )
         self._pan_left_button.clicked.connect(lambda: self._pan(horizontal=-1, vertical=0))
         self._pan_right_button.clicked.connect(lambda: self._pan(horizontal=1, vertical=0))
@@ -455,34 +476,32 @@ class CoreOverlayToolsDialog(QDialog):
         ):
             bar.valueChanged.connect(self._update_pan_actions)
             bar.rangeChanged.connect(self._update_pan_actions)
-        for column, button in enumerate(
-            (
-                self._pan_left_button,
-                self._pan_right_button,
-                self._pan_up_button,
-                self._pan_down_button,
-                self._pan_center_button,
-            )
+        for button in (
+            self._pan_left_button,
+            self._pan_right_button,
+            self._pan_up_button,
+            self._pan_down_button,
+            self._pan_center_button,
         ):
-            display_controls.addWidget(button, 2, column)
+            display_controls.addWidget(button)
 
-        self._snap_feedback = QLabel("Snap feedback: no snap action yet.")
+        self._snap_feedback = QLabel(tr("Snap feedback: no snap action yet."))
         self._snap_feedback.setObjectName("overlayEditorSnapFeedback")
-        self._snap_feedback.setAccessibleName("Overlay snap feedback")
+        self._snap_feedback.setAccessibleName(tr("Overlay snap feedback"))
         self._snap_feedback.setAccessibleDescription(self._snap_feedback.text())
         self._snap_feedback.setTextFormat(Qt.TextFormat.PlainText)
         self._snap_feedback.setWordWrap(True)
-        display_controls.addWidget(self._snap_feedback, 2, 5, 1, 2)
+        display_controls.addWidget(self._snap_feedback)
         layout.addLayout(display_controls)
         self._guide_options_changed()
         self._update_pan_actions()
         return group
 
     def _display_button(self, text: str, object_name: str, description: str) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(object_name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         return button
 
     def set_apply_succeeded(self) -> bool:
@@ -491,7 +510,7 @@ class CoreOverlayToolsDialog(QDialog):
         if not self._apply_pending:
             return False
         self._apply_pending = False
-        self._set_status("Visual overlay changes applied.", announce=False)
+        self._set_status(tr("Visual overlay changes applied."), announce=False)
         super().accept()
         return True
 
@@ -511,15 +530,19 @@ class CoreOverlayToolsDialog(QDialog):
         self._apply_pending = False
         self._set_editor_enabled(True)
         self._apply_button.setAccessibleDescription(
-            "Retry saving the retained visual overlay draft."
+            tr("Retry saving the retained visual overlay draft.")
         )
         self._set_status(
-            f"{selected_code}: {selected_message} Changes are retained for retry.",
+            tr(
+                "{value1}: {value2} Changes are retained for retry.",
+                value1=selected_code,
+                value2=selected_message,
+            ),
             announce=True,
             assertive=True,
         )
-        self._status.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(self._status, 8, 8)
+        self._apply_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._apply_button, 8, 8)
         return True
 
     def reject(self) -> None:
@@ -528,8 +551,9 @@ class CoreOverlayToolsDialog(QDialog):
         if self._commit_started:
             QApplication.beep()
             self._set_status(
-                "These visual overlay changes are retained for retry and cannot be "
-                "discarded from this dialog.",
+                tr(
+                    "These visual overlay changes are retained for retry and cannot be discarded from this dialog."
+                ),
                 announce=True,
                 assertive=True,
             )
@@ -545,47 +569,76 @@ class CoreOverlayToolsDialog(QDialog):
             return
         super().closeEvent(event)
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        """Apply local properties after a field has processed its ordinary Return."""
+
+        if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter} and event.modifiers() in {
+            Qt.KeyboardModifier.NoModifier,
+            Qt.KeyboardModifier.KeypadModifier,
+        }:
+            focused = QApplication.focusWidget()
+            fields = (
+                self._value_edit,
+                self._font_size,
+                self._color_combo,
+                self._left,
+                self._top,
+                self._width,
+                self._height,
+            )
+            if (
+                focused is not None
+                and not self._color_combo.view().isVisible()
+                and any(field is focused or field.isAncestorOf(focused) for field in fields)
+            ):
+                self._apply_properties()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
     def _build_add_group(self) -> QGroupBox:
-        group = QGroupBox("Add a visual mark")
+        group = QGroupBox(tr("Add a visual mark"))
         group.setObjectName("coreOverlayAddGroup")
-        group.setAccessibleName("Add a visual mark")
+        group.setAccessibleName(tr("Add a visual mark"))
         group.setAccessibleDescription(
-            "Choose one of the five core form-mark types, then add it to the selected page."
+            tr("Choose one of the five core form-mark types, then add it to the selected page.")
         )
-        layout = QHBoxLayout(group)
-        label = QLabel("New mark type")
+        layout = QVBoxLayout(group)
+        label = QLabel(tr("New mark type"))
         label.setObjectName("newOverlayTypeLabel")
         self._tool_combo = QComboBox()
         self._tool_combo.setObjectName("newOverlayTypeCombo")
-        self._tool_combo.setAccessibleName("New visual form-mark type")
+        self._tool_combo.setAccessibleName(tr("New visual form-mark type"))
         self._tool_combo.setAccessibleDescription(
-            "Choose Text, Date, Checkmark, Cross, or Initials with the keyboard."
+            tr(
+                "Choose Text, Date, Checkmark, Cross, or Initials with the keyboard. Alt+Down opens the choices."
+            )
         )
         for descriptor in CORE_OVERLAY_TOOL_DESCRIPTORS:
-            self._tool_combo.addItem(descriptor.label, descriptor.kind)
+            self._tool_combo.addItem(tr(descriptor.label), descriptor.kind)
         label.setBuddy(self._tool_combo)
-        self._add_button = QPushButton("Add selected type")
+        self._add_button = QPushButton(tr("Add selected type"))
         self._add_button.setObjectName("addCoreOverlayButton")
-        self._add_button.setAccessibleName("Add selected visual form-mark type")
+        self._add_button.setAccessibleName(tr("Add selected visual form-mark type"))
         self._add_button.setAccessibleDescription(
-            "Add the selected type at a deterministic default position and select it."
+            tr("Add the selected type at a deterministic default position and select it.")
         )
         self._add_button.clicked.connect(self._add_selected_type)
         layout.addWidget(label)
-        layout.addWidget(self._tool_combo, 1)
+        layout.addWidget(self._tool_combo)
         layout.addWidget(self._add_button)
         return group
 
     def _build_list_group(self) -> QGroupBox:
-        group = QGroupBox("Visual marks on this page")
+        group = QGroupBox(tr("Visual marks on this page"))
         group.setObjectName("coreOverlayListGroup")
-        group.setAccessibleName("Visual marks on this page")
-        group.setAccessibleDescription(_LIST_DESCRIPTION)
+        group.setAccessibleName(tr("Visual marks on this page"))
+        group.setAccessibleDescription(tr(_LIST_DESCRIPTION))
         layout = QVBoxLayout(group)
         self._overlay_list = QListWidget()
         self._overlay_list.setObjectName("coreOverlayList")
-        self._overlay_list.setAccessibleName("Visual overlays on selected page")
-        self._overlay_list.setAccessibleDescription(_LIST_DESCRIPTION)
+        self._overlay_list.setAccessibleName(tr("Visual overlays on selected page"))
+        self._overlay_list.setAccessibleDescription(tr(_LIST_DESCRIPTION))
         self._overlay_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._overlay_list.setDragDropMode(QAbstractItemView.DragDropMode.NoDragDrop)
         self._overlay_list.setDragEnabled(False)
@@ -597,23 +650,23 @@ class CoreOverlayToolsDialog(QDialog):
         return group
 
     def _build_properties_group(self) -> QGroupBox:
-        self._properties_group = QGroupBox("Selected visual-mark properties")
+        self._properties_group = QGroupBox(tr("Selected visual-mark properties"))
         self._properties_group.setObjectName("coreOverlayPropertiesGroup")
-        self._properties_group.setAccessibleName("Selected visual-mark properties")
+        self._properties_group.setAccessibleName(tr("Selected visual-mark properties"))
         self._properties_group.setAccessibleDescription(
-            "Edit the selected mark's value, formatting, and exact full-page normalized box."
+            tr("Edit the selected mark's value, formatting, and exact full-page normalized box.")
         )
         layout = QGridLayout(self._properties_group)
 
-        self._selection_capability = QLabel("Select a visual mark to edit its exact geometry.")
+        self._selection_capability = QLabel(tr("Select a visual mark to edit its exact geometry."))
         self._selection_capability.setObjectName("overlayEditorSelectionCapability")
-        self._selection_capability.setAccessibleName("Selected overlay editing capabilities")
+        self._selection_capability.setAccessibleName(tr("Selected overlay editing capabilities"))
         self._selection_capability.setAccessibleDescription(self._selection_capability.text())
         self._selection_capability.setTextFormat(Qt.TextFormat.PlainText)
         self._selection_capability.setWordWrap(True)
-        layout.addWidget(self._selection_capability, 0, 0, 1, 4)
+        layout.addWidget(self._selection_capability, 0, 0, 1, 3)
 
-        self._value_label = QLabel("Value")
+        self._value_label = QLabel(tr("Value"))
         self._value_label.setObjectName("coreOverlayValueLabel")
         self._value_edit = QLineEdit()
         self._value_edit.setObjectName("coreOverlayValueEdit")
@@ -623,94 +676,100 @@ class CoreOverlayToolsDialog(QDialog):
         self._value_edit.setMaxLength(_TEXT_INPUT_MAX_UTF16_UNITS)
         self._value_label.setBuddy(self._value_edit)
         layout.addWidget(self._value_label, 1, 0)
-        layout.addWidget(self._value_edit, 1, 1, 1, 3)
+        layout.addWidget(self._value_edit, 1, 1, 1, 2)
 
-        self._font_label = QLabel("Font")
+        self._font_label = QLabel(tr("Font"))
         self._font_label.setObjectName("coreOverlayFontLabel")
-        self._font_value = QLabel("PaperWorkShell default")
+        self._font_value = QLabel(tr("PaperWorkShell default"))
         self._font_value.setObjectName("coreOverlayFontValue")
-        self._font_value.setAccessibleName("Visual form-mark font")
+        self._font_value.setAccessibleName(tr("Visual form-mark font"))
         self._font_value.setAccessibleDescription(
-            "The approved PaperWorkShell default overlay font."
+            tr("The approved PaperWorkShell default overlay font.")
         )
+        self._font_value.setWordWrap(True)
         layout.addWidget(self._font_label, 2, 0)
-        layout.addWidget(self._font_value, 2, 1)
+        layout.addWidget(self._font_value, 2, 1, 1, 2)
 
-        self._font_size_label = QLabel("Font size")
+        self._font_size_label = QLabel(tr("Font size"))
         self._font_size_label.setObjectName("coreOverlayFontSizeLabel")
         self._font_size = QSpinBox()
         self._font_size.setObjectName("coreOverlayFontSizeSpin")
-        self._font_size.setAccessibleName("Visual form-mark font size in points")
+        self._font_size.setAccessibleName(tr("Visual form-mark font size in points"))
         self._font_size.setAccessibleDescription(
-            "Choose the selected text, date, or initials size in typographic points."
+            tr(
+                "Choose the selected text, date, or initials size in typographic points. Enter applies the selected mark's local properties."
+            )
         )
         self._font_size.setRange(MIN_FONT_SIZE_POINTS, MAX_FONT_SIZE_POINTS)
-        self._font_size.setSuffix(" points")
+        self._font_size.setSuffix(tr(" points"))
         self._font_size_label.setBuddy(self._font_size)
-        layout.addWidget(self._font_size_label, 2, 2)
-        layout.addWidget(self._font_size, 2, 3)
+        layout.addWidget(self._font_size_label, 3, 0)
+        layout.addWidget(self._font_size, 3, 1, 1, 2)
 
-        self._color_label = QLabel("Color")
+        self._color_label = QLabel(tr("Color"))
         self._color_label.setObjectName("coreOverlayColorLabel")
         self._color_combo = QComboBox()
         self._color_combo.setObjectName("coreOverlayColorCombo")
-        self._color_combo.setAccessibleName("Visual form-mark color")
+        self._color_combo.setAccessibleName(tr("Visual form-mark color"))
         self._color_combo.setAccessibleDescription(
-            "Choose a named visual color; color is never the only status indicator."
+            tr(
+                "Choose a named visual color; color is never the only status indicator. Alt+Down opens the choices. Enter in the closed field applies the selected mark's local properties."
+            )
         )
         for name, value in _COLOR_CHOICES:
-            self._color_combo.addItem(name, value)
+            self._color_combo.addItem(tr(name), value)
         self._color_label.setBuddy(self._color_combo)
-        layout.addWidget(self._color_label, 3, 0)
-        layout.addWidget(self._color_combo, 3, 1, 1, 3)
+        layout.addWidget(self._color_label, 4, 0)
+        layout.addWidget(self._color_combo, 4, 1, 1, 2)
 
         self._left, self._left_percent = self._coordinate_control(
             "coreOverlayLeftSpin",
-            "Left position in normalized page millionths",
-            "Distance from the full page's left edge, from 0 through 1,000,000.",
+            tr("Left position in normalized page millionths"),
+            tr("Distance from the full page's left edge, from 0 through 1,000,000."),
         )
         self._top, self._top_percent = self._coordinate_control(
             "coreOverlayTopSpin",
-            "Top position in normalized page millionths",
-            "Distance from the full page's top edge, from 0 through 1,000,000.",
+            tr("Top position in normalized page millionths"),
+            tr("Distance from the full page's top edge, from 0 through 1,000,000."),
         )
         self._width, self._width_percent = self._coordinate_control(
             "coreOverlayWidthSpin",
-            "Width in normalized page millionths",
-            "Visual-mark width on the full page, from 1 through 1,000,000.",
+            tr("Width in normalized page millionths"),
+            tr("Visual-mark width on the full page, from 1 through 1,000,000."),
             positive=True,
         )
         self._height, self._height_percent = self._coordinate_control(
             "coreOverlayHeightSpin",
-            "Height in normalized page millionths",
-            "Visual-mark height on the full page, from 1 through 1,000,000.",
+            tr("Height in normalized page millionths"),
+            tr("Visual-mark height on the full page, from 1 through 1,000,000."),
             positive=True,
         )
         for row, (label_text, control, percent) in enumerate(
             (
-                ("Left", self._left, self._left_percent),
-                ("Top", self._top, self._top_percent),
-                ("Width", self._width, self._width_percent),
-                ("Height", self._height, self._height_percent),
+                (tr("Left"), self._left, self._left_percent),
+                (tr("Top"), self._top, self._top_percent),
+                (tr("Width"), self._width, self._width_percent),
+                (tr("Height"), self._height, self._height_percent),
             ),
-            start=4,
+            start=5,
         ):
-            label = QLabel(label_text)
-            label.setObjectName(f"coreOverlay{label_text}Label")
+            label = QLabel(tr(label_text))
+            label.setObjectName(control.objectName().removesuffix("Spin") + "Label")
             label.setBuddy(control)
             layout.addWidget(label, row, 0)
-            layout.addWidget(control, row, 1, 1, 2)
-            layout.addWidget(percent, row, 3)
+            layout.addWidget(control, row, 1)
+            layout.addWidget(percent, row, 2)
 
-        self._apply_properties_button = QPushButton("Apply property changes")
+        self._apply_properties_button = QPushButton(tr("Apply property changes"))
         self._apply_properties_button.setObjectName("applyCoreOverlayPropertiesButton")
-        self._apply_properties_button.setAccessibleName("Apply selected visual-mark properties")
+        self._apply_properties_button.setAccessibleName(tr("Apply selected visual-mark properties"))
         self._apply_properties_button.setAccessibleDescription(
-            "Apply the value, formatting, position, and size fields to the selected mark. "
-            "Ctrl+Enter."
+            tr(
+                "Apply the value, formatting, position, and size fields to the selected mark. Enter in a property field, or Ctrl+Enter."
+            )
         )
         self._apply_properties_button.clicked.connect(self._apply_properties)
-        layout.addWidget(self._apply_properties_button, 8, 0, 1, 4)
+        layout.addWidget(self._apply_properties_button, 9, 0, 1, 3)
         return self._properties_group
 
     def _coordinate_control(
@@ -723,14 +782,16 @@ class CoreOverlayToolsDialog(QDialog):
     ) -> tuple[QSpinBox, QLabel]:
         control = QSpinBox()
         control.setObjectName(object_name)
-        control.setAccessibleName(accessible_name)
-        control.setAccessibleDescription(accessible_description)
+        control.setAccessibleName(tr(accessible_name))
+        accessible_description += tr(" Enter applies the selected mark's local properties.")
+        control.setAccessibleDescription(tr(accessible_description))
+        control.setProperty("pwsCoordinateBaseDescription", accessible_description)
         control.setRange(1 if positive else 0, NORMALIZED_PAGE_MILLIONTHS)
         control.setSingleStep(1_000)
         control.setGroupSeparatorShown(True)
-        percent = QLabel("0.0000 percent")
+        percent = QLabel(tr("0.0000 percent"))
         percent.setObjectName(f"{object_name}Percent")
-        percent.setAccessibleName(f"{accessible_name} percentage")
+        percent.setAccessibleName(tr("{value1} percentage", value1=accessible_name))
         percent.setTextFormat(Qt.TextFormat.PlainText)
         percent.setWordWrap(True)
         control.valueChanged.connect(
@@ -749,75 +810,78 @@ class CoreOverlayToolsDialog(QDialog):
     ) -> None:
         value_text = _percent_text(value)
         percent.setText(value_text)
-        control.setAccessibleDescription(f"{base_description} Current value: {value_text}.")
+        control.setAccessibleDescription(
+            tr("{value1} Current value: {value2}.", value1=base_description, value2=value_text)
+        )
 
     def _build_edit_actions(self) -> QVBoxLayout:
         layout = QVBoxLayout()
-        geometry = QHBoxLayout()
-        self._fine_step = QCheckBox("Fine step (0.1%)")
+        geometry = WrappingActionLayout()
+        self._fine_step = QCheckBox(tr("Fine step (0.1%)"))
         self._fine_step.setObjectName("overlayEditorFineStepCheck")
-        self._fine_step.setAccessibleName("Use fine movement and resize step")
+        self._fine_step.setAccessibleName(tr("Use fine movement and resize step"))
         self._fine_step.setAccessibleDescription(
-            "When checked, named movement and resize buttons use 0.1 percent instead of 1 percent."
+            tr(
+                "When checked, named movement and resize buttons use 0.1 percent instead of 1 percent."
+            )
         )
         geometry.addWidget(self._fine_step)
         self._move_left_button = self._geometry_button(
-            "Move left", "overlayEditorMoveLeftButton", KeyboardDirection.LEFT, resize=False
+            tr("Move left"), "overlayEditorMoveLeftButton", KeyboardDirection.LEFT, resize=False
         )
         self._move_right_button = self._geometry_button(
-            "Move right", "overlayEditorMoveRightButton", KeyboardDirection.RIGHT, resize=False
+            tr("Move right"), "overlayEditorMoveRightButton", KeyboardDirection.RIGHT, resize=False
         )
         self._move_up_button = self._geometry_button(
-            "Move up", "overlayEditorMoveUpButton", KeyboardDirection.UP, resize=False
+            tr("Move up"), "overlayEditorMoveUpButton", KeyboardDirection.UP, resize=False
         )
         self._move_down_button = self._geometry_button(
-            "Move down", "overlayEditorMoveDownButton", KeyboardDirection.DOWN, resize=False
+            tr("Move down"), "overlayEditorMoveDownButton", KeyboardDirection.DOWN, resize=False
         )
         self._shrink_width_button = self._geometry_button(
-            "Shrink width",
+            tr("Shrink width"),
             "overlayEditorShrinkWidthButton",
             KeyboardDirection.LEFT,
             resize=True,
         )
         self._grow_width_button = self._geometry_button(
-            "Grow width",
+            tr("Grow width"),
             "overlayEditorGrowWidthButton",
             KeyboardDirection.RIGHT,
             resize=True,
         )
         self._shrink_height_button = self._geometry_button(
-            "Shrink height",
+            tr("Shrink height"),
             "overlayEditorShrinkHeightButton",
             KeyboardDirection.UP,
             resize=True,
         )
         self._grow_height_button = self._geometry_button(
-            "Grow height",
+            tr("Grow height"),
             "overlayEditorGrowHeightButton",
             KeyboardDirection.DOWN,
             resize=True,
         )
         for button in self._geometry_buttons():
             geometry.addWidget(button)
-        geometry.addStretch(1)
         layout.addLayout(geometry)
 
-        history = QHBoxLayout()
-        self._remove_button = QPushButton("Remove selected")
+        history = WrappingActionLayout()
+        self._remove_button = QPushButton(tr("Remove selected"))
         self._remove_button.setObjectName("removeCoreOverlayButton")
-        self._remove_button.setAccessibleName("Remove selected core visual mark")
-        self._remove_button.setAccessibleDescription("Remove the selected mark. Delete.")
-        self._undo_button = QPushButton("Undo")
+        self._remove_button.setAccessibleName(tr("Remove selected core visual mark"))
+        self._remove_button.setAccessibleDescription(tr("Remove the selected mark. Delete."))
+        self._undo_button = QPushButton(tr("Undo"))
         self._undo_button.setObjectName("undoCoreOverlayButton")
-        self._undo_button.setAccessibleName("Undo visual overlay change")
+        self._undo_button.setAccessibleName(tr("Undo visual overlay change"))
         self._undo_button.setAccessibleDescription(
-            "Undo the last local visual overlay change. Ctrl+Z."
+            tr("Undo the last local visual overlay change. Ctrl+Z.")
         )
-        self._redo_button = QPushButton("Redo")
+        self._redo_button = QPushButton(tr("Redo"))
         self._redo_button.setObjectName("redoCoreOverlayButton")
-        self._redo_button.setAccessibleName("Redo visual overlay change")
+        self._redo_button.setAccessibleName(tr("Redo visual overlay change"))
         self._redo_button.setAccessibleDescription(
-            "Redo the next local visual overlay change. Ctrl+Y."
+            tr("Redo the next local visual overlay change. Ctrl+Y.")
         )
         self._remove_button.clicked.connect(self._remove_selected)
         self._undo_button.clicked.connect(self._undo)
@@ -825,7 +889,6 @@ class CoreOverlayToolsDialog(QDialog):
         history.addWidget(self._remove_button)
         history.addWidget(self._undo_button)
         history.addWidget(self._redo_button)
-        history.addStretch(1)
         layout.addLayout(history)
         return layout
 
@@ -837,13 +900,13 @@ class CoreOverlayToolsDialog(QDialog):
         *,
         resize: bool,
     ) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(object_name)
-        button.setAccessibleName(text + " selected visual mark")
+        button.setAccessibleName(text + tr(" selected visual mark"))
         button.setAccessibleDescription(
-            "Resize the selected mark using the current named step."
+            tr("Resize the selected mark using the current named step.")
             if resize
-            else "Move the selected mark using the current named step."
+            else tr("Move the selected mark using the current named step.")
         )
         if resize:
             button.clicked.connect(lambda: self._resize(direction))
@@ -887,7 +950,7 @@ class CoreOverlayToolsDialog(QDialog):
             ("Alt+Left", lambda: self._move(KeyboardDirection.LEFT)),
             ("Alt+Right", lambda: self._move(KeyboardDirection.RIGHT)),
             ("Alt+Up", lambda: self._move(KeyboardDirection.UP)),
-            ("Alt+Down", lambda: self._move(KeyboardDirection.DOWN)),
+            ("Alt+Down", self._move_down_or_open_combo),
             ("Alt+Shift+Left", lambda: self._resize(KeyboardDirection.LEFT)),
             ("Alt+Shift+Right", lambda: self._resize(KeyboardDirection.RIGHT)),
             ("Alt+Shift+Up", lambda: self._resize(KeyboardDirection.UP)),
@@ -908,6 +971,7 @@ class CoreOverlayToolsDialog(QDialog):
             ("Ctrl+Alt+Shift+Down", lambda: self._resize(KeyboardDirection.DOWN, fine=True)),
             ("Ctrl+-", self._zoom_out),
             ("Ctrl+=", self._zoom_in),
+            ("Ctrl++", self._zoom_in),
             ("Ctrl+0", lambda: self._set_zoom(100)),
             ("Ctrl+G", self._snap_selected),
         )
@@ -1027,10 +1091,14 @@ class CoreOverlayToolsDialog(QDialog):
         self._transition(lambda state: state.create(kind))
         record = self._state.selected_record
         if record is not None and record.kind in _TEXTUAL_KINDS:
-            self._value_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._focus_visible_control(self._value_edit)
             self._value_edit.selectAll()
         else:
-            self._overlay_list.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._focus_visible_control(self._overlay_list)
+
+    def _focus_visible_control(self, control: QWidget) -> None:
+        control.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(control, 8, 8)
 
     def _apply_properties(self) -> None:
         if self._apply_pending:
@@ -1051,11 +1119,11 @@ class CoreOverlayToolsDialog(QDialog):
             and not self._value_edited
         ):
             self._set_status(
-                _UNREPRESENTABLE_SAVED_VALUE,
+                tr(_UNREPRESENTABLE_SAVED_VALUE),
                 announce=True,
                 assertive=True,
             )
-            self._status.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._focus_visible_control(self._status)
             return False
         try:
             box = NormalizedPageBox(
@@ -1080,17 +1148,20 @@ class CoreOverlayToolsDialog(QDialog):
                     raise ValueError
                 state = state.edit_selected(color_value=color)
         except (OverlayError, PageCoordinateError) as error:
-            self._set_status(error.safe_message, announce=True, assertive=True)
-            self._status.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._set_status(tr(error.safe_message), announce=True, assertive=True)
+            self._focus_visible_control(self._status)
             return False
         except BaseException:
             self._show_unexpected_failure()
             return False
         self._properties_dirty = False
         message = (
-            state.announcement
+            localized_overlay_announcement(state.announcement)
             if state is not self._state
-            else f"{overlay_editor_kind_accessible_name(record.kind)} properties unchanged."
+            else tr(
+                "{value1} properties unchanged.",
+                value1=overlay_editor_kind_accessible_name(record.kind),
+            )
         )
         self._state = state
         self._refresh_from_state()
@@ -1104,14 +1175,18 @@ class CoreOverlayToolsDialog(QDialog):
         record = self._state.selected_record
         if record is not None and record.kind is OverlayKind.SIGNATURE_IMAGE:
             self._set_status(
-                "Close this editor and use Remove signature image so case-asset cleanup stays explicit.",
+                tr(
+                    "Close this editor and use Remove signature image so case-asset cleanup stays explicit."
+                ),
                 announce=True,
                 assertive=True,
             )
             return
         if record is not None and record.kind in {OverlayKind.HIGHLIGHT, OverlayKind.SHAPE}:
             self._set_status(
-                "This ordinary visual-mark type is geometry-only in this editor and cannot be removed here.",
+                tr(
+                    "This ordinary visual-mark type is geometry-only in this editor and cannot be removed here."
+                ),
                 announce=True,
                 assertive=True,
             )
@@ -1123,9 +1198,9 @@ class CoreOverlayToolsDialog(QDialog):
         if remaining:
             target = remaining[min(max(0, prior_row), len(remaining) - 1)]
             self._publish_state(self._state.select(target.overlay_id))
-            self._overlay_list.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._focus_visible_control(self._overlay_list)
             return
-        self._tool_combo.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._focus_visible_control(self._tool_combo)
 
     def _undo(self) -> None:
         if self._apply_pending:
@@ -1148,6 +1223,16 @@ class CoreOverlayToolsDialog(QDialog):
         if not self._commit_properties_if_needed():
             return
         self._transition(lambda state: state.redo())
+
+    def _move_down_or_open_combo(self) -> None:
+        focused = QApplication.focusWidget()
+        while focused is not None and focused is not self:
+            if isinstance(focused, QComboBox):
+                if focused.isEnabled():
+                    focused.showPopup()
+                return
+            focused = focused.parentWidget()
+        self._move(KeyboardDirection.DOWN)
 
     def _move(self, direction: KeyboardDirection, *, fine: bool | None = None) -> None:
         if self._apply_pending or not self._commit_properties_if_needed():
@@ -1191,9 +1276,9 @@ class CoreOverlayToolsDialog(QDialog):
             return
         if snapped:
             spacing = self._current_guide_step()
-            message = (
-                f"Snap feedback: pointer move aligned the selected mark to the nearest "
-                f"{_GUIDE_LABELS[spacing]} dashed guides."
+            message = tr(
+                "Snap feedback: pointer move aligned the selected mark to the nearest {value1} dashed guides.",
+                value1=tr(_GUIDE_LABELS[spacing]),
             )
             self._snap_feedback.setText(message)
             self._snap_feedback.setAccessibleDescription(message)
@@ -1215,10 +1300,11 @@ class CoreOverlayToolsDialog(QDialog):
         step = self._current_guide_step()
         prior = self._state
         self._transition(lambda state: state.snap_selected(step), announce=False)
-        result = "already aligned with" if self._state is prior else "aligned to"
-        message = (
-            f"Snap feedback: selected mark {result} the nearest {_GUIDE_LABELS[step]} "
-            "dashed guides."
+        result = tr("already aligned with") if self._state is prior else tr("aligned to")
+        message = tr(
+            "Snap feedback: selected mark {value1} the nearest {value2} dashed guides.",
+            value1=result,
+            value2=tr(_GUIDE_LABELS[step]),
         )
         self._snap_feedback.setText(message)
         self._snap_feedback.setAccessibleDescription(message)
@@ -1231,13 +1317,16 @@ class CoreOverlayToolsDialog(QDialog):
             snap=self._snap_to_guides.isChecked(),
             step_millionths=step,
         )
-        visible = "shown as dashed lines" if self._show_guides.isChecked() else "hidden"
-        snapping = "on" if self._snap_to_guides.isChecked() else "off"
-        description = (
-            f"Guides are {visible}; pointer snap is {snapping}; spacing is {_GUIDE_LABELS[step]}."
+        visible = tr("shown as dashed lines") if self._show_guides.isChecked() else tr("hidden")
+        snapping = tr("on") if self._snap_to_guides.isChecked() else tr("off")
+        description = tr(
+            "Guides are {value1}; pointer snap is {value2}; spacing is {value3}.",
+            value1=visible,
+            value2=snapping,
+            value3=tr(_GUIDE_LABELS[step]),
         )
-        self._show_guides.setAccessibleDescription(description)
-        self._snap_to_guides.setAccessibleDescription(description)
+        self._show_guides.setAccessibleDescription(tr(description))
+        self._snap_to_guides.setAccessibleDescription(tr(description))
 
     def _current_guide_step(self) -> int:
         value = self._guide_spacing.currentData()
@@ -1272,8 +1361,11 @@ class CoreOverlayToolsDialog(QDialog):
         ):
             return
         self._canvas.set_zoom_percent(percent)
-        description = f"Page preview zoom is {percent} percent. Saved overlay positions and sizes are unchanged."
-        self._zoom_combo.setAccessibleDescription(description)
+        description = tr(
+            "Page preview zoom is {value1} percent. Saved overlay positions and sizes are unchanged.",
+            value1=percent,
+        )
+        self._zoom_combo.setAccessibleDescription(tr(description))
         self._zoom_out_button.setEnabled(percent > min(_ZOOM_CHOICES))
         self._zoom_in_button.setEnabled(percent < max(_ZOOM_CHOICES))
         if announce:
@@ -1310,8 +1402,10 @@ class CoreOverlayToolsDialog(QDialog):
         ):
             bar.setValue((bar.minimum() + bar.maximum()) // 2)
         self._set_status(
-            f"Page preview fit at {choice} percent and centered. Saved overlay positions and "
-            "sizes were not changed.",
+            tr(
+                "Page preview fit at {value1} percent and centered. Saved overlay positions and sizes were not changed.",
+                value1=choice,
+            ),
             announce=True,
         )
 
@@ -1338,7 +1432,10 @@ class CoreOverlayToolsDialog(QDialog):
             else "down"
         )
         self._set_status(
-            f"Page preview panned {direction}. Saved overlay positions were not changed.",
+            tr(
+                "Page preview panned {value1}. Saved overlay positions were not changed.",
+                value1=direction,
+            ),
             announce=True,
         )
 
@@ -1351,7 +1448,7 @@ class CoreOverlayToolsDialog(QDialog):
         ):
             bar.setValue((bar.minimum() + bar.maximum()) // 2)
         self._set_status(
-            "Page preview centered. Saved overlay positions were not changed.",
+            tr("Page preview centered. Saved overlay positions were not changed."),
             announce=True,
         )
 
@@ -1392,7 +1489,7 @@ class CoreOverlayToolsDialog(QDialog):
             state = operation(self._state)
         except OverlayError as error:
             QApplication.beep()
-            self._set_status(error.safe_message, announce=True, assertive=True)
+            self._set_status(tr(error.safe_message), announce=True, assertive=True)
             return
         except BaseException:
             self._show_unexpected_failure()
@@ -1405,7 +1502,7 @@ class CoreOverlayToolsDialog(QDialog):
         self._refresh_from_state()
         self.draft_changed.emit(state)
         if announce and self._loaded_value_preserved:
-            self._set_status(state.announcement, announce=True)
+            self._set_status(localized_overlay_announcement(state.announcement), announce=True)
 
     def _refresh_from_state(self) -> None:
         self._loading = True
@@ -1426,7 +1523,7 @@ class CoreOverlayToolsDialog(QDialog):
                         self._overlay_list.addItem(item)
                 for position, record in enumerate(records, start=1):
                     summary = (
-                        f"{overlay_editor_record_summary(record, position, len(records))} "
+                        f"{localized_overlay_record_summary(record, position, len(records))} "
                         f"{self._visibility_description(record)}"
                     )
                     item = self._overlay_list.item(position - 1)
@@ -1469,7 +1566,7 @@ class CoreOverlayToolsDialog(QDialog):
             self._loading = False
         if not self._loaded_value_preserved:
             self._set_status(
-                _UNREPRESENTABLE_SAVED_VALUE,
+                tr(_UNREPRESENTABLE_SAVED_VALUE),
                 announce=True,
                 assertive=True,
             )
@@ -1511,40 +1608,42 @@ class CoreOverlayToolsDialog(QDialog):
                     (self._width, self._width_percent),
                     (self._height, self._height_percent),
                 ):
-                    base = control.accessibleDescription().split(" Current value:", maxsplit=1)[0]
+                    base = control.property("pwsCoordinateBaseDescription")
+                    if type(base) is not str:
+                        raise ValueError("coordinate base description is unavailable")
                     self._update_coordinate_accessibility(
                         control,
                         percent,
                         base,
                         control.value(),
                     )
-                self._value_label.setText("Value")
-                self._value_edit.setAccessibleName("Visual form-mark value")
+                self._value_label.setText(tr("Value"))
+                self._value_edit.setAccessibleName(tr("Visual form-mark value"))
                 self._value_edit.setAccessibleDescription(
-                    "Select a text, date, or initials visual mark to edit its value."
+                    tr("Select a text, date, or initials visual mark to edit its value.")
                 )
                 self._set_text_controls_visible(False)
                 self._set_color_controls_visible(False)
                 self._selection_capability.setText(
-                    "Select a visual mark to edit its exact position and size."
+                    tr("Select a visual mark to edit its exact position and size.")
                 )
                 self._selection_capability.setAccessibleDescription(
                     self._selection_capability.text()
                 )
                 self._properties_group.setAccessibleDescription(
-                    "Select a visual mark to inspect and edit its available exact properties."
+                    tr("Select a visual mark to inspect and edit its available exact properties.")
                 )
-                self._apply_properties_button.setText("Apply property changes")
+                self._apply_properties_button.setText(tr("Apply property changes"))
                 self._apply_properties_button.setAccessibleName(
-                    "Apply selected visual-mark properties"
+                    tr("Apply selected visual-mark properties")
                 )
                 self._apply_properties_button.setAccessibleDescription(
-                    "Select a visual mark before applying properties. Ctrl+Enter."
+                    tr("Select a visual mark before applying properties. Ctrl+Enter.")
                 )
-                self._remove_button.setText("Remove selected")
-                self._remove_button.setAccessibleName("Remove selected core visual mark")
+                self._remove_button.setText(tr("Remove selected"))
+                self._remove_button.setAccessibleName(tr("Remove selected core visual mark"))
                 self._remove_button.setAccessibleDescription(
-                    "Select a removable core visual mark. Delete."
+                    tr("Select a removable core visual mark. Delete.")
                 )
                 return
             payload = record.payload
@@ -1556,9 +1655,12 @@ class CoreOverlayToolsDialog(QDialog):
                 descriptor = core_overlay_tool_descriptor(record.kind)
                 if descriptor.value_label is None or descriptor.value_description is None:
                     raise ValueError("textual descriptor is incomplete")
-                self._value_label.setText(descriptor.value_label)
-                self._value_edit.setAccessibleName(descriptor.value_label)
-                self._value_edit.setAccessibleDescription(descriptor.value_description)
+                self._value_label.setText(tr(descriptor.value_label))
+                self._value_edit.setAccessibleName(tr(descriptor.value_label))
+                self._value_edit.setAccessibleDescription(
+                    tr(descriptor.value_description)
+                    + tr(" Enter applies the selected mark's local properties.")
+                )
                 self._value_edit.setText(payload.value)
                 self._loaded_value_preserved = self._value_edit.text() == payload.value
                 self._value_edited = False
@@ -1588,91 +1690,107 @@ class CoreOverlayToolsDialog(QDialog):
                 (self._width, self._width_percent),
                 (self._height, self._height_percent),
             ):
-                base = control.accessibleDescription().split(" Current value:", maxsplit=1)[0]
+                base = control.property("pwsCoordinateBaseDescription")
+                if type(base) is not str:
+                    raise ValueError("coordinate base description is unavailable")
                 self._update_coordinate_accessibility(
                     control,
                     percent,
                     base,
                     control.value(),
                 )
-            name = overlay_editor_record_accessible_name(record)
+            name = localized_overlay_record_name(record)
             visibility = self._visibility_description(record)
             if record.kind is OverlayKind.SIGNATURE_IMAGE:
-                capability = (
-                    f"{name} selected. Position and size are editable here. To remove it, close "
-                    "this editor and use Remove signature image so case-asset cleanup stays explicit. "
-                    "This remains a visual image, not a digital or qualified electronic signature."
+                capability = tr(
+                    "{value1} selected. Position and size are editable here. To remove it, close this editor and use Remove signature image so case-asset cleanup stays explicit. This remains a visual image, not a digital or qualified electronic signature.",
+                    value1=name,
                 )
             elif record.kind in {OverlayKind.HIGHLIGHT, OverlayKind.SHAPE}:
-                capability = (
-                    f"{name} selected. Position and size are editable here; its visual content "
-                    "properties are read-only. This is an ordinary visual mark, not permanent removal."
+                capability = tr(
+                    "{value1} selected. Position and size are editable here; its visual content properties are read-only. This is an ordinary visual mark, not permanent removal.",
+                    value1=name,
                 )
             elif type(payload) is TextualOverlayPayload:
-                capability = f"{name} selected. Value, formatting, position, and size are editable."
+                capability = tr(
+                    "{value1} selected. Value, formatting, position, and size are editable.",
+                    value1=name,
+                )
             else:
-                capability = f"{name} selected. Color, position, and size are editable."
+                capability = tr(
+                    "{value1} selected. Color, position, and size are editable.", value1=name
+                )
             capability = f"{capability} {visibility}"
             self._selection_capability.setText(capability)
             self._selection_capability.setAccessibleDescription(capability)
             if type(payload) is TextualOverlayPayload:
                 self._properties_group.setAccessibleDescription(
-                    "Edit the selected mark's value, formatting, and exact full-page normalized box."
+                    tr(
+                        "Edit the selected mark's value, formatting, and exact full-page normalized box."
+                    )
                 )
-                self._apply_properties_button.setText("Apply property changes")
+                self._apply_properties_button.setText(tr("Apply property changes"))
                 self._apply_properties_button.setAccessibleName(
-                    "Apply selected visual-mark properties"
+                    tr("Apply selected visual-mark properties")
                 )
                 self._apply_properties_button.setAccessibleDescription(
-                    "Apply the value, formatting, position, and size fields to the selected "
-                    "visual mark. Ctrl+Enter."
+                    tr(
+                        "Apply the value, formatting, position, and size fields to the selected visual mark. Ctrl+Enter."
+                    )
                 )
             elif type(payload) is MarkOverlayPayload:
                 self._properties_group.setAccessibleDescription(
-                    "Edit the selected mark's color and exact full-page normalized box."
+                    tr("Edit the selected mark's color and exact full-page normalized box.")
                 )
-                self._apply_properties_button.setText("Apply property changes")
+                self._apply_properties_button.setText(tr("Apply property changes"))
                 self._apply_properties_button.setAccessibleName(
-                    "Apply selected visual-mark properties"
+                    tr("Apply selected visual-mark properties")
                 )
                 self._apply_properties_button.setAccessibleDescription(
-                    "Apply the color, position, and size fields to the selected visual mark. "
-                    "Ctrl+Enter."
+                    tr(
+                        "Apply the color, position, and size fields to the selected visual mark. Ctrl+Enter."
+                    )
                 )
             else:
                 self._properties_group.setAccessibleDescription(
-                    "Edit only the selected mark's exact full-page normalized position and size; "
-                    "its visual content properties are read-only here."
+                    tr(
+                        "Edit only the selected mark's exact full-page normalized position and size; its visual content properties are read-only here."
+                    )
                 )
-                self._apply_properties_button.setText("Apply position and size")
+                self._apply_properties_button.setText(tr("Apply position and size"))
                 self._apply_properties_button.setAccessibleName(
-                    "Apply selected visual-mark position and size"
+                    tr("Apply selected visual-mark position and size")
                 )
                 self._apply_properties_button.setAccessibleDescription(
-                    "Apply only the exact position and size fields; visual content properties "
-                    "are read-only here. Ctrl+Enter."
+                    tr(
+                        "Apply only the exact position and size fields; visual content properties are read-only here. Ctrl+Enter."
+                    )
                 )
             if record.kind is OverlayKind.SIGNATURE_IMAGE:
-                self._remove_button.setText("Use organizer to remove signature image")
+                self._remove_button.setText(tr("Use organizer to remove signature image"))
                 self._remove_button.setAccessibleName(
-                    "Signature image removal unavailable in this editor"
+                    tr("Signature image removal unavailable in this editor")
                 )
                 self._remove_button.setAccessibleDescription(
-                    "Close this editor and use Remove signature image so case-asset cleanup "
-                    "stays explicit."
+                    tr(
+                        "Close this editor and use Remove signature image so case-asset cleanup stays explicit."
+                    )
                 )
             elif record.kind in {OverlayKind.HIGHLIGHT, OverlayKind.SHAPE}:
-                self._remove_button.setText("Removal unavailable here")
-                self._remove_button.setAccessibleName(f"{name} removal unavailable in this editor")
+                self._remove_button.setText(tr("Removal unavailable here"))
+                self._remove_button.setAccessibleName(
+                    tr("{value1} removal unavailable in this editor", value1=name)
+                )
                 self._remove_button.setAccessibleDescription(
-                    "This ordinary visual-mark type is geometry-only in this editor and cannot "
-                    "be removed here."
+                    tr(
+                        "This ordinary visual-mark type is geometry-only in this editor and cannot be removed here."
+                    )
                 )
             else:
-                self._remove_button.setText("Remove selected")
-                self._remove_button.setAccessibleName("Remove selected core visual mark")
+                self._remove_button.setText(tr("Remove selected"))
+                self._remove_button.setAccessibleName(tr("Remove selected core visual mark"))
                 self._remove_button.setAccessibleDescription(
-                    "Remove the selected core visual mark. Delete."
+                    tr("Remove the selected core visual mark. Delete.")
                 )
         finally:
             del blockers
@@ -1680,36 +1798,31 @@ class CoreOverlayToolsDialog(QDialog):
     def _visibility_description(self, record: OverlayRecord) -> str:
         visibility = self._canvas.visibility_for(record)
         if visibility is OverlayVisibility.VISIBLE:
-            return "Fully shown inside the active crop."
+            return tr("Fully shown inside the active crop.")
         if visibility is OverlayVisibility.PARTIALLY_VISIBLE:
-            return (
+            return tr(
                 "Partially shown in the preview; saved geometry remains relative to the full page."
             )
-        return (
-            "Outside the active crop and not shown in the preview; exact full-page geometry remains "
-            "available here."
+        return tr(
+            "Outside the active crop and not shown in the preview; exact full-page geometry remains available here."
         )
 
     @staticmethod
     def _record_action_description(record: OverlayRecord) -> str:
         if record.kind is OverlayKind.SIGNATURE_IMAGE:
-            return (
-                "Position and size are editable here. Use the organizer removal action for "
-                "explicit asset cleanup; this is a visual image, not a digital signature."
+            return tr(
+                "Position and size are editable here. Use the organizer removal action for explicit asset cleanup; this is a visual image, not a digital signature."
             )
         if record.kind in {OverlayKind.HIGHLIGHT, OverlayKind.SHAPE}:
-            return (
-                "Position and size are editable here; visual content is read-only. This ordinary "
-                "visual mark is not permanent removal."
+            return tr(
+                "Position and size are editable here; visual content is read-only. This ordinary visual mark is not permanent removal."
             )
         if type(record.payload) is TextualOverlayPayload:
-            return (
-                "Value, formatting, position, and size are editable with the native property "
-                "controls; dragging is not required."
+            return tr(
+                "Value, formatting, position, and size are editable with the native property controls; dragging is not required."
             )
-        return (
-            "Color, position, and size are editable with the native property controls; dragging "
-            "is not required."
+        return tr(
+            "Color, position, and size are editable with the native property controls; dragging is not required."
         )
 
     def _set_text_controls_visible(self, visible: bool) -> None:
@@ -1730,7 +1843,7 @@ class CoreOverlayToolsDialog(QDialog):
     def _set_color(self, color: str) -> None:
         index = self._color_combo.findData(color)
         if index < 0:
-            self._color_combo.insertItem(0, "Current custom color", color)
+            self._color_combo.insertItem(0, tr("Current custom color"), color)
             index = 0
         self._color_combo.setCurrentIndex(index)
 
@@ -1741,7 +1854,7 @@ class CoreOverlayToolsDialog(QDialog):
         self._commit_started = True
         self._set_editor_enabled(False)
         self._set_status(
-            "Applying visual overlay changes. Keep this dialog open.",
+            tr("Applying visual overlay changes. Keep this dialog open."),
             announce=True,
         )
         self.apply_requested.emit(self._state)
@@ -1784,7 +1897,9 @@ class CoreOverlayToolsDialog(QDialog):
         self._cancel_button.setEnabled(enabled and not self._commit_started)
         if self._commit_started:
             self._cancel_button.setAccessibleDescription(
-                "Unavailable after the first apply request because changes are retained for retry."
+                tr(
+                    "Unavailable after the first apply request because changes are retained for retry."
+                )
             )
 
     def _set_status(
@@ -1794,7 +1909,9 @@ class CoreOverlayToolsDialog(QDialog):
         announce: bool,
         assertive: bool = False,
     ) -> None:
+        message = tr(message)
         self._status.setText(message)
+        self._status.setAccessibleName(tr("Visual overlay editor status. {value1}", value1=message))
         self._status.setAccessibleDescription(message)
         if not announce:
             return
@@ -1809,15 +1926,14 @@ class CoreOverlayToolsDialog(QDialog):
     def _show_unexpected_failure(self) -> None:
         QApplication.beep()
         self._set_status(
-            "PaperWorkShell could not update that visual overlay. Try the action again.",
+            tr("PaperWorkShell could not update that visual overlay. Try the action again."),
             announce=True,
             assertive=True,
         )
 
 
 def _percent_text(value: int) -> str:
-    whole, fraction = divmod(value, 10_000)
-    return f"{whole}.{fraction:04d} percent"
+    return tr("{value:.4f} percent", value=Decimal(value) / 10_000)
 
 
 def safe_core_overlay_failure(code: object, message: object) -> tuple[str, str]:
@@ -1827,9 +1943,9 @@ def safe_core_overlay_failure(code: object, message: object) -> tuple[str, str]:
     if type(code) is str and code in _SAFE_CORE_FAILURE_CODES:
         return (
             code,
-            "PaperWorkShell could not save the visual overlays safely. Try saving again.",
+            tr("PaperWorkShell could not save the visual overlays safely. Try saving again."),
         )
     return (
         "PWS_UI_REQUEST_INVALID",
-        "PaperWorkShell could not confirm that visual overlay change safely.",
+        tr("PaperWorkShell could not confirm that visual overlay change safely."),
     )

@@ -1560,6 +1560,8 @@ def _fixture(
 def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
     """Build every reviewed committed fixture without reading external input."""
 
+    from tools.redaction_corpus import build_redaction_fixtures
+
     duplicate = _text_pdf(f"{SYNTHETIC_MARKER}: exact duplicate pair")
     fixtures = (
         _fixture(
@@ -2161,7 +2163,7 @@ def build_committed_fixtures() -> tuple[GeneratedFixture, ...]:
             _handwriting_demonstration_png,
         ),
     )
-    return tuple(sorted(fixtures, key=lambda item: item.fixture_id))
+    return tuple(sorted((*fixtures, *build_redaction_fixtures()), key=lambda item: item.fixture_id))
 
 
 def _coverage() -> list[JsonValue]:
@@ -2757,6 +2759,11 @@ def _write_renderer_goldens(
 def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
     """Regenerate the reviewed corpus and its analytical renderer references."""
 
+    from tools.redaction_corpus import (
+        CANARY_INVENTORY_PATH,
+        canonical_canary_inventory_bytes,
+    )
+
     fixtures = build_committed_fixtures()
     try:
         repository_root = root.resolve(strict=True)
@@ -2767,6 +2774,12 @@ def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
     if _is_link_or_reparse(root) or not repository_root.is_dir():
         raise FixtureGenerationError(
             "FIXTURE_OUTPUT_UNSAFE", "repository root must be one non-linked directory"
+        )
+    canary_root = _ensure_safe_directory_chain(repository_root, CANARY_INVENTORY_PATH.parent)
+    if _bounded_output_files(canary_root) - {Path(CANARY_INVENTORY_PATH.name)}:
+        raise FixtureGenerationError(
+            "FIXTURE_REDACTION_INVENTORY_MISMATCH",
+            "redaction inventory output differs from its reviewed file set",
         )
     corpus_root = _ensure_safe_directory_chain(repository_root, CORPUS_DIRECTORY)
     expected = {Path(*item.relative_path.parts) for item in fixtures}
@@ -2786,6 +2799,20 @@ def write_committed_corpus(root: Path = PROJECT_ROOT) -> int:
         _write_exact(corpus_root / relative, fixture.content, corpus_root)
     _write_exact(corpus_root / "index.json", canonical_index_bytes(fixtures), corpus_root)
     _write_renderer_goldens(repository_root, fixtures)
+    # Corpus/golden generation may take time. Authenticate the full repository
+    # chain again rather than treating a stale sidecar directory as its own
+    # containment authority after an ancestor replacement.
+    canary_root = _ensure_safe_directory_chain(repository_root, CANARY_INVENTORY_PATH.parent)
+    if _bounded_output_files(canary_root) - {Path(CANARY_INVENTORY_PATH.name)}:
+        raise FixtureGenerationError(
+            "FIXTURE_REDACTION_INVENTORY_MISMATCH",
+            "redaction inventory output differs from its reviewed file set",
+        )
+    _write_exact(
+        canary_root / CANARY_INVENTORY_PATH.name,
+        canonical_canary_inventory_bytes(),
+        repository_root,
+    )
     return len(fixtures)
 
 

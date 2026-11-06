@@ -204,7 +204,10 @@ def test_failed_save_retains_draft_blocks_discard_and_announces_only_fixed_statu
         status = _widget(dialog, QLabel, "redactionToolsStatus")
         assert "PRIVATE" not in status.text() + status.accessibleDescription()
         assert "retained for retry" in status.text()
-        assert QApplication.focusWidget() is status
+        assert QApplication.focusWidget() is _widget(
+            dialog, QPushButton, "saveRedactionMarksButton"
+        )
+        assert status.text() in status.accessibleName()
         dialog.reject()
         assert dialog.isVisible()
         _click(dialog, "saveRedactionMarksButton")

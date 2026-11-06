@@ -21,6 +21,9 @@ from paperworkshell.domain.signed_source_policy import (
     SignedSourceModificationReview,
     SignedSourceReviewStatus,
 )
+from paperworkshell.localization.catalog import tr
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import adapt_dialog_button_box
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,31 +43,31 @@ class UnsignedDerivativeConfirmationPresentation:
     def reason_explanation(self) -> str:
         """Return the domain-owned, reason-aware warning text."""
 
-        return self.review.warning_message
+        return tr(self.review.warning_message)
 
     @property
     def question(self) -> str:
         """Return the domain-owned confirmation question."""
 
-        return self.review.warning_title
+        return tr(self.review.warning_title)
 
     @property
     def confirm_action(self) -> str:
         """Return the exact explicit action text."""
 
-        return self.review.confirm_action
+        return tr(self.review.confirm_action)
 
     @property
     def cancel_action(self) -> str:
         """Return the exact safe action text."""
 
-        return self.review.cancel_action
+        return tr(self.review.cancel_action)
 
     @property
     def result_label(self) -> str:
         """Return the visible label for the permitted modified output."""
 
-        return self.review.result_label
+        return tr(self.review.result_label)
 
 
 class UnsignedDerivativeConfirmationDialog(QDialog):
@@ -78,20 +81,21 @@ class UnsignedDerivativeConfirmationDialog(QDialog):
         super().__init__(parent)
         self._presentation = presentation
         self.setModal(True)
-        self.setWindowTitle(presentation.confirm_action)
-        self.setAccessibleName("Create unsigned derivative confirmation")
+        self.setWindowTitle(tr(presentation.confirm_action))
+        self.setAccessibleName(tr("Create unsigned derivative confirmation"))
         self.setAccessibleDescription(
-            "Review why the result will be unsigned, then create the derivative or cancel. "
-            "Cancel is the safe default."
+            tr(
+                "Review why the result will be unsigned, then create the derivative or cancel. Cancel is the safe default."
+            )
         )
 
         content = QWidget()
         content.setObjectName("unsignedDerivativeConfirmationContent")
         content_layout = QVBoxLayout(content)
 
-        title = QLabel(presentation.question)
+        title = QLabel(tr(presentation.question))
         title.setObjectName("unsignedDerivativeConfirmationHeading")
-        title.setAccessibleName("Create unsigned derivative question")
+        title.setAccessibleName(tr("Create unsigned derivative question"))
         title.setWordWrap(True)
         title_font = QFont(title.font())
         title_font.setBold(True)
@@ -99,11 +103,13 @@ class UnsignedDerivativeConfirmationDialog(QDialog):
         title.setFont(title_font)
         content_layout.addWidget(title)
 
-        reason_heading = QLabel("Why this needs confirmation")
+        reason_heading = QLabel(tr("Why this needs confirmation"))
         reason_heading.setObjectName("unsignedDerivativeReasonHeading")
-        reason_heading.setAccessibleName("Reason for unsigned derivative warning")
+        reason_heading.setAccessibleName(tr("Reason for unsigned derivative warning"))
         reason_heading.setAccessibleDescription(
-            "The following text explains the detected or unknown digital-signature-marker state."
+            tr(
+                "The following text explains the detected or unknown digital-signature-marker state."
+            )
         )
         reason_heading.setWordWrap(True)
         reason_font = QFont(reason_heading.font())
@@ -111,19 +117,19 @@ class UnsignedDerivativeConfirmationDialog(QDialog):
         reason_heading.setFont(reason_font)
         content_layout.addWidget(reason_heading)
 
-        reason = QLabel(presentation.reason_explanation)
+        reason = QLabel(tr(presentation.reason_explanation))
         reason.setObjectName("unsignedDerivativeReason")
-        reason.setAccessibleName("Unsigned derivative warning reason")
-        reason.setAccessibleDescription(presentation.reason_explanation)
+        reason.setAccessibleName(tr("Unsigned derivative warning reason"))
+        reason.setAccessibleDescription(tr(presentation.reason_explanation))
         reason.setWordWrap(True)
         reason.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByKeyboard)
         content_layout.addWidget(reason)
 
-        unsigned_label = QLabel(presentation.result_label)
+        unsigned_label = QLabel(tr(presentation.result_label))
         unsigned_label.setObjectName("unsignedDerivativeLabel")
-        unsigned_label.setAccessibleName("Output label: Unsigned derivative")
+        unsigned_label.setAccessibleName(tr("Output label: Unsigned derivative"))
         unsigned_label.setAccessibleDescription(
-            "The created output is a modified file and is not reported as digitally signed."
+            tr("The created output is a modified file and is not reported as digitally signed.")
         )
         unsigned_label.setWordWrap(True)
         unsigned_font = QFont(unsigned_label.font())
@@ -135,28 +141,31 @@ class UnsignedDerivativeConfirmationDialog(QDialog):
 
         scroll = QScrollArea()
         scroll.setObjectName("unsignedDerivativeConfirmationScrollArea")
-        scroll.setAccessibleName("Unsigned derivative warning details")
+        scroll.setAccessibleName(tr("Unsigned derivative warning details"))
         scroll.setAccessibleDescription(
-            "Scrollable warning details. Use arrow or Page Down keys, then use the buttons after "
-            "reviewing the reason and consequence."
+            tr(
+                "Scrollable warning details. Use arrow or Page Down keys, then use the buttons after reviewing the reason and consequence."
+            )
         )
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         scroll.setWidget(content)
+        adapt_localized_content(scroll)
         scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         button_box = QDialogButtonBox()
+        adapt_dialog_button_box(button_box)
         button_box.setObjectName("unsignedDerivativeConfirmationButtons")
-        button_box.setAccessibleName("Create unsigned derivative or cancel")
+        button_box.setAccessibleName(tr("Create unsigned derivative or cancel"))
         button_box.setAccessibleDescription(
-            "Cancel is selected by default. Create unsigned derivative continues explicitly."
+            tr("Cancel is selected by default. Create unsigned derivative continues explicitly.")
         )
-        self._create_button = QPushButton(presentation.confirm_action)
+        self._create_button = QPushButton(tr(presentation.confirm_action))
         self._create_button.setObjectName("createUnsignedDerivativeButton")
-        self._create_button.setAccessibleName("Create unsigned derivative")
+        self._create_button.setAccessibleName(tr("Create unsigned derivative"))
         self._create_button.setAccessibleDescription(
-            "Continue with creation of a modified PDF labeled as an unsigned derivative."
+            tr("Continue with creation of a modified PDF labeled as an unsigned derivative.")
         )
         self._create_button.setDefault(False)
         self._create_button.setAutoDefault(False)
@@ -166,11 +175,11 @@ class UnsignedDerivativeConfirmationDialog(QDialog):
             raise RuntimeError("Qt did not create the required Cancel button")
         self._cancel_button = cancel
         if self._cancel_button.text() != presentation.cancel_action:
-            self._cancel_button.setText(presentation.cancel_action)
+            self._cancel_button.setText(tr(presentation.cancel_action))
         self._cancel_button.setObjectName("cancelUnsignedDerivativeButton")
-        self._cancel_button.setAccessibleName("Cancel unsigned derivative creation")
+        self._cancel_button.setAccessibleName(tr("Cancel unsigned derivative creation"))
         self._cancel_button.setAccessibleDescription(
-            "Close this confirmation without creating an unsigned derivative."
+            tr("Close this confirmation without creating an unsigned derivative.")
         )
         self._cancel_button.setDefault(True)
         self._cancel_button.setAutoDefault(True)

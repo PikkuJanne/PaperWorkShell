@@ -52,6 +52,7 @@ class QualityOcrReviewWorkerCompositionConfig:
     maximum_heavy_operation_concurrency: int
     broker_policy: QualityOcrReviewBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
     _runtime_authority_id: str = field(init=False, repr=False, compare=False)
 
@@ -79,6 +80,7 @@ class QualityOcrReviewWorkerCompositionConfig:
             code_roots=self.code_roots,
             working_directory=self.working_directory,
             venv_launcher=self.venv_launcher,
+            recovery_authority_roots=self.recovery_authority_roots,
             tesseract_executable=self.tesseract_executable,
             tessdata_root=self.tessdata_root,
             operation_scope=WorkerOperationScope.QUALITY_OCR_REVIEW,
@@ -249,6 +251,7 @@ def create_quality_ocr_review_worker_composition_config(
     limits: ResourceLimits,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
+    recovery_authority_roots: tuple[Path, ...] = (),
 ) -> QualityOcrReviewWorkerCompositionConfig:
     return QualityOcrReviewWorkerCompositionConfig(
         python_executable=python_executable,
@@ -266,4 +269,5 @@ def create_quality_ocr_review_worker_composition_config(
             pump_interval_seconds=pump_interval_seconds,
         ),
         venv_launcher=venv_launcher,
+        recovery_authority_roots=recovery_authority_roots,
     )

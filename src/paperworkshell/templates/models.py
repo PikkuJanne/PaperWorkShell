@@ -9,6 +9,8 @@ from datetime import date
 from enum import StrEnum
 from typing import Final, Never, Protocol, cast, runtime_checkable
 
+from paperworkshell.localization.catalog import tr
+
 SUPPORTED_TEMPLATE_SCHEMA_VERSION: Final = 1
 MAX_TEMPLATE_BYTES: Final = 1_048_576
 MAX_TEMPLATE_DEPTH: Final = 48
@@ -276,10 +278,12 @@ class TemplatePresentation:
     signature_status: TemplateSignatureStatus
     fields: tuple[TemplateDisplayField, ...] = field(repr=False)
     status_message: str
-    provenance_notice: str = (
-        "Publisher and source details are claims embedded in the template. "
-        "PaperWorkShell verified the exact local template bytes against its trusted catalog; "
-        "it does not guarantee eligibility, legal correctness, or portal acceptance."
+    provenance_notice: str = field(
+        default_factory=lambda: tr(
+            "Publisher and source details are claims embedded in the template. "
+            "PaperWorkShell verified the exact local template bytes against its trusted catalog; "
+            "it does not guarantee eligibility, legal correctness, or portal acceptance."
+        )
     )
 
     def __post_init__(self) -> None:

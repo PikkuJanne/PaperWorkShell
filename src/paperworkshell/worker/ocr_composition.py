@@ -45,6 +45,7 @@ class OcrWorkerCompositionConfig:
     maximum_heavy_operation_concurrency: int
     broker_policy: OcrBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
     _ocr_runtime_authority_id: str = field(init=False, repr=False, compare=False)
 
@@ -70,6 +71,7 @@ class OcrWorkerCompositionConfig:
             code_roots=self.code_roots,
             working_directory=self.working_directory,
             venv_launcher=self.venv_launcher,
+            recovery_authority_roots=self.recovery_authority_roots,
             tesseract_executable=self.tesseract_executable,
             tessdata_root=self.tessdata_root,
         )
@@ -243,6 +245,7 @@ def create_ocr_worker_composition_config(
     limits: ResourceLimits,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
+    recovery_authority_roots: tuple[Path, ...] = (),
 ) -> OcrWorkerCompositionConfig:
     """Create the OCR-only composition policy behind one fixed seam."""
 
@@ -262,4 +265,5 @@ def create_ocr_worker_composition_config(
             pump_interval_seconds=pump_interval_seconds,
         ),
         venv_launcher=venv_launcher,
+        recovery_authority_roots=recovery_authority_roots,
     )

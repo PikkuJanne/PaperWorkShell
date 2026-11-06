@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Roadmap version | 0.3.0 |
+| Roadmap version | 0.4.0 |
 | Status | **Binding** |
 | Product name | **PaperWorkShell** |
 | Planning model | Dependency-based milestones with explicit exit gates |
 | First pilot release | v0.1 after Milestone 4 |
 | Hardened public release target | v1.0 after Milestone 8 |
-| Last amended | 2026-08-14 |
+| Last amended | 2026-11-04 |
 
 This roadmap is the main execution contract for PaperWorkShell. It converts the product concept into an implementation sequence that a coding agent can follow one task at a time. `TASKS.yaml` is the executable task graph; this document explains the intent, sequencing, gates, and non-negotiable outcomes behind that graph.
 
@@ -27,7 +27,7 @@ Changes to binding scope, milestone order, or a frozen decision require the chan
 
 ### 1.1 Product outcome
 
-PaperWorkShell is a free, local-first, Windows-first desktop application that guides a person from mixed raw documents to a complete, legible, privacy-safe, portal-ready submission package.
+PaperWorkShell is a free, local-first Windows 11 x64 desktop application that guides a person from mixed raw documents to a complete, legible, privacy-safe, portal-ready submission package.
 
 The product is successful when a first-time user can take PDFs and phone photographs, organize them, improve scans, add simple visual form marks, check submission constraints, and export one or more verified files without using a paid PDF suite or uploading sensitive content to an unrelated service.
 
@@ -39,7 +39,7 @@ PaperWorkShell is **not** a general-purpose PDF editor. The product optimizes fo
 
 The first releases optimize for:
 
-1. **Independent users** preparing an application on their own, potentially on an older Windows computer.
+1. **Independent users** preparing an application on their own, potentially on an older Windows 11 x64 computer.
 2. **Assisted users** working with a librarian, volunteer, social worker, community organization, or family member.
 
 Full multi-user caseworker administration, identities, role-based access control, and centralized retention are outside the first desktop release.
@@ -81,6 +81,31 @@ The v0.1 pilot MUST NOT advertise permanent redaction, digital signing, qualifie
 
 A hardened v1.0 requires completion of all milestones, including the redaction security gate, accessibility and assisted-mode gate, signed packaging, dependency inventory, migration tests, and release-candidate validation.
 
+### 1.5.1 Current internal-delivery sequence
+
+The maintainer's 2026-11-04 reset makes **PWS-0810** the active internal-delivery
+task: hand over a usable unsigned Windows 11 x64 installer, normal launch path,
+finite installed core-workflow evidence, concrete defect repairs and a short
+first-use guide. Reuse accepted evidence within its exact recorded scope. R9 is
+the starting candidate; preserve it and create a successor only for a concrete
+repair. Internal use and functional development do not depend on public signing
+or the remaining release-only environmental qualification.
+
+PWS-0802's original signed-artifact requirements and the public M8 gate remain
+pending for the deferred public-distribution phase. PWS-0803 is not the current
+objective. Trusted signing, SignPath eligibility/onboarding, public publication
+and final signed-release qualification resume only on later maintainer direction.
+No further provider contact, enrollment, upload or agreement is authorized.
+Preserve existing correspondence. The unavailable real system-volume disk-full
+test is **not performed and deferred to later release qualification**; do not
+request a VM again, provision one or fill a real working volume. Existing
+low-space and injected-failure evidence proves only its recorded limited behavior.
+
+This sequence changes no frozen product/security decision, public-release gate,
+source-preservation or export-verification requirement, data ownership, schema,
+licence or standalone boundary. An internal handoff is not a qualified public
+release and creates no ThirdLife dependency or compatibility claim.
+
 ### 1.6 ThirdLife portfolio position and product boundary
 
 PaperWorkShell is the independently useful Team A / A1 product in the ThirdLife portfolio. It establishes Team A's discipline for safe file intake and transformation, reviewable preview and export, interruption recovery, accessibility, and bounded low-resource behavior. PaperWorkShell and ThirdLife Setup Core are developed independently and do not block one another.
@@ -113,7 +138,7 @@ A lower item MUST NOT silently override a higher item. A conflict is resolved by
 
 | Area | First supported boundary | Deferred or excluded boundary |
 |---|---|---|
-| Platform | Windows-first desktop | macOS/Linux packaging after Windows workflow stabilizes |
+| Platform | Windows 11 x64 desktop, with editions/builds supported only from exact release evidence | Other operating systems, native ARM64 and x64 emulation on ARM64 are outside project scope |
 | Connectivity | Fully usable offline | Cloud processing and account-backed synchronization |
 | Inputs | PDF, JPEG, PNG | HEIC, TIFF, DOCX, ODT, email import, scanner protocols |
 | Outputs | One PDF, several PDFs, ZIP, package summary | Direct portal submission |
@@ -128,6 +153,8 @@ A lower item MUST NOT silently override a higher item. A conflict is resolved by
 | Legal/eligibility | Packaging guidance only | Legal advice, entitlement decisions, acceptance guarantees |
 | Portfolio integration | Standalone public product behavior and frozen release documentation | Live app-to-app dependency, shared platform, private-content access, or synchronized releases |
 
+The platform boundary follows `PWS-D043` and [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md). Application packaging, normal use, updates and required qualification target Windows 11 x64 only. ARM64 native/emulation work is not a prerequisite for PWS-0802, PWS-0803 or public release, and this roadmap creates no future mandatory ARM task. Historical wider-platform plans and unrun observations remain retained as superseded history. This scope change grants no test, signing or release pass and leaves security, privacy, accessibility and resource-budget gates intact.
+
 ### 3.1 Late-binding ThirdLife posture
 
 PaperWorkShell development contains no app-to-app integration requirement and no ThirdLife runtime, build, test, installation, or release prerequisite. Its tasks do not depend on a sibling repository, active branch, private fixture, service, database, or compatibility result. Composite portfolio journeys are future B4 acceptance ideas, not PaperWorkShell build dependencies.
@@ -140,7 +167,7 @@ Future permitted shallow actions are limited to documented installation, update 
 
 Preview and stable candidates MUST publish a small human-readable black-box envelope tied to the exact release:
 
-- Stable product and reverse-domain application identity, independent version and channel, publisher, licence, supported Windows versions, and architectures
+- Stable product and reverse-domain application identity, independent version and channel, publisher, licence, and evidenced Windows 11 x64 editions/builds
 - Installer or package identity, source revision, size, hashes, signatures or verification, privileges, restart, repair, update, rollback, and removal behavior
 - Exact configuration, case, immutable-original, derived, cache, temporary, optional engine or language-data, log, support-bundle, migration-backup, and export locations with retention and uninstall residue by category
 - Supported ordinary inputs and outputs; documented copying, conversion, flattening, reconstruction, or reference behavior; and workspace or project opening only where independently supported
@@ -545,7 +572,7 @@ Make the complete primary workflow operable by keyboard and screen reader, and s
 
 ### Objective
 
-Produce a supportable, signed, updateable, migratable, and independently verifiable Windows release with the public black-box envelope needed by deployers and a future ThirdLife B4 compatibility cut.
+Produce a supportable, signed, updateable, migratable, and independently verifiable Windows 11 x64 release with the public black-box envelope needed by deployers and a future ThirdLife B4 compatibility cut.
 
 ### Exit criteria
 
@@ -557,7 +584,7 @@ Produce a supportable, signed, updateable, migratable, and independently verifia
 - Installation requires no development tools.
 - Uninstall behavior explains and preserves or removes remaining cases according to an explicit user choice.
 - Security reporting, vulnerability handling, user documentation, and support documentation are published.
-- The release-candidate matrix passes supported readers, packaged-build resource budgets, low disk, slow I/O, interruption, migration, accessibility, and security tests.
+- The release-candidate matrix passes the supported Windows 11 x64 configurations and readers, packaged-build resource budgets, low disk, slow I/O, interruption, migration, accessibility, and security tests. ARM64 native/emulation cells are outside scope rather than pending release prerequisites.
 - Optional physical-device observations may be recorded when available, but are non-gating and cannot be described as certification unless that exact hardware was tested.
 - Stable application identity, install, launch, supported file opening, update or repair, removal, privilege, file-association policy, data preservation, and uninstall residue are documented and tested against the exact packaged candidate.
 - Exact configuration, case, immutable-original, derived, cache, temporary, optional engine or language-data, log, support-bundle, migration-backup, and export locations and retention are documented without exposing private machine paths.
@@ -604,7 +631,7 @@ A milestone gate additionally requires every milestone task to be complete or ex
 | Golden rendering | Known visual output for rotation, crop, overlays, OCR, and reconstruction |
 | Security | Path traversal, command injection, parser failures, resource limits, network egress, log content, redaction extraction |
 | Accessibility | Keyboard traversal, focus order, labels, announcements, scaling, no color-only state |
-| Compatibility | Adobe Reader, Edge, Chrome, Firefox, representative Android reader, later macOS Preview |
+| Compatibility | Adobe Reader, Edge, Chrome and Firefox on Windows 11 x64; accepted external-reader observations remain historical exported-file interoperability evidence |
 | Resource efficiency | Constrained application profile; process-tree peak memory; byte-bounded caches and queues; temporary-disk growth; low-disk and slow-I/O injection; heavy-operation concurrency; UI heartbeat; cancellation acknowledgement; incremental page processing; optional non-gating physical-device observations |
 
 ### 9.1.1 Resource evidence and hardware claims

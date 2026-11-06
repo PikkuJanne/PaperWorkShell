@@ -1,0 +1,7 @@
+// <copyright file="Setup.Configuration.h" company="Microsoft Corporation">
+// Copyright (C) Microsoft Corporation. All rights reserved.
+// </copyright>
+
+// This file is licensed under "The MIT License(MIT)".
+// This file is released by Visual Studio setup team for consumption by external applications.
+// For more information please look at this git repo https://github.com/microsoft/vs-setup-samples

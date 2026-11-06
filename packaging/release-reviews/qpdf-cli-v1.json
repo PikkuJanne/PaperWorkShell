@@ -1,0 +1,306 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-qpdf-cli-windows-x64",
+  "reviewed_on": "2026-11-03",
+  "artifacts": [
+    {
+      "name": "qpdf-12.3.2-msvc64.zip",
+      "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+      "size_bytes": 24555583,
+      "sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+      "local_path": "output/pws0801/resume-20261103/artifacts/qpdf-12.3.2-msvc64.zip",
+      "scope": "runtime"
+    }
+  ],
+  "stage_files": [
+    {
+      "artifact": "qpdf-12.3.2-msvc64.zip",
+      "member": "qpdf-12.3.2-msvc64/bin/qpdf.exe",
+      "path": "runtime/engines/qpdf/bin/qpdf.exe",
+      "component_id": "qpdf-cli",
+      "size_bytes": 19968,
+      "sha256": "43f79db620ce09529a67572a5de87aec4065b95f11ba6e5918db557f943a7eac"
+    },
+    {
+      "artifact": "qpdf-12.3.2-msvc64.zip",
+      "member": "qpdf-12.3.2-msvc64/bin/qpdf30.dll",
+      "path": "runtime/engines/qpdf/bin/qpdf30.dll",
+      "component_id": "qpdf-cli",
+      "size_bytes": 7069184,
+      "sha256": "623338ff5a9caab476f9e80ccc40c28c194208f4bc5d8e51eac7fca792e2e969"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "qpdf-cli",
+      "name": "qpdf command-line structural checker",
+      "version": "12.3.2",
+      "type": "application",
+      "scope": "runtime",
+      "supplier": "qpdf project",
+      "purl": "pkg:generic/qpdf@12.3.2?arch=x86_64&distribution=msvc-cli",
+      "license_expression": "Apache-2.0 AND MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "size_bytes": 11358
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/NOTICE.md.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/NOTICE.md.txt",
+          "sha256": "b207f65a9e5491195ded63b2941199b19a4d30148871f2742c88eae7bfc513a6",
+          "size_bytes": 2729
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        }
+      ],
+      "source_url": "https://github.com/qpdf/qpdf/tree/v12.3.2",
+      "artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+      "artifact_url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+      "dependencies": [
+        "qpdf-cli-openssl",
+        "qpdf-cli-zlib",
+        "qpdf-cli-libjpeg"
+      ],
+      "relationship": "direct",
+      "source_artifacts": [
+        {
+          "name": "qpdf-12.3.2.tar.gz",
+          "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.tar.gz",
+          "size_bytes": 19640678,
+          "sha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+          "local_path": "output/pws0801/python-native-license-work/qpdf-12.3.2.tar.gz",
+          "stage_path": "sources/python-native/qpdf-12.3.2.tar.gz",
+          "verification": "Matches independently published GitHub release asset SHA256 digest; version corroborated from the actual pikepdf qpdf DLL or runtime API."
+        }
+      ]
+    },
+    {
+      "component_id": "qpdf-cli-openssl",
+      "name": "OpenSSL (pikepdf qpdf static build)",
+      "version": "3.6.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream OpenSSL (pikepdf qpdf static build) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-qpdf-openssl/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-openssl/LICENSE.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "size_bytes": 10175
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        }
+      ],
+      "source_url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.0/openssl-3.6.0.tar.gz",
+      "artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "qpdf-cli",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "openssl-3.6.0.tar.gz",
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.0/openssl-3.6.0.tar.gz",
+          "size_bytes": 54974351,
+          "sha256": "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9",
+          "local_path": "output/pws0801/python-native-license-work/openssl-3.6.0.tar.gz",
+          "stage_path": "sources/python-native/openssl-3.6.0.tar.gz",
+          "verification": "Matches independently published GitHub release asset SHA256 digest; version corroborated from the actual pikepdf qpdf DLL or runtime API."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual qpdf DLL includes OpenSSL3.6.0 version-identifying build strings; normal/delay imports show no OpenSSL DLL.",
+      "source_limits": "Source release version and checksum bound to upstream published distribution; byte-for-byte recreation of the original static Windows object has not been attested.",
+      "artifact_url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+      "enclosing_artifact": {
+        "name": "qpdf-12.3.2-msvc64.zip",
+        "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+        "size_bytes": 24555583,
+        "sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+        "local_path": "output/pws0801/resume-20261103/artifacts/qpdf-12.3.2-msvc64.zip",
+        "scope": "runtime"
+      }
+    },
+    {
+      "component_id": "qpdf-cli-zlib",
+      "name": "zlib (pikepdf qpdf static build)",
+      "version": "1.3.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream zlib (pikepdf qpdf static build) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "Zlib",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-qpdf-zlib/README",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-zlib/README",
+          "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+          "size_bytes": 5317
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        }
+      ],
+      "source_url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz",
+      "artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "qpdf-cli",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "zlib-1.3.1.tar.gz",
+          "url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz",
+          "size_bytes": 1512791,
+          "sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23",
+          "local_path": "output/pws0801/python-native-license-work/zlib-1.3.1.tar.gz",
+          "stage_path": "sources/python-native/zlib-1.3.1.tar.gz",
+          "verification": "Exact source distribution member of separately SHA256-pinned qpdf external-libs release2026-01-08; container SHA256 matches GitHub asset digest and published qpdf-external-libs.sha256. PGP signature not independently verified.",
+          "source_container": {
+            "url": "https://github.com/qpdf/external-libs/releases/download/release-2026-01-08/qpdf-external-libs-src.zip",
+            "sha256": "88b70fdfb1c2041197a03751bbb2410d1dcda9c5c2b0b0e772930b376b98553c",
+            "size_bytes": 57528531,
+            "member": "external-libs-src/zlib-1.3.1.tar.gz"
+          }
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual qpdf DLL contains deflate/inflate1.3.1 copyright/version strings, no external zlib DLL.",
+      "source_limits": "Source release version and checksum bound to upstream published distribution; byte-for-byte recreation of the original static Windows object has not been attested.",
+      "artifact_url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+      "enclosing_artifact": {
+        "name": "qpdf-12.3.2-msvc64.zip",
+        "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+        "size_bytes": 24555583,
+        "sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+        "local_path": "output/pws0801/resume-20261103/artifacts/qpdf-12.3.2-msvc64.zip",
+        "scope": "runtime"
+      }
+    },
+    {
+      "component_id": "qpdf-cli-libjpeg",
+      "name": "Independent JPEG Group libjpeg (pikepdf qpdf static build)",
+      "version": "9f",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream Independent JPEG Group libjpeg (pikepdf qpdf static build) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "IJG",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-qpdf-libjpeg/README",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/README",
+          "sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+          "size_bytes": 18719
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        },
+        {
+          "path": "notices/python-native/pikepdf-qpdf-libjpeg/ACKNOWLEDGMENT.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/ACKNOWLEDGMENT.txt",
+          "sha256": "d903a69ab39425283b44e2ea355cbfaf79bcd738b69c2b1c3c700ce80f2d89f9",
+          "size_bytes": 74
+        }
+      ],
+      "source_url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz",
+      "artifact_sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "qpdf-cli",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "jpegsrc.v9f.tar.gz",
+          "url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz",
+          "size_bytes": 1081470,
+          "sha256": "04705c110cb2469caa79fb71fba3d7bf834914706e9641a4589485c1f832565b",
+          "local_path": "output/pws0801/python-native-license-work/jpegsrc.v9f.tar.gz",
+          "stage_path": "sources/python-native/jpegsrc.v9f.tar.gz",
+          "verification": "Exact source distribution member of separately SHA256-pinned qpdf external-libs release2026-01-08; container SHA256 matches GitHub asset digest and published qpdf-external-libs.sha256. PGP signature not independently verified.",
+          "source_container": {
+            "url": "https://github.com/qpdf/external-libs/releases/download/release-2026-01-08/qpdf-external-libs-src.zip",
+            "sha256": "88b70fdfb1c2041197a03751bbb2410d1dcda9c5c2b0b0e772930b376b98553c",
+            "size_bytes": 57528531,
+            "member": "external-libs-src/jpegsrc.v9f.tar.gz"
+          }
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual qpdf DLL contains JPEG9f14-Jan-2024 version string, no external libjpeg DLL.",
+      "source_limits": "Source release version and checksum bound to upstream published distribution; byte-for-byte recreation of the original static Windows object has not been attested.",
+      "artifact_url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+      "enclosing_artifact": {
+        "name": "qpdf-12.3.2-msvc64.zip",
+        "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2-msvc64.zip",
+        "size_bytes": 24555583,
+        "sha256": "8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202",
+        "local_path": "output/pws0801/resume-20261103/artifacts/qpdf-12.3.2-msvc64.zip",
+        "scope": "runtime"
+      }
+    }
+  ],
+  "native_dependency_note": "All conventional application-local Microsoft CRT files from the upstream ZIP are omitted; exact Microsoft-installed prerequisite is documented by the Qt/platform review. Static codec versions/notices are bound separately by the qpdf native source review.",
+  "native_binary_version_markers": {
+    "openssl-3.6.0": true,
+    "deflate 1.3.1 Copyright": true,
+    "9f  14-Jan-2024": true
+  },
+  "notice_source_note": "Full exact qpdf12.3.2 LICENSE/NOTICE and static child notices from independently hash-verified source review are retained. Upstream binary ZIP manual supplies only a short Apache link; its HTML page is not used as the licence bundle.",
+  "native_binary_version_scope": "Exact authenticated qpdf30.dll source-build/engine version tokens independently agree with the native source review. No upstream CI absolute paths are copied into this record."
+}

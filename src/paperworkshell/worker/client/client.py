@@ -259,6 +259,11 @@ class WorkerClient:
             binding,
             Direction.CLIENT_TO_WORKER,
             operation_registry=self._operation_registry,
+            registered_capabilities=tuple(
+                dict.fromkeys(
+                    (*self._operation_registry.capabilities, *self._required_capabilities)
+                )
+            ),
         )
         request = WorkerLaunchRequest(
             case_id=case_id,

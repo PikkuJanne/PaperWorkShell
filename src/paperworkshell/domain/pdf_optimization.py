@@ -12,6 +12,7 @@ from typing import Final
 
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.page_operations import MAX_PAGE_COUNT
+from paperworkshell.localization.catalog import tr
 
 PDF_OPTIMIZATION_REPORT_VERSION: Final = 1
 
@@ -95,16 +96,17 @@ class PdfOptimizationReport:
         """Describe the measured outcome without claiming broader fidelity checks."""
 
         if self.outcome is PdfOptimizationOutcome.OPTIMIZED:
-            return (
-                "Safe optimization reduced the verified PDF from "
-                f"{self.baseline_byte_size} to {self.selected_byte_size} bytes."
+            return tr(
+                "Safe optimization reduced the verified PDF from {value_0} to {value_1} bytes.",
+                value_0=self.baseline_byte_size,
+                value_1=self.selected_byte_size,
             )
         if self.outcome is PdfOptimizationOutcome.NO_REDUCTION:
-            return (
-                f"Safe optimization kept the verified PDF at {self.selected_byte_size} bytes "
-                "because no smaller candidate was produced."
+            return tr(
+                "Safe optimization kept the verified PDF at {value_0} bytes because no smaller candidate was produced.",
+                value_0=self.selected_byte_size,
             )
-        return (
-            "Safe optimization was skipped because the temporary-storage budget could not "
-            f"hold a candidate; the verified PDF remains {self.selected_byte_size} bytes."
+        return tr(
+            "Safe optimization was skipped because the temporary-storage budget could not hold a candidate; the verified PDF remains {value_0} bytes.",
+            value_0=self.selected_byte_size,
         )

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Final
 
 from paperworkshell.domain.manifest_repository import (
     CURRENT_MANIFEST_SCHEMA_VERSION,
@@ -78,3 +80,65 @@ def migrate_manifest_v2_to_v3(document: Mapping[str, object]) -> dict[str, objec
     copied["revision"] = revision + 1
     copied["redaction_marks"] = []
     return copied
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestMigrationStep:
+    """One closed, reviewed transition; never executable template/plugin data."""
+
+    source_version: int
+    target_version: int
+
+
+MANIFEST_MIGRATION_REGISTRY: Final = (
+    ManifestMigrationStep(LEGACY_MANIFEST_SCHEMA_VERSION, INTERMEDIATE_MANIFEST_SCHEMA_VERSION),
+    ManifestMigrationStep(INTERMEDIATE_MANIFEST_SCHEMA_VERSION, CURRENT_MANIFEST_SCHEMA_VERSION),
+)
+
+
+def manifest_migration_path(source_version: int) -> tuple[ManifestMigrationStep, ...]:
+    """Return a bounded route to current, refusing unknown/future dispatch first."""
+
+    if type(source_version) is not int:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_version"
+        )
+    if source_version == CURRENT_MANIFEST_SCHEMA_VERSION:
+        return ()
+    for index, step in enumerate(MANIFEST_MIGRATION_REGISTRY):
+        if step.source_version == source_version:
+            return MANIFEST_MIGRATION_REGISTRY[index:]
+    reject_manifest_repository(
+        ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.migration_version"
+    )
+
+
+def migrate_manifest_to_current(document: Mapping[str, object]) -> dict[str, object]:
+    """Apply the closed route to a copy as one durable persistence revision.
+
+    Complete frozen-source and result validation remains the storage boundary's
+    responsibility. Current data is copied without advancing its revision.
+    Historical intermediate versions are never published or used as defaults.
+    """
+
+    candidate = copy_manifest_document(document, context="manifest.migration_document")
+    version = candidate.get("schema_version")
+    if type(version) is not int:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_version"
+        )
+    path = manifest_migration_path(version)
+    if not path:
+        return candidate
+    revision = candidate.get("revision")
+    if type(revision) is not int or not 0 <= revision < MAX_SAFE_MANIFEST_INTEGER:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_revision"
+        )
+    for step in path:
+        candidate["revision"] = revision
+        if step.source_version == LEGACY_MANIFEST_SCHEMA_VERSION:
+            candidate = migrate_manifest_v1_to_v2(candidate)
+        else:
+            candidate = migrate_manifest_v2_to_v3(candidate)
+    return candidate

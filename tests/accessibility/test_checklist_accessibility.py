@@ -612,7 +612,8 @@ def test_apply_waits_for_save_and_sanitized_failure_retains_state_for_retry() ->
         assert PRIVATE_CANARY not in status.text()
         assert "PRIVATE_CODE" not in status.text()
         assert "retained" in status.text().casefold()
-        assert dialog.focusWidget() is status
+        assert dialog.focusWidget() is apply
+        assert status.text() in status.accessibleName()
         assert apply.isEnabled()
         assert not cancel.isEnabled()
 

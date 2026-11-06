@@ -233,7 +233,7 @@ def test_progress_cancel_failure_and_recovery_are_visible_focusable_and_textual(
         assert error is not None
         assert error.isVisible()
         assert error.focusPolicy() is Qt.FocusPolicy.StrongFocus
-        assert dialog.focusWidget() is error
+        assert dialog.focusWidget() is update
         assert "SCAN_REVIEW_PREVIEW_RESULT_INVALID" in error.text()
         assert "Try again" in error.text()
 

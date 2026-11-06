@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-application-inputs",
+  "reviewed_on": "2026-11-03",
+  "scope": "Internal dependency-stage candidate only; product licence/version/channel and signed installer identity remain PWS-0802 decisions",
+  "candidate": {
+    "id": "pws0801-dependency-stage-20261103-r3",
+    "version": "0.0.0",
+    "created_utc": "2026-11-03T07:43:47Z",
+    "source_revision": "source-snapshot:2d2f8c4144d4b6c4e33898ec99da91d3f9bd1706232c7ae5c9fd3dbeaca6ed54",
+    "source_sha256": "2d2f8c4144d4b6c4e33898ec99da91d3f9bd1706232c7ae5c9fd3dbeaca6ed54"
+  },
+  "git_base_revision": "2e70ec0e7174dab342f6df43d7b4d685f84a3259",
+  "git_base_is_complete_source_identity": false,
+  "artifacts": [
+    {
+      "name": "paperworkshell-0.0.0-py3-none-any.whl",
+      "url": null,
+      "size_bytes": 1764902,
+      "sha256": "3c4790053a6a9bf37435cd15ee9efd3ff3f278b8532080afa0487fc6357bcca8",
+      "local_path": "output/pws0801/resume-20261103/app-artifacts/paperworkshell-0.0.0-py3-none-any.whl",
+      "scope": "runtime",
+      "origin": "local-build",
+      "recipe_path": "pyproject.toml"
+    },
+    {
+      "name": "paperworkshell-0.0.0.tar.gz",
+      "url": null,
+      "size_bytes": 1558611,
+      "sha256": "2d2f8c4144d4b6c4e33898ec99da91d3f9bd1706232c7ae5c9fd3dbeaca6ed54",
+      "local_path": "output/pws0801/resume-20261103/app-artifacts/paperworkshell-0.0.0.tar.gz",
+      "scope": "source",
+      "origin": "local-build",
+      "recipe_path": "pyproject.toml",
+      "stage_path": "sources/application/paperworkshell-0.0.0.tar.gz",
+      "component_id": "paperworkshell"
+    },
+    {
+      "name": "paperworkshell-release-tooling-20261103-r4.tar.xz",
+      "url": null,
+      "size_bytes": 827124,
+      "sha256": "fa4268eb08417ed43021cf7d170e748713439f6df944f44e2fd84146afb0b0c2",
+      "local_path": "output/pws0801/resume-20261103/app-artifacts/paperworkshell-release-tooling-20261103-r4.tar.xz",
+      "scope": "source",
+      "origin": "local-build",
+      "recipe_path": "tools/snapshot_release_tooling.py",
+      "stage_path": "sources/application/paperworkshell-release-tooling-20261103-r4.tar.xz",
+      "component_id": "paperworkshell"
+    },
+    {
+      "name": "dependency-builder-preparation-v1.json",
+      "url": null,
+      "size_bytes": 9657,
+      "sha256": "f9d7ceb3da8ab8035fcd662e5515f2abb8383aabd7b3ee0ff17af5228a43cc43",
+      "local_path": "output/pws0801/resume-20261103/clean-builder-v1/preparation.json",
+      "scope": "review",
+      "origin": "local-build",
+      "recipe_path": "tools/prepare_dependency_builder.py"
+    },
+    {
+      "name": "dependency-builder-inventory-v1.json",
+      "url": null,
+      "size_bytes": 51214,
+      "sha256": "28c8a13f0e1f7590bd713db235de2f3fb4aa624fbedb05c74ee56e5b690da628",
+      "local_path": "output/pws0801/resume-20261103/clean-builder-v1/builder-inventory.json",
+      "scope": "review",
+      "origin": "local-build",
+      "recipe_path": "tools/prepare_dependency_builder.py"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "paperworkshell",
+      "name": "PaperWorkShell",
+      "version": "0.0.0",
+      "type": "application",
+      "scope": "runtime",
+      "supplier": "PaperWorkShell project",
+      "purl": "pkg:pypi/paperworkshell@0.0.0",
+      "license_expression": "NOASSERTION",
+      "license_texts": [],
+      "source_url": "https://github.com/PikkuJanne/PaperWorkShell",
+      "artifact_sha256": "3c4790053a6a9bf37435cd15ee9efd3ff3f278b8532080afa0487fc6357bcca8",
+      "dependencies": [
+        "cpython",
+        "fonttools",
+        "fpdf2",
+        "ocrmypdf",
+        "pillow",
+        "pikepdf",
+        "pypdfium2",
+        "pyside6-essentials",
+        "uharfbuzz",
+        "qpdf-cli",
+        "msys2-tesseract-ocr",
+        "uv",
+        "uv-build"
+      ],
+      "relationship": "root"
+    }
+  ]
+}

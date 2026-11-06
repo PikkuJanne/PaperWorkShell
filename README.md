@@ -4,6 +4,28 @@ This bundle turns the initial PaperWorkShell product concept into a repository-r
 
 PaperWorkShell is a local-first desktop application for organizing PDFs and images, reviewing configured packaging rules, and exporting document packages. Users review the content and submit the resulting files themselves.
 
+**Internal build ready for use.**
+[PWS-0810's result and launch/sample instructions](docs/development/pws0810-internal-delivery-20261104.md)
+record the completed finite installed-app check and final preservation/metadata
+validation of preserved R9. R9 was sufficient; no application repair or R10 was
+needed. Public signing, SignPath contact/onboarding/publication and remaining
+release-only qualification are deferred; the unsigned candidate is not a
+qualified public release. Earlier release plans and accepted evidence remain
+preserved within their recorded scope.
+
+PaperWorkShell targets **Windows 11 x64 only**. Publisher and maintainer: **Janne Vuorela**. Official
+distribution is free for everyone, including commercial users. Project-owned material uses
+the [MIT licence](LICENSE); [licensing scope](LICENSING.md) preserves third-party rights.
+Product use requires no account, registration, email, activation, subscription or licence key.
+Documents and document-derived data stay local; the application has no document upload,
+telemetry or automatic crash-report submission.
+
+Native ARM64 and x64 emulation on ARM64 are outside project scope and are not
+release or update prerequisites. The [approved platform decision](docs/adr/0019-windows-11-x64-only-scope.md)
+retains earlier ARM plans as superseded history. Exact Windows 11 x64 support remains
+bounded by packaged evidence; the scope decision does not make an unsigned internal
+candidate a qualified public release.
+
 ## ThirdLife portfolio position
 
 PaperWorkShell is the standalone Team A / A1 product in the ThirdLife portfolio. It does not
@@ -60,14 +82,22 @@ verified candidate after confirmation; these settings do not guarantee readabili
 PWS-0506 adds a versioned [conservative portal profile](docs/architecture/portal-export-profile.md)
 to package export. Final worker checks reject prohibited retained PDF features and
 unsupported versions. Its [new reader matrix](docs/compatibility/pws-0506-portal-matrix.md)
-records exact artifacts and pending observations; it does not promise portal acceptance.
+records exact artifacts and accepted desktop/Android observations; it does not promise portal acceptance.
+The [M5 compression and compatibility gate report](docs/gates/m5-compression-compatibility-gate.md)
+records the source-tree acceptance criteria, current automated results and retained visual/reader evidence.
+The [PWS-0608 source-tree gate](docs/gates/m6-permanent-redaction-gate.md) qualifies exactly one active affected PDF page on approved source `7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9`. Under PWS-D040 this is M6 source qualification; M8, packaged/public v1.0 and release-interface facts remain pending/TBD. The desktop requires saved-mark/warning review for every export, extra unsigned consent only for pending signature-marker sources, six exact-file checks including fixed private English OCR, and the independently qualified compiled profile. Named-viewer qualification is separate; a new file receives no invented viewer observation. Saved marks remain unapplied and ordinary exports remain blocked for active marked pages. Extra active pages (even unmarked), encryption, active overlays and unsupported cleanup fail closed; crop/quarter-turn are supported. Every derivative is image-only and unsigned. See the [remediation record](docs/development/pws0608-remediation.md), [verification profiles](docs/architecture/redaction-verification.md), [export authority](docs/architecture/redaction-export-gate.md) and retained [first failed gate](docs/development/pws0608-result.md).
+
 The repository contains the
 restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR composition, and worker-only
 pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
-repository does not yet contain an installer, cloud integration, or cryptographic-signing
-creation.
+repository now contains a separate Windows installer and production-signing pipeline. Its
+engineering output is explicitly unsigned and internal; public trusted signing, resolved
+Microsoft runtime redistribution and clean packaged qualification remain release requirements.
+See [installer choices](docs/adr/0018-windows-installer-and-release-identity.md) and the
+[qualification plan](packaging/windows/QUALIFICATION_PLAN.md). Cryptographic PDF-signature
+creation remains outside the product scope.
 
 JPEG/PNG pages also have an ordinary **Export pages as PDF** action (`Ctrl+Shift+E`) for a
 verified derivative without OCR or a template checklist. Image originals stay unchanged;
@@ -171,6 +201,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py validate-task-graph` | Validate task references, gates, and the dependency DAG |
 | `py -3.14 tools/dev.py validate-portfolio-boundary` | Validate standalone ThirdLife boundaries, M8 ownership, and roadmap-bundle integrity |
 | `py -3.14 tools/dev.py validate-docs` | Validate local Markdown links, anchors, and security references offline |
+| `py -3.14 tools/dev.py validate-localization` | Check translation inventory, placeholders, catalogs, and workflow text |
 | `py -3.14 tools/dev.py validate-m1-benchmark-report` | Validate the constrained-profile M1 evidence contract |
 | `py -3.14 tools/dev.py validate-pws0208-resource-workload` | Validate the fixed constrained signed-source/OCR workload contract |
 | `py -3.14 tools/dev.py validate-pdf-renderer-benchmark` | Validate the bound synthetic renderer-comparison workload |
@@ -183,7 +214,7 @@ Stable developer commands use a standard-library dispatcher and structured subpr
 | `py -3.14 tools/dev.py pws0506-compatibility-test` | Prepare and record the PWS-0506 reader and local upload-constraint matrix |
 | `py -3.14 tools/dev.py check` | Run every enabled non-mutating quality check |
 
-On non-Windows development hosts, replace `py -3.14` with the equivalent CPython 3.14 command. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).
+For existing pure development checks on other hosts, replace `py -3.14` with the equivalent CPython 3.14 command; this does not add a supported application platform. Toolchain rationale and Windows implications are recorded in [`docs/adr/0001-python-uv-toolchain.md`](docs/adr/0001-python-uv-toolchain.md).
 
 The GitHub Actions workflow runs the same `bootstrap` and `check` entry points on Windows. It uses
 read-only permissions and does not upload source, fixtures, caches, scan reports, benchmark
@@ -212,6 +243,24 @@ Its keyboard controls, autosave/threading model, bounded import/preview behavior
 verification status are documented in
 [`docs/architecture/page-organizer-ui.md`](docs/architecture/page-organizer-ui.md) and
 [`docs/accessibility/pws-0111-nvda-smoke.md`](docs/accessibility/pws-0111-nvda-smoke.md).
+
+Press **F1** or choose **Help → Keyboard guide** for the full shortcut reference.
+The [PWS-0701 keyboard inventory and walkthrough](docs/accessibility/pws-0701-keyboard-audit.md)
+covers keyboard paths, focus recovery and the isolated synthetic developer launcher.
+The [PWS-0703 display audit](docs/accessibility/pws-0703-display-audit.md) documents
+scaling, enlarged text, contrast, interactive target sizes and reduced motion.
+The [localization guide](docs/development/localization.md) describes packaged text
+resources, locale-aware displays and RTL preparation. `PWS_UI_LOCALE=en-XA` and
+`PWS_UI_LOCALE=ar-XB` select expanded test text and RTL test layout before launch;
+these test resources are not reviewed natural-language translations.
+The [PWS-0702 screen-reader audit](docs/accessibility/pws-0702-nvda-audit.md)
+records native names/state, bounded announcements, recovery and cumulative NVDA evidence;
+its [completion report](docs/development/pws0702-result.md) lists verification and scope limits.
+
+The [Milestone 7 source-tree gate](docs/gates/m7-accessibility-assisted-gate.md)
+records the cumulative keyboard/NVDA and assisted-use evidence, current RTL/200%
+contrast review, and selected-row focus repair. Packaged-build qualification remains
+with Milestone 8.
 
 The completed image/OCR milestone, its gate-owned mixed searchable-output scenario, constrained
 resource evidence, and current agent-operated keyboard/NVDA smoke are recorded in
@@ -313,6 +362,22 @@ baseline accepts only closed codes, internal IDs, versions, counts, and numeric 
 The exact ordering, interruption behavior, privacy schema, and intentionally deferred diagnostic
 bundle are documented in
 [`docs/architecture/startup-recovery-and-diagnostics.md`](docs/architecture/startup-recovery-and-diagnostics.md).
+
+Assisted use starts with **Start assisted case** on the case chooser. The person receiving help
+reviews local storage and expiry before import and chooses a local case passphrase. Assisted
+cases lock after five idle minutes, when the application loses foreground activity, and when
+reopened. At expiry they become unavailable for document work; files remain until explicit
+removal. See [assisted-use policy](docs/architecture/assisted-use.md) for handover, clock handling,
+and the limits of this application lock.
+
+After a successful verified package export, **Save text companion** offers optional
+plain text with a privacy acknowledgement. It contains available text from the
+exported pages; it does not run OCR. **Review case deletion** shows the stored case
+inventory and the exports that remain, with **Keep case** as the default. Deletion
+requires a separate acknowledgement and **Delete case** action. External sources
+and independently saved outputs remain. Removal does not guarantee forensic
+erasure. See [post-export retention and companions](docs/architecture/post-export-retention.md)
+for limits and partial-removal recovery.
 
 The version-1 case manifest contract, canonical synthetic examples, semantic validation rules, and
 migration policy are documented in

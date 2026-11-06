@@ -16,6 +16,7 @@ from paperworkshell.app.package_pdf_export import (
     PackagePdfCandidateErrorCode,
     PackagePdfCandidateProducer,
 )
+from paperworkshell.domain import package_export_errors
 from paperworkshell.domain.package_summary import PackageSummaryStatus
 from paperworkshell.domain.resource_policy import (
     CONSTRAINED_RESOURCE_POLICY_V1,
@@ -28,12 +29,25 @@ from paperworkshell.export.package_export import (
     PackageExportProgress,
     PackageExportProgressPhase,
     PackagePdfProducerPort,
+    reject_package_export,
 )
 from paperworkshell.export.package_service import WindowsPackageExportService
 from paperworkshell.export.package_summary import build_package_summary
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.storage.export_destination import WindowsExportDestination
 from tests.unit.test_package_summary import SummaryInputs, summary_inputs, summary_outcome
+
+
+def test_package_export_error_contract_preserves_public_aliases() -> None:
+    assert PackageExportError is package_export_errors.PackageExportError
+    assert PackageExportErrorCode is package_export_errors.PackageExportErrorCode
+    assert reject_package_export is package_export_errors.reject_package_export
+    with pytest.raises(package_export_errors.PackageExportError) as caught:
+        reject_package_export(PackageExportErrorCode.PDF_FAILED, "package.contract")
+    assert caught.value.code is PackageExportErrorCode.PDF_FAILED
+    assert caught.value.context == "package.contract"
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
 
 
 class _Sources:

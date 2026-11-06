@@ -1,0 +1,39 @@
+PaperWorkShell Microsoft runtime provenance: Community 2022 route
+
+This new candidate sources five unmodified Microsoft object-code members from
+the authentic Microsoft Visual C++ 14.44.35211 x64 redistributable acquired with
+the Visual Studio Community 2022 17.14.44 product layout. The eligible individual
+maintainer explicitly accepted EULAID VS_Comm_2022_ENU.1033 and authorized this
+acquisition. Official layout verification completed with native exit code zero.
+The complete acquired layout, signed bootstrapper and catalog/payload hashes
+are retained in the local build acquisition evidence.
+
+COMMUNITY-2022-RECIPIENT-TERMS.txt identifies all nine destinations and five
+distinct hashes. The required pikepdf loader alias is newly supplied from the
+canonical acquired Microsoft member with identical bytes, not copied from the
+old wheel's alias. The three qpdf-adjacent copies are identical canonical files.
+No Microsoft object-code bytes or embedded notices are modified.
+
+The Visual Studio 2022 REDIST list expressly permits eligible unmodified
+individual binaries. The list and Community terms contain no filename-retention
+condition. Treating the existing loader filename alias as the same unmodified
+object code is the documented distribution interpretation; it is not an express
+Microsoft approval of that filename. The copied bytes, version, architecture,
+signature and source-to-destination member map remain verifiable.
+
+VS-2019-FULL-TERMS.txt, VC-RUNTIME-2015-2022-END-USER-TERMS.txt and
+PIKEPDF-UPSTREAM-DOWNSTREAM-NOTICE.txt are retained byte-for-byte as historical
+upstream/0801 provenance. Their old grant has not been changed or relicensed.
+The new candidate independently sources its Microsoft copies under the acquired
+Community 2022 grant and its scoped recipient agreement. It does not assert
+that the old VS2019 downstream grant's distributor indemnity was accepted or
+that its text was amended. Other wheel bytes, attribution, MPL/Apache/Qt/LGPL
+and all other open-source rights and obligations remain applicable and intact.
+
+Official sources:
+https://visualstudio.microsoft.com/wp-content/uploads/2021/11/Visual-Studio-2022-Community-License-EN.docx
+https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+https://learn.microsoft.com/en-us/visualstudio/install/create-an-offline-installation-of-visual-studio?view=vs-2022
+
+No public signature, clean-machine qualification or public publication is
+established by this acquisition or these terms alone.

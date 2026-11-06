@@ -1778,6 +1778,73 @@ def _require_journal_publication_scope(
     return journal_current.final_path / _JOURNAL_CHECKPOINT_NAME
 
 
+def publish_assisted_use_record_atomically(
+    candidate_handle: WindowsHandle,
+    case_root: WindowsHandle,
+    journal_root: WindowsHandle,
+    expected_handle: WindowsHandle | None,
+) -> ManifestReplaceResult:
+    """Publish only the fixed assisted-use policy in an authenticated case journal.
+
+    The case and journal handles deny directory replacement. Existing policy bytes
+    remain authoritative until the single atomic rename commits; an ambiguous API
+    result is resolved against the exact candidate and predecessor identities.
+    """
+
+    checkpoint_path = _require_journal_publication_scope(candidate_handle, case_root, journal_root)
+    destination = checkpoint_path.parent / "assisted-use-v1.json"
+    candidate_identity = candidate_handle.info.identity
+    expected_identity: FileIdentity | None = None
+    if expected_handle is not None:
+        before = expected_handle.info
+        current = expected_handle.refresh_info()
+        if (
+            current.identity != before.identity
+            or current.is_directory
+            or current.is_reparse_point
+            or current.is_sparse
+            or current.link_count != 1
+            or _normalized_path(current.final_path) != _normalized_path(destination)
+        ):
+            reject(
+                WorkspaceErrorCode.IDENTITY_CHANGED,
+                "assisted_use.expected",
+                "The assisted-use policy changed before replacement.",
+            )
+        require_no_alternate_streams(destination)
+        expected_identity = current.identity
+
+    def resolve() -> ManifestReplaceState:
+        if expected_identity is None:
+            return _resolve_new_file_state(destination, candidate_identity=candidate_identity)
+        return _resolve_manifest_replace_state(
+            destination,
+            candidate_identity=candidate_identity,
+            expected_identity=expected_identity,
+        )
+
+    if resolve() is not ManifestReplaceState.NOT_COMMITTED:
+        return ManifestReplaceResult(ManifestReplaceState.UNKNOWN)
+    delayed_exception: BaseException | None = None
+    try:
+        _rename_open_file(
+            candidate_handle, destination=destination, replace=expected_identity is not None
+        )
+    except BaseException as error:
+        delayed_exception = error
+    state = resolve()
+    if state is ManifestReplaceState.COMMITTED:
+        try:
+            candidate_handle.refresh_info()
+            require_expected_handle(candidate_handle, destination, directory=False)
+            require_no_alternate_streams(destination)
+        except Exception:
+            state = ManifestReplaceState.UNKNOWN
+    if state is ManifestReplaceState.NOT_COMMITTED and delayed_exception is not None:
+        raise delayed_exception
+    return ManifestReplaceResult(state, delayed_exception=delayed_exception)
+
+
 def _resolve_new_file_state(
     destination: Path,
     *,

@@ -33,6 +33,7 @@ from paperworkshell.worker.protocol.models import (
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
     QUALITY_OCR_REVIEW_CAPABILITY,
+    REDACTION_EXPORT_CAPABILITY,
     REDACTION_OCR_CAPABILITY,
     REDACTION_RECONSTRUCTION_CAPABILITY,
     REDACTION_SANITIZATION_CAPABILITY,
@@ -83,9 +84,14 @@ from paperworkshell.worker.protocol.models import (
     validate_searchable_pdf_export_start,
     validate_signature_image_raster_start,
 )
+from paperworkshell.worker.protocol.redaction_export import redaction_export_binding
 from paperworkshell.worker.protocol.redaction_ocr import redaction_ocr_binding
 from paperworkshell.worker.protocol.redaction_reconstruction import reconstruction_binding
 from paperworkshell.worker.protocol.redaction_sanitization import sanitization_binding
+from paperworkshell.worker.protocol.text_companion import (
+    TEXT_COMPANION_CAPABILITY,
+    text_companion_binding,
+)
 
 _ENVELOPE_FIELDS: Final = frozenset(
     {
@@ -610,11 +616,13 @@ class OperationRegistry:
         """Reject an operation descriptor absent from the protocol-v1 registry."""
 
         descriptor = CapabilityDescriptor(operation_kind, operation_version)
-        # Private reconstruction/OCR are known to the codec but never part of
-        # default capability requests or ordinary worker advertisement.
+        # Text companions are explicitly requested optional work. Private
+        # reconstruction/OCR likewise never expand default capability requests.
         if descriptor not in self.capabilities and descriptor not in {
+            TEXT_COMPANION_CAPABILITY,
             REDACTION_RECONSTRUCTION_CAPABILITY,
             REDACTION_OCR_CAPABILITY,
+            REDACTION_EXPORT_CAPABILITY,
             REDACTION_SANITIZATION_CAPABILITY,
         }:
             reject(
@@ -627,6 +635,8 @@ class OperationRegistry:
         """Validate the descriptor and closed input contract for an operation start."""
 
         self.validate_descriptor(payload.operation_kind, payload.operation_version)
+        if payload.operation_kind == TEXT_COMPANION_CAPABILITY.capability_id:
+            text_companion_binding(payload)
         if payload.operation_kind == NOOP_CAPABILITY.capability_id and (
             payload.inputs or payload.parameters
         ):
@@ -661,6 +671,8 @@ class OperationRegistry:
             redaction_ocr_binding(payload)
         if payload.operation_kind == REDACTION_RECONSTRUCTION_CAPABILITY.capability_id:
             reconstruction_binding(payload)
+        if payload.operation_kind == REDACTION_EXPORT_CAPABILITY.capability_id:
+            redaction_export_binding(payload)
         if payload.operation_kind == REDACTION_SANITIZATION_CAPABILITY.capability_id:
             sanitization_binding(payload)
 

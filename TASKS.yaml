@@ -1,7 +1,7 @@
 schema_version: 1
 project: PaperWorkShell
-task_graph_version: 0.3.0
-frozen_at: '2026-08-14'
+task_graph_version: 0.4.0
+frozen_at: '2026-11-04'
 roadmap_file: ROADMAP.md
 decision_file: DECISIONS.md
 agent_contract_file: AGENTS.md
@@ -4202,7 +4202,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0501
@@ -4236,7 +4236,7 @@ tasks:
   - pdf
   blocker: null
   evidence:
-    completed_at: null
+    completed_at: '2026-10-16'
     revision: 480053ba3d116c9ebde5b97d21466f6d88d8e136
     commands:
     - python tools/dev.py check --ci-group core - passed in Windows CI run 36979077905; 5557 unit, 733 security and 74 accessibility tests, every core gate and all five quality self-tests.
@@ -4244,18 +4244,22 @@ tasks:
     - python -m tools.pws0506_portal_compatibility prepare - passed; all seven pinned artifact hashes and 22 local constraint checks matched.
     - Focused native policy/security and constrained Windows worker tests passed (72 tests).
     - Focused profile/report/retry/capability regressions passed (137 tests).
+    - uv run --locked --no-sync python -m tools.pws0506_portal_compatibility status - passed on 2026-10-16; all seven pinned artifact hashes, 22 local constraint checks and five latest human reader attempts validated; MATRIX READY FOR REVIEW.
+    - uv run --locked --no-sync python -m pytest -q tests/unit/test_pws0506_portal_compatibility.py --tb=short - passed; 16 tests including tamper, stale-binding, forged-record and latest-failure rejection.
+    - uv run --locked --no-sync python tools/dev.py format-check, lint and typecheck - passed; 664 format/type surfaces.
+    - uv run --locked --no-sync python tools/dev.py validate-schemas, validate-task-graph, validate-docs and validate-portfolio-boundary; git diff --check - passed after human-evidence closure; 82 tasks, 243 dependencies and 37 bundled canonical files.
     notes:
     - Conservative portal profile v3 is verified in restricted workers and after rewrites; legacy profiles and persisted history meanings remain intact.
     - See docs/development/pws0506-result.md for final CI, constrained native, visual, privacy and standalone-boundary evidence. No universal portal acceptance or release-interface claim is made.
-    - Implementation and automated verification are complete; review remains pending for exact-output Adobe Reader, Edge, Chrome, Firefox and Android observations.
-    - Exact-output reader matrix remains NOT RUN; see docs/compatibility/pws-0506-portal-matrix.md.
+    - Maintainer confirmed human testing complete on 2026-10-16. Exact-output Adobe Reader/free mode, Edge, Chrome, Firefox and Adobe Acrobat Reader for Android attempts all pass every required observation group against evidence SHA-256 b046984e5ddee6a30704932cf9220a884e8d1b2343ee599541b793b9ee0aef52; exact versions, UTC timestamps and attempt hashes are recorded in docs/compatibility/pws-0506-portal-matrix.md.
+    - Closure changes only task/evidence documentation and bundle metadata. Product code, tests, immutable corpus and original preparation evidence remain unchanged from the verified implementation; remote uploads remain optional and NOT RUN. PWS-0507 is now dependency-ready; its gate has not been performed.
 - id: PWS-0507
   milestone: M5
   title: Run Milestone 5 compression and compatibility gate
   kind: gate
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0501
@@ -4291,17 +4295,63 @@ tasks:
   - compatibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-16'
+    revision: 868e0ef53a5743514f2ef1cf72f8399901e72326
+    commands:
+    - uv run --locked --no-sync python -m pytest -q tests/unit --tb=short --durations=15 - final full rerun
+      passed 5557 tests and 1209 subtests in 598.38 seconds
+    - uv run --locked --no-sync python -m pytest -q tests/security --tb=short --durations=15 - passed 727 tests
+      and 512 subtests with six existing local symlink-capability skips in 303.94 seconds
+    - uv run --locked --no-sync python -m pytest -q tests/accessibility --tb=short --durations=15 - passed all
+      74 tests in 3.54 seconds
+    - Locked python -m pytest selected M5 integration lane - passed all 106 tests without skips in 293.39 seconds;
+      exact 11-module selection is in docs/gates/m5-compression-compatibility-gate.md
+    - uv run --locked --no-sync python -m pytest -q tests/unit/worker/test_pdf_image_stage_wire.py --tb=short
+      - passed all 26 tests after the deterministic privacy-assertion correction
+    - python tools/dev.py format-check, lint, typecheck, check-import-boundaries, validate-dependencies and
+      validate-pillow-runtime - passed; 664 formatted/typed files and 13 layers across 229 source files
+    - python tools/dev.py validate-m1-benchmark-report, validate-pws0208-resource-workload, validate-pdf-renderer-benchmark
+      and quality-self-test - passed; all five deliberate violations detected
+    - python tools/dev.py validate-fixtures and scan-secrets - passed serially in the isolated selected-branch
+      review copy in 218.67 and 321.11 seconds; 2976 historical blobs, 947 index blobs and 978 working files
+      covered
+    - uv run --locked --no-sync python -m tools.pws0506_portal_compatibility status - passed; seven pinned artifact
+      hashes, 22 local constraint checks and all five latest human attempts validated
+    - python tools/dev.py validate-schemas, validate-task-graph, validate-docs and validate-portfolio-boundary;
+      git diff --check - passed for gate closure metadata; 82 tasks, 243 dependencies and 38 canonical bundle
+      files
+    notes:
+    - See docs/gates/m5-compression-compatibility-gate.md for the PASS source-tree M5 gate, complete acceptance
+      mapping, commands, bounded native/failure evidence, artifact identities and intentional limits. PWS-0601
+      is now ready; no M6 implementation is included.
+    - Revision identifies the local parent 868e0ef, not a commit containing this working change. Product/tool/lock/CI
+      surfaces remain unchanged from successful full Windows CI 36979077905 at 480053ba3d116c9ebde5b97d21466f6d88d8e136.
+      Fresh working-tree verification includes one test-only correction, whose SHA-256 is recorded in the report.
+    - The first full unit run had 5556 passes and one privacy-test failure because an opaque memory address
+      contained the fixture handle digits 900. Exact equality with object.__repr__ now proves field-free output;
+      independent review, the full corrected module and the complete unit rerun passed. No product behavior
+      or privacy assertion was weakened.
+    - Accepted PWS-0505 agent-operated keyboard/scaling and visual legibility observations and the PWS-0506
+      exact-output human desktop/Android reader matrix are retained without repeating accepted scenarios. Current
+      native tests cover constrained inspection, image stages, combined/separate/ZIP search, exact preview publication
+      and portal-policy rejection.
+    - Impossible targets, fixed 200 dpi/JPEG80 floor, explicit grayscale, actual-size/ZIP overhead, low disk,
+      cancellation, timeout, cleanup, retry, immutable sources and every-output reopen/structure/render checks
+      have layered evidence. Synthetic-producer exhaustion is distinguished from native achievable-search measurements.
+    - Fixture and secret scans cover the selected branch plus exact gate/test and preserved PWS-0506 closure
+      files; unrelated untracked documents, tmp and capture refs were neither included nor modified. Closure
+      changes only evidence/status/readiness/README and bundle metadata after that scan checkpoint.
+    - Standalone operation and PaperWorkShell data ownership are preserved; no sibling dependency, adapter,
+      dependency, migration, resource-budget, golden or release-interface change was introduced. Remote uploads
+      remain optional and NOT RUN. No new hardware, NVDA, PDF/UA, portal-acceptance, packaged-release or ThirdLife
+      claim is made.
 - id: PWS-0601
   milestone: M6
   title: Create redaction-specific threat model and adversarial corpus
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0507
@@ -4332,17 +4382,63 @@ tasks:
   - testing
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-16'
+    revision: 'snapshot-sha256:731bc916c4be5611236b81ca5a6bc69f41efbc79e21eeef731b5c0822c4127b1'
+    commands:
+    - tools/dev.py generate-fixtures - passed; 60 deterministic public sources and 15 analytical references,
+      with all previous 46 source bytes and every golden unchanged
+    - Focused corpus/generator/validator/pikepdf/source-recovery/junction pytest selection - passed;
+      111 tests and 162 subtests; both real NTFS ancestry regressions failed before their fixes and passed after
+    - tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed;
+      668 Python files and 13 layers across 229 production source files
+    - tools/dev.py test-unit - passed; 5571 tests, no skips, 890.42 seconds
+    - tools/dev.py test-security, serial final run - passed; 744 tests and six existing symlink-capability
+      skips, 288.99 seconds; all new tests and live containment/isolation checks passed
+    - tools/dev.py test-accessibility - passed; 74 tests, no skips, 3.55 seconds
+    - Focused PDF-inspection-worker and quality-entry-point integration pytest selection - passed;
+      five tests with no skips, 65.39 seconds
+    - tools/dev.py validate-fixtures; scan-secrets, serial isolated full-history branch snapshot - passed;
+      60 fixtures, 15 analytical, six transform and three overlay references, 2976 historical blobs,
+      947 index blobs and 999 working files; secret scan also covered 307 commit/tag objects
+      and 3011 historical path/blob pairs
+    - tools/dev.py validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary;
+      validate-dependencies; validate-pillow-runtime; validate-m1-benchmark-report;
+      validate-pws0208-resource-workload; validate-pdf-renderer-benchmark; quality-self-test;
+      git diff --check - passed; canonical metadata checks rerun at closure
+    - Focused renderer-benchmark pytest selection - passed; 66 tests and 350 subtests,
+      181.20 seconds; current index binding refreshed without changing selected cases or old evidence
+    notes:
+    - Implemented in the uncommitted codex/pws-0601-redaction-corpus working tree, based on
+      868e0ef53a5743514f2ef1cf72f8399901e72326. Full scope, file inventory, acceptance mapping,
+      commands, results and limits are in docs/development/pws0601-result.md.
+    - Fourteen closed algorithmic sources and 18 unique synthetic canaries cover all required carriers,
+      actual embedded files, hidden OCG/OCR, true older content-stream revision, malformed rejection,
+      and nonzero crop/media origins at all four rotations. Independent native extraction, decoded
+      raster recognition and geometry/preservation checks prove source detectability, not removal.
+    - The threat-model extension maps every ROADMAP M6 requirement to planned automated/manual methods
+      and task owners, with 18 planned blocking codes. Ordinary covering remains a negative control;
+      no visual-only proof, native OCR accuracy, signed-source validity or successful redaction is claimed.
+    - Safe command integration authenticates exact canary inventory bytes and rejects version/tamper/link
+      failures. Independent review found and reproduced two new ancestry-swap bugs; fresh full-chain
+      authentication, repository-anchored writing and post-enumeration authenticated readback close them.
+    - The initial concurrent security attempt hit three expected cross-configuration ACL recovery guards
+      while native renderer leases were active. The complete serial rerun passed after unit cleanup;
+      no journal, guard, product source or test was weakened or removed.
+    - Fixture and secret scans used the exact task snapshot with full selected-branch history, preserving
+      existing M5 closure and excluding unrelated untracked local documents, tmp and capture refs.
+      Manifest SHA-256 731bc916c4be5611236b81ca5a6bc69f41efbc79e21eeef731b5c0822c4127b1
+      authenticates 999 copied files; the revision field identifies this snapshot manifest rather than
+      a Git commit. Later closure changes only this evidence, report and bundle hashes.
+    - Production behavior, dependencies, resource policy, released schema meanings, original fixture bytes,
+      goldens, standalone operation, data ownership and draft release-interface facts are unchanged.
+      PWS-0602 is ready; PWS-0603 through PWS-0608 remain planned and permanent redaction stays disabled.
 - id: PWS-0602
   milestone: M6
   title: Implement redaction-mark intent and distinct review UI
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0601
@@ -4374,17 +4470,55 @@ tasks:
   - terminology
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-16'
+    revision: b30c109933cb2223757fbd2803a73ab6660d4dd5
+    commands:
+    - tools/dev.py test-unit - passed; all 5698 tests, zero skips, 1013.09 seconds
+    - tools/dev.py test-integration - passed; all 562 collected, 552 passed and ten accepted
+      optional OCR/private-stage/Windows symlink-capability skips, 3671.90 seconds
+    - tools/dev.py test-security - passed; 748 tests and six existing Windows link-capability
+      skips, 341.64 seconds, on the final frozen source
+    - tools/dev.py test-accessibility - passed; all 101 tests, including 27 region-review tests
+    - tools/dev.py format-check; lint; typecheck; check-import-boundaries; validate-schemas;
+      validate-task-graph; validate-docs; validate-portfolio-boundary - passed
+    - tools/dev.py validate-dependencies; validate-pillow-runtime; validate-m1-benchmark-report;
+      validate-pws0208-resource-workload; validate-pdf-renderer-benchmark; quality-self-test - passed
+    - tools/dev.py validate-fixtures; scan-secrets - passed on the exact accepted-file,
+      full-history task snapshot; final delivery inventory is output/pws0602/snapshot-delivery-files.json
+    - Unchanged pws0207 quality evaluator record and validate at 946ba43 - passed;
+      all 40 quality tests passed and JSON comparison proved only the baseline revision changed
+    - Final journal/projection/keyboard/window/accessibility selection - passed; 76 tests;
+      independent projection review compared 704 rectangles in 192 scenarios
+    notes:
+    - Separate inert v3 removal marks, accessible numeric/list review and authenticated atomic
+      save/reopen/retry are implemented. Frozen v1/v2 meanings and ordinary overlays are preserved.
+    - Actual marks remain unapplied; information is still present. Every pipeline promotion is
+      refused, and active marks block normal/alternate/prepared export and retained-original leases.
+      Permanent removal stays disabled pending PWS-0603 through PWS-0608 and independent approval.
+    - Native NVDA 2026.1.1 review passed through the real parented window at effective DPR 2;
+      geometry, unapplied status, Add/Undo/Redo, save progress, sanitized failure/retry, successful
+      intent-only save and cancellation were spoken. Production modality remains unchanged.
+      Final native integration passed against all 1026 unchanged accepted files in an owned checkout.
+      The initial run exposed one preexisting source ownership mismatch; its bytes and metadata remain
+      preserved. The isolated locked runtime was removed after authenticated zero-journal cleanup.
+    - Local implementation checkpoints contain only audited PWS-0602 paths. Existing uncommitted
+      M5/PWS-0601 evidence and unrelated local files are preserved; nothing is published.
+    - Bounded edit deltas and display projection replace supported-limit stalls. Final synthetic
+      constrained-profile UI heartbeat gaps of 124/148/145 ms stay below the unchanged 250 ms
+      budget across DPR 1, DPR 2 and doubled text. Dense preview is explicitly selected-only;
+      every region remains in the native list. These results are not hardware certification.
+    - Edit-limit recovery keeps accepted intent savable and list/Undo review usable; capacity
+      is not misreported as invalid geometry. Save failures never re-enable or recommend Cancel.
+    - All final full suites and native NVDA review passed before closure. Originals, frozen decisions,
+      v1/v2 schema meanings, quality measurements and resource budgets are preserved. PWS-0603 is ready;
+      no sibling dependency, shared private data or proved release-interface capability is introduced.
 - id: PWS-0603
   milestone: M6
   title: Implement full-page sanitized raster reconstruction
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0601
@@ -4417,17 +4551,48 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-16'
+    revision: 4ac4db5feb3fd7e1b03cd72f4d9e6a903c4ae9a0
+    commands:
+    - uv run --locked --no-sync python tools/dev.py check - passed every registered command on the frozen
+      owned accepted-file snapshot; 5760 unit, 553 integration, 779 security and 101 accessibility tests
+      passed, with ten existing integration and six existing security prerequisite/capability skips
+    - tools/dev.py format-check, lint, typecheck and check-import-boundaries - passed; 694 Python files,
+      13 layers and 240 production source files
+    - tools/dev.py validate-fixtures and scan-secrets - passed serially against selected-branch history,
+      index and all 1040 accepted working files; 3088 historical fixture blobs and 986 index blobs covered
+    - tools/dev.py validate-schemas, validate-task-graph, validate-docs, validate-portfolio-boundary,
+      validate-pillow-runtime, all registered benchmark/workload validators and quality-self-test - passed
+    - tools/dev.py validate-dependencies - passed separately; no dependency or lockfile changes
+    - Unchanged pws0207 quality evaluator record and validate at source checkpoint 4ac4db5 - passed;
+      all 40 evaluation tests passed and JSON comparison proved that only the baseline revision changed
+    - Synthetic source/candidate visual inspection and accepted-file SHA-256 audit - passed; every one
+      of the 1040 frozen files remained unchanged through the complete registered run
+    notes:
+    - Private one-page PDF reconstruction burns the outward-rounded rectangle union before any raw
+      pixel scratch write, applies supported crop/quarter-turn and builds a fresh lossless 300 dpi RGB page.
+      No original page resources, source streams, source image objects or revisions are reused.
+    - Native constrained AppContainer cancellation, timeout, forced termination, output exhaustion and
+      same-lease recovery passed without skips, including final candidate-retention, memory and temporary
+      storage assertions. Disk-full, low-disk, malformed/stale/forged input and cleanup paths fail closed.
+    - Sources remain immutable and candidates are always unsigned and awaiting verification. OCR, complete
+      derivative sanitization, final verification/publication and independent gate approval remain PWS-0604
+      through PWS-0608; permanent redaction and normal/alternate export blockers remain unchanged.
+    - Source checkpoint identifies the task-only implementation. The exact accepted-file verification
+      inventory SHA-256 is fa7b9712a53c0215085c1413a3c4f16879936b6ac8051978289d4acefcb77e26.
+      Closure metadata inventory and command receipts are in output/pws0603; see docs/development/pws0603-result.md.
+    - Inherited M5/PWS-0601 work, unrelated local files and the preexisting source ownership mismatch are
+      preserved. Windows verification used an owned exact-byte copy inside this repository. No source/golden
+      fixture, budget, released schema meaning, frozen decision or dependency was changed.
+    - Standalone PaperWorkShell data ownership is preserved, with no sibling dependency, adapter or shared
+      service. Draft release-interface facts remain unchanged. PWS-0604 and PWS-0605 are now ready; next is PWS-0604.
 - id: PWS-0604
   milestone: M6
   title: Implement OCR regeneration with redaction-region exclusion
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0603
@@ -4456,17 +4621,71 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-17'
+    revision: f59169b364a25380e2bfa3e7f8e477f63289870c
+    commands:
+    - tools/dev.py test-unit - passed; 5853 tests, zero skips, 828.29 seconds;
+      affected surfaces rechecked after the type-only import-boundary correction
+    - Focused final model/adapter/worker/protocol/import/security pytest selection - passed;
+      247 tests and 48 subtests in 8.76 seconds on the corrected owned source
+    - pytest tests/integration/test_redaction_ocr_worker_windows.py - passed; nine native
+      AppContainer cases, zero skips, 753.78 seconds, using admitted English and German packs
+    - Related host/temp-access/OCR/admission/renderer/export/containment integration selection -
+      40 passed initially; all eight cases blocked by overlapping ACL recovery leases passed
+      on the isolated serial retry in 382.54 seconds, including final German cropped OCR
+    - tools/dev.py test-security, isolated final run - passed; 783 tests and six existing
+      Windows link-capability skips, 369.49 seconds; no new test was skipped
+    - tools/dev.py test-accessibility - passed; 101 tests, zero skips, 10.02 seconds
+    - tools/dev.py format-check, lint, typecheck and check-import-boundaries - passed;
+      706 Python files, 13 layers and 247 production source files
+    - tools/dev.py validate-fixtures - passed; 60 sources, 15 analytical, six transform and
+      three overlay references, 3110 historical blobs, 999 index blobs and 1054 working files
+    - tools/dev.py scan-secrets - passed; reachable selected-branch object/path bytes,
+      3110 historical blobs, 316 commit/tag objects, 3147 historical path/blob pairs,
+      999 index blobs and all 1054 accepted working files
+    - tools/dev.py validate-schemas, validate-task-graph, validate-docs, validate-portfolio-boundary,
+      validate-dependencies, validate-pillow-runtime, all registered benchmark/workload validators
+      and quality-self-test - passed; final canonical metadata closure checked separately
+    - Unchanged PWS-0207 evaluator record/validate at 298d2de and all 40 evaluation tests - passed;
+      JSON comparison proved only the implementation revision changed, with every measurement preserved
+    - Pinned native runtime provisioning and real admission - passed; keyring, all 31 package/signature
+      size/hash pins and required GPG fingerprint verified before extracting 40 exact runtime files
+    - Synthetic visual review and SHA-256 audits - passed; all 891 selected core files match the
+      recorded source and owned verification input, and all 217 protected files match PWS-0603 delivery
+    notes:
+    - Added a separately scoped private OCR operation that reconstructs first and passes only the
+      authenticated opaque-masked, image-only page to OCRmyPDF. Source text, hidden OCR, fonts, images
+      and earlier original revisions are not reused. The fixed profile binds exact intent and languages.
+    - Final RGB image identity, physical geometry, rendered pixels and transformed character/word
+      exclusion are checked. OCRmyPDF's generated incremental graft is freshly rewritten with bounded
+      writes before strict revision checks; no original source revision is imported.
+    - Candidates remain unsigned and awaiting_verification. OCR failure, missing language, cancellation,
+      timeout, termination, changed source, forged results or storage/output exhaustion return no candidate.
+      Native constrained memory/temp, cleanup and same-source recovery checks passed without skips.
+    - The full security suite exposed a concrete adapter import across the PDF/OCR boundary; a narrow
+      typed protocol fixes it without changing worker engine admission or weakening any import allowlist.
+      A private-directory ownership regression also preserves raced-in preexisting content.
+    - Parallel live Windows suites encountered the intentional global ACL recovery allowlist guard.
+      Read-only inspection found the journal empty after normal cleanup; all blocked integrations and
+      the full security suite then passed serially. No journal was deleted or allowlist widened.
+    - Task-only source checkpoints are 298d2de and f59169b. The 1054-file verification-input inventory
+      SHA-256 is 60c7abc4c601377c4d6341fab5caa06b28c2cdb7ff24c0e3613f08ddf356bef9.
+      Full inventory, commands, results and limits are in docs/development/pws0604-result.md.
+    - Inherited working changes, unrelated local files and the preexisting ownership/sharing behavior
+      remain preserved. Originals, source fixtures, goldens, dependencies, frozen contracts, released
+      schema meanings and resource budgets are unchanged; some fractional crops still fail closed
+      in the inherited reconstruction verifier before OCR.
+    - Standalone operation and PaperWorkShell-owned private data are preserved, with no sibling
+      dependency, adapter or shared service and no new proved release-interface fact. PWS-0605 remains
+      ready; sanitization, independent verification, publication and release approval remain PWS-0605
+      through PWS-0608, and permanent-removal export stays disabled.
 - id: PWS-0605
   milestone: M6
   title: Implement redaction derivative sanitization
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0603
@@ -4497,17 +4716,65 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-17'
+    revision: 2e70ec0e7174dab342f6df43d7b4d685f84a3259
+    commands:
+    - tools/dev.py check at source checkpoint 9d382b2 - passed; 5930 unit, 568 integration,
+      808 security and 101 accessibility tests, with six existing integration and six
+      existing security prerequisite/capability skips; all registered validators and self-tests passed
+    - Final model/adapter/worker/security/import-boundary pytest selection at 2e70ec0 -
+      268 passed in 8.96 seconds after both reviewed adapter corrections
+    - pytest -q tests/integration/test_redaction_sanitization_worker_windows.py at 2e70ec0 -
+      two native constrained AppContainer cases passed without skips in 167.82 seconds
+    - tools/dev.py format-check, lint, typecheck and check-import-boundaries - passed;
+      718 Python files, 254 production sources and 13 layers
+    - tools/dev.py validate-fixtures on final source - passed; 60 synthetic fixtures,
+      15 analytical, six transform and three overlay references; 3143 historical blobs,
+      1012 index blobs and all 1068 accepted working files
+    - tools/dev.py scan-secrets on final source - passed; 3143 historical blobs,
+      319 commit/tag objects, 3180 historical path/blob pairs, 1012 index blobs,
+      1043 tracked and 25 accepted untracked files
+    - tools/dev.py validate-schemas, validate-task-graph, validate-docs,
+      validate-portfolio-boundary and validate-dependencies - passed; final closure metadata rechecked
+    - Unchanged PWS-0207 evaluator record/validate and JSON comparison - passed;
+      only its bound revision changed to 9d382b2, with every measurement preserved
+    - Synthetic OCR text/render equality and SHA-256 audits - passed; all 1068 frozen
+      final inputs matched the owned copy, and all 26 task checkpoint files matched Git blobs
+    notes:
+    - Added a separately scoped private sanitizer with a fresh catalog/page tree and complete rewrite.
+      Attachments, annotations/comments, actions/scripts, form fields/values, metadata, signatures,
+      orphan objects and original revisions are excluded. No safe form-field exception is approved.
+    - Closed rendering dictionaries, exact bounded image samples, canonical Unicode CMaps and fixed
+      approved Noto metadata prevent opaque metadata copying. Unsupported structures fail closed.
+      Existing pinned fonttools 4.63.0 now has an executable worker-only hostile-input boundary;
+      no dependency, native engine, lockfile, schema meaning or resource budget was changed.
+    - Independent review found and fixed packet-wide decoded image retention and content-stream
+      metadata bypasses. Images are immediately encoded; a bounded native token filter removes
+      lexical comments and rejects inline images, marked-content metadata and malformed operands.
+      Two-page presave retention, literal-text preservation, budget and failure regressions passed.
+    - Native constrained cancellation, timeout, forced termination, one-byte output exhaustion,
+      same-lease recovery, source/manifest immutability and memory/temp assertions passed. Actual
+      admitted OCR followed by sanitization preserved exact text and rendered pixels with no canary metadata.
+    - Reports bind request/source/output hashes, IDs, counts and closed codes. One bounded candidate
+      is retained at a time. A terminal-result/cancel-ack race settles within the existing grace.
+      Candidates always remain unsigned and awaiting_verification; permanent-removal export is disabled.
+    - Full-suite evidence uses 9d382b2; reviewed corrections use de814ed and final 2e70ec0.
+      The final 1068-file verification inventory SHA-256 is
+      acd5af436926513187b6b8a6e7226559d4776faa54e8d338f4fd34e463ad3173.
+      See docs/development/pws0605-result.md and output/pws0605 for precise receipts and profile limits.
+    - Owned exact-byte verification preserves original checkout ownership, inherited work and unrelated
+      local files. All 212 protected files and 1035 unrelated accepted files remain unchanged.
+      This worker-only task adds no UI and makes no physical-device certification claim.
+    - Standalone operation and PaperWorkShell data ownership are preserved, with no sibling dependency,
+      adapter or shared service and no new proved release-interface fact. PWS-0606 is now ready;
+      independent verification, publication and release approval remain PWS-0606 through PWS-0608.
 - id: PWS-0606
   milestone: M6
   title: Implement multi-method redaction verification suite
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0601
@@ -4540,17 +4807,94 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-10-17'
+    revision: working-tree-sha256:4f4bd6e064370fb2453cd532c0dffd2de8c3ebb2fb107266b8e72307b99d226b
+    commands:
+    - python -m tools.dev format-check [original broad snapshot] - pass
+    - python -m tools.dev lint [original broad snapshot] - pass
+    - python -m tools.dev typecheck [original broad snapshot] - pass
+    - python -m tools.dev check-import-boundaries [original broad snapshot] - pass
+    - python -m tools.dev test-unit [original broad snapshot] - 6,276 passed; sole stale-bundle test passed
+      on targeted retry (6,277 unit cases verified)
+    - python -m tools.dev test-security [original broad snapshot] - 927 passed, 6 skipped in 407.69s (0:06:47)
+    - 'python -m tools.dev test-integration [original broad snapshot] - FAIL retained: 1 failed, 572 passed,
+      6 skipped in 5420.40s (1:30:20)'
+    - python -m tools.dev test-accessibility [original broad snapshot] - 101 passed in 10.50s
+    - python -m tools.dev validate-fixtures [original broad snapshot] - pass
+    - python -m tools.dev scan-secrets [original broad snapshot] - pass
+    - python -m tools.dev validate-schemas [original broad snapshot] - pass
+    - python -m tools.dev validate-task-graph [original broad snapshot] - pass
+    - python -m tools.dev validate-docs [original broad snapshot] - pass
+    - python -m tools.dev validate-portfolio-boundary [original broad snapshot] - pass
+    - python -m tools.dev validate-dependencies [original broad snapshot] - pass
+    - python -m tools.dev validate-pillow-runtime [original broad snapshot] - pass
+    - python -m tools.dev validate-m1-benchmark-report [original broad snapshot] - pass
+    - python -m tools.dev validate-pws0208-resource-workload [original broad snapshot] - pass
+    - python -m tools.dev validate-pdf-renderer-benchmark [original broad snapshot] - pass
+    - python -m tools.dev quality-self-test [original broad snapshot] - pass
+    - python -m tools.dev format-check [corrected snapshot; selection=] - pass
+    - python -m tools.dev lint [corrected snapshot; selection=] - pass
+    - python -m tools.dev typecheck [corrected snapshot; selection=] - pass
+    - python -m tools.dev check-import-boundaries [corrected snapshot; selection=] - pass
+    - python -m tools.dev test-unit [corrected snapshot; selection=] - 6284 passed in 951.01s (0:15:51)
+    - python -m tools.dev test-security [corrected snapshot; selection=] - 968 passed, 6 skipped in 407.11s
+      (0:06:47)
+    - python -m tools.dev test-integration [corrected snapshot; selection=-k "redaction_verification or
+      native_private_reconstruction_cancel_timeout_limits_termination_and_recovery"] - 6 passed, 573 deselected
+      in 164.76s (0:02:44)
+    - python -m tools.dev test-accessibility [corrected snapshot; selection=] - 101 passed in 6.35s
+    - python -m tools.dev validate-fixtures [corrected snapshot; selection=] - pass
+    - python -m tools.dev scan-secrets [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-schemas [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-task-graph [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-docs [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-portfolio-boundary [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-dependencies [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-pillow-runtime [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-m1-benchmark-report [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-pws0208-resource-workload [corrected snapshot; selection=] - pass
+    - python -m tools.dev validate-pdf-renderer-benchmark [corrected snapshot; selection=] - pass
+    - python -m tools.dev quality-self-test [corrected snapshot; selection=] - pass
+    - tools.pws0606_viewer_resave verify - all ten exact actual files and internal full resaves pass built-in
+      methods; strict original canonical packet recheck passes
+    - Retained native OCR validation - passed all 160 actual artifact-pages and unchanged source/code/runtime
+      bindings; no human repetition
+    - Final metadata validators and bounded raw/path/alias secret scan - passed after canonical refresh
+    notes:
+    - Private verifier and complete adversarial corpus satisfy PWS-0606. All five human slots and ten actual
+      save/resave artifacts have current built-in, independent OCR and named-reader evidence; see docs/development/pws0606-result.md
+      and tracked matrix.
+    - Explicit viewer-resave profile proves original linearization/xref/object/hint structure and closed
+      inert metadata; canonical export profile stays strict. Unknown carriers, earlier revisions, auxiliary
+      aliases, changed geometry and recovered probes fail closed.
+    - Append-only viewer-verification receipts preserve earlier canonical failures. Existing human observations,
+      preparation, pinned accepted helper and actual files remain unchanged. The new exact-file matrix is
+      output/pws0606-adobe/actual-file-method-matrix-v1.json with SHA-256 ce4aa34996c723966bf7f497ce3ae5ab6c90dadcda4ef96c454ede264f86a267.
+    - Independent OCR receipt remains bound to the ten actual reader files. Internal qpdf resaves do not
+      inherit human/OCR facts; absent external runners remain unknown and release_ready remains false. PWS-0607
+      composes production export authority and PWS-0608 independently approves release.
+    - The maintainer rejected the near-40-step workload. AGENTS 9.2 and human-testing.md require straightforward,
+      easy whole sessions with total action/time review and mechanical automation before handoff. Accepted
+      evidence is not repeated for ergonomics, and unchanged versions need no re-entry.
+    - Broad quality results retain their original frozen-files.json source binding, including the original
+      one-node native FAIL from an incomplete final private-temp sample. failure-analysis-v1.json records
+      only that observed symptom with unknown root cause and binds the successful exact-node unchanged-source
+      retry. Its fresh complete measurement does not erase the earlier unknown. The unit-proven ACK ordering
+      bug is separate. Four corrected source/test files received current whole unit/security/accessibility
+      and all other stable checks plus six affected native cases, including the exact earlier failed node.
+      The original full integration run is not relabeled PASS or claimed on corrected bytes. Sampler code,
+      budgets and failure rules are unchanged. See source-correction.json and corrected-files.json under
+      output/pws0606-adobe.
+    - No product UI, worker/export capability, sibling dependency, data-location or proved release-interface
+      fact changes. Permanent-removal export remains disabled pending PWS-0607/PWS-0608; PWS-0607 is now
+      ready.
 - id: PWS-0607
   milestone: M6
   title: Block unsafe redaction export and generate user/audit reports
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0602
@@ -4582,17 +4926,80 @@ tasks:
   - ux
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-01'
+    revision: working-tree-sha256:d7995f513f66b38dd78d61ffb4a1c07c343b0973f97d3ad0f25925dd8a1cd7d8
+    commands:
+    - python -m tools.dev format-check; lint; typecheck; check-import-boundaries - passed on the corrected
+      frozen snapshot; 758 Python files, 13 layers and 272 production source files
+    - python -m tools.dev test-unit - passed; all 6488 tests in 669.20 seconds, no skips
+    - python -m tools.dev test-security - passed; 973 tests and six existing Windows link-capability
+      skips in 373.20 seconds; no new skip
+    - python -m tools.dev test-accessibility - passed; all 108 tests in 6.85 seconds
+    - python -m tools.dev test-integration with exact redaction_export/redaction_verification/quality_entry_points
+      selection - passed; all eight tests, no skips, 572 deselected, 164.32 seconds; exact new composed
+      native node PASSED
+    - python -m tools.dev validate-fixtures - passed; 60 public synthetic fixtures, 15 analytical, six
+      transform and three overlay references; 3249 historical blobs, 1084 index blobs and all 1115 frozen
+      working files
+    - python -m tools.dev scan-secrets - passed; 3249 historical blobs, 320 commit/tag objects, 3286
+      historical path/blob pairs, 1084 index blobs and all 1115 frozen working files
+    - python -m tools.dev validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary;
+      validate-dependencies; validate-pillow-runtime; validate-m1-benchmark-report; validate-pws0208-resource-workload;
+      validate-pdf-renderer-benchmark; quality-self-test - all passed
+    - Existing quality evaluator record/validate at isolated source checkpoint daca054081816982da229a5c024c39cca37412e4
+      and exact JSON comparison - passed; only bound revision changed, all corpus/profile/resource settings
+      and measurements preserved
+    - Signed-source/intent/provenance/candidate/method bypasses, fresh retry, prior-output preservation,
+      source-error mapping, exception suppression, scratch identity/lifetime, low-disk/output/temp exhaustion
+      and recovery regressions - passed; source-error and consumed-pin regressions failed before their
+      fixes
+    - Synthetic private derivative render inspection and preservation audit - passed; visible control
+      retained, intended region masked, built-in methods pass and independent OCR/viewers remain unknown;
+      all 1081 unrelated inherited accepted files unchanged
+    - Final completion metadata schema/graph/docs/portfolio validation, bounded raw/path/alias secret
+      checks and git diff --check - passed before publishing closure metadata
+    notes:
+    - Private worker preparation binds immutable original and reviewed removal intent through reconstruction,
+      sanitization and canonical verification to an opaque broker-owned exact-byte candidate. Final
+      coordination requires every method, current manifest/CAS, retained source and fresh buffer/report
+      authentication; no report, UI flag or caller boolean can approve release.
+    - User/audit reports expose affected internal page IDs, method/status/code facts and unsigned derivative
+      status only. Existing blocked-export workflows offer accessible current-mark review after exact
+      operation completion and package-lease release. Saved marks stay unapplied; ordinary, alternate,
+      compressed, ZIP and prepared export blockers remain active.
+    - Current private preparation supports one affected PDF page with bounded unfiltered/single-Flate
+      content/image/Form payloads, without regenerated OCR. Multiple active pages, overlays, unsupported
+      cleanup and filters fail closed. Actual independent OCR/viewer methods remain unknown and invented
+      passes are rejected; these exact candidates cannot be published.
+    - Native integration proved scratch ancestor metadata denial. A sealed local capability authenticates
+      the existing retained directory pin and fresh non-reparse identity probes around methods/resave/cleanup;
+      default ancestry checks, parent ACLs and budgets are unchanged. Consumed-pin ownership prevents
+      repeated cleanup from closing a reused numeric handle.
+    - 'Initial native failures and causal probe remain retained. The first broad unit run also remains
+      FAIL: one stale quality-record index binding plus eight setup errors from the absent already-pinned
+      renderer-evaluation dev group, with 6479 passed tests. After the observer finished, five task-owned
+      files received only canonical CRLF-to-LF normalization, the quality record changed only revision,
+      and the existing locked dev group was installed. The fresh entire unit/security/accessibility
+      and affected native runs all passed; no earlier result is relabeled.'
+    - Corrected QA inventory SHA-256 533cfe1cf77a4608f4d825330ceb1032ffffe829ee129a572961319a4c24d272
+      binds 1115 tested files. The evidence revision identifies the final 1111-file implementation inventory
+      excluding four completion metadata paths. Receipts, retained failure epochs, source checkpoint,
+      complete file list and precise support limits are in docs/development/pws0607-result.md and output/pws0607.
+    - Original branch/index and unrelated maintainer work remain preserved; the local verification checkpoint
+      is retained only under refs/codex/pws0607-verification-source. Original documents, accepted human/reader
+      observations, fixture/golden bytes, dependency pins, released schema meanings, resource policy
+      and standalone data ownership are unchanged. No human repetition, new NVDA/physical-device certification
+      or packaged-release claim is made.
+    - No sibling dependency, adapter, shared service or proved release-interface fact is introduced.
+      PWS-0607 is done and PWS-0608 is ready; permanent-removal publication remains disabled pending
+      independent release approval.
 - id: PWS-0608
   milestone: M6
   title: Run independent permanent-redaction release gate
   kind: gate
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0601
@@ -4607,8 +5014,8 @@ tasks:
   - PWS-D023
   - PWS-D029
   - PWS-D040
-  objective: Approve permanent redaction only after the complete adversarial suite and an independent security review
-    find no release-blocking recovery path.
+  objective: Approve permanent redaction only after the complete adversarial suite and an independent security
+    review find no release-blocking recovery path.
   deliverables:
   - Milestone 6 gate report
   - Full adversarial test results
@@ -4631,17 +5038,96 @@ tasks:
   - security
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-01'
+    revision: working-tree-sha256:7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9
+    commands:
+    - 'historical14d: python -m tools.dev check-import-boundaries — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev format-check — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev test-integration; PYTEST_ADDOPTS=-vv -k "redaction or removal or organizer
+      or desktop or quality_entry_points" — 46 passed, 537 deselected in 1993.23s (0:33:13); source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev lint — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev test-integration; PYTEST_ADDOPTS=-vv -k "native_composed_prepare or
+      real_runtime_checks_and_destination" — 4 passed, 579 deselected in 341.61s (0:05:41); source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev quality-self-test — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev scan-secrets — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev test-accessibility — 109 passed in 12.01s; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev test-security — 973 passed, 6 skipped in 500.53s (0:08:20); source
+      14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev test-unit — 6612 passed in 1194.08s (0:19:54); source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev typecheck — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-dependencies — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-docs — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-fixtures — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-m1-benchmark-report — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-pdf-renderer-benchmark — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-pillow-runtime — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-portfolio-boundary — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-pws0208-resource-workload — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-schemas — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'historical14d: python -m tools.dev validate-task-graph — PASS; source 14d3a5255112ba1c484173f918dd971e68b735046551e854cb0a34f0eb860843'
+    - 'preenable: python -m tools.dev check-import-boundaries — PASS; source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'preenable: python -m tools.dev test-unit; PYTEST_ADDOPTS=-vv -k "redaction or removal or pws0606 or import_boundaries
+      or resource_policy" — 1206 passed, 5421 deselected in 137.57s (0:02:17); source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'preenable: python -m tools.dev test-security; PYTEST_ADDOPTS=-vv -k "redaction or removal" — 279 passed,
+      730 deselected in 97.66s (0:01:37); source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'preenable: python -m tools.dev format-check — PASS; source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'preenable: python -m tools.dev lint — PASS; source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'preenable: python -m tools.dev test-accessibility — 114 passed in 10.49s; source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'preenable: python -m tools.dev typecheck — PASS; source 52a84b566b54b1c5e28cf9f9d7dbee95dbc41f3eabfad47e11f343265324091e'
+    - 'approved: python -m tools.dev check-import-boundaries — PASS; source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'approved: python -m tools.dev test-unit; PYTEST_ADDOPTS=-vv -k "redaction or removal or pws0606 or import_boundaries
+      or resource_policy" — 1219 passed, 5421 deselected in 133.45s (0:02:13); source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'approved: python -m tools.dev test-security; PYTEST_ADDOPTS=-vv -k "redaction or removal" — 280 passed,
+      730 deselected in 97.76s (0:01:37); source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'approved: python -m tools.dev format-check — PASS; source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'approved: python -m tools.dev lint — PASS; source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'approved: python -m tools.dev test-accessibility — 114 passed in 7.37s; source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'approved: python -m tools.dev typecheck — PASS; source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - 'Actual unpatched native harness argv: ["C:\\projects\\PaperWorkShell\\output\\pws0608-repair\\verification\\.venv\\Scripts\\python.exe",
+      "C:\\projects\\PaperWorkShell\\output\\pws0608-repair\\native-desktop-route-v3.py", "--repository", "C:\\projects\\PaperWorkShell\\output\\pws0608-repair\\verification",
+      "--output", "C:\\projects\\PaperWorkShell\\output\\pws0608-repair\\verified-native-desktop-plain"]; PASS;
+      source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9'
+    - python -m tools.pws0606_viewer_resave verify/status — PASS; five slots; source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9;
+      receipts output/pws0608-repair/verified-viewer-inspection.json / output/pws0608-repair/verified-viewer-status-v3.json
+    - Retained exact-file OCR static/hash noninterference attestation — PASS; no new recognition or candidate
+      coverage; output/pws0608-repair/ocr-noninterference-attestation-v1-01.json
+    notes:
+    - Independent final approval output/pws0608-repair/independent-final-source-approval-v1.json binds approved
+      source 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9. First gate FAIL and all earlier
+      failures remain retained in docs/development/pws0608-result.md and output receipts.
+    - The explicit redaction-runtime-verification-v1 profile requires five built-in methods (objects/revisions/features,
+      text extraction, image extraction, rendering and fresh full resave) plus the fixed private English (eng)
+      OCR audit on the exact candidate and full resave. All six must pass. The output stays image-only, with
+      no regenerated searchable text. Named-viewer testimony for this new file remains UNKNOWN; compatibility
+      is mandatory release-profile qualification, not invented per-file observation. The original canonical/viewer
+      version-1 profiles retain all-seven release_ready semantics.
+    - 'Actual unpatched approved native proof: output/pws0608-repair/verified-native-desktop-plain.json; UI/NVDA:
+      output/pws0608-repair/native-success-ui-nvda-observations-v2.json; current viewer/OCR: output/pws0608-repair/verified-viewer-status-v3.json
+      / output/pws0608-repair/ocr-noninterference-attestation-v1-01.json.'
+    - Closure inventory/results are external final-files.json and final-closure-validation.json; metadata must
+      pass before publication. No downstream self-hash embedded.
+    - PaperWorkShell remains standalone and owns its private case/document/OCR/removal data. No sibling dependency,
+      adapter, shared SDK/service/store, migration or data-location change is introduced. Under PWS-D040 this
+      is M6 source-tree qualification; M7/M8 and public packaged v1.0 are pending, and release-interface facts
+      remain draft/TBD. Bundle0.2.46 updates planning documentation only.
+    - Destination uncertainty is latched before context unwind and remains UNCERTAIN with no automatic retry
+      across closer failures or exception suppression. A confirmed committed derivative stays committed; it is
+      not relabelled as unpublished when later cleanup fails. Private worker cleanup before publication still
+      blocks publication on failure. These distinct states are covered by current source-bound service regressions;
+      no new error codes or schema meanings are introduced.
+    - Actual agent-operated NVDA output covered automatic completion in the actual owned modal at 100% and a
+      standalone native result at 200%, status/details Tab access, read-only identification, recovery controls
+      and Escape/focus return. These are not human audibility or new named-viewer observations. Control+End did
+      not demonstrate final-text scrolling during the observed interaction; detailed caret/shortcut behavior
+      is not certified and remains an observation for the PWS-0701 keyboard audit, not an asserted defect or
+      an extra change to that task.
 - id: PWS-0701
   milestone: M7
   title: Complete keyboard navigation and focus audit
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0608
@@ -4667,33 +5153,112 @@ tasks:
   - ui
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-02'
+    revision: working-tree-sha256:08f4c19118ad204ffdcfcfa07ec543305f918c5e2fdf2ca82fefbc8a340fcb11
+    commands:
+    - 'INITIAL REVIEW: python -m tools.dev format-check — PASS; 779 Python files formatted'
+    - 'INITIAL REVIEW: python -m tools.dev lint — PASS'
+    - 'INITIAL REVIEW: python -m tools.dev typecheck — PASS; 779 source files'
+    - 'INITIAL REVIEW: python -m tools.dev check-import-boundaries — PASS; 13 layers / 277 Python source files'
+    - 'INITIAL REVIEW: python -m tools.dev test-accessibility — PASS; 187 cases after pure alias-test placement
+      correction'
+    - 'INITIAL REVIEW: python -m tools.dev test-unit — PASS in complete source-bound QA; 6649 passed in 776.79
+      s, no selection/skips'
+    - 'INITIAL REVIEW: python -m tools.dev test-integration — selected lifecycle/persistence/quality-entry cases
+      PASS; 16 passed, 567 deselected'
+    - 'INITIAL REVIEW: python -m tools.dev test-security — selected overlay/organizer/removal-intent privacy cases
+      PASS; 20 passed, 990 deselected'
+    - 'INITIAL REVIEW: python -m tools.dev scan-secrets — FAIL in complete own-ref source-bound QA; SECRET_SCAN_INPUT_TOO_LARGE
+      / unchanged 512 MiB logical-work limit'
+    - 'INITIAL REVIEW: python -B output/pws0701/post_native_audit_v6.py --run-after-native-exit — PRESERVATION_PASS;
+      no owned native processes/journals, originals preserved and case temps empty'
+    - 'INITIAL REVIEW: python -m tools.dev validate-schemas — PASS; final metadata and exact closure hashes recorded
+      separately'
+    - 'INITIAL REVIEW: python -m tools.dev validate-task-graph — PASS; final metadata and exact closure hashes
+      recorded separately'
+    - 'INITIAL REVIEW: python -m tools.dev validate-docs — PASS; final metadata and exact closure hashes recorded
+      separately'
+    - 'INITIAL REVIEW: python -m tools.dev validate-portfolio-boundary — PASS; final metadata and exact closure
+      hashes recorded separately'
+    - 'INITIAL REVIEW: git diff --check — PASS; inherited CRLF warning preserved without normalizing the unrelated
+      document'
+    - 'CLOSURE: python -m tools.dev test-accessibility — PASS; full 187 cases at frozen final code'
+    - 'CLOSURE: python -m tools.dev test-security; -k secret_scanning — PASS; complete scanner module at exact
+      final bytes, with source/Git guards'
+    - 'CLOSURE: python -m tools.dev test-unit; -k "dev_commands or import_boundaries or validate_tasks" — PASS;
+      146 cases / 16 subtests in genuine source-bound QA'
+    - 'CLOSURE: python -m tools.dev quality-self-test — PASS'
+    - 'CLOSURE: python -m tools.dev scan-secrets — PASS; actual canonical root, every ref/index/tracked and nonignored
+      untracked source, 284.029s; unchanged 512 MiB limit'
+    - 'CLOSURE: python -B output/pws0701-closure/post_native_audit.py --run-after-native-exit — POST_NATIVE_PRESERVATION_PASS'
+    notes:
+    - 'COMPLETED CLOSURE: Main16 real three-source inspection and four-page Combined PDF plus native Save summary/cancel/retry/focus
+      return passed through normal controls. New immutable record has 70 input API calls, 15 observations and
+      zero pointer actions; original45 record unchanged. No processing/security/budget change or Main12 Separate
+      success is claimed. Strict audit bound PDF/summary/originals, zero processes/journals/temps. Exact-final
+      scanner tests and genuine full canonical-root scan pass after duplicate Git reads were removed; all prior
+      failures remain historical. Completion metadata is authenticated/validated/scanned separately after the
+      complete scan input epoch. See updated result and audit for scope/receipts.'
+    - 'Historical initial-review note: Keyboard guide/inventory and focus/shortcut/report-navigation repairs are
+      implemented, including exact known package-error rebuilding and a pure domain error contract with unchanged
+      public export aliases. Unknown errors remain generic; no raw exception text is displayed.'
+    - 'Historical initial-review note: Full source-bound QA production checkpoint 13bea12d8d843155b2b8452a7ef1c4f440e9b6b4,
+      genuine baseline evidence f29a8ab4c6c6e891b950c5e149e23029df379448 and test-only HEAD 08a578ffdac46a52d65bcca9930e2d0e0dd11e2b.
+      The unchanged recorder changed only the baseline revision; all measured facts match. Root original baseline/HEAD/index/refs
+      and unrelated accepted M6 work are preserved.'
+    - 'Historical initial-review note: Full unit receipt output/pws0701-qa/verification-final-source-v5/test-unit-final-v5-1.json
+      SHA256 908606866934fe447aeeadfdba2fd9f0b3adf48f78b60d0e2275ea0f65a40b95; full scan receipt scan-secrets-final-v5-1.json
+      SHA256 424dd75a495032a01a303b85abc17d0bb15eaeb05afbbecc1801be85cda678c6. Both commands passed all 10 before
+      / 6 after source/Git guards. Original failed and scoped historical receipts remain distinct.'
+    - 'Historical initial-review note: Agent-native audit complete_with_problems: 45 historical observations preserved,
+      369 measured API inputs / zero pointer actions. Add/organize/scan cancellation/Fill/checklist/quality navigation,
+      ordinary verified one-page PDF and gated Protect derivative/report/reopen have exact observations. No human/NVDA,
+      external-viewer or portal acceptance claim.'
+    - 'Historical initial-review note: Main package completion and native Save summary remain UNMET. Mixed image+PDF-overlay
+      Combined routing is unsupported by pure planning; supported Separate planning preserved all four pages and
+      mark, but actual 48-/47-/30-distribution whole-app attempts timed out. Final runtime-only attempt reached
+      4/4 producer progress, then timeout; fresh destinations were empty. No terminal summary was fabricated and
+      no limits, routing, worker security or history scope were weakened.'
+    - 'Historical initial-review note: Copied-profile startup correctly rejected inherited Windows permissions;
+      normal public workspace selection reopened the existing secured synthetic profile. No manual ACL/journal
+      alteration or containment bypass occurred. Earlier inventory APIs may perform normal unpublished-stage cleanup;
+      final preservation audit used strict read-only scandir and Python -B.'
+    - 'Historical initial-review note: The original 130–180 input / 12–18 active-minute estimate is withdrawn.
+      The helper remains agent-only; future human/NVDA handoff requires redesigned, frozen, measured and resumable
+      policy-compliant tooling without repeating valid earlier observations.'
+    - 'Historical initial-review note: Final metadata/schema/task-graph/docs/portfolio and scoped fifteen-path
+      closure outcomes are recorded in output/pws0701/closure-validation-v1.json, bound to exact canonical hashes.
+      Scoped scanning does not waive the failed required full scan.'
+    - 'Historical initial-review note: See docs/development/pws0701-result.md and docs/accessibility/pws-0701-keyboard-audit.md.
+      Status review, completed_at null; PWS-0702/PWS-0703 remain planned. Next dependency-ready unfinished task
+      is PWS-0701 for package/summary and complete-scan closure. Standalone operation, private data ownership
+      and release-interface TBD facts are unchanged.'
+    - 'Current task graph: PWS-0701 done; PWS-0702/PWS-0703 ready; next PWS-0702. Historical notes below/above
+      describe their original review epochs and are retained as provenance. Root Git/index/refs/baseline and unrelated
+      work remain preserved. Standalone data ownership and draft release-interface facts unchanged.'
 - id: PWS-0702
   milestone: M7
   title: Complete screen-reader names, state, and announcements
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0701
   decision_refs:
   - PWS-D030
   - PWS-D037
-  objective: Make the full workflow meaningful in NVDA through names, roles, states, descriptions, reading order,
-    and progress/error announcements.
+  objective: Make the full workflow meaningful in NVDA through names, roles, states, descriptions, reading
+    order, and progress/error announcements.
   deliverables:
   - Accessible-name/state audit
   - Progress, cancellation, completion, warning, and error announcement layer
   - Document/page/checklist/overlay semantic descriptions
   - NVDA scenario script and findings log
   acceptance_criteria:
-  - NVDA identifies the selected case, document/page, checklist status, overlay type/state, preflight finding, and
-    export result.
+  - NVDA identifies the selected case, document/page, checklist status, overlay type/state, preflight
+    finding, and export result.
   - Long-running progress and cancellation are announced without excessive repetition.
   - Errors place focus on or link to actionable recovery.
   - No essential information is available only visually.
@@ -4705,17 +5270,54 @@ tasks:
   - screen-reader
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-02'
+    revision: 611b764b4c66113cfe400f964d26e6f6fbe51c7b
+    commands:
+    - python tools/dev.py format; lint; typecheck — PASS, 786 files
+    - python tools/dev.py check-import-boundaries — PASS, 13 layers / 278 modules
+    - python tools/dev.py test-accessibility — PASS, 209 passed, no skips or selection
+    - python -B -m tools.dev test-unit — PASS in genuine source-bound QA, 6689 passed, no skips or selection;
+      full receipt SHA256 9fcfc210c1f4d0df39879f3a06ce2a38038a75943d1b2b24f4b085ab60070b01
+    - python tools/dev.py test-security — selected privacy checks PASS, 20 passed / 991 deselected; selector
+      in completion report
+    - python tools/dev.py test-integration — selected organizer/quality lifecycle PASS, 15 passed / 568
+      deselected; selector in completion report
+    - python tools/dev.py validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary
+      — PASS at frozen implementation; final metadata receipt output/pws0702-finalize/metadata-validation.json
+    - python tools/dev.py scan-secrets — full canonical-root PASS at frozen final production source; all
+      refs/history/index/working paths retained, unchanged rules/budgets; final metadata-inclusive receipt
+      output/pws0702-finalize/final-scan.json
+    notes:
+    - Typed bounded case/document/page/crop/overlay/removal-state semantics, current native status names
+      and bounded progress/cancel/outcome events. Stable safe errors focus enabled recovery actions. Five
+      editor-launch and stale-error regressions failed before repair and pass in final Qt suite.
+    - 'Actual agent-operated NVDA six-phase cumulative coverage: original unchanged v2 success observations
+      retained under exact limited AST/raw-source proof; final-source v4 recorder four observed areas
+      in fresh ordinary v5 runtime. No old pass copied into new records; current per-attempt status still
+      incomplete two phases. Cumulative index output/pws0702-screen-reader/native-cumulative-coverage-index-v2.json
+      SHA256 a6badd6cb59240973e28c45f3792b9fc0a654e9a79379ad288675877d7bf1fc1.'
+    - Actual import cancellation terminal outcome, unavailable-source recovery, scan/OCR readiness, checklist/preflight
+      meaning, normal four-page export and Save summary heard in NVDA. New PDF SHA256 9719fb9c9369b3cc318677302cd74d5d1ecb8a35b1a9076a5a10a62d96350eca
+      independently reopened/checked/rendered/visually inspected; displayed summary exactly matches saved
+      6069-byte file. No human, parser-rejection, PDF/UA, named-device or universal-reader claim.
+    - Full QA checkpoint is genuine source-bound evidence, not a root commit. Evidence checkpoint 59c23c9ba34968c448799e172255e673c95ff34e
+      changes only baseline revision; original corpus/metrics and root baseline/index/HEAD/refs/unrelated
+      bytes preserved by before/after guards. Initial root full unit FAIL 6688 passed / 1 inherited baseline-binding
+      failure remains recorded; no suppression.
+    - Original multi-source export problem and both source-changing scan failures remain failures. New
+      supported single-source packet success does not qualify that composition. Slow contained setup and
+      composition remain PWS-0807 qualification observations; no dependency, resource/security policy,
+      fixture/golden, ownership, standalone or release-interface fact changed.
+    - See docs/development/pws0702-result.md and docs/accessibility/pws-0702-nvda-audit.md. PWS-0702 done;
+      PWS-0705 newly ready and next by P0 critical path, PWS-0703 also ready. Final metadata-inclusive
+      validators/scan and exact hashes are external closure receipts to avoid circular evidence.
 - id: PWS-0703
   milestone: M7
   title: Harden scaling, contrast, target size, and reduced motion
   kind: implementation
   priority: P1
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0701
@@ -4742,17 +5344,55 @@ tasks:
   - visual-design
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-02'
+    revision: 2d455183414797ca79bf0fa3f74a1991993b869a
+    commands:
+    - python tools/dev.py format; lint; typecheck; check-import-boundaries - PASS; 804 Python surfaces,
+      13 layers / 284 source modules
+    - python tools/dev.py test-accessibility - PASS; full 250 tests, no skips or selection
+    - python tools/dev.py test-unit in genuine exact-source QA - PASS; full 6817 tests in 955.37 seconds,
+      no skips or selection; receipt SHA256 bc8367d684664f7e51b956be17e3fafbc4d43e088d372221a7b3e5a87ebfca40
+    - python tools/dev.py test-integration with organizer_ui_lifecycle or quality_entry_points - PASS; 15
+      tests / 587 deselected
+    - python tools/dev.py test-security with seven affected privacy modules - PASS; 41 tests / 978 deselected;
+      exact selector in completion report
+    - Complete scanner security module - PASS; 52 tests / 47 subtests; final affected five cases / four
+      subtests PASS after test-only loop-binding correction
+    - python tools/dev.py scan-secrets - full canonical-root PASS in 312.14 seconds, source unchanged; 3347
+      historical blobs, 330 commit/tag objects, 3393 historical path/blob pairs, 1012 index blobs, 1043
+      tracked and 159 nonignored untracked files
+    - python tools/dev.py validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary;
+      quality-self-test; git diff --check - PASS at frozen source; completion-only metadata validated separately
+    notes:
+    - Scalable native-palette targets, wrapping workflow/editor actions, stacked footers and wrapped confirmations;
+      keyboard/recovery focus remains visible. Static activity replaces indeterminate marquees and decorative
+      Qt effects are always reduced. Existing bounded scan rasters fit without another scaled bitmap.
+    - Rendered regressions and agent-operated synthetic native Windows reviews cover Qt DPR 1/1.5/2, enlarged
+      text, dark/light palettes, live palette transitions and static activity/cancel reachability. Final
+      live transitions retain focus and every measured main button remains at least 32 by 32 logical pixels.
+      No human NVDA, actual OS-settings, packaged-build or physical-device claim.
+    - Initial menu contrast, stale palette, post-theme 184-by-16 target, footer/target regressions and original
+      scanner limit failure remain historical failures. The first full unit epoch was safely stopped for
+      repair and is not a pass; its before/after preservation guards passed.
+    - Required full scanner was unblocked by removing 8146703 bytes of real duplicate immutable Git reads
+      within unchanged batches. Every original/alias path, unconditional raw scan, rule, ignore policy,
+      ref/state check and existing budget is preserved; no content cache. Independent review and exact/one-byte-short
+      budget regressions passed.
+    - Genuine QA source checkpoint 2d455183414797ca79bf0fa3f74a1991993b869a and evidence-only checkpoint
+      bfafe3b04f45d3ef340e6e5850be58f4c89a961d are isolated local evidence, not root commits. All five initial
+      and both final guards preserve root source, raw Git/index/refs, original baseline and unrelated bytes.
+      Candidate baseline changes only revision; corpus, metrics, profiles and resources remain identical.
+    - See docs/development/pws0703-result.md and docs/accessibility/pws-0703-display-audit.md. Standalone
+      operation, private data ownership and draft release-interface facts are unchanged. PWS-0704 newly
+      ready; PWS-0705 remains in review with its prior qualification failures and native-review requirements
+      preserved.
 - id: PWS-0704
   milestone: M7
   title: Implement localization framework and right-to-left preparation
   kind: implementation
   priority: P1
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0408
@@ -4781,17 +5421,52 @@ tasks:
   - accessibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-02'
+    revision: 008431018f228dcbc1355dab4258c1e62e8e1f31
+    commands:
+    - python tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed; 814 Python surfaces,
+      14 layers and 288 source modules
+    - python tools/dev.py validate-localization - passed; 2706 messages, three complete versioned catalogs
+      and placeholder/code/Qt-progress syntax checks
+    - python tools/dev.py test-unit in final isolated QA - passed; all 6937 cases in 922.31 seconds with
+      complete source/Git/index/ref preservation guards
+    - python tools/dev.py test-accessibility - passed; all 312 cases; glyph-bearing pseudo/RTL subset 62
+      passed and 15 synthetic screenshots inspected
+    - python tools/dev.py test-security with affected privacy selector - passed; 41 passed, 979 deselected;
+      final registered lifecycle/quality-entry-point integration selector - passed; 15 passed, 587 deselected
+    - python tools/dev.py validate-schemas; validate-task-graph; validate-docs; validate-portfolio-boundary;
+      validate-dependencies; quality-self-test - passed on corrected implementation
+    - python tools/dev.py scan-secrets - passed in 284.98 seconds; 3347 historical blobs, 330 commit/tag
+      objects, 3393 historical path/blob pairs, 1012 index blobs, 1043 tracked working files and 174 nonignored
+      untracked files; unchanged policy and budgets
+    notes:
+    - Externalized primary text, typed display formatting and template prose through bounded stdlib-only
+      JSON catalogs. English default, en-XA expanded text and ar-XB RTL test locale; real language additions/updates
+      require resource data only. Template source bytes, locale/version/hash authority, case/protocol values,
+      user-entered text, output names and document geometry remain unchanged.
+    - Final regressions preserve canonical overlay/highlight vocabulary and support codes, localize dynamic
+      recovery/phase/template/signature prose and fractional numbers, keep repeated coordinate descriptions
+      bounded, and reserve the complete translated dense legend. Keyboard order and physical crop/rotation/arrow
+      mapping pass under RTL at normal/doubled text.
+    - Initial QA preparation LF mismatch, fontless image attempt, four first-broad unit failures and generated
+      hash-inventory secret-scan findings remain recorded. The corrected final full unit run passes all
+      6937 cases; two former single-line tests now verify full accessible wording across wrapped labels.
+      No golden, fixture approval, scanner rule, ignore policy or resource budget was relaxed.
+    - Exact final source QA 008431018f228dcbc1355dab4258c1e62e8e1f31 and evidence-only 3dbe3776e632b82cf4f537b69ea59a179427b4d6
+      preserve root Git/index/refs, the original corpus baseline and unrelated work. Derived quality evidence
+      changes only revision; no historical metric or human outcome was invented. Full final receipt and
+      metadata closure are documented in docs/development/pws0704-result.md.
+    - No dependency/license, document-processing, schema/migration, sibling integration or packaged release-interface
+      change. Synthetic glyph-bearing Qt evidence is not human NVDA/native OS-setting or hardware certification.
+      Natural-language/native/package qualification remains M7/M8; PWS-0705 stays in review and no task
+      is newly unblocked.
 - id: PWS-0705
   milestone: M7
   title: Implement assisted-use consent, lock, and retention policy
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0102
@@ -4822,17 +5497,38 @@ tasks:
   - retention
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    commands:
+    - V6 all 19 QA commands/guards PASS; format 817 files/full accessibility 314 passed (28.32s). Selected
+      unit 174 passed/6818 deselected (17.80s); integration 94/560 (14.69s); privacy 19/1001 (3.98s), no
+      skips. v6-final-qa-summary.json.
+    - Retained v5 full unit 6980 passed (797.81s); selected integration 96 passed/558 deselected (714.97s);
+      privacy 19 passed/1001 deselected (4.09s). Exact unchanged-component proof; no full-v6 suite/native
+      relabel. Actual NVDA policy journey plus separately bound v6 correctedreopen/normalexit observed.
+    - 'Actual approved canonical root: fixture PASS266.80s; scan-secrets PASS246.75s, with all preservation/ACL
+      guards. approved-preservation-validate-fixtures.json; approved-preservation-scan-secrets.json.'
+    completed_at: '2026-11-02'
+    notes:
+    - Explicit maintainer approval executed:25currenttmpfiles/15,775,963bytes and independent historical
+      closure preserved; only authorized internal checkpoint ref changed. No delete/GC/ACL/scanner/allowlist/budget
+      change. Execution and peer closure retain phase proofs, including genuine overlapping stale-original-phase
+      failure.
+    - Source/native qualifications and historical failure counts remain in compact result/audit and preserved
+      r3/prototype receipts. Lost early1/2bindings, v3import scope, idle timing, old unit/integration/security
+      failures and NVDAhelper refusal remain historical. Agent observations are not human/package/hardware/whole-v6
+      certification.
+    - All3apps exited0; reader/loader quit normally; profiles retained; journal empty. Final frozen completion
+      metadata validators/privacy results are external in completion-metadata-terminal-closure.json; report
+      is not circularly rewritten.
+    - 0705done on supplied completion day; all0706deps done so0706ready. Architecture unchanged; bundle0.2.51
+      retained. Standalone ownership preserved. PWS0706 separately owns deletion after verified export.
+    revision: 0fb2f9f549e718eaa25ec3dbfcd312d86c9be8e7
 - id: PWS-0706
   milestone: M7
   title: Implement delete-after-export and accessible companion outputs
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0705
@@ -4864,17 +5560,70 @@ tasks:
   - accessibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-02'
+    revision: working-tree-sha256:bac718af2981b760e16353ea17f703c24ea3636a060a49a8fe9c4f20911a6365
+    commands:
+    - 'Exact owned worktree: tools/dev.py format-check; lint; typecheck; check-import-boundaries - passed;
+      837 Python surfaces, preserved architecture boundaries.'
+    - 'Exact owned worktree: tools/dev.py test-unit - passed; all 7091 tests, no skips, 822.87 seconds.'
+    - 'Exact owned worktree: tools/dev.py test-integration with recorded post_export/text_companion/package_export/case_lifecycle/worker/quality
+      selection - passed; 237 passed, one existing link-capability skip, 446 deselected, 327.71 seconds.
+      Not the full integration suite.'
+    - 'Exact owned worktree: tools/dev.py test-security - passed; 1016 passed, six existing link-capability
+      skips, 404.47 seconds.'
+    - 'Exact owned worktree: tools/dev.py test-accessibility - passed; all 324 tests, no skips, 27.32 seconds.'
+    - 'Exact owned worktree: tools/dev.py validate-fixtures; scan-secrets - passed; 60 synthetic fixtures,
+      15 analytical/six transform/three overlay references, 3516 historical blobs and 1218 current files;
+      278.63/245.52 seconds.'
+    - 'Exact owned worktree: validate-schemas; validate-task-graph; validate-localization; validate-docs;
+      validate-portfolio-boundary; validate-dependencies; validate-pillow-runtime; validate-m1-benchmark-report;
+      validate-pws0208-resource-workload; validate-pdf-renderer-benchmark; quality-self-test - passed. All
+      21 command receipts have identical source-before/source-after hashes.'
+    - Actual desktop-capability restricted-worker PDF/ZIP cropped-text/refusal tests - passed; three serial
+      cases, 58.21 seconds. All pure worker tests passed 1453 cases in 10.97 seconds.
+    - Agent-operated synthetic NVDA review - PASS_SCOPED; saved summary/text, cancelled inventory, explicit
+      actual case removal, retained-output hashes, normal app/NVDA/loader closure. No full-desktop, assisted-controller,
+      human, packaged or hardware certification.
+    - Unchanged quality recorder/validator and canonical unit check in separate real worktree index - passed;
+      baseline JSON changed only revision, every other field identical. Original HEAD/index/refs unchanged.
+    notes:
+    - Reviewed package exports now offer a separate bounded deletion inventory and explicit confirmation
+      plus an optional UTF-8 text companion with initially unchecked privacy consent. All package output
+      modes and approved compression retain exact verified publication authority.
+    - Deletion reauthenticates current manifest/revision/hash, inventory, assisted access and external output
+      bytes; retained files/ancestors stay pinned against replacement. Restart never resumes removal; partial
+      manifest-first removal is reported as unavailable without an automatic destructive retry. External
+      originals and verified exports remain separate; no forensic-erasure claim.
+    - Companion text comes only from exact verified final PDF/ZIP bytes in the restricted worker, never
+      source OCR caches/metadata/attachments. Visible-crop filtering, valid Unicode surrogate pairs/joiners/ligatures,
+      cancellation/timeouts and central resource-policy limits are covered. No OCR rerun or PDF/UA claim.
+    - Locking discards deletion consent and privacy acknowledgement. Closing a locked case never restores
+      its private summary; only a content-free terminal result appears on the chooser. Before-fix locked-summary
+      failures remain retained.
+    - The additive version-1 text capability is explicitly requested; existing default capability lists
+      and extra-known-capability negotiation remain compatible. Source schema meanings, dependencies, golden
+      fixtures and resource budgets are unchanged.
+    - Verified implementation/source metadata hash bac718af2981b760e16353ea17f703c24ea3636a060a49a8fe9c4f20911a6365
+      covers 1057 files and matches canonical root bytes. Owned checkpoint f65602e951e8ef94016fad71101d33e873d9c2ad
+      plus revision-only quality-baseline renewal provides a real separate index; no original-root index-bound
+      full-suite pass is claimed.
+    - Historical evolving-source unit failures, concurrent access-recovery integration failures, early missing-engine
+      fixture problems, initial assertion errors and paused native attempts remain recorded. Final serial
+      results do not relabel them. Windows native-capable lanes share a per-user access journal and must
+      run serially.
+    - Scoped NVDA receipts retain source/helper binding limits and actual agent action/time counts; no earlier
+      human observation is reused as a new pass. Exact task-owned paths, source preservation and terminal
+      canonical metadata results are in docs/development/pws0706-result.md and output/pws0706.
+    - Standalone PaperWorkShell data ownership is preserved; no sibling dependency, adapter, shared service/schema
+      or proved release-interface fact was introduced. Packaged facts remain TBD. PWS-0707 is newly ready
+      and next.
 - id: PWS-0707
   milestone: M7
   title: Run Milestone 7 accessibility and assisted-mode gate
   kind: gate
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0701
@@ -4887,8 +5636,8 @@ tasks:
   - PWS-D030
   - PWS-D031
   - PWS-D037
-  objective: Approve the full workflow for keyboard/NVDA use, scalable/contrast modes, localization readiness, and
-    shared-computer retention/deletion behavior.
+  objective: Approve the full workflow for keyboard/NVDA use, scalable/contrast modes, localization readiness,
+    and shared-computer retention/deletion behavior.
   deliverables:
   - Milestone 7 gate report
   - Full keyboard and NVDA scenario evidence
@@ -4911,17 +5660,85 @@ tasks:
   - assisted-mode
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-02'
+    revision: working-tree-sha256:045a0ed278f234eec0506d967a3bedcce02747edf2cb73df8085286518ce0cc0
+    commands:
+    - tools/dev.py format-check; lint; typecheck; check-import-boundaries - PASS on the final exact-source
+      isolated checkout; 838 Python surfaces, 14 layers and 297 source modules.
+    - tools/dev.py test-unit - PASS; all 7091 tests and 1239 subtests, no selection or skips, 937.29 seconds.
+      Genuine source checkpoint/index and revision-only baseline binding.
+    - tools/dev.py test-accessibility - PASS; all 340 tests, no selection or skips, 35.73 seconds.
+    - tools/dev.py validate-localization - PASS; 2761 messages in three complete catalogs.
+    - tools/dev.py test-integration with assisted_use or post_export or text_companion or organizer_ui_lifecycle
+      - PASS; 62 passed, 622 deselected, no skips, 78.26 seconds.
+    - tools/dev.py test-security with assisted_use or text_companion - PASS; 10 passed, 1012 deselected,
+      no skips, 6.83 seconds.
+    - Selected-row regression - genuine before-fix 8 failed / 4 passed; same 12 core cases plus four empty/invalid-selection
+      fallbacks PASS after repair. Independent source and before-test identity review passed.
+    - Agent-operated current RTL/200-percent/native-palette/NVDA review - PASS_SCOPED_WITH_GEOMETRY_LIMITATION;
+      21 keyboard API calls, zero pointer calls, 10 immediate observations. Real empty-case backend, readable
+      selected case, consent traversal/cancellation and normal case lifecycle; no full new document-pipeline
+      claim.
+    - Post-native preservation - PASS; normal app exit 0 and owned NVDA ordinary quit, identical synthetic
+      case manifest, prior native profiles/evidence and original Git state preserved, recorded owned-process
+      filter empty and access journal empty/absent.
+    - Terminal canonical command outcomes and exact frozen completion-file bindings are recorded separately
+      in output/pws0707/closure-v2/final-01/results.json and the final preservation receipt; this metadata
+      is not circularly rewritten afterward.
+    - .venv/Scripts/python.exe tools/dev.py validate-schemas - PASS in the complete canonical pre-completion
+      epoch; 5.022 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-task-graph - PASS in the complete canonical pre-completion
+      epoch; 2.596 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-docs - PASS in the complete canonical pre-completion
+      epoch; 2.896 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-portfolio-boundary - PASS in the complete canonical
+      pre-completion epoch; 7.788 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-dependencies - PASS in the complete canonical pre-completion
+      epoch; 2.984 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-pillow-runtime - PASS in the complete canonical pre-completion
+      epoch; 2.149 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-m1-benchmark-report - PASS in the complete canonical
+      pre-completion epoch; 2.398 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-pws0208-resource-workload - PASS in the complete
+      canonical pre-completion epoch; 2.172 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-pdf-renderer-benchmark - PASS in the complete canonical
+      pre-completion epoch; 2.304 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py quality-self-test - PASS in the complete canonical pre-completion
+      epoch; 13.108 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py validate-fixtures - PASS in the complete canonical pre-completion
+      epoch; 298.549 seconds; exact input inventory/source/Git unchanged.
+    - .venv/Scripts/python.exe tools/dev.py scan-secrets - PASS in the complete canonical pre-completion
+      epoch; 272.604 seconds; exact input inventory/source/Git unchanged.
+    - git diff --check - PASS in the complete canonical pre-completion epoch; 1.84 seconds; exact input
+      inventory/source/Git unchanged.
+    notes:
+    - M7 source-tree gate approved on cumulative accepted primary keyboard/NVDA, display, localization,
+      assisted policy and actual deletion evidence plus fresh final-source checks and focused native review.
+      Every prerequisite is done. No single uninterrupted current-source workflow or independent human,
+      packaged-build, Windows OS-theme, natural-language translation or hardware certification is claimed.
+    - 'M7-R1 was found by native review: an oversized focused case list hid the selected row above the
+      viewport. Both explicit recovery and deferred focus now reveal current item geometry; current-row
+      changes reuse the bounded existing timer. No selection, data, access grant, parsing, worker policy
+      or export behavior is changed.'
+    - The original green pre-fix QA, ambiguous first native attempt and confirmed failed second attempt
+      remain historical. Native03 geometry01 reported row top -11 and height 46 and is explicitly not
+      a full-rectangle containment pass; manual readable text/focus and later focus-return observations
+      retain their precise scope. Automation snapshots sometimes lagged visible focus.
+    - The exact 1058-file final source map is 045a0ed278f234eec0506d967a3bedcce02747edf2cb73df8085286518ce0cc0.
+      Genuine source checkpoint d1b2797fda7de1ff9df988285ca853da07a569a5 and evidence head 9752af3769e64bcfe9b9ba387f22bb30e86e6e4f89e00b820047b4530d8e5655
+      preserve the original root and retained PWS-0706 index/HEAD/refs and all retained files. The quality
+      baseline changes only revision; no historical measurement is relabelled or rerun.
+    - No dependency, license, schema, migration, golden artifact, product resource budget or portfolio
+      boundary changes. Case data remain PaperWorkShell-owned; no sibling repository/service/adapter or
+      proved release-interface fact was added. Packaged facts and remaining release qualification stay
+      with M8. PWS-0801 is newly ready and next.
 - id: PWS-0801
   milestone: M8
   title: Finalize dependency lock, license inventory, hashes, and SBOM
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0707
@@ -4929,8 +5746,9 @@ tasks:
   decision_refs:
   - PWS-D034
   - PWS-D042
-  objective: Produce a release-grade inventory of runtime/build dependencies, licenses, versions, sources, hashes,
-    transitive components, and exact candidate provenance suitable for the public release evidence index.
+  objective: Produce a release-grade inventory of runtime/build dependencies, licenses, versions, sources,
+    hashes, transitive components, and exact candidate provenance suitable for the public release evidence
+    index.
   deliverables:
   - Final lock data
   - Machine-readable SBOM
@@ -4943,7 +5761,8 @@ tasks:
   - Pinned versions and source hashes match release inputs.
   - Distribution obligations are included in packaging documentation.
   - No unapproved distribution-altering dependency is present.
-  - Installer/package, source revision, dependency lock, SBOM, notices, and published hashes identify one exact candidate.
+  - Installer/package, source revision, dependency lock, SBOM, notices, and published hashes identify
+    one exact candidate.
   - No ThirdLife or sibling product artifact is a PaperWorkShell build, test, or release input.
   verification:
   - Generate SBOM from a clean release environment and compare with packaged contents.
@@ -4955,17 +5774,105 @@ tasks:
   - release
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-03'
+    revision: source-snapshot:2d2f8c4144d4b6c4e33898ec99da91d3f9bd1706232c7ae5c9fd3dbeaca6ed54; tooling:fa4268eb08417ed43021cf7d170e748713439f6df944f44e2fd84146afb0b0c2
+    commands:
+    - Current canonical format-check; lint; typecheck — PASS, 869 Python surfaces. Ten registered boundary/schema/dependency/localization/benchmark/resource/quality
+      contracts and task/portfolio/docs validators PASS. Completion metadata receipts are separate.
+    - Canonical test-unit in verified owned QA source checkpoint 25f43e01efcd659cccd6964a28059ecfe863ef34
+      — PASS, 7396 passed, one existing synthetic-symlink capability skip, 1040.42 seconds; revision-only
+      benchmark binding. Original-root 7352 passes/one historical index-binding failure retained, not
+      relabelled.
+    - Canonical selected native test-integration — 155 passed, one existing capability skip, one original-source
+      launch failure, 1817.52 seconds. Exact failed node passed in scope-verified owned QA, one pass/692
+      deselected/43.17 seconds. Sanitized config.resource_identity diagnosis retained; no guard/ACL relaxation.
+    - Canonical full test-security — PASS, 1158 passed/six existing link-capability skips, 436.43 seconds.
+      Full test-accessibility — PASS, 340 passed, 28.88 seconds. Broad QA predates the final attribution-only
+      tooling delta.
+    - 'Final attribution-only canonical test-security/test-unit — PASS, 31 security plus 111 subtests/two
+      existing capability skips and 15 unit plus 16 subtests. Dedicated regression: 10 failures/one pass
+      before and 11 passes after; independent 78 exact files/60 digests/234 mutation checks PASS.'
+    - 'Isolated prepare/verify: 180 files from eight archives; actual R3 assembly/freeze/reopen; 29 MSYS
+      signatures; official CycloneDX1.6/SPDX2.3 schemas; 13 fresh native runtime smoke steps; exhaustive
+      independent 3,153-file audit — PASS. All 2,414 runtime file/owner/hash identities equal R2.'
+    - Canonical validate-fixtures — PASS, 60 synthetic fixtures; 15 renderer, six image-transform and
+      three overlay references; 3,524 historical blobs; 1,012 index blobs; 2,036 working files after exact-byte
+      attribution fix. Complete canonical source/history scan-secrets PASS; no budget increase or path
+      exclusion.
+    - Independent preservation-v3 — PASS, 1,212 exact pre-existing files plus 14 authorized changed paths
+      of 1,226; no missing/unrelated drift; seven frozen controls, four benchmarks, 27 goldens, original
+      HEAD/index/refs unchanged. Completion metadata epoch is separately audited.
+    - Historical 2026-11-02 audit — tools/dev.py format-check; lint; typecheck - PASS; 842 Python surfaces.
+      Import boundaries PASS; 14 layers and 297 source files. No application module changed.
+    - Historical 2026-11-02 audit — tools/dev.py test-unit with PYTEST_ADDOPTS selecting audit_tesseract_redistribution
+      or validate_dependencies - PASS; 53 passed, 7058 deselected, 66 subtests passed in 40.48 seconds.
+    - Historical 2026-11-02 audit — tools/dev.py test-security with PYTEST_ADDOPTS selecting tesseract_redistribution_audit
+      or dependency_inventory_security - PASS; 52 passed, 992 deselected, 100 subtests passed in 82.10
+      seconds.
+    - Historical 2026-11-02 audit — tools/dev.py test-integration with PYTEST_ADDOPTS selecting tesseract_redistribution_audit
+      - PASS; 3 passed, 684 deselected in 5.02 seconds; real module CLI failure/help paths, no capability
+      skips.
+    - Historical 2026-11-02 audit — python -m tools.audit_tesseract_redistribution --artifacts output/pws0604/tesseract-artifacts
+      - expected rejection; exit 1, blocked RELEASE_DISTRIBUTION_DECISION_REQUIRED after all 30 archives,
+      39 selected members, exact JBIG metadata/license and both PE loader chains were verified.
+    - Historical 2026-11-02 audit — Isolated uv sync --locked --no-dev --no-editable and lxml_subset_probe.py
+      - PASS; exact-resource omission proof, synthetic PDF reopen/syntax and hOCR success/failure, original
+      environment preserved.
+    - Historical 2026-11-02 audit — tools/dev.py validate-schemas; validate-task-graph; validate-dependencies;
+      validate-docs - PASS during the implementation epoch. Final task/bundle closure receipts are recorded
+      separately.
+    - Historical 2026-11-02 audit — tools/dev.py scan-secrets - PASS on the implementation before closure
+      metadata; 3524 historical blobs, 332 commit/tag objects, 3562 historical path/blob pairs, 1012 index
+      blobs, 1043 tracked working files and 183 nonignored untracked files. No scanner policy or budget
+      changed.
+    notes:
+    - Completed 2026-11-03 — exact candidate pws0801-dependency-stage-20261103-r3; 957 components, 3,153
+      files, 622,288,120 expanded bytes, 175 inputs and 32 recipe/review identities. ZIP 502,569,903 bytes
+      SHA-256 e14bd67b4b9e4f5bfb6f21eabbe3dcc7d2a03fe721fde33bbb11a4fb97e1e15d. Candidate inventory, source/lock/tooling
+      identities, notices, both SBOMs and hashes reconcile in docs/release/RELEASE_EVIDENCE.md. No remaining
+      PWS-0801 implementation blocker or deferral.
+    - Scope — internal dependency package under ADR0017 only. Product identity/licence/protective terms,
+      signed installer, clean-machine prerequisites and public release gate remain with existing later
+      owners. Standalone usefulness, case ownership, versions and release-interface draft status are preserved;
+      no sibling artifact/repository/service input. PWS-0802, PWS-0804 and PWS-0805 are newly ready; next
+      task PWS-0802. Original 2026-11-02 blocked result remains byte-identical in docs/development/pws0801-audit-20261102.md.
+    - Accepted QA epochs — owned source checkpoint 25f43e01efcd659cccd6964a28059ecfe863ef34 passed 7396
+      unit checks with one host symlink-capability skip; native selection passed 155 plus one skip and
+      retained one original-source launch failure, then the exact node passed with verified owned-source
+      scope. Full security passed 1158 with six existing capability skips and accessibility passed 340.
+      These broad checks predate the final email-only repository tooling change; its 31 security and 15
+      unit checks pass. Exact runtime files are unchanged and final R3 also has 13 fresh native smoke
+      passes. Historical failures are retained, not relabelled.
+    - Historical notes below retain the initial blocked audit and resumption. Their statements about unfinished
+      SBOM/native work describe those earlier epochs, superseded by the current result and exact candidate
+      table; they are not current blocker or release-approval claims.
+    - Resumed 2026-11-03 after explicit maintainer approval of the exact two-file lxml exclusion proposal.
+      packaging/release-reviews/lxml-exclusions-v1.json records the bounded approval; no rights to the
+      excluded resources or JBIG license waiver are inferred. Historical 2026-11-02 blocker evidence remains
+      in docs/development/pws0801-result.md. Native replacement and full release evidence remain active
+      PWS-0801 work; no later milestone task has started.
+    - Audited 2026-11-02. The narrow offline audit and its 45 new unit/security/CLI tests are delivered,
+      together with the emergency-security-update policy, exact audited-input provenance table and concrete
+      lxml exclusion proposal. This is a blocked implementation audit, not task completion.
+    - The exact OCR audit receipt is output/pws0801/tesseract-redistribution-audit.json, SHA-256 f303f6d19c217272c6136b0ba107e9f50ade874e6e093b60404785192a04268b.
+      The lxml probe receipt is output/pws0801/lxml-subset-probe-receipt.json, SHA-256 abf43bc38bde143c34a6abd33544da111bc165812bd2c56fcb09d458e5b116bb.
+      These local receipts have no private absolute paths and do not substitute for upstream signature
+      verification or rights.
+    - Both SBOM formats, the resolved staging contract, final license/source/relinking bundle, all embedded
+      license routes and exact-candidate reconciliation remain unfinished. The lock, policy inventory
+      and runtime closure are unchanged; no speculative upgrade or license waiver.
+    - Existing uncommitted work, originals, environment and Git state remain preserved. No sibling repository/artifact/service,
+      shared runtime or private data dependency was introduced. Release documents remain draft; installer
+      and signed-candidate facts remain pending with their M8 owners.
+    - No incomplete dependency-ready task remains after this blocker; PWS-0802 remains planned and waits
+      for PWS-0801. The source-tree audit does not claim clean packaged-build or hardware evidence.
 - id: PWS-0802
   milestone: M8
   title: Build Windows installer and signed release artifacts
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: blocked
   critical_path: true
   depends_on:
   - PWS-0801
@@ -4973,25 +5880,27 @@ tasks:
   - PWS-D004
   - PWS-D034
   - PWS-D042
+  - PWS-D043
   objective: Freeze PaperWorkShell's independent application identity, package the application and required engines/resources
-    for Windows without development tools, and sign artifacts through the approved release process.
+    for Windows 11 x64 without development tools, and sign artifacts through the approved release process.
   deliverables:
   - Installer technology ADR and configuration
-  - Stable reverse-domain application ID, publisher, product licence, product version/channel, supported Windows
-    OS/architecture matrix, package identity, and upgrade identity
+  - Stable reverse-domain application ID, publisher, product licence, product version/channel, supported Windows 11 x64
+    edition/build matrix, package identity, and upgrade identity
   - Application/installer build pipeline
   - Code-signing procedure using maintainer-controlled material
   - Install/repair/uninstall test automation where practical
   - Documented privilege, restart, silent-option, rollback, file-association, data-choice, and uninstall-residue behavior
   acceptance_criteria:
-  - A clean Windows machine installs and runs PaperWorkShell without a development environment.
+  - A clean Windows 11 x64 machine installs and runs PaperWorkShell without a development environment.
   - Artifacts are signed by the approved process; private signing material is never committed or exposed to Codex
     logs.
   - Install locations and permissions follow least privilege.
   - Required notices and component versions are available to the user.
   - Application and package identities are stable, independently versioned, and contain no ThirdLife version coupling.
-  - The final product licence and supported Windows editions, builds, and architectures are selected from release-grade
-    evidence and appear consistently in package metadata and release documentation.
+  - The final product licence and Windows 11 x64 edition/build matrix are selected from release-grade
+    evidence and appear consistently in package metadata and release documentation under PWS-D043.
+  - ARM64 support, native ARM64 builds and x64 execution on ARM64 are outside project scope.
   - Normal launch works as a standard user; any elevation is limited to the selected install, repair, update, or removal
     operation.
   - Silent options are documented only when genuinely supported and safe; otherwise they are explicitly unsupported.
@@ -5002,7 +5911,7 @@ tasks:
     and other app-data residue by documented category.
   - Uninstall never deletes an externally selected source document or user-selected export destination.
   verification:
-  - Install, standard-user launch, repair/update as supported, and uninstall on clean Windows test environments.
+  - Install, standard-user launch, repair/update as supported, and uninstall on clean Windows 11 x64 test environments.
   - Exercise preserve-case, explicit-data-removal, reinstall-and-reopen, privilege, restart, rollback, and optional
     file-association paths.
   - Verify signatures and packaged file inventory.
@@ -5011,12 +5920,152 @@ tasks:
   - signing
   - windows
   - release
-  blocker: null
+  blocker:
+    reason: Public-release phase deferred by the maintainer's 2026-11-04 internal-delivery reset;
+      this blocker concerns the original signed public outcome only and does not block PWS-0810.
+      Trusted public signing is not connected. R7 remains the exact preserved accepted baseline.
+      Corrected R9 is built, unsigned/internal, and its independent app-local runtime/rights/source
+      audit passes. Fresh genuine-standard-account x64 native GUI input/edit/quality-OCR/export,
+      Notices, interactive repair, refusal mechanics, review Cancel, confirmed synthetic deletion
+      with a reproducible locked-case failure, and default-preserve removal pass at their recorded
+      scope. R6 full OCR/reopen/reinstall and exact interruption/recovery remain accepted only within
+      the independently audited unchanged boundary; the original R7 GUI failure remains unexplained.
+      Finite A9 full-error and A11 inventory/confirmation/partial-result NVDA reading now pass
+      with disclosed taskbar/caption/native-menu pointer activation followed by keyboard controls;
+      initial context gaps and both failed review supplements remain historical, not relabelled.
+      Strict V3 collection62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c
+      verifies natural install0/review1/preserve0/reader0, all closed/no fallback and exact retained data.
+      Corrected removed record40868e40202cb432850f7577d8afe0ea2e58598d6b3ff43d00b444e5ac036e15
+      and independent case/work archive reviews pass; the disposable guest was retired after backups.
+      Actual bounded packaged low-disk qualification remains unrun. A fresh current-guest probe
+      7339733454b669dc6b048aa510a6cbadafbd0fc4940c2a335584cdea18ae8a2b confirms no usable
+      quota/partition capability. No universal reader reliability, broader Windows build matrix,
+      trusted signature or public-release pass is claimed.
+    evidence:
+    - docs/development/pws0802-community-runtime-20261103.md retains the accepted R6/R7 installer,
+      complete runtime, final Microsoft-only terms, observed interruption/recovery, direct keyboard GUI,
+      accessible busy-error handling and scoped qualification with exact source and artifact hashes.
+    - docs/development/pws0802-community-runtime-result.md records authentic Community acquisition,
+      unchanged Microsoft runtime bytes and the accepted individual-developer redistribution route.
+    - docs/development/pws0802-implementation-20261103.md retains earlier R1/R2 evidence and failures.
+    - docs/development/pws0802-signing-and-runtime-review.md records the exact Community 2022
+      agreement, actual Microsoft components and conditional SignPath Foundation route.
+    - docs/development/pws0802-clean-windows-feasibility.md distinguishes available hypervisor
+      capability from an actual clean licensed test guest; its earlier ARM proposal is superseded by D043.
+    - packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt
+      is the final local agreement covering five unique Microsoft DLLs at nine inventoried destinations;
+      the earlier proposal and old-route notices are retained as historical evidence.
+    requested_action: Public-distribution work is deferred by the maintainer's 2026-11-04 reset;
+      no owner action is requested during internal delivery. Trusted signing and the original signed-release
+      requirements remain pending for later explicit resumption. Prior SignPath contact permission is exhausted;
+      no further contact, enrollment, submission, upload or agreement is authorized. The unavailable real
+      system-volume disk-full test is not performed and deferred to later release qualification; do not ask
+      for its VM again or fill a real working volume. Accepted Microsoft terms are complete. Active internal
+      delivery and functional repairs proceed independently through PWS-0810.
   evidence:
     completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    revision: candidate:pws0802-internal-20261103-r7
+    commands:
+    - "R9 actual build and data audit PASS - pws0802-internal-20261104-r9;512732779B;SHA256d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4;NotSigned/internal. Receipt da8f1b8e69ccd5403758e1a83931121be485ff9fa6fe9cb17bd15f5958c7f426; inventoryfa337baa3ea03d251706a74ca20e61c1594d67822af4de41041026e03e6a0121/3195files/650130815B; independent5phaseaudit8e113985f492c35260f6f9f9320636b8571c58f1fea2cc296b04510a49409873. All956thirdparties/MS5objects9paths unchanged. NativeSystemDrive/guardedNotices fixes packaged; no PDF/COM/budgetfix. R7/R8 exact artifacts preserved."
+    - "R9 actual standard-user episodes - Notices8aff2298deedbcd351220df7785ab79dacb8cf76ce6d96f9a4c1b277140075fd; firstnativeGUIinput85f3fea709eb0bff92c59ed937c8cb614872d588f8b3388675802bfce99e3e0c; interactiveRepair3b6c10c2d9867e28bf5f43f3ea829a4c78f3b5596dfed8b221263aefa05795f8; Cancel e8b55bc42efab32b6f873471b195dbf4abbc9d915987470c7dd78cf9d4028197; locked-caseconfirmeddeletion ae1040c87c90441b22068689f8b26bcb965aa68ce9051d53ace9208f3e5d415d; preserve75188e18537c4b8ae326fc15526eafcc7e8b3c10444e9c4140ec698e090e9065. All8strictmechanicalepisodes closed/noFallback/journal0. Ordinary verifiedPDF23444B/0fca8b80a936ba121763eece709db2ccc0632d2e86147f44e976e82747b2fa8a, not searchableOCRqualification. Two retainedcases/6externalsexact. Earlier episode reader gaps are superseded only by the separately bound finite supplements; failedtimeout/helperrecords retained. See currentx64ledger for exact remaining rows."
+    - "R9 finite reader/preservation closeout - A9 full PWS_INSTALL_OPTION keyboard/NVDA reading and natural refusal1 rawd8fc47f0e45287367138b247d1ad3612c46cc4e34ac21d6897ec6a98e2309222/join8aaa2f06ffd865701512b5e2d021382b6f489faf7ecfa5a054ac46409414b697. A11 V3 raw73d0fb64ee2ac477164093886a81b33fa901835d3f2d3afd1df982fbe6f73ec9/strict62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c: actual spoken1available1unavailable, separateuncheckedconfirmation, confirmedlockedresult0deleted2remaining1failedpartial, named keyboardCancel1; reader0/preserve0/allclosed/noFallback/dataexact. Disclosed pointeractivation is notkeyboard-onlylaunch/universalAT. Independent case6a94ac1d264b59a0e6956af642b98ba2ed60ad0168a5f6fd17a6d5124603138e/workddc1cd36c7d235b208b903f9983ad5d4da0d42be2a244e68a4db04b7d54c1179 archives verified; ordinaryPDF strict3pagereopen. Exactgueststop0/emptylist9e4d3fafd62b86c20fdd30988046e50edeebd2aebd521cddd080af90c9bdf12d. Real lowdisk and trusted signing remain; prior following build/plan epochs retain historical scope."
+    - "Experimental R8 ACTUALBUILD0 - pws0802-internal-20261104-r8,512732582B/11a5fdd25beb6072c87ffb3fdf1e410f7b40a36af2fca601b33babed89743829,NotSigned/internal; receiptc38f03943128c6a087c5f4d043f1454b893297afa543d301bacd5163db4d5057; inventory1e2831f7bb5187439da2febb8c32fd313396c3b7ddc7bea9dd38dfd277aff486/3195files/650130191B. Independent dataaudit27f3a27dbc45170b9b2bada1b8aebf374d17f21cc36ac524c5bcfbfadba3e895 PASSall5phases/956thirdparties/957obligations/24LicenseRefs/MS5objects9paths unchanged, frozen2137sourceproof48dd5e3f71f72b954d4e50f5467d4a8c3954601b937636184869c4f1744a305c. Original auditV1 omitted legitimateREADME-derivedMETADATA allowance and remainsFAILED; narrowV2 requires exactcheckedwheelMETADATA/frozenREADME, no broad waiver. No guest/runtime/privacy/publicpass inferred; R8Notices native-WERguard bypass recorded, noactualupload/crashtest. New4files58df9ad1105d72d41469c0dc7d1b2be564574b1acda6ce00c7328628b652cd00 fixesnative--noticesroute;2genuinebeforeFAILthen86PASS; native24497B1dd8fe16cf892ca34fd6739c7fed649452697916d1fdb45dcc35fa6ee9479c00/receipt71c8d2b080761946a9716afd640f57c3ba07dc29ccf7111e8f6f9554c5bc391b built, no nextinstaller yet. R7exact unchanged."
+    - "Original GUI failure retained - subsequent normalSourceIngest mainthreadpair4889240e279a73e75a0f5dfc69ba74c36d997ff274afa4dc90ef28340ee5d8ce and QObject/QThread control352dbe973cca1a6370e1b927f67cffc1b4443b04384cee303b4739aae60ffbb4 each successfullyimportsame596B/04127 onepage, RPCsucceeded, originalcase59449/priorcases unchanged, native0/jobempty/noFallback/closed/journal0. CoGetApartmentType0x800401F0 whileoperation succeeds doesNOTsupport COMfix. These controls usedCONSTRAINED; actualdefaultNORMAL QThread control c8715f3863406b7bd1fbb71b09cedfc6bad20655f04a1ee327a3bde451abd340 alsoimports596B04127 successfully/nooverride/allclosed/journal0/prior4unchanged. No PDF/COM/budgetfix supported. NextcorrectedR9 requiresfreshactualfirstpublicGUIqualification; originalR7failurecauseunproved. PWS0802 remainsblocked/notdone;0803stilldepends0802;0804/05done unchanged."
+    - "2026-11-04 continuation - native Windows11 x64 only under D043; ARM64 excluded, not passed. Foundation inquiry submitted once05:37:57UTC; exact message3c9792b52a3fa74bc104a3a5da6e64499493d9d75442d48c0709acc594d9bb34 and acknowledgement64741af5c401ab0e8e34252cef0dba81684c38872bb839273ebed4ac74f48688 retained locally; no provider acceptance or enrollment. Microsoft acceptance/five unmodified AMD6414.44.35211.0 objects/nine paths remain complete. R7 exact bytes and0804/0805done preserved;0803stillplanned depends0802."
+    - "2026-11-04 actual x64 - new genuine standard offline R7 install0/full3193: session8a9881853b96ce8536365450ef1911852c1610ef24fc9b5814a2ce8a3b94375e. Nine-target ACL/four-default before-installed scoped PASS48b179c81dcec5ee972a50fc041464b6bbf6d91ce712fe7a85dbf88ddc1859e2; independent peer753fe7d368e751fb9752bc65ae2c042209ad0fc0507c92ce2e26f44bd0778a94. Actual SYSTEM0 installer intended PWS_INSTALL_PRIVILEGE refusal1/no targeted mutation/closed PASS36ab6c32dc293dbc09690b7562f53710336e959c329ed57f162306c9c1979b4a. No all-ACL/reboot/removal/import pass inferred."
+    - "2026-11-04 actual defects - ordinary R7 Notices shortcut FAIL missingnotepad; source-only11-file bundled viewer cec8de6579048027703965ef50bd3ae8a49cfab842b6d540dab0a70de0f8b514:140affected PASS/1existinghostskip,932static and2831localization PASS, not packaged. Ordinary native-launch PDF import FAILd084/result0e7c94d5c20181eead0088d5bbefb62731e3c293adeb8b6d3c8528cc722c33ad,0pages; failedcase/work/prefix retained, product timeout fallback not natural close. Read-only knownfolder diagnosis f4987e62204dd0b6b7eb9747bf0bb7c78b162810fcd019ae8568496276a3d20f proves omitted SystemDrive breaks ProgramData resolution; exact PDFworker cause pending. Sandbox lacks FILE_VOLUME_QUOTAS; no enforcement/COM attempt or lowdisk pass. See current finite qualification record for individual missing observations."
+    - "2026-11-04 native correction - sourcepairacac2ecb0ad6441d888f51b7defb6c55a97bcde0fc149f542ad07811f817a010 has3genuine before-failing regressions then35PASS(10native15unit10security); canonicalformat/lint/type932PASS. Independentpeer466a4e3b8eaab2de12770f5b361412b28028be12cccd0c398699453e9bbc6c38. Separate productionnative23985B/a5ed4d56e4262809b592a786236e9e8107c7339830a84bbc574a849921c97efd receipt ea033ea38e19adf7707af250baa9dffde2dab71c05cbbc83abafad60991f5fc0. Actualcontrolledworkerstart3ecb1360d996feb4551e96af143b34f8140b4b2e56b060a0bae9e71869fb0033 reachesREADY/naturalshutdown inBOTH exact7/+Drive, allclosed/noFallback/quarantine0/journal0/case59449 unchanged; it doesNOTexplain originalPDFerror. Exact596Bfixture hostsyntaxpasses c43e07d82178d237336ebdeec8f693b9dfb43820973a49c5311f3a4ceaad3bc1. Source-ingest/GUI diagnosis continues. NewR8CID-onlysourcechange35e7afc70d28459cd6c540c7ee01b4eed424e562df7e1e61d3972be91dbf5c06 preserves all identities; not yet an installer build or qualification."
+    - "Current R7 reader - separate fresh-reader mechanical PASS efcd8bf9e4fc1ce28cee2d6037459a3c63dcbfc2a257e582baee8439868b7d95 retains its title-only/stale-context observation e26d03de2a20fafed28ebdb62d89a198e14a2a0402cb3575a6c981fe434b7141. Subsequent strict focus diagnostic PASS 6ed7abe7a6c838d44f11efb60db5f069c1ceaca402b433789b6df7934755b636 and Root CUA observationsb7a1c8f100dabb019769e55f31e0ad3818312af72a5b60558fcaa04eaebfd25b establish actual first-review dialog/default-preserve/unchecked choice/read-only status/Cancel/Keep-Enter announcements BEFORE any explicit UIA query, then natural keyboard Cancel1. Query0 kept native foreground/focus on the owned Qt process; NVDA0 and preserve-uninstall0, all closed/app absent/data unchanged. No query-restoration cause, universal initial-reader reliability, clean-R7 or public release pass is inferred."
+    - "Current R7 - 512,713,704-byte unsigned internal installer SHA256 a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a; receipt 0add5a47b863111cc8c0187aa17d6b84e006fcf01ddfd8840d76bebb4ff0afc6 and inventory 60caaf221b9c55f1ebc5a0d5c285579bd332972e973ef6cc0187effe098204b8. Actual NotSigned/public false. Independent audit ab4e1d33a0fb983380fbd2fd09873db08bb679b92c3057b48861caa14a92cffd PASS verifies all3193 payload files and exact reviewer/marker delta; all third-party bytes, rights, five Microsoft objects/nine paths and final terms remain unchanged."
+    - "Current R7 source - normal QApplication event loop preserves review exit0/1 and lifecycle guard; two genuine fresh-process failures retained before fix, then23 focused unit/12 security/4 accessibility PASS. Canonical format/lint/typecheck926 PASS; full validate-fixtures and all-ref/index/working scan-secrets PASS for frozen2126 files, receipt017f524afeb472bfd3f067b21a07b2b2f35e2efc107bd7367585739a84c68a6f. Final metadata-only closure remains separate."
+    - "Current R7 target - strict mechanics PASS4984fe7c8998df7b06d24b04bbc680805769bc350f3a325e2d6979f581f5c962 in the existing instrumented genuine standard Windows11 guest; install0/repair0/public0/error1/cancel1/keep0, all natural/no fallback, NVDA0, all jobs/handles closed, app/registration/shortcuts absent and journal0. All31 case/work/external files and39 directories unchanged. Separate direct CUA/NVDA observations retain the initial target gap and later shipping Keep control/confirmation/completion announcements; fresh-reader mechanical proof and a separate successful pre-query first-review observation follow, with earlier intermittent context gaps retained. No clean-R7, document-smoke rerun, trusted signing or ARM64 pass claimed."
+    - "R6 epoch - offline wheel/sdist, staging and compile PASS; 512,713,347-byte unsigned internal installer SHA256 db51945dbe6c92175ea3de4a30e8a8e7b0836c648a10452745f8b66b7eae6774. Independent artifact audit PASS for all 3,193 payload files, 957 components, 24 licence references and 178 inputs. Nine Microsoft destinations, five original DLL objects, terms, third-party bytes and rights remain exact."
+    - "R6 epoch source - bounded independent recovery authority is separate from actual per-worker grants; 186 affected unit tests PASS with one existing symlink skip, three new native regressions PASS, all 355 accessibility tests PASS, qpdf security five PASS with one privilege skip, worker containment/security twenty PASS, format/lint/strict typing across 926 surfaces PASS. Broader native lane retains one local venv launch failure; matching owned R6 and R5 source controls both PASS without weakening the test."
+    - "R6 epoch source privacy - canonical validate-fixtures and scan-secrets PASS for all 2,126 frozen working files, index and Git refs with an explicit ref/hash manifest; final metadata deltas require separate closure. Receipt SHA256 0928b018eb5b1ef65ff352dec39693d70001dba9573cbd2a85735a01cce83288."
+    - "Fresh R6 target - Windows 11 Enterprise 26100.9711 AMD64, offline 6 GiB Sandbox, genuine standard session with no administrator SID including deny-only, no linked token and elevation type 1. Development entrypoints, five canonical System32 CRT files and standard-account OCR engine entrypoints are absent. First launch, keyboard recovery, natural shutdown, full offline PDF/image/OCR/rotation/verified export, repair, preserve removal, reinstall/reopen and final preserve removal PASS across original five-phase evidence and a separately bound two-phase completion. Strict joined receipt SHA256 91dcc35ab341a83d04f7a84a75bf514db8a884e591d645215fc0e43db3b7a977 retains original FAILED/native 2 and corrected UUID-helper evidence. All 18 case/work files and external originals/exports unchanged; app/reg/shortcuts absent, journal zero and job/env/handles closed. No reader, fresh network-attempt, trusted-signature or ARM64 result inferred."
+    - "R6 epoch worker interruption - actual intended live helper/worker gate PASS with held identity/time/image/parent-chain and raw-token verification; helper terminated73 and worker exited after precise request boundary. Normal installed desktop factory automatically repaired one orphan, reached Ready, shut down, left journal zero and preserved the synthetic manifest. Both WTS parent phases native0, inner hold helper73/recovery0; jobs/env/handles closed. Strict actual receipt SHA256 a7d7c80a7c4e25a7d4c57450b37a562e310927136ad96308ad3c48f5a152ca44. V1 observer failure before termination is retained, followed by separately labelled normal-factory operational cleanup. Installer interruption and reader output remain unrun. Later signed-byte checks remain required."
+    - "R6 epoch installer interruption - intended RH acknowledgement-required cutpoint, earlier copy and exact held live installer PASS; original installer73/jobempty. Two known complete stage files authenticated and cleaned before ordinary same-candidate repair0/full3193/reg/unins verification. All20case/workfiles8182452B/25directories and external hashes unchanged; zero recovery journal; independent observer36modules/0frominstalled; WTS job/env/handles closed. Strict result SHA256 eea85497a1ee2caa7e140b46ca0f08a197ba98db46fad2ea6b630410b506e3ee. No automatic rollback/power-loss claim. Reader startup255 beforeinteraction remains failed and under diagnosis, not application accessibility failure."
+    - "Preserved R4 guest - complete offline PDF/image/OCR/rotation/previews/verified-export/reopen smoke PASS in genuine standard account at the unchanged 360-second ceiling. Exact known synthetic case backup verified, preserve-default removal PASS with all four cases and external trees unchanged; job/env/handles closed and old guest stopped. Different-CID R6 replacement was correctly refused and is not a supported upgrade claim."
+    - "Current R5 - offline wheel/sdist, staging and compile PASS; 512,711,831-byte unsigned internal installer SHA256 e149ad8b2ae863d7f565c02e992d84b8533d98d35ffe723b4385b1e5e7d498da. Independent data audit PASS: 3,193 payload files, 957 components, exact Microsoft bytes and third-party rights retained. R5 target execution remains pending."
+    - "Current R5 source - first-launch presentation regression failed before fix; nine new regressions, all 355 canonical accessibility tests, 228 affected unit tests and format/lint/strict typing across 923 surfaces PASS. Unchanged isolated/module/repeated lanes and R4 control pass after one retained initial signature-focus failure."
+    - "Sandbox R4 - genuine standard-account session has no Administrators SID, including deny-only, no linked token and elevation type 1. Exact installed inventory and normal launcher/GUI PASS. Document smoke timed out at unchanged 360-second ceiling; job-empty/environment/native-handle cleanup PASS. No complete document, OCR or export result inferred. Diagnostic helper bootstrap failures retained separately."
+    - "Current R4 - offline wheel/staging/compile and independent actual-artifact audit PASS; 512,711,316-byte installer SHA256 3df3dc557f27646fecf68cc7f4b789f1c521110873ac173ca3ce6a01570c3155; 3,193 payload files, 957 components, exact 896-member source archive and 319 application sources."
+    - "Current R4 - canonical affected test-unit PASS 179, one disclosed host symlink skip; native launcher seven tests PASS; format/lint/strict typing 922 surfaces PASS. Frozen-source validate-fixtures and all-ref/index/working scan-secrets PASS for 2,122 files; final metadata deltas verified separately."
+    - "Current R4 installed-host - missing-consent refusal, installation, observable ACK_REQUIRED interruption, explicit retained-stage cleanup and repair/full 3,195-file inventory PASS; R1 and R3 synthetic cases reopen unchanged. No automatic rollback or power-loss claim."
+    - "Current R4 installed-host - synthetic PDF/image import, OCR, rotation, previews, verified export/reopen and source/no-overwrite failures PASS; all nine app-local Microsoft module destinations proven from actual loaded images and authenticated overlay. Peak resources, clean Windows, actual standard-account and fresh packet capture not measured by this workflow."
+    - "Current R4 direct interaction - named installed GUI binds to computer-use; keyboard case opening, page rotation/undo, save/close/reopen, visible focus and accessible page/status content observed. Actual PWS_INSTALL_BUSY error exposes an actionable message and OK button and dismisses on Enter. NVDA output NOT OBSERVED; failed injected menu attempts are not an application accessibility failure."
+    - "Current R4 final preserve-uninstall - PASS; native success with no retry/force, product directory/registration/two shortcuts absent, all five synthetic profiles and twelve external originals/exports unchanged, GUI case revision 6 retained. Production case entries remained ten, count-only. Final receipt SHA256 8cc9e659d7d8a1073758879ae35caf578a7dd2967e7dd8690285a33c1419de50; installer, inventory, launcher and receipts reverified unchanged."
+    - Historical preflight — Canonical tools/dev.py format-check; lint; typecheck — PASS; 869 Python surfaces, no source edits.
+    - Historical preflight — Canonical tools/dev.py test-unit with process-local PYTEST_ADDOPTS selecting validate_tasks,
+      validate_docs or validate_portfolio_boundary — PASS; 79 passed, 7318 deselected and 122
+      subtests in 19.61 seconds, including rejection cases. Not a full-suite or installer result.
+    - Historical preflight — Canonical tools/dev.py validate-docs and initial validate-task-graph — PASS; final metadata,
+      schema, portfolio and preservation receipts are recorded at closure.
+    - "tools.build_windows_launcher - PASS; reviewed CRT-free native R6 launcher with exact 17-archive / 4,575-file compiler closure; six native lifecycle/argument/environment tests passed at its frozen epoch."
+    - "python -m tools.build_windows_installer stage and compile with repository-relative compiler paths - PASS; exact unsigned R2 installer 511,975,164 bytes / c2e5bcfd9797c1f697fb278378567f31a0f99dc81ff323cb3faa0a7aedfdda6b; immutable receipt and fullinputs in implementation report."
+    - "Independent R2 actual artifact audit - PASS; all 3,176 files / 648,092,693 bytes, official offline CycloneDX 1.6 / SPDX 2.3 schemas, exact regeneration, all 892 source members / current 319 application sources, inherited third-party/replacement obligations."
+    - "Canonical full test-unit in owned current-source QA 338013a97781991dab8f37c1db521f36f42589f8 - PASS; 7,648 passed, two disclosed symlink skips. Final tool delta: 250 passed / one disclosed skip / 122 subtests; all 319 app sources identical."
+    - "Canonical affected test-security (79) and test-integration (31); full test-accessibility (346) - PASS. Format/lint/strict typing (918 files) and registered schema/graph/docs/boundary/resource/localization validators - PASS; metadata closure separate."
+    - "Canonical frozen-source validate-fixtures and all-ref scan-secrets - PASS; 3,524 historical blobs, 1,012 unchanged index blobs, 2,112 working files. Initial Win32 import falsepositive and before/after privacy/compiler-path regressions retained."
+    - "Host R1 install/installed synthetic smoke/reinstall/corrected preserve-uninstall - PASS at HOST_NOT_CLEAN scope. R2 install, in-place repair, prior synthetic-case reopen, full smoke and preserve-uninstall - PASS; receipt 5d7d4f38b966f5f172e44e29fee412d7eb1e17f915a4c3494080df31377bebd8. No clean-machine, standard-account, GUI or public-signature claim."
+    - "Production signing/refusal tests and real vendor Authenticode verifier probes - PASS at recorded epochs; no product was publicly signed. Actual Microsoft preparer invocation without authority refused MICROSOFT_RUNTIME_RIGHTS_REQUIRED before output."
+    notes:
+    - 'Current maintainer reset 2026-11-04: PWS-0810 owns usable internal delivery and concrete
+      functional repairs independently of this deferred public phase. This task remains blocked only
+      for its original signed public outcome, not the entire project. R9 and applicable accepted
+      installed/runtime evidence are preserved. The real system-volume disk-full test is not performed
+      and deferred to later release qualification; no VM request is pending. Prior SignPath contact
+      permission is exhausted and no further external contact/upload/publication is authorized.
+      Earlier continuation, no-ready-task and inquiry-authority statements below are historical.'
+    - 'Maintainer decision 2026-11-04: PWS-D043 and ADR 0019 set Windows 11 x64 as the only target.
+      Earlier ARM64/emulation proposals and unrun checks below are superseded and outside scope, not
+      passed and not future prerequisites. R7 remains 512,713,704 bytes with SHA256
+      a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a; its build-epoch metadata and
+      accepted audit/check/install receipts are preserved. Microsoft acceptance and final recipient
+      terms remain settled. The limited Foundation inquiry is now authorized without enrollment,
+      additional agreement acceptance, purchases, identity documents, uploads or public publication.'
+    - Current maintainer continuation explicitly accepts EULAID VS_Comm_2022_ENU.1033 as an individual,
+      authorizes official Community acquisition and scoped Microsoft-only recipient corrections, and requests
+      complete app-local runtime delivery and actual remaining qualification. The earlier proposal was not
+      approved verbatim. See docs/development/pws0802-community-runtime-20261103.md and the exact route result.
+    - Historical preflight before maintainer resumption — PWS-0802 oriented/planned and blocked on 2026-11-03. Proposed ADR 0018 and
+      packaging/windows/QUALIFICATION_PLAN.md prepare a per-user Inno Setup 7.1.1 x64 path,
+      package-relative engines, approved external signing, safe preserve-default uninstall and
+      exact candidate tests. No installer/build pipeline/removal helper is implemented by this audit.
+    - No application, dependency, licence asset, schema, fixture, golden, environment or Git-state
+      change. A 2036-file preflight preservation baseline and numeric/boolean host receipt are
+      local under ignored output/pws0802. No private signing material or certificate store inspected.
+    - Historical preflight — PWS-0801 remained done with its exact stage evidence. PWS-0803 remained
+      planned behind this task; PWS-0804 was next dependency-ready and had not started. Release interface
+      and candidate facts stay draft/TBD; no sibling dependency or compatibility claim.
+    - Maintainer resumption implemented the per-user Inno 7.1.1 unsigned internal installer,
+      CRT-free launcher, installed engine discovery, preserve-default removal and external production
+      signing/verification pipeline. Exact candidate and scoped results are in the implementation report.
+    - Pending signing/entitlement does not block independent PWS-0804/PWS-0805, as expressly directed.
+      No public signing, clean-machine, standard-account or ARM64 pass is inferred from host/unit evidence.
+    - Historical R2 handover was unsigned, not a public release. SignPath Foundation eligibility,
+      approved signer and clean x64/ARM64 qualification remain unproved; Microsoft owner acceptance,
+      legitimate Community acquisition, scoped recipient terms and the retained pikepdf route need completion.
+    - PWS-0804 and PWS-0805 are independently done. All earlier task evidence and failures remain
+      retained; no further dependency-ready task exists while this task remains blocked.
+    - Supplementary exact-R2 receipt 1f1d4c899f5cd2123bbea8a07d498369a344e80c535b8ba3c1934d6df590bd92 —
+      actual quiet wrong-directory refusal, synthetic containment, ordinary repair/reopen and final
+      preserve-uninstall passed; actual live during-copy cutpoint NOT OBSERVED. Explicit two-file
+      operator recovery retained; no automatic interruption/rollback claim. All synthetic profiles
+      and external hashes unchanged; private production case entries stayed ten, count-only.
+    - Historical R2 isolated GUI verified the normal AUMID before/after Qt but both fresh capture attempts
+      failed the computer-use helper's identical-owner check, with zero UI input/capture. Packaged
+      keyboard/data-choice and normal public launch remain unrun; all owned processes ended.
+    - Historical R4 is explicitly unsigned/internal; public_distribution_allowed=false. No further
+      Microsoft agreement acceptance is required. The final terms preserve MIT, third-party notices,
+      applicable-law exceptions and Qt replacement/relinking/debugging rights. The distinct GUI filename
+      retains unmodified PSF-covered bytes and notices; stable application and upgrade IDs are unchanged.
+    - The actual host is Windows 11 Pro 26300.9711 x64 with a filtered administrator token, not an
+      actual standard account. Sandbox Windows 11 Enterprise 26100.9711 AMD64 is now available and operated
+      by Codex with a proven fresh standard-account logon. Partial guest passes remain distinct from the
+      full qualification still pending. ARM64 x64 emulation remains disabled and unqualified.
+    - PWS-0804 and PWS-0805 remain done with their exact accepted evidence. No other dependency-ready
+      task remains; PWS-0803 is not unblocked. Accepted source/UI evidence is reused only where unchanged.
 - id: PWS-0803
   milestone: M8
   title: Implement authenticated update mechanism and component trust policy
@@ -5033,6 +6082,7 @@ tasks:
   - PWS-D013
   - PWS-D034
   - PWS-D042
+  - PWS-D043
   objective: Provide optional authenticated application updates that are separate from document processing and cannot
     silently replace components from an untrusted source or couple PaperWorkShell to a portfolio release cadence.
   deliverables:
@@ -5043,6 +6093,7 @@ tasks:
   - Component/version audit trail
   - Independent version/channel and future compatibility-status documentation
   acceptance_criteria:
+  - Application update artifacts and their qualification target Windows 11 x64 only under PWS-D043.
   - Document processing remains fully usable offline.
   - Unsigned, tampered, rollback-forbidden, or wrong-channel updates are rejected before installation.
   - Update checks transmit no document/case content.
@@ -5063,14 +6114,16 @@ tasks:
     completed_at: null
     revision: null
     commands: []
-    notes: []
+    notes:
+    - 'Maintainer scope decision 2026-11-04: Windows 11 x64 only under PWS-D043. The PWS-0802
+      dependency remains required; out-of-scope platform qualification creates no prerequisite.'
 - id: PWS-0804
   milestone: M8
   title: Implement case migration and release-to-release recovery tests
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: done
   critical_path: true
   depends_on:
   - PWS-0801
@@ -5107,17 +6160,32 @@ tasks:
   - data-integrity
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-03'
+    revision: 338013a97781991dab8f37c1db521f36f42589f8
+    commands:
+    - "Focused migration lanes - PASS; 146 unit, 32 native integration and 20 security tests, including low/disk-full, cancellation, interrupted checkpoint/recovery and actual journal-rename race regressions."
+    - "Canonical tools/dev.py test-unit in exact current-source owned QA checkpoint 338013a97781991dab8f37c1db521f36f42589f8 - PASS; 7648 passed, two disclosed host-symlink skips, 1034.87 seconds; original root Git/index and benchmark metrics preserved."
+    - "Final installer-only tools/dev.py test-unit selection - PASS; 250 passed, one disclosed symlink skip, 122 subtests. All 319 application source files unchanged from the full-unit epoch."
+    - "Canonical tools/dev.py test-integration affected selection - PASS; 31 passed, 696 deselected. Canonical affected test-security - PASS; 79 passed, 1183 deselected."
+    - "Canonical tools/dev.py test-accessibility - PASS; all 346 tests. format-check, lint and strict typecheck - PASS; 918 Python surfaces."
+    - "Canonical import/schema/task/docs/portfolio/dependency/localization and resource/benchmark validators - PASS; final metadata closure checked separately."
+    - "Canonical validate-fixtures and scan-secrets on frozen final source - PASS; 3524 historical blobs, 1012 unchanged index blobs, 2112 working files; all-ref and path coverage retained."
+    notes:
+    - Implementation, focused and shared quality verification and independent review completed during the
+      maintainer-authorized PWS-0802 continuation. Completed independently of public signing/entitlement.
+    - docs/development/pws0804-result.md records source epochs, tests, failure paths and independent review.
+    - Every applicable source-feature acceptance criterion is met. Public packaged release/matrix
+      qualification remains with PWS-0802 and its release gates; no clean-machine or signing claim.
+    - Original failed source/metadata/preparation observations and accepted earlier evidence are retained.
+      No further dependency-ready task exists while PWS-0802 remains blocked; PWS-0803 stays planned.
+
 - id: PWS-0805
   milestone: M8
   title: Implement previewable sanitized diagnostic bundle
   kind: implementation
   priority: P1
   effort: L
-  status: planned
+  status: done
   critical_path: false
   depends_on:
   - PWS-0113
@@ -5150,10 +6218,25 @@ tasks:
   - support
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
-    notes: []
+    completed_at: '2026-11-03'
+    revision: 338013a97781991dab8f37c1db521f36f42589f8
+    commands:
+    - "Focused support lanes - PASS; 202 unit, eight native publication, 19 privacy and 13 widget/window tests; exact 1626-byte sample/allowlist hash and reopen verification passed."
+    - "Canonical tools/dev.py test-unit in exact current-source owned QA checkpoint 338013a97781991dab8f37c1db521f36f42589f8 - PASS; 7648 passed, two disclosed host-symlink skips, 1034.87 seconds; original root Git/index and benchmark metrics preserved."
+    - "Final installer-only tools/dev.py test-unit selection - PASS; 250 passed, one disclosed symlink skip, 122 subtests. All 319 application source files unchanged from the full-unit epoch."
+    - "Canonical tools/dev.py test-integration affected selection - PASS; 31 passed, 696 deselected. Canonical affected test-security - PASS; 79 passed, 1183 deselected."
+    - "Canonical tools/dev.py test-accessibility - PASS; all 346 tests. format-check, lint and strict typecheck - PASS; 918 Python surfaces."
+    - "Canonical import/schema/task/docs/portfolio/dependency/localization and resource/benchmark validators - PASS; final metadata closure checked separately."
+    - "Canonical validate-fixtures and scan-secrets on frozen final source - PASS; 3524 historical blobs, 1012 unchanged index blobs, 2112 working files; all-ref and path coverage retained."
+    notes:
+    - Implementation, focused and shared quality verification and independent review completed during the
+      maintainer-authorized PWS-0802 continuation. Completed independently of public signing/entitlement.
+    - docs/development/pws0805-result.md records source epochs, tests, failure paths and independent review.
+    - Every applicable source-feature acceptance criterion is met. Public packaged release/matrix
+      qualification remains with PWS-0802 and its release gates; no clean-machine or signing claim.
+    - Original failed source/metadata/preparation observations and accepted earlier evidence are retained.
+      No further dependency-ready task exists while PWS-0802 remains blocked; PWS-0803 stays planned.
+
 - id: PWS-0806
   milestone: M8
   title: Publish user, support, security, and vulnerability-handling documentation
@@ -5295,6 +6378,7 @@ tasks:
   - PWS-0806
   - PWS-0807
   - PWS-0809
+  - PWS-0810
   decision_refs:
   - PWS-D003
   - PWS-D022
@@ -5302,6 +6386,7 @@ tasks:
   - PWS-D034
   - PWS-D040
   - PWS-D042
+  - PWS-D043
   objective: Approve a v1.0 candidate only when every milestone gate and release-hardening criterion has current
     evidence on the packaged build and its complete standalone black-box release envelope is frozen.
   deliverables:
@@ -5313,6 +6398,7 @@ tasks:
   - Completed exact-candidate `docs/release/RELEASE_INTERFACE.md` and `docs/release/RELEASE_EVIDENCE.md`
   - Frozen synthetic sample package, expected-behavior notes, hashes, and standalone-checklist sign-off
   acceptance_criteria:
+  - The product platform qualification matrix covers Windows 11 x64 only under PWS-D043.
   - Every M8 prerequisite and every earlier milestone gate is done.
   - Packaged artifacts are signed and match the verified inventory/SBOM.
   - Authenticated updates, migrations, diagnostics, install/uninstall, and recovery pass.
@@ -5341,7 +6427,9 @@ tasks:
     completed_at: null
     revision: null
     commands: []
-    notes: []
+    notes:
+    - 'Maintainer scope decision 2026-11-04: apply PWS-D043 to this release gate without adding
+      another platform prerequisite or waiving trusted signing and applicable x64 qualification.'
 - id: PWS-0809
   milestone: M8
   title: Integrate ThirdLife late-binding governance and release-envelope ownership
@@ -5436,3 +6524,131 @@ tasks:
     - The supplied bundle manifest remained provenance only and did not replace the repository roadmap bundle.
       Current implementation priorities and historical evidence were preserved; PWS-0205 and PWS-0207 remain
       ready, and the selector chooses PWS-0205 next.
+- id: PWS-0810
+  milestone: M8
+  title: Stabilize and hand over the usable internal Windows application
+  kind: implementation
+  priority: P0
+  effort: M
+  status: done
+  critical_path: true
+  depends_on:
+  - PWS-0707
+  - PWS-0801
+  - PWS-0804
+  - PWS-0805
+  decision_refs:
+  - PWS-D005
+  - PWS-D009
+  - PWS-D012
+  - PWS-D013
+  - PWS-D018
+  - PWS-D029
+  - PWS-D030
+  - PWS-D037
+  - PWS-D040
+  - PWS-D041
+  - PWS-D042
+  - PWS-D043
+  objective: Deliver a usable unsigned internal Windows 11 x64 application from the current local
+    checkout and verified R9 candidate, independently of deferred public signing and release-only
+    qualification. Repair concrete functional defects and stop after the usable internal handoff.
+  deliverables:
+  - Exact installable candidate identity and normal installed shortcut/executable location
+  - Finite installed core-workflow check with applicable reused evidence and plainly stated limitations
+  - Narrow verified repairs only where concrete defects require them; R9 preserved if a successor is built
+  - Short first-use guide and prepared synthetic sample packet for an optional ordinary-use trial
+  acceptance_criteria:
+  - The installer identity is verified before use and the application launches normally with its bundled runtime.
+  - Applicable installed evidence covers mixed PDF/JPEG/PNG import, previews, reorder, rotation, undo/redo,
+    save/close/reopen and ordinary export with expected page count, order and orientation.
+  - Existing scan adjustment, local OCR with searchable output when success is reported, visual text/mark
+    overlays and representative checklist/package output have applicable installed evidence; separate cases
+    may be used without discarding edits or redefining promised workflows.
+  - One practical recoverable failure preserves existing files, explains recovery and allows a successful retry.
+  - Concrete failures found during this pass are repaired and checked through the affected installed workflow,
+    or precisely explained where a genuine execution limit remains; claims identify reused evidence.
+  - Security, privacy, worker isolation, consent, immutable originals, private storage and truthful verified
+    export outcomes remain intact; no public-release qualification or ThirdLife compatibility is claimed.
+  - The handoff states exact app/launch locations, what works, concrete changes, practical first steps and
+    deferred signing/publication/release-only qualification. Owner feedback is optional, not a delivery gate.
+  verification:
+  - Verify R9's exact size, SHA-256 and unsigned/internal identity; preserve its bytes.
+  - Use the installed shortcut or executable and ordinary GUI with a small synthetic packet; reuse accepted
+    observations only within their recorded artifact, implementation and environment scope.
+  - Inspect exported PDFs and package files/summary and record the actual finite success/failure observations.
+  - For actual repairs reproduce the defect, add focused regression coverage where useful, run affected
+    repository checks and verify the repaired installed behavior. Documentation-only edits use relevant validators.
+  risk_tags:
+  - internal-delivery
+  - installer
+  - usability
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: '2026-11-04'
+    revision: candidate:pws0802-internal-20261104-r9
+    commands:
+    - >-
+      Installer size/SHA-256/Authenticode inspection - PASS; 512,732,779 bytes,
+      SHA-256: d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4, NotSigned/internal;
+      R9 preserved and no successor built.
+    - >-
+      Exact installed-payload audit - PASS; all 3,195 expected files / 650,130,815 bytes match,
+      zero missing/size/hash mismatches or unsafe paths. Current host Windows 11 Pro 26300.9711 AMD64,
+      medium filtered-administrator, not a new clean-machine or genuine-standard-account claim.
+    - >-
+      Finite installed GUI - PASS; native launch, PDF/JPEG/PNG import/previews, reorder/rotate/undo/redo,
+      save/close/reopen, arranged export, scan contrast/OCR language and combined searchable output,
+      correct-PDF text/mark overlays, checklist confirmations, combined/separate packages and saved summaries,
+      existing-destination refusal with unchanged old output and successful new-name retry.
+    - >-
+      Independent synthetic-output inspection - PASS; all 11 exported PDFs strict reopen/no syntax findings,
+      18 unique page renders, expected order/rotation and clean text/mark placement; seven prior outputs preserved.
+      Clean form 3552 bytes, SHA-256: 6b11aa4cb02d60a3e04e00df8f9573e3388433bb6d1e682d2f58fee679db5695;
+      clean inspection receipt: bb5c363719aac6c81abdcd4a6acc0b810781631d239111e2942c1a322502e8ec.
+    - >-
+      .venv\Scripts\python.exe tools/dev.py validate-task-graph - PASS; 83 tasks,
+      248 dependencies, nine milestones and 43 decisions.
+    - >-
+      .venv\Scripts\python.exe tools/dev.py validate-schemas - PASS; all registered contracts.
+    - >-
+      .venv\Scripts\python.exe tools/dev.py validate-docs - PASS; local links, references and security traceability.
+    - >-
+      .venv\Scripts\python.exe tools/dev.py validate-portfolio-boundary - PASS; 83 tasks,
+      248 dependencies and 116 canonical files, with exact bundle identities and release-document stage.
+    - >-
+      Scoped git diff --check - PASS; informational CRLF warning only.
+    - >-
+      Final exact synthetic-case preservation - PASS; revision 19, manifest SHA-256:
+      50bef36814e985bcf34497d393a5d4e8f74d8a61662f399746b3f73a5c55eada,
+      four unchanged immutable copies/samples, correct PDF overlays; PNG: zero overlays, contrast 110, rotation 90;
+      four confirmed assignments, empty exact-case temp and no installed host_bootstrap workers.
+      Receipt: 2acc1f3e70cf566cbc63203bd510af89e726f8306cbfc1ca83545a8570468c47;
+      unrelated cases/global recovery state not inspected.
+    notes:
+    - Explicit maintainer reset on 2026-11-04 authorizes this narrow task-graph amendment and internal
+      handoff without another approval. Public signing/SignPath/publication and remaining release-only
+      environmental qualification are deferred; PWS-0802 is not done and PWS-0803 is not current work.
+    - The real system-volume disk-full test is not performed and deferred to later release qualification.
+      No VM request, provisioning, external contact/upload or dangerous working-volume condition is authorized.
+    - docs/development/pws0810-internal-delivery-20261104.md records the current host and reused
+      genuine-standard-account R9/unchanged-boundary R6 evidence separately. OCR text in combined scan output
+      reads SCAM PAGE 206 for visible SCAN PAGE 206; separate form-package raster groups remained image-only.
+      Review recognition and output choice. No product defect required a source change; R9 was sufficient.
+    - Final GUI case close reported all queued changes saved, revision 19; application left at the normal case
+      chooser. Final exact-case preservation and canonical metadata validation passed. Internal build ready
+      for use; R9 sufficient, no application repair or R10. No next dependency-ready unfinished task remains;
+      stop this internal phase for optional ordinary-use feedback, without updater or public-phase work.
+    - >-
+      Maintainer-requested second-PC handoff follow-up, 2026-11-04: prepared
+      output/PaperWorkShell-R9-Second-PC with the original-named byte-identical R9 installer,
+      seven unchanged synthetic samples, empty local export folders and START-HERE.txt. Source/copy
+      identity, image-only OCR source, sample reopen/render inspection and installed R9 interface-file
+      binding passed. Actual installer pages, first-use/import/checklist/overlay/OCR controls checked
+      locally; existing installed output evidence reused within its original scope. Guide gives an
+      eight-step basic trial and separate searchable-OCR/PDF-only overlay package cases. Second-PC
+      results remain unrun; no application defect or successor revision, signing, publication, contact,
+      VM request, release-interface or standalone-boundary change. See
+      docs/development/pws0810-r9-second-pc-handoff-20261104.md. PWS-0810 stays done;
+      no next dependency-ready unfinished task is introduced.

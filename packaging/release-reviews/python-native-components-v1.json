@@ -1,0 +1,3240 @@
+{
+  "schema_version": 1,
+  "review_id": "pws0801-windows-python-native-closure-v1",
+  "task_id": "PWS-0801",
+  "reviewed_on": "2026-11-03",
+  "target": "Windows x64 CPython3.14.6 embedded selected wheel payload",
+  "status": "reviewed immutable notices and native component identities; final package acceptance belongs to the parent release receipt",
+  "release_approved": false,
+  "components": [
+    {
+      "component_id": "cffi-embedded-libffi",
+      "name": "libffi CPython-derived x86_64 snapshot (CFFI)",
+      "version": "cffi-2.1.1-vendored-x86_x64",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by cffi",
+      "purl": null,
+      "license_expression": "MIT AND MIT-0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cffi-embedded-libffi/SOURCE-LICENSE-NOTICES.txt",
+          "asset_path": "packaging/licenses/release-python-native/cffi-embedded-libffi/SOURCE-LICENSE-NOTICES.txt",
+          "sha256": "43184e53f1c6c4a7dc42c5d2e63c52a574700d9754c9a646106ab3dd97de5a5c",
+          "size_bytes": 6905
+        },
+        {
+          "path": "notices/python-native/cffi-embedded-libffi/CFFI-DEFAULT-LICENSE-MIT-0.txt",
+          "asset_path": "packaging/licenses/release-python-native/cffi-embedded-libffi/CFFI-DEFAULT-LICENSE-MIT-0.txt",
+          "sha256": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63",
+          "size_bytes": 1123
+        }
+      ],
+      "source_url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz",
+      "artifact_sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48",
+      "artifact_hash_binding": "exact enclosing cffi archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cffi",
+      "selected_files": [
+        {
+          "path": "_cffi_backend.cp314-win_amd64.pyd",
+          "size_bytes": 181248,
+          "sha256": "9e99b2184c60f21a88cafc374386ded3559e8694ed7cf111f2869e066d303334"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cffi-2.1.1.tar.gz",
+          "url": "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz",
+          "size_bytes": 530807,
+          "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+          "local_path": "output/pws0801/resume-20261103/artifacts/cffi-2.1.1.tar.gz",
+          "stage_path": "sources/python-native/cffi-2.1.1.tar.gz",
+          "verification": "Exact source archive SHA256 matches immutable repository uv.lock sdist input before source member inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "vendor_revision_evidence": {
+        "source_archive_sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+        "setup_py_sha256": "f4205f108b2fc7798e854724918a2790951137200980b65b6a5e652d612b07f7",
+        "selected_source_members": [
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffi.c",
+            "sha256": "1abda6df884d78f33be1ee8abf99c6dc1c8b60b6f72ac41ac27b42a98329334a",
+            "size_bytes": 12509
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffi.h",
+            "sha256": "96cc1f0392c280471c86164b31a5d5fbbce3141376c352ddc187d531cc740d0f",
+            "size_bytes": 9298
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffi_common.h",
+            "sha256": "70fc6e9f815ba8c6320c0b8a00d6c06ed763a58847708eb694123c687ddd5a65",
+            "size_bytes": 2114
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/fficonfig.h",
+            "sha256": "742907d362beb3b3308719541c8c94c3b7539a6cb9eb77fe202be45303bae6da",
+            "size_bytes": 2973
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffitarget.h",
+            "sha256": "f4fb7eaffbe13a11035174284eba68934f3cf41eb16d044f157d8bdd966b14da",
+            "size_bytes": 2699
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/prep_cif.c",
+            "sha256": "e04a2106e3f14333d5f79515d65fbb7b177de59b520b6860e95d5869202bf6af",
+            "size_bytes": 5720
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/types.c",
+            "sha256": "f398aad1c87cb8168d29f9ad1222e6e250b83847272b3caad21db3319a5ec2a5",
+            "size_bytes": 3556
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/win64.asm",
+            "sha256": "020ed36b231fadd51fcd93c1a92648c1346df9ec6a536ae892b807aed20cc1ad",
+            "size_bytes": 3096
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/win64.obj",
+            "sha256": "fa75a54e8ec34f6c4bd67edcfd4d484a75a7c23a0ffc8952ccf9a3fd14d8a3f3",
+            "size_bytes": 1176
+          }
+        ],
+        "version_caution": "ffi.h carries historical2.00-beta string; this is not asserted to be a modern upstream semantic libffi version. setup.py selects these C files and win64.obj built from supplied win64.asm on64-bit MSVC."
+      },
+      "enclosing_wheel": {
+        "name": "cffi-2.1.1-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/a7/06/1c3e01e3ba14c39f6d10bfbac52753b7e22259e38088e5cfe1d704918690/cffi-2.1.1-cp314-cp314-win_amd64.whl",
+        "size_bytes": 187949,
+        "sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48"
+      },
+      "normal_imports": {
+        "_cffi_backend.cp314-win_amd64.pyd": [
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "kernel32.dll",
+          "python314.dll",
+          "user32.dll",
+          "vcruntime140.dll"
+        ]
+      },
+      "delay_imports": {
+        "_cffi_backend.cp314-win_amd64.pyd": []
+      },
+      "selection_license_evidence": "Explicit MIT overrides in bundled libffi C/header files; default CFFI package MIT-0 grant applies to unmarked bundled source including win64.asm. Complete source notices plus exact default grant retained."
+    },
+    {
+      "component_id": "cpython-bzip2",
+      "name": "bzip2 (CPython embedded)",
+      "version": "1.0.8",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream bzip2 authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "bzip2-1.0.6",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-bzip2/LICENSE",
+          "asset_path": "packaging/licenses/release-python-native/cpython-bzip2/LICENSE",
+          "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+          "size_bytes": 1896
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/bzip2-1.0.8.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "_bz2.pyd",
+          "size_bytes": 87776,
+          "sha256": "d28c3dd1c22bfb8a6e8a6a9c2359842b797d08e878ecb7805f60e86a45589d11"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-bzip2-1.0.8.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/bzip2-1.0.8.tar.gz",
+          "sha256": "ab8d1b0cc087c20d4c32c0e4fcf7d0c733a95da12cedc6d63b3f0a9af07427e2",
+          "size_bytes": 818771,
+          "local_path": "output/pws0801/python-native-license-work/cpython-bzip2-1.0.8.tar.gz",
+          "stage_path": "sources/python-native/cpython-bzip2-1.0.8.tar.gz",
+          "owner": "SPDXRef-PACKAGE-bzip2",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cpython-expat",
+      "name": "expat (CPython embedded)",
+      "version": "2.8.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream expat authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-expat/COPYING",
+          "asset_path": "packaging/licenses/release-python-native/cpython-expat/COPYING",
+          "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+          "size_bytes": 1144
+        }
+      ],
+      "source_url": "https://github.com/libexpat/libexpat/releases/download/R_2_8_1/expat-2.8.1.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "pyexpat.pyd",
+          "size_bytes": 222944,
+          "sha256": "133942bde91fe43289076a0b50a01b265df4ead078617cca6f6604a4166e1260"
+        },
+        {
+          "path": "_elementtree.pyd",
+          "size_bytes": 138464,
+          "sha256": "16f4d30a50fc25950762a8bbef9dd6c5750729345539c224d489be33e6d6f340"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-expat-2.8.1.tar.gz",
+          "url": "https://github.com/libexpat/libexpat/releases/download/R_2_8_1/expat-2.8.1.tar.gz",
+          "sha256": "a52eb72108be160e190b5cafa5bba8663f1313f2013e26060d1c18e26e31067b",
+          "size_bytes": 812969,
+          "local_path": "output/pws0801/python-native-license-work/cpython-expat-2.8.1.tar.gz",
+          "stage_path": "sources/python-native/cpython-expat-2.8.1.tar.gz",
+          "owner": "SPDXRef-PACKAGE-expat-2.8.1",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cpython-hacl-star",
+      "name": "HACL* generated hash implementations (CPython)",
+      "version": "8ba599b2f6c9701b3dc961db895b0856a2210f76",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by cpython",
+      "purl": null,
+      "license_expression": "MIT AND Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-hacl-star/LICENSE-MIT.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-hacl-star/LICENSE-MIT.txt",
+          "sha256": "998ce04fb8ad9dedb0bc1b44938f8c3dcf1089780fa105ce1c8c30fb5554d78c",
+          "size_bytes": 1207
+        },
+        {
+          "path": "notices/python-native/cpython-hacl-star/LICENSE-APACHE-2.0.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-hacl-star/LICENSE-APACHE-2.0.txt",
+          "sha256": "c5accbbd8546e94c34aed24afe689a617627d18eed5a6c48277e48db57c23851",
+          "size_bytes": 11356
+        },
+        {
+          "path": "notices/python-native/cpython-hacl-star/VENDORED-HEADER-NOTICES.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-hacl-star/VENDORED-HEADER-NOTICES.txt",
+          "sha256": "7995c36ae594376e2530defd7dc4341e391aa56fbbedac74f092f0980b8addeb",
+          "size_bytes": 3652
+        }
+      ],
+      "source_url": "https://github.com/hacl-star/hacl-star/archive/8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "python314.dll",
+          "size_bytes": 6778592,
+          "sha256": "fde89cdb5c2d08ae65de7ef4abca1876c93ba3796002f5ac0bf7e4d4f5a94da0"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+          "url": "https://github.com/hacl-star/hacl-star/archive/8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+          "sha256": "61e48893f37cb2280d106cefacf6fb5afe84edf625fec39572d0ee94e1018f26",
+          "size_bytes": 13091579,
+          "local_path": "output/pws0801/python-native-license-work/cpython-hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+          "stage_path": "sources/python-native/cpython-hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+          "owner": "SPDXRef-PACKAGE-hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "selection_license_evidence": "Generated C MIT plus7 KreMLin headers stating Apache2.0 and MIT. Full texts and all three distinct source copyright headers accompany the selected object route."
+    },
+    {
+      "component_id": "cpython-libffi",
+      "name": "libffi (CPython embedded)",
+      "version": "3.4.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream libffi authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-libffi/LICENSE",
+          "asset_path": "packaging/licenses/release-python-native/cpython-libffi/LICENSE",
+          "sha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388",
+          "size_bytes": 1132
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/libffi-3.4.4.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "libffi-8.dll",
+          "size_bytes": 39696,
+          "sha256": "eff52743773eb550fcc6ce3efc37c85724502233b6b002a35496d828bd7b280a"
+        },
+        {
+          "path": "_ctypes.pyd",
+          "size_bytes": 142560,
+          "sha256": "25d9b0be550d428fecc697ca20450343a7c3ce77c9f5283e9aecfd188d609250"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-libffi-3.4.4.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/libffi-3.4.4.tar.gz",
+          "sha256": "9d802681adfea27d84cae0487a785fb9caa925bdad44c401b364c59ab2b8edda",
+          "size_bytes": 1375889,
+          "local_path": "output/pws0801/python-native-license-work/cpython-libffi-3.4.4.tar.gz",
+          "stage_path": "sources/python-native/cpython-libffi-3.4.4.tar.gz",
+          "owner": "SPDXRef-PACKAGE-libffi",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cpython-liblzma",
+      "name": "liblzma (CPython embedded)",
+      "version": "5.2.5",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by cpython",
+      "purl": null,
+      "license_expression": "LicenseRef-XZ-Liblzma-Public-Domain",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-liblzma/COPYING",
+          "asset_path": "packaging/licenses/release-python-native/cpython-liblzma/COPYING",
+          "sha256": "bcb02973ef6e87ea73d331b3a80df7748407f17efdb784b61b47e0e610d3bb5c",
+          "size_bytes": 2775
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/xz-5.2.5.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "_lzma.pyd",
+          "size_bytes": 160992,
+          "sha256": "5f7003f9f0256e36351ca2810b3485db28579b08e4d1d65f6f211fcd1136f395"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-xz-5.2.5.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/xz-5.2.5.tar.gz",
+          "sha256": "a15c168e39e87d750c3dc766edc7f19bdda57dacf01e509678467eace91ad282",
+          "size_bytes": 1744796,
+          "local_path": "output/pws0801/python-native-license-work/cpython-xz-5.2.5.tar.gz",
+          "stage_path": "sources/python-native/cpython-xz-5.2.5.tar.gz",
+          "owner": "SPDXRef-PACKAGE-xz",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "selection_license_evidence": "COPYING places liblzma in the public domain with an express fallback use grant. GPL/LGPL tools, getopt and build programs are not treated as shipped library license."
+    },
+    {
+      "component_id": "cpython-macholib",
+      "name": "macholib selected ctypes modules (CPython)",
+      "version": "1.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by cpython",
+      "purl": null,
+      "license_expression": "PSF-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-macholib/README.ctypes",
+          "asset_path": "packaging/licenses/release-python-native/cpython-macholib/README.ctypes",
+          "sha256": "dc29d1da83b6a0a09a41647e4111eee878ed079c2d6b54a98fd6d8b88dd581f2",
+          "size_bytes": 296
+        },
+        {
+          "path": "notices/python-native/cpython/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython/LICENSE.txt",
+          "sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+          "size_bytes": 35407
+        }
+      ],
+      "source_url": "https://files.pythonhosted.org/packages/ec/57/f0a712efc3ed982cf4038a3cee172057303b9be914c32c93b2fbec27f785/macholib-1.0.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "python314.zip!/ctypes/macholib/dyld.pyc",
+          "size_bytes": 6619,
+          "sha256": "3f13e63d54346437c99776e89873f4ea3274ace3d69d278a7604e801a9b5863a"
+        },
+        {
+          "path": "python314.zip!/ctypes/macholib/dylib.pyc",
+          "size_bytes": 654,
+          "sha256": "55be4e588b021483372fd95708780b36cbada76d988ffb6e90603eb8c7cbcc4c"
+        },
+        {
+          "path": "python314.zip!/ctypes/macholib/fetch_macholib",
+          "size_bytes": 86,
+          "sha256": "7b9eb3a8af1d12da22604845995982ca99992876a825f3765e053ddb592620ab"
+        },
+        {
+          "path": "python314.zip!/ctypes/macholib/fetch_macholib.bat",
+          "size_bytes": 75,
+          "sha256": "7497fbdbb98afca4ac455e3a057c59bcdebaf1280e25c94741dc301f05cb53e5"
+        },
+        {
+          "path": "python314.zip!/ctypes/macholib/framework.pyc",
+          "size_bytes": 704,
+          "sha256": "ff194bdaa56c7a535c62c9b5c113ee28d5b81f398a9743fb92643b49be9fadbd"
+        },
+        {
+          "path": "python314.zip!/ctypes/macholib/README.ctypes",
+          "size_bytes": 302,
+          "sha256": "99f3754dec345ed71e2bcb337e3cdc58b1a4c02d290d870dc20ccdd1ff543ae1"
+        },
+        {
+          "path": "python314.zip!/ctypes/macholib/__init__.pyc",
+          "size_bytes": 152,
+          "sha256": "f19f86536a06e5f0aba27f80aa31d7dc96fd98b167ed124e1a37274665cb42ef"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-macholib-1.0.tar.gz",
+          "url": "https://files.pythonhosted.org/packages/ec/57/f0a712efc3ed982cf4038a3cee172057303b9be914c32c93b2fbec27f785/macholib-1.0.tar.gz",
+          "sha256": "c76f268f5054024e962f2515a0e522baf85313064f6740d80375afc850787a38",
+          "size_bytes": 17494,
+          "local_path": "output/pws0801/python-native-license-work/cpython-macholib-1.0.tar.gz",
+          "stage_path": "sources/python-native/cpython-macholib-1.0.tar.gz",
+          "owner": "SPDXRef-PACKAGE-macholib-1.0",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "selection_license_evidence": "CPython README.ctypes offers MIT OR PSF for version1.0 SVN789; PSF route selected using full enclosing Python LICENSE. Pure Python bytecode is actually present on Windows even though Mach-O operations are not selected."
+    },
+    {
+      "component_id": "cpython-mpdecimal",
+      "name": "mpdecimal (CPython embedded)",
+      "version": "4.0.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream mpdecimal authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "BSD-2-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-mpdecimal/COPYRIGHT.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-mpdecimal/COPYRIGHT.txt",
+          "sha256": "2713324211652ce4a60e6e21e54f9dc3004299e591b0933a352f1a89c5fb53c2",
+          "size_bytes": 1285
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/mpdecimal-4.0.0.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "_decimal.pyd",
+          "size_bytes": 290528,
+          "sha256": "8d41a84db20a9b985e98c802ad6833cf9625c744ad35478dd346f54f81488706"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-mpdecimal-4.0.0.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/mpdecimal-4.0.0.tar.gz",
+          "sha256": "338fac3fb8cdd60f406b6326431338756f58a8af94229ffd9bf1e7c2b1ad71ca",
+          "size_bytes": 319629,
+          "local_path": "output/pws0801/python-native-license-work/cpython-mpdecimal-4.0.0.tar.gz",
+          "stage_path": "sources/python-native/cpython-mpdecimal-4.0.0.tar.gz",
+          "owner": "SPDXRef-PACKAGE-mpdecimal",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cpython-openssl",
+      "name": "openssl (CPython embedded)",
+      "version": "3.5.7",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream openssl authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-openssl/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-openssl/LICENSE.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "size_bytes": 10175
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/openssl-3.5.7.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "libcrypto-3.dll",
+          "size_bytes": 6242552,
+          "sha256": "53c529145339fb042a3dcd3a09c2d7753204f8b4fc79d99e0d31e69a33985958"
+        },
+        {
+          "path": "libssl-3.dll",
+          "size_bytes": 1329912,
+          "sha256": "b17a87979862d19241edc4318f967e24c3ec356ed6c2368f561179fab2311001"
+        },
+        {
+          "path": "_ssl.pyd",
+          "size_bytes": 190688,
+          "sha256": "5c07572df2913618cfb851b608cb5f74d740fcce5c3f2e63dc0a2ba39ab35dad"
+        },
+        {
+          "path": "_hashlib.pyd",
+          "size_bytes": 69344,
+          "sha256": "36ce760b9fac53fe51755f30a68d86f5fde89bf1b66c65c19e04aa3afa404ac2"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-openssl-3.5.7.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/openssl-3.5.7.tar.gz",
+          "sha256": "ca94e7c6c223d9caf77bb51aac5949186379608ea2a0cad3aa8bdf31856912e9",
+          "size_bytes": 53341406,
+          "local_path": "output/pws0801/python-native-license-work/cpython-openssl-3.5.7.tar.gz",
+          "stage_path": "sources/python-native/cpython-openssl-3.5.7.tar.gz",
+          "owner": "SPDXRef-PACKAGE-openssl",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cpython-sqlite",
+      "name": "SQLite (CPython embedded)",
+      "version": "3.50.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by cpython",
+      "purl": null,
+      "license_expression": "blessing",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-sqlite/PUBLIC-DOMAIN-BLESSING.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-sqlite/PUBLIC-DOMAIN-BLESSING.txt",
+          "sha256": "49cf7bcb103eb3244150a23bb23d840370a4762914faf1b450072a4b03c14670",
+          "size_bytes": 427
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/sqlite-3.50.4.0.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "sqlite3.dll",
+          "size_bytes": 1584864,
+          "sha256": "2940bee51c4a00c7e8f2a8a1be857d4c4ad23b2657fbf7fdf18e3a3fd20066c6"
+        },
+        {
+          "path": "_sqlite3.pyd",
+          "size_bytes": 132832,
+          "sha256": "b0c4edff6d60f300373ec929ab915f95ee601bf167e04d28e4e9e28a8e536fe0"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-sqlite-3.50.4.0.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/sqlite-3.50.4.0.tar.gz",
+          "sha256": "fb5ab81f27612b0a7b4861ba655906c76dc85ee969e7a4905d2075aff931e8d0",
+          "size_bytes": 2845090,
+          "local_path": "output/pws0801/python-native-license-work/cpython-sqlite-3.50.4.0.tar.gz",
+          "stage_path": "sources/python-native/cpython-sqlite-3.50.4.0.tar.gz",
+          "owner": "SPDXRef-PACKAGE-sqlite",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual sqlite runtime reports3.50.4; vendor source package labels3.50.4.0; its sqlite3.c declares3.50.4."
+    },
+    {
+      "component_id": "cpython-zlib-ng",
+      "name": "zlib-ng (CPython embedded)",
+      "version": "2.2.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream zlib-ng authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "Zlib",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-zlib-ng/LICENSE.md.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython-zlib-ng/LICENSE.md.txt",
+          "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee",
+          "size_bytes": 867
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/zlib-ng-2.2.4.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "python314.dll",
+          "size_bytes": 6778592,
+          "sha256": "fde89cdb5c2d08ae65de7ef4abca1876c93ba3796002f5ac0bf7e4d4f5a94da0"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-zlib-ng-2.2.4.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/zlib-ng-2.2.4.tar.gz",
+          "sha256": "00bbd88709bc416cb96160ab61d3e1c8f76e106799af7328d0fe434dc7dd5004",
+          "size_bytes": 2415819,
+          "local_path": "output/pws0801/python-native-license-work/cpython-zlib-ng-2.2.4.tar.gz",
+          "stage_path": "sources/python-native/cpython-zlib-ng-2.2.4.tar.gz",
+          "owner": "SPDXRef-PACKAGE-zlib-ng",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cpython-zstd",
+      "name": "zstd (CPython embedded)",
+      "version": "1.5.7",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream zstd authors; Python Software Foundation",
+      "purl": null,
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython-zstd/LICENSE",
+          "asset_path": "packaging/licenses/release-python-native/cpython-zstd/LICENSE",
+          "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+          "size_bytes": 1549
+        }
+      ],
+      "source_url": "https://github.com/python/cpython-source-deps/archive/refs/tags/zstd-1.5.7.tar.gz",
+      "artifact_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+      "artifact_hash_binding": "exact enclosing cpython archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cpython",
+      "selected_files": [
+        {
+          "path": "_zstd.pyd",
+          "size_bytes": 503520,
+          "sha256": "262aea62a994920daf152a10bdc0ca83a8b1c0874e71db23734862431de182c6"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "cpython-zstd-1.5.7.tar.gz",
+          "url": "https://github.com/python/cpython-source-deps/archive/refs/tags/zstd-1.5.7.tar.gz",
+          "sha256": "f24b52470d12f466e9fa4fcc94e6c530625ada51d7b36de7fdc6ed7e6f499c8e",
+          "size_bytes": 2440298,
+          "local_path": "output/pws0801/python-native-license-work/cpython-zstd-1.5.7.tar.gz",
+          "stage_path": "sources/python-native/cpython-zstd-1.5.7.tar.gz",
+          "owner": "SPDXRef-PACKAGE-zstd",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Separately pinned CPython3.14.6 Windows vendor SPDX package identity and exact embedded archive."
+    },
+    {
+      "component_id": "cryptography-embedded-openssl",
+      "name": "OpenSSL (cryptography static build)",
+      "version": "4.0.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by cryptography",
+      "purl": null,
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cryptography-embedded-openssl/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/cryptography-embedded-openssl/LICENSE.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "size_bytes": 10175
+        }
+      ],
+      "source_url": "https://github.com/openssl/openssl/releases/download/openssl-4.0.1/openssl-4.0.1.tar.gz",
+      "artifact_sha256": "bd1c592e4d5974f0d08d4888e432157adba757c66da0246918e43677fafa2d30",
+      "artifact_hash_binding": "exact enclosing cryptography archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "cryptography",
+      "selected_files": [
+        {
+          "path": "cryptography/hazmat/bindings/_rust.pyd",
+          "sha256": "05fefb14b1cb1c90bcccce87e82d205f5f2396977bf911243972790ba2376849",
+          "size_bytes": 9935360
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "openssl-4.0.1.tar.gz",
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-4.0.1/openssl-4.0.1.tar.gz",
+          "sha256": "2db3f3a0d6ea4b59e1f094ace2c8cd536dffb87cdc39084c5afa1e6f7f37dd09",
+          "size_bytes": 55079428,
+          "local_path": "output/pws0801/python-native-license-work/openssl-4.0.1.tar.gz",
+          "stage_path": "sources/python-native/openssl-4.0.1.tar.gz",
+          "owner": "cryptography-openssl",
+          "verification": "SHA256 matched the separately pinned CPython vendor SPDX or cryptography wheel SBOM checksum before source license inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "vendor_sbom": {
+        "member": "cryptography-50.0.0.dist-info/sboms/sbom.json",
+        "sha256": "944f37dcc1c3f415199717dc9a0cbc927efba2c2e452ac900acdd6a5ab1381a6",
+        "build_flags": "no-zlib no-shared no-module no-comp no-apps no-docs no-sm2-precomp no-atexit",
+        "expected_source_sha256": "2db3f3a0d6ea4b59e1f094ace2c8cd536dffb87cdc39084c5afa1e6f7f37dd09"
+      },
+      "enclosing_wheel": {
+        "name": "cryptography-50.0.0-cp311-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/32/2e/c9db68a0c4bfa28e310707527c0ee3a2bd254104d2e02e68f368e197aa4c/cryptography-50.0.0-cp311-abi3-win_amd64.whl",
+        "size_bytes": 3840395,
+        "sha256": "bd1c592e4d5974f0d08d4888e432157adba757c66da0246918e43677fafa2d30"
+      },
+      "normal_imports": {
+        "cryptography/hazmat/bindings/_rust.pyd": [
+          "advapi32.dll",
+          "api-ms-win-core-synch-l1-2-0.dll",
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-environment-l1-1-0.dll",
+          "api-ms-win-crt-filesystem-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-time-l1-1-0.dll",
+          "api-ms-win-crt-utility-l1-1-0.dll",
+          "bcryptprimitives.dll",
+          "crypt32.dll",
+          "kernel32.dll",
+          "ntdll.dll",
+          "python3.dll",
+          "user32.dll",
+          "vcruntime140.dll",
+          "ws2_32.dll"
+        ]
+      },
+      "delay_imports": {
+        "cryptography/hazmat/bindings/_rust.pyd": []
+      }
+    },
+    {
+      "component_id": "pikepdf-embedded-qpdf",
+      "name": "qpdf (pikepdf DLL)",
+      "version": "12.3.2",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream qpdf (pikepdf DLL) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "Apache-2.0 AND MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "size_bytes": 11358
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/NOTICE.md.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/NOTICE.md.txt",
+          "sha256": "b207f65a9e5491195ded63b2941199b19a4d30148871f2742c88eae7bfc513a6",
+          "size_bytes": 2729
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        }
+      ],
+      "source_url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.tar.gz",
+      "artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "pikepdf",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [
+        "pikepdf-qpdf-openssl",
+        "pikepdf-qpdf-zlib",
+        "pikepdf-qpdf-libjpeg"
+      ],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "qpdf-12.3.2.tar.gz",
+          "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.tar.gz",
+          "size_bytes": 19640678,
+          "sha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+          "local_path": "output/pws0801/python-native-license-work/qpdf-12.3.2.tar.gz",
+          "stage_path": "sources/python-native/qpdf-12.3.2.tar.gz",
+          "verification": "Matches independently published GitHub release asset SHA256 digest; version corroborated from the actual pikepdf qpdf DLL or runtime API."
+        }
+      ],
+      "corresponding_source_required": false,
+      "normal_imports": [
+        "advapi32.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "crypt32.dll",
+        "kernel32.dll",
+        "msvcp140-0f885b509a685d2bbfa652fed26b5fb3.dll",
+        "user32.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "ws2_32.dll"
+      ],
+      "delay_imports": [],
+      "version_evidence": "Existing pinned pikepdf10.10.0 qpdf API version12.3.2; DLL imports show static native closure and exact mangled msvcp140 dependency. NOTICE includes the embedded sphlib MIT license and the Rijndael public-domain statement. qtest is source-only, not a shipped native program."
+    },
+    {
+      "component_id": "pikepdf-qpdf-libjpeg",
+      "name": "Independent JPEG Group libjpeg (pikepdf qpdf static build)",
+      "version": "9f",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream Independent JPEG Group libjpeg (pikepdf qpdf static build) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "IJG",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-qpdf-libjpeg/README",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/README",
+          "sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+          "size_bytes": 18719
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        },
+        {
+          "path": "notices/python-native/pikepdf-qpdf-libjpeg/ACKNOWLEDGMENT.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/ACKNOWLEDGMENT.txt",
+          "sha256": "d903a69ab39425283b44e2ea355cbfaf79bcd738b69c2b1c3c700ce80f2d89f9",
+          "size_bytes": 74
+        }
+      ],
+      "source_url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz",
+      "artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "pikepdf",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "jpegsrc.v9f.tar.gz",
+          "url": "https://www.ijg.org/files/jpegsrc.v9f.tar.gz",
+          "size_bytes": 1081470,
+          "sha256": "04705c110cb2469caa79fb71fba3d7bf834914706e9641a4589485c1f832565b",
+          "local_path": "output/pws0801/python-native-license-work/jpegsrc.v9f.tar.gz",
+          "stage_path": "sources/python-native/jpegsrc.v9f.tar.gz",
+          "verification": "Exact source distribution member of separately SHA256-pinned qpdf external-libs release2026-01-08; container SHA256 matches GitHub asset digest and published qpdf-external-libs.sha256. PGP signature not independently verified.",
+          "source_container": {
+            "url": "https://github.com/qpdf/external-libs/releases/download/release-2026-01-08/qpdf-external-libs-src.zip",
+            "sha256": "88b70fdfb1c2041197a03751bbb2410d1dcda9c5c2b0b0e772930b376b98553c",
+            "size_bytes": 57528531,
+            "member": "external-libs-src/jpegsrc.v9f.tar.gz"
+          }
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual qpdf DLL contains JPEG9f14-Jan-2024 version string, no external libjpeg DLL.",
+      "source_limits": "Source release version and checksum bound to upstream published distribution; byte-for-byte recreation of the original static Windows object has not been attested."
+    },
+    {
+      "component_id": "pikepdf-qpdf-openssl",
+      "name": "OpenSSL (pikepdf qpdf static build)",
+      "version": "3.6.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream OpenSSL (pikepdf qpdf static build) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "Apache-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-qpdf-openssl/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-openssl/LICENSE.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "size_bytes": 10175
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        }
+      ],
+      "source_url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.0/openssl-3.6.0.tar.gz",
+      "artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "pikepdf",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "openssl-3.6.0.tar.gz",
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.0/openssl-3.6.0.tar.gz",
+          "size_bytes": 54974351,
+          "sha256": "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9",
+          "local_path": "output/pws0801/python-native-license-work/openssl-3.6.0.tar.gz",
+          "stage_path": "sources/python-native/openssl-3.6.0.tar.gz",
+          "verification": "Matches independently published GitHub release asset SHA256 digest; version corroborated from the actual pikepdf qpdf DLL or runtime API."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual qpdf DLL includes OpenSSL3.6.0 version-identifying build strings; normal/delay imports show no OpenSSL DLL.",
+      "source_limits": "Source release version and checksum bound to upstream published distribution; byte-for-byte recreation of the original static Windows object has not been attested."
+    },
+    {
+      "component_id": "pikepdf-qpdf-zlib",
+      "name": "zlib (pikepdf qpdf static build)",
+      "version": "1.3.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream zlib (pikepdf qpdf static build) authors; qpdf and pikepdf projects",
+      "purl": null,
+      "license_expression": "Zlib",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pikepdf-qpdf-zlib/README",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-zlib/README",
+          "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+          "size_bytes": 5317
+        },
+        {
+          "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+          "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+          "size_bytes": 39486
+        }
+      ],
+      "source_url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz",
+      "artifact_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+      "artifact_hash_binding": "Exact enclosing pikepdf wheel; statically included code bound additionally to selected qpdf DLL digest. No identity with a differently hashed standalone qpdf DLL is asserted.",
+      "enclosing_component": "pikepdf",
+      "enclosing_wheel": {
+        "name": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/58/2a/5d86ec58d8ef6e295807c99196f4ef795aa89d04abde4837bcbfb4b0785f/pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "size_bytes": 3414578,
+        "sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c"
+      },
+      "dependencies": [],
+      "selected_files": [
+        {
+          "path": "pikepdf.libs/qpdf30-eca0c1670a8d0fd8a8bc678bfc22fc30.dll",
+          "sha256": "635d5d3e63a38241d74096bb06ecf8b8f3e68db2a5c6e5e0310ec4de2dc8dc86",
+          "size_bytes": 7069184
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "zlib-1.3.1.tar.gz",
+          "url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz",
+          "size_bytes": 1512791,
+          "sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23",
+          "local_path": "output/pws0801/python-native-license-work/zlib-1.3.1.tar.gz",
+          "stage_path": "sources/python-native/zlib-1.3.1.tar.gz",
+          "verification": "Exact source distribution member of separately SHA256-pinned qpdf external-libs release2026-01-08; container SHA256 matches GitHub asset digest and published qpdf-external-libs.sha256. PGP signature not independently verified.",
+          "source_container": {
+            "url": "https://github.com/qpdf/external-libs/releases/download/release-2026-01-08/qpdf-external-libs-src.zip",
+            "sha256": "88b70fdfb1c2041197a03751bbb2410d1dcda9c5c2b0b0e772930b376b98553c",
+            "size_bytes": 57528531,
+            "member": "external-libs-src/zlib-1.3.1.tar.gz"
+          }
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": "Actual qpdf DLL contains deflate/inflate1.3.1 copyright/version strings, no external zlib DLL.",
+      "source_limits": "Source release version and checksum bound to upstream published distribution; byte-for-byte recreation of the original static Windows object has not been attested."
+    },
+    {
+      "component_id": "pillow-embedded-brotli",
+      "name": "brotli (Pillow static build)",
+      "version": "1.2.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/google/brotli",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional FreeType closure",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-dav1d",
+      "name": "dav1d (Pillow static build)",
+      "version": "1.5.3",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-2-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        },
+        {
+          "path": "notices/python-native/pillow-embedded-dav1d/pillow-dav1d-COPYING.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow-embedded-dav1d/pillow-dav1d-COPYING.txt",
+          "sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5",
+          "size_bytes": 1317
+        }
+      ],
+      "source_url": "https://code.videolan.org/videolan/dav1d",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "upstream-recipe-only; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional libavif decoder dependency; exact built revision not attested",
+      "version_limits": "Exact built revision not independently attested; upstream version recipe identity retained.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-freetype",
+      "name": "freetype (Pillow static build)",
+      "version": "2.14.3",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "FTL",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://gitlab.freedesktop.org/freetype/freetype",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [
+        "pillow-embedded-libpng",
+        "pillow-embedded-brotli"
+      ],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional font extension; selected decoder does not invoke it",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-harfbuzz",
+      "name": "harfbuzz (Pillow static build)",
+      "version": "14.2.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/harfbuzz/harfbuzz",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional font extension; selected decoder does not invoke it",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libaom",
+      "name": "libaom (Pillow static build)",
+      "version": "3.14.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-2-Clause AND LicenseRef-AOM-Patent-License",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        },
+        {
+          "path": "notices/python-native/pillow-embedded-libaom/pillow-aom-LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libaom/pillow-aom-LICENSE.txt",
+          "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
+          "size_bytes": 1316
+        },
+        {
+          "path": "notices/python-native/pillow-embedded-libaom/pillow-aom-PATENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libaom/pillow-aom-PATENTS.txt",
+          "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61",
+          "size_bytes": 5701
+        }
+      ],
+      "source_url": "https://aomedia.googlesource.com/aom",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "upstream-recipe-only; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional libavif encoder dependency; exact built revision not attested",
+      "version_limits": "Exact built revision not independently attested; upstream version recipe identity retained.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libavif",
+      "name": "libavif (Pillow static build)",
+      "version": "1.4.2",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-2-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/AOMediaCodec/libavif",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [
+        "pillow-embedded-libaom",
+        "pillow-embedded-dav1d",
+        "pillow-embedded-libyuv",
+        "pillow-embedded-libsharpyuv"
+      ],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional AVIF extension; AVIF input prohibited",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libjpeg-turbo",
+      "name": "libjpeg-turbo (Pillow static build)",
+      "version": "3.1.4.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "IJG AND BSD-3-Clause AND Zlib",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/libjpeg-turbo/libjpeg-turbo",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "JPEG decode",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libpng",
+      "name": "libpng (Pillow static build)",
+      "version": "1.6.58",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "libpng-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/pnggroup/libpng",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional FreeType closure; Pillow PNG decoder uses zlib",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libsharpyuv",
+      "name": "libsharpyuv (Pillow static build)",
+      "version": "1.6.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://chromium.googlesource.com/webm/libwebp",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "upstream-recipe-only; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Embedded WebP dependency and optional libavif dependency",
+      "version_limits": "Exact built revision not independently attested; upstream version recipe identity retained.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libtiff",
+      "name": "libtiff (Pillow static build)",
+      "version": "4.7.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "libtiff AND LicenseRef-Pillow-LibTIFF-LZW",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://gitlab.com/libtiff/libtiff",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [
+        "pillow-embedded-xz-liblzma",
+        "pillow-embedded-zlib-ng",
+        "pillow-embedded-libjpeg-turbo",
+        "pillow-embedded-libwebp"
+      ],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Embedded in imaging core; TIFF input prohibited",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libwebp",
+      "name": "libwebp (Pillow static build)",
+      "version": "1.6.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-3-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://chromium.googlesource.com/webm/libwebp",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [
+        "pillow-embedded-libsharpyuv"
+      ],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Embedded WebP support and TIFF dependency; WebP input prohibited",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-libyuv",
+      "name": "libyuv (Pillow static build)",
+      "version": "644251f25",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-3-Clause AND LicenseRef-LibYUV-Patent-Grant",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        },
+        {
+          "path": "notices/python-native/pillow-embedded-libyuv/pillow-libyuv-LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libyuv/pillow-libyuv-LICENSE.txt",
+          "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+          "size_bytes": 1506
+        },
+        {
+          "path": "notices/python-native/pillow-embedded-libyuv/pillow-libyuv-PATENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libyuv/pillow-libyuv-PATENTS.txt",
+          "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495",
+          "size_bytes": 1387
+        }
+      ],
+      "source_url": "https://chromium.googlesource.com/libyuv/libyuv",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "upstream-recipe-only; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional libavif dependency; abbreviated upstream revision, exact built revision not attested",
+      "version_limits": "Exact built revision not independently attested; upstream version recipe identity retained.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-littlecms",
+      "name": "littlecms (Pillow static build)",
+      "version": "2.19.1",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/mm2/Little-CMS",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Optional CMS extension; page profile rejects ICC rather than invoking it",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-openjpeg",
+      "name": "openjpeg (Pillow static build)",
+      "version": "2.5.4",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "BSD-2-Clause",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/uclouvain/openjpeg",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Embedded in imaging core; JPEG 2000 input prohibited",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-raqm",
+      "name": "raqm (Pillow static build)",
+      "version": "0.10.5",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        },
+        {
+          "path": "notices/python-native/pillow-embedded-raqm/COPYRIGHT-MIT.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow-embedded-raqm/COPYRIGHT-MIT.txt",
+          "sha256": "60b84ef09459007776c094984fd2559187e5adbc6e7b58696fa91077ff8654da",
+          "size_bytes": 1224
+        }
+      ],
+      "source_url": "https://github.com/HOST-Oman/libraqm",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [
+        "pillow-embedded-harfbuzz",
+        "pillow-embedded-freetype"
+      ],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "pillow-12.3.0.tar.gz",
+          "url": "https://files.pythonhosted.org/packages/1c/3d/bb7fca845737cf9d7dbde16ed1843984665ff2e0a518f5db43e77ec540b9/pillow-12.3.0.tar.gz",
+          "size_bytes": 47025035,
+          "sha256": "3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce",
+          "local_path": "output/pws0801/python-native-license-work/pillow-12.3.0.tar.gz",
+          "stage_path": "sources/python-native/pillow-12.3.0.tar.gz"
+        }
+      ],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "vendored-source-and-runtime-probe; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Vendored optional font support; notice reconciliation required",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-xz-liblzma",
+      "name": "xz-liblzma (Pillow static build)",
+      "version": "5.8.3",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "0BSD",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/tukaani-project/xz",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "Embedded liblzma for TIFF; XZ tool programs not admitted",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "pillow-embedded-zlib-ng",
+      "name": "zlib-ng (Pillow static build)",
+      "version": "2.3.3",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by pillow",
+      "purl": null,
+      "license_expression": "Zlib",
+      "license_texts": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "source_url": "https://github.com/zlib-ng/zlib-ng",
+      "artifact_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+      "artifact_hash_binding": "exact enclosing pillow archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "pillow",
+      "selected_files": [
+        {
+          "path": "PIL/_avif.cp314-win_amd64.pyd",
+          "size_bytes": 7890432,
+          "sha256": "d8bd3032b72992a8166144a4063bae4a55c0f178d237454f17102301731e912a"
+        },
+        {
+          "path": "PIL/_imaging.cp314-win_amd64.pyd",
+          "size_bytes": 2627072,
+          "sha256": "d823c0e3b54035d08703bb427c553c956c2607b79395f2952e17a5447c5f1105"
+        },
+        {
+          "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+          "size_bytes": 272384,
+          "sha256": "dff90929dbeb9d51eebf09f4454d0beb65775f7644145a63d66fa8ca9f5a96fd"
+        },
+        {
+          "path": "PIL/_imagingft.cp314-win_amd64.pyd",
+          "size_bytes": 2171392,
+          "sha256": "93c3ca5a3e7119897be9825a0a4228d485410fc8f1e42257edf7e89052c79bce"
+        },
+        {
+          "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+          "size_bytes": 21504,
+          "sha256": "a7b3d6e462d338744694bc332f9f6f9c5717d532b7a74ad2762b3289521d0d9e"
+        },
+        {
+          "path": "PIL/_imagingmorph.cp314-win_amd64.pyd",
+          "size_bytes": 12288,
+          "sha256": "591905867dd3da9bcf85bc1f84be66817d0399c5a5f25755322e4088c0d42c51"
+        },
+        {
+          "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+          "size_bytes": 14848,
+          "sha256": "79208042672ff0b9e3669d5078ad35413470861e783feeaf1430458c41036593"
+        },
+        {
+          "path": "PIL/_webp.cp314-win_amd64.pyd",
+          "size_bytes": 416256,
+          "sha256": "f4d851381d1bd937753ba78e951c96a85f3a6c5ac402beec23fc13fdb6d45198"
+        }
+      ],
+      "source_artifacts": [],
+      "corresponding_source_required": false,
+      "binary_version_evidence": "wheel-notice-and-source; exact enclosing wheel and native-member hashes; no individual static-library binary exists in the wheel",
+      "role": "PNG inflate; zlib compatibility version 1.3.1.zlib-ng",
+      "version_limits": "Reviewed Windows wheel identity and upstream Windows source recipe; not a reproducible-build claim.",
+      "enclosing_wheel": {
+        "name": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/f1/e0/492879f69d94f91f60fc8cd05ba03650e9520afebb2fb7aa12777d7c7f38/pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "size_bytes": 7237707,
+        "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+      }
+    },
+    {
+      "component_id": "uharfbuzz-embedded-harfbuzz",
+      "name": "HarfBuzz (uharfbuzz static build)",
+      "version": "14.3.0",
+      "type": "library",
+      "scope": "runtime",
+      "supplier": "Upstream project; distributed by uharfbuzz",
+      "purl": null,
+      "license_expression": "MIT",
+      "license_texts": [
+        {
+          "path": "notices/python-native/uharfbuzz-embedded-harfbuzz/COPYING",
+          "asset_path": "packaging/licenses/release-python-native/uharfbuzz-embedded-harfbuzz/COPYING",
+          "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
+          "size_bytes": 1971
+        },
+        {
+          "path": "notices/python-native/uharfbuzz-embedded-harfbuzz/MICROSOFT-USE-COPYING",
+          "asset_path": "packaging/licenses/release-python-native/uharfbuzz-embedded-harfbuzz/MICROSOFT-USE-COPYING",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "size_bytes": 1141
+        },
+        {
+          "path": "notices/python-native/uharfbuzz-embedded-harfbuzz/WHEEL-LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/uharfbuzz-embedded-harfbuzz/WHEEL-LICENSE-OMNIBUS.txt",
+          "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+          "size_bytes": 11558
+        }
+      ],
+      "source_url": "https://files.pythonhosted.org/packages/58/85/c7545959fdf6b9377b926c826f6d80bddf034ac361b09306d430a0f556a5/uharfbuzz-0.56.0.tar.gz",
+      "artifact_sha256": "0e7c628f327ce862a8606de93766f001704a5201e97d598686730ef2c1605c03",
+      "artifact_hash_binding": "exact enclosing uharfbuzz archive; see selected file digests for individual distributed objects",
+      "dependencies": [],
+      "enclosing_component": "uharfbuzz",
+      "selected_files": [
+        {
+          "path": "uharfbuzz/_harfbuzz.pyd",
+          "sha256": "1d457bc1e89e6be130fc9928e6293916fd341d2934c17972fd90623ddeffd4ff",
+          "size_bytes": 3060736
+        },
+        {
+          "path": "uharfbuzz/_harfbuzz_test.pyd",
+          "sha256": "6a7c0fe4ac457c0148a5e96f58e46e8c038c0defbefa4a36f7e12916c759c4cc",
+          "size_bytes": 18432
+        }
+      ],
+      "source_artifacts": [
+        {
+          "name": "uharfbuzz-0.56.0.tar.gz",
+          "url": "https://files.pythonhosted.org/packages/58/85/c7545959fdf6b9377b926c826f6d80bddf034ac361b09306d430a0f556a5/uharfbuzz-0.56.0.tar.gz",
+          "size_bytes": 38643044,
+          "sha256": "77f4ad1c9f32f44cc6f0c0c4f98fab54587719c96c810a043d01669f704d3e0c",
+          "local_path": "output/pws0801/resume-20261103/artifacts/uharfbuzz-0.56.0.tar.gz",
+          "stage_path": "sources/python-native/uharfbuzz-0.56.0.tar.gz",
+          "verification": "Exact source archive SHA256 matches immutable repository uv.lock sdist input before source member inspection."
+        }
+      ],
+      "corresponding_source_required": false,
+      "version_evidence": {
+        "archive": "output/pws0801/resume-20261103/artifacts/uharfbuzz-0.56.0.tar.gz",
+        "member": "uharfbuzz-0.56.0/harfbuzz/src/hb-version.h",
+        "member_sha256": "39bd2e8a2f26123bb9a331a5079b1e56ee5a443b49d1653c253279b74a0c45f9",
+        "declared_version": "14.3.0"
+      },
+      "enclosing_wheel": {
+        "name": "uharfbuzz-0.56.0-cp310-abi3-win_amd64.whl",
+        "url": "https://files.pythonhosted.org/packages/96/84/6c63afa111bcaed79ac011fc112c4a8d8cb60904ff5999f2e435bb79db4a/uharfbuzz-0.56.0-cp310-abi3-win_amd64.whl",
+        "size_bytes": 1410443,
+        "sha256": "0e7c628f327ce862a8606de93766f001704a5201e97d598686730ef2c1605c03"
+      },
+      "normal_imports": {
+        "uharfbuzz/_harfbuzz.pyd": [
+          "api-ms-win-crt-convert-l1-1-0.dll",
+          "api-ms-win-crt-environment-l1-1-0.dll",
+          "api-ms-win-crt-heap-l1-1-0.dll",
+          "api-ms-win-crt-math-l1-1-0.dll",
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "api-ms-win-crt-utility-l1-1-0.dll",
+          "dwrite.dll",
+          "gdi32.dll",
+          "kernel32.dll",
+          "python3.dll",
+          "rpcrt4.dll",
+          "user32.dll",
+          "usp10.dll",
+          "vcruntime140.dll",
+          "vcruntime140_1.dll"
+        ],
+        "uharfbuzz/_harfbuzz_test.pyd": [
+          "api-ms-win-crt-runtime-l1-1-0.dll",
+          "api-ms-win-crt-stdio-l1-1-0.dll",
+          "api-ms-win-crt-string-l1-1-0.dll",
+          "kernel32.dll",
+          "python3.dll",
+          "vcruntime140.dll"
+        ]
+      },
+      "delay_imports": {
+        "uharfbuzz/_harfbuzz.pyd": [],
+        "uharfbuzz/_harfbuzz_test.pyd": []
+      }
+    }
+  ],
+  "notice_assets": [
+    {
+      "path": "notices/python-native/cffi-embedded-libffi/CFFI-DEFAULT-LICENSE-MIT-0.txt",
+      "asset_path": "packaging/licenses/release-python-native/cffi-embedded-libffi/CFFI-DEFAULT-LICENSE-MIT-0.txt",
+      "sha256": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63",
+      "size_bytes": 1123,
+      "owner": "cffi-embedded-libffi",
+      "origin": {
+        "archive": "cffi-2.1.1-cp314-cp314-win_amd64.whl",
+        "archive_sha256": "3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48",
+        "member": "cffi-2.1.1.dist-info/licenses/LICENSE"
+      }
+    },
+    {
+      "path": "notices/python-native/cffi-embedded-libffi/SOURCE-LICENSE-NOTICES.txt",
+      "asset_path": "packaging/licenses/release-python-native/cffi-embedded-libffi/SOURCE-LICENSE-NOTICES.txt",
+      "sha256": "43184e53f1c6c4a7dc42c5d2e63c52a574700d9754c9a646106ab3dd97de5a5c",
+      "size_bytes": 6905,
+      "owner": "cffi-embedded-libffi",
+      "origin": {
+        "archive": "cffi-2.1.1.tar.gz",
+        "archive_sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be",
+        "members": [
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffi.c",
+            "sha256": "1abda6df884d78f33be1ee8abf99c6dc1c8b60b6f72ac41ac27b42a98329334a",
+            "size_bytes": 12509
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffi.h",
+            "sha256": "96cc1f0392c280471c86164b31a5d5fbbce3141376c352ddc187d531cc740d0f",
+            "size_bytes": 9298
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffi_common.h",
+            "sha256": "70fc6e9f815ba8c6320c0b8a00d6c06ed763a58847708eb694123c687ddd5a65",
+            "size_bytes": 2114
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/fficonfig.h",
+            "sha256": "742907d362beb3b3308719541c8c94c3b7539a6cb9eb77fe202be45303bae6da",
+            "size_bytes": 2973
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/ffitarget.h",
+            "sha256": "f4fb7eaffbe13a11035174284eba68934f3cf41eb16d044f157d8bdd966b14da",
+            "size_bytes": 2699
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/prep_cif.c",
+            "sha256": "e04a2106e3f14333d5f79515d65fbb7b177de59b520b6860e95d5869202bf6af",
+            "size_bytes": 5720
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/types.c",
+            "sha256": "f398aad1c87cb8168d29f9ad1222e6e250b83847272b3caad21db3319a5ec2a5",
+            "size_bytes": 3556
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/win64.asm",
+            "sha256": "020ed36b231fadd51fcd93c1a92648c1346df9ec6a536ae892b807aed20cc1ad",
+            "size_bytes": 3096
+          },
+          {
+            "member": "cffi-2.1.1/src/c/libffi_x86_x64/win64.obj",
+            "sha256": "fa75a54e8ec34f6c4bd67edcfd4d484a75a7c23a0ffc8952ccf9a3fd14d8a3f3",
+            "size_bytes": 1176
+          }
+        ]
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-bzip2/LICENSE",
+      "asset_path": "packaging/licenses/release-python-native/cpython-bzip2/LICENSE",
+      "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+      "size_bytes": 1896,
+      "owner": "cpython-bzip2",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-bzip2-1.0.8.tar.gz",
+        "member": "cpython-source-deps-bzip2-1.0.8/LICENSE",
+        "member_sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-expat/COPYING",
+      "asset_path": "packaging/licenses/release-python-native/cpython-expat/COPYING",
+      "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+      "size_bytes": 1144,
+      "owner": "cpython-expat",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-expat-2.8.1.tar.gz",
+        "member": "expat-2.8.1/COPYING",
+        "member_sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-hacl-star/LICENSE-APACHE-2.0.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-hacl-star/LICENSE-APACHE-2.0.txt",
+      "sha256": "c5accbbd8546e94c34aed24afe689a617627d18eed5a6c48277e48db57c23851",
+      "size_bytes": 11356,
+      "owner": "cpython-hacl-star",
+      "origin": {
+        "archive": "cpython-hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+        "archive_sha256": "61e48893f37cb2280d106cefacf6fb5afe84edf625fec39572d0ee94e1018f26",
+        "member": "hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76/LICENSE"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-hacl-star/LICENSE-MIT.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-hacl-star/LICENSE-MIT.txt",
+      "sha256": "998ce04fb8ad9dedb0bc1b44938f8c3dcf1089780fa105ce1c8c30fb5554d78c",
+      "size_bytes": 1207,
+      "owner": "cpython-hacl-star",
+      "origin": {
+        "archive": "cpython-hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76.zip",
+        "archive_sha256": "61e48893f37cb2280d106cefacf6fb5afe84edf625fec39572d0ee94e1018f26",
+        "member": "hacl-star-8ba599b2f6c9701b3dc961db895b0856a2210f76/dist/LICENSE.txt"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-hacl-star/VENDORED-HEADER-NOTICES.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-hacl-star/VENDORED-HEADER-NOTICES.txt",
+      "sha256": "7995c36ae594376e2530defd7dc4341e391aa56fbbedac74f092f0980b8addeb",
+      "size_bytes": 3652,
+      "owner": "cpython-hacl-star",
+      "origin": {
+        "archive": "Python-3.14.6.tar.xz",
+        "archive_sha256": "143b1dddefaec3bd2e21e3b839b34a2b7fb9842272883c576420d605e9f30c63",
+        "verification": "Exact first copyright/license comment from each of40 HACL/KreMLin C/header files, grouped only when bytes identical."
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-libffi/LICENSE",
+      "asset_path": "packaging/licenses/release-python-native/cpython-libffi/LICENSE",
+      "sha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388",
+      "size_bytes": 1132,
+      "owner": "cpython-libffi",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-libffi-3.4.4.tar.gz",
+        "member": "cpython-source-deps-libffi-3.4.4/LICENSE",
+        "member_sha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-liblzma/COPYING",
+      "asset_path": "packaging/licenses/release-python-native/cpython-liblzma/COPYING",
+      "sha256": "bcb02973ef6e87ea73d331b3a80df7748407f17efdb784b61b47e0e610d3bb5c",
+      "size_bytes": 2775,
+      "owner": "cpython-liblzma",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-xz-5.2.5.tar.gz",
+        "member": "cpython-source-deps-xz-5.2.5/COPYING",
+        "member_sha256": "bcb02973ef6e87ea73d331b3a80df7748407f17efdb784b61b47e0e610d3bb5c"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-macholib/README.ctypes",
+      "asset_path": "packaging/licenses/release-python-native/cpython-macholib/README.ctypes",
+      "sha256": "dc29d1da83b6a0a09a41647e4111eee878ed079c2d6b54a98fd6d8b88dd581f2",
+      "size_bytes": 296,
+      "owner": "cpython-macholib",
+      "origin": {
+        "archive": "Python-3.14.6.tar.xz",
+        "archive_sha256": "143b1dddefaec3bd2e21e3b839b34a2b7fb9842272883c576420d605e9f30c63",
+        "member": "Python-3.14.6/Lib/ctypes/macholib/README.ctypes"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-mpdecimal/COPYRIGHT.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-mpdecimal/COPYRIGHT.txt",
+      "sha256": "2713324211652ce4a60e6e21e54f9dc3004299e591b0933a352f1a89c5fb53c2",
+      "size_bytes": 1285,
+      "owner": "cpython-mpdecimal",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-mpdecimal-4.0.0.tar.gz",
+        "member": "cpython-source-deps-mpdecimal-4.0.0/COPYRIGHT.txt",
+        "member_sha256": "2713324211652ce4a60e6e21e54f9dc3004299e591b0933a352f1a89c5fb53c2"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-openssl/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-openssl/LICENSE.txt",
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "size_bytes": 10175,
+      "owner": "cpython-openssl",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-openssl-3.5.7.tar.gz",
+        "member": "cpython-source-deps-openssl-3.5.7/LICENSE.txt",
+        "member_sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-sqlite/PUBLIC-DOMAIN-BLESSING.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-sqlite/PUBLIC-DOMAIN-BLESSING.txt",
+      "sha256": "49cf7bcb103eb3244150a23bb23d840370a4762914faf1b450072a4b03c14670",
+      "size_bytes": 427,
+      "owner": "cpython-sqlite",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-sqlite-3.50.4.0.tar.gz",
+        "member": "cpython-source-deps-sqlite-3.50.4.0/sqlite3.c",
+        "member_sha256": "e3f5d6901e7492af4a1fc8c4d745cae84c264942524c3fbfc02b82a5ca8818c8"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-zlib-ng/LICENSE.md.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython-zlib-ng/LICENSE.md.txt",
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee",
+      "size_bytes": 867,
+      "owner": "cpython-zlib-ng",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-zlib-ng-2.2.4.tar.gz",
+        "member": "cpython-source-deps-zlib-ng-2.2.4/LICENSE.md",
+        "member_sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython-zstd/LICENSE",
+      "asset_path": "packaging/licenses/release-python-native/cpython-zstd/LICENSE",
+      "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8",
+      "size_bytes": 1549,
+      "owner": "cpython-zstd",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/cpython-zstd-1.5.7.tar.gz",
+        "member": "cpython-source-deps-zstd-1.5.7/LICENSE",
+        "member_sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+      }
+    },
+    {
+      "path": "notices/python-native/cpython/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/cpython/LICENSE.txt",
+      "sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+      "size_bytes": 35407,
+      "owner": "cpython",
+      "origin": {
+        "archive": "python-3.14.6-embed-amd64.zip",
+        "member": "LICENSE.txt",
+        "archive_sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c"
+      }
+    },
+    {
+      "path": "notices/python-native/cryptography-embedded-openssl/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/cryptography-embedded-openssl/LICENSE.txt",
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "size_bytes": 10175,
+      "owner": "cryptography-embedded-openssl",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/openssl-4.0.1.tar.gz",
+        "member": "openssl-4.0.1/LICENSE.txt",
+        "member_sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-embedded-qpdf/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "size_bytes": 11358,
+      "owner": "pikepdf-embedded-qpdf",
+      "origin": {
+        "archive": "qpdf-12.3.2.tar.gz",
+        "archive_sha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+        "member": "qpdf-12.3.2/LICENSE.txt"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-embedded-qpdf/NOTICE.md.txt",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/NOTICE.md.txt",
+      "sha256": "b207f65a9e5491195ded63b2941199b19a4d30148871f2742c88eae7bfc513a6",
+      "size_bytes": 2729,
+      "owner": "pikepdf-embedded-qpdf",
+      "origin": {
+        "archive": "qpdf-12.3.2.tar.gz",
+        "archive_sha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+        "member": "qpdf-12.3.2/NOTICE.md"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-embedded-qpdf/WHEEL-THIRDPARTY-LICENSES.txt",
+      "sha256": "a8011369fd0cbcb28bcdcd6743ae37cbfb2e3d1842d0a9eee687c125afc642cd",
+      "size_bytes": 39486,
+      "owner": "pikepdf-embedded-qpdf",
+      "origin": {
+        "archive": "pikepdf-10.10.0-cp314-abi3-win_amd64.whl",
+        "archive_sha256": "66567891906906e8733f1ef19cd133f46f34349cb415c858ee64db807d82413c",
+        "member": "pikepdf-10.10.0.dist-info/licenses/licenses-for-wheels.txt"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-qpdf-libjpeg/ACKNOWLEDGMENT.txt",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/ACKNOWLEDGMENT.txt",
+      "sha256": "d903a69ab39425283b44e2ea355cbfaf79bcd738b69c2b1c3c700ce80f2d89f9",
+      "size_bytes": 74,
+      "owner": "pikepdf-qpdf-libjpeg",
+      "origin": {
+        "basis": "Exact bundled IJG README condition2"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-qpdf-libjpeg/README",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-libjpeg/README",
+      "sha256": "7c25493a9f64fed34d01445467341bda77bc1cdbeccbe33558659ef173fb9ff2",
+      "size_bytes": 18719,
+      "owner": "pikepdf-qpdf-libjpeg",
+      "origin": {
+        "archive": "jpegsrc.v9f.tar.gz",
+        "archive_sha256": "04705c110cb2469caa79fb71fba3d7bf834914706e9641a4589485c1f832565b",
+        "member": "jpeg-9f/README"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-qpdf-openssl/LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-openssl/LICENSE.txt",
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "size_bytes": 10175,
+      "owner": "pikepdf-qpdf-openssl",
+      "origin": {
+        "archive": "openssl-3.6.0.tar.gz",
+        "archive_sha256": "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9",
+        "member": "openssl-3.6.0/LICENSE.txt"
+      }
+    },
+    {
+      "path": "notices/python-native/pikepdf-qpdf-zlib/README",
+      "asset_path": "packaging/licenses/release-python-native/pikepdf-qpdf-zlib/README",
+      "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d",
+      "size_bytes": 5317,
+      "owner": "pikepdf-qpdf-zlib",
+      "origin": {
+        "archive": "zlib-1.3.1.tar.gz",
+        "archive_sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23",
+        "member": "zlib-1.3.1/README"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow-embedded-dav1d/pillow-dav1d-COPYING.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-dav1d/pillow-dav1d-COPYING.txt",
+      "sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5",
+      "size_bytes": 1317,
+      "owner": "pillow-embedded-dav1d",
+      "origin": {
+        "name": "pillow-dav1d-COPYING.txt",
+        "url": "https://raw.githubusercontent.com/videolan/dav1d/1.5.3/COPYING",
+        "raw_response_sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5",
+        "sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5",
+        "size_bytes": 1317,
+        "local_path": "output/pws0801/python-native-license-work/pillow-dav1d-COPYING.txt",
+        "encoding": "raw"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow-embedded-libaom/pillow-aom-LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libaom/pillow-aom-LICENSE.txt",
+      "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
+      "size_bytes": 1316,
+      "owner": "pillow-embedded-libaom",
+      "origin": {
+        "name": "pillow-aom-LICENSE.txt",
+        "url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.14.1/LICENSE?format=TEXT",
+        "raw_response_sha256": "1c3246fa272945b4f2f0671b8908e94da98b869cb5fea3a205a931034170a985",
+        "sha256": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
+        "size_bytes": 1316,
+        "local_path": "output/pws0801/python-native-license-work/pillow-aom-LICENSE.txt",
+        "encoding": "base64"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow-embedded-libaom/pillow-aom-PATENTS.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libaom/pillow-aom-PATENTS.txt",
+      "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61",
+      "size_bytes": 5701,
+      "owner": "pillow-embedded-libaom",
+      "origin": {
+        "name": "pillow-aom-PATENTS.txt",
+        "url": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.14.1/PATENTS?format=TEXT",
+        "raw_response_sha256": "2c158a786fe17b960601d8e7e107d7c1696df2ce30941d73f05ca472419fbca6",
+        "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61",
+        "size_bytes": 5701,
+        "local_path": "output/pws0801/python-native-license-work/pillow-aom-PATENTS.txt",
+        "encoding": "base64"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow-embedded-libyuv/pillow-libyuv-LICENSE.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libyuv/pillow-libyuv-LICENSE.txt",
+      "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+      "size_bytes": 1506,
+      "owner": "pillow-embedded-libyuv",
+      "origin": {
+        "name": "pillow-libyuv-LICENSE.txt",
+        "url": "https://chromium.googlesource.com/libyuv/libyuv/+/644251f25/LICENSE?format=TEXT",
+        "raw_response_sha256": "dfb66f16b47c9bc2bfc1c7d70f0b398f65b3da9d6e98f2377140b399fd11055d",
+        "sha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+        "size_bytes": 1506,
+        "local_path": "output/pws0801/python-native-license-work/pillow-libyuv-LICENSE.txt",
+        "encoding": "base64"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow-embedded-libyuv/pillow-libyuv-PATENTS.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libyuv/pillow-libyuv-PATENTS.txt",
+      "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495",
+      "size_bytes": 1387,
+      "owner": "pillow-embedded-libyuv",
+      "origin": {
+        "name": "pillow-libyuv-PATENTS.txt",
+        "url": "https://chromium.googlesource.com/libyuv/libyuv/+/644251f25/PATENTS?format=TEXT",
+        "raw_response_sha256": "0d6aec5f6114d1a823fefa19563e3421c4923404f783080ef5061268cc789e45",
+        "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495",
+        "size_bytes": 1387,
+        "local_path": "output/pws0801/python-native-license-work/pillow-libyuv-PATENTS.txt",
+        "encoding": "base64"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow-embedded-raqm/COPYRIGHT-MIT.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-raqm/COPYRIGHT-MIT.txt",
+      "sha256": "60b84ef09459007776c094984fd2559187e5adbc6e7b58696fa91077ff8654da",
+      "size_bytes": 1224,
+      "owner": "pillow-embedded-raqm",
+      "origin": {
+        "archive": "output/pws0801/python-native-license-work/pillow-12.3.0.tar.gz",
+        "member": "pillow-12.3.0/src/thirdparty/raqm/raqm.c",
+        "member_sha256": "5549e7458674077ca4794033ade277910ba0ad6989651787eba1a8b5513a9f9d"
+      }
+    },
+    {
+      "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+      "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+      "size_bytes": 339,
+      "owner": "pillow",
+      "origin": {
+        "basis": "Pillow exact wheel full IJG and FTL terms; distribution-document acknowledgment supplied in addition to unmodified full licenses."
+      }
+    },
+    {
+      "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+      "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+      "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+      "size_bytes": 78016,
+      "owner": "pillow",
+      "origin": {
+        "archive": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+        "archive_sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d",
+        "member": "pillow-12.3.0.dist-info/licenses/LICENSE"
+      }
+    },
+    {
+      "path": "notices/python-native/uharfbuzz-embedded-harfbuzz/COPYING",
+      "asset_path": "packaging/licenses/release-python-native/uharfbuzz-embedded-harfbuzz/COPYING",
+      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
+      "size_bytes": 1971,
+      "owner": "uharfbuzz-embedded-harfbuzz",
+      "origin": {
+        "archive": "output/pws0801/resume-20261103/artifacts/uharfbuzz-0.56.0.tar.gz",
+        "member": "uharfbuzz-0.56.0/harfbuzz/COPYING",
+        "member_sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+      }
+    },
+    {
+      "path": "notices/python-native/uharfbuzz-embedded-harfbuzz/MICROSOFT-USE-COPYING",
+      "asset_path": "packaging/licenses/release-python-native/uharfbuzz-embedded-harfbuzz/MICROSOFT-USE-COPYING",
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+      "size_bytes": 1141,
+      "owner": "uharfbuzz-embedded-harfbuzz",
+      "origin": {
+        "archive": "output/pws0801/resume-20261103/artifacts/uharfbuzz-0.56.0.tar.gz",
+        "member": "uharfbuzz-0.56.0/harfbuzz/src/ms-use/COPYING",
+        "member_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+      }
+    },
+    {
+      "path": "notices/python-native/uharfbuzz-embedded-harfbuzz/WHEEL-LICENSE-OMNIBUS.txt",
+      "asset_path": "packaging/licenses/release-python-native/uharfbuzz-embedded-harfbuzz/WHEEL-LICENSE-OMNIBUS.txt",
+      "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+      "size_bytes": 11558,
+      "owner": "uharfbuzz-embedded-harfbuzz",
+      "origin": {
+        "archive": "uharfbuzz-0.56.0-cp310-abi3-win_amd64.whl",
+        "archive_sha256": "0e7c628f327ce862a8606de93766f001704a5201e97d598686730ef2c1605c03",
+        "member": "uharfbuzz-0.56.0.dist-info/licenses/LICENSE"
+      }
+    }
+  ],
+  "license_refs": [
+    {
+      "name": "XZ Utils5.2.5 liblzma public-domain dedication and fallback grant",
+      "sha256": "bcb02973ef6e87ea73d331b3a80df7748407f17efdb784b61b47e0e610d3bb5c",
+      "license_id": "LicenseRef-XZ-Liblzma-Public-Domain",
+      "asset_path": "packaging/licenses/release-python-native/cpython-liblzma/COPYING"
+    },
+    {
+      "name": "Alliance for Open Media Patent License1.0",
+      "sha256": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61",
+      "license_id": "LicenseRef-AOM-Patent-License",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libaom/pillow-aom-PATENTS.txt"
+    },
+    {
+      "name": "LibYUV additional intellectual-property rights grant",
+      "sha256": "4da84211f947c6f9f7dd8fbce513e1522e01833407ae732b8c9a2bbb75fed495",
+      "license_id": "LicenseRef-LibYUV-Patent-Grant",
+      "asset_path": "packaging/licenses/release-python-native/pillow-embedded-libyuv/pillow-libyuv-PATENTS.txt"
+    },
+    {
+      "license_id": "LicenseRef-Pillow-LibTIFF-LZW",
+      "name": "Pillow embedded LibTIFF4.7.1 Berkeley LZW notice",
+      "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+      "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857"
+    }
+  ],
+  "parent_overrides": [
+    {
+      "name": "cpython",
+      "license_expression": "PSF-2.0",
+      "license_texts": [
+        {
+          "path": "notices/python-native/cpython/LICENSE.txt",
+          "asset_path": "packaging/licenses/release-python-native/cpython/LICENSE.txt",
+          "sha256": "935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68",
+          "size_bytes": 35407
+        }
+      ],
+      "dependencies_add": [
+        "cpython-bzip2",
+        "cpython-expat",
+        "cpython-libffi",
+        "cpython-mpdecimal",
+        "cpython-openssl",
+        "cpython-zlib-ng",
+        "cpython-zstd",
+        "cpython-sqlite",
+        "cpython-liblzma",
+        "cpython-hacl-star",
+        "cpython-macholib"
+      ],
+      "source_artifacts": [
+        {
+          "name": "Python-3.14.6.tar.xz",
+          "url": "https://www.python.org/ftp/python/3.14.6/Python-3.14.6.tar.xz",
+          "size_bytes": 23921184,
+          "sha256": "143b1dddefaec3bd2e21e3b839b34a2b7fb9842272883c576420d605e9f30c63",
+          "local_path": "output/pws0801/resume-20261103/artifacts/Python-3.14.6.tar.xz",
+          "stage_path": "sources/python-native/Python-3.14.6.tar.xz"
+        }
+      ]
+    },
+    {
+      "name": "pillow",
+      "license_texts_add": [
+        {
+          "path": "notices/python-native/pillow/LICENSE-OMNIBUS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/LICENSE-OMNIBUS.txt",
+          "sha256": "4f7866a74802c6326f81faff59a56546b6aec2b10b91973e0e9308de95e79857",
+          "size_bytes": 78016
+        },
+        {
+          "path": "notices/python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "asset_path": "packaging/licenses/release-python-native/pillow/ACKNOWLEDGMENTS.txt",
+          "sha256": "ce7ae1dc52b3d8725138430478924b9f6a64b85902660136d1522a66a104e568",
+          "size_bytes": 339
+        }
+      ],
+      "dependencies_add": [
+        "pillow-embedded-libjpeg-turbo",
+        "pillow-embedded-zlib-ng",
+        "pillow-embedded-libtiff",
+        "pillow-embedded-openjpeg",
+        "pillow-embedded-libwebp",
+        "pillow-embedded-xz-liblzma",
+        "pillow-embedded-littlecms",
+        "pillow-embedded-freetype",
+        "pillow-embedded-harfbuzz",
+        "pillow-embedded-libpng",
+        "pillow-embedded-brotli",
+        "pillow-embedded-raqm",
+        "pillow-embedded-libavif",
+        "pillow-embedded-libaom",
+        "pillow-embedded-dav1d",
+        "pillow-embedded-libyuv",
+        "pillow-embedded-libsharpyuv"
+      ]
+    },
+    {
+      "name": "cffi",
+      "dependencies_add": [
+        "cffi-embedded-libffi"
+      ]
+    },
+    {
+      "name": "uharfbuzz",
+      "dependencies_add": [
+        "uharfbuzz-embedded-harfbuzz"
+      ]
+    },
+    {
+      "name": "cryptography",
+      "dependencies_add": [
+        "cryptography-embedded-openssl"
+      ]
+    },
+    {
+      "name": "pikepdf",
+      "dependencies_add": [
+        "pikepdf-embedded-qpdf"
+      ]
+    }
+  ],
+  "excluded_upstream_candidates": [
+    {
+      "name": "tcl-core",
+      "version": "8.6.15.0",
+      "reason": "Vendor SPDX also describes source/build candidates. No Tcl/Tk DLL, tkinter extension or Tcl/Tk runtime payload exists in the pinned embedded zip."
+    },
+    {
+      "name": "tk",
+      "version": "8.6.15.0",
+      "reason": "Not present in selected embedded distribution."
+    },
+    {
+      "name": "mpdecimal",
+      "version": "2.5.1",
+      "reason": "Bundled generic CPython-source fallback duplicate; actual Windows _decimal uses mpdecimal4.0.0 as runtime probe and Windows vendor package confirm."
+    }
+  ],
+  "limits_of_evidence": [
+    "Static native libraries are bound to the enclosing wheel SHA256 and reviewed source/version evidence; no separate shipped static-library artifact or reproducible upstream binary attestation is invented.",
+    "Only trusted public software build inputs were read; no user documents or sibling repositories were accessed.",
+    "Canonical Microsoft CRT files in the original CPython input are omitted from the dependency stage; the separately obtained Microsoft end-user runtime is an external prerequisite."
+  ]
+}

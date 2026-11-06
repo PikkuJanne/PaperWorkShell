@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from paperworkshell.app.assisted_use import AssistedUseService
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
 from paperworkshell.app.checklist import ChecklistWorkflowService
 from paperworkshell.app.export_history import (
@@ -22,6 +24,12 @@ from paperworkshell.app.flattened_pdf_export import (
     FlattenedPdfExportService,
     FlattenedPdfRasterizer,
     VerifiedFlattenedPdfCandidate,
+)
+from paperworkshell.app.installed_runtime import (
+    INSTALLED_APPLICATION_ID,
+    InstalledRuntime,
+    InstalledRuntimeError,
+    discover_installed_runtime,
 )
 from paperworkshell.app.ocr import CommittedSourcePageStore, OcrService
 from paperworkshell.app.ocr_languages import (
@@ -42,6 +50,7 @@ from paperworkshell.app.package_workflow import PackageWorkflowService
 from paperworkshell.app.page_previews import PagePreviewService
 from paperworkshell.app.pdf_export import PdfExportProgressSink, PdfExportService
 from paperworkshell.app.portal_constraints import PortalConstraintWorkflowService
+from paperworkshell.app.post_export_deletion import PostExportDeletionService
 from paperworkshell.app.quality_analysis import QualityAnalysisService
 from paperworkshell.app.quality_ocr_review import (
     CancellationProbe as QualityOcrCancellationProbe,
@@ -52,6 +61,7 @@ from paperworkshell.app.recovery import (
     StartupRecoveryDiagnosticSink,
     StartupRecoveryService,
 )
+from paperworkshell.app.redaction_export import RedactionExportService, ReviewedRedactionExport
 from paperworkshell.app.searchable_pdf_export import (
     SearchablePdfExportProgressSink,
     SearchablePdfExportService,
@@ -76,6 +86,7 @@ from paperworkshell.app.target_size_pdf_export import (
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
+from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.ocr import OcrError, OcrErrorCode, reject_ocr
 from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
@@ -97,6 +108,7 @@ from paperworkshell.domain.quality_ocr_review import (
     reject_quality_ocr_review,
 )
 from paperworkshell.domain.recovery import RecoveryErrorCode, reject_recovery
+from paperworkshell.domain.redaction_export import RedactionExportReport
 from paperworkshell.domain.resource_policy import ResourcePolicy, select_resource_policy
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportErrorCode,
@@ -104,6 +116,8 @@ from paperworkshell.domain.searchable_pdf_export import (
     reject_searchable_pdf_export,
 )
 from paperworkshell.export.package_service import (
+    PackageExportOutcome,
+    TextCompanionExtractor,
     WindowsCompressionReviewService,
     WindowsPackageExportService,
 )
@@ -116,11 +130,17 @@ from paperworkshell.overlays.exporting import (
 )
 from paperworkshell.overlays.signature_rasters import SignatureImageOverlayRasterSource
 from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
+from paperworkshell.storage.assisted_use import WindowsAssistedUseStore
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.export_destination import WindowsExportDestination
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
+from paperworkshell.storage.post_export_deletion import (
+    PreservedExportArtifact,
+    WindowsPostExportDeletionStore,
+    WindowsRetainedExportGuard,
+)
 from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.recovery import WindowsStartupRecoveryStore
 from paperworkshell.storage.signature_images import WindowsSignatureImageAssetStore
@@ -177,6 +197,10 @@ from paperworkshell.worker.desktop_composition import (
 from paperworkshell.worker.protocol.models import (
     MAX_FLATTENED_PDF_EXPORT_INPUT_REFERENCES,
     ResourceLimits,
+)
+from paperworkshell.worker.redaction_export_composition import (
+    RedactionExportWorkerComposition,
+    create_redaction_export_worker_composition,
 )
 
 _PDF_EXPORT_OUTPUT_BYTES = 512 * 1024 * 1024
@@ -674,6 +698,8 @@ def build_windows_compression_review_service(
     *,
     resources: DesktopApplicationResourceContext,
     preview_config: DesktopWorkerCompositionConfig,
+    verified_export_observer: Callable[[ManifestSnapshot, PackageExportOutcome, Path], None]
+    | None = None,
 ) -> WindowsCompressionReviewService:
     """Compose explicit compression review with the app's one heavy-operation gate."""
 
@@ -691,6 +717,7 @@ def build_windows_compression_review_service(
         ),
         selected.resource_policy,
         renderer,
+        verified_export_observer=verified_export_observer,
     )
 
 
@@ -724,6 +751,13 @@ def build_windows_package_export_service(
     rasterizer: FlattenedPdfRasterizer,
     *,
     resources: DesktopApplicationResourceContext,
+    text_extractor: TextCompanionExtractor | None = None,
+    forbidden_export_root: Path | None = None,
+    verified_export_observer: Callable[
+        [ManifestSnapshot, tuple[PreservedExportArtifact, ...]], None
+    ]
+    | None = None,
+    verified_export_reset: Callable[[], None] | None = None,
 ) -> WindowsPackageExportService:
     """Bind package export and its companion summary to the same resource policy."""
 
@@ -742,6 +776,10 @@ def build_windows_package_export_service(
             )
         ),
         selected_resources.resource_policy,
+        text_extractor=text_extractor,
+        forbidden_export_root=forbidden_export_root,
+        verified_export_observer=verified_export_observer,
+        verified_export_reset=verified_export_reset,
     )
 
 
@@ -762,7 +800,7 @@ def build_backend(
 class _BackendWorkerResources:
     """Idempotently close every worker composition owned by one backend."""
 
-    __slots__ = ("_closed", "_desktop", "_quality_ocr", "_pdf_export")
+    __slots__ = ("_closed", "_desktop", "_quality_ocr", "_pdf_export", "_removal_export")
 
     def __init__(
         self,
@@ -774,6 +812,7 @@ class _BackendWorkerResources:
         self._desktop = desktop
         self._quality_ocr = quality_ocr
         self._pdf_export: Callable[[], None] | None = None
+        self._removal_export: Callable[[], None] | None = None
         self._closed = False
 
     @property
@@ -789,11 +828,17 @@ class _BackendWorkerResources:
         if self._closed:
             return
         pending: BaseException | None = None
+        if self._removal_export is not None:
+            try:
+                self._removal_export()
+            except BaseException as error:
+                pending = error
         if self._pdf_export is not None:
             try:
                 self._pdf_export()
             except BaseException as error:
-                pending = error
+                if pending is None:
+                    pending = error
         quality_ocr = self._quality_ocr
         if quality_ocr is not None:
             try:
@@ -814,6 +859,114 @@ class _BackendWorkerResources:
         if self._closed or self._pdf_export is not None or not callable(closer):
             raise ValueError("backend PDF export resource closer is invalid")
         self._pdf_export = closer
+
+    def add_removal_export(self, closer: Callable[[], None]) -> None:
+        if self._closed or self._removal_export is not None or not callable(closer):
+            raise ValueError("backend removal export resource closer is invalid")
+        self._removal_export = closer
+
+
+def build_windows_redaction_export_worker_composition(
+    resources: DesktopApplicationResourceContext,
+) -> RedactionExportWorkerComposition:
+    """Bind runtime removal verification to the existing admitted local OCR closure."""
+
+    selected = _require_application_resource_context(resources, required=True)
+    central_output_budget = selected.resource_policy.maximum_temporary_storage_bytes // 4
+    if central_output_budget < 1:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "removal.storage_budget")
+    if selected.resource_policy.worker_maximum_processes < OCR_WORKER_MAXIMUM_PROCESSES:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "removal.process_budget")
+    executable, tessdata = _resource_bound_ocr_resources(selected, None, None)
+    base = build_windows_pdf_export_worker_config(
+        resource_policy=selected.resource_policy, profile=IMAGE_PDF_EXPORT_PROFILE
+    )
+    output_budget = min(
+        base.export_policy.limits.output_bytes,
+        base.export_policy.limits.temporary_storage_bytes // 4,
+        central_output_budget,
+    )
+    if output_budget < 1:
+        reject_pdf_export(PdfExportErrorCode.LIMIT_EXCEEDED, "removal.storage_budget")
+    config = replace(
+        base,
+        # Reserve three output-sized artifacts plus source/plan headroom.
+        # Oversized source and plan combinations still fail the protocol check.
+        export_policy=replace(
+            base.export_policy,
+            limits=replace(base.export_policy.limits, output_bytes=output_budget),
+        ),
+        resource_policy=replace(
+            base.resource_policy, maximum_processes=OCR_WORKER_MAXIMUM_PROCESSES
+        ),
+        timeout_policy=replace(base.timeout_policy, handshake_seconds=40.0),
+    )
+    return create_redaction_export_worker_composition(
+        config,
+        heavy_operations=selected.heavy_operations,
+        tesseract_executable=executable,
+        tessdata_root=tessdata,
+    )
+
+
+class _LazyRemovalPdfExportService:
+    """Create the isolated removal composition only for an explicit desktop attempt."""
+
+    def __init__(
+        self,
+        manager: CaseWorkspaceManager,
+        sources: WindowsSourceIngestStore,
+        resources: DesktopApplicationResourceContext,
+        worker_resources: _BackendWorkerResources,
+    ) -> None:
+        self._manager = manager
+        self._sources = sources
+        self._resources = resources
+        self._worker_resources = worker_resources
+        self._service: RedactionExportService | None = None
+
+    def export(
+        self,
+        review: ReviewedRedactionExport,
+        destination: Path,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: PdfExportProgressSink,
+    ) -> RedactionExportReport:
+        if self._worker_resources.closed:
+            reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "removal.runtime_closed")
+        if cancellation():
+            reject_pdf_export(PdfExportErrorCode.CANCELLED, "removal.runtime_cancelled")
+        if deadline():
+            reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "removal.runtime_deadline")
+        if self._service is None:
+            composition = build_windows_redaction_export_worker_composition(self._resources)
+            try:
+                service = RedactionExportService(
+                    WindowsManifestRepository(self._manager),
+                    self._sources,
+                    composition.exporter,
+                    WindowsVerifiedPdfDestination(
+                        WindowsExportDestination(
+                            minimum_free_space_reserve_bytes=(
+                                self._resources.resource_policy.minimum_export_free_space_reserve_bytes
+                            )
+                        )
+                    ),
+                )
+                self._worker_resources.add_removal_export(composition.close)
+            except BaseException:
+                composition.close()
+                raise
+            self._service = service
+        return self._service.export(
+            review,
+            destination,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+        )
 
 
 class _LazyPagesPdfExportService:
@@ -1052,7 +1205,41 @@ def _build_backend(
         )
         template_loader = SafeTemplateLoader(built_in_template_repository())
         template_as_of = datetime.now(UTC).date()
-        return OrganizerBackend(
+        assisted_use = AssistedUseService(WindowsAssistedUseStore(manager))
+
+        def close_exported_case(case_id: UUID) -> None:
+            if backend.state.case_id != case_id:
+                raise ValueError("The active case changed before removal.")
+            backend.cancel_package_review()
+            backend.close_case()
+
+        deletion = PostExportDeletionService(
+            WindowsPostExportDeletionStore(manager),
+            require_access=assisted_use.require_access,
+            close_case=close_exported_case,
+        )
+
+        def remember_export(
+            snapshot: ManifestSnapshot, artifacts: tuple[PreservedExportArtifact, ...]
+        ) -> None:
+            guard = WindowsRetainedExportGuard(artifacts, forbidden_root=manager.cases_root)
+            deletion.remember_verified_export(
+                snapshot,
+                export_count=len(artifacts),
+                export_names=tuple(item.path.name for item in artifacts),
+                guard_exports=guard.guard,
+            )
+
+        package_exporter = build_windows_package_export_service(
+            source_store,
+            composition.signature_image_rasterizer,
+            resources=selected_resources,
+            text_extractor=composition.text_companion_extractor(selected_policy),
+            forbidden_export_root=manager.cases_root,
+            verified_export_observer=remember_export,
+            verified_export_reset=deletion.clear,
+        )
+        backend = OrganizerBackend(
             lifecycle,
             repository,
             source_ingest,
@@ -1065,7 +1252,12 @@ def _build_backend(
             ),
             close_resources=owned_resources.close,
             startup_recovery=startup_recovery,
+            assisted_use=assisted_use,
+            post_export_deletion=deletion,
             pages_pdf_export=_LazyPagesPdfExportService(
+                manager, source_store, selected_resources, owned_resources
+            ),
+            removal_pdf_export=_LazyRemovalPdfExportService(
                 manager, source_store, selected_resources, owned_resources
             ),
             signature_images=SignatureImageWorkflowCoordinator(
@@ -1087,11 +1279,7 @@ def _build_backend(
                 template_loader,
                 GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
                 as_of=template_as_of,
-                exporter=build_windows_package_export_service(
-                    source_store,
-                    composition.signature_image_rasterizer,
-                    resources=selected_resources,
-                ),
+                exporter=package_exporter,
                 summary_builder=build_package_summary,
                 source_inspector=composition.source_inspector,
                 compression=build_windows_compression_review_service(
@@ -1099,9 +1287,11 @@ def _build_backend(
                     composition.signature_image_rasterizer,
                     resources=selected_resources,
                     preview_config=desktop_config,
+                    verified_export_observer=package_exporter.remember_verified_export,
                 ),
             ),
         )
+        return backend
     except BaseException:
         owned_resources.close()
         raise
@@ -1153,6 +1343,7 @@ def _quality_ocr_review_worker_config(
     return create_quality_ocr_review_worker_composition_config(
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
+        recovery_authority_roots=_installed_worker_recovery_authority(),
         bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
         code_roots=code_roots,
@@ -1271,6 +1462,7 @@ def build_windows_pdf_export_worker_config(
     return create_pdf_export_worker_composition_config(
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
+        recovery_authority_roots=_installed_worker_recovery_authority(),
         bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
         code_roots=code_roots,
@@ -1353,6 +1545,7 @@ def build_windows_flattened_pdf_export_worker_config(
     return create_flattened_pdf_export_worker_composition_config(
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
+        recovery_authority_roots=_installed_worker_recovery_authority(),
         bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
         code_roots=code_roots,
@@ -1439,6 +1632,7 @@ def build_windows_ocr_worker_config(
     return create_ocr_worker_composition_config(
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
+        recovery_authority_roots=_installed_worker_recovery_authority(),
         bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
         code_roots=code_roots,
@@ -1558,6 +1752,7 @@ def build_windows_searchable_pdf_export_worker_config(
     return create_searchable_pdf_export_worker_composition_config(
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
+        recovery_authority_roots=_installed_worker_recovery_authority(),
         bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
         code_roots=code_roots,
@@ -1631,6 +1826,7 @@ def _desktop_worker_config(
         # launcher hint before worker code audits the otherwise minimal environment.
         python_executable=worker_executable,
         venv_launcher=venv_launcher,
+        recovery_authority_roots=_installed_worker_recovery_authority(),
         bootstrap_script=bootstrap_script,
         runtime_roots=runtime_roots,
         code_roots=code_roots,
@@ -1729,11 +1925,15 @@ def _require_application_resource_context(
 def _configured_qpdf_executable(explicit: Path | None) -> Path:
     selected = explicit
     if selected is None:
-        configured = os.environ.get("PWS_QPDF_EXECUTABLE")
-        try:
-            selected = Path(configured) if configured else _DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE
-        except OSError, TypeError, ValueError:
-            reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
+        installed = _installed_runtime()
+        if installed is not None:
+            selected = installed.qpdf_executable
+        else:
+            configured = os.environ.get("PWS_QPDF_EXECUTABLE")
+            try:
+                selected = Path(configured) if configured else _DEFAULT_PDF_EXPORT_QPDF_EXECUTABLE
+            except OSError, TypeError, ValueError:
+                reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
     if not isinstance(selected, Path):
         reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.qpdf_configuration")
     return selected
@@ -1760,10 +1960,21 @@ def _configured_optional_ocr_resources(
 
     selected_executable: Path | str | None = executable
     selected_tessdata: Path | str | None = tessdata_root
+    installed = (
+        _installed_runtime() if selected_executable is None or selected_tessdata is None else None
+    )
     if selected_executable is None:
-        selected_executable = os.environ.get("PWS_TESSERACT_EXECUTABLE") or None
+        selected_executable = (
+            installed.tesseract_executable
+            if installed is not None
+            else os.environ.get("PWS_TESSERACT_EXECUTABLE") or None
+        )
     if selected_tessdata is None:
-        selected_tessdata = os.environ.get("PWS_TESSDATA_ROOT") or None
+        selected_tessdata = (
+            installed.tessdata_root
+            if installed is not None
+            else os.environ.get("PWS_TESSDATA_ROOT") or None
+        )
     try:
         normalized_executable = (
             None
@@ -1807,6 +2018,46 @@ def _resource_bound_ocr_resources(
     return selected[0], selected[1]
 
 
+def _installed_runtime() -> InstalledRuntime | None:
+    return discover_installed_runtime(
+        package_root=Path(__file__).absolute().parent,
+        executable=Path(sys.executable),
+        prefix=Path(sys.prefix),
+        base_prefix=Path(sys.base_prefix),
+    )
+
+
+def _installed_worker_recovery_authority() -> tuple[Path, ...]:
+    """Authorize recovery for the fixed installed engines without granting them.
+
+    Every composition must recognize exact roots recorded by the other installed
+    compositions after interruption. Active worker grants remain separately scoped.
+    Explicit operation resources are independently validated by each launch config;
+    source development retains its existing explicit configuration behavior.
+    """
+
+    installed = _installed_runtime()
+    if installed is None:
+        return ()
+    try:
+        tesseract = admit_packaged_tesseract_runtime(
+            installed.tesseract_executable,
+            installed.tessdata_root,
+        )
+    except TesseractRuntimeAdmissionError:
+        reject_ocr(OcrErrorCode.MODEL_INVALID, "ocr.recovery_authority")
+    return tuple(
+        dict.fromkeys(
+            (
+                installed.runtime_root,
+                installed.package_root.parent,
+                installed.qpdf_executable.parent,
+                tesseract.root,
+            )
+        )
+    )
+
+
 def _worker_runtime_resources() -> tuple[
     Path,
     Path | None,
@@ -1815,6 +2066,17 @@ def _worker_runtime_resources() -> tuple[
     tuple[Path, ...],
     Path,
 ]:
+    installed = _installed_runtime()
+    if installed is not None:
+        code_root = installed.package_root.parent
+        return (
+            installed.python_executable,
+            None,
+            installed.package_root / "worker" / "host_bootstrap.py",
+            (installed.runtime_root,),
+            (code_root,),
+            code_root,
+        )
     package_root = Path(__file__).resolve().parent
     code_root = package_root.parent
     runtime_root = Path(sys.prefix).resolve()
@@ -1834,10 +2096,51 @@ def _worker_runtime_resources() -> tuple[
     )
 
 
+def _set_installed_application_identity() -> None:
+    """Bind the visible Windows process to the same identity as its shortcut."""
+
+    success = False
+    try:
+        shell = ctypes.WinDLL("shell32.dll", use_last_error=True, winmode=0x00000800)
+        set_identity = shell.SetCurrentProcessExplicitAppUserModelID
+        set_identity.argtypes = (ctypes.c_wchar_p,)
+        set_identity.restype = ctypes.c_long
+        success = set_identity(INSTALLED_APPLICATION_ID) == 0
+    except OSError, AttributeError:
+        pass
+    if not success:
+        raise InstalledRuntimeError()
+
+
+def _show_installed_startup_error(error: InstalledRuntimeError) -> None:
+    """Use the native accessible dialog before the desktop backend exists."""
+
+    try:
+        user = ctypes.WinDLL("user32.dll", use_last_error=True, winmode=0x00000800)
+        show = user.MessageBoxW
+        show.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint)
+        show.restype = ctypes.c_int
+        if show(None, str(error), "PaperWorkShell", 0x00000010 | 0x00010000):
+            return
+    except OSError, AttributeError:
+        pass
+    if sys.stderr is not None:
+        try:
+            sys.stderr.write(str(error) + "\n")
+        except OSError:
+            pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the desktop application."""
 
-    resources = create_desktop_application_resource_context()
+    try:
+        if _installed_runtime() is not None:
+            _set_installed_application_identity()
+        resources = create_desktop_application_resource_context()
+    except InstalledRuntimeError as error:
+        _show_installed_startup_error(error)
+        return 2
     return run_desktop_application(
         lambda: build_backend(resources),
         sys.argv if argv is None else argv,

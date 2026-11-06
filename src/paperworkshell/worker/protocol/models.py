@@ -254,6 +254,9 @@ IMAGE_TRANSFORM_CAPABILITY: Final = CapabilityDescriptor("image.transform", 1)
 OCR_PROCESS_CAPABILITY: Final = CapabilityDescriptor("ocr.process", 1)
 QUALITY_OCR_REVIEW_CAPABILITY: Final = CapabilityDescriptor("ocr.review", 1)
 SEARCHABLE_PDF_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.export.searchable", 1)
+REDACTION_EXPORT_CAPABILITY: Final = CapabilityDescriptor("pdf.redaction_export_private", 1)
+REDACTION_EXPORT_PLAN_CONTENT_KIND: Final = "redaction-export-plan-v1"
+REDACTION_EXPORT_OUTPUT_CONTENT_KIND: Final = "redaction-export-candidate-pdf-v1"
 REDACTION_SANITIZATION_CAPABILITY: Final = CapabilityDescriptor(
     "pdf.redaction_sanitization_private", 1
 )

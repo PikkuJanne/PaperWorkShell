@@ -6,7 +6,7 @@ from itertools import pairwise
 from typing import Final
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QCloseEvent, QShowEvent
+from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -23,47 +23,90 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from paperworkshell.app.package_pdf_export import (
+    PackagePdfCandidateError,
+    PackagePdfCandidateErrorCode,
+)
 from paperworkshell.app.package_workflow import PackageWorkflowError, PackageWorkflowErrorCode
+from paperworkshell.domain.package_export_errors import PackageExportError, PackageExportErrorCode
 from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
+from paperworkshell.ui.announcements import ScreenReaderAnnouncer
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import set_static_busy
 
 _MODE_TEXT: Final[dict[PortalOutputMode, str]] = {
-    PortalOutputMode.COMBINED_PDF: "Combined PDF",
-    PortalOutputMode.SEPARATE_PDFS: "Separate PDFs",
-    PortalOutputMode.ZIP: "ZIP package",
+    PortalOutputMode.COMBINED_PDF: mark("Combined PDF"),
+    PortalOutputMode.SEPARATE_PDFS: mark("Separate PDFs"),
+    PortalOutputMode.ZIP: mark("ZIP package"),
 }
 _PROGRESS_TEXT: Final[dict[str, str]] = {
-    "preparing": "Preparing package review",
-    "inspecting_pdfs": "Inspecting PDFs for package review",
-    "generating_pdfs": "Creating and verifying PDFs",
-    "packaging_zip": "Creating and verifying the ZIP package",
-    "checking_constraints": "Checking actual output constraints",
-    "committing": "Publishing verified outputs",
-    "complete": "Finishing package export",
-    "saving_summary": "Saving the displayed summary",
+    "preparing": mark("Preparing package review"),
+    "inspecting_pdfs": mark("Inspecting PDFs for package review"),
+    "generating_pdfs": mark("Creating and verifying PDFs"),
+    "packaging_zip": mark("Creating and verifying the ZIP package"),
+    "checking_constraints": mark("Checking actual output constraints"),
+    "committing": mark("Publishing verified outputs"),
+    "complete": mark("Finishing package export"),
+    "saving_summary": mark("Saving the displayed summary"),
 }
 _RESULT_TEXT: Final[dict[PackageSummaryStatus, str]] = {
     PackageSummaryStatus.COMMITTED: (
-        "Package export complete. Review the saved files and remaining human checks in the summary."
+        mark(
+            "Package export complete. Review the saved files and remaining human checks in the summary."
+        )
     ),
     PackageSummaryStatus.CONSTRAINTS_BLOCKED: (
-        "Package export blocked by constraints. Review the summary, then close this dialog to "
-        "adjust the case or constraints before trying again."
+        mark(
+            "Package export blocked by constraints. Review the summary, then close this dialog to adjust the case or constraints before trying again."
+        )
     ),
     PackageSummaryStatus.NOT_COMMITTED: (
-        "Package export did not publish the planned outputs. Review the summary and choose a "
-        "new attempt when the cause is resolved."
+        mark(
+            "Package export did not publish the planned outputs. Review the summary and choose a new attempt when the cause is resolved."
+        )
     ),
     PackageSummaryStatus.PARTIAL: (
-        "Package export is incomplete: some outputs were saved. Check the exact saved-file "
-        "inventory before retrying in a new destination folder."
+        mark(
+            "Package export is incomplete: some outputs were saved. Check the exact saved-file inventory before retrying in a new destination folder."
+        )
     ),
     PackageSummaryStatus.UNCERTAIN: (
-        "Package export could not confirm the complete destination state. Inspect the destination "
-        "and the summary before retrying in a new folder."
+        mark(
+            "Package export could not confirm the complete destination state. Inspect the destination and the summary before retrying in a new folder."
+        )
     ),
 }
 _FOCUS_STYLE: Final = "QLabel:focus { border: 2px solid palette(highlight); padding: 3px; }"
+_FAILURE_TEXT: Final[dict[str, str]] = {
+    **{code.value: PackageWorkflowError(code).safe_message for code in PackageWorkflowErrorCode},
+    **{
+        code.value: PackageExportError(code, "package.ui").safe_message
+        for code in PackageExportErrorCode
+    },
+    **{
+        code.value: PackagePdfCandidateError(code, "package.ui").safe_message
+        for code in PackagePdfCandidateErrorCode
+    },
+}
+_FORMAT_RECOVERY: Final = mark(
+    "Close this dialog to review the output format and page processing. Check requested filenames in Constraints when changing the format."
+)
+_PLAN_RECOVERY: Final = mark(
+    "Close this dialog to review the current case, output format, and requested filenames in Constraints before reopening package review."
+)
+_LIMIT_RECOVERY: Final = mark(
+    "Review package size, page counts, and constraints before a new attempt within the processing limits."
+)
+_FAILURE_RECOVERY: Final[dict[str, str]] = {
+    PackageExportErrorCode.PDF_FAILED.value: _FORMAT_RECOVERY,
+    PackagePdfCandidateErrorCode.UNSUPPORTED_OVERLAY_TRANSFORM.value: _FORMAT_RECOVERY,
+    PackageExportErrorCode.PLAN_INVALID.value: _PLAN_RECOVERY,
+    PackageExportErrorCode.PLAN_STALE.value: _PLAN_RECOVERY,
+    PackageExportErrorCode.LIMIT_EXCEEDED.value: _LIMIT_RECOVERY,
+    PackagePdfCandidateErrorCode.LIMIT_EXCEEDED.value: _LIMIT_RECOVERY,
+}
 
 
 class PackageExportDialog(QDialog):
@@ -80,6 +123,8 @@ class PackageExportDialog(QDialog):
     compression_requested = Signal(bool, bool)
     cancel_requested = Signal()
     summary_save_requested = Signal()
+    text_companion_requested = Signal()
+    deletion_requested = Signal()
 
     def __init__(
         self,
@@ -97,6 +142,7 @@ class PackageExportDialog(QDialog):
         ):
             raise ValueError("Package export requires distinct allowed output modes.")
         super().__init__(parent)
+        self._announcer = ScreenReaderAnnouncer(self)
         self._summary: PackageSummary | None = None
         self._busy = False
         self._cancelable = False
@@ -109,13 +155,15 @@ class PackageExportDialog(QDialog):
         self._human_required = False
         self._save_available = False
         self._saving = False
+        self._post_export_available = True
 
         self.setObjectName("packageExportDialog")
-        self.setWindowTitle("Review and export package")
-        self.setAccessibleName("Review and export package")
+        self.setWindowTitle(tr("Review and export package"))
+        self.setAccessibleName(tr("Review and export package"))
         self.setAccessibleDescription(
-            "Choose an allowed output format, review planned files and human checks, then "
-            "explicitly export. The summary is selectable plain text. Close is the safe default."
+            tr(
+                "Choose an allowed output format, review planned files and human checks, then explicitly export. The summary is selectable plain text. Close is the safe default."
+            )
         )
         self.setModal(True)
 
@@ -123,68 +171,79 @@ class PackageExportDialog(QDialog):
         content.setObjectName("packageExportContent")
         content_layout = QVBoxLayout(content)
         guidance = self._label(
-            "Review file names, page counts, categories, machine checks, and required human "
-            "review. Actual sizes are known after the files are created and verified. These "
-            "checks do not guarantee portal acceptance or legal sufficiency.",
+            tr(
+                "Review file names, page counts, categories, machine checks, and required human review. Actual sizes are known after the files are created and verified. These checks do not guarantee portal acceptance or legal sufficiency."
+            ),
             "packageExportGuidance",
-            "Package review guidance",
+            tr("Package review guidance"),
         )
         content_layout.addWidget(guidance)
 
-        mode_label = QLabel("Output &format")
+        mode_label = QLabel(tr("Output &format"))
         self._mode = QComboBox()
+        self._mode.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._mode.setMinimumContentsLength(8)
         self._mode.setObjectName("packageExportModeCombo")
-        self._mode.setAccessibleName("Package output format")
+        self._mode.setAccessibleName(tr("Package output format"))
         self._mode.setAccessibleDescription(
-            "Choose a format allowed by the saved case constraints. Changing the format "
-            "requires a fresh review and clears local acknowledgements."
+            tr(
+                "Choose a format allowed by the saved case constraints. Changing the format requires a fresh review and clears local acknowledgements."
+            )
         )
         for mode in allowed_modes:
-            self._mode.addItem(_MODE_TEXT[mode], mode.value)
+            self._mode.addItem(tr(_MODE_TEXT[mode]), mode.value)
         if initial_mode is not None:
             self._mode.setCurrentIndex(allowed_modes.index(initial_mode))
         mode_label.setBuddy(self._mode)
         content_layout.addWidget(mode_label)
         content_layout.addWidget(self._mode)
         self._refresh = self._button(
-            "Refresh review",
+            tr("Refresh\nreview"),
             "packageExportRefreshButton",
-            "Request a fresh review of the current case and selected output format.",
+            tr("Request a fresh review of the current case and selected output format."),
         )
+        self._refresh.setAccessibleName(tr("Refresh review"))
         self._refresh.clicked.connect(self._request_refresh)
         content_layout.addWidget(self._refresh)
 
-        summary_label = QLabel("Package &summary")
+        summary_label = QLabel(tr("Package &summary"))
         summary_label.setWordWrap(True)
         self._text = QPlainTextEdit()
         self._text.setObjectName("packageExportSummaryText")
-        self._text.setAccessibleName("Package summary plain text")
+        self._text.setAccessibleName(tr("Package summary plain text"))
         self._text.setAccessibleDescription(
-            "Read-only, selectable plain text. Use arrow keys to read, Control+A to select all, "
-            "and Control+C to copy. Tab moves to the next control."
+            tr(
+                "Read-only, selectable plain text. Use arrow keys to read, Control+A to select all, and Control+C to copy. Control+Home and Control+End move to the start and end. Tab moves to the next control."
+            )
         )
         self._text.setReadOnly(True)
+        self._text.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         self._text.setTabChangesFocus(True)
         self._text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._text.setMinimumHeight(220)
-        self._text.setPlainText("A package review has not been prepared yet.")
+        self._text.setPlainText(tr("A package review has not been prepared yet."))
         summary_label.setBuddy(self._text)
         content_layout.addWidget(summary_label)
         content_layout.addWidget(self._text, 1)
 
         self._human_ack = QCheckBox()
         self._human_ack.setObjectName("packageExportHumanReviewCheck")
-        self._human_ack.setAccessibleName("Confirm human review of this package")
+        self._human_ack.setAccessibleName(tr("Confirm human review of this package"))
         self._human_ack.setAccessibleDescription(
-            "Confirm only after reviewing the listed warnings and required human checks. "
-            "This records your acknowledgement for this attempt; it does not establish "
-            "eligibility, legal sufficiency, OCR correctness, or portal acceptance."
+            tr(
+                "Confirm only after reviewing the listed warnings and required human checks. This records your acknowledgement for this attempt; it does not establish eligibility, legal sufficiency, OCR correctness, or portal acceptance."
+            )
         )
         self._human_ack.toggled.connect(self._update_actions)
         self._human_label = self._label(
-            "I reviewed the listed warnings and human checks",
+            tr("I reviewed the listed warnings and human checks"),
             "packageExportHumanReviewLabel",
-            "Human review confirmation",
+            tr("Human review confirmation"),
         )
         self._human_label.setBuddy(self._human_ack)
         human_row = QHBoxLayout()
@@ -192,25 +251,26 @@ class PackageExportDialog(QDialog):
         human_row.addWidget(self._human_label, 1)
         content_layout.addLayout(human_row)
         self._human_guidance = self._label(
-            "Confirm only after reviewing the listed warnings and required human checks for "
-            "this package. This confirmation applies to this attempt.",
+            tr(
+                "Confirm only after reviewing the listed warnings and required human checks for this package. This confirmation applies to this attempt."
+            ),
             "packageExportHumanReviewGuidance",
-            "Human review acknowledgement instructions",
+            tr("Human review acknowledgement instructions"),
         )
         content_layout.addWidget(self._human_guidance)
         self._signed_ack = QCheckBox()
         self._signed_ack.setObjectName("packageExportUnsignedDerivativeCheck")
-        self._signed_ack.setAccessibleName("Confirm creation of unsigned derivatives")
+        self._signed_ack.setAccessibleName(tr("Confirm creation of unsigned derivatives"))
         self._signed_ack.setAccessibleDescription(
-            "The exported modified files will be unsigned derivatives. Original digital "
-            "signatures do not remain valid on the exported modified files. This action does "
-            "not validate a signature or create a digital or qualified electronic signature."
+            tr(
+                "The exported modified files will be unsigned derivatives. Original digital signatures do not remain valid on the exported modified files. This action does not validate a signature or create a digital or qualified electronic signature."
+            )
         )
         self._signed_ack.toggled.connect(self._update_actions)
         self._signed_label = self._label(
-            "Create unsigned derivatives from digitally signed sources",
+            tr("Create unsigned derivatives from digitally signed sources"),
             "packageExportUnsignedDerivativeLabel",
-            "Unsigned derivative confirmation",
+            tr("Unsigned derivative confirmation"),
         )
         self._signed_label.setBuddy(self._signed_ack)
         signed_row = QHBoxLayout()
@@ -218,18 +278,21 @@ class PackageExportDialog(QDialog):
         signed_row.addWidget(self._signed_label, 1)
         content_layout.addLayout(signed_row)
         self._signed_guidance = self._label(
-            "Digitally signed sources will produce unsigned derivatives. The original "
-            "signatures do not remain valid on the modified exported files. Original source "
-            "files remain unchanged.",
+            tr(
+                "Digitally signed sources will produce unsigned derivatives. The original signatures do not remain valid on the modified exported files. Original source files remain unchanged."
+            ),
             "packageExportUnsignedDerivativeGuidance",
-            "Unsigned derivative consequence",
+            tr("Unsigned derivative consequence"),
         )
         content_layout.addWidget(self._signed_guidance)
 
         self._status = self._label(
-            "Prepare a package review before exporting.",
+            tr("Prepare a package review before exporting."),
             "packageExportStatus",
-            "Package export status and recovery",
+            tr("Package export status and recovery"),
+        )
+        self._status.setAccessibleName(
+            tr("Package export status: {value1}", value1=self._status.text())
         )
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._status.setFrameShape(QFrame.Shape.StyledPanel)
@@ -237,59 +300,105 @@ class PackageExportDialog(QDialog):
         content_layout.addWidget(self._status)
         self._progress = QProgressBar()
         self._progress.setObjectName("packageExportProgress")
-        self._progress.setAccessibleName("Package operation progress")
-        self._progress.setAccessibleDescription("Package operation has not started.")
+        self._progress.setAccessibleName(tr("Package operation progress"))
+        self._progress.setAccessibleDescription(tr("Package operation has not started."))
         self._progress.hide()
         content_layout.addWidget(self._progress)
         self._export = self._button(
-            "Export package",
+            tr("Export\npackage"),
             "packageExportStartButton",
-            "Choose the destination and request the reviewed package. Every required PDF is "
-            "verified before publication. Existing files are not replaced.",
+            tr(
+                "Choose the destination and request the reviewed package. Every required PDF is verified before publication. Existing files are not replaced."
+            ),
         )
+        self._export.setAccessibleName(tr("Export package"))
         self._export.clicked.connect(self._request_export)
         content_layout.addWidget(self._export)
         self._compression = self._button(
-            "Preview size\nreduction",
+            tr("Preview size\nreduction"),
             "packageExportCompressionButton",
-            "Choose a destination and prepare a private size-reduction preview. Review actual "
-            "sizes and affected pages before explicitly publishing the selected candidate.",
+            tr(
+                "Choose a destination and prepare a private size-reduction preview. Review actual sizes and affected pages before explicitly publishing the selected candidate."
+            ),
         )
-        self._compression.setAccessibleName("Preview size reduction")
+        self._compression.setAccessibleName(tr("Preview size reduction"))
         self._compression.clicked.connect(self._request_compression)
         content_layout.addWidget(self._compression)
         self._save = self._button(
-            "Save summary",
+            tr("Save summary"),
             "packageExportSaveSummaryButton",
-            "Choose where to save exactly the displayed summary as plain text. The summary "
-            "contains output names and category labels; review it before sharing.",
+            tr(
+                "Choose where to save exactly the displayed summary as plain text. The summary contains output names and category labels; review it before sharing."
+            ),
         )
         self._save.clicked.connect(self._request_summary_save)
         content_layout.addWidget(self._save)
+        self._text_privacy = QCheckBox()
+        self._text_privacy.setObjectName("packageTextPrivacyCheck")
+        self._text_privacy.setAccessibleName(tr("Allow a separate plain-text companion"))
+        self._text_privacy.setAccessibleDescription(
+            tr(
+                "The text may contain personal information. It remains outside the case after case deletion. Review OCR errors and protect or delete the companion separately."
+            )
+        )
+        self._text_privacy.toggled.connect(self._update_actions)
+        self._text_privacy_label = self._label(
+            tr(
+                "I understand that the optional text companion may contain personal information and remains after case deletion. I will review OCR errors and protect or delete this separate file."
+            ),
+            "packageTextPrivacyLabel",
+            tr("Text companion privacy warning"),
+        )
+        self._text_privacy_label.setBuddy(self._text_privacy)
+        privacy_row = QHBoxLayout()
+        privacy_row.addWidget(self._text_privacy, 0, Qt.AlignmentFlag.AlignTop)
+        privacy_row.addWidget(self._text_privacy_label, 1)
+        content_layout.addLayout(privacy_row)
+        self._companion = self._button(
+            tr("Save text companion"),
+            "packageTextCompanionButton",
+            tr(
+                "Save available text from the verified exported pages in package order. Image-only pages may have no text. This does not run OCR. Check the privacy acknowledgement first."
+            ),
+        )
+        self._companion.clicked.connect(self._request_companion)
+        content_layout.addWidget(self._companion)
+        self._delete_case = self._button(
+            tr("Review case deletion"),
+            "packageDeleteCaseButton",
+            tr(
+                "Check the saved export and review the case storage inventory. A separate confirmation is required before any deletion. Saved exports and external source files remain."
+            ),
+        )
+        self._delete_case.clicked.connect(self._request_deletion)
+        content_layout.addWidget(self._delete_case)
         self._cancel = self._button(
-            "Cancel",
+            tr("Cancel"),
             "packageExportCancelButton",
-            "Request cancellation and wait for the final result. Files already saved may remain; "
-            "the final summary states the known destination inventory.",
+            tr(
+                "Request cancellation and wait for the final result. Files already saved may remain; the final summary states the known destination inventory."
+            ),
         )
         self._cancel.clicked.connect(self._request_cancel)
         content_layout.addWidget(self._cancel)
         self._scroll = QScrollArea()
         self._scroll.setObjectName("packageExportScrollArea")
-        self._scroll.setAccessibleName("Package review and export controls")
+        self._scroll.setAccessibleName(tr("Package review and export controls"))
         self._scroll.setAccessibleDescription(
-            "Scrollable format, summary, acknowledgement, export, and cancellation controls."
+            tr("Scrollable format, summary, acknowledgement, export, and cancellation controls.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._scroll.setWidget(content)
+        adapt_localized_content(self._scroll)
         self._close = self._button(
-            "Close",
+            tr("Close"),
             "packageExportCloseButton",
-            "Close this review. During an operation Escape requests cancellation and keeps the "
-            "dialog open until the result is known.",
+            tr(
+                "Close this review. During an operation Escape requests cancellation and keeps the dialog open until the result is known."
+            ),
         )
         self._close.setDefault(True)
         self._close.setAutoDefault(True)
@@ -309,6 +418,9 @@ class PackageExportDialog(QDialog):
             self._export,
             self._compression,
             self._save,
+            self._text_privacy,
+            self._companion,
+            self._delete_case,
             self._cancel,
             self._close,
         )
@@ -366,14 +478,17 @@ class PackageExportDialog(QDialog):
         self._progress.hide()
         self._update_actions()
         self._set_status(
-            "Package review ready. Read the summary and complete any required review steps "
-            "before choosing Export package."
+            tr(
+                "Package review ready. Read the summary and complete any required review steps before choosing Export package."
+            )
             if export_allowed
-            else "The package has a size constraint to resolve. Read the summary and complete "
-            "any required review steps before choosing Preview size reduction."
+            else tr(
+                "The package has a size constraint to resolve. Read the summary and complete any required review steps before choosing Preview size reduction."
+            )
             if compression_allowed
-            else "Package needs attention before export. Read the summary, then close this dialog "
-            "to resolve blocking items and refresh the review.",
+            else tr(
+                "Package needs attention before export. Read the summary, then close this dialog to resolve blocking items and refresh the review."
+            ),
             assertive=not export_allowed,
         )
         self._focus(self._text)
@@ -398,7 +513,7 @@ class PackageExportDialog(QDialog):
         self._progress.hide()
         self._update_actions()
         self._set_status(
-            _RESULT_TEXT[summary.status],
+            tr(_RESULT_TEXT[summary.status]),
             assertive=summary.status is not PackageSummaryStatus.COMMITTED,
         )
         self._focus(self._text)
@@ -409,14 +524,17 @@ class PackageExportDialog(QDialog):
         if type(phase) is not str or type(cancelable) is not bool:
             raise ValueError("Package progress requires a phase and cancellation state.")
         self._busy = True
+        self._announcer.reset_progress()
         self._cancelable = cancelable
         self._cancellation_requested = False
-        self._progress.setRange(0, 0)
+        set_static_busy(self._progress)
         self._progress.show()
-        label = _PROGRESS_TEXT.get(phase, "Working on the package")
-        self._progress.setAccessibleDescription(label)
+        label = _PROGRESS_TEXT.get(phase, mark("Working on the package"))
+        self._progress.setAccessibleDescription(tr(label))
         self._update_actions()
-        self._set_status(f"{label}. Keep this dialog open until the result is known.")
+        self._set_status(
+            tr("{value1}. Keep this dialog open until the result is known.", value1=tr(label))
+        )
         self._focus(self._cancel if cancelable else self._status)
 
     def set_progress(self, phase: str, completed: int, total: int) -> bool:
@@ -432,12 +550,18 @@ class PackageExportDialog(QDialog):
             or not 0 <= completed <= total
         ):
             return False
-        label = _PROGRESS_TEXT.get(phase, "Working on the package")
+        label = _PROGRESS_TEXT.get(phase, mark("Working on the package"))
         self._progress.setRange(0, total)
         self._progress.setValue(completed)
-        self._progress.setFormat("%v of %m")
-        self._progress.setAccessibleDescription(f"{label}: {completed} of {total}.")
-        self._set_status(f"{label}: {completed} of {total}.")
+        self._progress.setFormat(tr("%v of %m"))
+        self._progress.setAccessibleDescription(
+            tr("{value1}: {value2} of {value3}.", value1=tr(label), value2=completed, value3=total)
+        )
+        message = tr(
+            "{value1}: {value2} of {value3}.", value1=tr(label), value2=completed, value3=total
+        )
+        self._set_status(message, announce=False)
+        self._announcer.progress(message, key=label, completed=completed, total=total)
         return True
 
     def show_failure(
@@ -452,27 +576,26 @@ class PackageExportDialog(QDialog):
         self._progress.hide()
         self._update_actions()
         message = (
-            "Package export did not finish safely. The destination state is not established by "
-            "this message. Inspect the destination before retrying in a new folder. Close and "
-            "reopen package review to start a new attempt."
+            tr(
+                "Package export did not finish safely. The destination state is not established by this message. Inspect the destination before retrying in a new folder. Close and reopen package review to start a new attempt."
+            )
             if phase == "export"
-            else "The package review could not be prepared. Close this dialog to check the case "
-            "and saved constraints, or choose Refresh review to try again."
+            else tr(
+                "The package review could not be prepared. Close this dialog to check the case and saved constraints, or choose Refresh review to try again."
+            )
         )
         if type(code) is str:
-            try:
-                known = PackageWorkflowError(PackageWorkflowErrorCode(code))
-            except ValueError:
-                pass
-            else:
-                message = f"{known.safe_message} {message}"
+            known = _FAILURE_TEXT.get(code)
+            if known is not None:
+                recovery = _FAILURE_RECOVERY.get(code)
+                prefix = (
+                    tr(known)
+                    if recovery is None
+                    else tr("{message} {recovery}", message=tr(known), recovery=tr(recovery))
+                )
+                message = tr("{prefix} {message}", prefix=prefix, message=message)
         self._set_status(message, assertive=True)
-        self._focus(
-            self._refresh
-            if phase == "review"
-            and code in {"PACKAGE_REVIEW_CANCELLED", "PACKAGE_REVIEW_TIMED_OUT"}
-            else self._status
-        )
+        self._focus(self._refresh if phase == "review" else self._close)
 
     def complete_summary_save(self, *, succeeded: bool) -> None:
         """Keep the final inventory available whether optional summary saving succeeds or fails."""
@@ -485,19 +608,52 @@ class PackageExportDialog(QDialog):
         self._progress.hide()
         self._update_actions()
         if succeeded:
-            message = "The displayed summary was saved. Review it before sharing."
+            message = tr("The displayed summary was saved. Review it before sharing.")
         else:
             prefix = (
-                "Summary saving stopped after a cancellation request."
+                tr("Summary saving stopped after a cancellation request.")
                 if cancelled
-                else "Summary saving was not confirmed."
+                else tr("Summary saving was not confirmed.")
             )
-            message = (
-                f"{prefix} The package result above is unchanged. Check the selected destination "
-                "before trying a new filename, or select and copy the displayed text."
+            message = tr(
+                "{value1} The package result above is unchanged. Check the selected destination before trying a new filename, or select and copy the displayed text.",
+                value1=prefix,
             )
         self._set_status(message, assertive=not succeeded)
         self._focus(self._save)
+
+    @property
+    def text_privacy_confirmed(self) -> bool:
+        return self._text_privacy.isChecked()
+
+    def complete_post_export(self, message: str, *, failed: bool = False) -> None:
+        """Retain the verified package summary after an optional operation."""
+        self._busy = False
+        self._saving = False
+        self._progress.hide()
+        self._update_actions()
+        self._set_status(message, assertive=failed)
+        self._focus(self._status)
+
+    def disable_post_export(self) -> None:
+        """Keep the terminal summary readable after case closure or deletion."""
+        self._post_export_available = False
+        self._save_available = False
+        self._text_privacy.setChecked(False)
+        self._update_actions()
+
+    def clear_post_export_consent(self) -> None:
+        self._text_privacy.setChecked(False)
+
+    def _request_companion(self) -> None:
+        if self._companion.isEnabled():
+            self.set_busy("preparing", cancelable=True)
+            self.text_companion_requested.emit()
+
+    def _request_deletion(self) -> None:
+        if self._delete_case.isEnabled():
+            self.set_busy("preparing", cancelable=True)
+            self.deletion_requested.emit()
 
     def reject(self) -> None:
         """Keep the result visible while active work finishes or cancels."""
@@ -538,7 +694,7 @@ class PackageExportDialog(QDialog):
         self._export_allowed = False
         self._signed_ack.setChecked(False)
         self._human_ack.setChecked(False)
-        self._text.setPlainText("Preparing a fresh review for the selected output format.")
+        self._text.setPlainText(tr("Preparing a fresh review for the selected output format."))
 
     def _request_export(self) -> None:
         if not self._export.isEnabled():
@@ -566,13 +722,19 @@ class PackageExportDialog(QDialog):
     def _request_cancel(self) -> None:
         if not self._busy:
             return
-        if not self._cancelable or self._cancellation_requested:
-            self._set_status("Waiting for the active operation to finish safely.", assertive=True)
+        if self._cancellation_requested:
+            return
+        if not self._cancelable:
+            self._set_status(
+                tr("Waiting for the active operation to finish safely."), assertive=True
+            )
             return
         self._cancellation_requested = True
         self._update_actions()
         self._set_status(
-            "Cancellation requested. Waiting for the final result and known destination inventory.",
+            tr(
+                "Cancellation requested. Waiting for the final result and known destination inventory."
+            ),
             assertive=True,
         )
         self.cancel_requested.emit()
@@ -608,22 +770,32 @@ class PackageExportDialog(QDialog):
         self._refresh.setVisible(not self._terminal)
         self._save.setVisible(self._terminal and self._save_available)
         self._save.setEnabled(self._terminal and self._save_available and not self._busy)
+        committed = (
+            self._terminal
+            and self._post_export_available
+            and self._summary is not None
+            and self._summary.status is PackageSummaryStatus.COMMITTED
+        )
+        self._text_privacy.setVisible(committed)
+        self._text_privacy_label.setVisible(committed)
+        self._text_privacy.setEnabled(committed and not self._busy)
+        self._companion.setVisible(committed)
+        self._companion.setEnabled(committed and not self._busy and self._text_privacy.isChecked())
+        self._delete_case.setVisible(committed)
+        self._delete_case.setEnabled(committed and not self._busy)
         self._cancel.setVisible(self._busy)
         self._cancel.setEnabled(
             self._busy and self._cancelable and not self._cancellation_requested
         )
         self._close.setEnabled(not self._busy)
 
-    def _set_status(self, message: str, *, assertive: bool = False) -> None:
+    def _set_status(self, message: str, *, assertive: bool = False, announce: bool = True) -> None:
+        message = tr(message)
         self._status.setText(message)
+        self._status.setAccessibleName(tr("Package export status: {value1}", value1=message))
         self._status.setAccessibleDescription(message)
-        event = QAccessibleAnnouncementEvent(self._status, message)
-        event.setPoliteness(
-            QAccessible.AnnouncementPoliteness.Assertive
-            if assertive
-            else QAccessible.AnnouncementPoliteness.Polite
-        )
-        QAccessible.updateAccessibility(event)
+        if announce:
+            self._announcer.announce(message, assertive=assertive)
 
     def _focus(self, widget: QWidget) -> None:
         widget.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -631,20 +803,20 @@ class PackageExportDialog(QDialog):
 
     @staticmethod
     def _label(text: str, name: str, accessible_name: str) -> QLabel:
-        label = QLabel(text)
+        label = QLabel(tr(text))
         label.setObjectName(name)
-        label.setAccessibleName(accessible_name)
-        label.setAccessibleDescription(text)
+        label.setAccessibleName(f"{accessible_name}: {text}")
+        label.setAccessibleDescription(tr(text))
         label.setTextFormat(Qt.TextFormat.PlainText)
         label.setWordWrap(True)
         return label
 
     @staticmethod
     def _button(text: str, name: str, description: str) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         button.setAutoDefault(False)
         button.setDefault(False)
         return button

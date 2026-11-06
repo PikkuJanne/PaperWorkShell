@@ -23,15 +23,15 @@ from paperworkshell.domain.ocr_languages import (
 )
 
 TESSERACT_RUNTIME_MANIFEST_SHA256: Final = (
-    "1ffb85724770b4c30aa4d982564d548dadf466ebd5861cd827d2836198119c0a"
+    "11358f37de440ba738b4c834f8841647bbb25daccf4eba12d205e4a4d6073ba6"
 )
-TESSERACT_RUNTIME_FILE_COUNT: Final = 39
+TESSERACT_RUNTIME_FILE_COUNT: Final = 38
 TESSERACT_LANGUAGE_PACK_CATALOG_SHA256: Final = (
     "7b77404b22bdc7cec72c6af918e7bc4c700399c0dbcb650e7e4562fe1d94ce45"
 )
 TESSERACT_RUNTIME_ENTRYPOINT: Final = PurePosixPath("bin/tesseract.exe")
 TESSERACT_RUNTIME_TESSDATA_DIRECTORY: Final = PurePosixPath("share/tessdata")
-_TESSERACT_RUNTIME_MANIFEST_NAME: Final = "tesseract-runtime-closure-v1.json"
+_TESSERACT_RUNTIME_MANIFEST_NAME: Final = "tesseract-runtime-closure-v2.json"
 _TESSERACT_LANGUAGE_PACK_CATALOG_NAME: Final = "tesseract-language-pack-catalog-v1.json"
 _MAX_MANIFEST_BYTES: Final = 1_048_576
 _MAX_LANGUAGE_PACKS: Final = 32
@@ -556,9 +556,9 @@ def _parse_manifest(content: bytes) -> tuple[_ManifestFile, ...]:
     closure = _mapping(root.get("closure_evidence"))
     raw_files = root.get("files")
     if (
-        root.get("schema_version") != 1
+        root.get("schema_version") != 2
         or root.get("manifest_id") != "paperworkshell-tesseract-runtime-windows-x86_64"
-        or root.get("task_id") != "PWS-0204"
+        or root.get("task_id") != "PWS-0801"
         or layout.get("entrypoint") != TESSERACT_RUNTIME_ENTRYPOINT.as_posix()
         or layout.get("tessdata_directory") != TESSERACT_RUNTIME_TESSDATA_DIRECTORY.as_posix()
         or layout.get("allow_unlisted_files") is not False

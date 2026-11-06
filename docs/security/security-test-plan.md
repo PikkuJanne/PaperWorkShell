@@ -726,6 +726,25 @@ mutation, or automatic cold deletion of abandoned AppContainer profiles/local te
 
 ### M6 permanent redaction
 
+- PWS-0605's [private sanitization profile](../architecture/redaction-sanitization.md)
+  rebuilds a fresh page graph and excludes non-rendering metadata, attachments,
+  comments, annotations, form values, actions, scripts and prior revisions.
+  Adversarial tests inspect nested resource/stream dictionaries and orphan carriers,
+  enforce input/output and graph budgets, exercise cancellation and storage failure,
+  and scan reports/errors for removed synthetic tokens. Candidates remain unverified;
+  the independent PWS-0606 suite and PWS-0608 release gate remain required.
+
+- PWS-0604's [private OCR profile](../architecture/redaction-ocr.md) authenticates the
+  fresh opaque-masked raster before recognition, checks final text exclusion and
+  unchanged raster/appearance, and requires covered-canary absence with searchable
+  retained-text controls. Native language/rotation/crop/scan/degraded cases and
+  cancellation, timeout, language failure, bounded resources and cleanup cover
+  the OCR portion of RT-007, RT-012 and RT-014. Full derivative verification and
+  release approval remain separate prerequisites.
+- The [PWS-0601 redaction verification plan](redaction-threat-model.md) defines the supported
+  raster-reconstruction claim, corpus positive/negative oracles, planned RT/RM methods, complete
+  ROADMAP M6 mapping, and stable release-blocking taxonomy. Those future method IDs are plans,
+  not executed runtime evidence or release enablement.
 - Generate a separate adversarial corpus with unique canaries.
 - Recoverability checks cover text/search/copy/extraction, embedded images, objects/content streams,
   incremental revisions, metadata, attachments, comments, form values, OCR, multiple viewers, and

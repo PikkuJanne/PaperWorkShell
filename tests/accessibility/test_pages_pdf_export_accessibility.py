@@ -79,8 +79,11 @@ def test_doubled_text_keeps_pdf_export_and_cancel_scroll_reachable() -> None:
                 .rect()
                 .contains(button.mapTo(scroll.viewport(), button.rect().center()))
             )
-            assert button.height() >= button.fontMetrics().height()
-            assert button.width() >= button.fontMetrics().horizontalAdvance(button.text())
+            lines = button.text().split("\n")
+            assert button.height() >= len(lines) * button.fontMetrics().lineSpacing()
+            assert button.width() >= max(
+                button.fontMetrics().horizontalAdvance(line) for line in lines
+            )
             button.setFocus()
             assert button.hasFocus()
     finally:

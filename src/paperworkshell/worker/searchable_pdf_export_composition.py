@@ -62,6 +62,7 @@ class SearchablePdfExportWorkerCompositionConfig:
     maximum_active_full_resolution_page_buffers: int = 1
     resource_sampling_interval_ms: int = 50
     venv_launcher: Path | None = field(default=None, repr=False)
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
     _ocr_runtime_authority_id: str = field(init=False, repr=False, compare=False)
 
@@ -101,6 +102,7 @@ class SearchablePdfExportWorkerCompositionConfig:
                 code_roots=self.code_roots,
                 working_directory=self.working_directory,
                 venv_launcher=self.venv_launcher,
+                recovery_authority_roots=self.recovery_authority_roots,
                 qpdf_executable=self.qpdf_executable,
                 tesseract_executable=self.tesseract_executable,
                 tessdata_root=self.tessdata_root,
@@ -300,6 +302,7 @@ def create_searchable_pdf_export_worker_composition_config(
     resource_sampling_interval_ms: int = 50,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
+    recovery_authority_roots: tuple[Path, ...] = (),
 ) -> SearchablePdfExportWorkerCompositionConfig:
     """Create the mixed exporter policy behind one fixed production seam."""
 
@@ -323,4 +326,5 @@ def create_searchable_pdf_export_worker_composition_config(
             pump_interval_seconds=pump_interval_seconds,
         ),
         venv_launcher=venv_launcher,
+        recovery_authority_roots=recovery_authority_roots,
     )

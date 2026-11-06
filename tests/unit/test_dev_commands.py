@@ -41,6 +41,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
             "generate-fixtures",
             "validate-fixtures",
             "validate-schemas",
+            "validate-localization",
             "validate-dependencies",
             "validate-task-graph",
             "validate-docs",
@@ -79,6 +80,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
         self.assertNotIn("validate-dependencies", CHECK_COMMANDS)
         self.assertIn("format-check", CHECK_COMMANDS)
         self.assertIn("validate-fixtures", CHECK_COMMANDS)
+        self.assertIn("validate-localization", CHECK_COMMANDS)
         self.assertIn("validate-pdf-renderer-benchmark", CHECK_COMMANDS)
         self.assertIn("validate-pws0208-resource-workload", CHECK_COMMANDS)
         self.assertIn("validate-portfolio-boundary", CHECK_COMMANDS)

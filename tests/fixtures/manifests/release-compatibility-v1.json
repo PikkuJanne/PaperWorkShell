@@ -1,0 +1,48 @@
+{
+  "fixture_index_version": 1,
+  "scope": "Accepted synthetic development schema inputs; no public release or portable project is claimed",
+  "cases": [
+    {
+      "schema_version": 1,
+      "kind": "minimal",
+      "input": "schemas/examples/case-manifest-v1-minimal.json",
+      "sha256": "e9655227183e8077d8fd10e0a8321b6ee1c0d88f9f3f94e19d01b1b6608ff79f",
+      "accepted_schema_task": "PWS-0006"
+    },
+    {
+      "schema_version": 1,
+      "kind": "representative",
+      "input": "schemas/examples/case-manifest-v1-representative.json",
+      "sha256": "ff2683757e4bdee6f661a4c6fc0aa200db9147f5fba979064838c572ece3b567",
+      "accepted_schema_task": "PWS-0006"
+    },
+    {
+      "schema_version": 2,
+      "kind": "minimal",
+      "input": "schemas/examples/case-manifest-v2-minimal.json",
+      "sha256": "e275d845cd56964d963ef5a11135a331660c07532ebc967ecbce2b4ddaf41684",
+      "accepted_schema_task": "PWS-0202"
+    },
+    {
+      "schema_version": 2,
+      "kind": "representative",
+      "input": "schemas/examples/case-manifest-v2-representative.json",
+      "sha256": "76109daab7b8e8c3ebe630136a410b0f44ee32a4f9f599ed0dc510ffc8e444ed",
+      "accepted_schema_task": "PWS-0202"
+    },
+    {
+      "schema_version": 3,
+      "kind": "minimal",
+      "input": "schemas/examples/case-manifest-v3-minimal.json",
+      "sha256": "11aecd6a38c6703b7c78a816903130e913e9a194f60a089a135909d03f27eaa8",
+      "accepted_schema_task": "PWS-0602"
+    },
+    {
+      "schema_version": 3,
+      "kind": "representative",
+      "input": "schemas/examples/case-manifest-v3-representative.json",
+      "sha256": "30a04476d73f683a548b13d8890d9c2ce79d9f1ce85458a7642cc39ae3e76972",
+      "accepted_schema_task": "PWS-0602"
+    }
+  ]
+}

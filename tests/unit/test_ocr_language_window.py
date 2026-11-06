@@ -90,7 +90,7 @@ def test_settings_entry_is_persistent_on_chooser_and_organizer() -> None:
         button = _settings_button(window)
         assert button.isVisible()
         assert button.isEnabled()
-        assert button.text() == "Manage OCR languages…"
+        assert " ".join(button.text().split()) == "Manage OCR languages…"
         assert button.accessibleName() == "Manage OCR languages"
         assert "Ctrl+Shift+L" in button.accessibleDescription()
 

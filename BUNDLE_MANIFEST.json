@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.31",
+  "bundle_version": "0.2.58",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -20,18 +20,18 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 40335,
-      "sha256": "f7ed9d6f3af2dbc0ab48c2f627282a0249f42481e7ef7fc9c265f090bde4b651"
+      "bytes": 42823,
+      "sha256": "358a6bfd2eda7a3e6eac424a8eaee935ee2adc81e44eeff7517c5738e078b409"
     },
     {
       "path": "DECISIONS.md",
-      "bytes": 27650,
-      "sha256": "bbd1bcc02fb22af8921a79aaac507d01598b2344a1281c937bdbad79904ce5a3"
+      "bytes": 29797,
+      "sha256": "4a82099168fac9d557f8783ae32435bf32b3aaa87435c8d8631186521221a31f"
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 340925,
-      "sha256": "b92d92912f6f23ae9a44f0cab3d813c5a2e2fcd11eab95f4c79cc7bc2bf3b880"
+      "bytes": 473241,
+      "sha256": "04c0d6daf0ea2e5afea4048a00bbce1fa9fe39460e912bd42d163a315514795d"
     },
     {
       "path": "TASKS.schema.json",
@@ -40,43 +40,43 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 19273,
-      "sha256": "439808ed159acbdd433a3d0731206ba0b344474a4d3b265e8d8e062ec05d7f0c"
+      "bytes": 21774,
+      "sha256": "7a18b88472e862246c7bf7ebb59ddda2c11482393bef5f220226936ccf5823ce"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 14931,
-      "sha256": "2cf38e5ffc7e20637141d8cf71ec3b7d6d941b45e3bf182724ccc59eff35e895"
+      "bytes": 16317,
+      "sha256": "130ee3d05352b932068c99b351061376b4976688586eb8199d1bf3fd70c21461"
     },
     {
       "path": "README.md",
-      "bytes": 33762,
-      "sha256": "b3ed2caa4dd71b3f01a0e23c4e7982e7ef61ec6bd9b8de5eb065abc1d44c258f"
+      "bytes": 39683,
+      "sha256": "2e330b95e1d7103d1fe64a92b5f048cc6011aa14babedfa00b788977cd5a9c82"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
-      "bytes": 11254,
-      "sha256": "a61a90b3e07929521afdb53910e8b45c60d8241dc81b7168e894c07f3017e414"
+      "bytes": 12809,
+      "sha256": "a356cc8a44b6495ea6a761c42809b05b167826f0bd8ba1418871d9d8410b40bd"
     },
     {
       "path": "docs/release/README.md",
-      "bytes": 2628,
-      "sha256": "b35bf1eac0250cda37b3d66908ced6c333e4af977710a6003a1b9bc6853a7fc9"
+      "bytes": 4611,
+      "sha256": "09c3ac96b8806325f9d08503324034b75856275de3701241ccc1ebac7ab888c0"
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 14705,
-      "sha256": "edfaa16dac05109ce2f2d71634b8f3e4b3e46bc5f907245fa31fa15b393de000"
+      "bytes": 34046,
+      "sha256": "3564c6e51e1c186046be8f8a31f53c9d5de3a21f0cc1118df0f14999f5909767"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 17648,
-      "sha256": "27b69dda12da15e13eff2079db2c79a99e6e64929cf25832ad55f697281ede82"
+      "bytes": 20786,
+      "sha256": "42c2d24d08aa57b6bf698a602bd410af5bffe684888130164e5da6ad95f3a4b4"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 9957,
-      "sha256": "a3bb07448c89b19835923bea5b54d1c00011454bcf0c91270c25193d83e6b9f9"
+      "bytes": 11066,
+      "sha256": "98fd41cdd5651e42c8a9124ff375d96bcf19b7496dea5b171d80d83a85c6b9c5"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -185,37 +185,461 @@
     },
     {
       "path": "docs/adr/0014-conservative-portal-profile.md",
-      "bytes": 3317,
-      "sha256": "5dd257943a5986e10fda548103173127fd4b8c88c498a31d1e1852760cf7a895"
+      "bytes": 3360,
+      "sha256": "df5be69ca37182597dce2ca3af286cbecf85e0e49760d12a9ff2f479b1579a90"
     },
     {
       "path": "docs/architecture/portal-export-profile.md",
-      "bytes": 4231,
-      "sha256": "690b795648336eb87a54cf65768bb5d87a9d7e33ca58b312dce0be8526c38672"
+      "bytes": 4244,
+      "sha256": "1f44a1b882555e5c175f9f515572a9c03cbc68c4b96e5afd138481b8f86654de"
     },
     {
       "path": "docs/compatibility/pws-0506-portal-matrix.md",
-      "bytes": 12512,
-      "sha256": "192c6bc005f44cc200ccdcddec3f8a3726795ddae3d3309467597295c65059c8"
+      "bytes": 14509,
+      "sha256": "fde29136d74fa5a7e8b43ea6ca2457c19cf66fd8a861433300246afdb74f8b5b"
     },
     {
       "path": "docs/development/pws0506-result.md",
-      "bytes": 14637,
-      "sha256": "74c90a13c3a3a8a25f9795aa6e2556897a708c68999f6e5e7684fea31220f87c"
+      "bytes": 16576,
+      "sha256": "2f30e6aa235f0761e116ee8f1515126b4eeca499b311afec4ae02c4d109dd396"
+    },
+    {
+      "path": "docs/gates/m5-compression-compatibility-gate.md",
+      "bytes": 17773,
+      "sha256": "9f7f1dbfdb8d077fb2c96f1095901e62fa0441db5313e17625af3d38ee1693c5"
+    },
+    {
+      "path": "docs/security/redaction-threat-model.md",
+      "bytes": 40007,
+      "sha256": "13a84a004c26ea7be73bb03f5937ac9a660b1e5f6ac4bb4a5f5bb8ffe3fd6068"
+    },
+    {
+      "path": "docs/development/pws0601-result.md",
+      "bytes": 11284,
+      "sha256": "245505009127c98a014037e4217bb76f7ea82deebd26d3de20db93302c73b417"
+    },
+    {
+      "path": "docs/schemas/case-manifest-v3.md",
+      "bytes": 3721,
+      "sha256": "70126e3c84a7b57c1fd1ae115b200ee6afe8a882c2007688a88f3ea4a3de8339"
+    },
+    {
+      "path": "docs/architecture/redaction-intent-review.md",
+      "bytes": 8655,
+      "sha256": "cc00cbb2ad0817ce6e2a19fc2fb72cba63ea0bfe5609aa85d66a19f844b1be6c"
+    },
+    {
+      "path": "docs/development/pws0602-result.md",
+      "bytes": 24179,
+      "sha256": "15e992ee1c987f4de5222a36991a4dafb60f0dfed89f6828c40d2c9186b019b7"
+    },
+    {
+      "path": "docs/architecture/redaction-reconstruction.md",
+      "bytes": 6583,
+      "sha256": "c354b680660b8a364cc3eb996c3d67bcb723b14655e82af853091f7147c04188"
+    },
+    {
+      "path": "docs/development/pws0603-result.md",
+      "bytes": 13258,
+      "sha256": "2c5ef761e4e11a6887ae520f37061d47101a18810c163947662150606c2dbded"
+    },
+    {
+      "path": "docs/architecture/redaction-ocr.md",
+      "bytes": 6133,
+      "sha256": "b301ca8f4f441d006d3198947a33968858879fae461c7168fb3908c4098d8736"
+    },
+    {
+      "path": "docs/development/pws0604-result.md",
+      "bytes": 12693,
+      "sha256": "d58ba22cd44bc73383c8bc73eae72e66ea354a0744b919ac791fb7cbb555c549"
+    },
+    {
+      "path": "docs/architecture/redaction-sanitization.md",
+      "bytes": 6400,
+      "sha256": "53aa29b782e0d728e2e96fd38174780799f1d6f64b1138efef06b4f7e75ff579"
+    },
+    {
+      "path": "docs/development/pws0605-result.md",
+      "bytes": 11211,
+      "sha256": "641ac0f73841390ecf8ed2b6481150f91a8553d2b4ea9e11f4db850198199bbc"
+    },
+    {
+      "path": "docs/architecture/redaction-verification.md",
+      "bytes": 13750,
+      "sha256": "571685ef1334168fe355ddb4eb81f7588b72b9f4002b56c9c7141f9ef2d4a0df"
+    },
+    {
+      "path": "docs/compatibility/pws-0606-redaction-viewer-resave-matrix.md",
+      "bytes": 26752,
+      "sha256": "ea2775b88ffbce6d0a5f894c25a3d92180e93ef29d51bfc176de4f90a5b17b89"
+    },
+    {
+      "path": "docs/development/pws0606-result.md",
+      "bytes": 15667,
+      "sha256": "1d61995f2a3bb925bd3f48807f827debac6d6c827e0f5cfd04fdaef4daf1d65e"
+    },
+    {
+      "path": "docs/development/human-testing.md",
+      "bytes": 10220,
+      "sha256": "1cc991d7da59a36863444c8cce9a22d8d01a96acf00b4dceda223f06d85f6497"
+    },
+    {
+      "path": "docs/development/human-test-environment-v1.json",
+      "bytes": 1687,
+      "sha256": "ac326563255b71964e36597e01a205758a7303ddd7038b9e6c372e30f9b93327"
+    },
+    {
+      "path": "docs/architecture/redaction-export-gate.md",
+      "bytes": 11844,
+      "sha256": "2a87f4a279f185f223dfd8b585a212bc449a2931748ada18b96db8a4fcf875cc"
+    },
+    {
+      "path": "docs/development/pws0607-result.md",
+      "bytes": 17894,
+      "sha256": "b719581d4f9a0d070058bb1d676944d6bd689cc0b2504d0b743992c700c151f0"
+    },
+    {
+      "path": "docs/gates/m6-permanent-redaction-gate.md",
+      "bytes": 13737,
+      "sha256": "cfb2c9f3a583324f2156dd3600f150518aae4b94cc6f1f299e17177e2016c80b"
+    },
+    {
+      "path": "docs/security/pws0608-independent-review.md",
+      "bytes": 11412,
+      "sha256": "37172375d4596bec6e1738887d1f3046c5150dbd6ef1cafe53611d7d3303dd3f"
+    },
+    {
+      "path": "docs/development/pws0608-result.md",
+      "bytes": 7791,
+      "sha256": "83928ba727a94202bc4dd02369c23d978e9bd829463591f9ae3aa11a03e90875"
+    },
+    {
+      "path": "docs/adr/0015-redaction-runtime-and-release-qualification.md",
+      "bytes": 9171,
+      "sha256": "80228fc6d5750c00a0a1dba349a4bc202800e6ba8aaaf5d7ad40fe2e2e14ba62"
+    },
+    {
+      "path": "docs/development/pws0608-remediation.md",
+      "bytes": 29076,
+      "sha256": "0a95a15f9e0aa49088bd4f922c58cfc102a1c38eb53743ce08ccfe14030a75c9"
+    },
+    {
+      "path": "docs/accessibility/pws-0701-keyboard-audit.md",
+      "bytes": 36840,
+      "sha256": "85a767eb397389189a90e6a858bec3db24cf30015284b2ec207ba15a04258822"
+    },
+    {
+      "path": "docs/development/pws0701-result.md",
+      "bytes": 38118,
+      "sha256": "f1d02a52b3dd22a582907bb06e88ef08c0138f9186ad4ecf98de7fa3d738d1d3"
+    },
+    {
+      "path": "docs/accessibility/pws-0702-nvda-audit.md",
+      "bytes": 15433,
+      "sha256": "727d3e426094f3ab24ae87b89d7e13a63163422931537e8fc89ad41844de59d6"
+    },
+    {
+      "path": "docs/development/pws0702-result.md",
+      "bytes": 12316,
+      "sha256": "e7ff93061fd28b24c19e72080d566086b91b655eca953b01fc4cb322b782de6b"
+    },
+    {
+      "path": "docs/adr/0016-assisted-use-local-policy.md",
+      "bytes": 3123,
+      "sha256": "e2354ea8a86a9836be9f24510727c2aee75e958c421a34f5ae4efb5bdbfd8c32"
+    },
+    {
+      "path": "docs/architecture/assisted-use.md",
+      "bytes": 3488,
+      "sha256": "3b6a7b9c2e457024a77603f81d6e62da9fb9b861f7f94df543ad3e918c5e98be"
+    },
+    {
+      "path": "docs/accessibility/pws-0705-assisted-use-audit.md",
+      "bytes": 3995,
+      "sha256": "b58e46a279f19d68ff1c6a883bafeba5aae8cbfd70c3d234b362010e827fc419"
+    },
+    {
+      "path": "docs/development/pws0705-result.md",
+      "bytes": 7383,
+      "sha256": "cc9b0d4b00eed462044a29aba435d2af15b2d475dbaf018badb8316887a38374"
+    },
+    {
+      "path": "docs/accessibility/pws-0703-display-audit.md",
+      "bytes": 5627,
+      "sha256": "50c961e7c716b8170e3d2df1eeab751476f1f453e6458a7a554413c2a1900aec"
+    },
+    {
+      "path": "docs/development/pws0703-result.md",
+      "bytes": 8190,
+      "sha256": "dd533eb568cead84293438bb112b57c1b368720f322ecfd66d97af58a2b5d2ae"
+    },
+    {
+      "path": "docs/development/localization.md",
+      "bytes": 7705,
+      "sha256": "04a2ba1e3fc0d8e5a695f178ef9314967e5147ddd905b98420c194b5c2639cea"
+    },
+    {
+      "path": "docs/development/pws0704-result.md",
+      "bytes": 14074,
+      "sha256": "a2ef38dbdfdd975259f53c6d8c3116cb95e04bd362c8c7df61045314bdb36d5d"
+    },
+    {
+      "path": "docs/architecture/post-export-retention.md",
+      "bytes": 5661,
+      "sha256": "d6fd395e885b5575bb7f037dd925ac71622046cffba0939ade71107fbb21794f"
+    },
+    {
+      "path": "docs/development/pws0706-test-plan.md",
+      "bytes": 7185,
+      "sha256": "2a1e0ad9a50d00b602f2aaaae8ad93356e27bbafa20c6c98fd1c2155f1015005"
+    },
+    {
+      "path": "docs/development/pws0706-result.md",
+      "bytes": 12970,
+      "sha256": "ec7928ccb3bc0103b6cc36f222d67dc8f007865229ce6dd3b8694e283b5dd462"
+    },
+    {
+      "path": "docs/gates/README.md",
+      "bytes": 1363,
+      "sha256": "9fb58036032a0c762b1213774c89f37e73e4ffbdf58cd7639dd260d706c895bc"
+    },
+    {
+      "path": "docs/gates/m7-accessibility-assisted-gate.md",
+      "bytes": 28655,
+      "sha256": "a71be4885ada7eaed808ab09aa4af731d096ffef03b66fbeb4f6a0bf10a100bc"
+    },
+    {
+      "path": "docs/development/pws0801-result.md",
+      "bytes": 17406,
+      "sha256": "048c37010e21d91f3e78e1ad63dc3a08c338b62f08e993380999ebc712e77318"
+    },
+    {
+      "path": "docs/development/emergency-security-updates.md",
+      "bytes": 9323,
+      "sha256": "ca802adb97b66965e684376fdf88aa2fd9fb2bdca2efeca87341946e36c36298"
+    },
+    {
+      "path": "docs/adr/0017-release-dependency-staging.md",
+      "bytes": 6251,
+      "sha256": "b3f03404a20cc5ab83568d994e2901cf3ab5999f25c3d759d625ade0f5e20e3b"
+    },
+    {
+      "path": "docs/development/pws0801-audit-20261102.md",
+      "bytes": 11020,
+      "sha256": "e0e845cd09f8a904539da5a89f06686f4db6da17ec10422b1b2f0c0372cfe2a5"
+    },
+    {
+      "path": "schemas/resolved-dependency-inventory-v1.schema.json",
+      "bytes": 10317,
+      "sha256": "287ecbd150a206f9944159a66b6dcf37ee47dc4a8f8e9fb5317ff80762056582"
+    },
+    {
+      "path": "packaging/release-reviews/lxml-exclusions-v1.json",
+      "bytes": 1614,
+      "sha256": "cc20dddf92d55f9062ef4d47d96e481904ad4c9d38b49a1c5d6178f0af66ec15"
+    },
+    {
+      "path": "packaging/tesseract-runtime-closure-v2.json",
+      "bytes": 38030,
+      "sha256": "11358f37de440ba738b4c834f8841647bbb25daccf4eba12d205e4a4d6073ba6"
+    },
+    {
+      "path": "packaging/release-reviews/upstream-attribution-privacy-v1.json",
+      "bytes": 115931,
+      "sha256": "4861cf7397a2b4e76bb24f947748b5e478cd0f5feed4836daea81502bebb58a8"
+    },
+    {
+      "path": "packaging/README.md",
+      "bytes": 23563,
+      "sha256": "8de287bf7a4f29818c25409c6ddc5003d0a778e8591f45f1995f8651a7ff723e"
+    },
+    {
+      "path": "docs/adr/0018-windows-installer-and-release-identity.md",
+      "bytes": 17998,
+      "sha256": "ba61b4a76fc6fafd8a14f2cdffa3b3b86f20ddb73df7f11e273f51e3c8655020"
+    },
+    {
+      "path": "docs/development/pws0802-result.md",
+      "bytes": 7217,
+      "sha256": "06cab67f44b2c216ae02300eac071f0209f0d91cb85aebc031eb925b0640b4aa"
+    },
+    {
+      "path": "packaging/windows/QUALIFICATION_PLAN.md",
+      "bytes": 22293,
+      "sha256": "81788d43b3f9b148103c61a9dcaab1c4e8ff576be5c79c9e3e7587cf8d5dda43"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1070,
+      "sha256": "e4ed5c06dbf973cf3af0155de72915214e4c5bc7de211c601816b7e083f1dae3"
+    },
+    {
+      "path": "LICENSING.md",
+      "bytes": 1542,
+      "sha256": "7a5f2211e8a76202c87f5011289c7e1f469866143b5e4a797b92caf476b92a71"
+    },
+    {
+      "path": "packaging/windows/product-v1.json",
+      "bytes": 750,
+      "sha256": "7485025222023681badb0849818e18ad239deb4b08169cf42a967fa8967fe032"
+    },
+    {
+      "path": "packaging/windows/inno-setup-7.1.1-review.json",
+      "bytes": 24925,
+      "sha256": "6a0967d86f7cb7e4c2c5a8ac4633df60299b8b26dd634b6da225d1de6cb05fbc"
+    },
+    {
+      "path": "docs/development/pws0802-implementation-20261103.md",
+      "bytes": 27362,
+      "sha256": "607fb257d52733daf03dfc3468dd4c8a2b1ea3982ff887ef59b173a656f801de"
+    },
+    {
+      "path": "docs/development/pws0802-signing-and-runtime-review.md",
+      "bytes": 12343,
+      "sha256": "e563a42263425927111006fdd49cfe1830971ab59837dcfaa6f186e8b2517292"
+    },
+    {
+      "path": "docs/development/pws0802-clean-windows-feasibility.md",
+      "bytes": 13075,
+      "sha256": "95aa807ea267bcfb93495ae05ef0042ef13ce82888cecd07261cb285894bfa23"
+    },
+    {
+      "path": "docs/development/pws0804-result.md",
+      "bytes": 10815,
+      "sha256": "139772a198c7a46f3ffc31cf29296a18d340f121262a85098cff9f88f9f68f91"
+    },
+    {
+      "path": "docs/development/pws0805-result.md",
+      "bytes": 8393,
+      "sha256": "3891651c83a3d49f1b882bf1cc8a8e34f9a23644eba5a89f737c0a2198f1010f"
+    },
+    {
+      "path": "docs/architecture/case-migration.md",
+      "bytes": 5741,
+      "sha256": "de893a61da7379e6173a021580a2e6bf5ce9144da93a8542f75a8f81bb9b05aa"
+    },
+    {
+      "path": "docs/architecture/support-bundle.md",
+      "bytes": 4777,
+      "sha256": "5c2617bee9ce23194e29c4406e8da6bdf3eaa6b50deea9a8e357227a8c4359d3"
+    },
+    {
+      "path": "packaging/windows/inno-attribution-privacy-v1.json",
+      "bytes": 1128,
+      "sha256": "549712a32cda495aaad101297d190c51563c9786ce621410eea036aa9a659b52"
+    },
+    {
+      "path": "docs/development/pws0802-microsoft-runtime-preparation.md",
+      "bytes": 11344,
+      "sha256": "93b80007619cc5adcebcb27c53ff23e761b1d0791546f0546bca136f8b46fe15"
+    },
+    {
+      "path": "docs/development/pws0802-microsoft-recipient-terms-proposal.md",
+      "bytes": 5467,
+      "sha256": "43d402b29c78a7f6b878227edcc34d7c87db4a3d54742ba17d661b564b660dab"
+    },
+    {
+      "path": "docs/development/pws0802-community-runtime-20261103.md",
+      "bytes": 87535,
+      "sha256": "43b9103e397088f034ec66e89b8d122122e6a6cb8bdf75737691c6f2fe96a047"
+    },
+    {
+      "path": "docs/development/pws0802-community-runtime-result.md",
+      "bytes": 8446,
+      "sha256": "9de4396d3cb138bb2a093b80b08a0c18a1f5f53c412cdfa4191bdf38935b3a3d"
+    },
+    {
+      "path": "packaging/release-reviews/microsoft-community2022-v1.json",
+      "bytes": 6792,
+      "sha256": "511d3de364ba8bdc0620a6cfa1c2641d820275c2a64621cee40a973b14bb6f2d"
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt",
+      "bytes": 5466,
+      "sha256": "a5cdf1136b18611fc5235c657b7ad113a9ac338abe6c1af3c299205d9492c718"
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-FULL-TERMS.txt",
+      "bytes": 19035,
+      "sha256": "cbfa92f37dc9cc11735952457c4c68df6f6aec0dfdb895e31c15c1adc0ed7963"
+    },
+    {
+      "path": "packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-ROUTE.txt",
+      "bytes": 2499,
+      "sha256": "9dc5d40efc8acc857711535c16a88a894c38a48cf3d7176dda14093346ff86ce"
+    },
+    {
+      "path": "docs/adr/0019-windows-11-x64-only-scope.md",
+      "bytes": 7968,
+      "sha256": "dd556ce6aef10206dba04040fbacf52e2b1a27324228c4eda76376de7e0d76a5"
+    },
+    {
+      "path": "docs/development/pws0802-foundation-inquiry-20261104.md",
+      "bytes": 5618,
+      "sha256": "bc4d6937616df4705995f3adb88958eadaebf2f3af8882423dac2c5850385eef"
+    },
+    {
+      "path": "docs/development/pws0802-x64-continuation-20261104.md",
+      "bytes": 9950,
+      "sha256": "bf8dc7fdb40388495570464803fdd40d5f8925cdeb8b9a95fa43fb595d9d51a8"
+    },
+    {
+      "path": "docs/development/pws0802-x64-qualification-20261104.md",
+      "bytes": 55190,
+      "sha256": "8a149120c1c836def7113a01b6755a50eeeb5f7b9ce58b8201888083c58db8a0"
+    },
+    {
+      "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
+      "bytes": 8368,
+      "sha256": "0777ee0785079f45a5e3f526aff6443ec749a368023aa49ac9b02e4418173443"
+    },
+    {
+      "path": "docs/development/pws0810-internal-delivery-20261104.md",
+      "bytes": 19080,
+      "sha256": "d10b64c6f71a1b9c6a3f5a2be96a16deb7b9194fa24e7963afee120fd2c81d78"
+    },
+    {
+      "path": "docs/development/pws0810-r9-second-pc-handoff-20261104.md",
+      "bytes": 8514,
+      "sha256": "472f45819f11c0c0b307a3aa6d697f30cee7033e6929ecaeaaef3943652cee5a"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 82,
-    "dependency_edge_count": 243,
+    "task_count": 83,
+    "dependency_edge_count": 248,
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
-    "PWS-0506 conservative portal profile and synthetic compatibility corpus passed full Windows CI, constrained native checks and automated corpus validation. The task remains in review for exact-output reader observations. PWS-0507 is not ready. Standalone operation, case-data ownership and release-interface TBD facts are preserved.",
+    "PWS-0810 second-PC handoff follow-up, 2026-11-04: output/PaperWorkShell-R9-Second-PC contains the original-named byte-identical unsigned R9 installer, seven synthetic samples, local export folders and START-HERE.txt. Actual R9 installer/UI labels and image-only OCR source checked locally; no second-PC pass, application change, new installer, public-release claim, external contact or sibling dependency. PWS-0810 remains done; release-only work remains deferred.",
+    "Current PWS-0810 internal-delivery completion, 2026-11-04: Internal build ready for use. Exact preserved R9, 512,732,779 bytes, SHA-256: d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4, NotSigned. Current Windows 11 Pro 26300.9711 AMD64 filtered-administrator installed GUI finite workflows and 3,195-file inventory pass, with accepted genuine-standard-account R9 and unchanged-boundary R6 evidence reused only in scope. All 11 exported PDFs pass strict reopen, syntax and rendering checks; clean overlay placement and GUI-saved summaries verified. OCR recognition/output-route limitations remain explicit. R9 was sufficient; no application source repair or R10. Final exact-case preservation passed: revision 19, four immutable sources, empty case temp and no installed workers. Canonical graph, schema, documentation and portfolio validators passed; final completion metadata retains the same scope. PWS-0810 is done; no dependency-ready unfinished task remains, so stop for optional ordinary-use feedback. Public signing, SignPath, publication and release-only qualification are deferred; real system-volume disk-full test not performed and deferred, with no VM request. Contact permission is exhausted; no new external contact or upload. PWS-0802 retains its original public-signing blocker, PWS-0804 and PWS-0805 remain done, PWS-0803 is not current. Standalone ownership and historical records preserved; no public-release or sibling-compatibility claim.",
+    "Current PWS-0802 Community continuation: acquired and authenticated the accepted individual-developer route, implemented final Microsoft-only offline recipient terms and complete app-local R4 runtime. Exact unsigned internal R4 installer SHA256 3df3dc557f27646fecf68cc7f4b789f1c521110873ac173ca3ce6a01570c3155; independent artifact audit, installed workflow/DLL origins, observed interruption/repair, direct GUI keyboard/actionable error and final preserve-uninstall pass at host-only scope. Canonical affected QA and frozen privacy/secret scans passed; metadata closure is separate. Public signing, clean Windows, actual standard-account/ARM64 and current reader-output qualification remain open; PWS-0802 blocked and PWS-0803 not ready. PWS-0804/PWS-0805 and original Git/index/accepted evidence preserved; no sibling dependency or public release.",
+    "Historical R2 closure: Current closure: PWS-0804 and PWS-0805 done after exact current-source QA (7,648 passes, two disclosed symlink skips), final tool regressions and privacy/native/accessibility checks. PWS-0802 has concrete audited unsigned R2; host install, in-place repair, prior-case reopen, full smoke and preserve-uninstall pass. Public signing, Microsoft entitlement and clean matrix remain blocked; no later task is ready. Original Git/index, accepted milestones and standalone ownership preserved.",
+    "Historical R2 implementation: PWS-0802 maintainer-authorized implementation: scoped MIT/free identity, stable application/upgrade IDs and concrete unsigned internal Inno installer. Host qualification is separate from unrun clean Windows/ARM64 and trusted signing; Microsoft entitlement remains pending. PWS-0804/PWS-0805 implementations independently in review pending shared QA. Current report preserves historical failures, source epochs and prior accepted evidence. No sibling dependency or public release claim.",
+    "PWS-0802 blocked preflight on 2026-11-03: proposed per-user Inno Setup 7.1.1 x64 installer/identity/signing ADR and unrun qualification plan. Actual publisher, first-party licence, scoped Microsoft-component distribution terms and approved signing identity/process require maintainer input. No installer, application, dependency, licence asset or environment changes; no signed/clean-machine claim. Earlier work and draft release facts are preserved. PWS-0804 is next ready; no later task started. Canonical and preservation closure receipts are recorded separately.",
+    "PWS-0801 done: exact internal dependency candidate R3; 957 components and 3,153 files; verified isolated builder, full source/notices/replacement obligations, CycloneDX/SPDX, hashes and public evidence index. Broad QA records 7,396 owned-source unit, 1,158 security and 340 accessibility passes at explicit epochs. Native selection retains 155 passes, one original-source failure and a scope-checked exact-node passing retry; final attribution-only regression and 13 fresh exact-runtime probes pass. Historical failures preserved. No unrelated source/Git/frozen controls changed; no sibling input. Public installer/product terms/signing remain PWS-0802, now next; PWS-0804/0805 also ready. Completion-only metadata has separate canonical receipts.",
+    "PWS-0707 source-tree gate done: native review found and repaired selected-row focus reveal; final exact-source QA passed all 7091 unit tests, 340 accessibility tests, catalogs and relevant 62 integration/10 privacy cases. Cumulative accepted primary keyboard/NVDA and assisted/deletion evidence remains scoped, current RTL200/native-palette review has explicit geometry limits. Historical failures, originals, prior profiles and original Git state preserved. Terminal canonical metadata outcomes are recorded separately. PWS-0801 ready; standalone ownership and draft release facts unchanged.",
+    "PWS-0706 done: all 21 exact-source serial checks pass; explicit verified-package deletion and opt-in bounded final-PDF text companions, crop/Unicode/privacy/compatibility regressions and scoped native NVDA review. Original source/Git state preserved; quality JSON revision-only binding renewed. Historical failures/scopes retained. PWS-0707 ready; standalone ownership and draft release facts unchanged. Final canonical metadata receipts are separate.",
+    "PWS-0705 done: scoped source/native QA and actual approved root fixture/privacy gates pass;25files/currenttmp and independent historical closure preserved. Historical failures/qualifications retained;0706ready. Same bundle0.2.51; terminal frozen-metadata checks are separate.",
+    "PWS-0704 is done: 2706 externalized messages, bounded catalogs and locale displays, pseudo/RTL reflow, preserved physical editor coordinates and template authority. Final isolated full QA passes 6937 unit cases; all 312 accessibility and selected 41 privacy/15 lifecycle integration cases pass. Complete canonical-root secret scanning passes without policy/budget changes after task-generated hash receipts moved to local evidence. Earlier failures remain recorded, unrelated source/Git/baseline and standalone ownership preserved. No new task unblocked; PWS-0705 remains in review. Natural-language/native/package qualification remains with M7/M8 and release facts remain draft.",
+    "PWS-0703 is done: scalable targets, wrapping actions and footers, live contrast colors, bounded scan preview painting and reduced motion. Full exact-source QA passes 6817 units, all 250 accessibility tests pass, and selected lifecycle/privacy checks pass. Full canonical-root secret scanning passes within the unchanged limit after duplicate same-batch Git reads were removed; all path, alias, raw and binding checks remain. Agent-native synthetic Qt scale 100/150/200 and contrast observations retain problem attempts; no human or hardware certification is claimed. Original root source/Git/baseline/unrelated work is preserved. PWS-0704 is newly ready; PWS-0705 stays in review. Standalone data ownership and draft release-interface facts are unchanged. Final completion metadata has separate validation and scanning receipts.",
+    "Historical/superseded PWS-0705 record; see the current PWS-0705 note: PWS-0705 is in review: assisted consent, local passphrase/idle/foreground/restart lock, fixed expiry quarantine, isolated access and handover are implemented. Final affected checks pass 152 tests, accessibility 215 and static 799 files. Security 3 and renderer 8/307 isolated retries pass without authority changes. Integration serial retry 19 passed/5 failed/1 skip; one fresh M1 native resource-authentication failure is diagnosed but its resource/OS cause is unknown. Native NVDA/shared-computer evidence remains pending. PWS-0706 stays planned; PWS-0703 is independently ready. Root originals, baseline, Git/unrelated work, standalone ownership and draft release facts are preserved. A date-only keyboard regression correction passes its two cases without changing product code. Fixture/privacy validation still rejects an unapproved historical PNG; no history/approval rule was changed. Final closure receipts retain all failures.",
+    "PWS-0702 is done: typed screen-reader case/page/overlay semantics, current native status names, bounded progress/cancellation/outcome events and actionable recovery. Final source-bound full unit, 209 accessibility, 20 selected privacy and 15 selected lifecycle tests pass. Six-phase cumulative agent NVDA evidence retains original source epochs and failures; actual new four-page PDF and exact Save summary verified. Original root baseline/Git/unrelated work and standalone data ownership preserved. PWS-0705 is newly ready and next by P0 critical path; PWS-0703 remains ready. Final metadata closure receipts are separate; release-interface facts remain TBD.",
+    "PWS-0701 is done: cumulative primary keyboard action coverage and fresh Main16 four-page Combined PDF/Save summary/cancel/retry/focus return passed, with 70 additional agent input calls and zero pointer actions. Original Main12 Separate timeout remains an export qualification limitation. Full canonical-root all-ref secret scanning now passes through duplicate-read elimination within the unchanged 512 MiB limit; exact-final scanner, 187 accessibility, 146 focused quality-tool units and quality self-test pass. Original source/Git/baselines/evidence and standalone data ownership are preserved. PWS-0702/PWS-0703 are ready; PWS-0702 is next. Release-interface facts remain TBD.",
+    "PWS-0608 source-tree qualification completed on approved inventory 7e2ea7ae1fd3eaf6a7882fc5f236f101e7424ab39ac57fd19dbca132eb9a44c9; independently bound runtime six-check/native/UI/current viewer/OCR evidence. First gate FAIL and all historical notes remain retained. Final metadata publication requires external closure validation; PWS-0701 is the next ready task. Packaged release-interface facts remain draft/TBD.",
+    "PWS-0608 independent gate FAIL/in review: missing exact-candidate OCR/viewer authority, absent desktop export invocation and stale retained viewer-inspection provenance remain unresolved. Fresh clean-environment security, every redaction integration case, accessibility, static, resource, schema/graph/docs/portfolio, fixture and secret checks passed. Historical human/OCR artifacts remain unchanged; no repeated human session, switch enablement, later-task readiness or standalone/release-interface claim is introduced. See docs/gates/m6-permanent-redaction-gate.md and docs/security/pws0608-independent-review.md.",
+    "PWS-0607 is done: authenticated private reconstruction/sanitization/verification candidates, non-bypassable method and release gates, sanitized user/audit reports and accessible blocked-export recovery. Corrected frozen QA passed 6488 unit, 973 security (six existing capability skips), 108 accessibility and eight affected native integration cases, plus all static/schema/graph/docs/portfolio/dependency/resource/privacy/secret checks. Earlier native and environment/binding failures remain retained and are not relabeled. The private profile supports one admitted PDF page; external methods remain unknown and permanent-removal publication stays disabled. PWS-0608 is ready for independent release review. Original sources, inherited work, accepted observations, fixtures/goldens, versions, budgets and standalone boundaries are preserved. See docs/development/pws0607-result.md.",
+    "PWS-0606 is done: original broad QA coverage is combined with separately bound corrected-source reruns. The original native FAIL/unknown private-temp sample remains recorded; its root cause is unknown, while an exact-node retry on unchanged bytes passes all measurement assertions. Four narrow identifier/independent ACK source/test corrections pass full unit/security/accessibility and six affected native cases including that literal failed node. The broad run is not relabeled PASS or claimed on corrected bytes, and sampler code/budgets/failure rules are unchanged. All five human observations and independent OCR remain bound to ten unchanged actual saved files, and current viewer-profile receipts pass built-in methods on those originals and internal full resaves. Canonical export verification stays strict. Original failures, human attempts and prepared files are preserved; no human retest or version re-entry was required. Future tests must be easy as a whole session under AGENTS 9.2 and human-testing.md. PWS-0607 is ready; permanent-removal export remains disabled pending integration and independent PWS-0608 approval. Dependencies, schemas, fixtures/goldens, resource budgets, inherited work and standalone ownership are unchanged. See docs/development/pws0606-result.md.",
+    "PWS-0605 is done at final task-only source checkpoint 2e70ec0, following 9d382b2 and de814ed: private single-worker sanitization creates a fresh PDF, strips prohibited features and revisions, and returns bound count-only evidence for an unsigned candidate awaiting verification. Reviewed fixes encode each image before retaining the next page and validate content tokens to remove comments and reject inline/marked-content metadata. The broad check passed 5930 unit, 568 integration, 808 security and 101 accessibility tests (six existing integration and six existing security skips). Final corrected-source checks passed 268 focused tests and both constrained native pipeline/lifecycle cases without skips. Final fixture and full-history secret scans passed all 1068 accepted files; 212 protected and 1035 unrelated accepted files remain unchanged. Originals, inherited work, ownership, fixtures/goldens, schemas, dependency pins, budgets and draft release-interface facts are preserved. Standalone data ownership is unchanged. PWS-0606 is ready; permanent-removal export remains disabled pending later verification, publication and independent approval. See docs/development/pws0605-result.md.",
+    "PWS-0604 is done at source checkpoints 298d2de and f59169b: private masked-only OCR, exact image/geometry/render and character/word exclusion checks, bounded fresh rewrite and fail-closed recovery. Verification passed 5853 unit tests, 783 serial security tests (six existing capability skips), 101 accessibility tests, all nine new native OCR cases and all eight isolated integration retries after intentional cross-session ACL guard interference. Final boundary regressions passed 247 cases and 48 subtests. Fixture and full-history secret scans passed over 1054 accepted files; 891 core and 217 protected files passed identity audits. Existing work, originals, fixtures/goldens, dependencies, schemas, budgets and release-interface facts are preserved. Candidates remain unsigned and awaiting verification; permanent-removal export stays disabled. PWS-0605 is the next ready task. See docs/development/pws0604-result.md.",
+    "PWS-0603 is done at task-only source checkpoint 4ac4db5: private, bounded, cancelable full-page raster reconstruction with burn-in before scratch/encoding and fresh lossless page objects. All registered gates passed with 5760 unit, 553 integration (ten existing skips), 779 security (six existing skips), and 101 accessibility passes; new native failure/recovery and all 31 reconstruction security tests passed without skips. Every one of the 1040 accepted files remained unchanged through verification. Original ownership, inherited work, fixtures/goldens, budgets, dependencies and release-interface TBD facts are preserved. Candidates remain unsigned and awaiting verification; permanent redaction stays disabled pending PWS-0608. PWS-0604 and PWS-0605 are ready, with PWS-0604 next. See docs/development/pws0603-result.md.",
+    "PWS-0602 is done at source checkpoint b30c109: separate unapplied v3 removal marks, accessible numeric/list review, bounded history/preview and authenticated save/retry with fail-closed export. Final registered suites passed: 5698 unit, 552 integration (ten accepted skips), 748 security (six existing capability skips), and 101 accessibility tests. Native NVDA review through the real parented workflow passed geometry, status, progress, failure/retry, save and cancellation. Static/canonical checks and exact accepted-file/full-history fixture and secret scans passed. All 1026 frozen integration files remained unchanged; authenticated worker/ACL cleanup was zero and only the isolated locked runtime stage was removed. The preexisting source ownership mismatch and all earlier M5/PWS-0601/unrelated work remain preserved. PWS-0603 is ready. Permanent removal stays disabled pending PWS-0608; standalone ownership and draft release-interface facts are unchanged.",
+    "PWS-0601 is done: redaction threat model, exhaustive planned verification/failure matrix, 14 new deterministic sources and 18 unique canaries; 5571 unit, 744 serial security (six existing capability skips), 74 accessibility and five relevant integration tests passed. Exact fixture/secret scans passed in the isolated full-history task snapshot. Old sources/goldens, product behavior, dependencies, budgets and draft release facts are unchanged. PWS-0602 is ready; permanent redaction remains disabled pending PWS-0608.",
+    "PWS-0507 is done after the source-tree M5 compression and compatibility gate: final 5557 unit, 727 security, 74 accessibility and 106 selected integration passes, accepted preview/reader evidence, canonical checks and serial fixture/secret scans. The sole test change makes field-free representation checking deterministic; product code is unchanged. PWS-0601 is ready. Six local symlink-capability skips, optional remote uploads NOT RUN, standalone data ownership and release-interface TBD facts remain explicit.",
     "PWS-0201 current-implementation review adds an evidence-based decoder ADR and native closure, explicit unsupported image color/depth refusals, and an ordinary verified image-to-PDF desktop action. Focused regressions and a real desktop import/reopen/export smoke with staged trusted runtime passed. Exact-head quality CI is the final acceptance record; see docs/evidence/pws0201-current-review.md. This earlier review preserved the then-current PWS-0408/PWS-0409 state and release-interface TBD facts.",
     "This manifest intentionally omits a hash of itself."
   ]

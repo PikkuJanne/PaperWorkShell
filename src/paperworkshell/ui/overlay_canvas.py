@@ -16,7 +16,6 @@ from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QHideEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
 from PySide6.QtWidgets import QLabel, QWidget
 
-from paperworkshell.app.core_overlay_tools import overlay_editor_record_accessible_name
 from paperworkshell.domain.page_coordinates import (
     NORMALIZED_PAGE_MILLIONTHS,
     BoxQuantization,
@@ -29,7 +28,9 @@ from paperworkshell.domain.page_coordinates import (
     ScreenPoint,
     ScreenViewport,
 )
+from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.overlays.models import OverlayRecord, OverlayVisibility
+from paperworkshell.ui.localized_messages import localized_overlay_record_name
 
 MIN_EDITOR_ZOOM_PERCENT: Final = 25
 MAX_EDITOR_ZOOM_PERCENT: Final = 400
@@ -99,16 +100,17 @@ class OverlayEditorCanvas(QLabel):
         self._transient_snapped = False
 
         self.setObjectName("overlayEditorCanvas")
-        self.setAccessibleName("Full-page visual overlay preview")
-        description = (
-            "Visual preview only. Use the visual-marks list, exact property fields, "
-            "movement buttons, zoom controls, and pan controls for a complete keyboard path."
+        # Document coordinates remain physical left/top in every interface locale.
+        self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.setAccessibleName(tr("Full-page visual overlay preview"))
+        description = tr(
+            "Visual preview only. Use the visual-marks list, exact property fields, movement buttons, zoom controls, and pan controls for a complete keyboard path."
         )
         if not pointer_mapping_enabled:
-            description += (
+            description += tr(
                 " The page is deskewed, so this is a schematic and pointer editing is disabled."
             )
-        self.setAccessibleDescription(description)
+        self.setAccessibleDescription(tr(description))
         role_pixmap = QPixmap(1, 1)
         role_pixmap.fill(Qt.GlobalColor.transparent)
         self.setPixmap(role_pixmap)
@@ -196,12 +198,14 @@ class OverlayEditorCanvas(QLabel):
         if self._preview is not None and not self._preview.isNull():
             painter.drawPixmap(page, self._preview, QRectF(self._preview.rect()))
         else:
-            painter.setPen(self.palette().text().color())
+            # The document surface remains white in every application theme.
+            painter.setPen(QColor("black"))
             placeholder = (
-                "Deskewed page schematic. Exact overlay geometry is shown without the pixel "
-                "preview because the saved deskew transform is not a safe pointer map."
+                tr(
+                    "Deskewed page schematic. Exact overlay geometry is shown without the pixel preview because the saved deskew transform is not a safe pointer map."
+                )
                 if not self._pointer_mapping_enabled
-                else "Page preview unavailable. Overlay geometry remains exact."
+                else tr("Page preview unavailable. Overlay geometry remains exact.")
             )
             painter.drawText(
                 page.adjusted(20, 20, -20, -20),
@@ -213,9 +217,8 @@ class OverlayEditorCanvas(QLabel):
         for record in self._records:
             self._paint_record(painter, record)
         if not self._pointer_mapping_enabled:
-            text = (
-                "Deskewed preview: use the exact fields or keyboard controls; pointer editing "
-                "is off."
+            text = tr(
+                "Deskewed preview: use the exact fields or keyboard controls; pointer editing is off."
             )
             metrics = painter.fontMetrics()
             width = max(1, round(page.width() - 32))
@@ -250,7 +253,9 @@ class OverlayEditorCanvas(QLabel):
             return
         if not self._pointer_mapping_enabled:
             self.interaction_message.emit(
-                "Pointer editing is unavailable for a deskewed preview. Use the exact fields or keyboard controls.",
+                mark(
+                    "Pointer editing is unavailable for a deskewed preview. Use the exact fields or keyboard controls."
+                ),
                 True,
             )
             event.accept()
@@ -267,7 +272,9 @@ class OverlayEditorCanvas(QLabel):
         record = selected if resize_requested else self._top_record_at(point)
         if record is None:
             self.interaction_message.emit(
-                "No visual mark is at that point. Select a mark from the list to edit it exactly.",
+                mark(
+                    "No visual mark is at that point. Select a mark from the list to edit it exactly."
+                ),
                 False,
             )
             event.accept()
@@ -294,7 +301,9 @@ class OverlayEditorCanvas(QLabel):
             ).contains(point)
         ):
             self.interaction_message.emit(
-                "No visual mark is at that point. Select a mark from the list to edit it exactly.",
+                mark(
+                    "No visual mark is at that point. Select a mark from the list to edit it exactly."
+                ),
                 False,
             )
             event.accept()
@@ -382,7 +391,7 @@ class OverlayEditorCanvas(QLabel):
                     NormalizedPagePoint(crop.right, value), size, viewport
                 )
                 painter.drawLine(QPointF(start.x, start.y), QPointF(end.x, end.y))
-        text = f"Dashed guides: {self._guide_step / 10_000:g}% grid"
+        text = tr("Dashed guides: {value1:g}% grid", value1=self._guide_step / 10000)
         metrics = painter.fontMetrics()
         available_width = max(1, round(page.width() - 16))
         label_height = min(page.height() - 16, metrics.height() + 8)
@@ -422,7 +431,7 @@ class OverlayEditorCanvas(QLabel):
             )
         )
         painter.drawRect(rect)
-        name = overlay_editor_record_accessible_name(record).replace(" visual mark", "")
+        name = localized_overlay_record_name(record).replace(" visual mark", "")
         metrics = painter.fontMetrics()
         inner = rect.adjusted(3, 3, -3, -3)
         if inner.width() >= 8 and inner.height() >= metrics.height() + 4:

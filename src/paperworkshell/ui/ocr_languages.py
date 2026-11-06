@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import pairwise
+from typing import cast
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent, QCloseEvent, QShowEvent
@@ -28,6 +29,9 @@ from paperworkshell.app.ocr_languages import (
     OcrLanguageRuntimeStatus,
     OcrLanguageSnapshot,
 )
+from paperworkshell.localization.catalog import tr
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import adapt_dialog_button_box, set_static_busy
 
 _FOCUS_VISIBLE_TEXT_STYLE = """
 QLabel {
@@ -86,55 +90,61 @@ class OcrLanguageDialog(QDialog):
         self._initial_focus_pending = True
         self._shutdown_discard = False
         self.setObjectName("ocrLanguageDialog")
-        self.setWindowTitle("Manage OCR languages")
-        self.setAccessibleName("Manage OCR languages")
+        self.setWindowTitle(tr("Manage OCR languages"))
+        self.setAccessibleName(tr("Manage OCR languages"))
         self.setAccessibleDescription(
-            "Review verified local OCR language packs and choose one or more languages. "
-            "PaperWorkShell does not download language data from this dialog."
+            tr(
+                "Review verified local OCR language packs and choose one or more languages. PaperWorkShell does not download language data from this dialog."
+            )
         )
         self.setModal(True)
         self.resize(640, 560)
 
-        heading = QLabel("OCR languages")
+        heading = QLabel(tr("OCR languages"))
         heading.setObjectName("ocrLanguageHeading")
-        heading.setAccessibleName("OCR languages")
-        heading.setStyleSheet("font-size: 20pt; font-weight: 600;")
+        heading.setAccessibleName(tr("OCR languages"))
+        heading_font = heading.font()
+        heading_font.setPointSizeF(heading_font.pointSizeF() * 1.3)
+        heading_font.setBold(True)
+        heading.setFont(heading_font)
+        heading.setWordWrap(True)
 
         guidance = QLabel(
-            "PaperWorkShell uses only installed and verified local OCR language packs. "
-            "It never downloads language data while checking languages or processing documents."
+            tr(
+                "PaperWorkShell uses only installed and verified local OCR language packs. It never downloads language data while checking languages or processing documents."
+            )
         )
         guidance.setObjectName("ocrLanguageGuidance")
-        guidance.setAccessibleName("OCR language guidance")
+        guidance.setAccessibleName(tr("OCR language guidance"))
         guidance.setTextFormat(Qt.TextFormat.PlainText)
         guidance.setWordWrap(True)
 
-        self._runtime_status = QLabel("Local OCR languages have not been checked yet.")
+        self._runtime_status = QLabel(tr("Local OCR languages have not been checked yet."))
         self._runtime_status.setObjectName("ocrLanguageRuntimeStatus")
-        self._runtime_status.setAccessibleName("Local OCR language status")
+        self._runtime_status.setAccessibleName(tr("Local OCR language status"))
         self._runtime_status.setTextFormat(Qt.TextFormat.PlainText)
         self._runtime_status.setWordWrap(True)
 
-        language_group = QGroupBox("Languages")
+        language_group = QGroupBox(tr("Languages"))
         language_group.setObjectName("ocrLanguageChoicesGroup")
         language_group.setAccessibleDescription(
-            "Choose one or more languages. A language marked not installed cannot be saved."
+            tr("Choose one or more languages. A language marked not installed cannot be saved.")
         )
         language_layout = QVBoxLayout(language_group)
         self._choices: dict[str, QCheckBox] = {}
         self._choice_statuses: dict[str, QLabel] = {}
         for code in SUPPORTED_OCR_LANGUAGE_CODES:
-            display_name = OCR_LANGUAGE_DISPLAY_NAMES[code]
+            display_name = tr(OCR_LANGUAGE_DISPLAY_NAMES[code])
             choice = QCheckBox(display_name)
             choice.setObjectName(f"ocrLanguageChoice{code.upper()}")
-            choice.setAccessibleName(f"{display_name} OCR language")
+            choice.setAccessibleName(tr("{value1} OCR language", value1=display_name))
             choice.setAccessibleDescription(
-                f"{display_name} local OCR language has not been checked yet."
+                tr("{value1} local OCR language has not been checked yet.", value1=display_name)
             )
             choice.toggled.connect(self._selection_changed)
-            status = QLabel(f"{display_name}: Not checked.")
+            status = QLabel(tr("{value1}: Not checked.", value1=display_name))
             status.setObjectName(f"ocrLanguageStatus{code.upper()}")
-            status.setAccessibleName(f"{display_name} installation status")
+            status.setAccessibleName(tr("{value1} installation status", value1=display_name))
             status.setTextFormat(Qt.TextFormat.PlainText)
             status.setWordWrap(True)
             language_layout.addWidget(choice)
@@ -142,26 +152,25 @@ class OcrLanguageDialog(QDialog):
             self._choices[code] = choice
             self._choice_statuses[code] = status
 
-        instructions_group = QGroupBox("Offline language availability")
+        instructions_group = QGroupBox(tr("Offline OCR packs"))
         instructions_group.setObjectName("ocrLanguageInstructionsGroup")
         instructions_layout = QVBoxLayout(instructions_group)
         instructions = QLabel(
-            "Optional OCR packs are not distributed by this source build. A packaged release or "
-            "administrator must provide the exact approved offline procedure. After verified local "
-            "prestaging, reopen PaperWorkShell and choose Refresh. Do not copy unverified "
-            "trained-data files into the application."
+            tr(
+                "Optional OCR packs are not distributed by this source build. A packaged release or administrator must provide the exact approved offline procedure. After verified local prestaging, reopen PaperWorkShell and choose Refresh. Do not copy unverified trained-data files into the application."
+            )
         )
         instructions.setObjectName("ocrLanguageInstructions")
-        instructions.setAccessibleName("Offline OCR language availability instructions")
+        instructions.setAccessibleName(tr("Offline OCR language availability instructions"))
         instructions.setTextFormat(Qt.TextFormat.PlainText)
         instructions.setWordWrap(True)
         instructions_layout.addWidget(instructions)
 
         self._selection_warning = QLabel()
         self._selection_warning.setObjectName("ocrLanguageSelectionWarning")
-        self._selection_warning.setAccessibleName("OCR language selection needs attention")
+        self._selection_warning.setAccessibleName(tr("OCR language selection needs attention"))
         self._selection_warning.setAccessibleDescription(
-            "The current selection includes a language that is not installed and verified."
+            tr("The current selection includes a language that is not installed and verified.")
         )
         self._selection_warning.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._selection_warning.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
@@ -171,9 +180,9 @@ class OcrLanguageDialog(QDialog):
 
         self._error = QLabel()
         self._error.setObjectName("ocrLanguageError")
-        self._error.setAccessibleName("OCR language action error")
+        self._error.setAccessibleName(tr("OCR language action error"))
         self._error.setAccessibleDescription(
-            "A safe error code and recovery message for the latest OCR language action."
+            tr("A safe error code and recovery message for the latest OCR language action.")
         )
         self._error.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._error.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
@@ -195,9 +204,9 @@ class OcrLanguageDialog(QDialog):
 
         self._scroll = QScrollArea()
         self._scroll.setObjectName("ocrLanguageScrollArea")
-        self._scroll.setAccessibleName("OCR language settings and instructions")
+        self._scroll.setAccessibleName(tr("OCR language settings and instructions"))
         self._scroll.setAccessibleDescription(
-            "Scrollable OCR language choices, status, and offline installation instructions."
+            tr("Scrollable OCR language choices, status, and offline installation instructions.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -205,11 +214,12 @@ class OcrLanguageDialog(QDialog):
         self._scroll.setStyleSheet(_FOCUS_VISIBLE_SCROLL_STYLE)
         self._scroll.setWidget(content)
 
+        adapt_localized_content(self._scroll)
         self._progress = QProgressBar()
         self._progress.setObjectName("ocrLanguageProgress")
-        self._progress.setAccessibleName("OCR language check progress")
+        self._progress.setAccessibleName(tr("OCR language check progress"))
         self._progress.setAccessibleDescription(
-            "PaperWorkShell is checking local OCR language resources."
+            tr("PaperWorkShell is checking local OCR language resources.")
         )
         self._progress.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._progress.setStyleSheet(_FOCUS_VISIBLE_PROGRESS_STYLE)
@@ -217,29 +227,31 @@ class OcrLanguageDialog(QDialog):
         self._progress.setVisible(False)
 
         buttons = QDialogButtonBox()
+        self._buttons = buttons
+        adapt_dialog_button_box(buttons)
         buttons.setObjectName("ocrLanguageButtons")
-        buttons.setAccessibleName("OCR language actions")
+        buttons.setAccessibleName(tr("OCR language actions"))
         self._refresh_button = buttons.addButton(
-            "Refresh",
+            tr("Refresh"),
             QDialogButtonBox.ButtonRole.ActionRole,
         )
         self._refresh_button.setObjectName("ocrLanguageRefreshButton")
-        self._refresh_button.setAccessibleName("Refresh OCR languages")
+        self._refresh_button.setAccessibleName(tr("Refresh OCR languages"))
         self._refresh_button.setAccessibleDescription(
-            "Check the local OCR runtime and approved language packs again."
+            tr("Check the local OCR runtime and approved language packs again.")
         )
         self._save_button = buttons.addButton(QDialogButtonBox.StandardButton.Save)
         self._save_button.setObjectName("ocrLanguageSaveButton")
-        self._save_button.setText("Save selection")
-        self._save_button.setAccessibleName("Save OCR language selection")
+        self._save_button.setText(tr("Save selection"))
+        self._save_button.setAccessibleName(tr("Save OCR language selection"))
         self._save_button.setAccessibleDescription(
-            "Use the checked installed languages for later OCR work."
+            tr("Use the checked installed languages for later OCR work.")
         )
         self._cancel_button = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         self._cancel_button.setObjectName("ocrLanguageCancelButton")
-        self._cancel_button.setAccessibleName("Cancel OCR language changes")
+        self._cancel_button.setAccessibleName(tr("Cancel OCR language changes"))
         self._cancel_button.setAccessibleDescription(
-            "Close this dialog without changing the current OCR language selection."
+            tr("Close this dialog without changing the current OCR language selection.")
         )
         self._cancel_button.setDefault(True)
         self._cancel_button.setAutoDefault(True)
@@ -252,6 +264,16 @@ class OcrLanguageDialog(QDialog):
         layout.addWidget(self._progress)
         layout.addWidget(buttons)
 
+        self._set_tab_order()
+        self._update_save_availability()
+
+    def _set_tab_order(self) -> None:
+        """Keep recovery before the actions after Qt lays out the vertical footer."""
+        # With the application's focus stylesheet, Qt assigns the vertical
+        # button box a Cancel proxy. Even a NoFocus box then redirects Tab
+        # past Refresh. Individual controls own this explicit tab sequence.
+        # QWidget* is nullable in Qt; the PySide6 stub omits that annotation.
+        self._buttons.setFocusProxy(cast(QWidget, None))
         tab_order = (
             *(self._choices[code] for code in SUPPORTED_OCR_LANGUAGE_CODES),
             self._selection_warning,
@@ -264,7 +286,6 @@ class OcrLanguageDialog(QDialog):
         )
         for current, following in pairwise(tab_order):
             QWidget.setTabOrder(current, following)
-        self._update_save_availability()
 
     @property
     def snapshot(self) -> OcrLanguageSnapshot | None:
@@ -286,7 +307,7 @@ class OcrLanguageDialog(QDialog):
         request_id = self._next_request_id()
         self._pending = _PendingRequest(request_id, _RequestKind.REFRESH)
         self._clear_error()
-        self._set_busy("Checking installed OCR languages")
+        self._set_busy(tr("Checking installed OCR languages"))
         self.refresh_requested.emit(request_id)
 
     def set_snapshot(self, request_id: int, snapshot: object) -> bool:
@@ -334,10 +355,13 @@ class OcrLanguageDialog(QDialog):
         self._finish_busy()
         self._render_unknown_after_failure()
         self._error.setText(f"{code}: {message}")
+        self._error.setAccessibleName(
+            tr("OCR language error. {value1}: {value2}", value1=code, value2=message)
+        )
         self._error.setVisible(True)
-        self._error.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(self._error, 8, 8)
-        self._announce(f"OCR language action failed. {message}", assertive=True)
+        self._refresh_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._refresh_button, 8, 8)
+        self._announce(tr("OCR language action failed. {value1}", value1=message), assertive=True)
         self._update_save_availability()
         return True
 
@@ -345,6 +369,7 @@ class OcrLanguageDialog(QDialog):
         """Use the non-mutating action as the safe initial focus target."""
 
         super().showEvent(event)
+        self._set_tab_order()
         if self._initial_focus_pending:
             self._initial_focus_pending = False
             self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -359,7 +384,9 @@ class OcrLanguageDialog(QDialog):
             and pending.kind is _RequestKind.SELECT
         ):
             self._announce(
-                "Saving the OCR language selection. Wait for this action to finish before closing.",
+                tr(
+                    "Saving the OCR language selection. Wait for this action to finish before closing."
+                ),
                 assertive=True,
             )
             self._progress.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -399,7 +426,7 @@ class OcrLanguageDialog(QDialog):
             language_codes,
         )
         self._clear_error()
-        self._set_busy("Saving OCR language selection")
+        self._set_busy(tr("Saving OCR language selection"))
         self.selection_requested.emit(request_id, language_codes)
 
     def _next_request_id(self) -> int:
@@ -419,12 +446,14 @@ class OcrLanguageDialog(QDialog):
         pending = self._pending
         self._cancel_button.setEnabled(pending is None or pending.kind is _RequestKind.REFRESH)
         self._progress.setVisible(True)
-        self._progress.setRange(0, 0)
+        set_static_busy(self._progress)
         self._progress.setFormat(message)
-        self._progress.setAccessibleDescription(f"{message}. This check uses local files only.")
+        self._progress.setAccessibleDescription(
+            tr("{value1}. This check uses local files only.", value1=message)
+        )
         if pending is not None and pending.kind is _RequestKind.SELECT:
             self._progress.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._announce(f"{message}. This check uses local files only.")
+        self._announce(tr("{value1}. This check uses local files only.", value1=message))
 
     def _finish_busy(self) -> None:
         self._progress.setVisible(False)
@@ -438,19 +467,25 @@ class OcrLanguageDialog(QDialog):
         installed = snapshot.installed_language_codes
         selected = snapshot.selected_language_codes
         runtime_message = {
-            OcrLanguageRuntimeStatus.UNCHECKED: "Local OCR languages have not been checked yet.",
-            OcrLanguageRuntimeStatus.AVAILABLE: "Local OCR runtime check complete.",
+            OcrLanguageRuntimeStatus.UNCHECKED: tr(
+                "Local OCR languages have not been checked yet."
+            ),
+            OcrLanguageRuntimeStatus.AVAILABLE: tr("Local OCR runtime check complete."),
             OcrLanguageRuntimeStatus.UNAVAILABLE: (
-                "Local OCR is unavailable. This source build has no install action. Use the verified "
-                "offline procedure supplied by a packaged release or administrator, then Refresh."
+                tr(
+                    "Local OCR is unavailable. This source build has no install action. Use the verified offline procedure supplied by a packaged release or administrator, then Refresh."
+                )
             ),
             OcrLanguageRuntimeStatus.INVALID: (
-                "Local OCR resources could not be verified. Close PaperWorkShell and ask an "
-                "administrator or packaged-release provider to restore the approved offline files, "
-                "then reopen and Refresh."
+                tr(
+                    "Local OCR resources could not be verified. Close PaperWorkShell and ask an administrator or packaged-release provider to restore the approved offline files, then reopen and Refresh."
+                )
             ),
         }[snapshot.runtime_status]
         self._runtime_status.setText(runtime_message)
+        self._runtime_status.setAccessibleName(
+            tr("OCR availability. {value1}", value1=runtime_message)
+        )
         self._runtime_status.setAccessibleDescription(runtime_message)
         for option in snapshot.language_options:
             choice = self._choices[option.code]
@@ -459,45 +494,62 @@ class OcrLanguageDialog(QDialog):
             choice.setChecked(option.code in selected)
             choice.blockSignals(False)
             installation = self._installation_text(snapshot, option.code)
-            status.setText(f"{option.display_name}: {installation}")
+            status.setText(f"{tr(option.display_name)}: {installation}")
+            status.setAccessibleName(status.text())
             status.setAccessibleDescription(installation)
-            selected_text = "Selected." if option.code in selected else "Not selected."
+            selected_text = tr("Selected.") if option.code in selected else tr("Not selected.")
             choice.setAccessibleDescription(
-                f"{option.display_name} OCR language. {installation} {selected_text}"
+                tr(
+                    "{value1} OCR language. {value2} {value3}",
+                    value1=tr(option.display_name),
+                    value2=installation,
+                    value3=selected_text,
+                )
             )
         missing = tuple(code for code in selected if code not in installed)
         if missing:
             self._selection_warning.setText(self._missing_selection_text(snapshot, missing))
+            self._selection_warning.setAccessibleName(self._selection_warning.text())
             self._selection_warning.setVisible(True)
         else:
             self._selection_warning.setVisible(False)
         self._update_save_availability()
         available_count = len(installed)
-        noun = "language" if available_count == 1 else "languages"
+        noun = tr("language") if available_count == 1 else tr("languages")
         if snapshot.runtime_status is OcrLanguageRuntimeStatus.UNCHECKED:
-            self._announce("OCR language availability has not been checked.")
+            self._announce(tr("OCR language availability has not been checked."))
         else:
             self._announce(
-                f"OCR language check complete. {available_count} installed and verified {noun} "
-                "available."
+                tr(
+                    "OCR language check complete. {value1} installed and verified {value2} available.",
+                    value1=available_count,
+                    value2=noun,
+                )
             )
 
     def _render_unknown_after_failure(self) -> None:
-        message = "OCR language availability is unknown because the latest local check failed."
+        message = tr("OCR language availability is unknown because the latest local check failed.")
         self._runtime_status.setText(message)
+        self._runtime_status.setAccessibleName(tr("OCR availability. {value1}", value1=message))
         self._runtime_status.setAccessibleDescription(message)
         for code in SUPPORTED_OCR_LANGUAGE_CODES:
-            display_name = OCR_LANGUAGE_DISPLAY_NAMES[code]
+            display_name = tr(OCR_LANGUAGE_DISPLAY_NAMES[code])
             choice = self._choices[code]
             choice.blockSignals(True)
             choice.setChecked(False)
             choice.setEnabled(False)
             choice.blockSignals(False)
             status = self._choice_statuses[code]
-            status.setText(f"{display_name}: Availability unknown.")
-            status.setAccessibleDescription("Availability unknown because the latest check failed.")
+            status.setText(tr("{value1}: Availability unknown.", value1=display_name))
+            status.setAccessibleName(status.text())
+            status.setAccessibleDescription(
+                tr("Availability unknown because the latest check failed.")
+            )
             choice.setAccessibleDescription(
-                f"{display_name} OCR language. Availability unknown. Not selected."
+                tr(
+                    "{value1} OCR language. Availability unknown. Not selected.",
+                    value1=display_name,
+                )
             )
         self._selection_warning.setVisible(False)
 
@@ -508,9 +560,14 @@ class OcrLanguageDialog(QDialog):
             for code in SUPPORTED_OCR_LANGUAGE_CODES:
                 choice = self._choices[code]
                 installation = self._installation_text(snapshot, code)
-                selected = "Selected." if choice.isChecked() else "Not selected."
+                selected = tr("Selected.") if choice.isChecked() else tr("Not selected.")
                 choice.setAccessibleDescription(
-                    f"{OCR_LANGUAGE_DISPLAY_NAMES[code]} OCR language. {installation} {selected}"
+                    tr(
+                        "{value1} OCR language. {value2} {value3}",
+                        value1=tr(OCR_LANGUAGE_DISPLAY_NAMES[code]),
+                        value2=installation,
+                        value3=selected,
+                    )
                 )
             missing_checked = tuple(
                 code
@@ -521,6 +578,7 @@ class OcrLanguageDialog(QDialog):
                 self._selection_warning.setText(
                     self._missing_selection_text(snapshot, missing_checked)
                 )
+                self._selection_warning.setAccessibleName(self._selection_warning.text())
                 self._selection_warning.setVisible(True)
             else:
                 self._selection_warning.setVisible(False)
@@ -529,28 +587,30 @@ class OcrLanguageDialog(QDialog):
     @staticmethod
     def _installation_text(snapshot: OcrLanguageSnapshot, code: str) -> str:
         if code in snapshot.installed_language_codes:
-            return "Installed and verified."
+            return tr("Installed and verified.")
         if snapshot.runtime_status is OcrLanguageRuntimeStatus.UNCHECKED:
-            return "Not checked."
+            return tr("Not checked.")
         if snapshot.runtime_status is OcrLanguageRuntimeStatus.INVALID:
-            return "Not installed or could not be verified."
-        return "Not installed."
+            return tr("Not installed or could not be verified.")
+        return tr("Not installed.")
 
     @staticmethod
     def _missing_selection_text(
         snapshot: OcrLanguageSnapshot,
         missing: tuple[str, ...],
     ) -> str:
-        names = ", ".join(OCR_LANGUAGE_DISPLAY_NAMES[code] for code in missing)
-        verb = "is" if len(missing) == 1 else "are"
+        names = ", ".join(tr(OCR_LANGUAGE_DISPLAY_NAMES[code]) for code in missing)
+        verb = tr("is") if len(missing) == 1 else tr("are")
         condition = (
-            "not installed or could not be verified"
+            tr("not installed or could not be verified")
             if snapshot.runtime_status is OcrLanguageRuntimeStatus.INVALID
-            else "not installed and verified"
+            else tr("not installed and verified")
         )
-        return (
-            f"Selection needs attention: {names} {verb} {condition}. "
-            "Choose only installed languages before saving. No case content was changed."
+        return tr(
+            "Selection needs attention: {value1} {value2} {value3}. Choose only installed languages before saving. No case content was changed.",
+            value1=names,
+            value2=verb,
+            value3=condition,
         )
 
     def _update_save_availability(self) -> None:
@@ -565,6 +625,7 @@ class OcrLanguageDialog(QDialog):
             and bool(checked)
             and checked.issubset(snapshot.installed_language_codes)
         )
+        self._set_tab_order()
 
     def _focus_after_refresh(self, snapshot: OcrLanguageSnapshot) -> None:
         if self._selection_warning.isVisible():
@@ -583,6 +644,7 @@ class OcrLanguageDialog(QDialog):
         self._error.setVisible(False)
 
     def _announce(self, message: str, *, assertive: bool = False) -> None:
+        message = tr(message)
         announcement = QAccessibleAnnouncementEvent(self._runtime_status, message)
         announcement.setPoliteness(
             QAccessible.AnnouncementPoliteness.Assertive

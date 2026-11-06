@@ -107,6 +107,7 @@ from paperworkshell.worker.protocol.models import (
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     ResourceLimits,
 )
+from paperworkshell.worker.protocol.text_companion import TEXT_COMPANION_CAPABILITY
 from paperworkshell.worker.quality_ocr_review_composition import (
     QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES as QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES,
 )
@@ -149,6 +150,7 @@ _REQUIRED_DESKTOP_CAPABILITIES = (
     PDF_INSPECT_CAPABILITY,
     PDF_THUMBNAIL_CAPABILITY,
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
+    TEXT_COMPANION_CAPABILITY,
 )
 
 # The desktop composition root may import this GUI-safe client module, but it
@@ -197,6 +199,7 @@ class DesktopWorkerCompositionConfig:
     image_transform_policy: ImageTransformBrokerPolicy
     thumbnail_policy: PdfThumbnailBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -225,6 +228,7 @@ class DesktopWorkerCompositionConfig:
             code_roots=self.code_roots,
             working_directory=self.working_directory,
             venv_launcher=self.venv_launcher,
+            recovery_authority_roots=self.recovery_authority_roots,
         )
         object.__setattr__(self, "_launch_config", launch_config)
 
@@ -248,6 +252,7 @@ class PdfExportWorkerCompositionConfig:
     export_policy: PdfExportBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
     operation_version: int = 1
+    recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -275,6 +280,7 @@ class PdfExportWorkerCompositionConfig:
             code_roots=self.code_roots,
             working_directory=self.working_directory,
             venv_launcher=self.venv_launcher,
+            recovery_authority_roots=self.recovery_authority_roots,
             qpdf_executable=self.qpdf_executable,
         )
         object.__setattr__(self, "_launch_config", launch_config)
@@ -362,6 +368,13 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
 
         self._require_owner()
         return self._worker.resource_snapshot()
+
+    def text_companion_extractor(self, policy: ResourcePolicy) -> BrokeredTextCompanionExtractor:
+        """Bind opt-in final-derivative extraction to the existing heavy-work gate."""
+        from paperworkshell.worker.text_companion_broker import bind_text_companion_extractor
+
+        self._require_owner()
+        return bind_text_companion_extractor(self._worker, policy, self._heavy_operations)
 
     def last_cancellation_acknowledgement_ms(self) -> int | None:
         """Return the last protocol acknowledgement latency, excluding teardown."""
@@ -640,6 +653,7 @@ def create_desktop_worker_composition_config(
     image_transform_limits: ResourceLimits,
     thumbnail_limits: ResourceLimits,
     venv_launcher: Path | None = None,
+    recovery_authority_roots: tuple[Path, ...] = (),
 ) -> DesktopWorkerCompositionConfig:
     """Build broker policies behind the sole desktop-worker composition boundary."""
 
@@ -657,11 +671,14 @@ def create_desktop_worker_composition_config(
         image_transform_policy=ImageTransformBrokerPolicy(image_transform_limits),
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
         venv_launcher=venv_launcher,
+        recovery_authority_roots=recovery_authority_roots,
     )
 
 
 if TYPE_CHECKING:
+    from paperworkshell.domain.resource_policy import ResourcePolicy
     from paperworkshell.worker.pdf_image_stage_composition import PdfImageStageWorkerComposition
+    from paperworkshell.worker.text_companion_broker import BrokeredTextCompanionExtractor
 
 
 def create_pdf_image_stage_worker_composition(
@@ -734,6 +751,7 @@ def create_pdf_export_worker_composition_config(
     export_limits: ResourceLimits,
     pump_interval_seconds: float = 0.050,
     venv_launcher: Path | None = None,
+    recovery_authority_roots: tuple[Path, ...] = (),
     operation_version: int = 1,
 ) -> PdfExportWorkerCompositionConfig:
     """Build the export broker policy behind its least-privilege composition."""
@@ -753,6 +771,7 @@ def create_pdf_export_worker_composition_config(
             pump_interval_seconds=pump_interval_seconds,
         ),
         venv_launcher=venv_launcher,
+        recovery_authority_roots=recovery_authority_roots,
         operation_version=operation_version,
     )
 

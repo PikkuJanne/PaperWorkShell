@@ -13,6 +13,7 @@ from typing import Final, Never
 
 from paperworkshell.domain.checklist import ChecklistStatus, RequirementCountUnit
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
+from paperworkshell.localization.catalog import tr
 
 MAX_SUMMARY_ROWS: Final = 16_384
 MAX_SUMMARY_TEXT_CODEPOINTS: Final = 8_388_608
@@ -240,7 +241,7 @@ class PackageSummary:
 
     @property
     def status_message(self) -> str:
-        return _STATUS_MESSAGES[self.status]
+        return tr(_STATUS_MESSAGES[self.status])
 
     @property
     def file_count(self) -> int:
@@ -307,74 +308,115 @@ def render_package_summary_text(summary: PackageSummary) -> str:
             reject_package_summary(PackageSummaryErrorCode.LIMIT_EXCEEDED)
         lines.append(line)
 
-    append("PaperWorkShell package summary")
+    append(tr("PaperWorkShell package summary"))
     append(summary.status_message)
     append(
-        f"Files planned: {summary.file_count}. Files saved and reopened: {summary.saved_file_count}."
+        tr(
+            "Files planned: {value_0}. Files saved and reopened: {value_1}.",
+            value_0=summary.file_count,
+            value_1=summary.saved_file_count,
+        )
     )
-    append(f"Active pages: {summary.active_page_count}.")
+    append(tr("Active pages: {value_0}.", value_0=summary.active_page_count))
     top_level = tuple(item for item in summary.outputs if not item.archive_member)
     if top_level and all(item.byte_size is not None for item in top_level):
-        append(f"Total verified file size: {sum(item.byte_size or 0 for item in top_level)} bytes.")
-    else:
-        append("Total file size: not yet verified.")
-    append()
-    append("Files and PDF members")
-    if not summary.outputs:
-        append("No output plan is available yet.")
-    for position, output in enumerate(summary.outputs, 1):
-        kind = "ZIP member" if output.archive_member else "File"
-        append(f"{kind} {position}: {output.filename}")
-        append(f"  Status: {output.state.value}.")
-        append(f"  Pages: {output.page_count}.")
         append(
-            "  Size: not yet verified."
+            tr(
+                "Total verified file size: {value_0} bytes.",
+                value_0=sum(item.byte_size or 0 for item in top_level),
+            )
+        )
+    else:
+        append(tr("Total file size: not yet verified."))
+    append()
+    append(tr("Files and PDF members"))
+    if not summary.outputs:
+        append(tr("No output plan is available yet."))
+    for position, output in enumerate(summary.outputs, 1):
+        kind = tr("ZIP member") if output.archive_member else tr("File")
+        append(
+            tr(
+                "{kind} {position}: {filename}",
+                kind=kind,
+                position=position,
+                filename=output.filename,
+            )
+        )
+        append(tr("  Status: {value_0}.", value_0=tr(output.state.value)))
+        append(tr("  Pages: {value_0}.", value_0=output.page_count))
+        append(
+            tr("  Size: not yet verified.")
             if output.byte_size is None
-            else f"  Verified size: {output.byte_size} bytes."
+            else tr("  Verified size: {value_0} bytes.", value_0=output.byte_size)
         )
         if output.categories:
-            append("  Assigned categories: " + "; ".join(output.categories) + ".")
+            append(
+                tr("  Assigned categories: ")
+                + "; ".join(tr(item) for item in output.categories)
+                + "."
+            )
         for check in output.checks:
-            append("  Check complete: " + check)
+            append(tr("  Check complete: ") + tr(check))
     append()
-    append("Checklist assignments")
+    append(tr("Checklist assignments"))
     if not summary.checklist_available:
-        append("Checklist details are unavailable. Review the case before sharing files.")
+        append(tr("Checklist details are unavailable. Review the case before sharing files."))
     for category in summary.categories:
         state = {
-            ChecklistStatus.READY: "Assignments confirmed by the user",
-            ChecklistStatus.MISSING: "Missing required assignments",
-            ChecklistStatus.ADDED: "Added; needs review",
-            ChecklistStatus.NEEDS_REVIEW: "Needs review",
+            ChecklistStatus.READY: tr("Assignments confirmed by the user"),
+            ChecklistStatus.MISSING: tr("Missing required assignments"),
+            ChecklistStatus.ADDED: tr("Added; needs review"),
+            ChecklistStatus.NEEDS_REVIEW: tr("Needs review"),
         }[category.status]
-        append(f"{category.label}: {state}.")
+        append(tr("{label}: {state}.", label=tr(category.label), state=state))
         append(
-            f"  Assigned documents: {category.assignment_count}; pages: {category.page_count}; "
-            f"confirmed {category.count_unit.value}: {category.confirmed_count}; "
-            f"required range: {category.minimum_count} to {category.maximum_count}."
+            tr(
+                "  Assigned documents: {value_0}; pages: {value_1}; confirmed {value_2}: {value_3}; required range: {value_4} to {value_5}.",
+                value_0=category.assignment_count,
+                value_1=category.page_count,
+                value_2=tr(category.count_unit.value),
+                value_3=category.confirmed_count,
+                value_4=category.minimum_count,
+                value_5=category.maximum_count,
+            )
         )
     if summary.checklist_available:
         append(
-            f"Unassigned pages: {summary.unassigned_page_count}. Unconfirmed pages: {summary.unconfirmed_page_count}."
+            tr(
+                "Unassigned pages: {value_0}. Unconfirmed pages: {value_1}.",
+                value_0=summary.unassigned_page_count,
+                value_1=summary.unconfirmed_page_count,
+            )
         )
     append()
-    append("Checks performed")
+    append(tr("Checks performed"))
     if not summary.checks:
-        append("No package checks are reported as complete yet.")
+        append(tr("No package checks are reported as complete yet."))
     for check in summary.checks:
-        append(check)
+        append(tr(check))
     append()
-    append("Warnings and required human review")
+    append(tr("Warnings and required human review"))
     for item in summary.review_items:
-        append(f"{item.kind.value} - {item.scope}: {item.message}")
-        append("  Next step: " + item.remediation)
-    append("Review every intended page for readability, correct content, and completeness.")
+        append(
+            tr(
+                "{kind} - {scope}: {message}",
+                kind=tr(item.kind.value),
+                scope=tr(item.scope),
+                message=tr(item.message),
+            )
+        )
+        append(tr("  Next step: ") + tr(item.remediation))
+    append(tr("Review every intended page for readability, correct content, and completeness."))
     append(
-        "Compare the package with the recipient's current instructions before submitting it yourself."
+        tr(
+            "Compare the package with the recipient's current instructions before submitting it yourself."
+        )
     )
     append(
-        "These packaging checks do not establish portal acceptance, legal sufficiency, signature validity, "
-        "OCR correctness, or permanent removal of information."
+        tr(
+            "These packaging checks do not establish portal acceptance, legal sufficiency, signature validity, "
+            "OCR correctness, or permanent removal of information."
+        )
     )
     return "\n".join(lines) + "\n"
 

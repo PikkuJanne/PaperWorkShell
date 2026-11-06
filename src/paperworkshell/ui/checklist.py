@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QListView,
     QPushButton,
@@ -59,6 +58,9 @@ from paperworkshell.domain.checklist import (
     ChecklistStatus,
     RequirementCountUnit,
 )
+from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.presentation import WrappingActionLayout, adapt_dialog_button_box
 
 CHECKLIST_PAGE_MIME_TYPE: Final = "application/x-paperworkshell-checklist-page-ids-v1"
 _MAX_DRAG_PAGE_COUNT: Final = 4_096
@@ -67,10 +69,10 @@ _FOCUS_VISIBLE_TEXT_STYLE: Final = (
     "QLabel:focus { border: 2px solid palette(highlight); padding: 2px; }"
 )
 _STATUS_LABELS: Final[dict[ChecklistStatus, str]] = {
-    ChecklistStatus.MISSING: "Missing",
-    ChecklistStatus.ADDED: "Added — confirmation required",
-    ChecklistStatus.NEEDS_REVIEW: "Needs review",
-    ChecklistStatus.READY: "Ready",
+    ChecklistStatus.MISSING: mark("Missing"),
+    ChecklistStatus.ADDED: mark("Added — confirmation required"),
+    ChecklistStatus.NEEDS_REVIEW: mark("Needs review"),
+    ChecklistStatus.READY: mark("Ready"),
 }
 _INVALID_MODEL_INDEX: Final = QModelIndex()
 
@@ -115,24 +117,31 @@ def _decode_page_ids(data: QMimeData) -> tuple[UUID, ...] | None:
 
 def _assignment_status_text(assignment: ChecklistAssignmentView) -> str:
     if assignment.page_review_required:
-        return "Needs review — inactive or overlapping pages"
+        return tr("Needs review — inactive or overlapping pages")
     if assignment.review_state is AssignmentReviewState.USER_CONFIRMED:
-        return "Confirmed by the user"
+        return tr("Confirmed by the user")
     if assignment.origin is AssignmentOrigin.AUTOMATION:
-        return "Needs review — automation suggestion"
-    return "Added — confirmation required"
+        return tr("Needs review — automation suggestion")
+    return tr("Added — confirmation required")
 
 
 def _count_text(requirement: ChecklistRequirementView) -> str:
-    unit = "document" if requirement.count_unit is RequirementCountUnit.DOCUMENTS else "page"
-    plural = unit if requirement.confirmed_count == 1 else f"{unit}s"
+    if requirement.count_unit is RequirementCountUnit.DOCUMENTS:
+        plural = tr("document") if requirement.confirmed_count == 1 else tr("documents")
+    else:
+        plural = tr("page") if requirement.confirmed_count == 1 else tr("pages")
     maximum = requirement.maximum_count
     required = (
-        f"at least {requirement.minimum_count}"
+        tr("at least {value1}", value1=requirement.minimum_count)
         if maximum is None
-        else f"{requirement.minimum_count} to {maximum}"
+        else tr("{value1} to {value2}", value1=requirement.minimum_count, value2=maximum)
     )
-    return f"{requirement.confirmed_count} confirmed {plural}; required {required}"
+    return tr(
+        "{value1} confirmed {value2}; required {value3}",
+        value1=requirement.confirmed_count,
+        value2=plural,
+        value3=required,
+    )
 
 
 def _model_index_row(index: QModelIndex | QPersistentModelIndex) -> int:
@@ -174,18 +183,24 @@ class ChecklistRequirementListModel(QAbstractListModel):
         if not 0 <= row < len(self._rows):
             return None
         requirement = self._rows[row]
-        status = _STATUS_LABELS[requirement.status]
+        status = tr(_STATUS_LABELS[requirement.status])
         count = _count_text(requirement)
         if role in {
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
         }:
-            return f"{requirement.display_name} — {status}. {count}."
+            return tr(
+                "{name} — {status}. {count}.",
+                name=tr(requirement.display_name),
+                status=status,
+                count=count,
+            )
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
-            return (
-                f"{requirement.description} Status: {status}. Count: {count}. "
-                "Select this category, then use Add selected pages or drop internal page rows. "
-                "Adding never confirms the document."
+            return tr(
+                "{value1} Status: {value2}. Count: {value3}. Select this category, then use Add selected pages or drop internal page rows. Adding never confirms the document.",
+                value1=tr(requirement.description),
+                value2=status,
+                value3=count,
             )
         if role == int(Qt.ItemDataRole.UserRole):
             return requirement.requirement_id
@@ -321,12 +336,14 @@ class ChecklistPageListModel(QAbstractListModel):
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
         }:
-            return f"Page {page.position} — {state}"
+            return tr("Page {value1} — {value2}", value1=page.position, value2=state)
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
-            return f"Case page position {page.position}. {state}. " + (
-                "Select it and use Add selected pages, or drag this internal row."
+            return tr(
+                "Case page position {value1}. {value2}. ", value1=page.position, value2=state
+            ) + (
+                tr("Select it and use Add selected pages, or drag this internal row.")
                 if page.assignment_id is None
-                else "Review its document assignment below; it cannot be added again."
+                else tr("Review its document assignment below; it cannot be added again.")
             )
         if role == int(Qt.ItemDataRole.UserRole):
             return page.page_id
@@ -382,7 +399,7 @@ class ChecklistPageListModel(QAbstractListModel):
 
     def _page_state(self, page: ChecklistPageView) -> str:
         if page.assignment_id is None:
-            return "Unassigned"
+            return tr("Unassigned")
         assignment = self._assignments[page.assignment_id]
         return _assignment_status_text(assignment)
 
@@ -414,18 +431,24 @@ class ChecklistAssignmentListModel(QAbstractListModel):
         if not 0 <= row < len(self._rows):
             return None
         assignment = self._rows[row]
-        page_word = "page" if len(assignment.page_ids) == 1 else "pages"
+        page_word = tr("page") if len(assignment.page_ids) == 1 else tr("pages")
         status = _assignment_status_text(assignment)
-        text = f"Document {row + 1} — {status}; {len(assignment.page_ids)} {page_word}"
+        text = tr(
+            "Document {value1} — {value2}; {value3} {value4}",
+            value1=row + 1,
+            value2=status,
+            value3=len(assignment.page_ids),
+            value4=page_word,
+        )
         if role in {
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
         }:
             return text
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
-            return (
-                f"{text}. Use the named buttons to confirm, accept, reject, move, reorder, "
-                "or remove this assignment."
+            return tr(
+                "{value1}. Use the named buttons to confirm, accept, reject, move, reorder, or remove this assignment.",
+                value1=text,
             )
         if role == int(Qt.ItemDataRole.UserRole):
             return assignment.assignment_id
@@ -488,14 +511,22 @@ class ChecklistAssignedPageListModel(QAbstractListModel):
         if not 0 <= row < len(self._rows):
             return None
         page = self._rows[row]
-        text = f"Page {page.position} — order {row + 1} of {len(self._rows)}"
+        text = tr(
+            "Page {value1} — order {value2} of {value3}",
+            value1=page.position,
+            value2=row + 1,
+            value3=len(self._rows),
+        )
         if role in {
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
         }:
             return text
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
-            return f"{text}. Use Move page earlier or Move page later to change document order."
+            return tr(
+                "{value1}. Use Move page earlier or Move page later to change document order.",
+                value1=text,
+            )
         if role == int(Qt.ItemDataRole.UserRole):
             return page.page_id
         return None
@@ -538,21 +569,21 @@ class ChecklistEditorDialog(QDialog):
 
         self.setObjectName("checklistEditorDialog")
         self.setModal(True)
-        self.setWindowTitle("Review checklist assignments")
-        self.setAccessibleName("Review checklist assignments")
+        self.setWindowTitle(tr("Review checklist assignments"))
+        self.setAccessibleName(tr("Review checklist assignments"))
         self.setAccessibleDescription(
-            "Assign case pages to checklist categories without exposing source names. Adding by "
-            "keyboard or drag remains pending until Confirm. Automation suggestions require "
-            "Accept or Reject. Cancel is the safe default."
+            tr(
+                "Assign case pages to checklist categories without exposing source names. Adding by keyboard or drag remains pending until Confirm. Automation suggestions require Accept or Reject. Cancel is the safe default."
+            )
         )
 
         content = QWidget()
         content.setObjectName("checklistEditorContent")
         content_layout = QVBoxLayout(content)
 
-        heading = QLabel("Review checklist assignments")
+        heading = QLabel(tr("Review checklist assignments"))
         heading.setObjectName("checklistEditorHeading")
-        heading.setAccessibleName("Review checklist assignments")
+        heading.setAccessibleName(tr("Review checklist assignments"))
         heading.setTextFormat(Qt.TextFormat.PlainText)
         heading.setWordWrap(True)
         heading_font = QFont(heading.font())
@@ -562,32 +593,34 @@ class ChecklistEditorDialog(QDialog):
         content_layout.addWidget(heading)
 
         guidance = QLabel(
-            "Add groups selected pages as one document. Added documents are not complete: select "
-            "the document and choose Confirm. Suggestions made by automation never count until "
-            "you choose Accept suggestion. Every drag action has a named keyboard button."
+            tr(
+                "Add groups selected pages as one document. Added documents are not complete: select the document and choose Confirm. Suggestions made by automation never count until you choose Accept suggestion. Every drag action has a named keyboard button."
+            )
         )
         guidance.setObjectName("checklistEditorGuidance")
-        guidance.setAccessibleName("Checklist assignment instructions")
+        guidance.setAccessibleName(tr("Checklist assignment instructions"))
         guidance.setAccessibleDescription(guidance.text())
         guidance.setTextFormat(Qt.TextFormat.PlainText)
         guidance.setWordWrap(True)
         content_layout.addWidget(guidance)
 
-        requirement_group = QGroupBox("Checklist categories")
+        requirement_group = QGroupBox(tr("Checklist categories"))
         requirement_group.setObjectName("checklistRequirementGroup")
-        requirement_group.setAccessibleName("Checklist categories and textual statuses")
+        requirement_group.setAccessibleName(tr("Checklist categories and textual statuses"))
         requirement_group.setAccessibleDescription(
-            "Each category states Missing, Added, Needs review, or Ready in text. Categories are "
-            "also the optional internal page-drop targets."
+            tr(
+                "Each category states Missing, Added, Needs review, or Ready in text. Categories are also the optional internal page-drop targets."
+            )
         )
         requirement_layout = QVBoxLayout(requirement_group)
-        requirement_label = QLabel("Category")
+        requirement_label = QLabel(tr("Category"))
         self._requirement_list = QListView()
         self._requirement_list.setObjectName("checklistRequirementList")
-        self._requirement_list.setAccessibleName("Checklist categories")
+        self._requirement_list.setAccessibleName(tr("Checklist categories"))
         self._requirement_list.setAccessibleDescription(
-            "Select one category. Status and confirmed count are included in every row. "
-            "Internal UUID-only page rows may be dropped here, but dropping only adds pending work."
+            tr(
+                "Select one category. Status and confirmed count are included in every row. Internal UUID-only page rows may be dropped here, but dropping only adds pending work."
+            )
         )
         self._requirement_list.setSelectionMode(QListView.SelectionMode.SingleSelection)
         self._requirement_list.setAcceptDrops(True)
@@ -596,9 +629,9 @@ class ChecklistEditorDialog(QDialog):
         requirement_label.setBuddy(self._requirement_list)
         requirement_layout.addWidget(requirement_label)
         requirement_layout.addWidget(self._requirement_list)
-        self._requirement_guidance = QLabel("Select a checklist category to read its guidance.")
+        self._requirement_guidance = QLabel(tr("Select a checklist category to read its guidance."))
         self._requirement_guidance.setObjectName("checklistRequirementGuidance")
-        self._requirement_guidance.setAccessibleName("Selected checklist category guidance")
+        self._requirement_guidance.setAccessibleName(tr("Selected checklist category guidance"))
         self._requirement_guidance.setAccessibleDescription(self._requirement_guidance.text())
         self._requirement_guidance.setTextFormat(Qt.TextFormat.PlainText)
         self._requirement_guidance.setWordWrap(True)
@@ -608,21 +641,23 @@ class ChecklistEditorDialog(QDialog):
         requirement_layout.addWidget(self._requirement_guidance)
         content_layout.addWidget(requirement_group)
 
-        page_group = QGroupBox("Pages without a confirmed assignment")
+        page_group = QGroupBox(tr("Pages without a confirmed assignment"))
         page_group.setObjectName("checklistAvailablePageGroup")
-        page_group.setAccessibleName("Pages without a confirmed assignment")
+        page_group.setAccessibleName(tr("Pages without a confirmed assignment"))
         page_group.setAccessibleDescription(
-            "Unassigned, added, and suggested page rows are identified only by case page position. "
-            "Only unassigned rows can be added or dragged."
+            tr(
+                "Unassigned, added, and suggested page rows are identified only by case page position. Only unassigned rows can be added or dragged."
+            )
         )
         page_layout = QVBoxLayout(page_group)
-        page_label = QLabel("Case pages")
+        page_label = QLabel(tr("Case pages"))
         self._page_list = QListView()
         self._page_list.setObjectName("checklistAvailablePageList")
-        self._page_list.setAccessibleName("Pages without a confirmed assignment")
+        self._page_list.setAccessibleName(tr("Pages without a confirmed assignment"))
         self._page_list.setAccessibleDescription(
-            "Select one or more unassigned page positions, then use Add selected pages. "
-            "Drag is optional and carries internal page identifiers only."
+            tr(
+                "Select one or more unassigned page positions, then use Add selected pages. Drag is optional and carries internal page identifiers only."
+            )
         )
         self._page_list.setSelectionMode(QListView.SelectionMode.ExtendedSelection)
         self._page_list.setDragEnabled(True)
@@ -632,57 +667,61 @@ class ChecklistEditorDialog(QDialog):
         page_layout.addWidget(page_label)
         page_layout.addWidget(self._page_list)
         self._add_button = self._button(
-            "Add selected pages",
+            tr("Add selected pages"),
             "checklistAddPagesButton",
-            "Add the selected unassigned page positions to the selected category as one pending "
-            "user document. This does not confirm the assignment.",
+            tr(
+                "Add the selected unassigned page positions to the selected category as one pending user document. This does not confirm the assignment."
+            ),
         )
         self._add_button.clicked.connect(self._add_selected_pages)
         page_layout.addWidget(self._add_button)
         content_layout.addWidget(page_group)
 
-        assignment_group = QGroupBox("Documents in selected category")
+        assignment_group = QGroupBox(tr("Documents in selected category"))
         assignment_group.setObjectName("checklistAssignmentGroup")
-        assignment_group.setAccessibleName("Documents in selected checklist category")
+        assignment_group.setAccessibleName(tr("Documents in selected checklist category"))
         assignment_group.setAccessibleDescription(
-            "Document rows state whether they are Added, an automation suggestion, or confirmed. "
-            "All review, category, order, and removal actions have keyboard buttons."
+            tr(
+                "Document rows state whether they are Added, an automation suggestion, or confirmed. All review, category, order, and removal actions have keyboard buttons."
+            )
         )
         assignment_layout = QVBoxLayout(assignment_group)
-        assignment_label = QLabel("Documents")
+        assignment_label = QLabel(tr("Documents"))
         self._assignment_list = QListView()
         self._assignment_list.setObjectName("checklistAssignmentList")
-        self._assignment_list.setAccessibleName("Documents in selected category")
+        self._assignment_list.setAccessibleName(tr("Documents in selected category"))
         self._assignment_list.setAccessibleDescription(
-            "Select one logical document to review, move, reorder, or remove."
+            tr("Select one logical document to review, move, reorder, or remove.")
         )
         self._assignment_list.setSelectionMode(QListView.SelectionMode.SingleSelection)
         assignment_label.setBuddy(self._assignment_list)
         assignment_layout.addWidget(assignment_label)
         assignment_layout.addWidget(self._assignment_list)
 
-        review_actions = QHBoxLayout()
+        review_actions = WrappingActionLayout()
         self._confirm_button = self._button(
-            "Confirm added document",
+            tr("Confirm added document"),
             "checklistConfirmButton",
-            "Explicitly confirm the selected user-added document. Only confirmation can make it "
-            "count toward Ready.",
+            tr(
+                "Explicitly confirm the selected user-added document. Only confirmation can make it count toward Ready."
+            ),
         )
         self._accept_button = self._button(
-            "Accept suggestion",
+            tr("Accept suggestion"),
             "checklistAcceptSuggestionButton",
-            "Explicitly accept and confirm the selected automation suggestion.",
+            tr("Explicitly accept and confirm the selected automation suggestion."),
         )
         self._reject_button = self._button(
-            "Reject suggestion",
+            tr("Reject suggestion"),
             "checklistRejectSuggestionButton",
-            "Reject and remove the selected automation suggestion without confirming it.",
+            tr("Reject and remove the selected automation suggestion without confirming it."),
         )
         self._remove_button = self._button(
-            "Remove assignment",
+            tr("Remove assignment"),
             "checklistRemoveAssignmentButton",
-            "Unassign the selected user-added or confirmed document and return its pages to the "
-            "unassigned list.",
+            tr(
+                "Unassign the selected user-added or confirmed document and return its pages to the unassigned list."
+            ),
         )
         self._confirm_button.clicked.connect(self._confirm_assignment)
         self._accept_button.clicked.connect(self._accept_suggestion)
@@ -695,24 +734,25 @@ class ChecklistEditorDialog(QDialog):
             self._remove_button,
         ):
             review_actions.addWidget(button)
-        review_actions.addStretch(1)
         assignment_layout.addLayout(review_actions)
 
-        category_actions = QHBoxLayout()
-        target_label = QLabel("Move to category")
+        category_actions = QVBoxLayout()
+        target_label = QLabel(tr("Move to category"))
         self._target_requirement = QComboBox()
         self._target_requirement.setObjectName("checklistMoveTargetCombo")
-        self._target_requirement.setAccessibleName("Destination checklist category")
+        self._target_requirement.setAccessibleName(tr("Destination checklist category"))
         self._target_requirement.setAccessibleDescription(
-            "Choose another checklist category for the selected document. Moving requires "
-            "confirmation again."
+            tr(
+                "Choose another checklist category for the selected document. Moving requires confirmation again."
+            )
         )
         target_label.setBuddy(self._target_requirement)
         self._move_category_button = self._button(
-            "Move document to category",
+            tr("Move document to category"),
             "checklistMoveCategoryButton",
-            "Move the selected document to the chosen category. The moved document becomes Added "
-            "and requires explicit confirmation again.",
+            tr(
+                "Move the selected document to the chosen category. The moved document becomes Added and requires explicit confirmation again."
+            ),
         )
         self._move_category_button.clicked.connect(self._move_assignment)
         self._target_requirement.currentIndexChanged.connect(self._update_action_availability)
@@ -721,64 +761,64 @@ class ChecklistEditorDialog(QDialog):
         category_actions.addWidget(self._move_category_button)
         assignment_layout.addLayout(category_actions)
 
-        document_order = QHBoxLayout()
+        document_order = WrappingActionLayout()
         self._document_earlier_button = self._button(
-            "Move document earlier",
+            tr("Move document earlier"),
             "checklistDocumentEarlierButton",
-            "Move the selected document one position earlier in this category.",
+            tr("Move the selected document one position earlier in this category."),
         )
         self._document_later_button = self._button(
-            "Move document later",
+            tr("Move document later"),
             "checklistDocumentLaterButton",
-            "Move the selected document one position later in this category.",
+            tr("Move the selected document one position later in this category."),
         )
         self._document_earlier_button.clicked.connect(lambda: self._reorder_document(-1))
         self._document_later_button.clicked.connect(lambda: self._reorder_document(1))
         document_order.addWidget(self._document_earlier_button)
         document_order.addWidget(self._document_later_button)
-        document_order.addStretch(1)
         assignment_layout.addLayout(document_order)
 
-        assigned_page_label = QLabel("Pages in selected document")
+        assigned_page_label = QLabel(tr("Pages in selected document"))
         self._assigned_page_list = QListView()
         self._assigned_page_list.setObjectName("checklistAssignedPageList")
-        self._assigned_page_list.setAccessibleName("Ordered pages in selected document")
+        self._assigned_page_list.setAccessibleName(tr("Ordered pages in selected document"))
         self._assigned_page_list.setAccessibleDescription(
-            "Select one case page position and use the named earlier or later button to reorder it."
+            tr(
+                "Select one case page position and use the named earlier or later button to reorder it."
+            )
         )
         self._assigned_page_list.setSelectionMode(QListView.SelectionMode.SingleSelection)
         assigned_page_label.setBuddy(self._assigned_page_list)
         assignment_layout.addWidget(assigned_page_label)
         assignment_layout.addWidget(self._assigned_page_list)
-        page_order = QHBoxLayout()
+        page_order = WrappingActionLayout()
         self._page_earlier_button = self._button(
-            "Move page earlier",
+            tr("Move page earlier"),
             "checklistPageEarlierButton",
-            "Move the selected page one position earlier inside this document.",
+            tr("Move the selected page one position earlier inside this document."),
         )
         self._page_later_button = self._button(
-            "Move page later",
+            tr("Move page later"),
             "checklistPageLaterButton",
-            "Move the selected page one position later inside this document.",
+            tr("Move the selected page one position later inside this document."),
         )
         self._page_earlier_button.clicked.connect(lambda: self._reorder_page(-1))
         self._page_later_button.clicked.connect(lambda: self._reorder_page(1))
         page_order.addWidget(self._page_earlier_button)
         page_order.addWidget(self._page_later_button)
-        page_order.addStretch(1)
         assignment_layout.addLayout(page_order)
         content_layout.addWidget(assignment_group)
 
-        history_actions = QHBoxLayout()
+        history_actions = WrappingActionLayout()
         self._undo_button = self._button(
-            "Undo checklist change",
+            tr("Undo checklist change"),
             "checklistUndoButton",
-            "Undo the most recent checklist change made in this editor. Ctrl+Z.",
+            tr("Undo the most recent checklist change made in this editor. Ctrl+Z."),
         )
         self._redo_button = self._button(
-            "Redo checklist change",
+            tr("Redo checklist change"),
             "checklistRedoButton",
-            "Redo the next checklist change in this editor. Ctrl+Y.",
+            tr("Redo the next checklist change in this editor. Ctrl+Y."),
         )
         self._undo_button.setShortcut("Ctrl+Z")
         self._redo_button.setShortcut("Ctrl+Y")
@@ -786,13 +826,12 @@ class ChecklistEditorDialog(QDialog):
         self._redo_button.clicked.connect(self._redo)
         history_actions.addWidget(self._undo_button)
         history_actions.addWidget(self._redo_button)
-        history_actions.addStretch(1)
         content_layout.addLayout(history_actions)
 
-        self._status = QLabel(state.announcement)
+        self._status = QLabel(tr(state.announcement))
         self._status.setObjectName("checklistEditorStatus")
-        self._status.setAccessibleName("Checklist editor status")
-        self._status.setAccessibleDescription(state.announcement)
+        self._status.setAccessibleName(tr("Checklist editor status"))
+        self._status.setAccessibleDescription(tr(state.announcement))
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -803,28 +842,31 @@ class ChecklistEditorDialog(QDialog):
 
         self._scroll = QScrollArea()
         self._scroll.setObjectName("checklistEditorScrollArea")
-        self._scroll.setAccessibleName("Checklist assignment controls")
+        self._scroll.setAccessibleName(tr("Checklist assignment controls"))
         self._scroll.setAccessibleDescription(
-            "Scrollable category, page, document, review, ordering, and history controls."
+            tr("Scrollable category, page, document, review, ordering, and history controls.")
         )
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._scroll.setWidget(content)
+        adapt_localized_content(self._scroll)
         self._scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         buttons = QDialogButtonBox()
         buttons.setObjectName("checklistEditorButtons")
-        buttons.setAccessibleName("Apply or cancel checklist changes")
+        buttons.setAccessibleName(tr("Apply or cancel checklist changes"))
         buttons.setAccessibleDescription(
-            "Cancel is the safe default. Apply requests saving the complete detached checklist "
-            "state and waits for a confirmed result."
+            tr(
+                "Cancel is the safe default. Apply requests saving the complete detached checklist state and waits for a confirmed result."
+            )
         )
         self._apply_button = self._button(
-            "Apply checklist changes",
+            tr("Apply checklist changes"),
             "checklistApplyButton",
-            "Request saving the complete local checklist draft. The dialog stays open until the "
-            "save succeeds or fails safely.",
+            tr(
+                "Request saving the complete local checklist draft. The dialog stays open until the save succeeds or fails safely."
+            ),
         )
         self._apply_button.setDefault(False)
         self._apply_button.setAutoDefault(False)
@@ -834,14 +876,15 @@ class ChecklistEditorDialog(QDialog):
             raise RuntimeError("Qt did not create the required Cancel button")
         self._cancel_button = cancel
         self._cancel_button.setObjectName("checklistCancelButton")
-        self._cancel_button.setAccessibleName("Cancel checklist changes")
+        self._cancel_button.setAccessibleName(tr("Cancel checklist changes"))
         self._cancel_button.setAccessibleDescription(
-            "Discard this local checklist draft without requesting a case change. Escape."
+            tr("Discard this local checklist draft without requesting a case change. Escape.")
         )
         self._cancel_button.setDefault(True)
         self._cancel_button.setAutoDefault(True)
         self._apply_button.clicked.connect(self._request_apply)
         self._cancel_button.clicked.connect(self.reject)
+        adapt_dialog_button_box(buttons)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._scroll, 1)
@@ -943,7 +986,7 @@ class ChecklistEditorDialog(QDialog):
         if not self._apply_pending:
             return False
         self._apply_pending = False
-        self._set_status("Checklist changes applied.", announce=True)
+        self._set_status(tr("Checklist changes applied."), announce=True)
         super().accept()
         return True
 
@@ -954,15 +997,19 @@ class ChecklistEditorDialog(QDialog):
             return False
         self._apply_pending = False
         self._set_editor_enabled(True)
-        self._apply_button.setAccessibleDescription("Retry saving the retained checklist draft.")
+        self._apply_button.setAccessibleDescription(
+            tr("Retry saving the retained checklist draft.")
+        )
         self._set_status(
-            "PWS_CHECKLIST_APPLY_FAILED: PaperWorkShell could not save checklist changes safely. "
-            "Changes are retained; review them and try Apply again.",
+            tr(
+                "{code}: PaperWorkShell could not save checklist changes safely. Changes are retained; review them and try Apply again.",
+                code="PWS_CHECKLIST_APPLY_FAILED",
+            ),
             announce=True,
             assertive=True,
         )
-        self._status.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(self._status, 8, 8)
+        self._apply_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._apply_button, 8, 8)
         return True
 
     def reject(self) -> None:
@@ -971,8 +1018,9 @@ class ChecklistEditorDialog(QDialog):
         if self._commit_started:
             QApplication.beep()
             self._set_status(
-                "These checklist changes are retained for retry and cannot be discarded from "
-                "this dialog after Apply was requested.",
+                tr(
+                    "These checklist changes are retained for retry and cannot be discarded from this dialog after Apply was requested."
+                ),
                 announce=True,
                 assertive=True,
             )
@@ -993,10 +1041,10 @@ class ChecklistEditorDialog(QDialog):
         super().showEvent(event)
 
     def _button(self, text: str, object_name: str, description: str) -> QPushButton:
-        button = QPushButton(text)
+        button = QPushButton(tr(text))
         button.setObjectName(object_name)
-        button.setAccessibleName(text)
-        button.setAccessibleDescription(description)
+        button.setAccessibleName(tr(text))
+        button.setAccessibleDescription(tr(description))
         return button
 
     def _current_requirement(self) -> ChecklistRequirementView | None:
@@ -1082,17 +1130,17 @@ class ChecklistEditorDialog(QDialog):
             else ()
         )
         inactive_count = 0 if assignment is None else len(assignment.page_ids) - len(rows)
-        description = (
-            "Select one active case page position and use the named earlier or later button "
-            "to reorder it."
+        description = tr(
+            "Select one active case page position and use the named earlier or later button to reorder it."
         )
         if inactive_count:
-            description += (
-                f" {inactive_count} inactive assignment page"
-                f"{'s are' if inactive_count != 1 else ' is'} omitted; the document remains "
-                "Needs review."
+            description += tr(
+                " {count} inactive assignment page is omitted; the document remains Needs review."
+                if inactive_count == 1
+                else " {count} inactive assignment pages are omitted; the document remains Needs review.",
+                count=inactive_count,
             )
-        self._assigned_page_list.setAccessibleDescription(description)
+        self._assigned_page_list.setAccessibleDescription(tr(description))
         self._assigned_page_model.replace(rows)
         page_row = self._assigned_page_model.row_for_id(page_id)
         if page_row < 0 and rows:
@@ -1107,7 +1155,9 @@ class ChecklistEditorDialog(QDialog):
         self._target_requirement.blockSignals(True)
         self._target_requirement.clear()
         for requirement in self._state.requirements:
-            self._target_requirement.addItem(requirement.display_name, requirement.requirement_id)
+            self._target_requirement.addItem(
+                tr(requirement.display_name), requirement.requirement_id
+            )
         target_index = self._target_requirement.findData(selected)
         if target_index < 0:
             current = self._current_requirement()
@@ -1123,11 +1173,16 @@ class ChecklistEditorDialog(QDialog):
     def _refresh_requirement_guidance(self) -> None:
         requirement = self._current_requirement()
         message = (
-            "Select a checklist category to read its guidance."
+            tr("Select a checklist category to read its guidance.")
             if requirement is None
             else (
-                f"{requirement.display_name}. {_STATUS_LABELS[requirement.status]}. "
-                f"{_count_text(requirement)}. {requirement.description}"
+                tr(
+                    "{name}. {status}. {count}. {description}",
+                    name=tr(requirement.display_name),
+                    status=tr(_STATUS_LABELS[requirement.status]),
+                    count=_count_text(requirement),
+                    description=tr(requirement.description),
+                )
             )
         )
         self._requirement_guidance.setText(message)
@@ -1151,12 +1206,14 @@ class ChecklistEditorDialog(QDialog):
     def _add_pages(self, requirement_id: str, value: object) -> None:
         page_ids = value if type(value) is tuple else ()
         if not page_ids:
-            self._show_action_error("Select at least one unassigned page before adding a document.")
+            self._show_action_error(
+                tr("Select at least one unassigned page before adding a document.")
+            )
             return
         before_ids = {assignment.assignment_id for assignment in self._state.assignments}
         if not self._change_state(
             lambda state: state.add_pages(requirement_id, page_ids),
-            "Document added. It is not confirmed; select it and choose Confirm added document.",
+            tr("Document added. It is not confirmed; select it and choose Confirm added document."),
         ):
             return
         added = next(
@@ -1183,7 +1240,7 @@ class ChecklistEditorDialog(QDialog):
             return
         if self._change_state(
             lambda state: state.confirm_assignment(assignment.assignment_id),
-            "Added document confirmed by the user.",
+            tr("Added document confirmed by the user."),
         ):
             self._refresh(
                 requirement_id=assignment.requirement_id,
@@ -1201,7 +1258,7 @@ class ChecklistEditorDialog(QDialog):
             return
         if self._change_state(
             lambda state: state.accept_suggestion(assignment.assignment_id),
-            "Automation suggestion accepted and confirmed by the user.",
+            tr("Automation suggestion accepted and confirmed by the user."),
         ):
             self._refresh(
                 requirement_id=assignment.requirement_id,
@@ -1219,7 +1276,7 @@ class ChecklistEditorDialog(QDialog):
             return
         if self._change_state(
             lambda state: state.reject_suggestion(assignment.assignment_id),
-            "Automation suggestion rejected and removed.",
+            tr("Automation suggestion rejected and removed."),
         ):
             self._refresh(requirement_id=assignment.requirement_id)
             self._assignment_list.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -1235,7 +1292,7 @@ class ChecklistEditorDialog(QDialog):
         first_page = assignment.page_ids[0]
         if self._change_state(
             lambda state: state.remove_assignment(assignment.assignment_id),
-            "Document assignment removed. Its pages are unassigned.",
+            tr("Document assignment removed. Its pages are unassigned."),
         ):
             self._refresh(requirement_id=assignment.requirement_id)
             row = self._page_model.row_for_id(first_page)
@@ -1258,7 +1315,7 @@ class ChecklistEditorDialog(QDialog):
             return
         if self._change_state(
             lambda state: state.move_assignment(assignment.assignment_id, target),
-            "Document moved. It is Added in the new category and requires confirmation again.",
+            tr("Document moved. It is Added in the new category and requires confirmation again."),
         ):
             self._refresh(requirement_id=target, assignment_id=assignment.assignment_id)
             self._assignment_list.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -1286,7 +1343,7 @@ class ChecklistEditorDialog(QDialog):
                 requirement.requirement_id,
                 order,
             ),
-            "Document order changed.",
+            tr("Document order changed."),
         ):
             self._refresh(
                 requirement_id=requirement.requirement_id,
@@ -1313,7 +1370,7 @@ class ChecklistEditorDialog(QDialog):
         order[current_row], order[target_row] = order[target_row], order[current_row]
         if self._change_state(
             lambda state: state.reorder_assignment_pages(assignment.assignment_id, tuple(order)),
-            "Page order changed inside the selected document.",
+            tr("Page order changed inside the selected document."),
         ):
             self._refresh(
                 requirement_id=assignment.requirement_id,
@@ -1325,18 +1382,20 @@ class ChecklistEditorDialog(QDialog):
     def _undo(self) -> None:
         if self._state.can_undo and self._change_state(
             lambda state: state.undo(),
-            "Checklist change undone.",
+            tr("Checklist change undone."),
         ):
             self._refresh()
-            self._undo_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            target = self._undo_button if self._undo_button.isEnabled() else self._redo_button
+            target.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _redo(self) -> None:
         if self._state.can_redo and self._change_state(
             lambda state: state.redo(),
-            "Checklist change redone.",
+            tr("Checklist change redone."),
         ):
             self._refresh()
-            self._redo_button.setFocus(Qt.FocusReason.OtherFocusReason)
+            target = self._redo_button if self._redo_button.isEnabled() else self._undo_button
+            target.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _change_state(
         self,
@@ -1348,12 +1407,16 @@ class ChecklistEditorDialog(QDialog):
         try:
             next_state = action(self._state)
         except ChecklistError as error:
-            self._show_action_error(f"{error.code.value}: {error.safe_message}")
+            self._show_action_error(
+                tr("{code}: {message}", code=error.code.value, message=tr(error.safe_message))
+            )
             return False
         if type(next_state) is not ChecklistEditorState:
             self._show_action_error(
-                "PWS_CHECKLIST_ACTION_FAILED: PaperWorkShell could not apply that checklist "
-                "action safely."
+                tr(
+                    "{code}: PaperWorkShell could not apply that checklist action safely.",
+                    code="PWS_CHECKLIST_ACTION_FAILED",
+                )
             )
             return False
         self._state = next_state
@@ -1373,7 +1436,7 @@ class ChecklistEditorDialog(QDialog):
         self._commit_started = True
         self._set_editor_enabled(False)
         self._set_status(
-            "Applying checklist changes. Keep this dialog open.",
+            tr("Applying checklist changes. Keep this dialog open."),
             announce=True,
         )
         self.apply_requested.emit(self._state)
@@ -1385,7 +1448,9 @@ class ChecklistEditorDialog(QDialog):
         self._cancel_button.setEnabled(enabled and not self._commit_started)
         if self._commit_started:
             self._cancel_button.setAccessibleDescription(
-                "Unavailable after the first Apply request because changes are retained for retry."
+                tr(
+                    "Unavailable after the first Apply request because changes are retained for retry."
+                )
             )
         if enabled:
             self._update_action_availability()
@@ -1397,7 +1462,9 @@ class ChecklistEditorDialog(QDialog):
         announce: bool,
         assertive: bool = False,
     ) -> None:
+        message = tr(message)
         self._status.setText(message)
+        self._status.setAccessibleName(tr("Checklist status. {value1}", value1=message))
         self._status.setAccessibleDescription(message)
         if not announce:
             return
